@@ -2353,9 +2353,8 @@ fn recompute_ref_counts_skips_unchanged_rows() {
             ref_count INTEGER NOT NULL DEFAULT 0,
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
-        CREATE TABLE note_resources (
+        CREATE TABLE files (
             id TEXT PRIMARY KEY,
-            note_id TEXT NOT NULL,
             resource_id TEXT,
             updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             deleted_at TEXT
@@ -2375,7 +2374,7 @@ fn recompute_ref_counts_skips_unchanged_rows() {
     )
     .unwrap();
     conn.execute(
-        "INSERT INTO note_resources (id, note_id, resource_id) VALUES ('nr-1', 'n1', 'r1')",
+        "INSERT INTO files (id, resource_id) VALUES ('f-1', 'r1')",
         [],
     )
     .unwrap();
@@ -2397,19 +2396,18 @@ fn recompute_ref_counts_skips_unchanged_rows() {
         "与引用无关的变更批次不得触发 resources 重算/触发器（churn 防线）"
     );
 
-    // 相关表（note_resources 带 resource_id）变更必须触发重算：
+    // 相关表（files 带 resource_id，注册为 RowSync）变更必须触发重算：
     // 失真的 r2 被修正归零，新增引用使 r1 重算为 2，且未变化行不点火触发器
     conn.execute("UPDATE resources SET ref_count = 9 WHERE id = 'r2'", [])
         .unwrap();
     conn.execute("DELETE FROM __change_log WHERE table_name = 'resources'", [])
         .unwrap();
     let change2 = SyncChangeWithData {
-        table_name: "note_resources".into(),
-        record_id: "nr-2".into(),
+        table_name: "files".into(),
+        record_id: "f-2".into(),
         operation: ChangeOperation::Insert,
         data: Some(json!({
-            "id": "nr-2",
-            "note_id": "n1",
+            "id": "f-2",
             "resource_id": "r1",
             "updated_at": "2026-05-01T11:00:00Z",
             "deleted_at": null,
@@ -2424,7 +2422,7 @@ fn recompute_ref_counts_skips_unchanged_rows() {
     let apply2 = SyncManager::apply_downloaded_changes(&conn, &[change2], None).unwrap();
     assert_eq!(
         apply2.success_count, 1,
-        "note_resources insert 应成功: skipped={} failures={:?}",
+        "files insert 应成功: skipped={} failures={:?}",
         apply2.skipped_count, apply2.failures
     );
 

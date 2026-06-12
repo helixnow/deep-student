@@ -29,6 +29,7 @@ import {
   ListChecks,
   DotsSixVertical,
   TreeStructure,
+  Repeat,
 } from '@phosphor-icons/react';
 import {
   DndContext,
@@ -57,8 +58,18 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
 import { usePomodoroStore } from '@/features/pomodoro';
 import { PomodoroPanel } from '@/features/pomodoro';
-import type { TodoItem, TodoPriority, UpdateTodoItemInput } from '../types';
-import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from '../types';
+import type { TodoItem, TodoPriority, TodoRepeatFreq, UpdateTodoItemInput } from '../types';
+import {
+  PRIORITY_CONFIG,
+  REPEAT_OPTIONS,
+  isOverdue,
+  isDueToday,
+  localToday,
+  parseTags,
+  parseRepeatRule,
+  repeatRuleI18n,
+  serializeRepeatRule,
+} from '../types';
 import { parseQuickAddInput } from '../quickAddParser';
 
 // ============================================================================
@@ -100,6 +111,7 @@ const TodoQuickAdd: React.FC = () => {
         title: finalTitle,
         priority: finalPriority,
         dueDate: finalDueDate || undefined,
+        repeatJson: parsed.repeat ? serializeRepeatRule(parsed.repeat) : undefined,
       });
       setTitle('');
       setPriority('none');
@@ -136,12 +148,21 @@ const TodoQuickAdd: React.FC = () => {
           className="min-w-0 flex-1 bg-transparent border-0 focus-visible:ring-0 placeholder:text-muted-foreground/50"
         />
         {/* 自然语言解析预览 chip（提交时生效） */}
-        {title.trim() && (parsedDateLabel || parsed.priority) && (
+        {title.trim() && (parsedDateLabel || parsed.priority || parsed.repeat) && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {parsedDateLabel && !dueDate && (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] whitespace-nowrap">
                 <Calendar size={11} />
                 {parsedDateLabel}
+              </span>
+            )}
+            {parsed.repeat && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] whitespace-nowrap">
+                <Repeat size={11} />
+                {(() => {
+                  const { key, count } = repeatRuleI18n(parsed.repeat);
+                  return t(key, count !== undefined ? { count } : undefined);
+                })()}
               </span>
             )}
             {parsed.priority && priority === 'none' && (
@@ -246,6 +267,7 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
   const dueToday = isDueToday(item);
   const tags = parseTags(item.tagsJson);
   const isCompleted = item.status === 'completed';
+  const repeatRule = parseRepeatRule(item.repeatJson);
 
   return (
     <div
@@ -294,6 +316,7 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
           tags.length > 0 ||
           item.priority !== 'none' ||
           item.estimatedPomodoros ||
+          repeatRule ||
           subtaskProgress) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             {subtaskProgress && (
@@ -345,6 +368,16 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
                 <Calendar size={12} />
                 {item.dueDate}
                 {item.dueTime && ` ${item.dueTime}`}
+              </span>
+            )}
+
+            {repeatRule && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Repeat size={12} />
+                {(() => {
+                  const { key, count } = repeatRuleI18n(repeatRule);
+                  return t(key, count !== undefined ? { count } : undefined);
+                })()}
               </span>
             )}
 
@@ -473,6 +506,30 @@ const TodoItemDetail: React.FC<{
     [items, item.id],
   );
   const isSubtask = Boolean(item.parentId);
+
+  // 重复规则直接从 item 派生（updateItem 后 store 刷新，prop 同步更新）
+  const repeatRule = useMemo(() => parseRepeatRule(item.repeatJson), [item.repeatJson]);
+
+  const handleRepeatChange = useCallback(
+    (freq: TodoRepeatFreq | 'none') => {
+      const changes: UpdateTodoItemInput = { id: item.id };
+      if (freq === 'none') {
+        changes.repeatJson = '';
+      } else {
+        // 同频率保留 quickAdd 解析出的自定义间隔
+        const interval = repeatRule && repeatRule.freq === freq ? repeatRule.interval : 1;
+        changes.repeatJson = serializeRepeatRule({ freq, interval });
+        // 重复任务必须有到期日（后端生成下一次依赖 dueDate）
+        if (!dueDate) {
+          const today = localToday();
+          changes.dueDate = today;
+          setDueDate(today);
+        }
+      }
+      void updateItem(changes);
+    },
+    [item.id, repeatRule, dueDate, updateItem],
+  );
 
   const handleAddSubtask = useCallback(async () => {
     const trimmed = newSubtaskTitle.trim();
@@ -637,6 +694,38 @@ const TodoItemDetail: React.FC<{
                 onBlur={handleBlur}
                 className="flex-1"
               />
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 py-1">
+            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <Repeat size={14} />
+              {t('todo:fields.repeat')}
+            </span>
+            <SegmentedControl<TodoRepeatFreq | 'none'>
+              ariaLabel={t('todo:fields.repeat')}
+              value={repeatRule?.freq ?? 'none'}
+              onValueChange={handleRepeatChange}
+              size="compact"
+              className="flex-wrap"
+              itemClassName="!h-auto !px-2 !py-0.5 text-[11px] font-medium"
+              options={REPEAT_OPTIONS.map((opt) => ({
+                value: opt.value,
+                title: t(opt.labelKey),
+                label: <span>{t(opt.labelKey)}</span>,
+              }))}
+            />
+          </div>
+
+          {repeatRule && repeatRule.interval > 1 && (
+            <div className="flex items-center gap-3 py-1">
+              <span className="w-16 flex-shrink-0" />
+              <span className="text-[11px] text-muted-foreground">
+                {(() => {
+                  const { key, count } = repeatRuleI18n(repeatRule);
+                  return t(key, count !== undefined ? { count } : undefined);
+                })()}
+              </span>
             </div>
           )}
 

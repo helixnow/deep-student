@@ -969,6 +969,10 @@ pub struct VfsCreateTodoItemParams {
     /// 关联资源 ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<String>>,
+
+    /// 重复规则 JSON（`{"freq":"daily|weekly|monthly|yearly|weekdays","interval":1}`）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_json: Option<String>,
 }
 
 /// 更新待办项参数

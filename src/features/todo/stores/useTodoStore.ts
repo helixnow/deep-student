@@ -20,6 +20,27 @@ import * as api from '../api';
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SEARCH_DEBOUNCE_MS = 300;
 
+// 每次应用启动只发一次逾期系统通知（模块级，store 为单例）
+let overdueNotifiedThisLaunch = false;
+
+/** 系统通知（权限缺失/非 Tauri 环境静默失败） */
+async function sendSystemNotification(title: string, body: string): Promise<void> {
+  try {
+    const { isPermissionGranted, requestPermission, sendNotification } = await import(
+      '@tauri-apps/plugin-notification'
+    );
+    let granted = await isPermissionGranted();
+    if (!granted) {
+      granted = (await requestPermission()) === 'granted';
+    }
+    if (granted) {
+      sendNotification({ title, body });
+    }
+  } catch (e) {
+    console.warn('[Todo] System notification failed:', e);
+  }
+}
+
 /** 操作失败时统一弹全局错误通知（store 不在 React 上下文，直接用 i18n 实例） */
 function notifyError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
@@ -33,6 +54,14 @@ interface TodoState {
   activeListId: string | null;
   items: TodoItem[];
   selectedItemId: string | null;
+
+  // 逾期未完成数（侧栏角标）
+  overdueCount: number;
+
+  // 回收站
+  trashLists: TodoList[];
+  trashItems: TodoItem[];
+  isLoadingTrash: boolean;
 
   // 过滤
   filter: TodoFilterState;
@@ -74,6 +103,17 @@ interface TodoState {
   setPriorityFilter: (priority: TodoPriority | null) => void;
   setShowCompleted: (show: boolean) => void;
 
+  // 逾期角标
+  refreshOverdueCount: () => Promise<void>;
+
+  // 回收站
+  loadTrash: () => Promise<void>;
+  restoreListFromTrash: (listId: string) => Promise<void>;
+  restoreItemFromTrash: (itemId: string) => Promise<void>;
+  purgeListFromTrash: (listId: string) => Promise<void>;
+  purgeItemFromTrash: (itemId: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
+
   // 初始化
   initialize: () => Promise<void>;
 }
@@ -83,6 +123,12 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   activeListId: null,
   items: [],
   selectedItemId: null,
+
+  overdueCount: 0,
+
+  trashLists: [],
+  trashItems: [],
+  isLoadingTrash: false,
 
   filter: {
     view: 'all',
@@ -449,6 +495,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   reloadCurrentView: async () => {
     const state = get();
+    // 数据变更后顺带刷新逾期角标（fire-and-forget，不阻塞视图加载）
+    void get().refreshOverdueCount();
+
     if (state.filter.search.trim()) {
       await state.searchItems(state.filter.search);
       return;
@@ -533,18 +582,117 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   // ========================================================================
+  // 逾期角标
+  // ========================================================================
+
+  refreshOverdueCount: async () => {
+    try {
+      const items = await api.listOverdueItems(false);
+      set({ overdueCount: items.length });
+    } catch {
+      // 角标属增强信息，失败静默（避免打断主流程的错误提示）
+    }
+  },
+
+  // ========================================================================
+  // 回收站
+  // ========================================================================
+
+  loadTrash: async () => {
+    set({ isLoadingTrash: true });
+    try {
+      const [trashLists, trashItems] = await Promise.all([
+        api.listDeletedTodoLists(),
+        api.listDeletedTodoItems(),
+      ]);
+      set({ trashLists, trashItems, isLoadingTrash: false });
+    } catch (e) {
+      set({ isLoadingTrash: false, error: notifyError(e) });
+    }
+  },
+
+  restoreListFromTrash: async (listId) => {
+    try {
+      const restored = await api.restoreTodoList(listId);
+      set((s) => ({ trashLists: s.trashLists.filter((l) => l.id !== listId) }));
+      await get().loadLists();
+      await get().reloadCurrentView();
+      showGlobalNotification(
+        'success',
+        i18n.t('todo:trash.restored', { title: restored.title }),
+      );
+    } catch (e) {
+      notifyError(e);
+    }
+  },
+
+  restoreItemFromTrash: async (itemId) => {
+    try {
+      const restored = await api.restoreTodoItem(itemId);
+      set((s) => ({ trashItems: s.trashItems.filter((i) => i.id !== itemId) }));
+      await get().reloadCurrentView();
+      showGlobalNotification(
+        'success',
+        i18n.t('todo:trash.restored', { title: restored.title }),
+      );
+    } catch (e) {
+      notifyError(e);
+    }
+  },
+
+  purgeListFromTrash: async (listId) => {
+    try {
+      await api.purgeTodoList(listId);
+      set((s) => ({ trashLists: s.trashLists.filter((l) => l.id !== listId) }));
+    } catch (e) {
+      notifyError(e);
+    }
+  },
+
+  purgeItemFromTrash: async (itemId) => {
+    try {
+      await api.purgeTodoItem(itemId);
+      set((s) => ({ trashItems: s.trashItems.filter((i) => i.id !== itemId) }));
+    } catch (e) {
+      notifyError(e);
+    }
+  },
+
+  emptyTrash: async () => {
+    try {
+      await api.purgeDeletedTodoItems();
+      await api.purgeDeletedTodoLists();
+      set({ trashLists: [], trashItems: [] });
+      showGlobalNotification('success', i18n.t('todo:trash.emptied'));
+    } catch (e) {
+      notifyError(e);
+    }
+  },
+
+  // ========================================================================
   // 初始化
   // ========================================================================
 
   initialize: async () => {
     try {
       // 传入本地化标题，避免新库默认建出英文 "Inbox"
-      await api.ensureInbox(i18n.t('todo:sidebar.inbox'));
+      await api.ensureInbox(i18n.t('todo:views.inbox'));
       await get().loadLists();
       const lists = get().lists;
       if (lists.length > 0) {
         const defaultList = lists.find((l) => l.isDefault) || lists[0];
         get().setActiveList(defaultList.id);
+      }
+      await get().refreshOverdueCount();
+
+      // 启动后首次进入待办时，如有逾期任务发一次系统通知提醒
+      const overdue = get().overdueCount;
+      if (overdue > 0 && !overdueNotifiedThisLaunch) {
+        overdueNotifiedThisLaunch = true;
+        void sendSystemNotification(
+          i18n.t('todo:overdue.notificationTitle'),
+          i18n.t('todo:overdue.notificationBody', { count: overdue }),
+        );
       }
     } catch (e) {
       set({ error: notifyError(e) });

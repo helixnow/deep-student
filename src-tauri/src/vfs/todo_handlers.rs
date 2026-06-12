@@ -61,6 +61,8 @@ pub struct CreateTodoItemInput {
     pub parent_id: Option<String>,
     #[serde(default)]
     pub attachments: Option<Vec<String>>,
+    #[serde(default)]
+    pub repeat_json: Option<String>,
 }
 
 fn default_priority() -> String {
@@ -206,6 +208,29 @@ pub fn todo_restore_item(app: AppHandle, item_id: String) -> Result<VfsTodoItem,
     VfsTodoRepo::restore_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn todo_list_deleted_items(
+    app: AppHandle,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<VfsTodoItem>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::list_deleted_todo_items(&vfs_db, limit.unwrap_or(100), offset.unwrap_or(0))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_item(app: AppHandle, item_id: String) -> Result<(), String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_deleted_items(app: AppHandle) -> Result<usize, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_deleted_todo_items(&vfs_db).map_err(|e| e.to_string())
+}
+
 // ============================================================================
 // TodoItem 命令
 // ============================================================================
@@ -223,6 +248,7 @@ pub fn todo_create_item(app: AppHandle, input: CreateTodoItemInput) -> Result<Vf
         tags: input.tags,
         parent_id: input.parent_id,
         attachments: input.attachments,
+        repeat_json: input.repeat_json,
     };
     VfsTodoRepo::create_todo_item(&vfs_db, params).map_err(|e| e.to_string())
 }

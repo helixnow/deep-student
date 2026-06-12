@@ -299,6 +299,148 @@ impl VfsFileRepo {
         }
     }
 
+    /// 复制文件/图片附件（共享 blob 并正确维护引用计数）
+    ///
+    /// ★ 2026-06-12（第二轮审阅）：取代 DSTU 层"伪 sha256 + 直接复用 blob_hash"
+    /// 的复制逻辑。旧实现的缺陷与教材复制（审阅问题 S3）相同：
+    /// 1. 副本指向原 blob 但不递增引用计数 → 删除任一副本，物理文件被清扫，
+    ///    另一副本数据丢失；
+    /// 2. 不复制 preview_json/extracted_text/ocr_pages_json/compressed_blob_hash
+    ///    → PDF/图片副本丢失预览、OCR 与压缩产物。
+    pub fn copy_file_with_conn(
+        conn: &Connection,
+        src_file_id: &str,
+        new_file_name: &str,
+    ) -> VfsResult<VfsFile> {
+        // 1. 读取源文件完整数据
+        let src = Self::get_file_with_conn(conn, src_file_id)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "File".to_string(),
+                id: src_file_id.to_string(),
+            }
+        })?;
+
+        let (processing_status, processing_progress): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT processing_status, processing_progress FROM files WHERE id = ?1",
+                params![src_file_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?
+            .unwrap_or((None, None));
+
+        // 2. 收集需要共享引用的 blob 哈希
+        let mut shared_hashes: Vec<String> = Vec::new();
+        if let Some(ref h) = src.blob_hash {
+            shared_hashes.push(h.clone());
+        }
+        if let Some(ref ch) = src.compressed_blob_hash {
+            if src.blob_hash.as_deref() != Some(ch.as_str()) {
+                shared_hashes.push(ch.clone());
+            }
+        }
+        if let Some(ref pj) = src.preview_json {
+            if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(pj) {
+                for page in &preview.pages {
+                    shared_hashes.push(page.blob_hash.clone());
+                    if let Some(ref ch) = page.compressed_blob_hash {
+                        if ch != &page.blob_hash {
+                            shared_hashes.push(ch.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let new_sha256 = format!("{}_copy_{}", src.sha256, nanoid::nanoid!(8));
+
+        conn.execute("SAVEPOINT copy_file", [])?;
+
+        let result = (|| -> VfsResult<VfsFile> {
+            for hash in &shared_hashes {
+                VfsBlobRepo::increment_ref_with_conn(conn, hash)?;
+            }
+
+            let file_id = VfsFile::generate_id();
+            let now = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            let now_ms = chrono::Utc::now().timestamp_millis();
+
+            let resource_id = format!("res_{}", nanoid::nanoid!(10));
+            conn.execute(
+                r#"
+                INSERT INTO resources (id, hash, type, source_id, source_table, storage_mode, data, ref_count, created_at, updated_at)
+                VALUES (?1, ?2, 'file', ?3, 'files', 'inline', ?4, 0, ?5, ?6)
+                "#,
+                params![
+                    resource_id,
+                    new_sha256,
+                    file_id,
+                    src.extracted_text.clone().unwrap_or_default(),
+                    now_ms,
+                    now_ms,
+                ],
+            )?;
+
+            conn.execute(
+                r#"
+                INSERT INTO files (id, resource_id, blob_hash, sha256, file_name, original_path, size,
+                                   page_count, "type", mime_type, tags_json, is_favorite, status,
+                                   created_at, updated_at, preview_json, extracted_text, ocr_pages_json,
+                                   compressed_blob_hash, processing_status, processing_progress)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '[]', 0, 'active', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
+                "#,
+                params![
+                    file_id,
+                    resource_id,
+                    src.blob_hash,
+                    new_sha256,
+                    new_file_name,
+                    src.original_path,
+                    src.size,
+                    src.page_count,
+                    src.file_type,
+                    src.mime_type,
+                    now,
+                    now,
+                    src.preview_json,
+                    src.extracted_text,
+                    src.ocr_pages_json,
+                    src.compressed_blob_hash,
+                    processing_status,
+                    processing_progress,
+                ],
+            )?;
+
+            Self::get_file_with_conn(conn, &file_id)?.ok_or_else(|| {
+                VfsError::Database(format!("File {} not found after copy", file_id))
+            })
+        })();
+
+        match result {
+            Ok(file) => {
+                conn.execute("RELEASE copy_file", [])?;
+                info!(
+                    "[VFS::FileRepo] Copied file {} -> {} ({} shared blobs ref+1)",
+                    src_file_id,
+                    file.id,
+                    shared_hashes.len()
+                );
+                Ok(file)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO copy_file", []);
+                let _ = conn.execute("RELEASE copy_file", []);
+                error!(
+                    "[VFS::FileRepo] Failed to copy file {}: {}",
+                    src_file_id, e
+                );
+                Err(e)
+            }
+        }
+    }
+
     /// 创建文件记录（带文档处理数据）
     ///
     /// ★ P2-1 修复：支持存储 PDF 预渲染和文本提取结果
@@ -1098,6 +1240,11 @@ impl VfsFileRepo {
                 "[VFS::FileRepo] Deleting associated resource: {}",
                 resource_id
             );
+            // ★ 2026-06-12（第二轮审阅）：清理索引产物（units/segments/Lance 向量入列）
+            rollback_on_error!(
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &resource_id),
+                "Failed to delete index artifacts"
+            );
             let res_deleted = rollback_on_error!(
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&resource_id]),
                 "Failed to delete resource"
@@ -1758,5 +1905,140 @@ mod tests {
             .expect("Get should succeed")
             .expect("File should exist");
         assert_eq!(restored.status, "active");
+    }
+
+    // ★ 2026-06-12（第二轮审阅）回归测试：copy_file 必须共享 blob 并正确递增引用计数
+
+    fn blob_ref(db: &VfsDatabase, hash: &str) -> Option<i32> {
+        let conn = db.get_conn_safe().unwrap();
+        conn.query_row(
+            "SELECT ref_count FROM blobs WHERE hash = ?1",
+            rusqlite::params![hash],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap()
+    }
+
+    #[test]
+    fn test_copy_file_shares_blobs_and_survives_source_purge() {
+        use crate::vfs::repos::blob_repo::VfsBlobRepo;
+
+        let (_tmp, db) = setup_test_db();
+
+        // 1. 准备主 blob、压缩 blob、页图 blob、页图压缩 blob（store_blob 初始 ref=1）
+        let main_blob =
+            VfsBlobRepo::store_blob(&db, b"copy-file-main", Some("application/pdf"), Some("pdf"))
+                .unwrap();
+        let compressed_blob =
+            VfsBlobRepo::store_blob(&db, b"copy-file-compressed", Some("image/webp"), Some("webp"))
+                .unwrap();
+        let page_blob =
+            VfsBlobRepo::store_blob(&db, b"copy-file-page", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+        let page_compressed =
+            VfsBlobRepo::store_blob(&db, b"copy-file-page-c", Some("image/webp"), Some("webp"))
+                .unwrap();
+
+        // 2. 创建源文件并补充 preview/压缩/OCR 元数据
+        let src = VfsFileRepo::create_file(
+            &db,
+            "sha_copy_src",
+            "source.pdf",
+            4096,
+            "document",
+            Some("application/pdf"),
+            Some(&main_blob.hash),
+            None,
+        )
+        .unwrap();
+        let preview_json = serde_json::json!({
+            "pages": [{
+                "pageIndex": 0,
+                "blobHash": page_blob.hash,
+                "width": 100,
+                "height": 100,
+                "mimeType": "image/jpeg",
+                "compressedBlobHash": page_compressed.hash,
+            }],
+            "renderDpi": 144,
+            "totalPages": 1,
+            "renderedAt": "2026-06-12T00:00:00Z",
+        })
+        .to_string();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE files SET preview_json = ?1, compressed_blob_hash = ?2,
+                        extracted_text = 'hello text', ocr_pages_json = '[]' WHERE id = ?3",
+                rusqlite::params![preview_json, compressed_blob.hash, src.id],
+            )
+            .unwrap();
+        }
+
+        // 3. 复制 → 所有共享 blob 引用计数应为 2
+        let copy = {
+            let conn = db.get_conn_safe().unwrap();
+            VfsFileRepo::copy_file_with_conn(&conn, &src.id, "source (副本).pdf").unwrap()
+        };
+        assert_ne!(copy.id, src.id);
+        assert_ne!(copy.sha256, src.sha256, "副本必须有独立 sha256");
+        assert_eq!(copy.blob_hash.as_deref(), Some(main_blob.hash.as_str()));
+        assert_eq!(
+            copy.compressed_blob_hash.as_deref(),
+            Some(compressed_blob.hash.as_str())
+        );
+        assert_eq!(copy.extracted_text.as_deref(), Some("hello text"));
+        assert!(
+            copy.preview_json.as_deref().unwrap_or("").contains(&page_blob.hash),
+            "副本必须继承 preview_json"
+        );
+        for (label, hash) in [
+            ("main", &main_blob.hash),
+            ("compressed", &compressed_blob.hash),
+            ("page", &page_blob.hash),
+            ("page_compressed", &page_compressed.hash),
+        ] {
+            assert_eq!(
+                blob_ref(&db, hash),
+                Some(2),
+                "{} blob 复制后引用计数必须为 2",
+                label
+            );
+        }
+
+        // 4. purge 源文件 → 副本仍然完整，blob 引用计数回到 1
+        VfsFileRepo::purge_file(&db, &src.id).unwrap();
+        assert!(VfsFileRepo::get_file(&db, &copy.id).unwrap().is_some());
+        for (label, hash) in [
+            ("main", &main_blob.hash),
+            ("compressed", &compressed_blob.hash),
+            ("page", &page_blob.hash),
+            ("page_compressed", &page_compressed.hash),
+        ] {
+            assert_eq!(
+                blob_ref(&db, hash),
+                Some(1),
+                "{} blob 在源 purge 后引用计数必须为 1（副本仍持有）",
+                label
+            );
+        }
+
+        // 5. purge 副本 → 引用计数归零（blob 行被清扫或 ref=0）
+        VfsFileRepo::purge_file(&db, &copy.id).unwrap();
+        for (label, hash) in [
+            ("main", &main_blob.hash),
+            ("compressed", &compressed_blob.hash),
+            ("page", &page_blob.hash),
+            ("page_compressed", &page_compressed.hash),
+        ] {
+            let rc = blob_ref(&db, hash);
+            assert!(
+                rc.is_none() || rc == Some(0),
+                "{} blob 在副本 purge 后必须归零，got {:?}",
+                label,
+                rc
+            );
+        }
     }
 }

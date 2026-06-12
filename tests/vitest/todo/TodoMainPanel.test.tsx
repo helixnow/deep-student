@@ -10,6 +10,7 @@ vi.mock('react-i18next', () => ({
       if (vars?.date) return `${key}:${vars.date}`;
       return key;
     },
+    i18n: { language: 'zh-CN' },
   }),
 }));
 

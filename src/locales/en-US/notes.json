@@ -460,6 +460,7 @@
       "drop_overlay_hint": "Supports PNG, JPG, GIF, WebP and more"
     },
     "conflict_refreshed": "This note was modified elsewhere and has been refreshed to the latest version",
+    "conflict_restore_mine": "Restore my version",
     "save_status": {
       "saved": "Saved",
       "saving": "Saving...",

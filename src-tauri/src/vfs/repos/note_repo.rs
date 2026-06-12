@@ -330,10 +330,8 @@ impl VfsNoteRepo {
                     |row| row.get(0),
                 )?;
                 if note_refs == 0 {
-                    conn.execute(
-                        "DELETE FROM vfs_index_units WHERE resource_id = ?1",
-                        params![old_rid],
-                    )?;
+                    // ★ 2026-06-12（第二轮审阅）：经统一入口清理索引产物（含 Lance 向量入列）
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, old_rid)?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![old_rid])?;
                     debug!(
                         "[VFS::NoteRepo] Deleted superseded resource {} for note {}",
@@ -1049,13 +1047,10 @@ impl VfsNoteRepo {
                 continue;
             }
 
-            // ★ 2026-06-12（审阅问题 S5）：同步清理向量索引单元，防止孤儿索引
+            // ★ 2026-06-12（审阅问题 S5 / 第二轮）：统一入口清理索引产物（含 Lance 向量入列）
             rollback_on_error!(
-                conn.execute(
-                    "DELETE FROM vfs_index_units WHERE resource_id = ?1",
-                    params![&resource_id]
-                ),
-                "Failed to delete index units"
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &resource_id),
+                "Failed to delete index artifacts"
             );
             let res_deleted = rollback_on_error!(
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&resource_id]),
@@ -1683,5 +1678,89 @@ mod tests {
         // 查询所有笔记
         let all_notes = VfsNoteRepo::list_all_notes(&db, None, 10, 0).expect("List should succeed");
         assert_eq!(all_notes.len(), 2);
+    }
+
+    // ★ 2026-06-12（审阅问题 S5）回归测试：更新/删除不得泄漏历史资源
+
+    fn count_note_resources(db: &VfsDatabase) -> i64 {
+        let conn = db.get_conn_safe().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM resources WHERE type = 'note'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    /// 内容多次更新后，旧版本资源必须被即时回收（不堆积）
+    #[test]
+    fn test_update_note_reclaims_old_resources() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let note = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "演进笔记".to_string(),
+                content: "v1".to_string(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
+
+        for v in ["v2", "v3", "v4", "v5"] {
+            VfsNoteRepo::update_note(
+                &db,
+                &note.id,
+                VfsUpdateNoteParams {
+                    content: Some(v.to_string()),
+                    title: None,
+                    tags: None,
+                    expected_updated_at: None,
+                },
+            )
+            .unwrap();
+        }
+
+        assert_eq!(
+            count_note_resources(&db),
+            1,
+            "old note resources must be reclaimed on each content switch"
+        );
+    }
+
+    /// purge 笔记后，包括历史版本在内的所有专属资源必须清空
+    #[test]
+    fn test_purge_note_removes_all_owned_resources() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let note = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "购物清单".to_string(),
+                content: "牛奶".to_string(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
+
+        VfsNoteRepo::update_note(
+            &db,
+            &note.id,
+            VfsUpdateNoteParams {
+                content: Some("牛奶+面包".to_string()),
+                title: None,
+                tags: None,
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+
+        VfsNoteRepo::purge_note(&db, &note.id).unwrap();
+
+        assert_eq!(
+            count_note_resources(&db),
+            0,
+            "purge must remove main and historical note resources"
+        );
     }
 }

@@ -1835,6 +1835,11 @@ impl VfsAttachmentRepo {
                 "[VFS::AttachmentRepo] Deleting associated resource: {}",
                 resource_id
             );
+            // ★ 2026-06-12（第二轮审阅）：清理索引产物（units/segments/Lance 向量入列）
+            rollback_on_error!(
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &resource_id),
+                "Failed to delete index artifacts"
+            );
             let res_deleted = rollback_on_error!(
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&resource_id]),
                 "Failed to delete resource"

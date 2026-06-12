@@ -1655,16 +1655,18 @@ impl PdfProcessingService {
             hasher.update(&compressed_data);
             let compressed_hash = format!("{:x}", hasher.finalize());
 
-            // 存储压缩后的 blob（如果还不存在）
-            if VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &compressed_hash)?.is_none() {
-                VfsBlobRepo::store_blob_with_conn(
-                    &conn,
-                    blobs_dir,
-                    &compressed_data,
-                    Some("image/jpeg"),
-                    Some("jpg"),
-                )?;
-            }
+            // 存储压缩后的 blob
+            // ★ 2026-06-12（第二轮审阅）：无条件调用 store_blob。
+            // 旧实现"已存在则跳过"会漏掉 ON CONFLICT 的 ref_count+1：
+            // 两个文件压缩出相同 blob 时引用计数欠账，先删者会把共享
+            // 压缩图的 ref_count 减到 0 触发物理清扫，后者图片变砖。
+            VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                &compressed_data,
+                Some("image/jpeg"),
+                Some("jpg"),
+            )?;
 
             info!(
                 "[MediaProcessingService] Image compressed for file {}: {} -> {} bytes ({:.1}% reduction, hash: {})",
@@ -1832,18 +1834,17 @@ impl PdfProcessingService {
                 hasher.update(&compressed_data);
                 let compressed_hash = format!("{:x}", hasher.finalize());
 
-                // 存储压缩后的 blob（如果不存在）
-                if VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &compressed_hash)?
-                    .is_none()
-                {
-                    VfsBlobRepo::store_blob_with_conn(
-                        &conn,
-                        blobs_dir,
-                        &compressed_data,
-                        Some("image/jpeg"),
-                        Some("jpg"),
-                    )?;
-                }
+                // 存储压缩后的 blob
+                // ★ 2026-06-12（第二轮审阅）：无条件 store，依赖 ON CONFLICT ref_count+1。
+                // 多页/多文件压缩出相同 blob（如空白页）时每个引用都计数，
+                // 与 purge 时逐页 -1 对称，否则提前归零导致共享页图被误删。
+                VfsBlobRepo::store_blob_with_conn(
+                    &conn,
+                    blobs_dir,
+                    &compressed_data,
+                    Some("image/jpeg"),
+                    Some("jpg"),
+                )?;
 
                 page.compressed_blob_hash = Some(compressed_hash.clone());
                 compressed_count += 1;

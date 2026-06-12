@@ -75,65 +75,64 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
     </div>
   );
 
-  // ========== 分屏模式 ==========
-  if (splitView) {
-    const rightTab = tabs.find(t => t.tabId === splitView.rightTabId);
+  // ★ F7 修复：普通模式与分屏模式共用同一棵 PanelGroup 树。
+  // 之前两种模式返回不同的根结构（div vs PanelGroup），开/关分屏会让
+  // 所有保活 tab 卸载重建——编辑器光标/撤销历史/滚动位置全部丢失，
+  // 未保存草稿也要依赖卸载兜底保存。现在仅被分屏的那个 tab 移动容器，
+  // 其余 tab 实例完全保留。
+  const rightTab = splitView ? tabs.find(t => t.tabId === splitView.rightTabId) : undefined;
 
-    return (
-      <PanelGroup
-        direction="horizontal"
-        autoSaveId="learning-hub-split-view"
-        className={cn('h-full', className)}
-      >
-        {/* 左侧面板：当前活跃 tab */}
-        <Panel defaultSize={50} minSize={25} id="split-left" order={1}>
-          <div className="relative h-full">
-            {/* ★ Y3 修复：右侧分屏 tab 不在左侧重复渲染。
-                之前左侧 map 中包含右侧 tab 的隐藏实例，导致同一资源双实例
-                （重复加载、重复事件监听、编辑器互相干扰） */}
-            {tabs
-              .filter(tab => tab.tabId !== splitView.rightTabId)
-              .map(tab => renderTabPanel(tab, tab.tabId === activeTabId))}
-          </div>
-        </Panel>
-
-        {/* 分隔条 */}
-        <PanelResizeHandle className="w-1.5 bg-border/50 hover:bg-primary/30 active:bg-primary/50 transition-colors flex items-center justify-center group">
-          <DotsSixVertical size={12} className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
-        </PanelResizeHandle>
-
-        {/* 右侧面板：分屏 tab */}
-        <Panel defaultSize={50} minSize={25} id="split-right" order={2}>
-          <div className="relative h-full">
-        {/* 右侧面板顶部关闭按钮 */}
-        <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
-          <div className="bg-background/80 backdrop-blur-sm shadow-sm border border-border rounded-md px-2 py-1 text-xs text-muted-foreground font-medium flex items-center gap-1.5">
-            <SidebarSimple size={14} />
-            {t('learningHub:splitView.title', '分屏视图')}
-          </div>
-          <button
-            onClick={onCloseSplitView}
-            className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
-            title={t('actions.close', '关闭分屏')}
-          >
-            <X size={14} />
-          </button>
-        </div>
-            {rightTab ? renderTabPanel(rightTab, true) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                {t('noContent', '无内容')}
-              </div>
-            )}
-          </div>
-        </Panel>
-      </PanelGroup>
-    );
-  }
-
-  // ========== 普通模式 ==========
   return (
-    <div className={cn('relative h-full', className)}>
-      {tabs.map(tab => renderTabPanel(tab, tab.tabId === activeTabId))}
-    </div>
+    <PanelGroup
+      direction="horizontal"
+      autoSaveId="learning-hub-split-view"
+      className={cn('h-full', className)}
+    >
+      {/* 左侧面板：普通模式下占满全宽 */}
+      <Panel defaultSize={splitView ? 50 : 100} minSize={25} id="split-left" order={1}>
+        <div className="relative h-full">
+          {/* ★ Y3 修复：右侧分屏 tab 不在左侧重复渲染。
+              之前左侧 map 中包含右侧 tab 的隐藏实例，导致同一资源双实例
+              （重复加载、重复事件监听、编辑器互相干扰） */}
+          {tabs
+            .filter(tab => !splitView || tab.tabId !== splitView.rightTabId)
+            .map(tab => renderTabPanel(tab, tab.tabId === activeTabId))}
+        </div>
+      </Panel>
+
+      {splitView && (
+        <>
+          {/* 分隔条 */}
+          <PanelResizeHandle className="w-1.5 bg-border/50 hover:bg-primary/30 active:bg-primary/50 transition-colors flex items-center justify-center group">
+            <DotsSixVertical size={12} className="text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
+          </PanelResizeHandle>
+
+          {/* 右侧面板：分屏 tab */}
+          <Panel defaultSize={50} minSize={25} id="split-right" order={2}>
+            <div className="relative h-full">
+              {/* 右侧面板顶部关闭按钮 */}
+              <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
+                <div className="bg-background/80 backdrop-blur-sm shadow-sm border border-border rounded-md px-2 py-1 text-xs text-muted-foreground font-medium flex items-center gap-1.5">
+                  <SidebarSimple size={14} />
+                  {t('learningHub:splitView.title', '分屏视图')}
+                </div>
+                <button
+                  onClick={onCloseSplitView}
+                  className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
+                  title={t('actions.close', '关闭分屏')}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              {rightTab ? renderTabPanel(rightTab, true) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+                  {t('noContent', '无内容')}
+                </div>
+              )}
+            </div>
+          </Panel>
+        </>
+      )}
+    </PanelGroup>
   );
 };

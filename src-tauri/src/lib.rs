@@ -1482,6 +1482,9 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_purge_list
             ,crate::vfs::todo_handlers::todo_purge_deleted_lists
             ,crate::vfs::todo_handlers::todo_restore_item
+            ,crate::vfs::todo_handlers::todo_list_deleted_items
+            ,crate::vfs::todo_handlers::todo_purge_item
+            ,crate::vfs::todo_handlers::todo_purge_deleted_items
             // 番茄钟命令
             ,crate::vfs::todo_handlers::pomodoro_create_record
             ,crate::vfs::todo_handlers::pomodoro_get_record
@@ -1990,6 +1993,23 @@ fn build_app_state(
                         Ok(_) => {}
                         Err(e) => {
                             tracing::warn!("[AppSetup] Orphan note/mindmap sweep failed: {}", e);
+                        }
+                    }
+
+                    // ★ 2026-06-12（第二轮审阅）：回收孤儿索引单元。
+                    // essay/translation/textbook/exam 的旧 purge 路径不清理
+                    // vfs_index_units，残留的 units/segments/Lance 向量会让
+                    // 语义检索命中已删除内容。Lance 行先入列孤儿队列再删。
+                    match crate::vfs::repos::index_unit_repo::sweep_orphan_index_units(&conn) {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(
+                                "[AppSetup] Swept {} orphan index units (lance rows enqueued)",
+                                count
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("[AppSetup] Orphan index unit sweep failed: {}", e);
                         }
                     }
                 }

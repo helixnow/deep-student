@@ -1,17 +1,18 @@
 /**
  * Todo 快速添加自然语言解析（轻量版）
  *
- * 从输入文本中识别日期与优先级 token，返回剔除 token 后的标题。
+ * 从输入文本中识别日期、优先级与重复规则 token，返回剔除 token 后的标题。
  * 支持（中文优先 + 基础英文）：
  *   日期：今天 / 明天 / 后天 / 大后天 / 周一~周日 / 下周一~下周日 /
  *         N月N日(号) / N号 / today / tomorrow
  *   优先级：!紧急 / !高 / !中 / !低（半角或全角叹号）
+ *   重复：每天 / 每周 / 每周X / 每月 / 每年 / 每个工作日 / daily / weekly ...
  *
  * 设计原则：token 必须是独立词（避免误伤如「明天气温」中的「明天气」），
  * 解析结果在 UI 中以 chip 预览，用户手动设置的字段优先于解析结果。
  */
 
-import type { TodoPriority } from './types';
+import type { TodoPriority, TodoRepeatRule } from './types';
 
 export interface QuickAddParseResult {
   /** 剔除已识别 token 后的标题 */
@@ -19,10 +20,14 @@ export interface QuickAddParseResult {
   /** YYYY-MM-DD（本地时区） */
   dueDate?: string;
   priority?: TodoPriority;
+  /** 重复规则（如「每天」→ daily）；命中时若无日期 token，dueDate 默认今天 */
+  repeat?: TodoRepeatRule;
   /** 命中的日期 token 原文（用于 UI 回显） */
   dateToken?: string;
   /** 命中的优先级 token 原文 */
   priorityToken?: string;
+  /** 命中的重复 token 原文 */
+  repeatToken?: string;
 }
 
 const WEEKDAY_MAP: Record<string, number> = {
@@ -152,6 +157,70 @@ function matchPriority(text: string): PriorityMatch | null {
   return { token: m[0], priority: PRIORITY_MAP[m[1].toLowerCase()] };
 }
 
+interface RepeatMatch {
+  token: string;
+  rule: TodoRepeatRule;
+  /** 「每周X」携带的锚定星期（0=周日），据此预填到期日 */
+  anchorWeekday?: number;
+}
+
+/**
+ * 重复 token 匹配。「每周X」优先于「每周」，「每个工作日」优先于「每」前缀族，
+ * 避免部分匹配吃掉更长的 token。
+ */
+function matchRepeat(text: string): RepeatMatch | null {
+  const lower = text.toLowerCase();
+
+  const weekdaysRe = /每\s*个?\s*工作日/;
+  const wm = weekdaysRe.exec(text);
+  if (wm) {
+    return { token: wm[0], rule: { freq: 'weekdays', interval: 1 } };
+  }
+
+  // 每周X / 每星期X / 每礼拜X（锚定到具体星期）
+  const weeklyAnchorRe = /每\s*(?:周|星期|礼拜)([一二三四五六日天])/;
+  const wam = weeklyAnchorRe.exec(text);
+  if (wam) {
+    const weekday = WEEKDAY_MAP[wam[1]];
+    if (weekday !== undefined) {
+      return { token: wam[0], rule: { freq: 'weekly', interval: 1 }, anchorWeekday: weekday };
+    }
+  }
+
+  const zhSimple: Array<[RegExp, TodoRepeatRule['freq']]> = [
+    [/每\s*(?:天|日)/, 'daily'],
+    [/每\s*(?:周|星期|礼拜)/, 'weekly'],
+    [/每\s*个?\s*月/, 'monthly'],
+    [/每\s*年/, 'yearly'],
+  ];
+  for (const [re, freq] of zhSimple) {
+    const m = re.exec(text);
+    if (m) return { token: m[0], rule: { freq, interval: 1 } };
+  }
+
+  const enRules: Array<[RegExp, TodoRepeatRule['freq']]> = [
+    [/\bevery\s*weekday\b|\bweekdays\b/, 'weekdays'],
+    [/\bevery\s*day\b|\bdaily\b/, 'daily'],
+    [/\bevery\s*week\b|\bweekly\b/, 'weekly'],
+    [/\bevery\s*month\b|\bmonthly\b/, 'monthly'],
+    [/\bevery\s*year\b|\byearly\b/, 'yearly'],
+  ];
+  for (const [re, freq] of enRules) {
+    const m = re.exec(lower);
+    if (m) {
+      return { token: text.slice(m.index, m.index + m[0].length), rule: { freq, interval: 1 } };
+    }
+  }
+
+  return null;
+}
+
+/** 锚定星期对应的最近日期（今天恰为该星期则取今天） */
+function nearestWeekday(base: Date, weekday: number): Date {
+  const diff = (weekday - base.getDay() + 7) % 7;
+  return addDays(base, diff);
+}
+
 /** 剔除 token 并清理多余空白 */
 function removeToken(text: string, token: string): string {
   return text.replace(token, ' ').replace(/\s{2,}/g, ' ').trim();
@@ -161,14 +230,28 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
   let title = input;
   let dueDate: string | undefined;
   let priority: TodoPriority | undefined;
+  let repeat: TodoRepeatRule | undefined;
   let dateToken: string | undefined;
   let priorityToken: string | undefined;
+  let repeatToken: string | undefined;
 
   const pm = matchPriority(title);
   if (pm) {
     priority = pm.priority;
     priorityToken = pm.token;
     title = removeToken(title, pm.token);
+  }
+
+  // 重复 token 先于日期匹配：「每周一」必须整体识别为重复规则，
+  // 否则会被日期解析吃掉「周一」只剩下「每」
+  const rmatch = matchRepeat(title);
+  if (rmatch) {
+    repeat = rmatch.rule;
+    repeatToken = rmatch.token;
+    title = removeToken(title, rmatch.token);
+    if (rmatch.anchorWeekday !== undefined) {
+      dueDate = formatLocalDate(nearestWeekday(now, rmatch.anchorWeekday));
+    }
   }
 
   const dmatch = matchDate(title, now);
@@ -178,5 +261,10 @@ export function parseQuickAddInput(input: string, now: Date = new Date()): Quick
     title = removeToken(title, dmatch.token);
   }
 
-  return { title: title.trim(), dueDate, priority, dateToken, priorityToken };
+  // 重复任务需要到期日才能滚动生成下一次；无日期时默认从今天开始
+  if (repeat && !dueDate) {
+    dueDate = formatLocalDate(now);
+  }
+
+  return { title: title.trim(), dueDate, priority, repeat, dateToken, priorityToken, repeatToken };
 }

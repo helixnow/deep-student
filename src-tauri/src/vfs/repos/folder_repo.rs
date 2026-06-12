@@ -1631,7 +1631,11 @@ impl VfsFolderRepo {
 
             match canonical_item_type.as_str() {
                 "note" => VfsNoteRepo::purge_note_with_conn(conn, &item.item_id)?,
-                "file" => VfsFileRepo::purge_file_with_conn(conn, blobs_dir, &item.item_id)?,
+                // ★ 2026-06-12（第二轮审阅）："image" 与 "file" 同存 files 表。
+                // 旧实现漏掉 image 分支 → 删除文件夹树时图片附件实体+blob 全部泄漏。
+                "file" | "image" => {
+                    VfsFileRepo::purge_file_with_conn(conn, blobs_dir, &item.item_id)?
+                }
                 "exam" => VfsExamRepo::purge_exam_sheet_with_conn(conn, blobs_dir, &item.item_id)?,
                 "translation" => {
                     VfsTranslationRepo::purge_translation_with_conn(conn, &item.item_id)?
@@ -3074,5 +3078,73 @@ mod tests {
             )
             .expect("Failed to count resources");
         assert_eq!(remaining_resources, 0);
+    }
+
+    /// ★ 2026-06-12（第二轮审阅）回归测试：
+    /// 文件夹树 purge 必须处理 item_type='image' 的图片附件（旧实现漏删致实体+blob 泄漏）
+    #[test]
+    fn test_purge_folder_tree_handles_image_items() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let folder = VfsFolder::new("图片文件夹".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &folder).expect("create folder");
+
+        // 创建带 blob 的图片附件（files 表 + folder_items.item_type='image'）
+        let blob = crate::vfs::repos::VfsBlobRepo::store_blob(
+            &db,
+            b"png-bytes",
+            Some("image/png"),
+            Some("png"),
+        )
+        .expect("store blob");
+
+        let image = crate::vfs::repos::VfsFileRepo::create_file_in_folder(
+            &db,
+            "sha256_image_purge_test",
+            "截图.png",
+            9,
+            "image",
+            Some("image/png"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .expect("create image file");
+
+        // 模拟附件上传链路写入的 item_type='image'
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE folder_items SET item_type = 'image' WHERE item_id = ?1",
+                params![image.id],
+            )
+            .unwrap();
+        }
+
+        VfsFolderRepo::purge_folder(&db, &folder.id).expect("purge folder");
+
+        let conn = db.get_conn_safe().unwrap();
+        let remaining_files: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE id = ?1",
+                params![image.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining_files, 0, "image file row must be purged with folder");
+
+        let blob_rc: Option<i32> = conn
+            .query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                params![blob.hash],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert!(
+            blob_rc.is_none() || blob_rc == Some(0),
+            "image blob must be dereferenced, got {:?}",
+            blob_rc
+        );
     }
 }

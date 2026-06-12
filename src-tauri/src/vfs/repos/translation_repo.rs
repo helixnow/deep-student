@@ -586,6 +586,8 @@ impl VfsTranslationRepo {
                 |row| row.get(0),
             )?;
             if remaining == 0 {
+                // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量）
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
             } else {
                 info!(

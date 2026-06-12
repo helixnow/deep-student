@@ -1021,10 +1021,8 @@ impl VfsMindMapRepo {
                 .unwrap_or(0);
 
             if mindmap_refs == 0 && version_refs == 0 {
-                conn.execute(
-                    "DELETE FROM vfs_index_units WHERE resource_id = ?1",
-                    params![&rid],
-                )?;
+                // ★ 2026-06-12（第二轮审阅）：统一入口清理索引产物（含 Lance 向量入列）
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&rid])?;
                 debug!("[VFS::MindMapRepo] Purged main resource: {}", rid);
             }
@@ -1052,10 +1050,8 @@ impl VfsMindMapRepo {
                     .unwrap_or(0);
 
                 if mindmap_refs == 0 && version_refs == 0 {
-                    conn.execute(
-                        "DELETE FROM vfs_index_units WHERE resource_id = ?1",
-                        params![version_rid],
-                    )?;
+                    // ★ 2026-06-12（第二轮审阅）：统一入口清理索引产物（含 Lance 向量入列）
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, version_rid)?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![version_rid])?;
                     debug!(
                         "[VFS::MindMapRepo] Purged orphan version resource: {}",

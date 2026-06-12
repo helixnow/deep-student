@@ -579,6 +579,14 @@ pub const V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS: MigrationDef = Migratio
 )
 .idempotent();
 
+/// V20260614: parent_id 同清单校验与软删除冲突修复（软删父任务级联失败）
+pub const V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX: MigrationDef = MigrationDef::new(
+    20260614,
+    "todo_parent_check_softdelete_fix",
+    include_str!("../../../migrations/vfs/V20260614__todo_parent_check_softdelete_fix.sql"),
+)
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -618,6 +626,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260611_ADD_LANCE_ORPHAN_QUEUE,
     V20260612_TODO_INSERT_SELF_REF_CHECK,
     V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS,
+    V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX,
 ];
 
 /// VFS 迁移集合
@@ -720,7 +729,8 @@ mod tests {
         // + V20260610 (fix_questions_fts_triggers) + V20260611 (add_lance_orphan_queue)
         // + V20260612 (todo_insert_self_ref_check)
         // + V20260613 (pomodoro_timestamps_and_constraints)
-        assert_eq!(VFS_MIGRATION_SET.count(), 37);
+        // + V20260614 (todo_parent_check_softdelete_fix)
+        assert_eq!(VFS_MIGRATION_SET.count(), 38);
     }
 
     #[test]
@@ -815,6 +825,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260613);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260614);
     }
 }

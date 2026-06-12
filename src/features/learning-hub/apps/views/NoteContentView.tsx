@@ -82,8 +82,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // ★ R3 修复：乐观锁基线。记录当前已知的笔记 updated_at（毫秒），
   // 保存时传给后端做冲突检测；watch 事件中用于区分自身保存与外部更新。
   const lastKnownUpdatedAtRef = useRef<number | null>(null);
+  // ★ F8：基线的 state 镜像，供侧栏"更新时间"实时显示
+  const [lastKnownUpdatedAt, setLastKnownUpdatedAt] = useState<number | null>(null);
+  const updateKnownBaseline = useCallback((ms: number | null) => {
+    lastKnownUpdatedAtRef.current = ms;
+    setLastKnownUpdatedAt(ms);
+  }, []);
   // ★ R3：当前已落盘的内容快照（用于冲突时判断外部是否真的改了内容）
   const persistedContentRef = useRef<string | null>(null);
+  // ★ F9：内容保存进行中标志。自身保存触发的 watch 事件无需整页刷新
+  const isSavingContentRef = useRef(false);
 
   const noteId = node.id;
 
@@ -125,12 +133,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     setContent(contentStr);
     setContentNoteId(currentNoteId);
     persistedContentRef.current = contentStr;
-    lastKnownUpdatedAtRef.current = freshNode?.updatedAt ?? node.updatedAt ?? null;
+    updateKnownBaseline(freshNode?.updatedAt ?? node.updatedAt ?? null);
     setTitle(freshNode?.name ?? node.name ?? '');
     // 重新加载时同步最新的 tags（node 可能已更新）
     setTags(((freshNode?.metadata?.tags ?? node.metadata?.tags) as string[]) || []);
     setIsLoading(false);
-  }, [node.id, node.path, node.name]);
+  }, [node.id, node.path, node.name, updateKnownBaseline]);
 
   useEffect(() => {
     void loadNoteContent();
@@ -155,7 +163,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       return;
     }
     if (nodeResult.ok && nodeResult.value) {
-      lastKnownUpdatedAtRef.current = nodeResult.value.updatedAt ?? lastKnownUpdatedAtRef.current;
+      updateKnownBaseline(nodeResult.value.updatedAt ?? lastKnownUpdatedAtRef.current);
       setTitle(nodeResult.value.name || '');
       setTags((nodeResult.value.metadata?.tags as string[]) || []);
       onTitleChangeRef.current?.(nodeResult.value.name || '');
@@ -171,7 +179,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     window.dispatchEvent(new CustomEvent('notes:external-updated', {
       detail: { noteId: currentNoteId, content: latest, force: forceApply },
     }));
-  }, [node.id, node.path]);
+  }, [node.id, node.path, updateKnownBaseline]);
 
   const refreshFromDiskRef = useRef(refreshFromDisk);
   refreshFromDiskRef.current = refreshFromDisk;
@@ -186,11 +194,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       const incoming = event.node.updatedAt ?? 0;
       // 等于/早于已知基线的事件来自自身保存或重复派发，忽略
       if (incoming <= known) return;
-      lastKnownUpdatedAtRef.current = incoming;
+      updateKnownBaseline(incoming);
+      // ★ F9：自身保存进行中时跳过刷新。
+      // 事件若来自自身保存（emit 先于 invoke 返回），applySuccess 会完成基线同步；
+      // 若来自真正的外部更新，进行中的保存会被乐观锁拒绝并走冲突刷新流程。
+      if (isSavingContentRef.current) return;
       void refreshFromDiskRef.current(false);
     });
     return unwatch;
-  }, [node.id]);
+  }, [node.id, updateKnownBaseline]);
 
   // ========== 保存回调 ==========
   // 内容保存
@@ -206,62 +218,86 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       setContent(newContent);
       setContentNoteId(node.id);
       persistedContentRef.current = newContent;
-      lastKnownUpdatedAtRef.current = updatedAt ?? lastKnownUpdatedAtRef.current;
+      updateKnownBaseline(updatedAt ?? lastKnownUpdatedAtRef.current);
     };
 
-    const result = await dstu.update(node.path, newContent, node.type, {
-      expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
-    });
-    if (result.ok) {
-      applySuccess(result.value.updatedAt);
-      return;
-    }
-
-    if (result.error.code === VfsErrorCode.CONFLICT) {
-      // 冲突：先判断磁盘内容是否真的变化。
-      // 标题/标签更新（setMetadata）也会推进 updated_at，但内容基线未变，
-      // 此时以新基线重试即可，不应丢弃用户输入。
-      const [latestNode, latestContent] = await Promise.all([
-        dstu.get(node.path),
-        dstu.getContent(node.path),
-      ]);
-      const latestStr = latestContent.ok && typeof latestContent.value === 'string'
-        ? latestContent.value
-        : null;
-
-      if (
-        latestNode.ok && latestNode.value &&
-        latestStr !== null &&
-        latestStr === persistedContentRef.current
-      ) {
-        lastKnownUpdatedAtRef.current = latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current;
-        setTitle(latestNode.value.name || '');
-        setTags((latestNode.value.metadata?.tags as string[]) || []);
-        const retry = await dstu.update(node.path, newContent, node.type, {
-          expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
-        });
-        if (retry.ok) {
-          applySuccess(retry.value.updatedAt);
-          return;
-        }
+    isSavingContentRef.current = true;
+    try {
+      const result = await dstu.update(node.path, newContent, node.type, {
+        expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
+      });
+      if (result.ok) {
+        applySuccess(result.value.updatedAt);
+        return;
       }
 
-      // 真实内容冲突：外部已写入更新版本。以外部版本为准刷新编辑器，并明确告知用户。
-      console.warn('[NoteContentView] ⚠️ 保存冲突，刷新为最新版本:', result.error);
-      showGlobalNotification(
-        'warning',
-        t('notes:editor.conflict_refreshed', '笔记已在其他位置被修改，已刷新为最新版本')
-      );
-      await refreshFromDisk(true);
-      const conflictError = new Error(result.error.toUserMessage());
-      (conflictError as Error & { isNoteConflict?: boolean }).isNoteConflict = true;
-      throw conflictError;
-    }
+      if (result.error.code === VfsErrorCode.CONFLICT) {
+        // 冲突：先判断磁盘内容是否真的变化。
+        // 标题/标签更新（setMetadata）也会推进 updated_at，但内容基线未变，
+        // 此时以新基线重试即可，不应丢弃用户输入。
+        const [latestNode, latestContent] = await Promise.all([
+          dstu.get(node.path),
+          dstu.getContent(node.path),
+        ]);
+        const latestStr = latestContent.ok && typeof latestContent.value === 'string'
+          ? latestContent.value
+          : null;
 
-    console.error('[NoteContentView] ❌ 保存笔记失败:', result.error);
-    reportError(result.error, '保存笔记');
-    throw new Error(result.error.toUserMessage());
-  }, [node.id, node.path, node.type, readOnly, t, refreshFromDisk]);
+        if (
+          latestNode.ok && latestNode.value &&
+          latestStr !== null &&
+          latestStr === persistedContentRef.current
+        ) {
+          updateKnownBaseline(latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current);
+          setTitle(latestNode.value.name || '');
+          setTags((latestNode.value.metadata?.tags as string[]) || []);
+          const retry = await dstu.update(node.path, newContent, node.type, {
+            expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
+          });
+          if (retry.ok) {
+            applySuccess(retry.value.updatedAt);
+            return;
+          }
+        }
+
+        // 真实内容冲突：外部已写入更新版本。以外部版本为准刷新编辑器，
+        // 但用户版本不丢弃——通知中提供"恢复我的版本"动作。
+        console.warn('[NoteContentView] ⚠️ 保存冲突，刷新为最新版本:', result.error);
+        const conflictNoteId = node.id;
+        const userVersion = newContent;
+        showGlobalNotification(
+          'warning',
+          t('notes:editor.conflict_refreshed', '笔记已在其他位置被修改，已刷新为最新版本'),
+          undefined,
+          {
+            action: {
+              label: t('notes:editor.conflict_restore_mine', '恢复我的版本'),
+              onClick: () => {
+                // 把用户版本写回编辑器（force 路径会同步草稿基线），
+                // 并显式入队保存：以已刷新的乐观锁基线覆盖外部版本。
+                window.dispatchEvent(new CustomEvent('notes:external-updated', {
+                  detail: { noteId: conflictNoteId, content: userVersion, force: true },
+                }));
+                window.dispatchEvent(new CustomEvent('notes:request-save', {
+                  detail: { noteId: conflictNoteId, content: userVersion },
+                }));
+              },
+            },
+          }
+        );
+        await refreshFromDisk(true);
+        const conflictError = new Error(result.error.toUserMessage());
+        (conflictError as Error & { isNoteConflict?: boolean }).isNoteConflict = true;
+        throw conflictError;
+      }
+
+      console.error('[NoteContentView] ❌ 保存笔记失败:', result.error);
+      reportError(result.error, '保存笔记');
+      throw new Error(result.error.toUserMessage());
+    } finally {
+      isSavingContentRef.current = false;
+    }
+  }, [node.id, node.path, node.type, readOnly, t, refreshFromDisk, updateKnownBaseline]);
 
   // 标题变更
   const handleTitleChange = useCallback(async (newTitle: string) => {
@@ -472,7 +508,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   noteId={noteId}
                   title={title}
                   createdAt={node.createdAt}
-                  updatedAt={node.updatedAt}
+                  updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
                   tags={tags}
                   content={isContentReady ? (content || '') : ''}
                   onTagsChange={readOnly ? undefined : handleTagsChange}
@@ -491,9 +527,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               noteId={noteId}
               title={title}
               createdAt={node.createdAt}
-              updatedAt={node.updatedAt}
+              updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
               tags={tags}
-              content={content || ''}
+              content={isContentReady ? (content || '') : ''}
               onTagsChange={readOnly ? undefined : handleTagsChange}
             />
           </SheetContent>

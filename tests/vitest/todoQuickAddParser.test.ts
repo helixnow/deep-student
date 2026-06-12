@@ -71,4 +71,52 @@ describe('todo quickAdd natural language parser', () => {
     expect(parseQuickAddInput('essay tomorrow', FRI).dueDate).toBe('2026-06-13');
     expect(parseQuickAddInput('review today', FRI).dueDate).toBe('2026-06-12');
   });
+
+  it('parses 每天/每月/每年 repeat with today as default due date', () => {
+    const daily = parseQuickAddInput('每天背单词', FRI);
+    expect(daily.repeat).toEqual({ freq: 'daily', interval: 1 });
+    expect(daily.title).toBe('背单词');
+    expect(daily.dueDate).toBe('2026-06-12');
+
+    expect(parseQuickAddInput('每月交房租', FRI).repeat?.freq).toBe('monthly');
+    expect(parseQuickAddInput('每年体检', FRI).repeat?.freq).toBe('yearly');
+  });
+
+  it('parses 每周X as weekly anchored to that weekday', () => {
+    const r = parseQuickAddInput('每周一交周报', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 1 });
+    // 基准周五 → 最近的周一是 6/15
+    expect(r.dueDate).toBe('2026-06-15');
+    expect(r.title).toBe('交周报');
+
+    // 今天恰为周五，「每周五」锚定今天
+    expect(parseQuickAddInput('每周五打扫 ', FRI).dueDate).toBe('2026-06-12');
+  });
+
+  it('parses 每个工作日 as weekdays rule', () => {
+    const r = parseQuickAddInput('每个工作日早读', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekdays', interval: 1 });
+    expect(r.title).toBe('早读');
+  });
+
+  it('parses english repeat tokens', () => {
+    expect(parseQuickAddInput('standup daily', FRI).repeat?.freq).toBe('daily');
+    expect(parseQuickAddInput('report every week', FRI).repeat?.freq).toBe('weekly');
+    expect(parseQuickAddInput('reading weekdays', FRI).repeat?.freq).toBe('weekdays');
+  });
+
+  it('combines repeat with explicit date token', () => {
+    // 显式日期 token 覆盖重复锚定的默认日期
+    const r = parseQuickAddInput('每周 复盘 明天', FRI);
+    expect(r.repeat?.freq).toBe('weekly');
+    expect(r.dueDate).toBe('2026-06-13');
+    expect(r.title).toBe('复盘');
+  });
+
+  it('does not misparse 每天气温 style words', () => {
+    // 「每天」是独立识别——确认普通含「天」词不会误触发重复
+    const r = parseQuickAddInput('记录天气', FRI);
+    expect(r.repeat).toBeUndefined();
+    expect(r.title).toBe('记录天气');
+  });
 });

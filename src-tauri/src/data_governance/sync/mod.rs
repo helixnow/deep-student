@@ -11195,6 +11195,8 @@ mod tests {
                 updated_at TEXT,
                 deleted_at TEXT
             );
+            -- 与 V20260614 迁移保持一致：INSERT 要求 parent 行存在且同清单
+            -- （软删除不影响）；UPDATE 仅在 parent 行物理存在时校验同清单。
             CREATE TRIGGER trg_todo_items_validate_insert
             BEFORE INSERT ON todo_items
             FOR EACH ROW
@@ -11204,7 +11206,7 @@ mod tests {
                   AND (
                     SELECT todo_list_id
                     FROM todo_items
-                    WHERE id = NEW.parent_id AND deleted_at IS NULL
+                    WHERE id = NEW.parent_id
                   ) IS NOT NEW.todo_list_id;
             END;
             CREATE TRIGGER trg_todo_items_validate_update
@@ -11213,10 +11215,11 @@ mod tests {
             BEGIN
                 SELECT RAISE(ABORT, 'todo_items.parent_id must belong to the same list')
                 WHERE NEW.parent_id IS NOT NULL
+                  AND EXISTS (SELECT 1 FROM todo_items WHERE id = NEW.parent_id)
                   AND (
                     SELECT todo_list_id
                     FROM todo_items
-                    WHERE id = NEW.parent_id AND deleted_at IS NULL
+                    WHERE id = NEW.parent_id
                   ) IS NOT NEW.todo_list_id;
             END;
             "#,

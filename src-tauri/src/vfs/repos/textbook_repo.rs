@@ -836,15 +836,19 @@ impl VfsTextbookRepo {
 
         let result = (|| -> VfsResult<()> {
             // 1. 获取 blob_hash 和 preview_json
-            let (blob_hash, preview_json, resource_id): (
+            // ★ 2026-06-12（第二轮审阅）：补查 compressed_blob_hash。
+            // 旧实现 purge 教材时不递减文件级/页级压缩 blob 的引用计数，
+            // 而 purge_file 链路是处理的 → 教材删除后压缩页图永久泄漏。
+            let (blob_hash, preview_json, resource_id, compressed_blob_hash): (
+                Option<String>,
                 Option<String>,
                 Option<String>,
                 Option<String>,
             ) = conn
                 .query_row(
-                    "SELECT blob_hash, preview_json, resource_id FROM files WHERE id = ?1",
+                    "SELECT blob_hash, preview_json, resource_id, compressed_blob_hash FROM files WHERE id = ?1",
                     params![textbook_id],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
                 )
                 .map_err(|e| {
                     if matches!(e, rusqlite::Error::QueryReturnedNoRows) {
@@ -884,6 +888,19 @@ impl VfsTextbookRepo {
                 }
             }
 
+            // 2.5 ★ 递减文件级压缩 blob 引用（仅当与原始 blob 不同）
+            if let Some(ref compressed_hash) = compressed_blob_hash {
+                let same_as_original = blob_hash.as_ref().map(|h| h == compressed_hash).unwrap_or(false);
+                if !same_as_original {
+                    if let Err(e) = VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash) {
+                        warn!(
+                            "[VFS::TextbookRepo] Failed to decrement compressed blob ref {}: {}",
+                            compressed_hash, e
+                        );
+                    }
+                }
+            }
+
             // 3. 处理 preview_json 中的 PDF 页面 blob
             if let Some(ref json_str) = preview_json {
                 if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(json_str) {
@@ -902,6 +919,22 @@ impl VfsTextbookRepo {
                                     "[VFS::TextbookRepo] Failed to decrement PDF page blob {}: {}",
                                     page.blob_hash, e
                                 );
+                            }
+                        }
+
+                        // ★ 2026-06-12（第二轮审阅）：同时递减压缩页图 blob（与 purge_file 对齐）
+                        if let Some(ref compressed_hash) = page.compressed_blob_hash {
+                            if compressed_hash != &page.blob_hash {
+                                if let Err(e) = VfsBlobRepo::decrement_ref_with_conn(
+                                    conn,
+                                    blobs_dir,
+                                    compressed_hash,
+                                ) {
+                                    warn!(
+                                        "[VFS::TextbookRepo] Failed to decrement PDF compressed page blob {}: {}",
+                                        compressed_hash, e
+                                    );
+                                }
                             }
                         }
                     }
@@ -931,6 +964,9 @@ impl VfsTextbookRepo {
 
             // 5. 删除关联的 resources 表记录
             if let Some(ref res_id) = resource_id {
+                // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量），
+                // 否则语义检索仍会命中已删除教材的内容。
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, res_id)?;
                 let res_deleted =
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![res_id])?;
                 debug!(
@@ -1835,5 +1871,143 @@ mod tests {
         // 查询所有
         let all = VfsTextbookRepo::list_textbooks(&db, 10, 0).expect("List should succeed");
         assert_eq!(all.len(), 3);
+    }
+
+    // ★ 2026-06-12（审阅问题 S3 / 第二轮压缩 blob 泄漏）回归测试
+
+    fn blob_ref_count(db: &VfsDatabase, hash: &str) -> Option<i32> {
+        let conn = db.get_conn_safe().unwrap();
+        conn.query_row(
+            "SELECT ref_count FROM blobs WHERE hash = ?1",
+            params![hash],
+            |row| row.get(0),
+        )
+        .optional()
+        .unwrap()
+    }
+
+    /// 构造一个带页图 + 压缩页图的教材，返回 (textbook, 主hash, 页hash, 压缩页hash)
+    fn create_textbook_with_blobs(db: &VfsDatabase) -> (VfsTextbook, String, String, String) {
+        let main = VfsBlobRepo::store_blob(db, b"main-pdf-bytes", Some("application/pdf"), Some("pdf"))
+            .unwrap();
+        let page = VfsBlobRepo::store_blob(db, b"page-image-bytes", Some("image/jpeg"), Some("jpg"))
+            .unwrap();
+        let compressed =
+            VfsBlobRepo::store_blob(db, b"compressed-page-bytes", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+
+        let preview = serde_json::json!({
+            "pages": [{
+                "pageIndex": 0,
+                "blobHash": page.hash,
+                "width": 100,
+                "height": 100,
+                "mimeType": "image/jpeg",
+                "compressedBlobHash": compressed.hash,
+            }],
+            "renderDpi": 150,
+            "totalPages": 1,
+            "renderedAt": "2026-06-12T00:00:00Z",
+        });
+
+        let conn = db.get_conn_safe().unwrap();
+        let textbook = VfsTextbookRepo::create_textbook_with_preview(
+            &conn,
+            "sha-copy-test",
+            "copy-test.pdf",
+            1024,
+            Some(&main.hash),
+            None,
+            Some(&preview.to_string()),
+            Some("extracted text"),
+            Some(1),
+        )
+        .unwrap();
+
+        (textbook, main.hash, page.hash, compressed.hash)
+    }
+
+    /// 复制教材必须递增全部共享 blob 引用计数；删除原本后副本完整可用
+    #[test]
+    fn test_copy_textbook_shares_blobs_and_survives_source_purge() {
+        let (_tmp, db) = setup_test_db();
+        let (src, main_hash, page_hash, compressed_hash) = create_textbook_with_blobs(&db);
+
+        let copy = VfsTextbookRepo::copy_textbook(&db, &src.id, "copy-test (副本).pdf").unwrap();
+        assert_ne!(copy.id, src.id);
+        assert_eq!(copy.blob_hash.as_deref(), Some(main_hash.as_str()));
+
+        // 复制后引用计数 = 2
+        assert_eq!(blob_ref_count(&db, &main_hash), Some(2), "main blob ref");
+        assert_eq!(blob_ref_count(&db, &page_hash), Some(2), "page blob ref");
+        assert_eq!(blob_ref_count(&db, &compressed_hash), Some(2), "compressed blob ref");
+
+        // 副本拥有自己的 preview_json
+        let conn = db.get_conn_safe().unwrap();
+        let copy_preview: Option<String> = conn
+            .query_row(
+                "SELECT preview_json FROM files WHERE id = ?1",
+                params![copy.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(copy_preview.unwrap_or_default().contains(&page_hash));
+        drop(conn);
+
+        // 删除原本：所有 blob 引用降为 1，行保留（副本仍可用）
+        VfsTextbookRepo::purge_textbook(&db, &src.id).unwrap();
+        assert_eq!(blob_ref_count(&db, &main_hash), Some(1));
+        assert_eq!(blob_ref_count(&db, &page_hash), Some(1));
+        assert_eq!(blob_ref_count(&db, &compressed_hash), Some(1));
+
+        // 删除副本：全部归零并被清扫
+        VfsTextbookRepo::purge_textbook(&db, &copy.id).unwrap();
+        for h in [&main_hash, &page_hash, &compressed_hash] {
+            let rc = blob_ref_count(&db, h);
+            assert!(
+                rc.is_none() || rc == Some(0),
+                "blob {} should be unreferenced after both purges, got {:?}",
+                h,
+                rc
+            );
+        }
+    }
+
+    /// purge 教材必须递减文件级与页级压缩 blob 的引用计数（第二轮审阅修复）
+    #[test]
+    fn test_purge_textbook_decrements_compressed_blob_refs() {
+        let (_tmp, db) = setup_test_db();
+        let (textbook, main_hash, page_hash, compressed_hash) = create_textbook_with_blobs(&db);
+
+        // 设置文件级压缩 blob（独立内容）
+        let file_compressed =
+            VfsBlobRepo::store_blob(&db, b"file-level-compressed", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE files SET compressed_blob_hash = ?1 WHERE id = ?2",
+                params![file_compressed.hash, textbook.id],
+            )
+            .unwrap();
+        }
+
+        VfsTextbookRepo::purge_textbook(&db, &textbook.id).unwrap();
+
+        for (label, h) in [
+            ("main", &main_hash),
+            ("page", &page_hash),
+            ("page-compressed", &compressed_hash),
+            ("file-compressed", &file_compressed.hash),
+        ] {
+            let rc = blob_ref_count(&db, h);
+            assert!(
+                rc.is_none() || rc == Some(0),
+                "{} blob {} must be dereferenced on purge, got {:?}",
+                label,
+                h,
+                rc
+            );
+        }
     }
 }

@@ -69,6 +69,18 @@ export async function restoreTodoItem(itemId: string): Promise<TodoItem> {
   return invoke('todo_restore_item', { itemId });
 }
 
+export async function listDeletedTodoItems(limit = 100, offset = 0): Promise<TodoItem[]> {
+  return invoke('todo_list_deleted_items', { limit, offset });
+}
+
+export async function purgeTodoItem(itemId: string): Promise<void> {
+  return invoke('todo_purge_item', { itemId });
+}
+
+export async function purgeDeletedTodoItems(): Promise<number> {
+  return invoke('todo_purge_deleted_items');
+}
+
 // ============================================================================
 // TodoItem API
 // ============================================================================

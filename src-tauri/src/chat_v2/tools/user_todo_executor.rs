@@ -281,6 +281,7 @@ impl UserTodoExecutor {
             }),
             parent_id: None,
             attachments: None,
+            repeat_json: None,
         };
 
         let item = VfsTodoRepo::create_todo_item(vfs_db, params).map_err(|e| e.to_string())?;

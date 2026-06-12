@@ -154,6 +154,31 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         }
     };
 
+    // ★ F6 修复：标题编辑中直接关闭标签页（不触发 blur）时，卸载前提交修改，
+    // 防止已输入的标题被静默丢弃。
+    const unmountFlushRef = useRef({ isEditing, titleInput, displayTitle, noteId, readOnly });
+    unmountFlushRef.current = { isEditing, titleInput, displayTitle, noteId, readOnly };
+    const dstuOnTitleChangeRef = useRef(dstuOnTitleChange);
+    dstuOnTitleChangeRef.current = dstuOnTitleChange;
+    const renameItemRef = useRef(renameItem);
+    renameItemRef.current = renameItem;
+
+    useEffect(() => {
+        return () => {
+            const snap = unmountFlushRef.current;
+            if (snap.readOnly || !snap.isEditing || !snap.noteId) return;
+            const trimmed = snap.titleInput.trim();
+            if (!trimmed || trimmed === (snap.displayTitle || '').trim()) return;
+            if (dstuOnTitleChangeRef.current) {
+                dstuOnTitleChangeRef.current(trimmed).catch((err) => {
+                    console.warn('[NotesEditorHeader] Unmount title flush failed:', err);
+                });
+            } else if (renameItemRef.current) {
+                renameItemRef.current(snap.noteId, trimmed);
+            }
+        };
+    }, []);
+
     if (!noteId) return null;
 
     return (

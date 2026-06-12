@@ -98,6 +98,7 @@ export interface CreateTodoItemInput {
   tags?: string[];
   parentId?: string;
   attachments?: string[];
+  repeatJson?: string;
 }
 
 export interface UpdateTodoItemInput {
@@ -163,6 +164,64 @@ export const STATUS_CONFIG: Record<TodoStatus, { labelKey: string; color: string
   completed: { labelKey: 'todo:status.completed', color: 'text-[color:hsl(var(--success))]' },
   cancelled: { labelKey: 'todo:status.cancelled', color: 'text-[color:var(--text-muted)]' },
 };
+
+// ============================================================================
+// 重复规则（与后端 repeat_json 契约一致）
+// ============================================================================
+
+export type TodoRepeatFreq = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'weekdays';
+
+export interface TodoRepeatRule {
+  freq: TodoRepeatFreq;
+  /** 间隔（daily/weekly/monthly/yearly 生效，weekdays 忽略），1-999 */
+  interval: number;
+}
+
+const VALID_REPEAT_FREQS: TodoRepeatFreq[] = ['daily', 'weekly', 'monthly', 'yearly', 'weekdays'];
+
+export function parseRepeatRule(repeatJson?: string | null): TodoRepeatRule | null {
+  if (!repeatJson || !repeatJson.trim()) return null;
+  try {
+    const raw = JSON.parse(repeatJson) as { freq?: unknown; interval?: unknown };
+    if (typeof raw.freq !== 'string' || !VALID_REPEAT_FREQS.includes(raw.freq as TodoRepeatFreq)) {
+      return null;
+    }
+    const interval =
+      typeof raw.interval === 'number' && Number.isFinite(raw.interval)
+        ? Math.min(999, Math.max(1, Math.round(raw.interval)))
+        : 1;
+    return { freq: raw.freq as TodoRepeatFreq, interval };
+  } catch {
+    return null;
+  }
+}
+
+export function serializeRepeatRule(rule: TodoRepeatRule): string {
+  return JSON.stringify({ freq: rule.freq, interval: rule.interval });
+}
+
+/** 重复频率选项（'none' 表示不重复，序列化为清空 repeatJson） */
+export const REPEAT_OPTIONS: Array<{ value: TodoRepeatFreq | 'none'; labelKey: string }> = [
+  { value: 'none', labelKey: 'todo:repeat.none' },
+  { value: 'daily', labelKey: 'todo:repeat.daily' },
+  { value: 'weekdays', labelKey: 'todo:repeat.weekdays' },
+  { value: 'weekly', labelKey: 'todo:repeat.weekly' },
+  { value: 'monthly', labelKey: 'todo:repeat.monthly' },
+  { value: 'yearly', labelKey: 'todo:repeat.yearly' },
+];
+
+/** 重复规则的 i18n 描述（interval>1 时用 everyN* 键，携带 count 插值） */
+export function repeatRuleI18n(rule: TodoRepeatRule): { key: string; count?: number } {
+  if (rule.freq === 'weekdays') return { key: 'todo:repeat.weekdays' };
+  if (rule.interval <= 1) return { key: `todo:repeat.${rule.freq}` };
+  const everyKeys: Record<Exclude<TodoRepeatFreq, 'weekdays'>, string> = {
+    daily: 'todo:repeat.everyNDays',
+    weekly: 'todo:repeat.everyNWeeks',
+    monthly: 'todo:repeat.everyNMonths',
+    yearly: 'todo:repeat.everyNYears',
+  };
+  return { key: everyKeys[rule.freq], count: rule.interval };
+}
 
 /** 本地时区的今天（YYYY-MM-DD）。注意不能用 toISOString()——那是 UTC 日期 */
 export function localToday(): string {

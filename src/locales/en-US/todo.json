@@ -66,7 +66,44 @@
     "dueDate": "Due Date",
     "dueTime": "Time",
     "description": "Description",
-    "pomodoros": "Pomodoros"
+    "pomodoros": "Pomodoros",
+    "repeat": "Repeat"
+  },
+  "repeat": {
+    "none": "None",
+    "daily": "Daily",
+    "weekdays": "Weekdays",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "everyNDays": "Every {{count}} days",
+    "everyNWeeks": "Every {{count}} weeks",
+    "everyNMonths": "Every {{count}} months",
+    "everyNYears": "Every {{count}} years"
+  },
+  "trash": {
+    "title": "Recycle Bin",
+    "description": "Deleted lists and todos are kept here. Restore them or delete permanently.",
+    "listsSection": "Lists",
+    "itemsSection": "Todos",
+    "empty": "Recycle bin is empty",
+    "deletedAt": "Deleted {{time}}",
+    "restore": "Restore",
+    "restored": "Restored \"{{title}}\"",
+    "purge": "Delete Forever",
+    "purgeConfirmTitle": "Delete Forever",
+    "purgeConfirmDescription": "Permanently delete \"{{title}}\"? This cannot be undone.",
+    "emptyAll": "Empty Recycle Bin",
+    "emptyAllConfirmTitle": "Empty Recycle Bin",
+    "emptyAllConfirmDescription": "Empty the recycle bin? All deleted lists and todos will be permanently removed. This cannot be undone.",
+    "emptied": "Recycle bin emptied"
+  },
+  "overdue": {
+    "badgeAria_one": "{{count}} overdue todo",
+    "badgeAria_other": "{{count}} overdue todos",
+    "notificationTitle": "Todo Reminder",
+    "notificationBody_one": "You have {{count}} overdue todo",
+    "notificationBody_other": "You have {{count}} overdue todos"
   },
   "status": {
     "completed": "Completed",

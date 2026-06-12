@@ -123,11 +123,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [charCount, setCharCount] = useState(0);
 
   // 切换笔记/内容加载后初始化字数（依赖 id 而非 content：编辑中的字数由 handleChange 防抖更新）
+  // ★ F10 修复：不再依赖 initialContent。保存成功会回流新的 initialContent，
+  // 若用户在保存后继续输入，这里会把字数回退到保存时点的旧值。
+  // 同笔记的外部更新由 notes:external-updated 监听负责刷新字数。
   const activeNoteKey = isDstuMode ? dstuNoteId : active?.id;
+  const initialCharSourceRef = useRef('');
+  initialCharSourceRef.current = isDstuMode ? (initialContent ?? '') : (active?.content_md ?? '');
   useEffect(() => {
-    const value = isDstuMode ? (initialContent ?? '') : (active?.content_md ?? '');
-    setCharCount(countNoteChars(value));
-  }, [activeNoteKey, isDstuMode, initialContent]);
+    setCharCount(countNoteChars(initialCharSourceRef.current));
+  }, [activeNoteKey]);
 
   // 阅读模式状态（防止手机滑动时弹出键盘）
   const [readingMode, setReadingMode] = useState(false);
@@ -308,7 +312,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (prevId && prevId !== noteId) {
       const prevDraft = draftByNoteRef.current.get(prevId);
       if (typeof prevDraft === 'string') {
-        void queueSave(prevDraft, prevId);
+        queueSave(prevDraft, prevId).catch(() => {});
       }
       // 保存已入队，清理旧笔记的草稿/快照条目，避免 Map 无限增长
       draftByNoteRef.current.delete(prevId);
@@ -372,10 +376,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       }
     }
     
-    if (active?.updated_at) {
+    // ★ F2 修复：lastSaved 只在切换笔记时复位。
+    // DSTU 模式下保存成功会回流新的 initialValue（active 恒为 null），
+    // 之前无条件 setLastSaved(null) 会把刚设置的"已保存 HH:mm"立即清掉，
+    // 导致保存状态指示器永远不可见。
+    if (isNewNote) {
+      setLastSaved(active?.updated_at ? new Date(active.updated_at) : null);
+    } else if (!isDstuMode && active?.updated_at) {
+      // Context 模式：保留原行为，updated_at 推进时刷新显示
       setLastSaved(new Date(active.updated_at));
-    } else {
-      setLastSaved(null);
     }
     // 🔧 修复：不再在 initialValue 变化时重置 editorApi
     // 之前的实现会导致：initialValue 变化时 setEditorApi(null)，但如果 contentVersionKey 不变
@@ -403,7 +412,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
     cancelDebounce();
     saveTimerRef.current = setTimeout(() => {
-      void queueSave(markdown);
+      // ★ F4 修复：保存失败已在 runPendingSave 内部重试并通知用户，
+      // 这里兜底 catch 防止 rejection 进入全局 unhandledrejection 上报
+      queueSave(markdown).catch(() => {});
     }, AUTO_SAVE_DEBOUNCE_MS);
     
     // IME 合成期间跳过实时事件派发，避免卡顿
@@ -453,7 +464,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       if (setEditorRef.current) {
         setEditorRef.current(null);
       }
-      void flushNoteDraftRef.current();
+      flushNoteDraftRef.current()?.catch(() => {});
     };
   }, []);
 
@@ -563,6 +574,31 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       window.removeEventListener('notes:external-updated', handleExternalUpdated);
     };
   }, [editorApi]);
+
+  // ★ F1 修复：显式保存请求（冲突恢复"恢复我的版本"等场景）。
+  // 绕过 queueSave 的 lastSaved 去重（恢复路径中 draft 与 lastSaved 已被
+  // external-updated 同步为同一值，常规入队会被跳过）。
+  useEffect(() => {
+    const handleRequestSave = (event: Event) => {
+      const { noteId: targetNoteId, content } =
+        (event as CustomEvent<{ noteId: string; content: string }>).detail;
+      if (!targetNoteId || targetNoteId !== noteIdRef.current) {
+        return;
+      }
+      contentRef.current = content;
+      draftByNoteRef.current.set(targetNoteId, content);
+      pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter(
+        (p) => p.noteId !== targetNoteId
+      );
+      pendingSaveQueueRef.current.push({ noteId: targetNoteId, content });
+      runPendingSave().catch(() => {});
+    };
+
+    window.addEventListener('notes:request-save', handleRequestSave);
+    return () => {
+      window.removeEventListener('notes:request-save', handleRequestSave);
+    };
+  }, [runPendingSave]);
 
   // beforeunload
   // ★ Y5 修复：检查所有笔记的草稿/保存队列（含后台 tab 的笔记），

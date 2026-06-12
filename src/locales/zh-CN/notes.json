@@ -387,6 +387,7 @@
       "drop_overlay_hint": "支持 PNG、JPG、GIF、WebP 等格式"
     },
     "conflict_refreshed": "笔记已在其他位置被修改，已刷新为最新版本",
+    "conflict_restore_mine": "恢复我的版本",
     "save_status": {
       "saved": "已保存",
       "saving": "保存中...",

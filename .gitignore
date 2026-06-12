@@ -280,3 +280,5 @@ mcp-feedback-enhanced/
 /deep-student.db
 # 本机参考代码副本（不入库）
 deep-agent-ref/
+# MCP 反馈工具会话接力文档（本机生成，不入库）
+.feed/

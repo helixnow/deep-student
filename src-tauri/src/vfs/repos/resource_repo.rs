@@ -482,6 +482,20 @@ impl VfsResourceRepo {
         let cutoff = chrono::Utc::now().timestamp_millis() - grace_period_ms;
 
         // 先删孤儿索引单元（retrieval 正常不进索引，此处为防御性清理）
+        // ★ 2026-06-12（第二轮审阅）：Lance 向量先入列孤儿队列再删 units
+        conn.execute(
+            r#"
+            INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+            SELECT s.lance_row_id, u.resource_id
+            FROM vfs_index_segments s
+            JOIN vfs_index_units u ON s.unit_id = u.id
+            WHERE u.resource_id IN (
+                SELECT id FROM resources
+                WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1
+            )
+            "#,
+            params![cutoff],
+        )?;
         conn.execute(
             r#"
             DELETE FROM vfs_index_units
@@ -540,6 +554,18 @@ impl VfsResourceRepo {
 
         let mut total = 0u32;
         for filter in [note_filter, mindmap_filter] {
+            // ★ 2026-06-12（第二轮审阅）：Lance 向量先入列孤儿队列再删 units
+            conn.execute(
+                &format!(
+                    r#"INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+                       SELECT s.lance_row_id, u.resource_id
+                       FROM vfs_index_segments s
+                       JOIN vfs_index_units u ON s.unit_id = u.id
+                       WHERE u.resource_id IN (SELECT id FROM resources WHERE {})"#,
+                    filter
+                ),
+                params![cutoff],
+            )?;
             conn.execute(
                 &format!(
                     "DELETE FROM vfs_index_units WHERE resource_id IN (SELECT id FROM resources WHERE {})",

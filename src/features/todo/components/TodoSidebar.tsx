@@ -28,6 +28,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
+import { TodoTrashDialog } from './TodoTrashDialog';
 import type { TodoList, TodoViewFilter } from '../types';
 
 interface SmartView {
@@ -110,6 +111,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
     lists,
     activeListId,
     filter,
+    overdueCount,
     setActiveList,
     setViewFilter,
     createList,
@@ -126,6 +128,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
   const [renameValue, setRenameValue] = useState('');
   // 删除确认
   const [pendingDeleteList, setPendingDeleteList] = useState<TodoList | null>(null);
+  // 回收站
+  const [trashOpen, setTrashOpen] = useState(false);
 
   // ===== 回调 =====
   const handleCreateList = useCallback(async () => {
@@ -267,12 +271,23 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           {SMART_VIEWS.map(({ id, icon: Icon, labelKey }) => {
             const isActive =
               filter.view === id && (id !== 'all' || activeListId === null);
+            const showOverdueBadge = id === 'overdue' && overdueCount > 0;
             return (
               <NavRow
                 key={id}
                 isActive={isActive}
                 onClick={() => handleSmartViewClick(id)}
                 leftSlot={<Icon size={18} weight="bold" />}
+                rightSlot={
+                  showOverdueBadge ? (
+                    <span
+                      aria-label={t('todo:overdue.badgeAria', { count: overdueCount })}
+                      className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-1 text-[10px] font-semibold leading-none text-white"
+                    >
+                      {overdueCount > 99 ? '99+' : overdueCount}
+                    </span>
+                  ) : undefined
+                }
               >
                 {t(labelKey)}
               </NavRow>
@@ -463,6 +478,20 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           </div>
         </div>
       </div>
+
+      {/* 底部：回收站入口 */}
+      <div className="shrink-0 border-t border-[color:var(--shell-navigation-border)] px-2 py-1.5">
+        <NavRow
+          isActive={false}
+          onClick={() => setTrashOpen(true)}
+          leftSlot={<Trash size={18} weight="bold" />}
+        >
+          {t('todo:trash.title')}
+        </NavRow>
+      </div>
+
+      {/* 回收站对话框 */}
+      <TodoTrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
 
       {/* 删除清单确认 */}
       <NotionAlertDialog

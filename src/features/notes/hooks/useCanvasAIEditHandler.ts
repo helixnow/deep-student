@@ -182,8 +182,25 @@ export function useCanvasAIEditHandler({
     }
   }, [noteId, aiEditState.isActive, aiEditState.request?.noteId, reject, sendResult]);
 
+  // ★ F3 修复：编辑器卸载（关闭 tab/切换笔记）时若仍有待确认的 AI 编辑，
+  // 立即向后端发送拒绝结果，避免 AI 干等 30 秒超时。
+  const aiEditStateRef = useRef(aiEditState);
+  aiEditStateRef.current = aiEditState;
+
   useEffect(() => {
     return () => {
+      const pending = aiEditStateRef.current;
+      if (pending.isActive && pending.request) {
+        invoke('chat_v2_canvas_edit_result', {
+          result: {
+            requestId: pending.request.requestId,
+            success: false,
+            error: '编辑器已关闭，修改未应用',
+          },
+        }).catch((err) => {
+          console.warn('[useCanvasAIEditHandler] Failed to send unmount rejection:', err);
+        });
+      }
       clear();
     };
   }, [clear]);
