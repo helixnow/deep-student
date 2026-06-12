@@ -1080,6 +1080,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
         emitCrepeDebug('init', 'debug', 'Crepe 实例已创建');
 
+        // 应用扩展插件（automd、查找高亮等，必须在 create() 之前）
+        applyCrepePlugins(crepe);
+
         // 设置只读状态
         if (readonly) {
           crepe.setReadonly(true);

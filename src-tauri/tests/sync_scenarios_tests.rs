@@ -20,7 +20,7 @@ use deep_student_lib::models::AppError;
 use rusqlite::{params, Connection};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::TempDir;
@@ -2190,4 +2190,412 @@ async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
     assert!(storage.get(&own_seq2).await.unwrap().is_none());
     assert!(storage.get(&own_seq3).await.unwrap().is_some());
     assert!(storage.get(&other_seq1).await.unwrap().is_some());
+}
+
+// ============================================================================
+// P1 回归：blob tombstone × 内容寻址去重竞态（本地引用防线）
+// ============================================================================
+
+/// 构造生产布局：`active/vfs_blobs` + `active/databases/vfs.db`（含 blobs 表）。
+/// 返回 (active_dir_guard, blobs_dir)。
+fn setup_active_layout_with_vfs_db() -> (TempDir, std::path::PathBuf) {
+    let active = TempDir::new().unwrap();
+    let blobs_dir = active.path().join("vfs_blobs");
+    std::fs::create_dir_all(&blobs_dir).unwrap();
+    let db_dir = active.path().join("databases");
+    std::fs::create_dir_all(&db_dir).unwrap();
+    let conn = Connection::open(db_dir.join("vfs.db")).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE blobs (
+            hash TEXT PRIMARY KEY,
+            relative_path TEXT NOT NULL,
+            size INTEGER NOT NULL DEFAULT 0,
+            mime_type TEXT,
+            ref_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0
+         );",
+    )
+    .unwrap();
+    (active, blobs_dir)
+}
+
+fn set_blob_ref_count(active_dir: &Path, hash: &str, relative_path: &str, ref_count: i64) {
+    let conn = Connection::open(active_dir.join("databases").join("vfs.db")).unwrap();
+    conn.execute(
+        "INSERT INTO blobs (hash, relative_path, size, ref_count, created_at)
+         VALUES (?1, ?2, 0, ?3, 0)
+         ON CONFLICT(hash) DO UPDATE SET ref_count = excluded.ref_count",
+        params![hash, relative_path, ref_count],
+    )
+    .unwrap();
+}
+
+/// 竞态场景：设备 A 删除 blob 并发布 tombstone；设备 B 在消费 tombstone 前
+/// 重新引用了相同内容（内容寻址去重不更新文件 mtime）。
+/// 修复前：B 的本地文件 + 云端文件都被删除，引用悬空，内容永久丢失。
+/// 修复后：本地 ref_count>0 → 拒绝消费 tombstone，文件保留并重新上传（复活）。
+#[tokio::test]
+async fn blob_tombstone_rejected_when_locally_referenced_and_blob_revived() {
+    let storage = MockCloudStorage::new();
+    let mgr_a = SyncManager::new(format!("dev_a_{}", uuid::Uuid::new_v4()));
+    let mgr_b = SyncManager::new(format!("dev_b_{}", uuid::Uuid::new_v4()));
+
+    // 设备 B：生产布局 + blob 文件 + vfs.db 中 ref_count=2（仍被引用）
+    let (active_b, blobs_dir_b) = setup_active_layout_with_vfs_db();
+    let blob = write_content_addressed_blob(&blobs_dir_b, b"shared-content");
+    set_blob_ref_count(active_b.path(), &blob.0, &blob.1, 2);
+
+    // 让文件 mtime 早于 tombstone 的 deleted_at（内容寻址去重不更新 mtime）
+    let old_mtime = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let f = std::fs::File::options()
+        .append(true)
+        .open(blobs_dir_b.join(&blob.1))
+        .unwrap();
+    f.set_modified(old_mtime).unwrap();
+    drop(f);
+
+    // B 先上传，云端有 blob + manifest 条目
+    let _ = mgr_b
+        .sync_vfs_blobs(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+    let cloud_key = format!("data_governance/blobs/{}", blob.1);
+    assert!(storage.get(&cloud_key).await.unwrap().is_some());
+
+    // 设备 A 发布该 blob 的 tombstone（A 端引用已归零）
+    mgr_a
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(14))
+        .await
+        .unwrap();
+
+    // B 消费 tombstone：本地仍有引用 → 必须拒绝删除
+    let _ = mgr_b
+        .sync_vfs_blobs_with_tombstones(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+
+    assert!(
+        blobs_dir_b.join(&blob.1).exists(),
+        "本地仍有 ref_count>0 引用的 blob 不得被 tombstone 删除"
+    );
+    assert!(
+        storage.get(&cloud_key).await.unwrap().is_some(),
+        "被本地引用否决的 tombstone 不得删除云端文件（或必须复活重传）"
+    );
+
+    // manifest 条目必须存在（保留或复活），其他设备仍可下载
+    let tmp_c = TempDir::new().unwrap();
+    let mgr_c = SyncManager::new(format!("dev_c_{}", uuid::Uuid::new_v4()));
+    let out_c = mgr_c
+        .sync_vfs_blobs(&storage, tmp_c.path(), SyncDirection::Download)
+        .await
+        .unwrap();
+    assert_eq!(out_c.downloaded, 1, "复活后的 blob 应可被其他设备下载");
+    assert!(tmp_c.path().join(&blob.1).exists());
+}
+
+/// 对照场景：本地 ref_count=0（引用确已归零）时，tombstone 必须正常生效。
+#[tokio::test]
+async fn blob_tombstone_applies_when_ref_count_zero() {
+    let storage = MockCloudStorage::new();
+    let mgr_a = SyncManager::new(format!("dev_a_{}", uuid::Uuid::new_v4()));
+    let mgr_b = SyncManager::new(format!("dev_b_{}", uuid::Uuid::new_v4()));
+
+    let (active_b, blobs_dir_b) = setup_active_layout_with_vfs_db();
+    let blob = write_content_addressed_blob(&blobs_dir_b, b"orphaned-content");
+    set_blob_ref_count(active_b.path(), &blob.0, &blob.1, 0);
+
+    let old_mtime = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let f = std::fs::File::options()
+        .append(true)
+        .open(blobs_dir_b.join(&blob.1))
+        .unwrap();
+    f.set_modified(old_mtime).unwrap();
+    drop(f);
+
+    let _ = mgr_b
+        .sync_vfs_blobs(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+
+    mgr_a
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(15))
+        .await
+        .unwrap();
+
+    let _ = mgr_b
+        .sync_vfs_blobs_with_tombstones(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+
+    assert!(
+        !blobs_dir_b.join(&blob.1).exists(),
+        "ref_count=0 的 blob tombstone 必须正常生效"
+    );
+    let cloud_key = format!("data_governance/blobs/{}", blob.1);
+    assert!(
+        storage.get(&cloud_key).await.unwrap().is_none(),
+        "云端文件应随 tombstone 删除"
+    );
+}
+
+// ============================================================================
+// P2 回归：ref_count 重算只更新实际变化的行（避免 __change_log churn）
+// ============================================================================
+
+#[test]
+fn recompute_ref_counts_skips_unchanged_rows() {
+    let conn = new_test_db();
+    conn.execute_batch(
+        r#"
+        CREATE TABLE resources (
+            id TEXT PRIMARY KEY,
+            ref_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE note_resources (
+            id TEXT PRIMARY KEY,
+            note_id TEXT NOT NULL,
+            resource_id TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at TEXT
+        );
+        CREATE TRIGGER trg_resources_upd
+        AFTER UPDATE ON resources
+        BEGIN
+            INSERT INTO __change_log (table_name, record_id, operation)
+            VALUES ('resources', NEW.id, 'UPDATE');
+        END;
+        "#,
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO resources (id, ref_count) VALUES ('r1', 1), ('r2', 0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO note_resources (id, note_id, resource_id) VALUES ('nr-1', 'n1', 'r1')",
+        [],
+    )
+    .unwrap();
+
+    // 应用一条与 ref_count 完全无关的变更（notes 表无 resource_id/blob_hash 列）：
+    // 整个重算应被跳过，不得点火任何 resources 触发器
+    let change = build_insert_change("n-rc", "x", "2026-05-01T10:00:00Z");
+    SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+
+    let resource_log: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __change_log WHERE table_name = 'resources'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        resource_log, 0,
+        "与引用无关的变更批次不得触发 resources 重算/触发器（churn 防线）"
+    );
+
+    // 相关表（note_resources 带 resource_id）变更必须触发重算：
+    // 失真的 r2 被修正归零，新增引用使 r1 重算为 2，且未变化行不点火触发器
+    conn.execute("UPDATE resources SET ref_count = 9 WHERE id = 'r2'", [])
+        .unwrap();
+    conn.execute("DELETE FROM __change_log WHERE table_name = 'resources'", [])
+        .unwrap();
+    let change2 = SyncChangeWithData {
+        table_name: "note_resources".into(),
+        record_id: "nr-2".into(),
+        operation: ChangeOperation::Insert,
+        data: Some(json!({
+            "id": "nr-2",
+            "note_id": "n1",
+            "resource_id": "r1",
+            "updated_at": "2026-05-01T11:00:00Z",
+            "deleted_at": null,
+        })),
+        changed_at: "2026-05-01T11:00:00Z".into(),
+        change_log_id: None,
+        database_name: Some("vfs".into()),
+        suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
+    };
+    let apply2 = SyncManager::apply_downloaded_changes(&conn, &[change2], None).unwrap();
+    assert_eq!(
+        apply2.success_count, 1,
+        "note_resources insert 应成功: skipped={} failures={:?}",
+        apply2.skipped_count, apply2.failures
+    );
+
+    let rc2: i64 = conn
+        .query_row(
+            "SELECT ref_count FROM resources WHERE id = 'r2'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rc2, 0, "失真的 ref_count 必须在相关变更批次中被重算修正");
+    let rc1: i64 = conn
+        .query_row(
+            "SELECT ref_count FROM resources WHERE id = 'r1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rc1, 2, "新增引用后 ref_count 必须重算为实际引用数");
+}
+
+// ============================================================================
+// P2 回归：设备清单解密失败必须 fail-close（与变更文件路径口径一致）
+// ============================================================================
+
+#[tokio::test]
+async fn manifest_decrypt_failure_fails_closed() {
+    let storage = MockCloudStorage::new();
+
+    // 设备 A 用密码 pw-a 上传加密清单
+    let mgr_a =
+        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let manifest_a = mgr_a.create_manifest(HashMap::new());
+    mgr_a.upload_manifest(&storage, &manifest_a).await.unwrap();
+
+    // 设备 B 用错误密码：必须报错而非把云端当成空实例
+    let mgr_b =
+        SyncManager::with_encryption(format!("dev_b_{}", uuid::Uuid::new_v4()), Some("pw-wrong".into()));
+    let err = mgr_b.download_manifest(&storage).await;
+    assert!(
+        err.is_err(),
+        "错误密码下 download_manifest 必须 fail-close，而非静默跳过设备清单"
+    );
+
+    // 设备 B 未配密码：同样必须报错（云端是加密数据）
+    let mgr_b_plain = SyncManager::new(format!("dev_b2_{}", uuid::Uuid::new_v4()));
+    let err2 = mgr_b_plain.download_manifest(&storage).await;
+    assert!(
+        err2.is_err(),
+        "未配置密码遇到加密清单必须 fail-close"
+    );
+
+    // 正确密码可正常读取
+    let mgr_c =
+        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let ok = mgr_c.download_manifest(&storage).await;
+    assert!(ok.is_ok(), "正确密码必须能读取清单: {:?}", ok.err());
+}
+
+/// tombstone 清单解密失败必须 fail-close：
+/// - 消费路径不得把"解不开"当"无 tombstone"（删除会静默不传播）；
+/// - mark_* 写入路径不得拿空清单覆盖云端（丢失该设备全部历史 tombstone）。
+#[tokio::test]
+async fn tombstone_decrypt_failure_fails_closed() {
+    let storage = MockCloudStorage::new();
+
+    // 设备 A（密码 pw-a）发布一条 blob tombstone（加密）
+    let mgr_a =
+        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    mgr_a
+        .mark_blob_deleted(&storage, "hash_enc_1", Some("ha/hash_enc_1.pdf".into()), None)
+        .await
+        .unwrap();
+
+    // 设备 B（错误密码）：消费 tombstone 必须报错，而非静默当作无删除
+    let tmp_b = TempDir::new().unwrap();
+    let mgr_b = SyncManager::with_encryption(
+        format!("dev_b_{}", uuid::Uuid::new_v4()),
+        Some("pw-wrong".into()),
+    );
+    let r = mgr_b
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await;
+    assert!(
+        r.is_err(),
+        "错误密码下消费 tombstone 必须 fail-close，而非把删除静默丢弃"
+    );
+
+    // 设备 A 改了密码后再 mark：读自己旧清单失败必须报错，
+    // 而非用空清单覆盖（丢失 hash_enc_1 这条历史 tombstone）
+    let mgr_a_newpw = SyncManager::with_encryption(
+        mgr_a.device_id().to_string(),
+        Some("pw-changed".into()),
+    );
+    let r2 = mgr_a_newpw
+        .mark_blob_deleted(&storage, "hash_enc_2", Some("hb/hash_enc_2.pdf".into()), None)
+        .await;
+    assert!(
+        r2.is_err(),
+        "密码不符时 mark_blob_deleted 必须报错，防止空清单覆盖丢失历史 tombstone"
+    );
+
+    // 正确密码端不受影响，且历史 tombstone 完整保留
+    let tombstones = tombstone::download_blob_tombstones(&storage, &mgr_a)
+        .await
+        .unwrap();
+    assert!(
+        tombstones.entries.contains_key("hash_enc_1"),
+        "历史 tombstone 不得被错误密码端覆盖丢失"
+    );
+}
+
+/// 资产清单解密失败必须 fail-close：
+/// 否则密码配错的设备会把云端当成空清单，用错误密码全量重传并覆盖资产清单。
+#[tokio::test]
+async fn assets_manifest_decrypt_failure_fails_closed() {
+    let storage = MockCloudStorage::new();
+
+    // 设备 A（密码 pw-a）上传一个资产文件 + 加密清单
+    let active_a = TempDir::new().unwrap();
+    let app_data_a = TempDir::new().unwrap();
+    let asset_dir = active_a.path().join("images");
+    std::fs::create_dir_all(&asset_dir).unwrap();
+    std::fs::write(asset_dir.join("report.png"), b"asset-payload").unwrap();
+
+    let mgr_a =
+        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let out_a = mgr_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_data_a.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+    assert_eq!(out_a.uploaded, 1);
+
+    // 设备 B（错误密码）：必须报错，而非把云端视为空清单开始覆盖
+    let active_b = TempDir::new().unwrap();
+    let app_data_b = TempDir::new().unwrap();
+    let mgr_b = SyncManager::with_encryption(
+        format!("dev_b_{}", uuid::Uuid::new_v4()),
+        Some("pw-wrong".into()),
+    );
+    let r = mgr_b
+        .sync_asset_directories(
+            &storage,
+            active_b.path(),
+            app_data_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await;
+    assert!(
+        r.is_err(),
+        "错误密码下资产同步必须 fail-close，防止错误密码覆盖云端清单与文件"
+    );
+
+    // 正确密码端可继续同步下载
+    let active_c = TempDir::new().unwrap();
+    let app_data_c = TempDir::new().unwrap();
+    let mgr_c =
+        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let out_c = mgr_c
+        .sync_asset_directories(
+            &storage,
+            active_c.path(),
+            app_data_c.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .unwrap();
+    assert_eq!(out_c.downloaded, 1, "正确密码端必须能正常下载资产");
 }

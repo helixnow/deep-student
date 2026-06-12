@@ -3222,12 +3222,15 @@ async fn execute_download_with_progress_v2(
 
     // [P0-2/C5] 下载前强制断层检测，与 v1 路径口径一致。
     enforce_prune_gap_check(storage, local_manifest).await?;
+    // [P1 一致性] 快照引导沿用调用方策略：v1 download 与 v2 bidirectional 均传
+    // 用户选择的 merge_strategy，此前唯独此路径硬编码 KeepLatest，导致用户选
+    // keep_local 时快照引导仍可能覆盖较旧本地记录。
     let (snapshot_count, snapshot_skipped) = apply_snapshot_bootstrap_if_needed(
         manager,
         storage,
         local_manifest,
         active_dir,
-        MergeStrategy::KeepLatest,
+        merge_strategy,
     )
     .await?;
     if snapshot_count > 0 {
@@ -4194,6 +4197,39 @@ mod tests {
         assert!(download_body.contains("enforce_prune_gap_check(storage, local_manifest).await?"));
         assert!(
             bidirectional_body.contains("enforce_prune_gap_check(storage, local_manifest).await?")
+        );
+    }
+
+    /// [P1 回归] v2 download 的快照引导必须尊重用户选择的合并策略，
+    /// 不得硬编码 KeepLatest（否则 keep_local 用户的本地数据会被快照覆盖）。
+    #[test]
+    fn progress_v2_snapshot_bootstrap_respects_user_merge_strategy() {
+        let source = include_str!("commands_sync.rs");
+
+        let download_start = source
+            .find("async fn execute_download_with_progress_v2")
+            .expect("download v2 function exists");
+        let bidirectional_start = source
+            .find("async fn execute_bidirectional_with_progress_v2")
+            .expect("bidirectional v2 function exists");
+        let download_body = &source[download_start..bidirectional_start];
+
+        let snapshot_call_start = download_body
+            .find("apply_snapshot_bootstrap_if_needed(")
+            .expect("download v2 invokes snapshot bootstrap");
+        let snapshot_tail = &download_body[snapshot_call_start..];
+        let snapshot_call_end = snapshot_tail
+            .find(".await")
+            .expect("snapshot bootstrap call is awaited");
+        let snapshot_call = &snapshot_tail[..snapshot_call_end];
+
+        assert!(
+            snapshot_call.contains("merge_strategy"),
+            "快照引导必须传入用户选择的 merge_strategy"
+        );
+        assert!(
+            !snapshot_call.contains("MergeStrategy::KeepLatest"),
+            "快照引导不得硬编码 MergeStrategy::KeepLatest"
         );
     }
 

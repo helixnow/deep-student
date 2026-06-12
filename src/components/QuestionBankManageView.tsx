@@ -409,8 +409,9 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 <TableHead className="w-16">{t('exam_sheet:questionBank.label', '题号')}</TableHead>
                 <TableHead>{t('exam_sheet:questionBank.content', '题目')}</TableHead>
                 <TableHead className="w-20">{t('practice:questionBank.statusHeader')}</TableHead>
-                <TableHead className="w-20">{t('practice:questionBank.difficultyHeader')}</TableHead>
-                <TableHead className="w-20">{t('exam_sheet:questionBank.attempts', '答题')}</TableHead>
+                {/* 窄屏隐藏次要列，保证题目内容可读 */}
+                <TableHead className="w-20 hidden md:table-cell">{t('practice:questionBank.difficultyHeader')}</TableHead>
+                <TableHead className="w-20 hidden md:table-cell">{t('exam_sheet:questionBank.attempts', '答题')}</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
@@ -452,14 +453,14 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                       {t(statusLabelKeys[q.status])}
                     </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {q.difficulty && (
                       <span className={cn('text-xs font-medium', difficultyColors[q.difficulty])}>
                         {t(difficultyLabelKeys[q.difficulty])}
                       </span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {q.correctCount}/{q.attemptCount}
                   </TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>

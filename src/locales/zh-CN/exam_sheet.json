@@ -459,6 +459,7 @@
   "uploader": {
     "session_name_default": "整卷识别",
     "drop_or_click": "点击或拖放文件到这里",
+    "take_photo": "拍照导入",
     "supported_formats_all": "图片 (PNG/JPG/WebP/HEIC) 或 文档 (DOCX/XLSX/XLS/PDF/TXT/MD)",
     "selected_images": "已选择 {{count}} 张图片",
     "clear": "清空",

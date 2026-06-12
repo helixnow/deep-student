@@ -28,6 +28,7 @@ import {
   ArrowsLeftRight,
 } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
@@ -97,6 +98,9 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   // 同步进度状态
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+
+  // 合并策略（与数据治理仪表盘 SyncTab 保持一致，不再硬编码 keep_latest）
+  const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
 
   // 是否使用 Mock 模式（开发测试用）
   const useMock = import.meta.env.DEV && import.meta.env.VITE_USE_MOCK_SYNC === 'true';
@@ -224,7 +228,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       });
 
       try {
-        const result = await runSyncWithProgress(direction, cloudConfig, 'keep_latest');
+        const result = await runSyncWithProgress(direction, cloudConfig, syncStrategy);
         setSyncProgress(null);
         setIsSyncing(false);
 
@@ -263,7 +267,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         unlisten();
       }
     },
-    [getSyncStatus, isSyncing, t]
+    [getSyncStatus, isSyncing, syncStrategy, t]
   );
 
   // 计算同步状态摘要
@@ -421,6 +425,25 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* 合并策略选择 */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              {t('data:governance.merge_strategy')}
+            </span>
+            <AppSelect
+              value={syncStrategy}
+              onValueChange={(v) => setSyncStrategy(v as MergeStrategy)}
+              options={[
+                { value: 'keep_latest', label: t('data:governance.keep_latest') },
+                { value: 'keep_local', label: t('data:governance.keep_local') },
+                { value: 'use_cloud', label: t('data:governance.use_cloud') },
+                { value: 'manual', label: t('data:governance.manual') },
+              ]}
+              size="sm"
+              variant="outline"
+            />
+          </div>
+
           {/* 同步按钮组 */}
           <div className="flex items-center gap-3">
             <NotionButton

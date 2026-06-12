@@ -278,9 +278,15 @@ export interface DstuApi {
    * @param path 资源路径
    * @param content 新内容
    * @param resourceType 资源类型（如 "note"、"textbook" 等）
+   * @param options.expectedUpdatedAtMs 乐观锁基线（上次已知 updatedAt 毫秒值），不一致时返回 CONFLICT
    * @returns 更新后的资源节点
    */
-  update(path: string, content: string, resourceType: string): Promise<DstuNode>;
+  update(
+    path: string,
+    content: string,
+    resourceType: string,
+    options?: { expectedUpdatedAtMs?: number },
+  ): Promise<DstuNode>;
 
   /**
    * 删除资源

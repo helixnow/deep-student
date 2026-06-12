@@ -1031,3 +1031,133 @@ fn r25b_resolved_does_not_block_new_identical_conflict() {
         unresolved_after
     );
 }
+
+// ============================================================================
+// R26-R27: 时钟漂移变更必须进隔离区（可见、可重放），不许静默丢弃
+// ============================================================================
+
+/// R26：UPSERT 漂移 >60s → 进 __sync_quarantine；时钟追上后自动重放成功
+#[test]
+fn r26_clock_drift_upsert_quarantined_then_replayable() {
+    let conn = new_db();
+    insert_item(&conn, "n1", "local", "2026-05-01T12:00:00Z");
+    mark_all_synced(&conn);
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let future_iso = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms + 300_000)
+        .unwrap()
+        .to_rfc3339();
+
+    let change = SyncChangeWithData {
+        change_log_id: None,
+        table_name: "items".to_string(),
+        record_id: "n1".to_string(),
+        operation: ChangeOperation::Update,
+        changed_at: future_iso.clone(),
+        data: Some(json!({
+            "id": "n1",
+            "title": "from-future",
+            "counter": 0,
+            "updated_at": future_iso,
+        })),
+        database_name: None,
+        suppress_change_log: None,
+        source_device_id: Some("device-fast-clock".to_string()),
+        source_seq: Some(7),
+    };
+
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+
+    // 1. 不应用（本地保留），但必须如实计为失败而非静默跳过
+    assert_eq!(get_title(&conn, "n1"), Some("local".to_string()));
+    assert_eq!(result.failure_count, 1, "漂移变更必须计入失败");
+
+    // 2. 必须落入隔离区且错误标明时钟漂移
+    let (q_count, q_error): (i64, String) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(MAX(error), '') FROM __sync_quarantine",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(q_count, 1, "漂移变更必须进入隔离区");
+    assert!(
+        q_error.contains("Clock drift"),
+        "隔离原因应标明时钟漂移: {}",
+        q_error
+    );
+
+    // 3. 模拟时钟追上：把隔离 payload 的时间戳改写为过去，自动重放应成功
+    let payload: String = conn
+        .query_row("SELECT payload_json FROM __sync_quarantine", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let mut change_json: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    let past_iso = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms - 1_000)
+        .unwrap()
+        .to_rfc3339();
+    change_json["changed_at"] = json!(past_iso);
+    change_json["data"]["updated_at"] = json!(past_iso);
+    conn.execute(
+        "UPDATE __sync_quarantine SET payload_json = ?1",
+        params![serde_json::to_string(&change_json).unwrap()],
+    )
+    .unwrap();
+
+    let replayed = SyncManager::replay_quarantined_changes(
+        &conn,
+        None,
+        SyncManager::QUARANTINE_AUTO_REPLAY_MAX_ATTEMPTS,
+    )
+    .unwrap();
+    assert_eq!(replayed, 1, "时钟恢复后隔离项必须可自动重放");
+    assert_eq!(get_title(&conn, "n1"), Some("from-future".to_string()));
+
+    let remaining: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(remaining, 0, "重放成功后隔离项必须清除");
+}
+
+/// R27：DELETE 漂移 >60s → 同样进隔离区，本地记录保留
+#[test]
+fn r27_clock_drift_delete_quarantined() {
+    let conn = new_db();
+    insert_item(&conn, "n1", "keep-me", "2026-05-01T12:00:00Z");
+    mark_all_synced(&conn);
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let future_iso = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms + 300_000)
+        .unwrap()
+        .to_rfc3339();
+
+    let change = SyncChangeWithData {
+        change_log_id: None,
+        table_name: "items".to_string(),
+        record_id: "n1".to_string(),
+        operation: ChangeOperation::Delete,
+        changed_at: future_iso,
+        data: None,
+        database_name: None,
+        suppress_change_log: None,
+        source_device_id: Some("device-fast-clock".to_string()),
+        source_seq: Some(8),
+    };
+
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(result.failure_count, 1, "漂移 DELETE 必须计入失败");
+
+    // 本地未被删（deleted_at 仍为 NULL）
+    let deleted_at: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert!(deleted_at.is_none(), "漂移 DELETE 不得生效");
+
+    let q_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(q_count, 1, "漂移 DELETE 必须进入隔离区");
+}

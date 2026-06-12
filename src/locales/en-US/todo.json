@@ -11,15 +11,37 @@
     "completed": "Completed"
   },
   "actions": {
-    "quickAddPlaceholder": "Add a todo...",
+    "quickAddPlaceholder": "Add a todo, try \"essay tomorrow !high\"...",
     "add": "Add",
     "search": "Search",
     "searchLists": "Search lists...",
     "newList": "New list",
     "newListPlaceholder": "New list name...",
+    "renameList": "Rename list",
     "favorite": "Favorite",
     "unfavorite": "Unfavorite",
-    "startFocusSession": "Start Focus Session"
+    "startFocusSession": "Start Focus Session",
+    "markCompleted": "Mark as completed",
+    "markPending": "Mark as pending",
+    "deleteItem": "Delete todo",
+    "dragToReorder": "Drag to reorder"
+  },
+  "notifications": {
+    "operationFailed": "Operation failed",
+    "listDeleted": "Deleted list \"{{title}}\"",
+    "itemDeleted": "Deleted \"{{title}}\"",
+    "undo": "Undo"
+  },
+  "dialogs": {
+    "deleteList": {
+      "title": "Delete list",
+      "description": "Delete list \"{{title}}\"? Its todos will be moved to the recycle bin. You can undo this action."
+    }
+  },
+  "subtasks": {
+    "title": "Subtasks",
+    "progress": "Subtasks {{done}}/{{total}}",
+    "addPlaceholder": "Add a subtask..."
   },
   "filters": {
     "showCompleted": "Show Completed"
@@ -100,6 +122,19 @@
       "breakCompleteTitle": "Break Over",
       "breakCompleteBody": "Break finished. Ready for the next pomodoro?"
     },
+    "settings": {
+      "title": "Pomodoro Settings",
+      "workDuration": "Focus duration",
+      "shortBreak": "Short break",
+      "longBreak": "Long break",
+      "longBreakInterval": "Long break interval",
+      "minutesUnit": "min",
+      "pomodorosUnit": "",
+      "autoStartBreaks": "Auto-start breaks",
+      "autoStartWork": "Auto-start focus after break"
+    },
+    "progressTitle": "{{done}}/{{total}} pomodoros completed",
+    "completedCount": "{{count}} completed",
     "immersive": {
       "currentTask": "Current Task",
       "hintEscPrefix": "Press ",

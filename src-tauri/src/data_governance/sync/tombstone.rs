@@ -231,23 +231,28 @@ pub fn path_modified_after(path: &Path, timestamp: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// [P2 fail-close] 解密失败必须硬错误，与设备清单/变更文件路径口径一致。
+/// fail-open 的两类危害：
+/// - 消费路径把"解不开"当"无 tombstone"，删除静默不传播；
+/// - `mark_*` 写入路径拿到空清单后整体覆盖云端，丢失该设备全部历史 tombstone。
+///
+/// JSON 损坏（非密码问题）仍保留 warn + 跳过。
 fn decode_tombstone_file<T: serde::de::DeserializeOwned>(
     codec: &dyn PayloadCodec,
     bytes: &[u8],
     label: &str,
-) -> Option<T> {
-    let decoded = match codec.decode(bytes) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("[sync] {} tombstone 解密失败，忽略: {}", label, e);
-            return None;
-        }
-    };
+) -> Result<Option<T>, SyncError> {
+    let decoded = codec.decode(bytes).map_err(|e| {
+        SyncError::Database(format!(
+            "{} tombstone 清单无法解密，已停止同步（请检查加密密码）: {}",
+            label, e
+        ))
+    })?;
     match serde_json::from_slice::<T>(&decoded) {
-        Ok(v) => Some(v),
+        Ok(v) => Ok(Some(v)),
         Err(e) => {
             tracing::warn!("[sync] {} tombstone 清单损坏，忽略: {}", label, e);
-            None
+            Ok(None)
         }
     }
 }
@@ -364,7 +369,7 @@ pub async fn download_blob_tombstones(
         .map_err(|e| SyncError::Network(format!("获取 legacy blob tombstone 清单失败: {}", e)))?
     {
         if let Some(manifest) =
-            decode_tombstone_file::<BlobTombstones>(codec, &bytes, "legacy blob")
+            decode_tombstone_file::<BlobTombstones>(codec, &bytes, "legacy blob")?
         {
             merge_blob_tombstones(&mut merged, manifest);
         }
@@ -376,7 +381,7 @@ pub async fn download_blob_tombstones(
             .await
             .map_err(|e| SyncError::Network(format!("获取 blob tombstone {} 失败: {}", key, e)))?
         {
-            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob") {
+            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")? {
                 merge_blob_tombstones(&mut merged, manifest);
             }
         }
@@ -401,7 +406,7 @@ where
         .map_err(|e| SyncError::Network(format!("获取 legacy blob tombstone 清单失败: {}", e)))?
     {
         if let Some(manifest) =
-            decode_tombstone_file::<BlobTombstones>(codec, &bytes, "legacy blob")
+            decode_tombstone_file::<BlobTombstones>(codec, &bytes, "legacy blob")?
         {
             let source = "legacy".to_string();
             let watermark = watermark_for(&source)?;
@@ -422,7 +427,7 @@ where
             .await
             .map_err(|e| SyncError::Network(format!("获取 blob tombstone {} 失败: {}", key, e)))?
         {
-            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob") {
+            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")? {
                 let source = source_device_from_tombstone_key(BLOB_TOMBSTONE_PREFIX, &key);
                 let watermark = watermark_for(&source)?;
                 let (filtered, max_offset) = filter_blob_tombstones_after(manifest, watermark);
@@ -452,7 +457,7 @@ pub async fn download_blob_tombstones_for_device(
         .map_err(|e| SyncError::Network(format!("获取本机 blob tombstone 清单失败: {}", e)))?
     {
         Some(bytes) => Ok(
-            decode_tombstone_file::<BlobTombstones>(codec, &bytes, "local blob")
+            decode_tombstone_file::<BlobTombstones>(codec, &bytes, "local blob")?
                 .unwrap_or_default(),
         ),
         None => Ok(BlobTombstones::default()),
@@ -470,7 +475,7 @@ pub async fn download_asset_tombstones(
         .map_err(|e| SyncError::Network(format!("获取 legacy asset tombstone 清单失败: {}", e)))?
     {
         if let Some(manifest) =
-            decode_tombstone_file::<AssetTombstones>(codec, &bytes, "legacy asset")
+            decode_tombstone_file::<AssetTombstones>(codec, &bytes, "legacy asset")?
         {
             merge_asset_tombstones(&mut merged, manifest);
         }
@@ -482,7 +487,8 @@ pub async fn download_asset_tombstones(
             .await
             .map_err(|e| SyncError::Network(format!("获取 asset tombstone {} 失败: {}", key, e)))?
         {
-            if let Some(manifest) = decode_tombstone_file::<AssetTombstones>(codec, &bytes, "asset")
+            if let Some(manifest) =
+                decode_tombstone_file::<AssetTombstones>(codec, &bytes, "asset")?
             {
                 merge_asset_tombstones(&mut merged, manifest);
             }
@@ -508,7 +514,7 @@ where
         .map_err(|e| SyncError::Network(format!("获取 legacy asset tombstone 清单失败: {}", e)))?
     {
         if let Some(manifest) =
-            decode_tombstone_file::<AssetTombstones>(codec, &bytes, "legacy asset")
+            decode_tombstone_file::<AssetTombstones>(codec, &bytes, "legacy asset")?
         {
             let source = "legacy".to_string();
             let watermark = watermark_for(&source)?;
@@ -529,7 +535,8 @@ where
             .await
             .map_err(|e| SyncError::Network(format!("获取 asset tombstone {} 失败: {}", key, e)))?
         {
-            if let Some(manifest) = decode_tombstone_file::<AssetTombstones>(codec, &bytes, "asset")
+            if let Some(manifest) =
+                decode_tombstone_file::<AssetTombstones>(codec, &bytes, "asset")?
             {
                 let source = source_device_from_tombstone_key(ASSET_TOMBSTONE_PREFIX, &key);
                 let watermark = watermark_for(&source)?;
@@ -560,7 +567,7 @@ pub async fn download_asset_tombstones_for_device(
         .map_err(|e| SyncError::Network(format!("获取本机 asset tombstone 清单失败: {}", e)))?
     {
         Some(bytes) => Ok(
-            decode_tombstone_file::<AssetTombstones>(codec, &bytes, "local asset")
+            decode_tombstone_file::<AssetTombstones>(codec, &bytes, "local asset")?
                 .unwrap_or_default(),
         ),
         None => Ok(AssetTombstones::default()),
@@ -576,7 +583,7 @@ pub async fn download_workspace_tombstones(
         SyncError::Network(format!("获取 legacy workspace tombstone 清单失败: {}", e))
     })? {
         if let Some(manifest) =
-            decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "legacy workspace")
+            decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "legacy workspace")?
         {
             merge_workspace_tombstones(&mut merged, manifest);
         }
@@ -587,7 +594,7 @@ pub async fn download_workspace_tombstones(
             SyncError::Network(format!("获取 workspace tombstone {} 失败: {}", key, e))
         })? {
             if let Some(manifest) =
-                decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "workspace")
+                decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "workspace")?
             {
                 merge_workspace_tombstones(&mut merged, manifest);
             }
@@ -611,7 +618,7 @@ where
         SyncError::Network(format!("获取 legacy workspace tombstone 清单失败: {}", e))
     })? {
         if let Some(manifest) =
-            decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "legacy workspace")
+            decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "legacy workspace")?
         {
             let source = "legacy".to_string();
             let watermark = watermark_for(&source)?;
@@ -631,7 +638,7 @@ where
             SyncError::Network(format!("获取 workspace tombstone {} 失败: {}", key, e))
         })? {
             if let Some(manifest) =
-                decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "workspace")
+                decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "workspace")?
             {
                 let source = source_device_from_tombstone_key(WS_TOMBSTONE_PREFIX, &key);
                 let watermark = watermark_for(&source)?;
@@ -663,7 +670,7 @@ pub async fn download_workspace_tombstones_for_device(
     {
         Some(bytes) => {
             Ok(
-                decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "local workspace")
+                decode_tombstone_file::<WorkspaceTombstones>(codec, &bytes, "local workspace")?
                     .unwrap_or_default(),
             )
         }

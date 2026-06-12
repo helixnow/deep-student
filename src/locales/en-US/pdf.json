@@ -37,6 +37,8 @@
     "zoom_out": "Zoom Out",
     "rotate": "Rotate",
     "rotate_cw": "Rotate 90° clockwise",
+    "dark_reading": "Dark reading",
+    "light_reading": "Exit dark reading",
     "fullscreen": "Fullscreen",
     "exit_fullscreen": "Exit Fullscreen",
     "single_page": "Single Page",

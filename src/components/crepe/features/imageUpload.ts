@@ -143,15 +143,12 @@ export const createImageUploader = (
           noteId: nid,
         });
         
-        // 触发 toast 通知
-        try {
-          window.dispatchEvent(new CustomEvent('dstu:toast', {
-            detail: {
-              type: 'error',
-              message: i18next.t('notes:editor.image_upload.save_failed', { error: message }),
-            },
-          }));
-        } catch {}
+        // ★ Y8 修复：原 'dstu:toast' 自定义事件没有任何监听者（死通道），
+        // 保存失败对用户完全静默。改用全局通知直接提示。
+        showGlobalNotification(
+          'error',
+          i18next.t('notes:editor.image_upload.save_failed', { error: message })
+        );
       }
     } else {
       emitImageUploadDebug('upload_start', 'warning', '缺少笔记上下文，将使用 blob URL', {
@@ -161,6 +158,14 @@ export const createImageUploader = (
     }
 
     // 降级：返回 blob URL
+    // ★ Y8 修复：blob URL 仅当前会话有效，重启后图片将丢失。明确告知用户。
+    showGlobalNotification(
+      'warning',
+      i18next.t(
+        'notes:editor.image_upload.not_persisted',
+        '图片未能持久化保存，仅本次会话可见。请检查后重新插入图片。'
+      )
+    );
     const blobUrl = URL.createObjectURL(file);
     emitImageUploadDebug('upload_complete', 'info', '使用 blob URL（降级方案）', {
       blobUrl,

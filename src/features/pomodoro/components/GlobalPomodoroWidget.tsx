@@ -19,12 +19,20 @@ import { ImmersiveFocusMode } from './ImmersiveFocusMode';
  */
 export const GlobalPomodoroWidget: React.FC = () => {
   const { t } = useTranslation('todo');
-  const { mode, status, timeLeft, currentTaskTitle, pause, resume, stop, tick, isImmersive, setImmersive } = usePomodoroStore();
+  const { mode, status, timeLeft, currentTaskTitle, pause, resume, stop, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
   // P-1/P-2: 触屏上抬高药丸避开底部停靠的输入栏，并放大控制按钮触控目标
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
-  // 全局唯一 tick 驱动
+  // 启动时墙钟矫正：恢复持久化的进行中会话（重启期间计时照常流逝，
+  // 已超时的阶段会被立即按完成处理）
+  useEffect(() => {
+    syncWallClock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 全局唯一 tick 驱动（tick 内部以 phaseEndsAt 墙钟为准，
+  // 定时器被后台节流也不会让计时变慢——恢复前台后一次 tick 即矫正）
   useEffect(() => {
     let intervalId: number;
     if (status === 'running') {
@@ -32,6 +40,17 @@ export const GlobalPomodoroWidget: React.FC = () => {
     }
     return () => { if (intervalId) window.clearInterval(intervalId); };
   }, [status, tick]);
+
+  // 窗口重新可见 / 聚焦 / 系统唤醒后立即矫正剩余时间
+  useEffect(() => {
+    const handleSync = () => syncWallClock();
+    document.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+    return () => {
+      document.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, [syncWallClock]);
 
   // 沉浸式专注模式
   if (isImmersive) {

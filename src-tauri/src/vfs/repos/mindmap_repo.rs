@@ -1000,8 +1000,34 @@ impl VfsMindMapRepo {
         )?;
 
         // 6. 减少主资源引用计数
+        // ★ 2026-06-12 修复（审阅问题 S5）：decrement 后若无任何导图/版本引用，
+        // 删除资源行与关联索引单元。旧实现只递减计数，资源行永久泄漏。
         if let Some(rid) = resource_id {
             VfsResourceRepo::decrement_ref_with_conn(conn, &rid)?;
+
+            let mindmap_refs: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM mindmaps WHERE resource_id = ?1",
+                    params![&rid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            let version_refs: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM mindmap_versions WHERE resource_id = ?1",
+                    params![&rid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+
+            if mindmap_refs == 0 && version_refs == 0 {
+                conn.execute(
+                    "DELETE FROM vfs_index_units WHERE resource_id = ?1",
+                    params![&rid],
+                )?;
+                conn.execute("DELETE FROM resources WHERE id = ?1", params![&rid])?;
+                debug!("[VFS::MindMapRepo] Purged main resource: {}", rid);
+            }
         }
 
         // 7. 清理版本资源：递减引用计数，孤儿资源直接删除
@@ -1026,6 +1052,10 @@ impl VfsMindMapRepo {
                     .unwrap_or(0);
 
                 if mindmap_refs == 0 && version_refs == 0 {
+                    conn.execute(
+                        "DELETE FROM vfs_index_units WHERE resource_id = ?1",
+                        params![version_rid],
+                    )?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![version_rid])?;
                     debug!(
                         "[VFS::MindMapRepo] Purged orphan version resource: {}",

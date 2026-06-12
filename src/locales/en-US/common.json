@@ -3745,7 +3745,6 @@
     "navigation_description": "Switched to chat page (target session: {{id}})"
   },
   "command_palette_label": "Command Palette",
-  "ann_indexing": "ANN index building... ({{count}} items)",
   "error_boundary": {
     "title": "Application encountered a critical error",
     "description": "An unrecoverable error occurred. Please try refreshing the page. Contact support if the issue persists.",

@@ -31,7 +31,9 @@ import {
   BookmarkSimple as BookmarkCheck,
   Pencil,
   Trash,
-  DotsThree
+  DotsThree,
+  Moon,
+  Sun
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -164,6 +166,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     typeof resolvedDefaultScale === 'number' ? resolvedDefaultScale : 1.0
   );
   const [showZoomMenu, setShowZoomMenu] = useState<boolean>(false);
+  // 捏合缩放手势读取当前 scale 用（避免 effect 因 scale 变化重订阅）
+  const scaleRef = useRef(scale);
+  scaleRef.current = scale;
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -173,6 +178,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [rotation, setRotation] = useState<number>(0); // 0, 90, 180, 270
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<ViewMode>(resolvedViewMode);
+  // 暗色阅读模式（invert 渲染，全局偏好持久化）
+  const [isDarkReading, setIsDarkReading] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pdf:darkReading') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('none');
   const [outline, setOutline] = useState<OutlineItem[] | null>(null);
   const [showSearch, setShowSearch] = useState<boolean>(false);
@@ -377,6 +390,19 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 视图模式切换
   const handleToggleViewMode = useCallback(() => {
     setViewMode(prev => prev === 'single' ? 'dual' : 'single');
+  }, []);
+
+  // 暗色阅读模式切换（持久化为全局偏好）
+  const handleToggleDarkReading = useCallback(() => {
+    setIsDarkReading(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pdf:darkReading', next ? '1' : '0');
+      } catch {
+        // localStorage 不可用时仅会话内生效
+      }
+      return next;
+    });
   }, []);
 
   // 目录导航
@@ -942,6 +968,99 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setShowZoomMenu(false);
   }, []);
 
+  // ========== 触屏双指捏合缩放 ==========
+  // 手势期间不重渲染 PDF（开销大），结束时一次性 commit 新 scale
+  useEffect(() => {
+    const viewport = pageContainerRef.current;
+    if (!viewport) return;
+
+    let pinchStartDist = 0;
+    let pinchStartScale = 1;
+    let isPinching = false;
+
+    const getTouchDist = (touches: TouchList) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.hypot(dx, dy);
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        isPinching = true;
+        pinchStartDist = getTouchDist(e.touches);
+        pinchStartScale = scaleRef.current;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!isPinching || e.touches.length !== 2) return;
+      // 阻止滚动/原生页面缩放，由我们接管
+      e.preventDefault();
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!isPinching) return;
+      if (e.touches.length < 2) {
+        isPinching = false;
+        // changedTouches 结束时计算最终距离不可靠，改用最后一次 move 的距离
+      }
+    };
+
+    // touchmove 里实时计算并节流 commit（150ms），避免每帧重渲染 canvas
+    let lastCommit = 0;
+    const onTouchMoveCommit = (e: TouchEvent) => {
+      if (!isPinching || e.touches.length !== 2) return;
+      const now = Date.now();
+      if (now - lastCommit < 150) return;
+      lastCommit = now;
+      const ratio = getTouchDist(e.touches) / pinchStartDist;
+      const next = Math.min(3.0, Math.max(0.5, pinchStartScale * ratio));
+      setScale(Math.round(next * 100) / 100);
+    };
+
+    const onMove = (e: TouchEvent) => {
+      onTouchMove(e);
+      onTouchMoveCommit(e);
+    };
+
+    viewport.addEventListener('touchstart', onTouchStart, { passive: true });
+    viewport.addEventListener('touchmove', onMove, { passive: false });
+    viewport.addEventListener('touchend', onTouchEnd, { passive: true });
+    viewport.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    return () => {
+      viewport.removeEventListener('touchstart', onTouchStart);
+      viewport.removeEventListener('touchmove', onMove);
+      viewport.removeEventListener('touchend', onTouchEnd);
+      viewport.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, []);
+
+  // ========== Ctrl/Cmd + 滚轮缩放 ==========
+  // ★ 2026-06-12（审阅问题 FE-M2）：对齐桌面阅读器惯例（浏览器/Preview/Acrobat）。
+  // passive: false 以阻止浏览器默认页面缩放；100ms 节流避免 canvas 重渲染风暴。
+  useEffect(() => {
+    const viewport = pageContainerRef.current;
+    if (!viewport) return;
+
+    let lastWheelCommit = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      // 触控板捏合在浏览器中也表现为 ctrlKey+wheel，统一接管
+      e.preventDefault();
+
+      const now = Date.now();
+      if (now - lastWheelCommit < 100) return;
+      lastWheelCommit = now;
+
+      const step = e.deltaY < 0 ? 0.1 : -0.1;
+      const next = Math.min(3.0, Math.max(0.5, scaleRef.current + step));
+      setScale(Math.round(next * 100) / 100);
+    };
+
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, []);
+
   // 键盘快捷键（必须在 goToPage 定义之后）
   // 作用域限定在组件容器内，避免与其他组件快捷键冲突
   useEffect(() => {
@@ -1419,7 +1538,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
         {/* 页面容器 */}
         <CustomScrollArea
-          className={`ds-pdf__content ${viewMode === 'dual' ? 'dual-page' : ''}`}
+          className={`ds-pdf__content ${viewMode === 'dual' ? 'dual-page' : ''} ${isDarkReading ? 'dark-reading' : ''}`}
           viewportClassName="ds-pdf__content-viewport"
           viewportRef={pageContainerRef}
           orientation="both"
@@ -1574,6 +1693,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               <ArrowClockwise size={16} />
             </NotionButton>
 
+            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${isDarkReading ? 'active' : ''}`} onClick={handleToggleDarkReading} title={isDarkReading ? t('pdf:toolbar.light_reading', '关闭暗色阅读') : t('pdf:toolbar.dark_reading', '暗色阅读')} aria-label="dark reading">
+              {isDarkReading ? <Sun size={16} /> : <Moon size={16} />}
+            </NotionButton>
+
             <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')} aria-label="view mode">
               {viewMode === 'single' ? <Book size={16} /> : <BookOpen size={16} />}
             </NotionButton>
@@ -1627,6 +1750,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotate(); setShowMoreMenu(false); }}>
                   <ArrowClockwise size={14} />
                   <span>{t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')}</span>
+                </NotionButton>
+                <NotionButton variant="ghost" size="sm" className={`ds-more-item ${isDarkReading ? 'active' : ''}`} onClick={() => { handleToggleDarkReading(); setShowMoreMenu(false); }}>
+                  {isDarkReading ? <Sun size={14} /> : <Moon size={14} />}
+                  <span>{isDarkReading ? t('pdf:toolbar.light_reading', '关闭暗色阅读') : t('pdf:toolbar.dark_reading', '暗色阅读')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${viewMode === 'dual' ? 'active' : ''}`} onClick={() => { handleToggleViewMode(); setShowMoreMenu(false); }}>
                   {viewMode === 'single' ? <Book size={14} /> : <BookOpen size={14} />}

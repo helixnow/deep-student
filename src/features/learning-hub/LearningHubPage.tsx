@@ -1058,13 +1058,23 @@ export const LearningHubPage: React.FC = () => {
           >
             {tabs.length > 0 ? (
               <div className="h-full flex flex-col safe-area-bottom">
-                <TabPanelContainer
+                {/* ★ 移动端标签页栏：多 tab 可见、可切换、可关闭（修复"标签黑洞"） */}
+                <TabBar
                   tabs={tabs}
+                  setTabs={setTabs}
                   activeTabId={activeTabId}
+                  onSwitch={switchTab}
                   onClose={closeTab}
-                  onTitleChange={updateTabTitle}
-                  className="h-full"
                 />
+                <div className="flex-1 overflow-hidden">
+                  <TabPanelContainer
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    onClose={closeTab}
+                    onTitleChange={updateTabTitle}
+                    className="h-full"
+                  />
+                </div>
               </div>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">

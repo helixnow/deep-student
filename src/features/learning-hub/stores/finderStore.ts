@@ -228,10 +228,14 @@ interface FinderState {
   /** 执行搜索 */
   executeSearch: () => Promise<void>;
   
-  /** 刷新当前目录 */
-  refresh: () => Promise<void>;
+  /**
+   * 刷新当前目录
+   * @param opts.silent 静默刷新（stale-while-revalidate）：保留当前列表展示，
+   *                    数据到达后原地替换，不显示 loading 骨架、不打断浏览/选择
+   */
+  refresh: (opts?: { silent?: boolean }) => Promise<void>;
   /** 加载目录内容 */
-  loadItems: () => Promise<void>;
+  loadItems: (opts?: { silent?: boolean }) => Promise<void>;
   
   /** ★ 2026-01-15: 设置当前路径但不添加历史记录（用于外部同步） */
   setCurrentPathWithoutHistory: (folderId: string | null) => Promise<void>;
@@ -633,19 +637,35 @@ export const useFinderStore = create<FinderState>()(
         }
       },
       
-      refresh: async () => {
+      refresh: async (opts) => {
         const { searchQuery, executeSearch, loadItems } = get();
         if (searchQuery.trim()) {
           await executeSearch();
           return;
         }
-        await loadItems();
+        await loadItems(opts);
       },
       
-      loadItems: async () => {
+      loadItems: async (opts) => {
+        // ★ 2026-06-12（审阅问题 FE-S1）：silent 模式实现 stale-while-revalidate。
+        // 文件变更事件触发的后台刷新不再显示 loading 骨架屏，
+        // 保留当前列表直至新数据到达后原地替换，避免打断用户浏览。
+        const silent = opts?.silent === true;
         // ★ 生成新的请求 ID，取消之前的请求
         const requestId = get()._currentRequestId + 1;
-        set({ isLoading: true, error: null, _currentRequestId: requestId });
+        if (silent) {
+          set({ error: null, _currentRequestId: requestId });
+        } else {
+          set({ isLoading: true, error: null, _currentRequestId: requestId });
+        }
+        // silent 模式下加载失败时保留现有列表（避免内容闪失）
+        const failLoad = (message: string) => {
+          if (silent) {
+            set({ error: message, isLoading: false });
+          } else {
+            set({ error: message, isLoading: false, items: [] });
+          }
+        };
 
         const { currentPath, getDstuListOptions } = get();
         let items: DstuNode[] = [];
@@ -714,7 +734,7 @@ export const useFinderStore = create<FinderState>()(
               items = result.value;
             } else {
               reportError(result.error, '加载回收站');
-              set({ error: result.error.message, isLoading: false, items: [] });
+              failLoad(result.error.message);
               return;
             }
           } else {
@@ -727,7 +747,7 @@ export const useFinderStore = create<FinderState>()(
               items = result.value;
             } else {
               reportError(result.error, '加载回收站');
-              set({ error: result.error.message, isLoading: false, items: [] });
+              failLoad(result.error.message);
               return;
             }
           }
@@ -735,7 +755,7 @@ export const useFinderStore = create<FinderState>()(
           const result = await dstu.list('/', { ...options, isFavorite: true });
           if (!result.ok) {
             reportError(result.error, '加载收藏');
-            set({ error: result.error.message, isLoading: false, items: [] });
+            failLoad(result.error.message);
             return;
           }
           items = result.value;
@@ -744,7 +764,7 @@ export const useFinderStore = create<FinderState>()(
 
           if (!dstuResult.ok) {
             reportError(dstuResult.error, currentPath.folderId ? '加载文件夹' : '加载根目录');
-            set({ error: dstuResult.error.message, isLoading: false, items: [] });
+            failLoad(dstuResult.error.message);
             return;
           }
 
@@ -756,7 +776,7 @@ export const useFinderStore = create<FinderState>()(
             items = result.value;
           } else {
             reportError(result.error, '加载列表');
-            set({ error: result.error.message, isLoading: false, items: [] });
+            failLoad(result.error.message);
             return;
           }
         }

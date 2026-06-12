@@ -223,6 +223,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 text: heading.text,
                 normalizedText: heading.searchText,
                 level: heading.level,
+                // ★ Y2 修复：携带 noteId，编辑器侧按当前笔记过滤
+                noteId: effectiveActive?.id,
             },
         }));
     };

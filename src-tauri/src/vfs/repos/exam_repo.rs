@@ -686,14 +686,87 @@ impl VfsExamRepo {
     /// ★ 2025-12-11: 统一语义，purge = 永久删除
     pub fn purge_exam_sheet(db: &VfsDatabase, exam_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_exam_sheet_with_conn(&conn, exam_id)
+        Self::purge_exam_sheet_with_conn(&conn, db.blobs_dir(), exam_id)?;
+        // ★ 2026-06-12（审阅问题 S4）：事务提交后清扫 ref_count=0 的 blob
+        if let Err(e) = super::blob_repo::VfsBlobRepo::cleanup_unreferenced_with_conn(
+            &conn,
+            db.blobs_dir(),
+        ) {
+            warn!(
+                "[VFS::ExamRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
+    }
+
+    /// 收集题目集关联的所有 blob 哈希（页图 + 题目图片）
+    ///
+    /// ★ 2026-06-12（审阅问题 S4）：purge 前收集，purge 后递减引用计数。
+    /// - 页图：`preview_json.pages[].blob_hash`（PageRasterizer 渲染时 store_blob +1）
+    /// - 题目图片：`questions.images_json[].hash`（题目导入时 store_blob +1）
+    fn collect_exam_blob_hashes(conn: &Connection, exam_id: &str) -> VfsResult<Vec<String>> {
+        let mut hashes: Vec<String> = Vec::new();
+
+        // 1. preview_json 中的页图
+        let preview_json: Option<String> = conn
+            .query_row(
+                "SELECT preview_json FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(preview_str) = preview_json {
+            if let Ok(preview) = serde_json::from_str::<Value>(&preview_str) {
+                if let Some(pages) = preview.get("pages").and_then(|p| p.as_array()) {
+                    for page in pages {
+                        if let Some(hash) = page.get("blob_hash").and_then(|h| h.as_str()) {
+                            if !hash.is_empty() {
+                                hashes.push(hash.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. questions.images_json 中的题目图片（含软删除的题目，purge 是唯一物理出口）
+        let mut stmt = conn.prepare(
+            "SELECT images_json FROM questions WHERE exam_id = ?1 AND images_json IS NOT NULL AND images_json != '[]'",
+        )?;
+        let images_rows = stmt
+            .query_map(params![exam_id], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok());
+
+        for images_json in images_rows {
+            if let Ok(images) = serde_json::from_str::<Value>(&images_json) {
+                if let Some(arr) = images.as_array() {
+                    for img in arr {
+                        if let Some(hash) = img.get("hash").and_then(|h| h.as_str()) {
+                            if !hash.is_empty() {
+                                hashes.push(hash.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(hashes)
     }
 
     /// 永久删除题目集识别记录（使用现有连接）
     ///
     /// ★ P0 修复：同时清理 folder_items、questions、review 相关表和 resources
+    /// ★ 2026-06-12（审阅问题 S4）：递减页图与题目图片的 blob 引用计数，
+    ///   否则 purge 后这些 blob 永久泄漏（页图每页一个 JPEG，体积可观）。
     /// 注意：questions FK 对 exam_sheets 没有 ON DELETE CASCADE，必须手动删除
-    pub fn purge_exam_sheet_with_conn(conn: &Connection, exam_id: &str) -> VfsResult<()> {
+    pub fn purge_exam_sheet_with_conn(
+        conn: &Connection,
+        blobs_dir: &std::path::Path,
+        exam_id: &str,
+    ) -> VfsResult<()> {
         let savepoint_name = format!("purge_exam_{}", exam_id.replace("-", "_"));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
@@ -707,6 +780,15 @@ impl VfsExamRepo {
                 )
                 .optional()?
                 .flatten();
+
+            // 1.5 收集页图与题目图片的 blob 哈希（删除行后无法再查）
+            let blob_hashes = Self::collect_exam_blob_hashes(conn, exam_id).unwrap_or_else(|e| {
+                warn!(
+                    "[VFS::ExamRepo] Failed to collect blob hashes for exam {} (blobs may leak): {}",
+                    exam_id, e
+                );
+                Vec::new()
+            });
 
             // 2. 删除 folder_items（防止孤儿记录）
             conn.execute(
@@ -779,6 +861,30 @@ impl VfsExamRepo {
                 )?;
                 if remaining_refs == 0 {
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+                }
+            }
+
+            // 11. 递减页图与题目图片的 blob 引用计数（两阶段删除：
+            //     此处只减计数，物理文件由事务提交后的 cleanup_unreferenced 清扫）
+            for hash in &blob_hashes {
+                match super::blob_repo::VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, hash)
+                {
+                    Ok(remaining) => {
+                        debug!(
+                            "[VFS::ExamRepo] Decremented exam blob {}: remaining={}",
+                            hash, remaining
+                        );
+                    }
+                    Err(VfsError::NotFound { .. }) => {
+                        // blob 记录已不存在（历史数据/已被清理），幂等容忍
+                        debug!("[VFS::ExamRepo] Exam blob {} already gone, skipping", hash);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[VFS::ExamRepo] Failed to decrement exam blob {}: {}",
+                            hash, e
+                        );
+                    }
                 }
             }
 

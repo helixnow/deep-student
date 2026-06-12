@@ -117,6 +117,8 @@ interface FinderFileListProps {
   onRetry?: () => void;
   /** ★ 高亮标记的项 ID（如已关联资源） */
   highlightedIds?: Set<string>;
+  /** ★ 2026-06-12（审阅问题 FE-S2）：键盘 F2 请求重命名 */
+  onRequestRename?: (item: DstuNode) => void;
 }
 
 export function FinderFileList({
@@ -143,6 +145,7 @@ export function FinderFileList({
   onSelectionChange,
   onRetry,
   highlightedIds,
+  onRequestRename,
 }: FinderFileListProps) {
   const { t } = useTranslation('learningHub');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -378,6 +381,111 @@ export function FinderFileList({
     }
   }, [onContainerContextMenu]);
 
+  // ========================================================================
+  // ★ 2026-06-12（审阅问题 FE-S2）：键盘导航核心集
+  // 方向键移动焦点 / Shift+方向键扩展选择 / Enter 打开 / F2 重命名
+  // ========================================================================
+
+  // 键盘导航锚点（最近一次键盘/点击聚焦的项）
+  const keyboardAnchorRef = useRef<string | null>(null);
+
+  // 选中集变化时校正锚点：锚点必须始终在选中集内
+  useEffect(() => {
+    if (selectedIds.size === 0) {
+      keyboardAnchorRef.current = null;
+    } else if (!keyboardAnchorRef.current || !selectedIds.has(keyboardAnchorRef.current)) {
+      // 取选中集中在 items 顺序里最靠前的一项作为锚点
+      const first = items.find(item => selectedIds.has(item.id));
+      keyboardAnchorRef.current = first?.id ?? null;
+    }
+  }, [selectedIds, items]);
+
+  // 将指定索引滚动到可见区域
+  const scrollItemIntoView = useCallback((index: number) => {
+    if (viewMode === 'list') {
+      listVirtualizer.scrollToIndex(index, { align: 'auto' });
+    } else if (gridColumns > 0) {
+      gridVirtualizer.scrollToIndex(Math.floor(index / gridColumns), { align: 'auto' });
+    }
+  }, [viewMode, gridColumns, listVirtualizer, gridVirtualizer]);
+
+  const handleKeyboardNavigation = useCallback((e: React.KeyboardEvent) => {
+    // 编辑中或无数据时不拦截
+    if (editingId || items.length === 0) return;
+    // 不拦截输入框内的按键
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+      return;
+    }
+
+    const anchorId = keyboardAnchorRef.current;
+    const anchorIndex = anchorId ? items.findIndex(item => item.id === anchorId) : -1;
+
+    const focusIndex = (rawIndex: number) => {
+      e.preventDefault();
+      const nextIndex = Math.max(0, Math.min(items.length - 1, rawIndex));
+      if (nextIndex === anchorIndex) return;
+
+      const nextItem = items[nextIndex];
+      keyboardAnchorRef.current = nextItem.id;
+      if (e.shiftKey && onSelectionChange) {
+        // Shift+方向键：扩展选择
+        const newSelection = new Set(selectedIds);
+        newSelection.add(nextItem.id);
+        onSelectionChange(newSelection);
+      } else {
+        onSelect(nextItem.id, 'single');
+      }
+      scrollItemIntoView(nextIndex);
+    };
+
+    const moveFocus = (delta: number) => {
+      if (anchorIndex < 0) {
+        // 无选择时：向下/右从首项开始，向上/左从末项开始
+        focusIndex(delta > 0 ? 0 : items.length - 1);
+      } else {
+        focusIndex(anchorIndex + delta);
+      }
+    };
+
+    switch (e.key) {
+      case 'ArrowDown':
+        moveFocus(viewMode === 'grid' ? gridColumns : 1);
+        break;
+      case 'ArrowUp':
+        moveFocus(viewMode === 'grid' ? -gridColumns : -1);
+        break;
+      case 'ArrowRight':
+        if (viewMode === 'grid') moveFocus(1);
+        break;
+      case 'ArrowLeft':
+        if (viewMode === 'grid') moveFocus(-1);
+        break;
+      case 'Home':
+        focusIndex(0);
+        break;
+      case 'End':
+        focusIndex(items.length - 1);
+        break;
+      case 'Enter': {
+        if (anchorIndex >= 0 && selectedIds.size === 1) {
+          e.preventDefault();
+          onOpen(items[anchorIndex]);
+        }
+        break;
+      }
+      case 'F2': {
+        if (anchorIndex >= 0 && selectedIds.size === 1 && onRequestRename) {
+          e.preventDefault();
+          onRequestRename(items[anchorIndex]);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }, [editingId, items, selectedIds, viewMode, gridColumns, onSelect, onSelectionChange, onOpen, onRequestRename, scrollItemIntoView]);
+
   // Notion 风格的加载状态
   if (isLoading) {
     return (
@@ -459,16 +567,22 @@ export function FinderFileList({
         <CustomScrollArea
           ref={scrollAreaRef}
           viewportRef={viewportRef}
-          className="flex-1 bg-background h-full"
+          className="flex-1 bg-background h-full outline-none"
           onClick={handleContainerClick}
+          onDoubleClick={handleContainerDoubleClick}
           onContextMenu={handleContainerContextMenu}
+          onMouseDown={handleMouseDown}
+          tabIndex={0}
+          onKeyDown={handleKeyboardNavigation}
         >
           <SortableContext
             items={items.map(item => item.id)}
             strategy={verticalListSortingStrategy}
           >
             {/* Notion 风格：添加少量内边距 */}
+            {/* ★ 2026-06-12（审阅问题 FE-M3）：绑定 containerRef 使框选在列表模式可用 */}
             <div
+              ref={containerRef}
               className="py-1"
               style={{
                 height: `${listVirtualizer.getTotalSize() + 8}px`,
@@ -545,6 +659,11 @@ export function FinderFileList({
             </div>
           )}
         </DragOverlay>
+
+        {/* ★ 2026-06-12（审阅问题 FE-M3）：列表模式框选矩形 */}
+        {isSelecting && selectionRect && (
+          <SelectionBoxOverlay rect={selectionRect} />
+        )}
       </DndContext>
     );
   }
@@ -560,12 +679,14 @@ export function FinderFileList({
       <CustomScrollArea
         ref={scrollAreaRef}
         viewportRef={viewportRef}
-        className="flex-1 bg-background h-full"
+        className="flex-1 bg-background h-full outline-none"
         viewportClassName="py-3 pr-3 pl-1.5 sm:pl-3"
         onClick={handleContainerClick}
         onDoubleClick={handleContainerDoubleClick}
         onContextMenu={handleContainerContextMenu}
         onMouseDown={handleMouseDown}
+        tabIndex={0}
+        onKeyDown={handleKeyboardNavigation}
       >
         <SortableContext
           items={items.map(item => item.id)}

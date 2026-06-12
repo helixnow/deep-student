@@ -8,7 +8,7 @@
  * - 底部嵌入番茄钟面板
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -27,7 +27,26 @@ import {
   Play,
   Brain,
   ListChecks,
+  DotsSixVertical,
+  TreeStructure,
 } from '@phosphor-icons/react';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -40,27 +59,47 @@ import { usePomodoroStore } from '@/features/pomodoro';
 import { PomodoroPanel } from '@/features/pomodoro';
 import type { TodoItem, TodoPriority, UpdateTodoItemInput } from '../types';
 import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from '../types';
+import { parseQuickAddInput } from '../quickAddParser';
 
 // ============================================================================
 // TodoQuickAdd — 扁平输入条
 // ============================================================================
 
 const TodoQuickAdd: React.FC = () => {
-  const { t } = useTranslation(['todo']);
+  const { t, i18n } = useTranslation(['todo']);
   const { createItem, activeListId } = useTodoStore();
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TodoPriority>('none');
   const [dueDate, setDueDate] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // 自然语言解析（如「明天交作业 !高」），结果以 chip 预览，提交时应用
+  const parsed = useMemo(() => parseQuickAddInput(title), [title]);
+  const parsedDateLabel = useMemo(() => {
+    if (!parsed.dueDate) return null;
+    try {
+      return new Date(`${parsed.dueDate}T00:00:00`).toLocaleDateString(
+        i18n.language?.startsWith('zh') ? 'zh-CN' : 'en-US',
+        { month: 'short', day: 'numeric', weekday: 'short' },
+      );
+    } catch {
+      return parsed.dueDate;
+    }
+  }, [parsed.dueDate, i18n.language]);
+
   const handleSubmit = useCallback(async () => {
     if (!title.trim() || !activeListId) return;
+    // 手动设置的字段优先于自然语言解析结果
+    const finalTitle = (parsed.title || title).trim();
+    const finalDueDate = dueDate || parsed.dueDate;
+    const finalPriority = priority !== 'none' ? priority : (parsed.priority ?? 'none');
+    if (!finalTitle) return;
     try {
       await createItem({
         todoListId: activeListId,
-        title: title.trim(),
-        priority,
-        dueDate: dueDate || undefined,
+        title: finalTitle,
+        priority: finalPriority,
+        dueDate: finalDueDate || undefined,
       });
       setTitle('');
       setPriority('none');
@@ -69,7 +108,7 @@ const TodoQuickAdd: React.FC = () => {
     } catch {
       // error handled in store
     }
-  }, [title, priority, dueDate, activeListId, createItem]);
+  }, [title, parsed, priority, dueDate, activeListId, createItem]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -96,6 +135,25 @@ const TodoQuickAdd: React.FC = () => {
           placeholder={t('todo:actions.quickAddPlaceholder')}
           className="min-w-0 flex-1 bg-transparent border-0 focus-visible:ring-0 placeholder:text-muted-foreground/50"
         />
+        {/* 自然语言解析预览 chip（提交时生效） */}
+        {title.trim() && (parsedDateLabel || parsed.priority) && (
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {parsedDateLabel && !dueDate && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px] whitespace-nowrap">
+                <Calendar size={11} />
+                {parsedDateLabel}
+              </span>
+            )}
+            {parsed.priority && priority === 'none' && (
+              <span className={cn(
+                'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] whitespace-nowrap',
+                PRIORITY_CONFIG[parsed.priority].color,
+              )}>
+                {t(PRIORITY_CONFIG[parsed.priority].labelKey)}
+              </span>
+            )}
+          </div>
+        )}
         {title.trim() && (
           <NotionButton variant="shell" size="sm" onClick={handleSubmit} className="h-7 text-xs">
             {t('todo:actions.add')}
@@ -159,13 +217,30 @@ const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string }> = (
   return <Icon size={16} className={cn(config.color, className)} />;
 };
 
-const TodoItemRow: React.FC<{
+interface TodoItemRowProps {
   item: TodoItem;
   onToggle: (id: string) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   isSelected: boolean;
-}> = ({ item, onToggle, onSelect, onDelete, isSelected }) => {
+  /** 子任务缩进层级（0 = 顶层） */
+  depth?: number;
+  /** 子任务完成进度（仅父任务显示） */
+  subtaskProgress?: { done: number; total: number };
+  /** 拖拽手柄（仅手动排序视图传入） */
+  dragHandle?: React.ReactNode;
+}
+
+const TodoItemRow: React.FC<TodoItemRowProps> = ({
+  item,
+  onToggle,
+  onSelect,
+  onDelete,
+  isSelected,
+  depth = 0,
+  subtaskProgress,
+  dragHandle,
+}) => {
   const { t } = useTranslation(['todo']);
   const overdue = isOverdue(item);
   const dueToday = isDueToday(item);
@@ -181,15 +256,18 @@ const TodoItemRow: React.FC<{
         'data-[selected=true]:bg-[color:var(--interactive-selected)]',
         isCompleted && 'opacity-60',
       )}
+      style={depth > 0 ? { paddingLeft: `${16 + depth * 28}px` } : undefined}
       onClick={() => onSelect(item.id)}
     >
+      {dragHandle}
+
       <button
         onClick={(e) => {
           e.stopPropagation();
           onToggle(item.id);
         }}
         className="flex-shrink-0 transition-transform duration-150 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full"
-        aria-label={isCompleted ? '标记为未完成' : '标记为完成'}
+        aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
       >
         {isCompleted ? (
           <CheckCircle size={20} className="text-[color:hsl(var(--success))]" />
@@ -215,12 +293,29 @@ const TodoItemRow: React.FC<{
         {(item.dueDate ||
           tags.length > 0 ||
           item.priority !== 'none' ||
-          item.estimatedPomodoros) && (
+          item.estimatedPomodoros ||
+          subtaskProgress) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {subtaskProgress && (
+              <span
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+                title={t('todo:subtasks.progress', {
+                  done: subtaskProgress.done,
+                  total: subtaskProgress.total,
+                })}
+              >
+                <TreeStructure size={12} />
+                {subtaskProgress.done}/{subtaskProgress.total}
+              </span>
+            )}
+
             {item.estimatedPomodoros ? (
               <span
                 className="study-shell-badge study-shell-badge--warning"
-                title={`${item.completedPomodoros || 0} / ${item.estimatedPomodoros} Pomodoros`}
+                title={t('todo:pomodoro.progressTitle', {
+                  done: item.completedPomodoros || 0,
+                  total: item.estimatedPomodoros,
+                })}
               >
                 <Brain size={12} />
                 {item.completedPomodoros || 0}/{item.estimatedPomodoros}
@@ -277,7 +372,7 @@ const TodoItemRow: React.FC<{
             usePomodoroStore.getState().start(item.id, item.title);
           }}
           title={t('todo:actions.startFocusSession')}
-          aria-label="start-focus"
+          aria-label={t('todo:actions.startFocusSession')}
           className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5"
         >
           <Play size={16} />
@@ -292,11 +387,63 @@ const TodoItemRow: React.FC<{
           e.stopPropagation();
           onDelete(item.id);
         }}
-        aria-label="delete-todo"
-        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+        title={t('todo:actions.deleteItem')}
+        aria-label={t('todo:actions.deleteItem')}
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
         <Trash size={16} />
       </NotionButton>
+    </div>
+  );
+};
+
+// ============================================================================
+// SortableTodoItemRow — 拖拽排序包装（仅 'all' 视图顶层任务）
+// ============================================================================
+
+const SortableTodoItemRow: React.FC<
+  Omit<TodoItemRowProps, 'dragHandle'>
+> = (props) => {
+  const { t } = useTranslation(['todo']);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: props.item.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(isDragging && 'relative z-10 opacity-70 shadow-lg')}
+    >
+      <TodoItemRow
+        {...props}
+        dragHandle={
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={t('todo:actions.dragToReorder')}
+            title={t('todo:actions.dragToReorder')}
+            className={cn(
+              '-ml-2 flex h-6 w-5 flex-shrink-0 cursor-grab items-center justify-center rounded',
+              'text-muted-foreground/0 transition-colors active:cursor-grabbing',
+              'group-hover:text-muted-foreground/60 hover:!text-muted-foreground',
+              'focus-visible:text-muted-foreground focus:outline-none',
+            )}
+          >
+            <DotsSixVertical size={14} weight="bold" />
+          </button>
+        }
+      />
     </div>
   );
 };
@@ -311,13 +458,36 @@ const TodoItemDetail: React.FC<{
   className?: string;
 }> = ({ item, onClose, className }) => {
   const { t } = useTranslation(['todo', 'common']);
-  const { updateItem, toggleItem, deleteItem } = useTodoStore();
+  const { items, updateItem, toggleItem, deleteItem, createItem } = useTodoStore();
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description || '');
   const [priority, setPriority] = useState<TodoPriority>(item.priority as TodoPriority);
   const [dueDate, setDueDate] = useState(item.dueDate || '');
   const [dueTime, setDueTime] = useState(item.dueTime || '');
   const [estimatedPomodoros, setEstimatedPomodoros] = useState(item.estimatedPomodoros || 0);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+
+  // 子任务（顶层任务才显示子任务区；不支持多级嵌套）
+  const subtasks = useMemo(
+    () => items.filter((i) => i.parentId === item.id),
+    [items, item.id],
+  );
+  const isSubtask = Boolean(item.parentId);
+
+  const handleAddSubtask = useCallback(async () => {
+    const trimmed = newSubtaskTitle.trim();
+    if (!trimmed) return;
+    setNewSubtaskTitle('');
+    try {
+      await createItem({
+        todoListId: item.todoListId,
+        title: trimmed,
+        parentId: item.id,
+      });
+    } catch {
+      // error handled in store
+    }
+  }, [newSubtaskTitle, createItem, item.todoListId, item.id]);
 
   const handleSave = useCallback(async () => {
     const changes: UpdateTodoItemInput = { id: item.id };
@@ -371,7 +541,7 @@ const TodoItemDetail: React.FC<{
           <button
             onClick={() => toggleItem(item.id)}
             className="transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full"
-            aria-label={isCompleted ? '标记为未完成' : '标记为完成'}
+            aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
           >
             {isCompleted ? (
               <CheckCircle size={20} className="text-[color:hsl(var(--success))]" />
@@ -475,18 +645,114 @@ const TodoItemDetail: React.FC<{
               <Brain size={14} />
               {t('todo:fields.pomodoros', '番茄')}
             </span>
-            <Input
-              type="number"
-              min={0}
-              max={20}
-              value={estimatedPomodoros || ''}
-              onChange={(e) => setEstimatedPomodoros(Number(e.target.value) || 0)}
-              onBlur={handleBlur}
-              placeholder="0"
-              className="w-20"
-            />
+            <div className="flex flex-1 items-center gap-2">
+              <Input
+                type="number"
+                min={0}
+                max={99}
+                value={estimatedPomodoros || ''}
+                onChange={(e) => setEstimatedPomodoros(Number(e.target.value) || 0)}
+                onBlur={handleBlur}
+                placeholder="0"
+                className="w-20"
+              />
+              {(item.completedPomodoros || 0) > 0 && (
+                <span className="text-[11px] text-muted-foreground">
+                  {t('todo:pomodoro.completedCount', { count: item.completedPomodoros || 0 })}
+                </span>
+              )}
+            </div>
           </div>
+
+          {/* 番茄进度条 */}
+          {Boolean(estimatedPomodoros) && (
+            <div className="flex items-center gap-3 py-1">
+              <span className="w-16 flex-shrink-0" />
+              <div className="flex flex-1 items-center gap-1">
+                {Array.from({ length: Math.min(estimatedPomodoros, 20) }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={cn(
+                      'h-1.5 flex-1 rounded-full',
+                      i < (item.completedPomodoros || 0)
+                        ? 'bg-[color:hsl(var(--warning))]'
+                        : 'bg-[color:var(--shell-workspace-border)]',
+                    )}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* 子任务区（仅顶层任务） */}
+        {!isSubtask && (
+          <div className="space-y-1.5 pt-2">
+            <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {t('todo:subtasks.title')}
+              {subtasks.length > 0 && (
+                <span className="ml-1.5 font-normal normal-case text-muted-foreground/70">
+                  {subtasks.filter((s) => s.status === 'completed').length}/{subtasks.length}
+                </span>
+              )}
+            </span>
+
+            {subtasks.map((sub) => (
+              <div
+                key={sub.id}
+                className="group/subtask flex items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-[color:var(--interactive-hover)]"
+              >
+                <button
+                  onClick={() => toggleItem(sub.id)}
+                  className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+                  aria-label={
+                    sub.status === 'completed'
+                      ? t('todo:actions.markPending')
+                      : t('todo:actions.markCompleted')
+                  }
+                >
+                  {sub.status === 'completed' ? (
+                    <CheckCircle size={16} className="text-[color:hsl(var(--success))]" />
+                  ) : (
+                    <span className="block h-4 w-4 rounded-full border-[1.5px] border-[color:var(--border-default)] hover:border-[color:hsl(var(--primary))]" />
+                  )}
+                </button>
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 truncate text-[13px]',
+                    sub.status === 'completed' && 'text-muted-foreground line-through',
+                  )}
+                >
+                  {sub.title}
+                </span>
+                <button
+                  onClick={() => deleteItem(sub.id)}
+                  aria-label={t('todo:actions.deleteItem')}
+                  title={t('todo:actions.deleteItem')}
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-[color:hsl(var(--destructive))] group-hover/subtask:opacity-100"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+
+            <div className="flex items-center gap-2 px-1">
+              <Plus size={14} className="flex-shrink-0 text-muted-foreground/60" />
+              <Input
+                value={newSubtaskTitle}
+                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void handleAddSubtask();
+                  }
+                }}
+                placeholder={t('todo:subtasks.addPlaceholder')}
+                className="h-7 flex-1 border-0 bg-transparent px-0 text-[13px] focus-visible:ring-0 placeholder:text-muted-foreground/50"
+              />
+            </div>
+          </div>
+        )}
 
         <div className="space-y-2 pt-2">
           <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -544,6 +810,7 @@ export const TodoMainPanel: React.FC = () => {
     selectedItemId,
     toggleItem,
     deleteItem,
+    reorderItems,
     selectItem,
     setSearch,
     setShowCompleted,
@@ -561,6 +828,63 @@ export const TodoMainPanel: React.FC = () => {
 
   const pendingCount = items.filter((i) => i.status === 'pending').length;
   const completedCount = items.filter((i) => i.status === 'completed').length;
+
+  // ===== 'all' 视图：树形展示（顶层 + 子任务缩进），且支持顶层拖拽排序 =====
+  const isManualSortView = filter.view === 'all' && !filter.search.trim();
+
+  const { topLevelItems, childrenByParent } = useMemo(() => {
+    const childMap = new Map<string, TodoItem[]>();
+    const tops: TodoItem[] = [];
+    if (!isManualSortView) {
+      return { topLevelItems: filteredItems, childrenByParent: childMap };
+    }
+    const visibleIds = new Set(filteredItems.map((i) => i.id));
+    for (const item of filteredItems) {
+      // 父项不可见（被过滤）时子任务提升为顶层，避免凭空消失
+      if (item.parentId && visibleIds.has(item.parentId)) {
+        const arr = childMap.get(item.parentId) || [];
+        arr.push(item);
+        childMap.set(item.parentId, arr);
+      } else {
+        tops.push(item);
+      }
+    }
+    return { topLevelItems: tops, childrenByParent: childMap };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, filter.priorityFilter, filter.showCompleted, filter.view, filter.search, isManualSortView]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const ids = topLevelItems.map((i) => i.id);
+      const from = ids.indexOf(String(active.id));
+      const to = ids.indexOf(String(over.id));
+      if (from < 0 || to < 0) return;
+      const reordered = [...ids];
+      reordered.splice(to, 0, ...reordered.splice(from, 1));
+      void reorderItems(reordered);
+    },
+    [topLevelItems, reorderItems],
+  );
+
+  // 计算子任务进度（含被 showCompleted 过滤掉的已完成子任务，进度才真实）
+  const subtaskProgressOf = useCallback(
+    (parentId: string): { done: number; total: number } | undefined => {
+      const all = items.filter((i) => i.parentId === parentId);
+      if (all.length === 0) return undefined;
+      return {
+        done: all.filter((i) => i.status === 'completed').length,
+        total: all.length,
+      };
+    },
+    [items],
+  );
 
   const viewTitle = (() => {
     switch (filter.view) {
@@ -656,6 +980,44 @@ export const TodoMainPanel: React.FC = () => {
                   {t('todo:empty.hint')}
                 </p>
               </div>
+            ) : isManualSortView ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={topLevelItems.map((i) => i.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col divide-y divide-border/[0.08]">
+                    {topLevelItems.map((item) => (
+                      <React.Fragment key={item.id}>
+                        <SortableTodoItemRow
+                          item={item}
+                          onToggle={toggleItem}
+                          onSelect={selectItem}
+                          onDelete={deleteItem}
+                          isSelected={selectedItemId === item.id}
+                          subtaskProgress={subtaskProgressOf(item.id)}
+                        />
+                        {(childrenByParent.get(item.id) || []).map((child) => (
+                          <TodoItemRow
+                            key={child.id}
+                            item={child}
+                            onToggle={toggleItem}
+                            onSelect={selectItem}
+                            onDelete={deleteItem}
+                            isSelected={selectedItemId === child.id}
+                            depth={1}
+                          />
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             ) : (
               <div className="flex flex-col divide-y divide-border/[0.08]">
                 {filteredItems.map((item) => (

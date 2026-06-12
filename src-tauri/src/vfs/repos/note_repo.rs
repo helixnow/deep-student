@@ -318,6 +318,30 @@ impl VfsNoteRepo {
                 });
             }
 
+            // ★ 2026-06-12 修复（审阅问题 S5）：resource_id 切换成功后，清理旧资源。
+            // 笔记没有版本表，旧资源切换后即无人引用；不清理会在每次内容编辑时
+            // 泄漏一行 resources（含完整笔记内容）+ 残留向量索引单元。
+            // 仅当确实无其他笔记引用时删除（防御历史无盐共享数据）。
+            if new_resource_id.is_some() && current_note.resource_id != *final_resource_id {
+                let old_rid = &current_note.resource_id;
+                let note_refs: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM notes WHERE resource_id = ?1",
+                    params![old_rid],
+                    |row| row.get(0),
+                )?;
+                if note_refs == 0 {
+                    conn.execute(
+                        "DELETE FROM vfs_index_units WHERE resource_id = ?1",
+                        params![old_rid],
+                    )?;
+                    conn.execute("DELETE FROM resources WHERE id = ?1", params![old_rid])?;
+                    debug!(
+                        "[VFS::NoteRepo] Deleted superseded resource {} for note {}",
+                        old_rid, note_id
+                    );
+                }
+            }
+
             info!("[VFS::NoteRepo] Updated note: {}", note_id);
 
             // 4. 返回更新后的笔记
@@ -987,8 +1011,25 @@ impl VfsNoteRepo {
         );
 
         // ★ 删除资源前检查是否仍被其他笔记引用，避免误删共享资源
+        // ★ 2026-06-12 修复（审阅问题 S5）：除当前 resource_id 外，一并收集
+        // 该笔记历史编辑遗留的旧版本资源（source_id = note_id），防止泄漏。
         let mut resource_ids: HashSet<String> = HashSet::new();
         resource_ids.insert(main_resource_id.clone());
+        {
+            let mut stmt = rollback_on_error!(
+                conn.prepare(
+                    "SELECT id FROM resources WHERE source_id = ?1 AND source_table = 'notes'"
+                ),
+                "Failed to prepare superseded resources query"
+            );
+            let rows = rollback_on_error!(
+                stmt.query_map(params![note_id], |row| row.get::<_, String>(0)),
+                "Failed to query superseded resources"
+            );
+            for row in rows.flatten() {
+                resource_ids.insert(row);
+            }
+        }
 
         let mut deleted_resources = 0usize;
         for resource_id in resource_ids {
@@ -1008,6 +1049,14 @@ impl VfsNoteRepo {
                 continue;
             }
 
+            // ★ 2026-06-12（审阅问题 S5）：同步清理向量索引单元，防止孤儿索引
+            rollback_on_error!(
+                conn.execute(
+                    "DELETE FROM vfs_index_units WHERE resource_id = ?1",
+                    params![&resource_id]
+                ),
+                "Failed to delete index units"
+            );
             let res_deleted = rollback_on_error!(
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&resource_id]),
                 "Failed to delete resource"

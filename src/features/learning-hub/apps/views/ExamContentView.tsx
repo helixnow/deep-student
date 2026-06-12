@@ -852,8 +852,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       {/* Tab 栏 */}
       <div className="flex-shrink-0 px-3 sm:px-4 py-2.5 border-b border-border/40">
         <div className="flex items-center justify-between gap-2">
-          {/* 左侧 Tab - 允许横向滚动 */}
-          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
+          {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多 */}
+          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
             <NotionButton
               variant="ghost"
               size="sm"

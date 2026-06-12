@@ -100,15 +100,21 @@ export function useCanvasAIEditHandler({
     async (request: CanvasAIEditRequest) => {
       console.log('[useCanvasAIEditHandler] Received edit request:', request.requestId, request.operation);
 
+      // ★ R2 修复：非目标实例静默忽略。
+      // 之前这里会立即回复"笔记未打开"失败，抢先消费后端的 oneshot 回调，
+      // 导致目标实例随后的真实结果（diff 确认）丢失，AI 误判编辑失败。
+      // 现在由目标实例通过 ACK 认领请求；无人认领时后端 ACK 超时快速失败。
       if (request.noteId !== noteIdRef.current) {
-        console.log('[useCanvasAIEditHandler] Note ID mismatch:', request.noteId, 'vs', noteIdRef.current);
-        const result: CanvasAIEditResult = {
-          requestId: request.requestId,
-          success: false,
-          error: `笔记 ${request.noteId} 未在编辑器中打开`,
-        };
-        await sendResult(result);
+        console.log('[useCanvasAIEditHandler] Ignoring request for other note:', request.noteId, 'current:', noteIdRef.current);
         return;
+      }
+
+      // 认领请求：告知后端目标编辑器存在（失败不阻断后续流程，
+      // 后端会在 ACK 超时后以"笔记未打开"失败，结果回调仍可兜底）
+      try {
+        await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId });
+      } catch (err) {
+        console.error('[useCanvasAIEditHandler] Failed to ack edit request:', err);
       }
 
       const editor = editorApiRef.current;

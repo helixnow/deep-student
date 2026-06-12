@@ -97,7 +97,11 @@ impl VfsBlobRepo {
         if should_write {
             // Atomic write: write to temp file first, then rename to avoid
             // corrupted blobs if the process is killed mid-write.
-            let temp_path = absolute_path.with_extension("tmp");
+            // ★ 2026-06-12（审阅问题 M 类）：tmp 文件名加入随机后缀。
+            // 旧实现使用固定的 `<hash>.tmp`，并发写入同一 blob 时两个写者共用
+            // 一个临时文件：后来者 truncate 前者的数据、先完成者 rename 后
+            // 另一方 rename 失败，产生虚假错误。唯一命名让每个写者独立。
+            let temp_path = absolute_path.with_extension(format!("{}.tmp", nanoid::nanoid!(8)));
 
             let write_result = (|| -> VfsResult<()> {
                 let mut file = fs::File::create(&temp_path).map_err(|e| {
@@ -451,8 +455,58 @@ impl VfsBlobRepo {
             cleaned += 1;
         }
 
+        // ★ 2026-06-12（审阅问题 M 类）：清理进程崩溃残留的临时写入文件。
+        // 只删除 mtime 超过 24h 的 *.tmp，避免误删并发写入中的活跃临时文件。
+        Self::sweep_stale_temp_files(blobs_dir);
+
         info!("[VFS::BlobRepo] Cleaned up {} unreferenced blobs", cleaned);
         Ok(cleaned)
+    }
+
+    /// 清理 blobs 目录中残留的过期临时文件（崩溃恢复）
+    fn sweep_stale_temp_files(blobs_dir: &Path) {
+        const STALE_TMP_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+        let now = std::time::SystemTime::now();
+
+        let Ok(prefix_dirs) = fs::read_dir(blobs_dir) else {
+            return;
+        };
+        let mut removed = 0u32;
+        for prefix_entry in prefix_dirs.flatten() {
+            let prefix_path = prefix_entry.path();
+            if !prefix_path.is_dir() {
+                continue;
+            }
+            let Ok(files) = fs::read_dir(&prefix_path) else {
+                continue;
+            };
+            for file_entry in files.flatten() {
+                let path = file_entry.path();
+                let is_tmp = path
+                    .extension()
+                    .map(|ext| ext == "tmp")
+                    .unwrap_or(false);
+                if !is_tmp {
+                    continue;
+                }
+                let is_stale = file_entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|mtime| now.duration_since(mtime).ok())
+                    .map(|age| age > STALE_TMP_AGE)
+                    .unwrap_or(false);
+                if is_stale && fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+        if removed > 0 {
+            info!(
+                "[VFS::BlobRepo] Removed {} stale temp files from blobs dir",
+                removed
+            );
+        }
     }
 
     // ========================================================================

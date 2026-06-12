@@ -11,15 +11,37 @@
     "completed": "已完成"
   },
   "actions": {
-    "quickAddPlaceholder": "添加待办事项...",
+    "quickAddPlaceholder": "添加待办，试试「明天交作业 !高」...",
     "add": "添加",
     "search": "搜索",
     "searchLists": "搜索列表...",
     "newList": "新建列表",
     "newListPlaceholder": "新建列表名称...",
+    "renameList": "重命名列表",
     "favorite": "收藏",
     "unfavorite": "取消收藏",
-    "startFocusSession": "开始专注"
+    "startFocusSession": "开始专注",
+    "markCompleted": "标记为完成",
+    "markPending": "标记为未完成",
+    "deleteItem": "删除待办",
+    "dragToReorder": "拖拽排序"
+  },
+  "notifications": {
+    "operationFailed": "操作失败",
+    "listDeleted": "已删除列表「{{title}}」",
+    "itemDeleted": "已删除「{{title}}」",
+    "undo": "撤销"
+  },
+  "dialogs": {
+    "deleteList": {
+      "title": "删除列表",
+      "description": "确定删除列表「{{title}}」吗？列表中的待办会一并移入回收站，可通过撤销恢复。"
+    }
+  },
+  "subtasks": {
+    "title": "子任务",
+    "progress": "子任务 {{done}}/{{total}}",
+    "addPlaceholder": "添加子任务..."
   },
   "filters": {
     "showCompleted": "显示已完成"
@@ -100,6 +122,19 @@
       "breakCompleteTitle": "休息结束",
       "breakCompleteBody": "休息结束，开始下一个番茄吧"
     },
+    "settings": {
+      "title": "番茄钟设置",
+      "workDuration": "专注时长",
+      "shortBreak": "短休息",
+      "longBreak": "长休息",
+      "longBreakInterval": "长休息间隔",
+      "minutesUnit": "分钟",
+      "pomodorosUnit": "个",
+      "autoStartBreaks": "自动开始休息",
+      "autoStartWork": "休息后自动开始专注"
+    },
+    "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
+    "completedCount": "已完成 {{count}} 个",
     "immersive": {
       "currentTask": "当前任务",
       "hintEscPrefix": "按 ",

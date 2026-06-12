@@ -130,6 +130,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       document.removeEventListener('pdf-page-refs:clear', handleClear);
       document.removeEventListener('pdf-page-refs:remove', handleRemove);
+      // ★ 卸载（关闭 tab）时广播空选择，避免聊天 chips 残留指向已关闭的 PDF
+      document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
+        detail: { sourceId: node.sourceId, sourceName: '', pages: [] },
+      }));
     };
   }, [node.sourceId]);
 

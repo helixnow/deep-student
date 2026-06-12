@@ -6,8 +6,11 @@ use log::{info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::error::VfsResult;
+use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::types::{CreatePomodoroRecordParams, PomodoroRecord, PomodoroTodayStats};
+
+const VALID_POMODORO_TYPES: &[&str] = &["work", "short_break", "long_break"];
+const VALID_POMODORO_STATUSES: &[&str] = &["completed", "interrupted"];
 
 fn log_and_skip_err<T>(r: Result<T, rusqlite::Error>) -> Option<T> {
     match r {
@@ -19,51 +22,106 @@ fn log_and_skip_err<T>(r: Result<T, rusqlite::Error>) -> Option<T> {
     }
 }
 
+fn validate_record_params(params: &CreatePomodoroRecordParams) -> VfsResult<()> {
+    if !VALID_POMODORO_TYPES.contains(&params.r#type.as_str()) {
+        return Err(VfsError::InvalidArgument {
+            param: "type".to_string(),
+            reason: format!(
+                "Unsupported pomodoro type '{}'; expected one of {:?}",
+                params.r#type, VALID_POMODORO_TYPES
+            ),
+        });
+    }
+    if !VALID_POMODORO_STATUSES.contains(&params.status.as_str()) {
+        return Err(VfsError::InvalidArgument {
+            param: "status".to_string(),
+            reason: format!(
+                "Unsupported pomodoro status '{}'; expected one of {:?}",
+                params.status, VALID_POMODORO_STATUSES
+            ),
+        });
+    }
+    if params.duration < 0 {
+        return Err(VfsError::InvalidArgument {
+            param: "duration".to_string(),
+            reason: "duration must be >= 0".to_string(),
+        });
+    }
+    if params.actual_duration < 0 {
+        return Err(VfsError::InvalidArgument {
+            param: "actual_duration".to_string(),
+            reason: "actual_duration must be >= 0".to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// 番茄钟记录 Repo
 pub struct VfsPomodoroRepo;
 
 impl VfsPomodoroRepo {
     /// 创建番茄钟记录
+    ///
+    /// 时间戳统一使用 UTC + `Z` 后缀（与 todo_repo 一致），保证
+    /// `todo_items.updated_at` 参与云同步 LWW 比较时基准一致。
     pub fn create_record(
         db: &VfsDatabase,
         params: CreatePomodoroRecordParams,
     ) -> VfsResult<PomodoroRecord> {
+        validate_record_params(&params)?;
+
         let conn = db.get_conn_safe()?;
         let record_id = PomodoroRecord::generate_id();
-        let now = chrono::Local::now()
-            .format("%Y-%m-%dT%H:%M:%S%.3f")
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
 
-        conn.execute(
-            r#"
-            INSERT INTO pomodoro_records (id, todo_item_id, start_time, end_time, duration, actual_duration, type, status, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-            "#,
-            params![
-                record_id,
-                params.todo_item_id,
-                params.start_time,
-                params.end_time,
-                params.duration,
-                params.actual_duration,
-                params.r#type,
-                params.status,
-                now,
-            ],
-        )?;
+        conn.execute("SAVEPOINT pomodoro_create", [])?;
 
-        // 如果关联了任务且为已完成的 work 类型，自动递增 todo_items.completed_pomodoros
-        if let Some(ref item_id) = params.todo_item_id {
-            if params.status == "completed" && params.r#type == "work" {
-                conn.execute(
-                    r#"
-                    UPDATE todo_items
-                    SET completed_pomodoros = COALESCE(completed_pomodoros, 0) + 1,
-                        updated_at = ?1
-                    WHERE id = ?2 AND deleted_at IS NULL
-                    "#,
-                    params![now, item_id],
-                )?;
+        let result = (|| -> VfsResult<()> {
+            conn.execute(
+                r#"
+                INSERT INTO pomodoro_records (id, todo_item_id, start_time, end_time, duration, actual_duration, type, status, created_at)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "#,
+                params![
+                    record_id,
+                    params.todo_item_id,
+                    params.start_time,
+                    params.end_time,
+                    params.duration,
+                    params.actual_duration,
+                    params.r#type,
+                    params.status,
+                    now,
+                ],
+            )?;
+
+            // 如果关联了任务且为已完成的 work 类型，自动递增 todo_items.completed_pomodoros
+            if let Some(ref item_id) = params.todo_item_id {
+                if params.status == "completed" && params.r#type == "work" {
+                    conn.execute(
+                        r#"
+                        UPDATE todo_items
+                        SET completed_pomodoros = COALESCE(completed_pomodoros, 0) + 1,
+                            updated_at = ?1
+                        WHERE id = ?2 AND deleted_at IS NULL
+                        "#,
+                        params![now, item_id],
+                    )?;
+                }
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(_) => {
+                conn.execute("RELEASE SAVEPOINT pomodoro_create", [])?;
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT pomodoro_create", []);
+                let _ = conn.execute("RELEASE SAVEPOINT pomodoro_create", []);
+                return Err(e);
             }
         }
 
@@ -117,10 +175,29 @@ impl VfsPomodoroRepo {
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
+    /// 本地"今天 00:00"对应的 UTC 时间戳字符串（与 created_at 同格式，可直接字符串比较）
+    fn local_day_start_utc() -> String {
+        use chrono::TimeZone;
+        chrono::Local::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .and_then(|naive| chrono::Local.from_local_datetime(&naive).single())
+            .map(|dt| {
+                dt.with_timezone(&chrono::Utc)
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string()
+            })
+            .unwrap_or_else(|| {
+                chrono::Utc::now()
+                    .format("%Y-%m-%dT00:00:00.000Z")
+                    .to_string()
+            })
+    }
+
     /// 获取今日统计
     pub fn get_today_stats(db: &VfsDatabase) -> VfsResult<PomodoroTodayStats> {
         let conn = db.get_conn_safe()?;
-        let today_start = chrono::Local::now().format("%Y-%m-%dT00:00:00").to_string();
+        let today_start = Self::local_day_start_utc();
 
         let completed_count: usize = conn
             .query_row(
@@ -165,7 +242,7 @@ impl VfsPomodoroRepo {
     /// 列出今日的所有番茄钟记录
     pub fn list_today_records(db: &VfsDatabase) -> VfsResult<Vec<PomodoroRecord>> {
         let conn = db.get_conn_safe()?;
-        let today_start = chrono::Local::now().format("%Y-%m-%dT00:00:00").to_string();
+        let today_start = Self::local_day_start_utc();
 
         let mut stmt = conn.prepare(
             r#"

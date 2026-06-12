@@ -1697,8 +1697,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 </Card>
             </CustomScrollArea>
 
-            {/* 底部导航 - 增加底部间距避免被 tab 栏遮挡 */}
-            <div className="flex-shrink-0 px-3 pt-2 pb-16 border-t border-border/50 bg-card/50">
+            {/* 底部导航 - 仅保留安全区域间距（历史 tab 栏已移除） */}
+            <div
+              className="flex-shrink-0 px-3 pt-2 pb-2 border-t border-border/50 bg-card/50"
+              style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+            >
               <div className="flex items-center justify-between gap-2">
                 <NotionButton
                   variant="outline"

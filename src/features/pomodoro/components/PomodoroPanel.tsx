@@ -8,7 +8,7 @@
  * - 边框/分隔走 --shell-workspace-border / --shell-inspector-border
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Play,
@@ -20,11 +20,137 @@ import {
   SkipForward,
   Timer,
   Flame,
+  GearSix,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '../api';
+
+// ============================================================================
+// PomodoroSettingsPopover — 时长/间隔/自动开始设置
+// ============================================================================
+
+const SettingsNumberRow: React.FC<{
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  unit?: string;
+  onChange: (v: number) => void;
+}> = ({ label, value, min, max, unit, onChange }) => (
+  <div className="flex items-center justify-between gap-3 py-1">
+    <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="flex items-center gap-1.5">
+      <Input
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, Math.round(n))));
+        }}
+        className="h-7 w-16 text-xs text-right"
+      />
+      {unit && <span className="w-8 text-[11px] text-muted-foreground">{unit}</span>}
+    </div>
+  </div>
+);
+
+const SettingsToggleRow: React.FC<{
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}> = ({ label, checked, onChange }) => (
+  <label className="flex cursor-pointer items-center justify-between gap-3 py-1">
+    <span className="text-xs text-muted-foreground">{label}</span>
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+    />
+  </label>
+);
+
+const PomodoroSettingsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { t } = useTranslation('todo');
+  const { settings, updateSettings } = usePomodoroStore();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full right-0 z-50 mb-2 w-64 rounded-[var(--radius-shell-control)] border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root,var(--background))] p-3 shadow-xl"
+      role="dialog"
+      aria-label={t('pomodoro.settings.title')}
+    >
+      <div className="mb-2 text-xs font-semibold text-foreground">
+        {t('pomodoro.settings.title')}
+      </div>
+      <SettingsNumberRow
+        label={t('pomodoro.settings.workDuration')}
+        value={Math.round(settings.workDuration / 60)}
+        min={1}
+        max={120}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ workDuration: v * 60 })}
+      />
+      <SettingsNumberRow
+        label={t('pomodoro.settings.shortBreak')}
+        value={Math.round(settings.shortBreak / 60)}
+        min={1}
+        max={60}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ shortBreak: v * 60 })}
+      />
+      <SettingsNumberRow
+        label={t('pomodoro.settings.longBreak')}
+        value={Math.round(settings.longBreak / 60)}
+        min={1}
+        max={90}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ longBreak: v * 60 })}
+      />
+      <SettingsNumberRow
+        label={t('pomodoro.settings.longBreakInterval')}
+        value={settings.longBreakInterval}
+        min={1}
+        max={12}
+        unit={t('pomodoro.settings.pomodorosUnit')}
+        onChange={(v) => updateSettings({ longBreakInterval: v })}
+      />
+      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
+      <SettingsToggleRow
+        label={t('pomodoro.settings.autoStartBreaks')}
+        checked={settings.autoStartBreaks}
+        onChange={(v) => updateSettings({ autoStartBreaks: v })}
+      />
+      <SettingsToggleRow
+        label={t('pomodoro.settings.autoStartWork')}
+        checked={settings.autoStartWork}
+        onChange={(v) => updateSettings({ autoStartWork: v })}
+      />
+    </div>
+  );
+};
 
 interface ModeInfo {
   label: string;
@@ -50,10 +176,12 @@ export const PomodoroPanel: React.FC = () => {
   } = usePomodoroStore();
 
   const [todayStats, setTodayStats] = useState<PomodoroTodayStats | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     getPomodoroTodayStats().then(setTodayStats).catch(() => {});
-  }, [completedPomodorosToday]);
+    // mode 变化（含中断停止）也刷新今日统计，保证中断计数及时显示
+  }, [completedPomodorosToday, mode]);
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
@@ -241,6 +369,21 @@ export const PomodoroPanel: React.FC = () => {
               <ArrowsOut size={14} />
             </NotionButton>
           )}
+
+          <div className="relative">
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={() => setSettingsOpen((v) => !v)}
+              title={t('pomodoro.settings.title')}
+              aria-label={t('pomodoro.settings.title')}
+              className="!h-7 !w-7"
+            >
+              <GearSix size={14} />
+            </NotionButton>
+            {settingsOpen && <PomodoroSettingsPopover onClose={() => setSettingsOpen(false)} />}
+          </div>
         </div>
       </div>
 

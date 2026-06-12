@@ -146,6 +146,30 @@ interface UseQuestionBankSessionReturn {
 
 const PAGE_SIZE = 50;
 
+// ========== 做题位置持久化（关闭重开恢复到上次题目） ==========
+const LAST_QUESTION_STORAGE_PREFIX = 'qbank:lastQuestion:';
+
+function readLastQuestionId(examId: string): string | null {
+  try {
+    return localStorage.getItem(`${LAST_QUESTION_STORAGE_PREFIX}${examId}`);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastQuestionId(examId: string, questionId: string | null): void {
+  try {
+    const key = `${LAST_QUESTION_STORAGE_PREFIX}${examId}`;
+    if (questionId) {
+      localStorage.setItem(key, questionId);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // localStorage 不可用时静默忽略（隐私模式等）
+  }
+}
+
 export function useQuestionBankSession({
   examId,
 }: UseQuestionBankSessionOptions): UseQuestionBankSessionReturn {
@@ -253,9 +277,12 @@ export function useQuestionBankSession({
       setLocalQuestions(questionsMap);
       setLocalOrder(order);
       setLocalStats(stats);
-      const nextCurrentQuestionId = previousQuestionId && questionsMap.has(previousQuestionId)
-        ? previousQuestionId
-        : (result.questions[0]?.id || null);
+      // ★ 位置恢复优先级：会话内已有位置 > 上次持久化位置 > 第一题
+      const persistedQuestionId = readLastQuestionId(currentExamId);
+      const nextCurrentQuestionId =
+        (previousQuestionId && questionsMap.has(previousQuestionId) && previousQuestionId) ||
+        (persistedQuestionId && questionsMap.has(persistedQuestionId) && persistedQuestionId) ||
+        (result.questions[0]?.id || null);
       setCurrentQuestionId(nextCurrentQuestionId);
       setPagination({ page: result.page, pageSize: result.page_size, total: result.total, hasMore: result.has_more });
 
@@ -440,7 +467,12 @@ export function useQuestionBankSession({
   // ========== ★ 本地化导航（含 practiceMode） ==========
   const navigate = useCallback((index: number) => {
     if (index >= 0 && index < localOrder.length) {
-      setCurrentQuestionId(localOrder[index] || null);
+      const questionId = localOrder[index] || null;
+      setCurrentQuestionId(questionId);
+      // ★ 持久化做题位置，重开恢复
+      if (examIdRef.current && questionId) {
+        writeLastQuestionId(examIdRef.current, questionId);
+      }
     }
   }, [localOrder]);
 

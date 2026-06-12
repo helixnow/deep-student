@@ -454,6 +454,117 @@ impl VfsResourceRepo {
     }
 
     // ========================================================================
+    // 未引用资源清扫
+    // ========================================================================
+
+    /// 清扫长期无引用的检索资源（retrieval）
+    ///
+    /// ## 背景
+    /// 检索资源（RAG/记忆/网页来源）由聊天 pipeline 创建（ref_count=0），
+    /// 消息保存后 +1，消息/会话删除后 -1。归零后资源行没有其他持有者，
+    /// 但 `resources` 表没有任何针对 retrieval 的删除路径，会无限累积。
+    ///
+    /// ## 宽限期
+    /// "创建 → 消息保存 increment" 之间存在 ref_count=0 的窗口，
+    /// 因此只清理 `updated_at` 早于 `grace_period_ms` 的行（increment/decrement
+    /// 都会刷新 updated_at，活跃资源不会被误删）。
+    ///
+    /// ## 级联
+    /// 同步删除可能存在的 `vfs_index_units`（segments 经 FK CASCADE 删除）。
+    /// resources 表的 DELETE 触发器会自动写入 change_log 墓碑，云同步可正常传播。
+    ///
+    /// ## 返回
+    /// 被清理的资源数量
+    pub fn cleanup_unreferenced_retrievals(
+        conn: &Connection,
+        grace_period_ms: i64,
+    ) -> VfsResult<u32> {
+        let cutoff = chrono::Utc::now().timestamp_millis() - grace_period_ms;
+
+        // 先删孤儿索引单元（retrieval 正常不进索引，此处为防御性清理）
+        conn.execute(
+            r#"
+            DELETE FROM vfs_index_units
+            WHERE resource_id IN (
+                SELECT id FROM resources
+                WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1
+            )
+            "#,
+            params![cutoff],
+        )?;
+
+        let deleted = conn.execute(
+            "DELETE FROM resources WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1",
+            params![cutoff],
+        )?;
+
+        if deleted > 0 {
+            info!(
+                "[VFS::ResourceRepo] Swept {} unreferenced retrieval resources",
+                deleted
+            );
+        }
+
+        Ok(deleted as u32)
+    }
+
+    /// 清扫孤儿笔记/导图资源（历史泄漏数据）
+    ///
+    /// ## 背景（审阅问题 S5）
+    /// 修复前的实现中：
+    /// - 笔记每次内容编辑都会创建新资源并切换指针，旧资源无人回收；
+    /// - 导图 purge 只递减主资源计数，资源行从不删除。
+    /// 本清扫器在启动时回收这些历史遗留的孤儿行（修复后的代码路径已即时清理）。
+    ///
+    /// ## 安全条件
+    /// - note 资源：无任何 notes 行引用；
+    /// - mindmap 资源：无任何 mindmaps / mindmap_versions 行引用；
+    /// - 均要求 `updated_at` 早于宽限期（避开"先建资源后建记录"的创建窗口）。
+    pub fn cleanup_orphan_note_mindmap_resources(
+        conn: &Connection,
+        grace_period_ms: i64,
+    ) -> VfsResult<u32> {
+        let cutoff = chrono::Utc::now().timestamp_millis() - grace_period_ms;
+
+        let note_filter = r#"
+            type = 'note'
+            AND updated_at < ?1
+            AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.resource_id = resources.id)
+        "#;
+        let mindmap_filter = r#"
+            type = 'mindmap'
+            AND updated_at < ?1
+            AND NOT EXISTS (SELECT 1 FROM mindmaps m WHERE m.resource_id = resources.id)
+            AND NOT EXISTS (SELECT 1 FROM mindmap_versions mv WHERE mv.resource_id = resources.id)
+        "#;
+
+        let mut total = 0u32;
+        for filter in [note_filter, mindmap_filter] {
+            conn.execute(
+                &format!(
+                    "DELETE FROM vfs_index_units WHERE resource_id IN (SELECT id FROM resources WHERE {})",
+                    filter
+                ),
+                params![cutoff],
+            )?;
+            let deleted = conn.execute(
+                &format!("DELETE FROM resources WHERE {}", filter),
+                params![cutoff],
+            )?;
+            total += deleted as u32;
+        }
+
+        if total > 0 {
+            info!(
+                "[VFS::ResourceRepo] Swept {} orphan note/mindmap resources",
+                total
+            );
+        }
+
+        Ok(total)
+    }
+
+    // ========================================================================
     // 按原始 ID 查询
     // ========================================================================
 
@@ -633,7 +744,7 @@ impl VfsResourceRepo {
         new_data: &str,
     ) -> VfsResult<bool> {
         // 1. 计算新哈希
-        let new_hash = Self::compute_hash(new_data);
+        let mut new_hash = Self::compute_hash(new_data);
 
         // 2. 获取当前资源检查哈希是否变化
         let current =
@@ -642,12 +753,30 @@ impl VfsResourceRepo {
                 id: resource_id.to_string(),
             })?;
 
-        if new_hash == current.hash {
+        // 加盐哈希命中（同一行此前已退避）也视为无变化
+        let salted_current = Self::compute_hash_with_salt(new_data, resource_id);
+        if new_hash == current.hash || salted_current == current.hash {
             debug!(
                 "[VFS::ResourceRepo] Resource {} data unchanged (hash: {})",
                 resource_id, new_hash
             );
             return Ok(false);
+        }
+
+        // ★ 2026-06-12（审阅问题 M 类）：hash 列有 UNIQUE 约束。
+        // 若新内容的无盐哈希已被其他资源行占用（内容恰好与他人相同），
+        // 直接 UPDATE 会触发 UNIQUE 冲突导致保存失败。
+        // 此时退避为加盐哈希（盐 = resource_id，全局唯一，不可能再冲突）。
+        let hash_taken: bool = conn
+            .query_row(
+                "SELECT 1 FROM resources WHERE hash = ?1 AND id != ?2",
+                params![&new_hash, resource_id],
+                |_| Ok(true),
+            )
+            .optional()?
+            .unwrap_or(false);
+        if hash_taken {
+            new_hash = salted_current;
         }
 
         // 3. 更新 data 和 hash

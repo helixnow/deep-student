@@ -1632,7 +1632,7 @@ impl VfsFolderRepo {
             match canonical_item_type.as_str() {
                 "note" => VfsNoteRepo::purge_note_with_conn(conn, &item.item_id)?,
                 "file" => VfsFileRepo::purge_file_with_conn(conn, blobs_dir, &item.item_id)?,
-                "exam" => VfsExamRepo::purge_exam_sheet_with_conn(conn, &item.item_id)?,
+                "exam" => VfsExamRepo::purge_exam_sheet_with_conn(conn, blobs_dir, &item.item_id)?,
                 "translation" => {
                     VfsTranslationRepo::purge_translation_with_conn(conn, &item.item_id)?
                 }

@@ -361,9 +361,20 @@ export async function create(path: string, options: DstuCreateOptions): Promise<
 /**
  * 更新资源内容
  */
-export async function update(path: string, content: string, resourceType: string): Promise<Result<DstuNode>> {
+export async function update(
+  path: string,
+  content: string,
+  resourceType: string,
+  options?: { expectedUpdatedAtMs?: number },
+): Promise<Result<DstuNode>> {
   try {
-    const result = await invoke<DstuNode>('dstu_update', { path, content, resourceType });
+    // ★ R3：携带乐观锁基线（毫秒时间戳），后端据此拒绝覆盖更新的版本
+    const result = await invoke<DstuNode>('dstu_update', {
+      path,
+      content,
+      resourceType,
+      expectedUpdatedAtMs: options?.expectedUpdatedAtMs ?? null,
+    });
     console.log(LOG_PREFIX, 'update() 返回新的 resourceHash:', {
       path,
       sourceId: result.id,

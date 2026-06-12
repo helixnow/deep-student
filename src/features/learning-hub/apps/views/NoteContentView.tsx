@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DotsSixVertical, SidebarSimple } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import type { CrepeEditorApi } from '@/components/crepe';
 
@@ -46,6 +47,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
   // ========== 右侧面板状态 ==========
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  // 移动端：上下文面板（大纲/标签）以 Sheet 形式呈现
+  const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const rightPanelRef = useRef<ImperativePanelHandle>(null);
 
   const toggleRightPanel = useCallback(() => {
@@ -65,12 +68,22 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 笔记内容状态
   // 🔧 修复：使用 null 表示"未加载"，空字符串表示"已加载但内容为空"
   const [content, setContent] = useState<string | null>(null);
+  // ★ R1 修复：记录 content 归属的笔记 ID。
+  // SWR 切换笔记时旧内容会短暂保留，若直接传给编辑器会把旧笔记内容
+  // 初始化进新笔记的草稿（数据污染）。归属不匹配时编辑器渲染 loading。
+  const [contentNoteId, setContentNoteId] = useState<string | null>(null);
   const [title, setTitle] = useState<string>(node.name || '');
   const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
   const editorApiRef = useRef<CrepeEditorApi | null>(null);
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
+
+  // ★ R3 修复：乐观锁基线。记录当前已知的笔记 updated_at（毫秒），
+  // 保存时传给后端做冲突检测；watch 事件中用于区分自身保存与外部更新。
+  const lastKnownUpdatedAtRef = useRef<number | null>(null);
+  // ★ R3：当前已落盘的内容快照（用于冲突时判断外部是否真的改了内容）
+  const persistedContentRef = useRef<string | null>(null);
 
   const noteId = node.id;
 
@@ -85,8 +98,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // ★ 优化体验：不再粗暴地 setContent(null)，保留旧内容（Stale-While-Revalidate），
     // 配合顶部的透明 Loading 指示器，实现无缝切换
 
-    // 通过 DSTU 获取笔记内容
-    const result = await dstu.getContent(node.path);
+    // ★ R3：并行获取最新节点（新鲜的 updatedAt/title/tags）与内容
+    const [nodeResult, result] = await Promise.all([
+      dstu.get(node.path),
+      dstu.getContent(node.path),
+    ]);
 
     // 🔧 修复：检查是否仍在加载同一笔记（防止竞态条件）
     if (loadingNoteIdRef.current !== currentNoteId) {
@@ -104,11 +120,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     }
 
     const contentStr = typeof result.value === 'string' ? result.value : '';
-    
+    const freshNode = nodeResult.ok ? nodeResult.value : null;
+
     setContent(contentStr);
-    setTitle(node.name || '');
+    setContentNoteId(currentNoteId);
+    persistedContentRef.current = contentStr;
+    lastKnownUpdatedAtRef.current = freshNode?.updatedAt ?? node.updatedAt ?? null;
+    setTitle(freshNode?.name ?? node.name ?? '');
     // 重新加载时同步最新的 tags（node 可能已更新）
-    setTags((node.metadata?.tags as string[]) || []);
+    setTags(((freshNode?.metadata?.tags ?? node.metadata?.tags) as string[]) || []);
     setIsLoading(false);
   }, [node.id, node.path, node.name]);
 
@@ -116,6 +136,61 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     void loadNoteContent();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.id]); // 只依赖 node.id，避免对象引用变化导致无限循环
+
+  // ========== 外部更新刷新（R3） ==========
+  // 从磁盘重新拉取最新内容并通知编辑器原位刷新（不重挂载）。
+  // forceApply=true：强制覆盖编辑器（冲突解决，外部版本胜出）；
+  // forceApply=false：仅在编辑器无未保存修改时应用（watch 静默同步）。
+  const onTitleChangeRef = useRef(onTitleChange);
+  onTitleChangeRef.current = onTitleChange;
+
+  const refreshFromDisk = useCallback(async (forceApply: boolean) => {
+    const currentNoteId = node.id;
+    const [nodeResult, contentResult] = await Promise.all([
+      dstu.get(node.path),
+      dstu.getContent(node.path),
+    ]);
+    // 防竞态：期间切换了笔记则放弃
+    if (loadingNoteIdRef.current !== null && loadingNoteIdRef.current !== currentNoteId) {
+      return;
+    }
+    if (nodeResult.ok && nodeResult.value) {
+      lastKnownUpdatedAtRef.current = nodeResult.value.updatedAt ?? lastKnownUpdatedAtRef.current;
+      setTitle(nodeResult.value.name || '');
+      setTags((nodeResult.value.metadata?.tags as string[]) || []);
+      onTitleChangeRef.current?.(nodeResult.value.name || '');
+    }
+    if (!contentResult.ok) {
+      return;
+    }
+    const latest = typeof contentResult.value === 'string' ? contentResult.value : '';
+    setContent(latest);
+    setContentNoteId(currentNoteId);
+    persistedContentRef.current = latest;
+    // 通知编辑器原位刷新（由 NotesCrepeEditor 监听，带脏检查）
+    window.dispatchEvent(new CustomEvent('notes:external-updated', {
+      detail: { noteId: currentNoteId, content: latest, force: forceApply },
+    }));
+  }, [node.id, node.path]);
+
+  const refreshFromDiskRef = useRef(refreshFromDisk);
+  refreshFromDiskRef.current = refreshFromDisk;
+
+  // ★ R3：监听 DSTU watch 事件，外部更新（其他面板/AI 工具/同步）时自动刷新
+  useEffect(() => {
+    const currentNoteId = node.id;
+    const unwatch = dstu.watch('*', (event) => {
+      if (event.type !== 'updated' || !event.node) return;
+      if (event.node.id !== currentNoteId) return;
+      const known = lastKnownUpdatedAtRef.current ?? 0;
+      const incoming = event.node.updatedAt ?? 0;
+      // 等于/早于已知基线的事件来自自身保存或重复派发，忽略
+      if (incoming <= known) return;
+      lastKnownUpdatedAtRef.current = incoming;
+      void refreshFromDiskRef.current(false);
+    });
+    return unwatch;
+  }, [node.id]);
 
   // ========== 保存回调 ==========
   // 内容保存
@@ -126,14 +201,67 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       showGlobalNotification('warning', t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记'));
       return;
     }
-    const result = await dstu.update(node.path, newContent, node.type);
-    if (!result.ok) {
-      console.error('[NoteContentView] ❌ 保存笔记失败:', result.error);
-      reportError(result.error, '保存笔记');
-      throw new Error(result.error.toUserMessage());
+    // ★ R3：携带乐观锁基线，防止静默覆盖其他位置的更新
+    const applySuccess = (updatedAt?: number) => {
+      setContent(newContent);
+      setContentNoteId(node.id);
+      persistedContentRef.current = newContent;
+      lastKnownUpdatedAtRef.current = updatedAt ?? lastKnownUpdatedAtRef.current;
+    };
+
+    const result = await dstu.update(node.path, newContent, node.type, {
+      expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
+    });
+    if (result.ok) {
+      applySuccess(result.value.updatedAt);
+      return;
     }
-    setContent(newContent);
-  }, [node.path, node.type, readOnly, t]);
+
+    if (result.error.code === VfsErrorCode.CONFLICT) {
+      // 冲突：先判断磁盘内容是否真的变化。
+      // 标题/标签更新（setMetadata）也会推进 updated_at，但内容基线未变，
+      // 此时以新基线重试即可，不应丢弃用户输入。
+      const [latestNode, latestContent] = await Promise.all([
+        dstu.get(node.path),
+        dstu.getContent(node.path),
+      ]);
+      const latestStr = latestContent.ok && typeof latestContent.value === 'string'
+        ? latestContent.value
+        : null;
+
+      if (
+        latestNode.ok && latestNode.value &&
+        latestStr !== null &&
+        latestStr === persistedContentRef.current
+      ) {
+        lastKnownUpdatedAtRef.current = latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current;
+        setTitle(latestNode.value.name || '');
+        setTags((latestNode.value.metadata?.tags as string[]) || []);
+        const retry = await dstu.update(node.path, newContent, node.type, {
+          expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
+        });
+        if (retry.ok) {
+          applySuccess(retry.value.updatedAt);
+          return;
+        }
+      }
+
+      // 真实内容冲突：外部已写入更新版本。以外部版本为准刷新编辑器，并明确告知用户。
+      console.warn('[NoteContentView] ⚠️ 保存冲突，刷新为最新版本:', result.error);
+      showGlobalNotification(
+        'warning',
+        t('notes:editor.conflict_refreshed', '笔记已在其他位置被修改，已刷新为最新版本')
+      );
+      await refreshFromDisk(true);
+      const conflictError = new Error(result.error.toUserMessage());
+      (conflictError as Error & { isNoteConflict?: boolean }).isNoteConflict = true;
+      throw conflictError;
+    }
+
+    console.error('[NoteContentView] ❌ 保存笔记失败:', result.error);
+    reportError(result.error, '保存笔记');
+    throw new Error(result.error.toUserMessage());
+  }, [node.id, node.path, node.type, readOnly, t, refreshFromDisk]);
 
   // 标题变更
   const handleTitleChange = useCallback(async (newTitle: string) => {
@@ -182,8 +310,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           });
       },
       [COMMAND_EVENTS.NOTES_TOGGLE_OUTLINE]: () => {
-        if (!isActive || isSmallScreen) return;
-        toggleRightPanel();
+        if (!isActive) return;
+        if (isSmallScreen) {
+          setMobilePanelOpen(prev => !prev);
+        } else {
+          toggleRightPanel();
+        }
       },
       [COMMAND_EVENTS.NOTES_INSERT_MATH]: () => {
         if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
@@ -217,6 +349,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 🔧 优化：Stale-While-Revalidate
   // 当有旧内容 (content !== null) 但正在加载新内容 (isLoading) 时，不要白屏，而是保留旧内容+顶部透明进度条
   
+  // ★ R1 修复：内容必须归属当前笔记才能传给编辑器。
+  // 切换笔记的过渡期（content 还是旧笔记的）渲染 loading，
+  // 防止旧笔记内容被初始化进新笔记的草稿并被自动保存。
+  const isContentReady = content !== null && contentNoteId === node.id;
+
   if (isLoading && content === null) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -257,28 +394,27 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full bg-primary animate-[indeterminate_1.5s_infinite_linear]" />
         </div>
       )}
-      {/* 右侧栏开关按钮 - 置于 PanelGroup 之上，避免被编辑器 sticky header 遮挡 */}
-      {!isSmallScreen && (
-        <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
-          <CommonTooltip
-            content={rightPanelVisible ? t('notes:context.collapse_panel', '收起侧边栏') : t('notes:context.expand_panel', '展开侧边栏')}
-            position="bottom"
+      {/* 右侧栏开关按钮 - 置于 PanelGroup 之上，避免被编辑器 sticky header 遮挡
+          移动端改为打开底部 Sheet（大纲/标签在小屏可达） */}
+      <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
+        <CommonTooltip
+          content={rightPanelVisible ? t('notes:context.collapse_panel', '收起侧边栏') : t('notes:context.expand_panel', '展开侧边栏')}
+          position="bottom"
+        >
+          <NotionButton
+            variant="ghost"
+            iconOnly
+            size="sm"
+            className={cn(
+              "h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors",
+              !rightPanelVisible && "text-muted-foreground/70"
+            )}
+            onClick={isSmallScreen ? () => setMobilePanelOpen(true) : toggleRightPanel}
           >
-            <NotionButton
-              variant="ghost"
-              iconOnly
-              size="sm"
-              className={cn(
-                "h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors",
-                !rightPanelVisible && "text-muted-foreground/70"
-              )}
-              onClick={toggleRightPanel}
-            >
-              <SidebarSimple size={14} />
-            </NotionButton>
-          </CommonTooltip>
-        </div>
-      )}
+            <SidebarSimple size={14} />
+          </NotionButton>
+        </CommonTooltip>
+      </div>
       <PanelGroup direction="horizontal" autoSaveId="learning-hub-note-layout" className="flex-1 min-h-0">
         <Panel
           defaultSize={80}
@@ -287,18 +423,24 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           order={1}
           className="flex flex-col min-h-0"
         >
-          <NotesCrepeEditor
-            initialContent={content}
-            initialTitle={title}
-            onSave={readOnly ? undefined : handleSave}
-            onTitleChange={readOnly ? undefined : handleTitleChange}
-            noteId={noteId}
-            className="flex-1 min-h-0"
-            readOnly={readOnly}
-            onEditorReady={(api) => {
-              editorApiRef.current = api;
-            }}
-          />
+          {isContentReady ? (
+            <NotesCrepeEditor
+              initialContent={content}
+              initialTitle={title}
+              onSave={readOnly ? undefined : handleSave}
+              onTitleChange={readOnly ? undefined : handleTitleChange}
+              noteId={noteId}
+              className="flex-1 min-h-0"
+              readOnly={readOnly}
+              onEditorReady={(api) => {
+                editorApiRef.current = api;
+              }}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <CircleNotch size={20} className="animate-spin text-muted-foreground/60" />
+            </div>
+          )}
         </Panel>
 
         {!isSmallScreen && (
@@ -332,7 +474,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   createdAt={node.createdAt}
                   updatedAt={node.updatedAt}
                   tags={tags}
-                  content={content || ''}
+                  content={isContentReady ? (content || '') : ''}
                   onTagsChange={readOnly ? undefined : handleTagsChange}
                 />
               )}
@@ -341,6 +483,22 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         )}
       </PanelGroup>
 
+      {/* 移动端：上下文面板 Sheet（大纲/标签/元信息） */}
+      {isSmallScreen && (
+        <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
+          <SheetContent side="right" className="w-[min(85vw,20rem)] p-0 flex flex-col">
+            <NotesContextPanel
+              noteId={noteId}
+              title={title}
+              createdAt={node.createdAt}
+              updatedAt={node.updatedAt}
+              tags={tags}
+              content={content || ''}
+              onTagsChange={readOnly ? undefined : handleTagsChange}
+            />
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   );
 };

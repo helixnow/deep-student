@@ -559,6 +559,9 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                 {t('mindmap:toolbar.style')}
               </AppMenuItem>
               <AppMenuSeparator />
+              <AppMenuItem icon={<BookOpen size={16} />} onClick={() => setReciteMode(!reciteMode)}>
+                {reciteMode ? t('mindmap:recite.exit', '退出背诵') : t('mindmap:recite.title')}
+              </AppMenuItem>
               <AppMenuItem icon={<MagnifyingGlass size={16} />} onClick={() => setShowSearch(!showSearch)}>
                 {t('mindmap:toolbar.search')}
               </AppMenuItem>

@@ -1269,6 +1269,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_agent_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_count_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_session_message_count
+            // 全局消息统计摘要（统计面板真实数据源）
+            ,crate::chat_v2::handlers::manage_session::chat_v2_get_message_summary
             ,crate::chat_v2::handlers::manage_session::chat_v2_delete_session
             // P1-3: 清空回收站（一次性删除所有已删除会话）
             ,crate::chat_v2::handlers::manage_session::chat_v2_empty_deleted_sessions
@@ -1302,6 +1304,7 @@ pub fn run() {
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）
             ,crate::chat_v2::handlers::canvas_handlers::chat_v2_canvas_edit_result
+            ,crate::chat_v2::handlers::canvas_handlers::chat_v2_canvas_edit_ack
             // 数据迁移命令（旧版 chat_messages 迁移到 Chat V2）
             ,crate::chat_v2::handlers::migration::chat_v2_check_migration_status
             ,crate::chat_v2::handlers::migration::chat_v2_migrate_legacy_chat
@@ -1473,6 +1476,12 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_completed
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
+            // 待办回收站命令
+            ,crate::vfs::todo_handlers::todo_list_deleted_lists
+            ,crate::vfs::todo_handlers::todo_restore_list
+            ,crate::vfs::todo_handlers::todo_purge_list
+            ,crate::vfs::todo_handlers::todo_purge_deleted_lists
+            ,crate::vfs::todo_handlers::todo_restore_item
             // 番茄钟命令
             ,crate::vfs::todo_handlers::pomodoro_create_record
             ,crate::vfs::todo_handlers::pomodoro_get_record
@@ -1940,6 +1949,55 @@ fn build_app_state(
                 Ok(_) => {}
                 Err(e) => {
                     tracing::warn!("[AppSetup] Unreferenced blob sweep failed: {}", e);
+                }
+            }
+
+            // ★ 2026-06-12（审阅问题 S2）：清扫长期无引用的检索资源行。
+            // 引用计数本身对称（消息保存 +1 / 消息·会话删除 -1），但归零后的
+            // retrieval 行没有任何删除路径，会在 resources 表无限累积。
+            // 24h 宽限期防止误删"已创建、消息尚未保存"窗口中的资源。
+            const RETRIEVAL_SWEEP_GRACE_MS: i64 = 24 * 60 * 60 * 1000;
+            match vfs_db_sweep.get_conn_safe() {
+                Ok(conn) => {
+                    match crate::vfs::repos::VfsResourceRepo::cleanup_unreferenced_retrievals(
+                        &conn,
+                        RETRIEVAL_SWEEP_GRACE_MS,
+                    ) {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(
+                                "[AppSetup] Swept {} unreferenced retrieval resources",
+                                count
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("[AppSetup] Retrieval resource sweep failed: {}", e);
+                        }
+                    }
+
+                    // ★ 2026-06-12（审阅问题 S5）：回收历史泄漏的孤儿笔记/导图资源。
+                    // 旧代码在笔记内容编辑、导图 purge 时遗留无人引用的资源行。
+                    match crate::vfs::repos::VfsResourceRepo::cleanup_orphan_note_mindmap_resources(
+                        &conn,
+                        RETRIEVAL_SWEEP_GRACE_MS,
+                    ) {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(
+                                "[AppSetup] Swept {} orphan note/mindmap resources",
+                                count
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("[AppSetup] Orphan note/mindmap sweep failed: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[AppSetup] Retrieval sweep skipped (no connection): {}",
+                        e
+                    );
                 }
             }
         });

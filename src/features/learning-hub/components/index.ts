@@ -5,8 +5,7 @@
 export { FolderTreeItem } from './FolderTreeItem';
 export type { FolderTreeItemProps } from './FolderTreeItem';
 
-export { FolderTreeView } from './FolderTreeView';
-export type { FolderTreeViewProps } from './FolderTreeView';
+// ★ 2026-06-12（审阅问题 FE-M6）：FolderTreeView 死代码已删除
 
 export { MultiSelectActionBar } from './MultiSelectActionBar';
 export type { MultiSelectActionBarProps } from './MultiSelectActionBar';

@@ -464,13 +464,6 @@ const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
  */
 const MAX_ALIVE_VIEWS = 8;
 
-interface AnnStatusResponse {
-  indexed: boolean;
-  items: number;
-  size_mb: number;
-  last_dump_at?: string;
-}
-
 /**
  * 学习资源顶栏面包屑导航
  */
@@ -800,11 +793,6 @@ function App() {
     void params;
   }, []);
 
-  // page-container 的 top 值：现在 content-body 有 position: relative，
-  // page-container 相对于 content-body 定位，content-body 已经在 content-header 之后了
-  // 所以 pageContainerTop 应该始终为 0，无论桌面端还是移动端
-  const pageContainerTop = 0;
-  
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
@@ -1855,42 +1843,6 @@ function App() {
   // ★ 分析模式已废弃（旧错题系统已移除）- handleCoreStateUpdate, handleSaveRequest, analysisHostProps 已移除
   // const renderAnalysisView = () => null; // 已废弃
 
-  const [annProgress, setAnnProgress] = useState<{ loading: boolean; status?: AnnStatusResponse | null }>({ loading: false, status: null });
-
-  // Poll ANN status on startup
-  useEffect(() => {
-    let pollInterval: ReturnType<typeof setTimeout> | undefined;
-    let cancelled = false;
-    
-    const checkAnnStatus = async () => {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        if (cancelled) return;
-        const status = await invoke<AnnStatusResponse>('get_ann_status');
-        if (cancelled) return;
-        const building = !status.indexed && status.items > 0;
-        setAnnProgress({ loading: building, status });
-        
-        if (building) {
-          // Keep polling if building index
-          pollInterval = setTimeout(checkAnnStatus, 2000);
-        }
-      } catch (e) {
-        // ANN 功能可能尚未启用，只在非预期错误时输出警告
-        const errMsg = String(e);
-        if (!errMsg.includes('not found') && !errMsg.includes('not implemented')) {
-          console.warn('ANN status check failed:', e);
-        }
-      }
-    };
-    
-    checkAnnStatus();
-    return () => {
-      cancelled = true;
-      if (pollInterval) clearTimeout(pollInterval);
-    };
-  }, []);
-
   const navigationShortcuts = getNavigationShortcutText();
   const commandPaletteTriggerRef = useRef<(() => void) | null>(null);
   const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
@@ -2623,33 +2575,6 @@ function App() {
 
       </div>
       {/* CmdK 由 Notes 模块内部管理 */}
-      {annProgress.loading && (
-        <div className="ann-progress-bar" style={{
-          position: 'fixed',
-          top: pageContainerTop,
-          left: 0,
-          right: 0,
-          height: '4px',
-          backgroundColor: 'hsl(var(--primary))',
-          zIndex: 10000,
-          animation: 'pulse 2s ease-in-out infinite'
-        }}>
-          <div style={{
-            position: 'absolute',
-            top: '4px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'hsl(var(--popover))',
-            color: 'hsl(var(--popover-foreground))',
-            padding: '4px 8px',
-            borderRadius: '0 0 4px 4px',
-            fontSize: '12px'
-          }}>
-            {t('common:ann_indexing', { count: annProgress.status?.items ?? 0 })}
-          </div>
-        </div>
-      )}
-      
       {/* 全局通知容器 */}
       <NotificationContainer />
 

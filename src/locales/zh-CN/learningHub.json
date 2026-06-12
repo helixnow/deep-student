@@ -10,6 +10,7 @@
     "copyTitle": "复制标题",
     "copyId": "复制 ID",
     "copy": "复制",
+    "moveTo": "移动到…",
     "copied": "已复制到剪贴板",
     "newNote": "新建笔记",
     "newExam": "新建题目集",
@@ -353,6 +354,20 @@
     "hiddenFolders": "{{count}} 个隐藏文件夹"
   },
   "finder": {
+    "childCount": "{{count}} 项",
+    "matchFromIndex": "[索引]",
+    "memoryMeta": {
+      "type": {
+        "fact": "事实",
+        "study": "学习",
+        "note": "笔记"
+      },
+      "purpose": {
+        "internalized": "内化",
+        "supplementary": "补充",
+        "systemic": "系统"
+      }
+    },
     "toolbar": {
       "back": "后退",
       "forward": "前进",
@@ -436,7 +451,8 @@
       "importSuccess": "已导入 {{count}} 个文件",
       "importPartial": "导入 {{success}} 个成功，{{failed}} 个失败",
       "importFailed": "文件导入失败",
-      "notAllowedHere": "当前视图不支持拖入文件"
+      "notAllowedHere": "当前视图不支持拖入文件",
+      "importing": "正在导入 {{done}} / {{total}}"
     },
     "markdownImport": {
       "selectFiles": "选择 Markdown 文件",
@@ -508,6 +524,15 @@
     "appPanel": {
       "hint": "已打开应用面板",
       "close": "关闭"
+    },
+    "sort": {
+      "title": "排序方式",
+      "name": "按名称",
+      "updatedAt": "按修改时间",
+      "createdAt": "按创建时间",
+      "type": "按类型",
+      "asc": "升序",
+      "desc": "降序"
     }
   },
   "quickCreate": {
@@ -601,7 +626,10 @@
     "root_create_success": "记忆根文件夹已创建",
     "root_create_error": "创建失败",
     "defaultRootTitle": "记忆",
-    "delete_confirm": "确定要删除这条记忆吗？"
+    "delete_confirm": "确定要删除这条记忆吗？",
+    "type_fact": "事实",
+    "type_study": "学习",
+    "type_note": "笔记"
   },
   "desktop": {
     "title": "桌面",

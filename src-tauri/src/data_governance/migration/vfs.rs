@@ -571,6 +571,14 @@ pub const V20260612_TODO_INSERT_SELF_REF_CHECK: MigrationDef = MigrationDef::new
 )
 .idempotent();
 
+/// V20260613: 番茄钟裸时间戳转 UTC + pomodoro_records 枚举/数值校验触发器
+pub const V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS: MigrationDef = MigrationDef::new(
+    20260613,
+    "pomodoro_timestamps_and_constraints",
+    include_str!("../../../migrations/vfs/V20260613__pomodoro_timestamps_and_constraints.sql"),
+)
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -609,6 +617,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260610_FIX_QUESTIONS_FTS_TRIGGERS,
     V20260611_ADD_LANCE_ORPHAN_QUEUE,
     V20260612_TODO_INSERT_SELF_REF_CHECK,
+    V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS,
 ];
 
 /// VFS 迁移集合
@@ -710,7 +719,8 @@ mod tests {
         // + V20260526 (add_blob_metadata_sync) + V20260527 (add_asset_deletion_queue)
         // + V20260610 (fix_questions_fts_triggers) + V20260611 (add_lance_orphan_queue)
         // + V20260612 (todo_insert_self_ref_check)
-        assert_eq!(VFS_MIGRATION_SET.count(), 36);
+        // + V20260613 (pomodoro_timestamps_and_constraints)
+        assert_eq!(VFS_MIGRATION_SET.count(), 37);
     }
 
     #[test]
@@ -805,6 +815,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260612);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260613);
     }
 }

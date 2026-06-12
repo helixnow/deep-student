@@ -1222,17 +1222,17 @@ impl SyncManager {
             if let Some(bytes) = bytes {
                 // [P0-2] 透明解密：data_governance feature 下走 decode_payload；
                 // 老明文数据 + 加密数据都由 decode_payload 自动识别 DSBK 魔数分流
-                let decoded = match self.decode_payload(&bytes) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!(
-                            "[sync] 跳过无法解密的设备清单: key={}, error={}",
-                            file.key,
-                            e
-                        );
-                        continue;
-                    }
-                };
+                //
+                // [P2 fail-close] 解密失败必须硬错误，与变更文件路径口径一致。
+                // 此前静默 continue 会让密码配错的设备把云端视为近空实例：
+                // data_version 比较、prune gap 判断、合并基线全部失真，并可能
+                // 以错误密码开始推送。损坏 JSON（非加密问题）仍保留跳过。
+                let decoded = self.decode_payload(&bytes).map_err(|e| {
+                    SyncError::Database(format!(
+                        "设备清单无法解密，已停止同步（请检查加密密码）: {} ({})",
+                        file.key, e
+                    ))
+                })?;
                 let manifest = match serde_json::from_slice::<SyncManifest>(&decoded) {
                     Ok(v) => v,
                     Err(e) => {
@@ -1374,17 +1374,15 @@ impl SyncManager {
             else {
                 continue;
             };
-            let decoded = match self.decode_payload(&bytes) {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!(
-                        "[sync] 跳过无法解密的设备清单: key={}, error={}",
-                        file.key,
-                        e
-                    );
-                    continue;
-                }
-            };
+            // [P2 fail-close] 解密失败必须硬错误：此函数支撑 prune 安全边界
+            // （活跃消费者游标下界）与 published_max_seq 判定。静默跳过会把
+            // 密码不符的设备从安全计算中剔除，可能误删其尚未消费的变更文件。
+            let decoded = self.decode_payload(&bytes).map_err(|e| {
+                SyncError::Database(format!(
+                    "设备清单无法解密，已停止同步（请检查加密密码）: {} ({})",
+                    file.key, e
+                ))
+            })?;
             match serde_json::from_slice::<SyncManifest>(&decoded) {
                 Ok(manifest) => {
                     manifests.insert(device_id.to_string(), manifest);
@@ -5297,7 +5295,7 @@ impl SyncManager {
                 }
             }
 
-            Self::recompute_derived_ref_counts(conn)?;
+            Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
             Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
 
@@ -5343,6 +5341,43 @@ impl SyncManager {
         );
 
         Ok(result)
+    }
+
+    /// [P3 perf] 仅当本批变更触及引用相关表时才重算派生计数。
+    /// 大多数同步批次只动 notes/chat 等无关表，跳过两次全表聚合扫描。
+    fn recompute_derived_ref_counts_if_relevant(
+        conn: &Connection,
+        changes: &[SyncChangeWithData],
+    ) -> Result<(), SyncError> {
+        if !Self::changes_affect_ref_counts(conn, changes) {
+            return Ok(());
+        }
+        Self::recompute_derived_ref_counts(conn)
+    }
+
+    /// 判断变更批次是否触及 ref_count 的来源表或目标表：
+    /// - `resources` / `blobs` 本身（包括 LWW 覆盖写入的 ref_count 旧值需要纠正）
+    /// - 任何带 `resource_id` / `blob_hash` / `compressed_blob_hash` /
+    ///   `image_blob_hash` 列的引用方表
+    fn changes_affect_ref_counts(conn: &Connection, changes: &[SyncChangeWithData]) -> bool {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for change in changes {
+            let table = change.table_name.as_str();
+            if !seen.insert(table) {
+                continue;
+            }
+            if table == "resources" || table == "blobs" {
+                return true;
+            }
+            if Self::table_has_column(conn, table, "resource_id")
+                || Self::table_has_column(conn, table, "blob_hash")
+                || Self::table_has_column(conn, table, "compressed_blob_hash")
+                || Self::table_has_column(conn, table, "image_blob_hash")
+            {
+                return true;
+            }
+        }
+        false
     }
 
     fn recompute_derived_ref_counts(conn: &Connection) -> Result<(), SyncError> {
@@ -5418,25 +5453,48 @@ impl SyncManager {
             ));
         }
 
+        // [P2 churn] WHERE 限定只更新值实际变化的行：SQLite 对值未变的行同样
+        // 触发 AFTER UPDATE 触发器，无条件全表 UPDATE 会在每轮同步向
+        // __change_log 注入全表行数的日志（随后还要标记+归档），并在
+        // BEGIN IMMEDIATE 排他事务内放大锁窗口。
         if subqueries.is_empty() {
-            conn.execute("UPDATE resources SET ref_count = 0", [])
-                .map_err(|e| {
-                    SyncError::Database(format!("重算 resources.ref_count 失败: {}", e))
-                })?;
+            conn.execute(
+                "UPDATE resources SET ref_count = 0 WHERE ref_count IS NOT 0",
+                [],
+            )
+            .map_err(|e| SyncError::Database(format!("重算 resources.ref_count 失败: {}", e)))?;
             return Ok(());
         }
 
-        let sql = format!(
+        let refs_union = subqueries.join(" UNION ALL ");
+        // [P3 perf] UPDATE FROM（SQLite >= 3.33，bundled 3.42）单趟 GROUP BY 聚合；
+        // 相关子查询版本对每行执行两次 UNION 全扫（SET + WHERE 各一次），大表退化为
+        // O(N×M)。UPDATE FROM 是 inner-join 语义，引用归零的行需第二条语句补清零。
+        let sql_update = format!(
             "UPDATE resources
-             SET ref_count = (
-                 SELECT COUNT(*)
-                 FROM ({}) refs
-                 WHERE refs.resource_id = resources.id
-             )",
-            subqueries.join(" UNION ALL ")
+             SET ref_count = rc.cnt
+             FROM (
+                 SELECT resource_id, COUNT(*) AS cnt
+                 FROM ({refs_union}) refs
+                 WHERE refs.resource_id IS NOT NULL
+                 GROUP BY resource_id
+             ) rc
+             WHERE resources.id = rc.resource_id
+               AND resources.ref_count IS NOT rc.cnt"
         );
-        conn.execute(&sql, [])
+        conn.execute(&sql_update, [])
             .map_err(|e| SyncError::Database(format!("重算 resources.ref_count 失败: {}", e)))?;
+        let sql_zero = format!(
+            "UPDATE resources
+             SET ref_count = 0
+             WHERE ref_count IS NOT 0
+               AND id NOT IN (
+                   SELECT refs.resource_id FROM ({refs_union}) refs
+                   WHERE refs.resource_id IS NOT NULL
+               )"
+        );
+        conn.execute(&sql_zero, [])
+            .map_err(|e| SyncError::Database(format!("清零 resources.ref_count 失败: {}", e)))?;
         Ok(())
     }
 
@@ -5464,23 +5522,40 @@ impl SyncManager {
             );
         }
 
+        // [P2 churn] 同 recompute_resource_ref_counts：只更新值实际变化的行。
         if subqueries.is_empty() {
-            conn.execute("UPDATE blobs SET ref_count = 0", [])
+            conn.execute("UPDATE blobs SET ref_count = 0 WHERE ref_count IS NOT 0", [])
                 .map_err(|e| SyncError::Database(format!("重算 blobs.ref_count 失败: {}", e)))?;
             return Ok(());
         }
 
-        let sql = format!(
+        let refs_union = subqueries.join(" UNION ALL ");
+        // [P3 perf] 同 recompute_resource_ref_counts：UPDATE FROM 单趟聚合。
+        let sql_update = format!(
             "UPDATE blobs
-             SET ref_count = (
-                 SELECT COUNT(*)
-                 FROM ({}) refs
-                 WHERE refs.blob_hash = blobs.hash
-             )",
-            subqueries.join(" UNION ALL ")
+             SET ref_count = rc.cnt
+             FROM (
+                 SELECT blob_hash, COUNT(*) AS cnt
+                 FROM ({refs_union}) refs
+                 WHERE refs.blob_hash IS NOT NULL
+                 GROUP BY blob_hash
+             ) rc
+             WHERE blobs.hash = rc.blob_hash
+               AND blobs.ref_count IS NOT rc.cnt"
         );
-        conn.execute(&sql, [])
+        conn.execute(&sql_update, [])
             .map_err(|e| SyncError::Database(format!("重算 blobs.ref_count 失败: {}", e)))?;
+        let sql_zero = format!(
+            "UPDATE blobs
+             SET ref_count = 0
+             WHERE ref_count IS NOT 0
+               AND hash NOT IN (
+                   SELECT refs.blob_hash FROM ({refs_union}) refs
+                   WHERE refs.blob_hash IS NOT NULL
+               )"
+        );
+        conn.execute(&sql_zero, [])
+            .map_err(|e| SyncError::Database(format!("清零 blobs.ref_count 失败: {}", e)))?;
         Ok(())
     }
 
@@ -5575,7 +5650,7 @@ impl SyncManager {
                 }
             }
 
-            Self::recompute_derived_ref_counts(conn)?;
+            Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
             Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
             Ok(())
@@ -5898,7 +5973,7 @@ impl SyncManager {
                 }
             }
 
-            Self::recompute_derived_ref_counts(conn)?;
+            Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
             Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
 
@@ -8444,13 +8519,16 @@ impl SyncManager {
             .map_err(|e| SyncError::Network(format!("获取资产清单失败: {}", e)))?
         {
             Some(bytes) => {
-                let decoded = match self.decode_payload(&bytes) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        tracing::warn!("[sync] 资产清单解密失败，忽略并继续: {}", e);
-                        return Ok(AssetDirsManifest::default());
-                    }
-                };
+                // [P2 fail-close] 解密失败必须硬错误，与设备清单/变更文件口径一致。
+                // 此前返回空清单会让密码配错的设备把云端当成空：全部资产文件
+                // 与资产清单被错误密码重新加密覆盖，其他设备从此无法解密。
+                // JSON 损坏（非密码问题）仍保留跳过——清单可由下一轮上传重建。
+                let decoded = self.decode_payload(&bytes).map_err(|e| {
+                    SyncError::Database(format!(
+                        "资产清单无法解密，已停止同步（请检查加密密码）: {}",
+                        e
+                    ))
+                })?;
                 match serde_json::from_slice::<AssetDirsManifest>(&decoded) {
                     Ok(v) => Ok(v),
                     Err(e) => {
@@ -8739,6 +8817,77 @@ impl SyncManager {
             .await
     }
 
+    /// [P1 防数据丢失] 查询本地 vfs.db，返回给定 hash 集合中仍有 `ref_count > 0`
+    /// 引用的 blob hash。
+    ///
+    /// vfs.db 路径按生产布局从 blobs 目录推导（`{active_dir}/vfs_blobs` →
+    /// `{active_dir}/databases/vfs.db`）。数据库/表不存在（如纯文件级测试环境）
+    /// 或查询失败时返回空集合——防线退化为原有行为，绝不阻塞同步。
+    fn blob_hashes_with_local_refs<'a>(
+        blobs_dir: &std::path::Path,
+        hashes: impl Iterator<Item = &'a str>,
+    ) -> HashSet<String> {
+        let mut referenced = HashSet::new();
+        let Some(active_dir) = blobs_dir.parent() else {
+            return referenced;
+        };
+        let vfs_db = active_dir.join("databases").join("vfs.db");
+        if !vfs_db.exists() {
+            return referenced;
+        }
+        let conn = match Connection::open(&vfs_db) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    "[sync] 无法打开 vfs.db 检查 blob 引用（防线跳过）: {}",
+                    e
+                );
+                return referenced;
+            }
+        };
+        let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='blobs')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !table_exists {
+            return referenced;
+        }
+        // [P3 perf] 分块 IN 批量查询（999 为 SQLite 默认绑定参数上限）
+        let all_hashes: Vec<&str> = hashes.collect();
+        for chunk in all_hashes.chunks(999) {
+            let placeholders = vec!["?"; chunk.len()].join(",");
+            let sql = format!(
+                "SELECT hash FROM blobs WHERE ref_count > 0 AND hash IN ({placeholders})"
+            );
+            let mut stmt = match conn.prepare(&sql) {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("[sync] 查询 blobs.ref_count 失败（防线跳过）: {}", e);
+                    return referenced;
+                }
+            };
+            let rows = stmt.query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                row.get::<_, String>(0)
+            });
+            match rows {
+                Ok(rows) => {
+                    for hash in rows.flatten() {
+                        referenced.insert(hash);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[sync] 扫描 blobs.ref_count 失败（防线跳过）: {}", e);
+                    return referenced;
+                }
+            }
+        }
+        referenced
+    }
+
     pub async fn sync_vfs_blobs_with_tombstones_and_progress(
         &self,
         storage: &dyn CloudStorage,
@@ -8756,8 +8905,32 @@ impl SyncManager {
             })
             .await?;
         if !tombstones.entries.is_empty() {
+            // [P1 防数据丢失] 第三道防线：本地 vfs.db 仍有 ref_count>0 引用的 blob，
+            // 拒绝消费其 tombstone（本地引用胜过远端删除）。
+            //
+            // 竞态场景：设备 A 删除 blob 最后引用并发布 tombstone；设备 B 在消费该
+            // tombstone 之前重新引用了相同内容（内容寻址去重路径不重写文件、不更新
+            // mtime，mtime 防线失效）。若无此防线，B 的本地文件 + 云端文件都会被删，
+            // 而 B 的行级引用照常同步，内容在全部设备上永久丢失。
+            //
+            // 被跳过的 tombstone 不进入 applied 集合（不摘 manifest 条目）；若云端
+            // 文件/条目已被其他消费方删除，后续上传阶段会因"本地有文件、云端清单无
+            // 条目"自动重新上传，实现 blob 复活。watermark 照常推进，本地引用存续
+            // 期间该删除意图被永久否决。
+            let locally_referenced = Self::blob_hashes_with_local_refs(
+                blobs_dir,
+                tombstones.entries.keys().map(String::as_str),
+            );
             let mut effective_tombstones = tombstones.clone();
             effective_tombstones.entries.retain(|hash, entry| {
+                if locally_referenced.contains(hash.as_str()) {
+                    tracing::warn!(
+                        "[sync] 拒绝消费 blob tombstone（本地仍有引用，blob 将在上传阶段复活）: {} deleted_at={}",
+                        hash,
+                        entry.deleted_at
+                    );
+                    return false;
+                }
                 let keep = match cloud_manifest.entries.get(hash) {
                     Some(cloud) => {
                         let cloud_updated_at = if cloud.updated_at.trim().is_empty() {

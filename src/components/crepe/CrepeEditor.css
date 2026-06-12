@@ -1506,3 +1506,15 @@
 .crepe-editor-wrapper .ProseMirror-focused .ProseMirror-gapcursor {
   display: block;
 }
+
+/* ===== 查找高亮（FindReplacePanel） ===== */
+.crepe-editor-wrapper .notes-search-match {
+  background-color: hsl(48 96% 53% / 0.35);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px hsl(48 96% 53% / 0.25);
+}
+
+.crepe-editor-wrapper .notes-search-match--active {
+  background-color: hsl(32 95% 50% / 0.55);
+  box-shadow: 0 0 0 1.5px hsl(32 95% 44% / 0.7);
+}

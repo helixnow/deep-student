@@ -97,6 +97,27 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     expect(syncSettingsSection).not.toContain("onComplete: () =>");
   });
 
+  it("passes the user-selected merge strategy instead of hardcoding keep_latest", () => {
+    expect(syncSettingsSection).toContain(
+      "useState<MergeStrategy>('keep_latest')",
+    );
+    expect(syncSettingsSection).toContain(
+      "runSyncWithProgress(direction, cloudConfig, syncStrategy)",
+    );
+    expect(syncSettingsSection).not.toContain(
+      "runSyncWithProgress(direction, cloudConfig, 'keep_latest')",
+    );
+    // 策略选择器必须暴露全部 4 种策略
+    for (const strategy of [
+      "'keep_latest'",
+      "'keep_local'",
+      "'use_cloud'",
+      "'manual'",
+    ]) {
+      expect(syncSettingsSection).toContain(`value: ${strategy}`);
+    }
+  });
+
   it("exposes quarantine management through Tauri, API, and settings UI", () => {
     expect(tauriLib).toContain("data_governance_list_quarantine");
     expect(tauriLib).toContain("data_governance_retry_quarantine");

@@ -743,6 +743,37 @@ pub async fn chat_v2_session_message_count(
     Ok(count)
 }
 
+/// 全局消息统计摘要（供统计面板展示真实数据）
+#[derive(serde::Serialize)]
+pub struct MessageSummary {
+    pub total_messages: u32,
+    pub user_messages: u32,
+    pub assistant_messages: u32,
+}
+
+/// 统计全部会话的消息总量与角色分布
+#[tauri::command]
+pub async fn chat_v2_get_message_summary(
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<MessageSummary, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let (total, user, assistant): (u32, u32, u32) = conn
+        .query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END), 0)
+             FROM chat_v2_messages",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|e| format!("Failed to summarize messages: {}", e))?;
+    Ok(MessageSummary {
+        total_messages: total,
+        user_messages: user,
+        assistant_messages: assistant,
+    })
+}
+
 // ============================================================================
 // 内部辅助函数（调用 ChatV2Repo 实现）
 // ============================================================================

@@ -161,9 +161,49 @@ pub fn todo_toggle_list_favorite(app: AppHandle, list_id: String) -> Result<VfsT
 }
 
 #[tauri::command]
-pub fn todo_ensure_inbox(app: AppHandle) -> Result<VfsTodoList, String> {
+pub fn todo_ensure_inbox(app: AppHandle, title: Option<String>) -> Result<VfsTodoList, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::ensure_default_inbox(&vfs_db).map_err(|e| e.to_string())
+    VfsTodoRepo::ensure_default_inbox_with_title(&vfs_db, title.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// 回收站命令
+// ============================================================================
+
+#[tauri::command]
+pub fn todo_list_deleted_lists(
+    app: AppHandle,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<VfsTodoList>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::list_deleted_todo_lists(&vfs_db, limit.unwrap_or(100), offset.unwrap_or(0))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_restore_list(app: AppHandle, list_id: String) -> Result<VfsTodoList, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::restore_todo_list(&vfs_db, &list_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_list(app: AppHandle, list_id: String) -> Result<(), String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_todo_list(&vfs_db, &list_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_deleted_lists(app: AppHandle) -> Result<usize, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_deleted_todo_lists(&vfs_db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_restore_item(app: AppHandle, item_id: String) -> Result<VfsTodoItem, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::restore_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
 }
 
 // ============================================================================

@@ -143,7 +143,8 @@
     "saving": "Saving...",
     "saved_at": "Saved {{time}}",
     "auto_save_enabled": "Auto save enabled",
-    "deleted_at": "Deleted at"
+    "deleted_at": "Deleted at",
+    "char_count": "{{count}} chars"
   },
   "versions": {
     "title": "Version History",
@@ -262,7 +263,15 @@
     "replaceFailed": "Replace failed",
     "editorUnavailable": "Editor not available",
     "replaceMany": "Replaced {{count}} occurrences",
-    "replaceNone": "Nothing to replace"
+    "replaceNone": "Nothing to replace",
+    "findPlaceholder": "Find…",
+    "replacePlaceholder": "Replace with…",
+    "replace": "Replace",
+    "replaceAll": "All",
+    "prev": "Previous (Shift+Enter)",
+    "next": "Next (Enter)",
+    "showReplace": "Show replace",
+    "hideReplace": "Hide replace"
   },
   "mentions": {
     "loading": "Loading...",
@@ -322,7 +331,8 @@
     "reading_mode": "Reading Mode",
     "editing_mode": "Editing Mode",
     "reading_mode_on": "Entered reading mode",
-    "reading_mode_off": "Entered editing mode"
+    "reading_mode_off": "Entered editing mode",
+    "find_replace": "Find & Replace"
   },
   "search": {
     "placeholder": "Search notes...",
@@ -438,6 +448,7 @@
     },
     "image_upload": {
       "save_failed": "Could not save the image to this note: {{error}}",
+      "not_persisted": "The image could not be saved permanently and is only visible in this session. Please re-insert it after checking.",
       "drop_failed": "Drag-and-drop image insertion failed: {{error}}",
       "paste_failed": "Pasted image processing failed: {{error}}",
       "success": "Image inserted",
@@ -448,6 +459,7 @@
       "drop_overlay_title": "Drop to insert image",
       "drop_overlay_hint": "Supports PNG, JPG, GIF, WebP and more"
     },
+    "conflict_refreshed": "This note was modified elsewhere and has been refreshed to the latest version",
     "save_status": {
       "saved": "Saved",
       "saving": "Saving...",
@@ -906,6 +918,8 @@
     "create_failed": "Create failed",
     "save_success": "Saved successfully",
     "save_failed": "Save failed",
+    "auto_save_failed": "Auto-save failed. Please try saving manually (Ctrl+S) or copy your content somewhere safe.",
+    "content_too_large": "Note content exceeds the 1MB limit and cannot be saved. Please trim the content or split it into multiple notes.",
     "title_save_failed": "Content saved, but title update failed",
     "update_failed": "Update failed",
     "rename_failed": "Rename failed",

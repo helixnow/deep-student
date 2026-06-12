@@ -6,14 +6,12 @@
 
 // Prompt 4: 访达侧栏容器
 export { LearningHubSidebar } from './LearningHubSidebar';
-export { LearningHubToolbar } from './LearningHubToolbar';
-export { LearningHubActionBar } from './LearningHubActionBar';
 // 全屏页面组件
 export { LearningHubPage } from './LearningHubPage';
+// ★ 2026-06-12（审阅问题 FE-M6）：移除死代码导出
+// （LearningHubToolbar/LearningHubActionBar/ResourceGridView/FolderTreeView 已删除）
 export type {
   LearningHubSidebarProps,
-  LearningHubToolbarProps,
-  LearningHubActionBarProps,
   WorkMode,
   ViewMode,
   DataView,
@@ -27,13 +25,6 @@ export {
   DATA_VIEW_CONFIG,
   VIEW_MODE_CONFIG,
 } from './types';
-
-// 其他现有组件
-export {
-  ResourceGridView,
-  type ResourceGridViewProps,
-  type ResourceGridItemProps,
-} from './ResourceGridView';
 
 export {
   useReferenceToChat,

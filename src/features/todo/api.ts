@@ -41,8 +41,32 @@ export async function toggleTodoListFavorite(listId: string): Promise<TodoList> 
   return invoke('todo_toggle_list_favorite', { listId });
 }
 
-export async function ensureInbox(): Promise<TodoList> {
-  return invoke('todo_ensure_inbox');
+export async function ensureInbox(title?: string): Promise<TodoList> {
+  return invoke('todo_ensure_inbox', { title });
+}
+
+// ============================================================================
+// Recycle Bin API
+// ============================================================================
+
+export async function listDeletedTodoLists(limit = 100, offset = 0): Promise<TodoList[]> {
+  return invoke('todo_list_deleted_lists', { limit, offset });
+}
+
+export async function restoreTodoList(listId: string): Promise<TodoList> {
+  return invoke('todo_restore_list', { listId });
+}
+
+export async function purgeTodoList(listId: string): Promise<void> {
+  return invoke('todo_purge_list', { listId });
+}
+
+export async function purgeDeletedTodoLists(): Promise<number> {
+  return invoke('todo_purge_deleted_lists');
+}
+
+export async function restoreTodoItem(itemId: string): Promise<TodoItem> {
+  return invoke('todo_restore_item', { itemId });
 }
 
 // ============================================================================

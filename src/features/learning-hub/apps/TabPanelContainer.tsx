@@ -88,7 +88,12 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
         {/* 左侧面板：当前活跃 tab */}
         <Panel defaultSize={50} minSize={25} id="split-left" order={1}>
           <div className="relative h-full">
-            {tabs.map(tab => renderTabPanel(tab, tab.tabId === activeTabId && tab.tabId !== splitView.rightTabId))}
+            {/* ★ Y3 修复：右侧分屏 tab 不在左侧重复渲染。
+                之前左侧 map 中包含右侧 tab 的隐藏实例，导致同一资源双实例
+                （重复加载、重复事件监听、编辑器互相干扰） */}
+            {tabs
+              .filter(tab => tab.tabId !== splitView.rightTabId)
+              .map(tab => renderTabPanel(tab, tab.tabId === activeTabId))}
           </div>
         </Panel>
 

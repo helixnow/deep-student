@@ -735,3 +735,21 @@ html.is-macos .window-controls {
 html.is-macos .window-button:last-child {
   border-top-right-radius: 12px !important;
 }
+
+/* =================== A11Y: 动画降级（WCAG 2.3.3） =================== */
+
+/*
+ * 用户在系统中开启"减弱动态效果"时，全局缩短动画/过渡到近乎瞬时。
+ * 不使用 0s：保留 transitionend/animationend 事件语义，避免依赖
+ * 这些事件的组件（如关闭动画后卸载的弹层）逻辑被破坏。
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

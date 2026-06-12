@@ -34,6 +34,11 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 const SAVING_INDICATOR_DELAY_MS = 400;
+/** 与后端 dstu_update 的 MAX_CONTENT_SIZE 保持一致（1MB） */
+const MAX_NOTE_CONTENT_BYTES = 1024 * 1024;
+
+/** 字数统计：非空白字符数（中文场景下与用户"字数"心智一致） */
+const countNoteChars = (markdown: string): number => markdown.replace(/\s/g, '').length;
 
 type PendingSavePayload = {
   noteId: string;
@@ -114,6 +119,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // Find & Replace 状态
   const [isFindReplaceOpen, setIsFindReplaceOpen] = useState(false);
 
+  // 字数统计（非空白字符数，防抖更新）
+  const [charCount, setCharCount] = useState(0);
+
+  // 切换笔记/内容加载后初始化字数（依赖 id 而非 content：编辑中的字数由 handleChange 防抖更新）
+  const activeNoteKey = isDstuMode ? dstuNoteId : active?.id;
+  useEffect(() => {
+    const value = isDstuMode ? (initialContent ?? '') : (active?.content_md ?? '');
+    setCharCount(countNoteChars(value));
+  }, [activeNoteKey, isDstuMode, initialContent]);
+
   // 阅读模式状态（防止手机滑动时弹出键盘）
   const [readingMode, setReadingMode] = useState(false);
   const effectiveReadOnly = readOnly || readingMode;
@@ -136,10 +151,28 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     noteIdRef.current = noteId ?? null;
   }, [noteId]);
 
+  // ★ Y8 修复：超限提示去重（同一笔记只提示一次，保存成功后复位）
+  const oversizeNotifiedRef = useRef<Set<string>>(new Set());
+
   // ========== 保存逻辑（支持 DSTU 模式） ==========
   const executeSave = useCallback(async ({ noteId: targetNoteId, content }: PendingSavePayload) => {
     if (readOnly) {
       return;
+    }
+    // ★ Y8 修复：前端预检内容大小，与后端 1MB 限制对齐。
+    // 之前超限内容只会在后端静默失败并无限重试，用户无感知。
+    if (content.length > MAX_NOTE_CONTENT_BYTES / 4 &&
+        new TextEncoder().encode(content).length > MAX_NOTE_CONTENT_BYTES) {
+      if (!oversizeNotifiedRef.current.has(targetNoteId)) {
+        oversizeNotifiedRef.current.add(targetNoteId);
+        showGlobalNotification(
+          'error',
+          t('notes:actions.content_too_large', '笔记内容超过 1MB 上限，无法保存。请删减内容或拆分为多篇笔记。')
+        );
+      }
+      const error = new Error('Note content exceeds 1MB limit');
+      (error as Error & { isNonRetryable?: boolean }).isNonRetryable = true;
+      throw error;
     }
     if (isDstuMode) {
       // DSTU 模式：调用 props 的 onSave
@@ -152,11 +185,12 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         await saveNoteContent(targetNoteId, content);
       }
     }
+    oversizeNotifiedRef.current.delete(targetNoteId);
     lastSavedMapRef.current.set(targetNoteId, content);
     if (!isUnmountedRef.current && targetNoteId === noteIdRef.current) {
       setLastSaved(new Date());
     }
-  }, [isDstuMode, dstuOnSave, saveNoteContent, readOnly]);
+  }, [isDstuMode, dstuOnSave, saveNoteContent, readOnly, t]);
 
   const dequeuePending = () => {
     if (!pendingSaveQueueRef.current.length) {
@@ -185,6 +219,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         saveRetryCountRef.current = 0;
       })
       .catch((error) => {
+        // ★ R3/Y8 修复：冲突（外部版本已胜出并刷新）与不可重试错误（内容超限）
+        // 直接丢弃该 payload，不进入重试循环。
+        const flagged = error as Error & { isNoteConflict?: boolean; isNonRetryable?: boolean };
+        if (flagged?.isNoteConflict || flagged?.isNonRetryable) {
+          console.warn('[NotesCrepeEditor] ⚠️ 保存已放弃（冲突或不可重试）:', error);
+          saveRetryCountRef.current = 0;
+          throw error;
+        }
         console.error('[NotesCrepeEditor] ❌ 自动保存失败', error);
         // 🔒 审计修复: 添加指数退避和最大重试次数，防止保存失败时无限高频重试
         const MAX_RETRIES = 5;
@@ -376,10 +418,12 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
     
     // 防抖派发内容变化事件（500ms），用于大纲等组件实时更新
-    // DSTU 模式下使用 'dstu-note' 作为标识符
-    const eventNoteId = isDstuMode ? 'dstu-note' : noteId;
+    // ★ Y1 修复：DSTU 模式下也使用真实 noteId（之前的 'dstu-note' 占位符
+    // 与 NotesContextPanel 按 noteId 过滤的逻辑不匹配，导致大纲无法实时更新）
+    const eventNoteId = noteId;
     contentChangedTimerRef.current = setTimeout(() => {
       if (isUnmountedRef.current) return;
+      setCharCount(countNoteChars(markdown));
       window.dispatchEvent(new CustomEvent('notes:content-changed', {
         detail: { noteId: eventNoteId, content: markdown }
       }));
@@ -472,15 +516,72 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
   }, [editorApi]);
 
+  // ★ R3 修复：监听外部更新事件（其他面板/AI 工具/冲突解决），原位刷新编辑器内容。
+  // force=false：仅在编辑器无未保存修改时应用（watch 静默同步，避免覆盖正在输入的内容）；
+  // force=true：强制应用（保存冲突时外部版本胜出，调用方已通知用户）。
+  useEffect(() => {
+    const handleExternalUpdated = (event: Event) => {
+      const { noteId: targetNoteId, content: newContent, force } =
+        (event as CustomEvent<{ noteId: string; content: string; force?: boolean }>).detail;
+      const currentNoteId = noteIdRef.current;
+      if (!currentNoteId || targetNoteId !== currentNoteId) {
+        return;
+      }
+
+      if (!force) {
+        const draft = draftByNoteRef.current.get(currentNoteId);
+        const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
+        const isDirty =
+          (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
+          pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
+          inFlightSaveRef.current !== null;
+        // 有未保存修改时不静默覆盖；冲突会在下次保存时由乐观锁显式处理
+        if (isDirty) {
+          return;
+        }
+      } else {
+        // 强制刷新：丢弃该笔记排队中的旧保存与防抖，避免外部版本再次被覆盖
+        cancelDebounce();
+        pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter(
+          (p) => p.noteId !== currentNoteId
+        );
+      }
+
+      contentRef.current = newContent;
+      draftByNoteRef.current.set(currentNoteId, newContent);
+      lastSavedMapRef.current.set(currentNoteId, newContent);
+
+      if (editorApi && editorApi.getMarkdown() !== newContent) {
+        editorApi.setMarkdown(newContent);
+      }
+      setCharCount(countNoteChars(newContent));
+      setLastSaved(new Date());
+    };
+
+    window.addEventListener('notes:external-updated', handleExternalUpdated);
+    return () => {
+      window.removeEventListener('notes:external-updated', handleExternalUpdated);
+    };
+  }, [editorApi]);
+
   // beforeunload
+  // ★ Y5 修复：检查所有笔记的草稿/保存队列（含后台 tab 的笔记），
+  // 而不只是当前激活笔记，防止切换标签页后未保存内容被静默丢弃。
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      const currentId = noteIdRef.current;
-      if (!currentId) return;
-      const draft = draftByNoteRef.current.get(currentId) ?? contentRef.current;
-      const lastSavedSnapshot = lastSavedMapRef.current.get(currentId) ?? '';
-      const hasPendingQueue = pendingSaveQueueRef.current.some((payload) => payload.noteId === currentId);
-      const hasPending = draft !== lastSavedSnapshot || hasPendingQueue || inFlightSaveRef.current !== null;
+      let hasPending =
+        pendingSaveQueueRef.current.length > 0 || inFlightSaveRef.current !== null;
+
+      if (!hasPending) {
+        for (const [id, draft] of draftByNoteRef.current) {
+          const lastSavedSnapshot = lastSavedMapRef.current.get(id) ?? '';
+          if (draft !== lastSavedSnapshot) {
+            hasPending = true;
+            break;
+          }
+        }
+      }
+
       if (hasPending) {
         event.preventDefault();
         event.returnValue = '';
@@ -506,10 +607,23 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           .catch(() => showGlobalNotification('error', t('notes:actions.save_failed')));
         return;
       }
+      // Cmd/Ctrl+F：打开编辑器内查找替换（编辑器或面板拥有焦点时生效）
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === 'f') {
+        const activeEl = document.activeElement as HTMLElement | null;
+        const isEditorFocused = !!activeEl && !!dropZoneRef.current?.contains(activeEl);
+        // 已打开时按 Cmd+F 只刷新焦点；未聚焦编辑器时不拦截（避免干扰其他面板）
+        if (!isEditorFocused && !isFindReplaceOpen) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        setIsFindReplaceOpen(true);
+        return;
+      }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleManualSave, effectiveReadOnly, t]);
+  }, [handleManualSave, effectiveReadOnly, t, isFindReplaceOpen]);
 
   // Find/Replace handlers
   const handleFindReplaceClose = useCallback(() => {
@@ -536,12 +650,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // - noteId 变化时重新创建编辑器（切换笔记）
   // - 内容加载完成时重新创建编辑器（确保使用正确的初始内容）
   // - updated_at 变化（自动保存）不会导致重建
-  // 🔧 修复：DSTU 模式下需要考虑 initialValue 是否已加载
-  // - 当 initialValue 为空字符串时，可能是内容未加载完成
-  // - 当 initialValue 有内容时，表示内容已加载
-  // 使用 initialValue 的长度作为 key 的一部分，确保内容加载后编辑器重新初始化
+  // ★ R1 修复：DSTU 模式下 key 只由 noteId 决定。
+  // 之前以 `initialValue ? 'loaded' : 'empty'` 区分加载状态，导致新建空笔记
+  // 首次自动保存后（'' → 非空）编辑器整体重挂载，丢失光标位置与撤销历史，
+  // 重挂载窗口期的输入也会丢失。内容归属的正确性现由 NoteContentView 在
+  // 渲染前保证（content 未就绪时不渲染编辑器）。
   const contentVersionKey = isDstuMode 
-    ? `dstu:${noteId || 'new'}:${initialValue ? 'loaded' : 'empty'}`
+    ? `dstu:${noteId || 'new'}`
     : (noteId ? `${noteId}:${isContentLoaded ? 'loaded' : 'loading'}` : 'note-empty');
 
   useEffect(() => {
@@ -596,7 +711,12 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 处理大纲滚动事件
   useEffect(() => {
-    const handleScrollToHeading = (e: CustomEvent<{ text: string; normalizedText?: string; level: number }>) => {
+    const handleScrollToHeading = (e: CustomEvent<{ text: string; normalizedText?: string; level: number; noteId?: string }>) => {
+      // ★ Y2 修复：事件携带 noteId 时按当前笔记过滤，
+      // 防止多个可见编辑器实例（分屏/多面板）同时响应滚动
+      if (e.detail.noteId && noteIdRef.current && e.detail.noteId !== noteIdRef.current) {
+        return;
+      }
       const viewportMetrics = captureViewportMetrics();
       emitOutlineDebugLog({
         category: 'event',
@@ -738,8 +858,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         </div>
       )}
 
-      {/* TODO: Find & Replace — 待 Crepe 支持后重新实现 (see git history for removed UI) */}
-
       {/* 图片拖拽覆盖层 */}
       {isDraggingOver && (
         <div 
@@ -805,6 +923,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               <NotesEditorHeader 
                 lastSaved={lastSaved} 
                 isSaving={isSaving}
+                charCount={charCount}
                 // DSTU 模式 props
                 initialTitle={isDstuMode ? initialTitle : undefined}
                 onTitleChange={isDstuMode && !effectiveReadOnly ? dstuOnTitleChange : undefined}
@@ -813,6 +932,21 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               />
               <div className="flex items-center gap-1">
                 <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
+                {/* 查找替换按钮 */}
+                <CommonTooltip content={t('notes:toolbar.find_replace', '查找替换')} position="bottom">
+                  <NotionButton
+                    variant={isFindReplaceOpen ? 'primary' : 'ghost'}
+                    iconOnly
+                    size="sm"
+                    className={cn(
+                      'h-7 w-7 flex-shrink-0 transition-colors',
+                      isFindReplaceOpen ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                    )}
+                    onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+                  >
+                    <MagnifyingGlass size={16} />
+                  </NotionButton>
+                </CommonTooltip>
                 {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
                 {!readOnly && (
                   <CommonTooltip
@@ -847,18 +981,21 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             </div>
           </div>
           
-          <CustomScrollArea
-            className="notes-editor-content-scroll flex-1"
-            viewportClassName="overflow-x-visible"
-            viewportRef={scrollViewportRef}
-          >
+          {/* 查找替换面板 - 固定在 header 下方，不随内容滚动 */}
+          <div className="relative">
             {isFindReplaceOpen && (
               <FindReplacePanel 
                 editorApi={editorApi}
                 onClose={handleFindReplaceClose}
               />
             )}
-            
+          </div>
+
+          <CustomScrollArea
+            className="notes-editor-content-scroll flex-1"
+            viewportClassName="overflow-x-visible"
+            viewportRef={scrollViewportRef}
+          >
             {/* 编辑器内容区域 */}
             <div
               className="notes-editor-content max-w-[800px] mx-auto min-h-full px-4 sm:px-8 sm:pl-24 relative flex flex-col"

@@ -164,14 +164,21 @@ export const STATUS_CONFIG: Record<TodoStatus, { labelKey: string; color: string
   cancelled: { labelKey: 'todo:status.cancelled', color: 'text-[color:var(--text-muted)]' },
 };
 
+/** 本地时区的今天（YYYY-MM-DD）。注意不能用 toISOString()——那是 UTC 日期 */
+export function localToday(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export function isOverdue(item: TodoItem): boolean {
   if (!item.dueDate || item.status !== 'pending') return false;
-  const today = new Date().toISOString().slice(0, 10);
-  return item.dueDate < today;
+  return item.dueDate < localToday();
 }
 
 export function isDueToday(item: TodoItem): boolean {
   if (!item.dueDate || item.status !== 'pending') return false;
-  const today = new Date().toISOString().slice(0, 10);
-  return item.dueDate === today;
+  return item.dueDate === localToday();
 }

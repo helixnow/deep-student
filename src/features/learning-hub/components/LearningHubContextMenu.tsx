@@ -33,6 +33,7 @@ import {
   CheckCircle,
   Download,
   ListChecks,
+  ArrowBendUpRight,
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -98,6 +99,8 @@ export interface LearningHubContextMenuProps {
   onReferenceToChat?: (target: ContextMenuTarget) => void;
   /** 复制 */
   onCopy?: (target: ContextMenuTarget) => void;
+  /** ★ 2026-06-12（审阅问题 FE-M4）：移动到指定文件夹 */
+  onMoveTo?: (target: ContextMenuTarget) => void;
   /** 收藏/取消收藏 */
   onToggleFavorite?: (resource: ResourceListItem) => void;
   /** ★ 2025-12-11: 回收站操作 */
@@ -135,6 +138,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onDeleteResource,
   onReferenceToChat,
   onCopy,
+  onMoveTo,
   onToggleFavorite,
   onRestoreItem,
   onPermanentDeleteItem,
@@ -433,7 +437,20 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.importMarkdownHere', '在此导入 Markdown')}
       </AppMenuItem>
       <AppMenuSeparator />
-      
+
+      {/* ★ 移动到… */}
+      {onMoveTo && (
+        <AppMenuItem
+          icon={<ArrowBendUpRight size={16} />}
+          onClick={() => {
+            closeMenu();
+            setTimeout(() => onMoveTo(target), 50);
+          }}
+        >
+          {t('contextMenu.moveTo', '移动到…')}
+        </AppMenuItem>
+      )}
+
       {/* 重命名 */}
       <AppMenuItem
         icon={<Pencil size={16} />}
@@ -507,6 +524,19 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             }}
           >
             {t('contextMenu.copy')}
+          </AppMenuItem>
+        )}
+
+        {/* ★ 移动到… */}
+        {onMoveTo && (
+          <AppMenuItem
+            icon={<ArrowBendUpRight size={16} />}
+            onClick={() => {
+              closeMenu();
+              setTimeout(() => onMoveTo(target), 50);
+            }}
+          >
+            {t('contextMenu.moveTo', '移动到…')}
           </AppMenuItem>
         )}
         

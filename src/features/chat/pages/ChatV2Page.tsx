@@ -909,6 +909,7 @@ export const ChatV2Page: React.FC = () => {
               dstuPath={panelOpenApp.filePath || `/${panelOpenApp.id}`}
               onClose={handleClose}
               onTitleChange={handleTitleChange}
+              isActive
               className="h-full"
             />
           </Suspense>
@@ -1250,6 +1251,7 @@ export const ChatV2Page: React.FC = () => {
                         dstuPath={openApp.filePath || `/${openApp.id}`}
                         onClose={handleCloseApp}
                         onTitleChange={handleTitleChange}
+                        isActive
                         className="h-full"
                       />
                     </Suspense>

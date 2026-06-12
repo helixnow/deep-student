@@ -3,6 +3,8 @@
  */
 
 import { create } from 'zustand';
+import i18n from '@/i18n';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type {
   TodoList,
   TodoItem,
@@ -17,6 +19,13 @@ import * as api from '../api';
 // ★ I6 修复：搜索防抖定时器（模块级，store 为单例）
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SEARCH_DEBOUNCE_MS = 300;
+
+/** 操作失败时统一弹全局错误通知（store 不在 React 上下文，直接用 i18n 实例） */
+function notifyError(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  showGlobalNotification('error', message, i18n.t('todo:notifications.operationFailed'));
+  return message;
+}
 
 interface TodoState {
   // 数据
@@ -48,6 +57,7 @@ interface TodoState {
   updateItem: (input: UpdateTodoItemInput) => Promise<void>;
   toggleItem: (itemId: string) => Promise<void>;
   deleteItem: (itemId: string) => Promise<void>;
+  reorderItems: (orderedIds: string[]) => Promise<void>;
   selectItem: (itemId: string | null) => void;
 
   // 视图查询
@@ -96,7 +106,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       const lists = await api.listTodoLists();
       set({ lists, isLoadingLists: false });
     } catch (e) {
-      set({ error: String(e), isLoadingLists: false });
+      set({ error: notifyError(e), isLoadingLists: false });
     }
   },
 
@@ -119,7 +129,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       set((s) => ({ lists: [...s.lists, list] }));
       return list;
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
       throw e;
     }
   },
@@ -131,21 +141,55 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         lists: s.lists.map((l) => (l.id === id ? updated : l)),
       }));
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
     }
   },
 
+  // 删除清单：软删除 + 撤销 toast；当前清单被删时回退到默认/首个清单
   deleteList: async (id) => {
+    const deleted = get().lists.find((l) => l.id === id);
     try {
       await api.deleteTodoList(id);
-      set((s) => ({
-        lists: s.lists.filter((l) => l.id !== id),
-        activeListId: s.activeListId === id ? null : s.activeListId,
-        items: s.activeListId === id ? [] : s.items,
-        selectedItemId: s.activeListId === id ? null : s.selectedItemId,
-      }));
+      set((s) => {
+        const lists = s.lists.filter((l) => l.id !== id);
+        const wasActive = s.activeListId === id;
+        return {
+          lists,
+          activeListId: wasActive ? null : s.activeListId,
+          items: wasActive ? [] : s.items,
+          selectedItemId: wasActive ? null : s.selectedItemId,
+        };
+      });
+      // 回退选中：优先默认清单，其次第一个
+      if (get().activeListId === null && get().filter.view === 'all') {
+        const lists = get().lists;
+        const fallback = lists.find((l) => l.isDefault) || lists[0];
+        if (fallback) get().setActiveList(fallback.id);
+      }
+      showGlobalNotification(
+        'success',
+        i18n.t('todo:notifications.listDeleted', { title: deleted?.title ?? '' }),
+        undefined,
+        {
+          action: {
+            label: i18n.t('todo:notifications.undo'),
+            onClick: () => {
+              void (async () => {
+                try {
+                  const restored = await api.restoreTodoList(id);
+                  set((s) => ({ lists: [...s.lists, restored] }));
+                  get().setActiveList(restored.id);
+                  await get().loadLists();
+                } catch (e) {
+                  notifyError(e);
+                }
+              })();
+            },
+          },
+        },
+      );
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
     }
   },
 
@@ -156,7 +200,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         lists: s.lists.map((l) => (l.id === id ? updated : l)),
       }));
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
     }
   },
 
@@ -180,7 +224,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
-      set({ error: String(e), isLoadingItems: false });
+      set({ error: notifyError(e), isLoadingItems: false });
     }
   },
 
@@ -190,7 +234,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       await get().reloadCurrentView();
       return item;
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
       throw e;
     }
   },
@@ -200,7 +244,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       await api.updateTodoItem(input);
       await get().reloadCurrentView();
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
     }
   },
 
@@ -238,19 +282,62 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       // 回滚乐观更新
-      set({ items: prevItems, error: String(e) });
+      set({ items: prevItems, error: notifyError(e) });
     }
   },
 
+  // 删除待办：乐观移除 + 撤销 toast（软删除，可恢复）
   deleteItem: async (itemId) => {
+    const prevItems = get().items;
+    const target = prevItems.find((i) => i.id === itemId);
+    set((s) => ({
+      items: s.items.filter((i) => i.id !== itemId),
+      selectedItemId: s.selectedItemId === itemId ? null : s.selectedItemId,
+    }));
     try {
       await api.deleteTodoItem(itemId);
-      set((s) => ({
-        selectedItemId: s.selectedItemId === itemId ? null : s.selectedItemId,
-      }));
+      showGlobalNotification(
+        'success',
+        i18n.t('todo:notifications.itemDeleted', { title: target?.title ?? '' }),
+        undefined,
+        {
+          action: {
+            label: i18n.t('todo:notifications.undo'),
+            onClick: () => {
+              void (async () => {
+                try {
+                  await api.restoreTodoItem(itemId);
+                  await get().reloadCurrentView();
+                } catch (e) {
+                  notifyError(e);
+                }
+              })();
+            },
+          },
+        },
+      );
+      // 子任务级联删除等需要整体刷新
       await get().reloadCurrentView();
     } catch (e) {
-      set({ error: String(e) });
+      set({ items: prevItems, error: notifyError(e) });
+    }
+  },
+
+  // 拖拽排序：乐观重排本地顺序，失败回滚（仅 'all' 视图的手动排序）
+  reorderItems: async (orderedIds) => {
+    const listId = get().activeListId;
+    if (!listId) return;
+    const prevItems = get().items;
+    const byId = new Map(prevItems.map((i) => [i.id, i]));
+    const reordered = orderedIds
+      .map((id) => byId.get(id))
+      .filter((i): i is TodoItem => Boolean(i));
+    const rest = prevItems.filter((i) => !orderedIds.includes(i.id));
+    set({ items: [...reordered, ...rest] });
+    try {
+      await api.reorderTodoItems(listId, orderedIds);
+    } catch (e) {
+      set({ items: prevItems, error: notifyError(e) });
     }
   },
 
@@ -276,7 +363,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
-      set({ error: String(e), isLoadingItems: false });
+      set({ error: notifyError(e), isLoadingItems: false });
     }
   },
 
@@ -296,7 +383,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
-      set({ error: String(e), isLoadingItems: false });
+      set({ error: notifyError(e), isLoadingItems: false });
     }
   },
 
@@ -316,7 +403,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
-      set({ error: String(e), isLoadingItems: false });
+      set({ error: notifyError(e), isLoadingItems: false });
     }
   },
 
@@ -336,7 +423,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
-      set({ error: String(e), isLoadingItems: false });
+      set({ error: notifyError(e), isLoadingItems: false });
     }
   },
 
@@ -356,7 +443,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       });
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
-      set({ error: String(e), isLoadingItems: false });
+      set({ error: notifyError(e), isLoadingItems: false });
     }
   },
 
@@ -451,7 +538,8 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   initialize: async () => {
     try {
-      await api.ensureInbox();
+      // 传入本地化标题，避免新库默认建出英文 "Inbox"
+      await api.ensureInbox(i18n.t('todo:sidebar.inbox'));
       await get().loadLists();
       const lists = get().lists;
       if (lists.length > 0) {
@@ -459,7 +547,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         get().setActiveList(defaultList.id);
       }
     } catch (e) {
-      set({ error: String(e) });
+      set({ error: notifyError(e) });
     }
   },
 }));

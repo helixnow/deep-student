@@ -295,6 +295,122 @@ impl VfsTextbookRepo {
     }
 
     // ========================================================================
+    // 复制教材
+    // ========================================================================
+
+    /// 复制教材（共享 blob 并正确维护引用计数）
+    ///
+    /// ★ 2026-06-12（审阅问题 S3）：取代调用方手写的"伪 sha256 + 直接复用 blob_hash"
+    /// 复制逻辑。旧实现的两个缺陷：
+    /// 1. 副本 files 行直接指向原 blob 但未递增引用计数 → 删除任一副本时
+    ///    `purge_file` 将 blob ref_count 减到 0，物理文件被清扫，**另一副本数据丢失**。
+    /// 2. 不复制 preview_json → 副本没有页图预览，且 processing_status 永久停留
+    ///    在 page_rendering（没有任何 pipeline 会拾取它）。
+    ///
+    /// 本实现：
+    /// - 在同一 SAVEPOINT 内递增所有共享 blob（原文件 + 预渲染页图原始/压缩）的引用，
+    ///   再插入副本行；任何失败回滚即可原子撤销引用增量。
+    /// - 复制 preview_json / extracted_text / page_count，副本立即可预览。
+    /// - sha256 列附加 `_copy_{nanoid}` 后缀以绕过 UNIQUE 去重（副本语义上
+    ///   是独立文件记录，不应与原件合并）。
+    pub fn copy_textbook(
+        db: &VfsDatabase,
+        src_textbook_id: &str,
+        new_file_name: &str,
+    ) -> VfsResult<VfsTextbook> {
+        let conn = db.get_conn_safe()?;
+        Self::copy_textbook_with_conn(&conn, src_textbook_id, new_file_name)
+    }
+
+    /// 复制教材（使用现有连接）
+    pub fn copy_textbook_with_conn(
+        conn: &Connection,
+        src_textbook_id: &str,
+        new_file_name: &str,
+    ) -> VfsResult<VfsTextbook> {
+        // 1. 读取源教材（含 preview_json / extracted_text，VfsTextbook 不携带这两列）
+        let src = Self::get_textbook_with_conn(conn, src_textbook_id)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "Textbook".to_string(),
+                id: src_textbook_id.to_string(),
+            }
+        })?;
+
+        let (preview_json, extracted_text): (Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT preview_json, extracted_text FROM files WHERE id = ?1",
+                params![src_textbook_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?
+            .unwrap_or((None, None));
+
+        // 2. 收集需要共享引用的 blob 哈希
+        let mut shared_hashes: Vec<String> = Vec::new();
+        if let Some(ref h) = src.blob_hash {
+            shared_hashes.push(h.clone());
+        }
+        if let Some(ref pj) = preview_json {
+            if let Ok(preview) = serde_json::from_str::<PdfPreviewJson>(pj) {
+                for page in &preview.pages {
+                    shared_hashes.push(page.blob_hash.clone());
+                    if let Some(ref ch) = page.compressed_blob_hash {
+                        if ch != &page.blob_hash {
+                            shared_hashes.push(ch.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let new_sha256 = format!("{}_copy_{}", src.sha256, nanoid::nanoid!(8));
+
+        // 3. SAVEPOINT 内：递增引用 + 插入副本行（失败回滚原子撤销引用增量）
+        conn.execute("SAVEPOINT copy_textbook", [])?;
+
+        let result = (|| -> VfsResult<VfsTextbook> {
+            for hash in &shared_hashes {
+                // blobs_dir 参数已不再用于物理删除，传空路径即可
+                VfsBlobRepo::increment_ref_with_conn(conn, hash)?;
+            }
+
+            Self::create_textbook_with_preview(
+                conn,
+                &new_sha256,
+                new_file_name,
+                src.size,
+                src.blob_hash.as_deref(),
+                src.original_path.as_deref(),
+                preview_json.as_deref(),
+                extracted_text.as_deref(),
+                src.page_count,
+            )
+        })();
+
+        match result {
+            Ok(textbook) => {
+                conn.execute("RELEASE copy_textbook", [])?;
+                info!(
+                    "[VFS::TextbookRepo] Copied textbook {} -> {} ({} shared blobs ref+1)",
+                    src_textbook_id,
+                    textbook.id,
+                    shared_hashes.len()
+                );
+                Ok(textbook)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO copy_textbook", []);
+                let _ = conn.execute("RELEASE copy_textbook", []);
+                error!(
+                    "[VFS::TextbookRepo] Failed to copy textbook {}: {}",
+                    src_textbook_id, e
+                );
+                Err(e)
+            }
+        }
+    }
+
+    // ========================================================================
     // 查询教材
     // ========================================================================
 

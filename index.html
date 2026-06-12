@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/app-icon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- A11Y: 允许用户缩放（WCAG 1.4.4），上限 5 倍；viewport-fit=cover 保留安全区域支持 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
     <title>Deep Student</title>
     <!-- ★ 2026-02-04: 最早的全局错误过滤器 - 过滤 Tauri HTTP 插件的已知 bug -->
     <script>

@@ -181,7 +181,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           onClick={handleClose}
           className={cn(
             'shrink-0 ml-0.5 rounded-[4px] p-[3px] transition-all duration-100',
-            'opacity-0 group-hover/tab:opacity-100',
+            'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
           )}
         >
@@ -317,6 +317,7 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className="flex-shrink-0 relative flex items-stretch h-[36px] bg-[var(--background)] z-10"
+         data-no-screen-swipe
          style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
       {/* 左滚动按钮 */}
       {canScrollLeft && (

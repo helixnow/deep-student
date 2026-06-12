@@ -12,7 +12,7 @@
  * @see 21-VFS虚拟文件系统架构设计.md 第四章 4.8
  */
 
-import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
@@ -21,8 +21,9 @@ import { cn } from '@/lib/utils';
 import type { DstuNode } from '../types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
-// 懒加载 NoteContentView（DSTU 原生实现）
-const NoteContentView = lazy(() => import('@/features/learning-hub/apps/views/NoteContentView'));
+// ★ Y4 修复：与 UnifiedAppPanel 保持一致，不对 NoteContentView 使用懒加载
+// （Suspense 挂起会导致 Crepe 编辑器初始化卡住，见 UnifiedAppPanel 同款修复）
+import NoteContentView from '@/features/learning-hub/apps/views/NoteContentView';
 
 /**
  * 笔记编辑器包装组件
@@ -136,20 +137,13 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
   }
 
   return (
-    <Suspense
-      fallback={
-        <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-          <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
-        </div>
-      }
-    >
-      <NoteContentView
-        node={node}
-        onClose={onClose}
-        readOnly={readOnly}
-      />
-    </Suspense>
+    <NoteContentView
+      node={node}
+      onClose={onClose}
+      readOnly={readOnly}
+      // ★ Y4 修复：包装器场景为独占编辑视图，激活命令面板快捷键（Cmd+S 等）
+      isActive
+    />
   );
 };
 

@@ -236,7 +236,15 @@
     "replaceFailed": "替换失败",
     "editorUnavailable": "当前编辑器不可用",
     "replaceMany": "已替换 {{count}} 处",
-    "replaceNone": "未找到可替换内容"
+    "replaceNone": "未找到可替换内容",
+    "findPlaceholder": "查找…",
+    "replacePlaceholder": "替换为…",
+    "replace": "替换",
+    "replaceAll": "全部",
+    "prev": "上一个 (Shift+Enter)",
+    "next": "下一个 (Enter)",
+    "showReplace": "展开替换",
+    "hideReplace": "收起替换"
   },
   "mentions": {
     "loading": "正在加载…",
@@ -296,7 +304,8 @@
     "reading_mode": "阅读模式",
     "editing_mode": "编辑模式",
     "reading_mode_on": "已进入阅读模式",
-    "reading_mode_off": "已进入编辑模式"
+    "reading_mode_off": "已进入编辑模式",
+    "find_replace": "查找替换"
   },
   "search": {
     "placeholder": "搜索笔记...",
@@ -366,6 +375,7 @@
     },
     "image_upload": {
       "save_failed": "图片无法保存到当前笔记：{{error}}",
+      "not_persisted": "图片未能持久化保存，仅本次会话可见。请检查后重新插入图片。",
       "drop_failed": "拖拽图片处理失败：{{error}}",
       "paste_failed": "粘贴图片处理失败：{{error}}",
       "command_failed": "Slash 指令插入图片失败：{{error}}",
@@ -376,6 +386,7 @@
       "drop_overlay_title": "释放以插入图片",
       "drop_overlay_hint": "支持 PNG、JPG、GIF、WebP 等格式"
     },
+    "conflict_refreshed": "笔记已在其他位置被修改，已刷新为最新版本",
     "save_status": {
       "saved": "已保存",
       "saving": "保存中...",
@@ -842,6 +853,8 @@
     "create_failed": "创建失败",
     "save_success": "保存成功",
     "save_failed": "保存失败",
+    "auto_save_failed": "笔记自动保存失败，请尝试手动保存（Ctrl+S）或复制内容到安全位置。",
+    "content_too_large": "笔记内容超过 1MB 上限，无法保存。请删减内容或拆分为多篇笔记。",
     "title_save_failed": "内容已保存，但标题更新失败",
     "update_failed": "更新失败",
     "rename_failed": "重命名失败",
@@ -859,7 +872,8 @@
     "saving": "保存中…",
     "saved_at": "已保存 {{time}}",
     "auto_save_enabled": "自动保存已启用",
-    "deleted_at": "删除时间"
+    "deleted_at": "删除时间",
+    "char_count": "{{count}} 字"
   },
   "tooltips": {
     "save": "保存（{{shortcut}}）",
