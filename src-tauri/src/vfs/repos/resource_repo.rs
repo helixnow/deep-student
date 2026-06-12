@@ -710,11 +710,11 @@ impl VfsResourceRepo {
             r#"
             SELECT id, hash, type, source_id, source_table, storage_mode, data, external_hash, metadata_json, ref_count, created_at, updated_at
             FROM resources
-            WHERE data LIKE ?1
+            WHERE data LIKE ?1 ESCAPE '\'
             "#,
         );
 
-        let search_pattern = format!("%{}%", query);
+        let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(query));
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(search_pattern)];
         let mut param_idx = 2;
 

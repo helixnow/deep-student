@@ -9,7 +9,7 @@
 }
 
 /* 移动端设置页面溢出控制 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .settings {
     overflow-x: hidden;
   }
@@ -129,7 +129,7 @@
 }
 
 /* 移动端设置内容区域 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .settings-content {
     padding: 1rem;
     width: 100%;
@@ -286,14 +286,14 @@
   gap: 12px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .two-col-grid {
     grid-template-columns: 1fr;
   }
 }
 
 /* 响应式调整 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .settings-tabs {
     overflow-x: auto;
     padding: 0;
@@ -340,7 +340,7 @@
 }
 
 /* 移动端 assignment-grid 单列显示 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .assignment-grid {
     grid-template-columns: 1fr;
     gap: 1rem;

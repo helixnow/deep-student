@@ -1027,6 +1027,7 @@ pub fn run() {
             crate::commands::save_json_file,
             crate::commands::start_enhanced_document_processing,
             crate::commands::pause_document_processing,
+            crate::commands::cancel_document_processing,
             crate::commands::resume_document_processing,
             crate::commands::get_document_processing_state,
             crate::commands::get_document_task_counts,
@@ -1179,6 +1180,8 @@ pub fn run() {
             crate::commands::get_mcp_config,
             crate::commands::import_mcp_config,
             crate::commands::export_mcp_config,
+            // 2026-06-12 补注册：设置页 MCP 编辑器与 mcpService 启动预热已在调用
+            crate::commands::preheat_mcp_tools,
             crate::commands::test_all_search_engines
 
             // =============== Notes (isolated) ===============
@@ -1433,6 +1436,14 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_set_indexing_config
             ,crate::vfs::handlers::vfs_get_indexing_config
             ,crate::vfs::handlers::vfs_get_all_index_status
+            // VFS 统一索引 Unit 级命令（2026-06-12 补注册：前端 vfsUnifiedIndexApi/unifiedIndexStore 已在调用）
+            ,crate::vfs::index_handlers::vfs_unified_index_status
+            ,crate::vfs::index_handlers::vfs_get_resource_units
+            ,crate::vfs::index_handlers::vfs_reindex_unit
+            ,crate::vfs::index_handlers::vfs_unified_batch_index
+            ,crate::vfs::index_handlers::vfs_sync_resource_units
+            ,crate::vfs::index_handlers::vfs_delete_resource_index
+            ,crate::vfs::index_handlers::vfs_list_embedding_dims
             // VFS 数据透视命令（OCR 查看/清除、文本块查看）
             ,crate::vfs::handlers::vfs_get_resource_ocr_info
             ,crate::vfs::handlers::vfs_clear_resource_ocr

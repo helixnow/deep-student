@@ -108,6 +108,12 @@ pub(crate) struct PipelineContext {
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
     pub(crate) heartbeat_count: u32,
 
+    /// 🔧 F5 修复：最近一轮工具执行是否产生有效心跳
+    /// 之前通过扫描 ctx.tool_results 全量历史判断心跳，一次 coordinator_sleep
+    /// continue_execution=true 会让所有后续轮次都被视为有心跳；
+    /// 现在只记录最近一轮的结果，由 tool_loop 在每轮工具执行后更新
+    pub(crate) last_round_heartbeat: bool,
+
     /// 🆕 P1: 需要压缩标记。由 tool_loop 在 LLM 回复完成 / 工具结果累加后检查
     /// provider usage 决定是否设置；外层 pipeline 循环读取并在下一次
     /// LLM 调用前执行 compaction::run，完成后重置为 false。
@@ -173,6 +179,7 @@ impl PipelineContext {
             workspace_injection_count: 0,
             cancellation_token: None,
             heartbeat_count: 0,
+            last_round_heartbeat: false,
             needs_compaction: false,
         }
     }

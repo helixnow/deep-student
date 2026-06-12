@@ -82,9 +82,11 @@ async function checkDailyDueDigest(now: Date): Promise<void> {
 
   try {
     const dueToday = await listTodayItems(false);
-    // 无论是否有到期项都记录日期，当天不再查询
-    localStorage.setItem(DAILY_DIGEST_STORAGE_KEY, today);
-    if (dueToday.length === 0) return;
+    if (dueToday.length === 0) {
+      // 无到期项也记录日期，当天不再查询
+      localStorage.setItem(DAILY_DIGEST_STORAGE_KEY, today);
+      return;
+    }
 
     const titles = dueToday.slice(0, 3).map((item) => item.title).join('、');
     const body = dueToday.length > 3
@@ -96,6 +98,9 @@ async function checkDailyDueDigest(now: Date): Promise<void> {
       body,
       { force: true },
     );
+    // 发送尝试完成后才记录日期：查询/发送过程抛错时当天可在下个周期补发
+    // （send 自身对权限缺失/策略禁止返回 false 不抛错，不会造成轰炸）
+    localStorage.setItem(DAILY_DIGEST_STORAGE_KEY, today);
   } catch (e) {
     console.warn('[TodoReminder] Daily digest failed:', e);
   }

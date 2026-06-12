@@ -8,7 +8,6 @@
 //! - 渲染后立即释放原始文档字节，只保留页面图片
 
 use base64::Engine;
-use image::GenericImageView;
 use pdfium_render::prelude::PdfRenderConfig;
 use tracing::{debug, info, warn};
 
@@ -233,10 +232,13 @@ impl PageRasterizer {
 
             Self::check_file_size(bytes.len())?;
 
-            let (width, height) = match image::load_from_memory(&bytes) {
-                Ok(img) => img.dimensions(),
-                Err(_) => (0, 0),
-            };
+            // ★ 2026-06-12（代理 3 审阅 B3）：只读取图片头部获取尺寸，
+            // 避免为取宽高就全量解码大图（CPU/内存开销）。
+            let (width, height) = image::io::Reader::new(std::io::Cursor::new(&bytes))
+                .with_guessed_format()
+                .ok()
+                .and_then(|reader| reader.into_dimensions().ok())
+                .unwrap_or((0, 0));
 
             let (mime, ext) = detect_image_format(&bytes);
 
@@ -336,8 +338,10 @@ impl PageRasterizer {
         let docx_str = docx_path.to_string_lossy().replace('\\', "\\\\");
         let pdf_str = pdf_path.to_string_lossy().replace('\\', "\\\\");
 
+        // ★ 2026-06-12（代理 3 审阅 B2）：DisplayAlerts=0 + ReadOnly 打开 + Close 不保存，
+        // 防止损坏的 DOCX 触发 Word 隐藏对话框（修复提示/转换确认）导致 output() 永久阻塞。
         let script = format!(
-            r#"$word = New-Object -ComObject Word.Application; $word.Visible = $false; try {{ $doc = $word.Documents.Open("{}"); $doc.SaveAs([ref]"{}", [ref]17); $doc.Close(); }} finally {{ $word.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null }}"#,
+            r#"$word = New-Object -ComObject Word.Application; $word.Visible = $false; $word.DisplayAlerts = 0; try {{ $doc = $word.Documents.Open("{}", $false, $true); $doc.SaveAs([ref]"{}", [ref]17); $doc.Close($false); }} finally {{ $word.Quit(); [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word) | Out-Null }}"#,
             docx_str, pdf_str
         );
 

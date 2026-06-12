@@ -72,18 +72,22 @@ export function useBreakpoint() {
 
 /**
  * 简化版：只检测是否为移动端（<768px，与 isSmallScreen / App shell 同源）
+ *
+ * 实现为 isSmallScreen 同款查询的精确取反（!min-width:768），
+ * 而非 max-width:767——后者在缩放产生的小数视口宽度（如 767.5px）下
+ * 会与 isSmallScreen 判定不一致，导致布局分支错位。
  */
 export function useIsMobile(): boolean {
-  return useMediaQuery(`(max-width: ${BREAKPOINTS.md - 1}px)`);
+  return !useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`);
 }
 
 /**
- * 简化版：只检测是否为平板
+ * 简化版：只检测是否为平板（768px ≤ 宽度 < 1280px，边界与 useBreakpoint 精确互补）
  */
 export function useIsTablet(): boolean {
   const isAboveMobile = useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`);
-  const isBelowDesktop = useMediaQuery(`(max-width: ${BREAKPOINTS.xl - 1}px)`);
-  return isAboveMobile && isBelowDesktop;
+  const isDesktopUp = useMediaQuery(`(min-width: ${BREAKPOINTS.xl}px)`);
+  return isAboveMobile && !isDesktopUp;
 }
 
 export default useBreakpoint;

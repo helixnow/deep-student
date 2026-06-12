@@ -24,6 +24,14 @@ fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
         }
     }
 }
+
+/// SAVEPOINT 名称无法参数化,后缀来自外部传入的 exam_id;
+/// 按纵深防御原则只保留 `[A-Za-z0-9_]`,其余字符一律替换为 `_`。
+fn sanitize_savepoint_suffix(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::repos::resource_repo::VfsResourceRepo;
@@ -82,8 +90,8 @@ impl VfsExamRepo {
 
         // 搜索过滤（在 exam_name 中搜索）
         if let Some(q) = search {
-            sql.push_str(&format!(" AND exam_name LIKE ?{}", param_idx));
-            let search_pattern = format!("%{}%", q);
+            sql.push_str(&format!(" AND exam_name LIKE ?{} ESCAPE '\\'", param_idx));
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             params_vec.push(Box::new(search_pattern));
             param_idx += 1;
         }
@@ -115,9 +123,9 @@ impl VfsExamRepo {
     /// 统计题目集数量（使用现有连接）
     pub fn count_exam_sheets_with_conn(conn: &Connection, search: Option<&str>) -> VfsResult<u32> {
         let count: i64 = if let Some(q) = search {
-            let pattern = format!("%{}%", q);
+            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             conn.query_row(
-                "SELECT COUNT(*) FROM exam_sheets WHERE deleted_at IS NULL AND exam_name LIKE ?1",
+                "SELECT COUNT(*) FROM exam_sheets WHERE deleted_at IS NULL AND exam_name LIKE ?1 ESCAPE '\\'",
                 params![pattern],
                 |row| row.get(0),
             )?
@@ -931,7 +939,7 @@ impl VfsExamRepo {
         blobs_dir: &std::path::Path,
         exam_id: &str,
     ) -> VfsResult<()> {
-        let savepoint_name = format!("purge_exam_{}", exam_id.replace("-", "_"));
+        let savepoint_name = format!("purge_exam_{}", sanitize_savepoint_suffix(exam_id));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<()> {
@@ -1106,7 +1114,7 @@ impl VfsExamRepo {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         // 使用 SAVEPOINT 以确保原子性
-        let savepoint_name = format!("restore_exam_{}", exam_id.replace("-", "_"));
+        let savepoint_name = format!("restore_exam_{}", sanitize_savepoint_suffix(exam_id));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<(usize, usize)> {
@@ -1504,7 +1512,7 @@ impl VfsExamRepo {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         // 使用 SAVEPOINT 以支持嵌套事务（在外部事务中调用时不会出错）
-        let savepoint_name = format!("delete_exam_{}", exam_id.replace("-", "_"));
+        let savepoint_name = format!("delete_exam_{}", sanitize_savepoint_suffix(exam_id));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<usize> {

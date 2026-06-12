@@ -26,7 +26,6 @@ pub struct StreamingAnkiService {
     db: Arc<Database>,
     llm_manager: Arc<LLMManager>,
     client: Client,
-    pause_senders: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
 }
 
 struct PromptPayload {
@@ -176,13 +175,11 @@ impl StreamingAnkiService {
             .timeout(Duration::from_secs(600)) // 10分钟超时，适合流式处理
             .build()
             .expect("创建HTTP客户端失败");
-        let pause_senders = Arc::new(Mutex::new(HashMap::new()));
 
         Self {
             db,
             llm_manager,
             client,
-            pause_senders,
         }
     }
 
@@ -289,13 +286,8 @@ impl StreamingAnkiService {
             &window,
         )
         .await?;
-        // 设置暂停与取消通道
-        let (pause_tx, pause_rx) = watch::channel(false);
+        // 设置取消通道（暂停走文档级硬取消，见 EnhancedAnkiService::pause_document_processing）
         let (cancel_tx, cancel_rx) = watch::channel(false);
-        {
-            let mut senders = self.pause_senders.lock().await;
-            senders.insert(task_id.clone(), pause_tx);
-        }
         {
             let mut senders = CANCEL_SENDERS.lock().await;
             senders.insert(task_id.clone(), cancel_tx);
@@ -310,7 +302,6 @@ impl StreamingAnkiService {
                 &task.document_id,
                 &window,
                 &options,
-                pause_rx,
                 cancel_rx,
             )
             .await;
@@ -336,8 +327,7 @@ impl StreamingAnkiService {
                 }
             }
         }
-        // 清理暂停/取消通道
-        self.pause_senders.lock().await.remove(&task_id);
+        // 清理取消通道
         CANCEL_SENDERS.lock().await.remove(&task_id);
 
         Ok(())
@@ -627,7 +617,6 @@ impl StreamingAnkiService {
         document_id: &str,
         window: &Window,
         options: &AnkiGenerationOptions,
-        pause_rx: watch::Receiver<bool>,
         mut cancel_rx: watch::Receiver<bool>,
     ) -> Result<u32, AppError> {
         let mut messages = vec![];
@@ -801,12 +790,8 @@ impl StreamingAnkiService {
                                 );
                             }
                             buffer.push_str(&content);
-                            // 暂停时只累积 buffer，不生成卡片
                             if *cancel_rx.borrow() {
                                 return Err(AppError::validation("CANCELLED_BY_USER".to_string()));
-                            }
-                            if *pause_rx.borrow() {
-                                continue;
                             }
 
                             // 检查是否有完整的卡片
@@ -2187,28 +2172,6 @@ impl StreamingAnkiService {
         }
 
         Ok(())
-    }
-
-    /// 暂停流式制卡
-    pub async fn pause_streaming(&self, task_id: String) -> Result<(), String> {
-        let senders = self.pause_senders.lock().await;
-        if let Some(tx) = senders.get(&task_id) {
-            let _ = tx.send(true);
-            Ok(())
-        } else {
-            Err(format!("任务 {} 未在运行状态", task_id))
-        }
-    }
-
-    /// 继续流式制卡
-    pub async fn resume_streaming(&self, task_id: String) -> Result<(), String> {
-        let senders = self.pause_senders.lock().await;
-        if let Some(tx) = senders.get(&task_id) {
-            let _ = tx.send(false);
-            Ok(())
-        } else {
-            Err(format!("任务 {} 未在运行状态", task_id))
-        }
     }
 
     /// 取消当前流式制卡（用于硬暂停）

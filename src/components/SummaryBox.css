@@ -189,7 +189,7 @@ html.dark .summary-box {
 }
 
 /* 移动端密集排版 */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .summary-header { padding: 8px 10px; }
   .summary-content { padding: 12px; max-height: 220px; }
 }

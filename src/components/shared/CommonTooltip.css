@@ -154,7 +154,7 @@
 }
 
 /* 响应式调整 */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .common-tooltip {
     max-width: calc(100vw - 32px) !important;
   }

@@ -410,10 +410,14 @@ impl VfsIndexStateRepo {
 
         // ★ G2/A11 修复：索引状态机不再触碰业务 updated_at，
         // 避免后台索引导致"按修改时间排序"列表浮动和同步噪声
+        // ★ 2026-06-12（本轮审阅）：成功转入 indexed 时清零 index_retry_count。
+        // 否则计数终身累积：历史失败过的资源内容一更新，新一轮索引只要失败一次
+        // 就立刻触顶 max_retries，被永久卡在 failed。
         conn.execute(
             r#"
             UPDATE resources
-            SET index_state = ?1, index_hash = ?2, index_error = ?3, indexed_at = ?4
+            SET index_state = ?1, index_hash = ?2, index_error = ?3, indexed_at = ?4,
+                index_retry_count = CASE WHEN ?1 = 'indexed' THEN 0 ELSE index_retry_count END
             WHERE id = ?5
             "#,
             params![state, hash, error, indexed_at, resource_id],
@@ -648,10 +652,12 @@ impl VfsIndexStateRepo {
         };
 
         // ★ G2/A11 修复：不再触碰业务 updated_at
+        // ★ 2026-06-12（本轮审阅）：成功转入 indexed 时清零 mm_index_retry_count（与文本侧一致）
         conn.execute(
             r#"
             UPDATE resources
-            SET mm_index_state = ?1, mm_index_error = ?2, mm_indexed_at = COALESCE(?3, mm_indexed_at)
+            SET mm_index_state = ?1, mm_index_error = ?2, mm_indexed_at = COALESCE(?3, mm_indexed_at),
+                mm_index_retry_count = CASE WHEN ?1 = 'indexed' THEN 0 ELSE mm_index_retry_count END
             WHERE id = ?4
             "#,
             params![state, error, indexed_at, resource_id],

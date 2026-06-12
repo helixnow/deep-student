@@ -315,8 +315,12 @@ impl VfsIndexService {
         let row_id_count = lance_row_ids.len();
         let unit_count = units.len();
 
-        // 删除 Units（Segments 会级联删除）
-        index_unit_repo::delete_by_resource(&conn, resource_id)?;
+        // 删除 Units（Segments 会级联删除）。
+        // ★ 2026-06-12（本轮审阅）：改用 purge_index_artifacts_by_resource，
+        // 它会先把 lance_row_id 写入 __lance_orphan_queue（与删除同连接）。
+        // 调用方的 Lance 直删仍是快路径；若直删失败或进程中途崩溃，
+        // 后台 drain_lance_orphan_queue 会兜底清理（按 row id 删除幂等）。
+        index_unit_repo::purge_index_artifacts_by_resource(&conn, resource_id)?;
 
         // 同步刷新维度计数，避免 record_count 漂移
         embedding_dim_repo::refresh_counts_from_segments(&conn)?;

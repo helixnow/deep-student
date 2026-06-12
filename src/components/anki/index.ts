@@ -5,11 +5,8 @@
  *
  * 目录结构：
  * - cardforge/  CardForge 2.0 核心引擎
- * - hooks/      自定义 Hooks
- * - services/   业务服务
  * - utils/      工具函数
  * - types/      类型定义
- * - panels/     面板组件
  * - dialogs/    弹窗组件
  */
 
@@ -24,16 +21,6 @@ export * from './types';
 export * from './utils';
 
 // =============================================================================
-// Services
-// =============================================================================
-export * from './services';
-
-// =============================================================================
-// Hooks
-// =============================================================================
-export * from './hooks';
-
-// =============================================================================
 // CardForge 2.0 (Core Engine)
 // =============================================================================
 export {
@@ -43,24 +30,9 @@ export {
 } from './cardforge';
 
 // =============================================================================
-// Panel Components
-// =============================================================================
-export {
-  DocumentUploadPanel,
-  MaterialQueuePanel,
-  ExportPanel,
-} from './panels';
-
-export type {
-  DocumentUploadPanelProps,
-  SelectedFile,
-  MaterialQueuePanelProps,
-  QueuedMaterial,
-  ExportPanelProps,
-} from './panels';
-
-// =============================================================================
 // Dialog Components (2026-01 清理：错题和图谱相关对话框已移除)
 // =============================================================================
 // ★ 2026-01 清理：MistakeImportDialog 已删除（错题功能废弃）
 // ★ 图谱模块已废弃 - IrecImportDialog 已移除
+// ★ 2026-06 死代码清理（F16）：services/streamEventHandler、panels/ 三面板、
+//   hooks/useCardForge、cardforge/CardEngine 均无运行时消费者，已删除

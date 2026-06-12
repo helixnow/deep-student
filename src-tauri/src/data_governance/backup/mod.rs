@@ -1071,6 +1071,26 @@ impl BackupManager {
             return Ok(0);
         }
 
+        // 密钥是全局文件（不随插槽切换），覆盖即不可逆。
+        // 覆盖前把当前密钥快照到预恢复目录，失败/放弃恢复后可借助
+        // rollback_from_pre_restore 或手动复制找回。
+        // 注意：从预恢复目录本身回滚时（backup_subdir == .pre_restore）跳过快照，
+        // 否则会先用当前密钥覆盖快照、导致回滚失效。
+        let pre_restore_root = self.backup_dir.join(PRE_RESTORE_DIR);
+        if backup_subdir != pre_restore_root {
+            let snapshot_crypto = pre_restore_root.join("crypto");
+            if snapshot_crypto.exists() {
+                let _ = fs::remove_dir_all(&snapshot_crypto);
+            }
+            match self.backup_crypto_keys(&pre_restore_root) {
+                Ok(n) if n > 0 => {
+                    info!("[Restore] 已快照当前加密密钥到预恢复目录: {} 个文件", n)
+                }
+                Ok(_) => {}
+                Err(e) => warn!("[Restore] 当前加密密钥快照失败（继续恢复）: {}", e),
+            }
+        }
+
         let mut count = 0;
 
         // 1. 恢复 .master_key
@@ -1630,9 +1650,16 @@ impl BackupManager {
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
 
-            // 手动分批复制，每次 100 页，间隔 50ms
-            // 每批复制后通过回调报告页面级进度
+        // 手动分批复制，每次 100 页，间隔 50ms
+        // 每批复制后通过回调报告页面级进度
             use rusqlite::backup::StepResult;
+
+            // 与恢复路径一致：Busy/Locked 设置重试上限，避免源库持续被锁时备份无限挂起
+            const RETRY_SLEEP_MS: u64 = 50;
+            const MAX_BUSY_RETRIES: u32 = 1200; // 约 60 秒无进展则放弃
+
+            let mut busy_retries: u32 = 0;
+
             loop {
                 let step_result = backup.step(100)?;
 
@@ -1645,11 +1672,30 @@ impl BackupManager {
 
                 match step_result {
                     StepResult::Done => break,
-                    StepResult::More | StepResult::Busy | StepResult::Locked => {
-                        std::thread::sleep(Duration::from_millis(50));
+                    StepResult::More => {
+                        busy_retries = 0;
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
+                    }
+                    StepResult::Busy | StepResult::Locked => {
+                        busy_retries = busy_retries.saturating_add(1);
+                        if busy_retries % 200 == 0 {
+                            let p = backup.progress();
+                            warn!(
+                                "[Backup] 备份数据库等待锁释放: db={:?}, retry={}/{}, remaining_pages={}/{}",
+                                db_id, busy_retries, MAX_BUSY_RETRIES, p.remaining, p.pagecount
+                            );
+                        }
+                        if busy_retries >= MAX_BUSY_RETRIES {
+                            return Err(BackupError::Database(format!(
+                                "备份数据库超时：源数据库持续被锁定（db={:?}, source={}）",
+                                db_id,
+                                source_path.display()
+                            )));
+                        }
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
                     }
                     _ => {
-                        std::thread::sleep(Duration::from_millis(50));
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
                     }
                 }
             }
@@ -2100,6 +2146,15 @@ impl BackupManager {
             warn!("工作区数据库回滚失败（非致命）: {}", e);
         }
 
+        // 回滚加密密钥（restore_crypto_keys 覆盖前的快照，若存在）
+        if pre_restore_dir.join("crypto").exists() {
+            match self.restore_crypto_keys(pre_restore_dir) {
+                Ok(n) if n > 0 => info!("加密密钥已回滚: {} 个文件", n),
+                Ok(_) => {}
+                Err(e) => warn!("加密密钥回滚失败（API 密钥可能需重新配置）: {}", e),
+            }
+        }
+
         Ok(())
     }
 
@@ -2389,9 +2444,25 @@ impl BackupManager {
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
             use rusqlite::backup::StepResult;
+            // 与恢复路径一致：Busy/Locked 设置重试上限，避免无限挂起
+            let mut busy_retries: u32 = 0;
             loop {
                 match backup.step(100)? {
                     StepResult::Done => break,
+                    StepResult::More => {
+                        busy_retries = 0;
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    StepResult::Busy | StepResult::Locked => {
+                        busy_retries = busy_retries.saturating_add(1);
+                        if busy_retries >= 1200 {
+                            return Err(BackupError::Database(format!(
+                                "备份数据库超时：源数据库持续被锁定（source={}）",
+                                src_path.display()
+                            )));
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
                     _ => std::thread::sleep(Duration::from_millis(50)),
                 }
             }

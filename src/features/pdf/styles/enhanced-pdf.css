@@ -1017,7 +1017,7 @@
    ============================================================================ */
 
 /* 响应式：紧凑模式由 JS ResizeObserver 控制，无需 flex-wrap */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   /* 侧边栏默认隐藏 */
   .ds-pdf__sidebar {
     position: absolute;
@@ -1241,7 +1241,7 @@
 }
 
 /* 移动端响应式 */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .ds-pdf__bookmarks-panel {
     right: 8px;
     bottom: 50px;

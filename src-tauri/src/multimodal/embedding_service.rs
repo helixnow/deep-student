@@ -616,11 +616,22 @@ impl MultimodalEmbeddingService {
                 all_chunks.len()
             );
 
+            let total_chunks = all_chunks.len();
             let all_embeddings = self
                 .llm_manager
                 .call_embedding_api(all_chunks, &config.id)
                 .await
                 .map_err(|e| AppError::internal(format!("文本嵌入失败: {}", e)))?;
+
+            // ★ 2026-06-12（代理 3 审阅 G2）：先校验数量再按索引聚合，
+            // 否则 API 部分返回时 all_embeddings[emb_idx] 直接越界 panic
+            if all_embeddings.len() != total_chunks {
+                return Err(AppError::internal(format!(
+                    "嵌入 API 返回数量不匹配: 期望 {} 块, 实际 {}",
+                    total_chunks,
+                    all_embeddings.len()
+                )));
+            }
 
             // 聚合
             let mut result = Vec::with_capacity(texts.len());
@@ -746,6 +757,14 @@ impl MultimodalEmbeddingService {
                     .call_embedding_api(all_chunks, &config.id)
                     .await
                 {
+                    Ok(all_embeddings) if all_embeddings.len() != total_chunks => {
+                        // ★ G2：数量不匹配时报错而非越界 panic
+                        return Err(AppError::internal(format!(
+                            "嵌入 API 返回数量不匹配: 期望 {} 块, 实际 {}",
+                            total_chunks,
+                            all_embeddings.len()
+                        )));
+                    }
                     Ok(all_embeddings) => {
                         // 按原始文本索引聚合嵌入向量
                         let mut result = Vec::with_capacity(texts.len());

@@ -278,16 +278,17 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     return extractSteps(out);
   }, [blocksMap]);
 
-  // 来源 + 产物（仅当存在计划时才提取，避免无任务时白算）
+  // 来源 + 产物（仅在面板展开且存在计划时才提取：折叠态不展示这两个区，
+  // 流式期间 blocksMap 每帧变化，无谓的全量重算会被跳过）
   const { sources, artifacts } = useMemo(() => {
-    if (!steps.length || !blocksMap) return { sources: [], artifacts: [] };
+    if (!expanded || !steps.length || !blocksMap) return { sources: [], artifacts: [] };
     const all: Block[] = [];
     blocksMap.forEach((b) => all.push(b));
     return {
       sources: extractSources(all),
       artifacts: extractArtifacts(all),
     };
-  }, [blocksMap, steps.length]);
+  }, [blocksMap, steps.length, expanded]);
 
   const done = steps.filter((s) => s.status === 'completed').length;
   const total = steps.length;
@@ -449,8 +450,9 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                     {t('agentPanel.sources', '来源')}
                     <span className="ml-1.5 normal-case tracking-normal font-normal">{sources.length}</span>
                   </SectionLabel>
+                  {/* 容器本身可滚动，渲染全部来源，保证与计数一致 */}
                   <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
-                    {sources.slice(0, 12).map((item) => {
+                    {sources.map((item) => {
                       const OriginIcon = ORIGIN_ICONS[item.origin] ?? MagnifyingGlass;
                       const clickable = !!(item.url || item.resourceId);
                       return (

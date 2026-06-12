@@ -16,7 +16,8 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@
 import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
-import { CloudStorageSection } from '@/features/settings';
+// ★ 2026-06-12：绕过 features/settings barrel 深路径导入,避免把 Settings.tsx 整树拖进首屏 bundle
+import { CloudStorageSection } from '@/features/settings/components/CloudStorageSection';
 import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
 import { TaskDashboardPage } from '@/components/anki/TaskDashboardPage';
@@ -27,7 +28,7 @@ import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
-import { GlobalPomodoroWidget } from '@/features/pomodoro';
+import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
@@ -70,10 +71,10 @@ import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
-import { SettingsShellSidebar } from '@/features/settings';
-import { TodoShellSidebar } from '@/features/todo';
+import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
+import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
-import { settingsMobileSheetCloseButtonClassName } from '@/features/settings';
+import { settingsMobileSheetCloseButtonClassName } from '@/features/settings/components/SettingsCommon';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';

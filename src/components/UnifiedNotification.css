@@ -1,7 +1,9 @@
 /* 通知容器 */
 .notification-container {
   position: fixed;
-  top: calc(12px + env(safe-area-inset-top, 0px));
+
+  /* Android env() 不可靠，--android-safe-area-top 由 platform.ts/SA-1 注入 */
+  top: calc(12px + var(--android-safe-area-top, env(safe-area-inset-top, 0px)));
   left: 50%;
   right: auto;
   width: min(420px, calc(100vw - 24px));

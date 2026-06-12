@@ -866,7 +866,7 @@
    响应式设计 - Responsive Design
    ============================================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .chat-v2 .markdown-content {
     font-size: 1.0rem;
   }
@@ -914,7 +914,7 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 479.98px) {
   .chat-v2 .markdown-content {
     font-size: 0.95rem;
   }

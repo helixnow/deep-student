@@ -24,6 +24,15 @@ use super::{
     Result,
 };
 
+/// 流式请求的单请求超时上限（秒）
+///
+/// 🔧 F2 修复：reqwest 0.11 的 `ClientBuilder::timeout(300s)` 覆盖「连接 + 整个响应体下载」，
+/// 流式响应总时长超过 300s 会被 reqwest 在半途强制掐断（早于 Pipeline 层的任何超时）。
+/// 流式请求改为按请求覆盖到 2 小时（与 chat_v2 Pipeline 的绝对上限对齐），
+/// 真正的「挂起」防护由 Pipeline 层空闲超时（600s 无数据）负责。
+/// 非流式调用不受影响，仍走客户端默认 300s。
+const STREAMING_REQUEST_TIMEOUT_SECS: u64 = 7_200;
+
 #[inline]
 fn is_qwen_config(config: &ApiConfig) -> bool {
     config
@@ -1706,6 +1715,8 @@ impl LLMManager {
             // 每次重试都需要重新构建 request_builder（因为 send() 会消耗它）
             let mut request_builder = self.client
                 .post(&preq.url)
+                // 🔧 F2 修复：流式请求覆盖客户端默认 300s 总超时（见 STREAMING_REQUEST_TIMEOUT_SECS 注释）
+                .timeout(std::time::Duration::from_secs(STREAMING_REQUEST_TIMEOUT_SECS))
                 .header("Accept", "text/event-stream, application/json, text/plain, */*")
                 .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -2183,11 +2194,25 @@ impl LLMManager {
                                         error!("发送安全阻断事件失败: {}", e);
                                     }
                                     // 同时发送通用错误事件
-                                    let error_event = json!({
-                                        "type": "safety_error",
-                                        "message": "Request blocked due to safety policies",
-                                        "details": safety_info
-                                    });
+                                    // 🔧 区分供应商错误（provider_error）与安全阻断，避免
+                                    // 把配额不足/参数错误等误报为"安全策略阻断"
+                                    let is_provider_error = safety_info
+                                        .get("type")
+                                        .and_then(|v| v.as_str())
+                                        == Some("provider_error");
+                                    let error_event = if is_provider_error {
+                                        json!({
+                                            "type": "provider_error",
+                                            "message": "LLM provider reported a stream failure",
+                                            "details": safety_info
+                                        })
+                                    } else {
+                                        json!({
+                                            "type": "safety_error",
+                                            "message": "Request blocked due to safety policies",
+                                            "details": safety_info
+                                        })
+                                    };
                                     if let Err(e) = window
                                         .emit(&format!("{}_error", stream_event), &error_event)
                                     {
@@ -2654,22 +2679,28 @@ impl LLMManager {
                 )
                 .await;
 
-            crate::llm_usage::record_llm_usage(
-                crate::llm_usage::CallerType::ChatV2,
-                &config.model,
-                actual_prompt_tokens,
-                actual_completion_tokens,
-                reasoning_tokens,
-                cached_tokens,
-                Some(stream_event.to_string()),
-                Some(dur as u64),
-                !was_cancelled,
-                if was_cancelled {
-                    Some("cancelled".to_string())
-                } else {
-                    None
-                },
-            );
+            // 🔧 修复 Token 双重计费：单变体 Chat V2（task_context="chat_v2"）的用量
+            // 由 chat_v2/pipeline/tool_loop.rs 在每轮结束后统一记录到 llm_usage_logs
+            // （带真实 session_id、模型显示名和失败记录），此处不再重复写入。
+            // 多变体（"chat_v2_variant"）没有 pipeline 层记录，仍依赖此处。
+            if task_context != Some("chat_v2") {
+                crate::llm_usage::record_llm_usage(
+                    crate::llm_usage::CallerType::ChatV2,
+                    &config.model,
+                    actual_prompt_tokens,
+                    actual_completion_tokens,
+                    reasoning_tokens,
+                    cached_tokens,
+                    Some(stream_event.to_string()),
+                    Some(dur as u64),
+                    !was_cancelled,
+                    if was_cancelled {
+                        Some("cancelled".to_string())
+                    } else {
+                        None
+                    },
+                );
+            }
         }
 
         Ok(StandardModel2Output {
@@ -3422,11 +3453,25 @@ impl LLMManager {
                                         error!("发送安全阻断事件失败: {}", e);
                                     }
                                     // 同时发送通用错误事件
-                                    let error_event = json!({
-                                        "type": "safety_error",
-                                        "message": "Request blocked due to safety policies",
-                                        "details": safety_info
-                                    });
+                                    // 🔧 区分供应商错误（provider_error）与安全阻断，避免
+                                    // 把配额不足/参数错误等误报为"安全策略阻断"
+                                    let is_provider_error = safety_info
+                                        .get("type")
+                                        .and_then(|v| v.as_str())
+                                        == Some("provider_error");
+                                    let error_event = if is_provider_error {
+                                        json!({
+                                            "type": "provider_error",
+                                            "message": "LLM provider reported a stream failure",
+                                            "details": safety_info
+                                        })
+                                    } else {
+                                        json!({
+                                            "type": "safety_error",
+                                            "message": "Request blocked due to safety policies",
+                                            "details": safety_info
+                                        })
+                                    };
                                     if let Err(e) = window
                                         .emit(&format!("{}_error", stream_event), &error_event)
                                     {

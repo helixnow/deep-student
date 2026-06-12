@@ -86,8 +86,11 @@ impl ProviderAdapter for OpenAIAdapter {
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent> {
         let mut events = Vec::new();
 
-        if line.starts_with("data: ") {
-            let data = &line[6..];
+        // 🔧 SSE 规范允许 "data:" 后不带空格（部分供应商/中转站省略空格），
+        // 与 OpenAIResponsesAdapter/AnthropicAdapter 的宽容解析保持一致，
+        // 否则这些流的所有数据行会被静默丢弃（表现为"健康连接但无任何输出"）
+        if let Some(raw) = line.strip_prefix("data:") {
+            let data = raw.strip_prefix(' ').unwrap_or(raw);
             if data.trim() == "[DONE]" {
                 events.push(StreamEvent::Done);
                 return events;
@@ -802,6 +805,24 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 events.push(StreamEvent::Done);
             }
             "response.failed" | "error" => {
+                // 🔧 之前直接吞掉错误只发 Done，供应商返回的失败原因（配额不足/参数错误等）
+                // 完全丢失，前端只看到一条空响应。至少把错误详情记入日志便于诊断，
+                // 并以 SafetyBlocked 通道向上游传递错误负载（emit {stream}_error 事件）。
+                let error_detail = parsed
+                    .get("response")
+                    .and_then(|r| r.get("error"))
+                    .or_else(|| parsed.get("error"))
+                    .cloned()
+                    .unwrap_or_else(|| parsed.clone());
+                log::error!(
+                    "[OpenAIResponsesAdapter] Stream failed event: {}",
+                    error_detail
+                );
+                events.push(StreamEvent::SafetyBlocked(json!({
+                    "type": "provider_error",
+                    "reason": event_type,
+                    "details": error_detail
+                })));
                 events.push(StreamEvent::Done);
             }
             _ => {}
@@ -2080,6 +2101,18 @@ mod tests {
         assert!(
             matches!(events.first(), Some(StreamEvent::ReasoningChunk(reasoning)) if reasoning.is_empty())
         );
+    }
+
+    #[test]
+    fn openai_adapter_parse_stream_accepts_data_prefix_without_space() {
+        // SSE 规范允许 "data:" 后不带空格，部分供应商/中转站省略空格
+        let adapter = OpenAIAdapter;
+
+        let events = adapter.parse_stream(r#"data:{"choices":[{"delta":{"content":"hi"}}]}"#);
+        assert!(matches!(events.first(), Some(StreamEvent::ContentChunk(c)) if c == "hi"));
+
+        let done = adapter.parse_stream("data:[DONE]");
+        assert!(matches!(done.first(), Some(StreamEvent::Done)));
     }
 
     #[test]

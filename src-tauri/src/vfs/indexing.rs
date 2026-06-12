@@ -1666,8 +1666,11 @@ impl VfsIndexingService {
                 None,
                 None,
             )?;
-            // 使用新架构：删除旧 units（segments 级联删除）
-            index_unit_repo::delete_by_resource(&conn, resource_id)?;
+            // 使用新架构：删除旧 units（segments 级联删除）。
+            // ★ 2026-06-12（本轮审阅）：改用 purge 变体，把旧 segments 的
+            // lance_row_id 先写入 __lance_orphan_queue——若资源曾被新服务
+            // 索引过（存在真实向量），不至于因走到本废弃方法而孤儿化。
+            index_unit_repo::purge_index_artifacts_by_resource(&conn, resource_id)?;
             embedding_dim_repo::register(&conn, embedding_dim, MODALITY_TEXT)?;
 
             let now = chrono::Utc::now().timestamp_millis();
@@ -2476,12 +2479,19 @@ impl VfsFullIndexingService {
                 // FileBuilder 可能创建了多个 text units（如 native + ocr），
                 // 上面的流程只处理了 resolve_indexable_content 返回的主文本（写入 unit_index=0），
                 // 这里处理剩余的 pending text units
-                self.index_additional_pending_text_units(
-                    resource_id,
-                    &resource.resource_type.to_string(),
-                    resolved_folder_id.as_deref(),
-                )
-                .await?;
+                // ★ 2026-06-12（本轮审阅）：此处失败必须 mark_failed 再返回，
+                // 否则资源停留在 indexing 状态，要等到下次启动 recover_stuck_indexing 才被捞回。
+                if let Err(e) = self
+                    .index_additional_pending_text_units(
+                        resource_id,
+                        &resource.resource_type.to_string(),
+                        resolved_folder_id.as_deref(),
+                    )
+                    .await
+                {
+                    VfsIndexStateRepo::mark_failed(&self.db, resource_id, &e.to_string())?;
+                    return Err(e);
+                }
 
                 // 9. 更新索引状态
                 VfsIndexStateRepo::mark_indexed(&self.db, resource_id, &resource.hash)?;

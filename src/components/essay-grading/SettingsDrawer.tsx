@@ -623,9 +623,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     {t('settings:gradingMode.markdownSupported')}
                   </div>
                 </div>
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  {t('settings:gradingMode.systemPromptHintPrefix')} <code className="bg-muted/50 px-1 rounded text-[10px]">{'{{essay}}'}</code> {t('settings:gradingMode.systemPromptHintSuffix')}
-                </p>
+                {/* ★ A6-10：移除 {{essay}} 占位符提示——后端从不替换该占位符，作文内容是拼接在 user prompt 中的 */}
               </div>
             </div>
           ) : currentMode ? (

@@ -255,7 +255,7 @@ pub async fn check_anki_connect_availability() -> Result<bool, String> {
             println!("❌ AnkiConnect连接错误详情: {:?}", e);
             if e.is_timeout() {
                 Err(
-                    "AnkiConnect连接超时（5秒），请确保Anki桌面程序正在运行并启用了AnkiConnect插件"
+                    "AnkiConnect连接超时，请确保Anki桌面程序正在运行并启用了AnkiConnect插件"
                         .to_string(),
                 )
             } else if e.is_connect() {
@@ -353,9 +353,10 @@ pub async fn get_model_names() -> Result<Vec<String>, String> {
     }
 }
 
+/// 获取指定模型的字段名列表。
+/// 注意：本函数不再内置 AnkiConnect 可用性检查；调用方应自行确保连接可用
+/// （当前唯一调用方 `add_notes_to_anki_detailed` 在入口处已检查）。
 pub async fn get_model_field_names(model_name: &str) -> Result<Vec<String>, String> {
-    check_anki_connect_availability().await?;
-
     let params = serde_json::json!({
         "modelName": model_name
     });

@@ -16,8 +16,20 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::io::{BufReader, Read};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::mpsc::UnboundedSender;
+
+/// 匹配 `<<IMG:N` 标记中的图片索引（每题调用，预编译）
+static IMG_INDEX_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<<IMG:(\d+)").unwrap());
+
+/// 匹配完整 `<<IMG:N...>>` 标记用于清理（每题调用，预编译）
+/// (?s) 让 . 匹配换行符，.*? 非贪婪匹配到最近的 >>
+static IMG_MARKER_CLEAN_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?s)<<IMG:(\d+).*?>>").unwrap());
+
+/// 匹配 CSV 选项串中的 "A. 内容" 结构（每行多次调用，预编译）
+static CSV_OPTION_ITEM_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([A-Za-z])[\.、\s]\s*(.+)$").unwrap());
 
 use crate::cross_page_merger;
 use crate::document_parser::DocumentParser;
@@ -1246,6 +1258,29 @@ impl QuestionImportService {
         let mut total_saved = skip_count;
         let mut vlm_question_index: usize = 0;
 
+        // 恢复时按内容去重：位置跳过(skip_count)假设两轮 VLM 输出完全一致，
+        // 但首轮的空题/写库失败不计入已保存数、且 VLM 输出顺序可能漂移，
+        // 仅靠位置会重复保存题目。这里加载会话中已有题目的内容指纹做二次防线。
+        let mut existing_keys: HashSet<String> = HashSet::new();
+        if skip_count > 0 {
+            match VfsQuestionRepo::list_questions(
+                vfs_db,
+                session_id,
+                &QuestionFilters::default(),
+                1,
+                10000,
+            ) {
+                Ok(result) => {
+                    for q in result.questions {
+                        existing_keys.insert(content_dedup_key(&q.content));
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[QuestionImport] 恢复去重: 读取已有题目失败: {}", e);
+                }
+            }
+        }
+
         let vlm_result = vlm_service
             .extract_docx_questions_stream(data_urls, clean_text, |vq| {
                 vlm_question_index += 1;
@@ -1257,6 +1292,18 @@ impl QuestionImportService {
 
                 if vq.content.trim().is_empty() {
                     return true;
+                }
+
+                // 恢复时的内容级去重（防止位置错位导致重复保存）
+                if skip_count > 0 {
+                    let key = content_dedup_key(&vq.content);
+                    if !existing_keys.insert(key) {
+                        log::info!(
+                            "[QuestionImport] 恢复去重: 跳过已存在的题目 (VLM #{})",
+                            vlm_question_index
+                        );
+                        return true;
+                    }
                 }
 
                 let card_id = format!("card_{}", nanoid::nanoid!(12));
@@ -2481,18 +2528,43 @@ impl QuestionImportService {
 
         let session_id = exam_sheet.id;
 
-        for (i, q, card_id) in &valid {
-            let params = json_to_question_params(q, &session_id, card_id, *i);
-            if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
-                log::warn!("[QuestionImport] JSON 导入题目 {} 失败: {}", i, e);
+        // 与 Visual 管线一致：SAVEPOINT 包裹批量写入，任一题失败整体回滚
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+
+        conn.execute("SAVEPOINT import_json_questions", [])
+            .map_err(|e| AppError::database(format!("创建 SAVEPOINT 失败: {}", e)))?;
+
+        let insert_result = (|| -> Result<usize, AppError> {
+            let mut saved = 0;
+            for (i, q, card_id) in &valid {
+                let params = json_to_question_params(q, &session_id, card_id, *i);
+                VfsQuestionRepo::create_question_with_conn(&conn, &params)
+                    .map_err(|e| AppError::database(format!("第 {} 题写入失败: {}", i + 1, e)))?;
+                saved += 1;
             }
-        }
+            Ok(saved)
+        })();
+
+        let total = match insert_result {
+            Ok(saved) => {
+                conn.execute("RELEASE import_json_questions", [])
+                    .map_err(|e| AppError::database(format!("RELEASE 失败: {}", e)))?;
+                saved
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO import_json_questions", []);
+                let _ = conn.execute("RELEASE import_json_questions", []);
+                return Err(e);
+            }
+        };
+        drop(conn);
 
         if let Err(e) = VfsQuestionRepo::refresh_stats(vfs_db, &session_id) {
             log::warn!("[QuestionImport] 统计刷新失败: {}", e);
         }
 
-        let total = valid.len();
         Ok(ImportResult {
             session_id,
             name: qbank_name,
@@ -2568,6 +2640,36 @@ fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
     }
 }
 
+/// 检查文本中是否存在选项标记结构：字母 `letter` 前为空白（或行首）、后跟选项分隔符。
+/// 用于区分真正的选项列表（"B. 错误"）与题干中的字母引用（"A、B、C 三点共线"）。
+fn contains_option_marker(text: &str, letter: char) -> bool {
+    let mut prev: Option<char> = None;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == letter {
+            let prev_ok = prev.is_none_or(|p| p.is_whitespace());
+            if prev_ok {
+                if let Some(&next) = chars.peek() {
+                    if matches!(next, '.' | '、' | '．' | ':' | '：') {
+                        return true;
+                    }
+                }
+            }
+        }
+        prev = Some(c);
+    }
+    false
+}
+
+/// 题目内容去重 key：去除全部空白后取 SHA-256 前 16 字节。
+/// 供 CSV 导入去重与 DOCX VLM 直提断点恢复去重共用。
+fn content_dedup_key(content: &str) -> String {
+    let normalized = content.trim().replace([' ', '\t', '\r', '\n'], "");
+    let mut hasher = Sha256::new();
+    hasher.update(normalized.as_bytes());
+    hex::encode(&hasher.finalize()[..16])
+}
+
 fn json_to_question_params(
     q: &Value,
     exam_id: &str,
@@ -2607,14 +2709,15 @@ fn json_to_question_params(
     if let Some(ref opts) = options {
         if opts.len() >= 2 && opts.iter().any(|o| !o.content.is_empty()) {
             // 找到 content 末尾形如 "A. xxx B. xxx" 或 "A．xxx" 的选项文本并移除
-            // 匹配模式：从最后一个 "\nA" 或 " A." 开始到末尾
-            let patterns = ["\nA.", "\nA．", "\nA、", "\nA ", "\nA.", "\nA．"];
+            // 匹配模式：从最后一个 "\nA" 开始到末尾
+            let patterns = ["\nA.", "\nA．", "\nA、", "\nA "];
             let mut best_cut = content.len();
             for pat in &patterns {
                 if let Some(pos) = content.rfind(pat) {
-                    // 确认后面确实有 B/C/D 选项的迹象
+                    // 确认后面确实有 B/C 的选项结构（字母前为空白、后跟分隔符），
+                    // 避免把 "A、B、C 三点共线" 这类题干文本误判为选项列表
                     let after = &content[pos..];
-                    if after.contains("B") && after.contains("C") {
+                    if contains_option_marker(after, 'B') && contains_option_marker(after, 'C') {
                         best_cut = best_cut.min(pos);
                     }
                 }
@@ -2931,7 +3034,7 @@ fn extract_images_from_question_json(
     image_map: &[DocxImageEntry],
 ) -> Vec<QuestionImage> {
     // 只需捕获索引 N，匹配任意以 <<IMG:N 开头的标记
-    let re = Regex::new(r"<<IMG:(\d+)").unwrap();
+    let re = &*IMG_INDEX_RE;
     let mut found_indices: Vec<usize> = Vec::new();
 
     // 扫描 content
@@ -3003,8 +3106,7 @@ fn extract_images_from_question_json(
 ///
 /// 图片已作为 QuestionImage 独立关联，文本中保留简洁可读标记
 fn clean_image_markers_in_params(params: &mut CreateQuestionParams) {
-    // (?s) 让 . 匹配换行符，.*? 非贪婪匹配到最近的 >>
-    let re = Regex::new(r"(?s)<<IMG:(\d+).*?>>").unwrap();
+    let re = &*IMG_MARKER_CLEAN_RE;
 
     params.content = re
         .replace_all(&params.content, |caps: &regex::Captures| {
@@ -3665,10 +3767,7 @@ impl CsvImportService {
     }
 
     fn compute_content_hash(content: &str) -> String {
-        let normalized = content.trim().replace([' ', '\t', '\r', '\n'], "");
-        let mut hasher = Sha256::new();
-        hasher.update(normalized.as_bytes());
-        hex::encode(&hasher.finalize()[..16])
+        content_dedup_key(content)
     }
 
     fn process_csv_row(
@@ -3729,6 +3828,13 @@ impl CsvImportService {
                             .map_err(|e| AppError::database(format!("合并失败: {}", e)))?;
                         return Ok(CsvRowResult::Updated);
                     }
+                    // 哈希表中存在但读取失败/已被删除：跳过而非创建重复题
+                    log::warn!(
+                        "[CsvImport] 第 {} 行: 合并目标题目 {} 不可读，按跳过处理",
+                        row_num,
+                        existing_id
+                    );
+                    return Ok(CsvRowResult::Skipped);
                 }
             }
         }
@@ -3853,8 +3959,7 @@ impl CsvImportService {
                     .iter()
                     .filter_map(|part| {
                         let part = part.trim();
-                        let re = regex::Regex::new(r"^([A-Za-z])[\.、\s]\s*(.+)$").ok()?;
-                        let caps = re.captures(part)?;
+                        let caps = CSV_OPTION_ITEM_RE.captures(part)?;
                         Some(crate::vfs::repos::QuestionOption {
                             key: caps.get(1)?.as_str().to_uppercase(),
                             content: caps.get(2)?.as_str().to_string(),

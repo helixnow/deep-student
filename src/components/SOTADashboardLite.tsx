@@ -531,7 +531,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           to { transform: rotate(360deg); }
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 767.98px) {
 
           .sota-nav {
             padding: 0 16px;

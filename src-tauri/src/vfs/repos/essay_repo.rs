@@ -74,10 +74,10 @@ impl VfsEssayRepo {
         // 搜索过滤（在 title 和 resources.data 中搜索）
         if let Some(q) = search {
             sql.push_str(&format!(
-                " AND (e.title LIKE ?{} OR EXISTS (SELECT 1 FROM resources r WHERE r.id = e.resource_id AND r.data LIKE ?{}))",
+                " AND (e.title LIKE ?{} ESCAPE '\\' OR EXISTS (SELECT 1 FROM resources r WHERE r.id = e.resource_id AND r.data LIKE ?{} ESCAPE '\\'))",
                 param_idx, param_idx + 1
             ));
-            let search_pattern = format!("%{}%", q);
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             params_vec.push(Box::new(search_pattern.clone()));
             params_vec.push(Box::new(search_pattern));
             param_idx += 2;

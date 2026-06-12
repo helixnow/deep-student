@@ -19,13 +19,6 @@
  * - 阶段二：LLM 定界（可选，当文档较大时启用，并行执行）
  * - 阶段三：构建最终分段
  *
- * ### CardEngine
- * 并行制卡引擎，负责：
- * - 事件监听：监听后端推送的 anki_generation_event
- * - 状态聚合：收集各任务的卡片和状态
- * - 流式输出：每张卡片生成后立即通过本地事件推送给 UI
- * - 任务控制：包装后端暂停/恢复/取消命令
- *
  * ### TaskController
  * 任务控制器，提供任务级别的控制接口：
  * - `pause`: 暂停任务
@@ -57,13 +50,6 @@ export {
 
 export { SegmentEngine } from './SegmentEngine';
 export type { SegmentOptions } from './SegmentEngine';
-
-// ============================================================================
-// CardEngine - 并行制卡引擎
-// ============================================================================
-
-export { CardEngine } from './CardEngine';
-export type { CardGenerationOptions } from './CardEngine';
 
 // ============================================================================
 // TaskController - 任务控制器

@@ -241,7 +241,7 @@
   background: var(--surface-root);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .chat-v2 .unified-input-docked {
     --unified-input-bottom-fade-size: 28px;
   }
@@ -251,7 +251,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .chat-v2 .chat-empty-composer-layout {
     --chat-empty-composer-top-space: 0.32fr;
     --chat-empty-composer-bottom-space: 0.68fr;
@@ -1237,7 +1237,7 @@
    响应式优化 - Responsive Enhancements
    ============================================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .chat-v2 .chat-container {
     border-radius: 0;
     border: none;

@@ -287,6 +287,27 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     }
   }, [t, handleSetSourceText]);
 
+  // ★ A6-06：当前翻译参数的签名（内容+语向+风格参数），用于自动翻译去重
+  const buildTranslationSig = useCallback(
+    () => JSON.stringify([sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary]),
+    [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary]
+  );
+
+  // ★ A6-06：最近一次已执行翻译的参数签名；恢复历史会话时已有译文视为"已翻译过"
+  const lastTranslatedSigRef = useRef<string | null>(
+    initialSession?.translatedText
+      ? JSON.stringify([
+          initialSession.sourceText || '',
+          initialSession.srcLang || 'auto',
+          initialSession.tgtLang || 'zh-CN',
+          '',
+          initialSession.formality || 'auto',
+          initialSession.domain || 'general',
+          initialSession.glossary || [],
+        ])
+      : null
+  );
+
   // 翻译（使用流式管线）
   const handleTranslate = useCallback(async () => {
     // 防止重复调用
@@ -310,6 +331,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     // 清除之前的错误状态
     setTranslationError(null);
     setTranslationQuality(null);
+
+    // ★ A6-06：登记本次翻译的参数签名（手动/自动触发都登记），自动翻译据此避免对同一内容重复触发
+    lastTranslatedSigRef.current = buildTranslationSig();
 
     try {
       const outcome = await translationStream.startTranslation({
@@ -367,7 +391,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     } finally {
       setIsRetrying(false);
     }
-  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline]);
+  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig]);
 
   // 重试翻译
   const handleRetryTranslation = useCallback(() => {
@@ -421,6 +445,11 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
   useEffect(() => {
     if (isAutoTranslate && sourceText.trim() && !isTranslating && !translationError) {
+      // ★ A6-06：内容与参数均未变化时不再触发——否则翻译完成 → isTranslating 翻转 →
+      // effect 重跑 → 同一文本被无限次重译（持续消耗 API 配额）
+      if (buildTranslationSig() === lastTranslatedSigRef.current) {
+        return;
+      }
       const len = sourceText.length;
       const delay = len < 200 ? 1500 : len < 1000 ? 2500 : 4000;
       const timer = setTimeout(() => {
@@ -428,7 +457,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       }, delay);
       return () => clearTimeout(timer);
     }
-  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate]);
+  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate, buildTranslationSig]);
 
   // 编辑译文
   const handleEditTranslation = useCallback(() => {

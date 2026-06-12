@@ -186,9 +186,11 @@
     "loadMore": "加载更早的记录"
   },
   "overdue": {
-    "badgeAria": "{{count}} 个逾期待办",
+    "badgeAria_one": "{{count}} 个逾期待办",
+    "badgeAria_other": "{{count}} 个逾期待办",
     "notificationTitle": "待办提醒",
-    "notificationBody": "你有 {{count}} 个逾期待办，记得及时处理"
+    "notificationBody_one": "你有 {{count}} 个逾期待办，记得及时处理",
+    "notificationBody_other": "你有 {{count}} 个逾期待办，记得及时处理"
   },
   "status": {
     "completed": "已完成",

@@ -782,7 +782,7 @@
    响应式设计 - Responsive Design
    ============================================================================ */
 
-@media (max-width: 1024px) {
+@media (max-width: 1023.98px) {
   .analysis-filters {
     grid-template-columns: 1fr 1fr;
     gap: 16px;
@@ -793,7 +793,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .analysis-filters {
     grid-template-columns: 1fr;
     padding: 16px;
@@ -854,7 +854,7 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 479.98px) {
   .analysis-meta-row {
     flex-direction: column;
     gap: 6px;
@@ -866,7 +866,7 @@
 }
 
 /* 移动端底部导航栏间距 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .chat-v2 .analysis-main {
     padding-bottom: 60px; /* 为底部导航栏预留空间 */
   }

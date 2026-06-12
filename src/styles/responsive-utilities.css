@@ -6,7 +6,7 @@
 /* =================== 响应式表格 =================== */
 
 /* 小屏幕下：表格转为卡片布局 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .responsive-table {
     display: block;
     overflow-x: auto;
@@ -53,7 +53,7 @@
 /* =================== 响应式网格 =================== */
 
 /* 小屏幕下：网格自动转为单列 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .responsive-grid {
     grid-template-columns: 1fr !important;
   }
@@ -66,7 +66,7 @@
 /* =================== 响应式容器 =================== */
 
 /* 小屏幕下：减少内边距 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .responsive-container {
     padding-left: 1rem !important;
     padding-right: 1rem !important;
@@ -80,7 +80,7 @@
 /* =================== 响应式文本 =================== */
 
 /* 小屏幕下：调整字体大小 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .responsive-title {
     font-size: 1.5rem !important;
   }
@@ -97,7 +97,7 @@
 /* =================== 响应式按钮 =================== */
 
 /* 小屏幕下：按钮堆叠 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .responsive-button-group {
     flex-direction: column !important;
     width: 100% !important;
@@ -147,7 +147,7 @@
   display: none !important;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .show-mobile {
     display: block !important;
   }
@@ -162,7 +162,7 @@
 }
 
 /* 在小屏幕隐藏 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .hide-mobile {
     display: none !important;
   }
@@ -173,14 +173,14 @@
   display: none !important;
 }
 
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023.98px) {
   .show-tablet {
     display: block !important;
   }
 }
 
 /* 在平板隐藏 */
-@media (min-width: 768px) and (max-width: 1023px) {
+@media (min-width: 768px) and (max-width: 1023.98px) {
   .hide-tablet {
     display: none !important;
   }
@@ -189,7 +189,7 @@
 /* =================== 滚动优化 =================== */
 
 /* 移动端：平滑滚动 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   .smooth-scroll {
     -webkit-overflow-scrolling: touch;
     scroll-behavior: smooth;
@@ -213,17 +213,17 @@
 }
 
 .safe-area-left {
-  padding-left: env(safe-area-inset-left, 0px);
+  padding-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px));
 }
 
 .safe-area-right {
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
 }
 
 .safe-area-all {
   padding-top: var(--android-safe-area-top, env(safe-area-inset-top, 0px));
   padding-bottom: var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px));
-  padding-left: env(safe-area-inset-left, 0px);
-  padding-right: env(safe-area-inset-right, 0px);
+  padding-left: var(--android-safe-area-left, env(safe-area-inset-left, 0px));
+  padding-right: var(--android-safe-area-right, env(safe-area-inset-right, 0px));
 }
 

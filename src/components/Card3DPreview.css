@@ -315,7 +315,7 @@
 }
 
 /* SOTA响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .card-3d-preview-container {
     --card-width: min(280px, 72vw);
     padding: 40px 16px 60px;
@@ -522,7 +522,7 @@
 }
 
 /* 聊天内移动端 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   /* 底部操作区全宽时的水平内边距（仅移动端生效） */
   .chatanki-bottom-actions {
     padding-left: 16px;

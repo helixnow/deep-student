@@ -328,8 +328,10 @@ function matchTime(text: string): TimeMatch | null {
     }
   }
 
-  // HH:MM（可带 am/pm 后缀）
-  const colonRe = /(?:^|[\s,，])(\d{1,2}):(\d{2})\s*(am|pm)?(?=$|[\s,，])/i;
+  // HH:MM（可带 am/pm 后缀）。数字:数字本身是强时间信号，
+  // 边界额外放行 CJK 紧邻与常见标点（「开会14:30」「14:30提交」）
+  const colonRe =
+    /(?:^|[\s,，]|(?<=[\u4e00-\u9fff]))(\d{1,2}):(\d{2})\s*(am|pm)?(?=$|[\s,，.;!?。；！？、]|[\u4e00-\u9fff])/i;
   const cm = colonRe.exec(text);
   if (cm) {
     let hour = parseInt(cm[1], 10);
@@ -344,8 +346,9 @@ function matchTime(text: string): TimeMatch | null {
     }
   }
 
-  // 3pm / 11am
-  const ampmRe = /(?:^|[\s,，])(\d{1,2})\s*(am|pm)(?=$|[\s,，])/i;
+  // 3pm / 11am（同样放行 CJK 紧邻：「3pm开会」）
+  const ampmRe =
+    /(?:^|[\s,，]|(?<=[\u4e00-\u9fff]))(\d{1,2})\s*(am|pm)(?=$|[\s,，.;!?。；！？、]|[\u4e00-\u9fff])/i;
   const am = ampmRe.exec(text);
   if (am) {
     let hour = parseInt(am[1], 10);

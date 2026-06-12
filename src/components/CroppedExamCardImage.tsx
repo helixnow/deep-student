@@ -84,7 +84,17 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [croppedDataUrl, setCroppedDataUrl] = useState<string | null>(null);
 
+  // ★ 2026-06-12（代理 3 审阅 I2）：回调用 ref 持有，避免父组件每次渲染
+  // 传入新的内联函数导致裁剪 effect 反复重跑（重新拉 blob + 重新裁剪 + 闪烁）。
+  const onLoadRef = useRef(onLoad);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onLoadRef.current = onLoad;
+    onErrorRef.current = onError;
+  });
+
   // 计算实际的像素边界框
+  // ★ I2：依赖改为标量值，bbox/resolvedBbox 对象字面量身份变化不再触发重算
   const getPixelBbox = useCallback((): BoundingBox => {
     // 如果有 resolvedBbox（像素级），优先使用
     if (resolvedBbox && resolvedBbox.width > 1 && resolvedBbox.height > 1) {
@@ -98,7 +108,12 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
       width: bbox.width * pageWidth,
       height: bbox.height * pageHeight,
     };
-  }, [bbox, resolvedBbox, pageWidth, pageHeight]);
+    // 注：依赖按标量值列出而非对象引用，避免对象身份抖动
+  }, [
+    bbox.x, bbox.y, bbox.width, bbox.height,
+    resolvedBbox?.x, resolvedBbox?.y, resolvedBbox?.width, resolvedBbox?.height,
+    pageWidth, pageHeight,
+  ]);
 
   // 加载并裁剪图片
   useEffect(() => {
@@ -165,14 +180,14 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
 
         setCroppedDataUrl(croppedUrl);
         setIsLoading(false);
-        onLoad?.();
+        onLoadRef.current?.();
 
       } catch (err: unknown) {
         if (!mounted) return;
         const errorMsg = getErrorMessage(err);
         setError(errorMsg);
         setIsLoading(false);
-        onError?.(errorMsg);
+        onErrorRef.current?.(errorMsg);
       }
     };
 
@@ -182,7 +197,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
       mounted = false;
       abortController.abort();
     };
-  }, [blobHash, getPixelBbox, onLoad, onError]);
+  }, [blobHash, getPixelBbox]);
 
   // 加载状态
   if (isLoading) {
@@ -286,8 +301,8 @@ export function useCroppedImage(
 
         if (!mounted) return;
 
-        // 计算裁剪区域
-        const pixelBbox = resolvedBbox && resolvedBbox.width > 1
+        // 计算裁剪区域（与组件版一致：宽高都需 >1 才视为像素级 bbox）
+        const pixelBbox = resolvedBbox && resolvedBbox.width > 1 && resolvedBbox.height > 1
           ? resolvedBbox
           : {
               x: bbox.x * pageWidth,
@@ -301,6 +316,11 @@ export function useCroppedImage(
         const srcY = Math.max(0, Math.floor(pixelBbox.y));
         const srcW = Math.min(Math.ceil(pixelBbox.width), img.width - srcX);
         const srcH = Math.min(Math.ceil(pixelBbox.height), img.height - srcY);
+
+        // ★ I2：与组件版保持一致的退化 bbox 守卫（负值赋给 canvas 尺寸会抛异常）
+        if (srcW <= 0 || srcH <= 0) {
+          throw new Error(i18n.t('common:messages.error.invalid_input'));
+        }
 
         canvas.width = srcW;
         canvas.height = srcH;
@@ -324,7 +344,12 @@ export function useCroppedImage(
     return () => {
       mounted = false;
     };
-  }, [blobHash, pageWidth, pageHeight, bbox, resolvedBbox]);
+    // 注：依赖按标量值列出而非对象引用，避免 bbox 对象身份抖动触发重复裁剪
+  }, [
+    blobHash, pageWidth, pageHeight,
+    bbox?.x, bbox?.y, bbox?.width, bbox?.height,
+    resolvedBbox?.x, resolvedBbox?.y, resolvedBbox?.width, resolvedBbox?.height,
+  ]);
 
   return { dataUrl, isLoading, error };
 }

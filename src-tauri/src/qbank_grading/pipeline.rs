@@ -213,13 +213,21 @@ pub async fn run_qbank_grading(
         let now = chrono::Utc::now().to_rfc3339();
 
         // ① 更新 AI 缓存
-        let updated = conn
-            .execute(
+        // Analyze 模式不产生分数，保留已有 ai_score（避免"先评判后解析"把评分缓存清空）
+        let updated = if request.mode == QbankGradingMode::Grade {
+            conn.execute(
                 r#"UPDATE questions SET ai_feedback = ?1, ai_score = ?2, ai_graded_at = ?3, updated_at = ?3
                    WHERE id = ?4 AND deleted_at IS NULL"#,
                 params![&accumulated, score, &now, &request.question_id],
             )
-            .map_err(|e| AppError::database(format!("保存 AI 反馈失败: {}", e)))?;
+        } else {
+            conn.execute(
+                r#"UPDATE questions SET ai_feedback = ?1, ai_graded_at = ?2, updated_at = ?2
+                   WHERE id = ?3 AND deleted_at IS NULL"#,
+                params![&accumulated, &now, &request.question_id],
+            )
+        }
+        .map_err(|e| AppError::database(format!("保存 AI 反馈失败: {}", e)))?;
         if updated == 0 {
             return Err(AppError::not_found(format!(
                 "题目不存在或已删除: {}",
@@ -435,21 +443,24 @@ fn get_submission_by_id(
 }
 
 /// 解析 verdict 和 score
+///
+/// 提示词要求标签出现在反馈"最末尾"，但模型偶尔会在正文中先复述标签格式；
+/// 取最后一个匹配以符合"末尾标签为准"的语义。
 fn parse_verdict_and_score(result: &str) -> (Option<Verdict>, Option<i32>) {
     // 解析 <verdict>correct|partial|incorrect</verdict>
     let verdict = Regex::new(r"<verdict>\s*(correct|partial|incorrect)\s*</verdict>")
         .ok()
-        .and_then(|re| re.captures(result))
+        .and_then(|re| re.captures_iter(result).last())
         .and_then(|cap| cap.get(1))
         .and_then(|m| Verdict::from_str(m.as_str()));
 
     // 解析 <score value="N"/>
     let score = Regex::new(r#"<score\s+value="(\d+)"\s*/>"#)
         .ok()
-        .and_then(|re| re.captures(result))
+        .and_then(|re| re.captures_iter(result).last())
         .and_then(|cap| cap.get(1))
         .and_then(|m| m.as_str().parse::<i32>().ok())
-        .map(|s| s.max(0).min(100)); // 范围裁剪
+        .map(|s| s.clamp(0, 100)); // 范围裁剪
 
     (verdict, score)
 }
@@ -685,5 +696,22 @@ mod tests {
         let (verdict, score) = parse_verdict_and_score("没有任何标签的纯文本");
         assert!(verdict.is_none());
         assert!(score.is_none());
+    }
+
+    #[test]
+    fn test_parse_verdict_and_score_takes_last_match() {
+        // 模型在正文中复述了标签格式，末尾的标签才是结论
+        let text = "输出格式为 <verdict>correct</verdict> <score value=\"100\"/>。\n\
+                    经过对比，学生答案部分正确。\n\
+                    <verdict>partial</verdict>\n<score value=\"55\"/>";
+        let (verdict, score) = parse_verdict_and_score(text);
+        assert!(matches!(verdict, Some(Verdict::Partial)));
+        assert_eq!(score, Some(55));
+    }
+
+    #[test]
+    fn test_parse_verdict_and_score_clamps_range() {
+        let (_, score) = parse_verdict_and_score("<verdict>correct</verdict> <score value=\"150\"/>");
+        assert_eq!(score, Some(100));
     }
 }

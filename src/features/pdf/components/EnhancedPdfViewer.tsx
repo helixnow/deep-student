@@ -789,11 +789,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, []);
 
   // 监听文本选择
+  // ★ 2026-06-12（代理 3 审阅 H1）：此处应使用 resolvedEnableTextSelection
+  // （prop ?? 设置默认值），与文本层渲染开关保持一致；旧代码用原始 prop，
+  // 未传 prop 时即使设置启用了文本层，划词高亮菜单也永远不会出现。
   useEffect(() => {
-    if (!enableTextSelection) return;
+    if (!resolvedEnableTextSelection) return;
     document.addEventListener('mouseup', handleTextSelection);
     return () => document.removeEventListener('mouseup', handleTextSelection);
-  }, [enableTextSelection, handleTextSelection]);
+  }, [resolvedEnableTextSelection, handleTextSelection]);
 
   // ========== 高亮持久化逻辑 ==========
   
@@ -1197,6 +1200,26 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       pageVirtualizer.scrollToIndex(rowIndex, { align: 'start', behavior: 'smooth' });
     };
   }, [pageRowCount, pageVirtualizer, viewMode]);
+
+  // ★ 2026-06-12（代理 3 审阅 H3）：恢复初始页（阅读进度）。
+  // 旧实现 initialPage 只初始化 currentPage 状态，从不滚动视口：
+  // 恢复进度时视口停在第 1 页而页码显示第 N 页，用户一滚动
+  // 进度即被覆盖为第 1 页。文档首次就绪时一次性跳转（瞬时，非平滑）。
+  const initialScrollDoneRef = useRef(false);
+  useEffect(() => {
+    if (initialScrollDoneRef.current) return;
+    if (numPages === 0 || pageRowCount === 0) return;
+    initialScrollDoneRef.current = true;
+    if (initialPage > 0) {
+      const targetPage = Math.min(initialPage + 1, numPages);
+      const rowIndex = viewMode === 'dual'
+        ? Math.floor((targetPage - 1) / 2)
+        : targetPage - 1;
+      requestAnimationFrame(() => {
+        pageVirtualizer.scrollToIndex(rowIndex, { align: 'start' });
+      });
+    }
+  }, [numPages, pageRowCount, initialPage, viewMode, pageVirtualizer]);
 
   // 滚动监听：使用虚拟列表数据更新当前页码，避免频繁 DOM 查询
   useEffect(() => {

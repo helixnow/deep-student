@@ -519,13 +519,27 @@ pub async fn export_cards_as_apkg_with_template(
         })
     });
     let (template_config, full_template) = if let Some(ref tid) = effective_template_id {
-        let config =
-            get_template_config(tid, &state.database).map_err(|e| AppError::validation(e))?;
-        let full_tmpl = state
-            .database
-            .get_custom_template_by_id(tid)
-            .map_err(|e| AppError::validation(format!("获取模板失败: {}", e)))?;
-        (Some(config), full_tmpl)
+        // 模板缺失（如已被删除）时不中断整批导出：警告后回退默认 Basic 模板，
+        // 与 EnhancedAnkiService::export_apkg_for_selection 行为保持一致
+        let config = match get_template_config(tid, &state.database) {
+            Ok(config) => Some(config),
+            Err(e) => {
+                log::warn!(
+                    "获取模板配置失败 - 模板ID: {}, 错误: {}，将使用默认模板继续导出",
+                    tid,
+                    e
+                );
+                None
+            }
+        };
+        let full_tmpl = match state.database.get_custom_template_by_id(tid) {
+            Ok(tmpl) => tmpl,
+            Err(e) => {
+                log::warn!("获取完整模板失败 - 模板ID: {}, 错误: {}，回退默认模板", tid, e);
+                None
+            }
+        };
+        (config, full_tmpl)
     } else {
         // 没有任何模板可用 — 直接用 Basic 兜底而不是导出空壳
         (None, None)

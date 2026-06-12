@@ -406,12 +406,14 @@ const SessionRow: React.FC<{
         showGlobalNotification('success', t('taskDashboard.resumed'));
       } else if (action === 'retryFailed') {
         // [S2] 真正重试失败任务：获取文档所有 task → 筛选失败的 → 并行 trigger
+        // Cancelled 一并覆盖：会话统计将其计入"失败"组（database/mod.rs 的 failed_tasks），
+        // 重试入口需与徽标口径一致，否则仅含 Cancelled 的会话点重试会提示"没有卡住的任务"
         const tasks = await invoke<{ id: string; status: string }[]>(
           'get_document_tasks',
           { documentId: session.documentId },
         );
         const failedTasks = tasks.filter(
-          t2 => t2.status === 'Failed' || t2.status === 'Truncated',
+          t2 => t2.status === 'Failed' || t2.status === 'Truncated' || t2.status === 'Cancelled',
         );
         if (failedTasks.length === 0) {
           showGlobalNotification('info', t('taskDashboard.noStuckTasks'));

@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use tempfile::NamedTempFile;
-use tracing::warn; // 新增结构化日志
+use tracing::{debug, warn}; // 结构化日志
 use zip::{write::FileOptions, ZipWriter};
 
 // 使用 LazyLock 初始化别名映射
@@ -554,16 +554,16 @@ fn convert_cards_to_anki_records_with_fields(
 
         // 根据模板字段或模型类型处理字段
         let (fields, sort_field) = if let Some(field_names) = template_fields {
-            // 🐛 调试日志：打印字段处理信息
+            // 调试日志：打印字段处理信息（debug 级别，避免卡片内容刷爆 warn 日志）
             if field_names.len() > 4 {
                 // 学术模板有6个字段
-                warn!("🎯 DEBUG: 处理学术模板，字段数量: {}", field_names.len());
-                warn!("🎯 DEBUG: 模板字段: {:?}", field_names);
-                warn!(
-                    "🎯 DEBUG: 卡片extra_fields: {:?}",
+                debug!("处理多字段模板，字段数量: {}", field_names.len());
+                debug!("模板字段: {:?}", field_names);
+                debug!(
+                    "卡片extra_fields: {:?}",
                     card.extra_fields.keys().collect::<Vec<_>>()
                 );
-                warn!("🎯 DEBUG: 卡片tags字段: {:?}", card.tags);
+                debug!("卡片tags字段: {:?}", card.tags);
             }
 
             let mut field_values = Vec::new();
@@ -657,10 +657,10 @@ fn convert_cards_to_anki_records_with_fields(
                     }
                 };
 
-                // 🐛 调试：打印每个字段的值 (UTF-8安全截断)
+                // 调试：打印每个字段的值 (UTF-8安全截断)
                 if field_names.len() > 4 {
-                    warn!(
-                        "🎯 DEBUG: 字段 '{}' -> '{}'",
+                    debug!(
+                        "字段 '{}' -> '{}'",
                         field_name,
                         if value.chars().count() > 50 {
                             format!("{}...", value.chars().take(50).collect::<String>())
@@ -950,17 +950,17 @@ pub async fn export_cards_to_apkg_with_full_template(
             .persist(&output_path)
             .map_err(|e| format!("无法持久化临时输出文件: {}", e.error))?;
 
-        // 🔍 iPad诊断：检查临时APKG文件状态
+        // 检查导出文件状态（iPad 等移动端诊断）
         let temp_size = fs::metadata(&output_path)
             .map(|m| m.len())
             .unwrap_or(0);
-        println!("🔍 临时APKG文件创建完成: {} 字节", temp_size);
+        debug!("APKG文件创建完成: {} 字节", temp_size);
 
         if temp_size == 0 {
-            return Err(format!("❌ 临时APKG文件为空 (0字节)，路径: {:?}", output_path));
+            return Err(format!("APKG文件为空 (0字节)，路径: {:?}", output_path));
         }
 
-        println!("✅ 临时APKG文件验证通过: {:?} ({} 字节)", output_path, temp_size);
+        debug!("APKG文件验证通过: {:?} ({} 字节)", output_path, temp_size);
         Ok(())
     }.await;
 
@@ -1234,18 +1234,23 @@ pub async fn export_multi_template_apkg(
         let mut temp_file = NamedTempFile::new_in(parent_dir)
             .map_err(|e| format!("创建临时输出文件失败: {}", e))?;
 
-        let mut media_map = serde_json::Map::new();
-        let mut media_entries: Vec<(String, String)> = Vec::new();
+        // 先读出可用的媒体文件，再统一编号：保证 media 清单与 zip 内条目一一对应，
+        // 避免读取失败的文件在清单中留下悬空引用（Anki 导入会报媒体缺失）。
+        let mut media_entries: Vec<(String, Vec<u8>)> = Vec::new(); // (fname, data)
         let mut seen_media_names: HashSet<String> = HashSet::new();
         for card in &cards_for_media {
             for image_path in &card.images {
                 if let Some(fname) = std::path::Path::new(image_path).file_name().and_then(|n| n.to_str()) {
                     if seen_media_names.insert(fname.to_string()) {
-                        media_entries.push((fname.to_string(), image_path.clone()));
+                        match fs::read(image_path) {
+                            Ok(data) => media_entries.push((fname.to_string(), data)),
+                            Err(e) => warn!("读取媒体文件失败，跳过 {}: {}", image_path, e),
+                        }
                     }
                 }
             }
         }
+        let mut media_map = serde_json::Map::new();
         for (idx, (fname, _)) in media_entries.iter().enumerate() {
             media_map.insert(idx.to_string(), serde_json::Value::String(fname.to_string()));
         }
@@ -1260,11 +1265,11 @@ pub async fn export_multi_template_apkg(
             zip.write_all(&db_content).map_err(|e| format!("写入db失败: {}", e))?;
             zip.start_file("media", FileOptions::default()).map_err(|e| format!("zip media失败: {}", e))?;
             zip.write_all(media_json.as_bytes()).map_err(|e| format!("写入media失败: {}", e))?;
-            for (idx, (_, path)) in media_entries.iter().enumerate() {
-                if let Ok(data) = fs::read(path) {
-                    let _ = zip.start_file(idx.to_string(), FileOptions::default());
-                    let _ = zip.write_all(&data);
-                }
+            for (idx, (_, data)) in media_entries.iter().enumerate() {
+                zip.start_file(idx.to_string(), FileOptions::default())
+                    .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
+                zip.write_all(data)
+                    .map_err(|e| format!("写入媒体文件失败: {}", e))?;
             }
             zip.finish().map_err(|e| format!("zip finish失败: {}", e))?;
         }

@@ -282,7 +282,7 @@ export const chatAnkiSkill: SkillDefinition = {
     },
     {
       name: 'builtin-chatanki_control',
-      description: '控制后台制卡任务：暂停/恢复/重试/取消。',
+      description: '控制后台制卡任务：暂停/恢复/重试/取消。cancel 仅停止生成，已生成的卡片会保留。',
       inputSchema: {
         type: 'object',
         properties: {

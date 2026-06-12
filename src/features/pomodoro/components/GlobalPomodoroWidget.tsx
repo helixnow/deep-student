@@ -157,7 +157,10 @@ export const GlobalPomodoroWidget: React.FC = () => {
       )}
       style={{
         // 触屏上避开底部停靠的聊天输入栏（约 88px）+ 安全区
-        bottom: isTouchPrimary ? 'calc(env(safe-area-inset-bottom, 0px) + 96px)' : '1.5rem',
+        // （Android env() 不可靠，统一走 --android-safe-area-bottom 兜底，SA-1 注入真实值）
+        bottom: isTouchPrimary
+          ? 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 96px)'
+          : '1.5rem',
       }}
     >
       {getModeIcon()}

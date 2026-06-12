@@ -525,7 +525,10 @@ impl VfsTextbookRepo {
         limit: u32,
         offset: u32,
     ) -> VfsResult<Vec<VfsTextbook>> {
-        let pattern = format!("%{}%", search.trim());
+        let pattern = format!(
+            "%{}%",
+            crate::vfs::repos::escape_like_pattern(search.trim())
+        );
         let mut stmt = conn.prepare(
             r#"
             SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
@@ -533,7 +536,7 @@ impl VfsTextbookRepo {
                    cover_key, status, created_at, updated_at
             FROM files
             WHERE status = 'active'
-              AND (file_name LIKE ?1 OR COALESCE(original_path, '') LIKE ?1)
+              AND (file_name LIKE ?1 ESCAPE '\' OR COALESCE(original_path, '') LIKE ?1 ESCAPE '\')
             ORDER BY updated_at DESC
             LIMIT ?2 OFFSET ?3
             "#,

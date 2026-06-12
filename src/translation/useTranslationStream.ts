@@ -83,6 +83,8 @@ export function useTranslationStream() {
   const settledRef = useRef<boolean>(false); // 防止重复 settle
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 超时定时器
   const isMountedRef = useRef<boolean>(true); // 跟踪组件挂载状态
+  // ★ A6-07（对齐作文批改 hook E-3）：保存当前会话 ID，供卸载/取消时关闭后端流
+  const currentSessionIdRef = useRef<string | null>(null);
 
   /**
    * 清理监听器和定时器
@@ -126,6 +128,7 @@ export function useTranslationStream() {
 
       // 生成会话 ID
       const sessionId = `translate_${Date.now()}`;
+      currentSessionIdRef.current = sessionId;
 
       // 重置状态
       setState({
@@ -234,6 +237,14 @@ export function useTranslationStream() {
           }
         );
 
+        // ★ A6-07：listen() 等待期间组件可能已卸载（cleanup 已执行），
+        // 此时必须立即释放监听器并终止，否则监听器永久泄漏
+        if (!isMountedRef.current) {
+          unlisten();
+          fail(new Error('Component unmounted during translation setup'));
+          return;
+        }
+
         unlistenRef.current = unlisten;
 
         // 标记启动完成
@@ -285,8 +296,9 @@ export function useTranslationStream() {
    * 取消翻译（清理状态）
    */
   const cancelTranslation = useCallback(async () => {
-    const currentSessionId = state.sessionId;
-    if (!currentSessionId) {
+    // ★ A6-07：从 ref 读取会话 ID，避免闭包中的过期 state
+    const currentSessionId = currentSessionIdRef.current;
+    if (!currentSessionId || !isActiveRef.current) {
       return;
     }
 
@@ -304,7 +316,7 @@ export function useTranslationStream() {
 
     // M-086: 确保清理监听器和重置 ref，防止后端 SSE cancelled 事件丢失时永久阻塞后续翻译
     cleanup();
-  }, [state.sessionId, cleanup]);
+  }, [cleanup]);
 
   /**
    * 手动设置翻译文本（用于编辑后的保存）
@@ -333,11 +345,20 @@ export function useTranslationStream() {
   }, [cleanup]);
 
   // 组件卸载时清理
+  // ★ A6-07（对齐作文批改 hook E-3）：卸载时同时取消后端流，避免后端继续空跑
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      const sessionId = currentSessionIdRef.current;
+      if (sessionId && isActiveRef.current) {
+        const streamEventName = `translation_stream_${sessionId}`;
+        invoke('cancel_stream', { streamEventName }).catch((err) => {
+          console.warn('[TranslationStream] 组件卸载时取消流失败:', err);
+        });
+      }
       cleanup();
+      currentSessionIdRef.current = null;
     };
   }, [cleanup]);
 

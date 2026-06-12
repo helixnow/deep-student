@@ -2042,41 +2042,24 @@ impl ChatAnkiToolExecutor {
                     .map_err(|e| e.to_string())?;
             }
             "cancel" => {
-                let proc =
-                    crate::document_processing_service::DocumentProcessingService::new(db.clone());
-                let tasks = proc
-                    .get_document_tasks(&document_id)
-                    .map_err(|e| e.to_string())?;
-
-                // Best-effort cancel streaming tasks.
-                let streaming = crate::streaming_anki_service::StreamingAnkiService::new(
-                    db.clone(),
-                    llm_manager.clone(),
-                );
-                for t in tasks.iter() {
-                    if matches!(
-                        t.status,
-                        crate::models::TaskStatus::Processing
-                            | crate::models::TaskStatus::Streaming
-                    ) {
-                        let _ = streaming.cancel_streaming(t.id.clone()).await;
-                    }
-                }
-
-                for t in tasks.iter() {
-                    if matches!(
-                        t.status,
-                        crate::models::TaskStatus::Pending
-                            | crate::models::TaskStatus::Processing
-                            | crate::models::TaskStatus::Streaming
-                            | crate::models::TaskStatus::Paused
-                    ) {
-                        let _ = proc.update_task_status(
-                            &t.id,
-                            crate::models::TaskStatus::Cancelled,
-                            None,
-                        );
-                    }
+                // 统一走非破坏性取消：停止调度协程+断流+未完成任务置 Cancelled，
+                // 保留已生成卡片。（此前的手工实现只改 DB 状态，调度协程仍会继续跑剩余任务）
+                if let Err(e) = enhanced
+                    .cancel_document_processing(document_id.clone(), ctx.window.clone())
+                    .await
+                {
+                    let error_msg = format!("Cancel failed: {}", e);
+                    ctx.emit_tool_call_error(&error_msg);
+                    let result = ToolResultInfo::failure(
+                        Some(call.id.clone()),
+                        Some(ctx.block_id.clone()),
+                        call.name.clone(),
+                        call.arguments.clone(),
+                        error_msg,
+                        start_time.elapsed().as_millis() as u64,
+                    );
+                    let _ = ctx.save_tool_block(&result);
+                    return Ok(result);
                 }
             }
             _ => {

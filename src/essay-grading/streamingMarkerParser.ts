@@ -345,7 +345,8 @@ function restoreCodeBlocks(markers: StreamingMarker[], codeBlocks: Map<string, s
     if (marker.type === 'text' && marker.content) {
       let content = marker.content;
       for (const [placeholder, original] of codeBlocks) {
-        content = content.replace(placeholder, original);
+        // 用函数形式替换，避免代码块内的 $&、$' 等被当作特殊替换模式
+        content = content.replace(placeholder, () => original);
       }
       return { ...marker, content };
     }

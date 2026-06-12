@@ -94,8 +94,10 @@ export const LazyTemplateJsonPreviewPage = React.lazy(() =>
 // LazyIrecGraphFlow, LazyIrecGraphPage, LazyIrecGraphFlowDemo
 
 // 学习中心
+// ★ 2026-06-12：必须深路径导入。App.tsx 静态导入了 features/learning-hub barrel,
+//   若此处动态导入同一 barrel,Rollup 会把 LearningHubPage 并入首屏 chunk,懒加载失效。
 export const LazyLearningHubPage = React.lazy(() =>
-  import('./features/learning-hub').then(m => ({ default: m.LearningHubPage }))
+  import('./features/learning-hub/LearningHubPage').then(m => ({ default: m.LearningHubPage }))
 );
 
 // Sandbox 工作台

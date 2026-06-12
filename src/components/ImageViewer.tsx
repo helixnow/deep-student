@@ -162,7 +162,9 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem('imageViewer.blurEnabled', isBlurEnabled ? 'true' : 'false');
-    } catch {}
+    } catch {
+      // localStorage 不可用时静默忽略
+    }
   }, [isBlurEnabled]);
 
   // 滚轮缩放容器 ref（使用原生事件以支持 { passive: false }）
@@ -349,6 +351,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     const natY = Math.max(0, (sy - offsetY) * scaleY);
     const natW = Math.min(img.naturalWidth - natX, sw * scaleX);
     const natH = Math.min(img.naturalHeight - natY, sh * scaleY);
+
+    // ★ 2026-06-12（代理 3 审阅 I3）：选区完全落在图片外（letterbox 边缘）时
+    // natW/natH 为负，赋给 canvas 尺寸会抛 IndexSizeError，这里直接放弃本次裁剪。
+    if (natW <= 0 || natH <= 0) return;
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(natW);
@@ -557,28 +563,16 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             orientation="horizontal"
             hideTrackWhenIdle={false}
           >
+            {/* ★ I3：高亮与点击统一走 internalIndex/goTo，未接 onNext/onPrev 时缩略图也能切换 */}
             {images.map((image, index) => (
               <div
                 key={index}
                 className={`w-16 h-16 rounded-lg overflow-hidden cursor-pointer transition-all duration-200 border-2 ${
-                  index === currentIndex 
+                  index === internalIndex 
                     ? 'border-[hsl(var(--primary))] opacity-100 scale-105' 
                     : 'border-[hsl(var(--border) / 0.4)] opacity-60 hover:opacity-80'
                 }`}
-                onClick={() => {
-                  try {
-                    if (index !== currentIndex && typeof onNext === 'function' && typeof onPrev === 'function') {
-                      const delta = index - currentIndex;
-                      if (delta > 0) {
-                        for (let i = 0; i < delta; i++) onNext();
-                      } else if (delta < 0) {
-                        for (let i = 0; i < Math.abs(delta); i++) onPrev();
-                      }
-                    }
-                  } catch (e: unknown) {
-                    debugLog.error('[ImageViewer] thumbnail navigation failed', e);
-                  }
-                }}
+                onClick={() => goTo(index)}
               >
                 <img src={image} alt={t('common:imageViewer.thumbnail_alt', { index: index + 1 })} className="w-full h-full object-cover" />
               </div>
@@ -589,7 +583,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         {/* 底部工具栏 */}
         <div className="modern-viewer-toolbar">
           <span className="modern-viewer-zoom-readout">
-            {currentIndex + 1} / {images.length}
+            {internalIndex + 1} / {images.length}
           </span>
           <div className="modern-viewer-divider" />
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label="zoom out">

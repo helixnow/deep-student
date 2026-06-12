@@ -166,21 +166,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const mockExamTimeoutHandledRef = useRef<string | null>(null);
   const timedTimeoutHandledRef = useRef<string | null>(null);
   
-  // 计时器逻辑
-  // ★ 标签页：isActive === false 时暂停计时器，避免后台计时不精确
-  useEffect(() => {
-    if (viewMode === 'practice' && isTimerRunning && isActive !== false) {
-      timerRef.current = setInterval(() => {
-        setElapsedTime(prev => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [viewMode, isTimerRunning, isActive]);
-  
   // 进入做题模式时自动开始计时
   useEffect(() => {
     if (viewMode === 'practice') {
@@ -222,6 +207,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (practiceMode === 'mock_exam') return activeMockExamSession?.started_at || null;
     return null;
   }, [practiceMode, activeTimedSession, activeMockExamSession]);
+
+  // 计时器逻辑
+  // ★ 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
+  //   限时/模拟考（advanced runtime）必须按墙钟走：后台切换、休眠恢复都不能"暂停"考试，
+  //   否则与后端 time_spent（ended_at - started_at）和启动页的绝对时间倒计时不一致。
+  useEffect(() => {
+    const advancedRuntime = activeAdvancedTimerDuration != null;
+    if (viewMode === 'practice' && isTimerRunning && (isActive !== false || advancedRuntime)) {
+      timerRef.current = setInterval(() => {
+        if (advancedRuntime && activeAdvancedStartedAt) {
+          const startedMs = Date.parse(activeAdvancedStartedAt);
+          if (Number.isFinite(startedMs)) {
+            // 墙钟推算，免疫 setInterval 漂移与系统休眠
+            setElapsedTime(Math.max(0, Math.floor((Date.now() - startedMs) / 1000)));
+            return;
+          }
+        }
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt]);
 
   const isAdvancedRuntimeTimer = activeAdvancedTimerDuration != null;
   const advancedTimerRemaining = useMemo(() => {

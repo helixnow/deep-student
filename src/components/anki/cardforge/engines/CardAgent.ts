@@ -477,10 +477,12 @@ export class CardAgent {
           };
 
         case 'cancel':
-          await invoke('delete_document_session', { documentId: input.documentId });
+          // 非破坏性取消：仅停止生成，保留已生成的任务与卡片
+          // （删除会话请走 delete_document_session，属显式删除操作）
+          await invoke('cancel_document_processing', { documentId: input.documentId });
           return {
             ok: true,
-            message: '已取消文档处理',
+            message: '已取消文档处理，已生成的卡片已保留',
           };
 
         default:

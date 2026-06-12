@@ -45,13 +45,10 @@ impl ChatV2Pipeline {
         const MAX_HEARTBEAT_COUNT: u32 = 50;
         const HEARTBEAT_TOOLS: &[&str] = &["coordinator_sleep", "builtin-coordinator_sleep"];
 
-        let has_heartbeat = ctx.tool_results.iter().any(|r| {
-            HEARTBEAT_TOOLS.contains(&r.tool_name.as_str())
-                && r.output
-                    .get("continue_execution")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-        });
+        // 🔧 F5 修复：只看最近一轮的心跳（由上一轮工具执行后写入），
+        // 而非扫描 ctx.tool_results 全量历史 —— 否则一次 continue_execution=true
+        // 会让所有后续轮次都被视为有心跳，心跳计数语义失真
+        let has_heartbeat = ctx.last_round_heartbeat;
 
         // 追踪连续心跳次数，超过上限后忽略心跳
         if has_heartbeat {
@@ -652,12 +649,12 @@ impl ChatV2Pipeline {
 
         const LLM_MAX_RETRIES: u32 = 2;
         const LLM_RETRY_DELAY_MS: u64 = 1000;
-        let timeout_error = || {
-            crate::models::AppError::llm(format!(
-                "LLM stream call timed out after {}s",
-                LLM_STREAM_TIMEOUT_SECS
-            ))
-        };
+        // 🔧 F2 修复：超时语义从「总时长 600s」改为「空闲 600s + 绝对上限 2h」。
+        // 长 agentic 生成只要流式持续健康输出就不会被掐断；
+        // 真正挂起（10 分钟无任何数据）或病态慢滴流（总时长 2h）才超时。
+        let idle_limit = Duration::from_secs(LLM_STREAM_TIMEOUT_SECS);
+        let total_limit = Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS);
+        let timeout_error = |reason: String| crate::models::AppError::llm(reason);
         let is_retryable_llm_error = |err_str: &str| {
             let lower = err_str.to_ascii_lowercase();
             lower.contains("connection")
@@ -673,18 +670,38 @@ impl ChatV2Pipeline {
                 || lower.contains("status: 504")
         };
 
-        let mut call_result =
-            match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), llm_future).await {
-                Ok(result) => result,
-                Err(_) => {
+        let mut call_result = {
+            let adapter_for_idle = adapter.clone();
+            match wait_llm_stream_with_idle_timeout(llm_future, idle_limit, total_limit, move || {
+                adapter_for_idle.idle_elapsed()
+            })
+            .await
+            {
+                LlmStreamWaitOutcome::Completed(result) => result,
+                LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
                     log::error!(
-                        "[ChatV2::pipeline] LLM stream call timeout after {}s, session={}",
-                        LLM_STREAM_TIMEOUT_SECS,
+                        "[ChatV2::pipeline] LLM stream idle timeout after {}s without data, session={}",
+                        idle_secs,
                         ctx.session_id
                     );
-                    Err(timeout_error())
+                    Err(timeout_error(format!(
+                        "LLM stream call timed out: no data received for {}s",
+                        idle_secs
+                    )))
                 }
-            };
+                LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                    log::error!(
+                        "[ChatV2::pipeline] LLM stream exceeded absolute limit {}s, session={}",
+                        total_secs,
+                        ctx.session_id
+                    );
+                    Err(timeout_error(format!(
+                        "LLM stream call exceeded absolute time limit ({}s)",
+                        total_secs
+                    )))
+                }
+            }
+        };
 
         // 瞬时网络错误自动重试（最多 LLM_MAX_RETRIES 次）
         if call_result.is_err() {
@@ -723,10 +740,14 @@ impl ChatV2Pipeline {
                     break;
                 }
 
-                // 重新注册 hooks 以清理首次失败调用的累积状态
+                // 重新注册 hooks，并重置 adapter 累积状态
+                // 🔧 修复：重新注册并不会清空 adapter（Arc 共享同一实例），
+                // 若失败尝试已流出部分内容，必须显式重置，否则重试响应会被
+                // 追加到旧的部分内容之后，导致内容重复落库/重复执行工具调用
                 self.llm_manager
                     .unregister_stream_hooks(&stream_event)
                     .await;
+                adapter.reset_stream_state();
                 self.llm_manager
                     .register_stream_hooks(&stream_event, adapter.clone())
                     .await;
@@ -755,22 +776,43 @@ impl ChatV2Pipeline {
                     ctx.options.thinking_budget,
                 );
 
-                call_result = match timeout(
-                    Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
-                    retry_future,
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_) => {
-                        log::error!(
-                                "[ChatV2::pipeline] LLM stream retry timeout after {}s, session={}, retry={}/{}",
-                                LLM_STREAM_TIMEOUT_SECS,
+                call_result = {
+                    let adapter_for_idle = adapter.clone();
+                    match wait_llm_stream_with_idle_timeout(
+                        retry_future,
+                        idle_limit,
+                        total_limit,
+                        move || adapter_for_idle.idle_elapsed(),
+                    )
+                    .await
+                    {
+                        LlmStreamWaitOutcome::Completed(result) => result,
+                        LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
+                            log::error!(
+                                "[ChatV2::pipeline] LLM stream retry idle timeout after {}s, session={}, retry={}/{}",
+                                idle_secs,
                                 ctx.session_id,
                                 retry,
                                 LLM_MAX_RETRIES
                             );
-                        Err(timeout_error())
+                            Err(timeout_error(format!(
+                                "LLM stream call timed out: no data received for {}s",
+                                idle_secs
+                            )))
+                        }
+                        LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                            log::error!(
+                                "[ChatV2::pipeline] LLM stream retry exceeded absolute limit {}s, session={}, retry={}/{}",
+                                total_secs,
+                                ctx.session_id,
+                                retry,
+                                LLM_MAX_RETRIES
+                            );
+                            Err(timeout_error(format!(
+                                "LLM stream call exceeded absolute time limit ({}s)",
+                                total_secs
+                            )))
+                        }
                     }
                 };
 
@@ -1104,6 +1146,8 @@ impl ChatV2Pipeline {
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false)
             });
+            // 🔧 F5 修复：记录本轮心跳，供下一轮递归入口判断（替代全量历史扫描）
+            ctx.last_round_heartbeat = has_continue_execution;
             if has_continue_execution {
                 log::info!(
                     "[ChatV2::pipeline] Heartbeat detected from whitelisted tool, will bypass recursion limit (count: {})",
@@ -1899,6 +1943,12 @@ impl ChatV2Pipeline {
 
         if effective_sensitivity != Some(ToolSensitivity::Low) {
             if let Some(approval_manager) = &self.approval_manager {
+                // 🔧 F8/F9 修复说明：session_id 必须是真实会话 ID（多变体路径不再传
+                // "{session}:{variant}" 复合键）。前端审批响应携带真实 session_id，
+                // ApprovalManager 按 (session_id, tool_call_id) 精确匹配 pending 项，
+                // 若此处键不一致，用户点击"允许"将永远匹配不到等待者（approval_expired），
+                // 工具只能等到超时被拒。
+
                 // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
                 // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
                 // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
@@ -1954,6 +2004,7 @@ impl ChatV2Pipeline {
                             &block_id,
                             &actual_sensitivity,
                             approval_manager,
+                            cancellation_token.as_ref(),
                         )
                         .await;
 
@@ -1974,6 +2025,11 @@ impl ChatV2Pipeline {
                         ApprovalOutcome::ChannelClosed => {
                             return Ok(build_preflight_blocked_result(
                                 "工具审批通道异常关闭，请重试".to_string(),
+                            ));
+                        }
+                        ApprovalOutcome::Cancelled => {
+                            return Ok(build_preflight_blocked_result(
+                                "流已取消，工具审批中止".to_string(),
                             ));
                         }
                     }
@@ -2074,6 +2130,7 @@ impl ChatV2Pipeline {
         block_id: &str,
         sensitivity: &ToolSensitivity,
         approval_manager: &Arc<ApprovalManager>,
+        cancellation_token: Option<&CancellationToken>,
     ) -> ApprovalOutcome {
         let timeout_seconds = approval_manager.default_timeout();
         let approval_block_id = format!("approval_{}", tool_call.id);
@@ -2125,8 +2182,35 @@ impl ChatV2Pipeline {
         );
 
         // 等待响应或超时
+        // 🔧 F7 修复：同时监听流取消信号 —— 用户停止生成时立即清理 pending 审批
+        // 并退出等待，不再让审批 sender 残留到 60s 超时
         let timeout_duration = std::time::Duration::from_secs(timeout_seconds as u64);
-        match tokio::time::timeout(timeout_duration, rx).await {
+        let wait_result = if let Some(cancel_token) = cancellation_token {
+            tokio::select! {
+                result = tokio::time::timeout(timeout_duration, rx) => Some(result),
+                _ = cancel_token.cancelled() => None,
+            }
+        } else {
+            Some(tokio::time::timeout(timeout_duration, rx).await)
+        };
+
+        let Some(timeout_result) = wait_result else {
+            // 流被取消：清理 pending 审批并通知前端关闭审批卡片
+            log::info!(
+                "[ChatV2::pipeline] Stream cancelled while waiting approval for tool: {}",
+                tool_call.name
+            );
+            approval_manager.cancel_with_session(session_id, &tool_call.id);
+            emitter.emit_error(
+                event_types::TOOL_APPROVAL_REQUEST,
+                &approval_block_id,
+                "approval_cancelled",
+                None,
+            );
+            return ApprovalOutcome::Cancelled;
+        };
+
+        match timeout_result {
             Ok(Ok(response)) => {
                 log::info!(
                     "[ChatV2::pipeline] Received approval response: approved={}",

@@ -107,12 +107,13 @@ function buildMergeMaps(worksheet: ExcelJS.Worksheet): MergeMaps {
   return { masters, covered };
 }
 
-/** HTML 转义 */
+/** HTML 转义（含引号：sheetName 会进入属性值上下文） */
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 /** 将 ExcelJS worksheet 转为 HTML table 字符串 */

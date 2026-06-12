@@ -615,6 +615,8 @@ impl CloudStorage for WebDavStorage {
         // PUT 是整文件覆盖写，重传天然幂等。
         let max_retries = 3;
         let mut last_error: Option<AppError> = None;
+        // 跨重试的进度高水位：重传从头读文件时不向 UI 上报回跳的进度
+        let reported_max = Arc::new(AtomicU64::new(0));
 
         for attempt in 0..max_retries {
             if attempt > 0 {
@@ -629,12 +631,16 @@ impl CloudStorage for WebDavStorage {
 
             let uploaded = Arc::new(AtomicU64::new(0));
             let progress_cb = progress.clone();
+            let reported = reported_max.clone();
             let stream = ReaderStream::new(file).map(move |chunk| {
                 if let Ok(ref bytes) = chunk {
                     let new_total = uploaded.fetch_add(bytes.len() as u64, Ordering::SeqCst)
                         + bytes.len() as u64;
-                    if let Some(cb) = progress_cb.as_ref() {
-                        cb(new_total, file_size);
+                    let prev_max = reported.fetch_max(new_total, Ordering::SeqCst);
+                    if new_total > prev_max {
+                        if let Some(cb) = progress_cb.as_ref() {
+                            cb(new_total, file_size);
+                        }
                     }
                 }
                 chunk

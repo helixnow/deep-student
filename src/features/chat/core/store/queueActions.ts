@@ -215,6 +215,19 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
         }
       }, QUEUE_DEQUEUE_BREATHER_MS);
 
+      // 🔧 修复：出队发送必须使用入队时快照的 contextRefs。
+      // send 链路（sendMessageWithIds / TauriAdapter sendCallback）从 store 的
+      // pendingContextRefs 读取上下文引用，而非队列项快照 —— 若不替换：
+      // 1) 用户在流式期间修改了草稿引用，队列项会被错误地附上新引用（串扰）；
+      // 2) 首条出队后 sendMessageWithIds 清空非 sticky 引用，后续队列项全部丢失引用。
+      // 发送期间临时替换为快照（保留 sticky），发送后恢复用户正在组合的草稿引用。
+      const preDequeue = getState() as ChatStoreState;
+      const draftRefs = preDequeue.pendingContextRefs;
+      const draftRefsDirty = preDequeue.pendingContextRefsDirty;
+      const stickyRefs = draftRefs.filter((r) => r.isSticky === true);
+      const snapshotRefs = head.contextRefs.filter((r) => r.isSticky !== true);
+      set({ pendingContextRefs: [...stickyRefs, ...snapshotRefs] });
+
       try {
         await s0.sendMessage(head.content, head.attachments);
         // Propagate the steered flag to the freshly-created user message so the
@@ -240,6 +253,16 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
             ...(cur as ChatStoreState).queuedMessages,
           ],
         }));
+      } finally {
+        // 恢复用户草稿引用（发送路径只消费快照；用户在流式期间组合的引用不受影响）。
+        // 若用户在发送窗口内显式修改了引用（dirty=true），尊重其修改、跳过恢复。
+        const cur = getState() as ChatStoreState;
+        if (!cur.pendingContextRefsDirty) {
+          set({
+            pendingContextRefs: draftRefs,
+            pendingContextRefsDirty: draftRefsDirty,
+          });
+        }
       }
     },
   };

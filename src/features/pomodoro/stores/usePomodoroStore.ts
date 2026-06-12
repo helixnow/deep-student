@@ -382,11 +382,14 @@ export const usePomodoroStore = create<PomodoroState>()(
             );
           }
 
-          // ★ I2 修复：系统通知（恰好达成每日目标时换庆祝文案）
+          // ★ I2 修复：系统通知（达成每日目标时换庆祝文案）。
+          // 用"跨越阈值"判断而非严格相等：目标在当日中途被调高/调低后，
+          // 计数可能跳过 === 的精确命中点；base < goal <= new 保证当日只庆祝一次
           const reachedDailyGoal =
             settings.dailyGoal > 0 &&
             countsAsPomodoro &&
-            newCompletedCount === settings.dailyGoal;
+            base < settings.dailyGoal &&
+            newCompletedCount >= settings.dailyGoal;
           void sendSystemNotification(
             i18n.t(
               reachedDailyGoal

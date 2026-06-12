@@ -358,7 +358,10 @@ const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
     };
   }, [menuPos]);
 
+  // 仅在菜单打开时计算：menuPos 每次打开都变化，"今天/明天"以打开时刻为准，
+  // 避免 useMemo 捕获渲染时的 now、组件常驻跨午夜后日期过期
   const options = useMemo(() => {
+    if (!menuPos) return [];
     const now = new Date();
     const today = formatLocalDate(now);
     const tomorrow = formatLocalDate(addDays(now, 1));
@@ -382,7 +385,7 @@ const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
       opts.push({ key: 'clear', label: t('todo:reschedule.clear'), date: '' });
     }
     return opts;
-  }, [item.dueDate, t]);
+  }, [menuPos, item.dueDate, t]);
 
   const handlePick = useCallback(
     (date: string) => {

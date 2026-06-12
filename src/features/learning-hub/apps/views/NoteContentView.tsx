@@ -21,7 +21,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
-import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 import { DotsSixVertical, SidebarSimple } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
@@ -42,8 +42,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   isActive = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
-  // N-1: 与 App shell 的 <768 断点对齐（767.98 避免 768px 整点两头缺失）
-  const isSmallScreen = useMediaQuery("(max-width: 767.98px)");
+  // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
+  const isSmallScreen = useIsMobile();
 
   // ========== 右侧面板状态 ==========
   const [rightPanelVisible, setRightPanelVisible] = useState(true);

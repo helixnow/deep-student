@@ -21,6 +21,15 @@ export type ScreenPosition = 'left' | 'center' | 'right';
 /** 需要放行手势的交互元素选择器，避免阻断点击 */
 const INTERACTIVE_SELECTOR = 'button, [role="button"], a, input, select, textarea, option, label, [data-gesture-ignore]';
 
+/**
+ * F1/C-9: 自带手势的内容默认豁免布局手势（非边缘起手时）。
+ * PDF 查看器（捏合缩放/拖动）、思维导图画布（节点拖拽/平移）、富文本编辑器
+ * （光标拖选）内的横向手势不应被三屏布局劫持;屏幕边缘 edgeWidth 内起手仍
+ * 优先布局手势,保证"随时可滑回"。调用方可通过 gestureIgnoreSelector 覆盖。
+ */
+export const DEFAULT_GESTURE_IGNORE_SELECTOR =
+  '[data-no-screen-swipe], .ds-pdf-viewer, .react-pdf__Page, .mindmap-container, .react-flow, .ProseMirror';
+
 const isInteractiveTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest(INTERACTIVE_SELECTOR));
@@ -116,7 +125,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   rightPanelEnabled = false,
   showSidebarAppNavigation = true,
   showContentOverlay = false,
-  gestureIgnoreSelector,
+  gestureIgnoreSelector = DEFAULT_GESTURE_IGNORE_SELECTOR,
 }) => {
   // 判断是否为三屏模式
   const isThreeScreenMode = rightPanel !== undefined && onScreenPositionChange !== undefined;

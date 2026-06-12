@@ -239,7 +239,7 @@
 
 /* ==================== 响应式 ==================== */
 
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .shortcut-settings-header {
     flex-direction: column;
     align-items: stretch;

@@ -305,7 +305,7 @@ html.is-android .android-safe-top {
 
 /* 小屏幕下：隐藏Topbar和content-header
    SHELL-1: 移动端无持久侧栏（MobileSlidingLayout 抽屉取代），--sidebar-width 归零 */
-@media (max-width: 767px) {
+@media (max-width: 767.98px) {
   :root {
     --sidebar-width: 0px;
     --desktop-titlebar-height: 0px;

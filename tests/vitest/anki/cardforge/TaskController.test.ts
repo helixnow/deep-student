@@ -104,13 +104,13 @@ describe('TaskController', () => {
     expect(result.tasks).toEqual(expectedTasks);
   });
 
-  it('cancel should call backend and clear tasks', async () => {
+  it('cancel should stop generation without deleting the session', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     const result = await controller.cancel(' doc-1 ');
 
-    expect(invoke).toHaveBeenCalledWith('delete_document_session', { documentId: 'doc-1' });
+    expect(invoke).toHaveBeenCalledWith('cancel_document_processing', { documentId: 'doc-1' });
+    expect(invoke).not.toHaveBeenCalledWith('delete_document_session', expect.anything());
     expect(result.ok).toBe(true);
-    expect(result.tasks).toEqual([]);
   });
 });

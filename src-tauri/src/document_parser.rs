@@ -352,50 +352,64 @@ impl DocumentParser {
         }
 
         // ★ 嵌套 ZIP 检测：递归检查嵌套的 ZIP 文件
+        // ★ 2026-06-12（代理 3 审阅 E1）：
+        // 1. 复用已打开的归档（旧实现对每个条目都重新打开归档、重新解析中央目录）；
+        // 2. 先只解压前 4 字节做魔数判定，命中（或扩展名命中）才完整解压——
+        //    旧实现对所有非空条目 read_to_end，等于为做检查把整个文档解压一遍。
         for (index, nested_name, is_known_zip_ext) in nested_zip_indices {
-            // 重新打开 archive（因为之前的迭代已经结束）
-            let cursor = Cursor::new(bytes);
-            let mut archive = match zip::ZipArchive::new(cursor) {
-                Ok(a) => a,
-                Err(_) => continue,
-            };
-
             let mut entry = match archive.by_index(index) {
                 Ok(e) => e,
                 Err(_) => continue,
             };
 
-            // 读取嵌套 ZIP 的内容
-            let mut nested_bytes = Vec::with_capacity(entry.size() as usize);
-            if entry.read_to_end(&mut nested_bytes).is_ok() && !nested_bytes.is_empty() {
-                // ★ 安全增强：同时使用扩展名和魔数检测
-                // 条件1: 扩展名匹配已知 ZIP 格式
-                // 条件2: 文件头匹配 ZIP 魔数（防止扩展名绕过攻击）
-                let is_zip_by_magic = Self::is_zip_magic_bytes(&nested_bytes);
-
-                // 只有扩展名或魔数至少匹配一个时才递归检测
-                if is_known_zip_ext || is_zip_by_magic {
-                    // 构造嵌套文件的完整路径用于错误消息
-                    let nested_path = format!("{} -> {}", file_name, nested_name);
-
-                    let detection_method = match (is_known_zip_ext, is_zip_by_magic) {
-                        (true, true) => "extension+magic",
-                        (true, false) => "extension",
-                        (false, true) => "magic-bytes",
-                        (false, false) => "none", // 不应该到达这里
-                    };
-
-                    log::debug!(
-                        "ZIP bomb check: recursively checking nested ZIP '{}' at depth {} (detected by: {})",
-                        nested_path,
-                        depth + 1,
-                        detection_method
-                    );
-
-                    // 递归检测嵌套 ZIP
-                    self.check_zip_bomb_recursive(&nested_bytes, &nested_path, depth + 1)?;
+            // 先读前 4 字节判断 ZIP 魔数（解压代价极小）
+            let mut head = [0u8; 4];
+            let mut head_len = 0usize;
+            while head_len < 4 {
+                match entry.read(&mut head[head_len..]) {
+                    Ok(0) => break,
+                    Ok(n) => head_len += n,
+                    Err(_) => break,
                 }
             }
+            if head_len == 0 {
+                continue;
+            }
+
+            // ★ 安全增强：同时使用扩展名和魔数检测
+            // 条件1: 扩展名匹配已知 ZIP 格式
+            // 条件2: 文件头匹配 ZIP 魔数（防止扩展名绕过攻击）
+            let is_zip_by_magic = head_len == 4 && Self::is_zip_magic_bytes(&head);
+            if !is_known_zip_ext && !is_zip_by_magic {
+                continue;
+            }
+
+            // 命中后才继续读取剩余内容
+            let mut nested_bytes = Vec::with_capacity(entry.size() as usize);
+            nested_bytes.extend_from_slice(&head[..head_len]);
+            if entry.read_to_end(&mut nested_bytes).is_err() || nested_bytes.is_empty() {
+                continue;
+            }
+
+            // 构造嵌套文件的完整路径用于错误消息
+            let nested_path = format!("{} -> {}", file_name, nested_name);
+
+            let detection_method = match (is_known_zip_ext, is_zip_by_magic) {
+                (true, true) => "extension+magic",
+                (true, false) => "extension",
+                (false, true) => "magic-bytes",
+                (false, false) => continue, // 上方已过滤，不可达
+            };
+
+            log::debug!(
+                "ZIP bomb check: recursively checking nested ZIP '{}' at depth {} (detected by: {})",
+                nested_path,
+                depth + 1,
+                detection_method
+            );
+
+            // 递归检测嵌套 ZIP
+            self.check_zip_bomb_recursive(&nested_bytes, &nested_path, depth + 1)?;
         }
 
         log::debug!(

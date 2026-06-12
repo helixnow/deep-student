@@ -59,7 +59,7 @@ label.btn.btn-primary:hover:not(:disabled) {
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .btn.btn-primary {
     padding: 0.5rem 0.875rem;
     font-size: 0.75rem;

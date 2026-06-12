@@ -5693,8 +5693,16 @@ impl Database {
         }
 
         if let Some(search_value) = search.map(|s| s.trim()).filter(|value| !value.is_empty()) {
-            clauses.push("(ac.front LIKE ? OR ac.back LIKE ? OR ac.text LIKE ?)".to_string());
-            let pattern = format!("%{}%", search_value);
+            // ★ 2026-06-12（审阅问题 F1 同类）：转义用户输入中的 LIKE 通配符，
+            // 避免搜索 "%"/"_" 时变成全表匹配/单字符通配。
+            clauses.push(
+                "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\')"
+                    .to_string(),
+            );
+            let pattern = format!(
+                "%{}%",
+                crate::vfs::repos::escape_like_pattern(search_value)
+            );
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern));

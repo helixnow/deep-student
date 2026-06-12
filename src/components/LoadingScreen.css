@@ -168,7 +168,7 @@
 }
 
 /* Mobile Responsiveness */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .loading-content {
     padding: 1rem;
     max-width: 320px;

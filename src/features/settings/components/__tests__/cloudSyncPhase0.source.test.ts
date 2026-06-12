@@ -59,7 +59,9 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     );
   });
 
-  it("hydrates FTP passwords only from secure storage", () => {
+  // [P0-3A] 2026-06-12 更新：前端不再回填明文凭据，敏感字段一律传空占位，
+  // 由后端 hydrate_cloud_config 从系统安全存储补全（明文不过 IPC）。
+  it("sends empty FTP password placeholders instead of hydrating plaintext in the frontend", () => {
     const ftpBranchStart = cloudStorageApi.indexOf(
       "if (safe.provider === 'ftp')",
     );
@@ -70,8 +72,9 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     const ftpBranch = cloudStorageApi.slice(ftpBranchStart, ftpBranchEnd);
 
     expect(ftpBranchStart).toBeGreaterThan(-1);
-    expect(ftpBranch).toContain("password: credentials?.ftpPassword ??");
+    expect(ftpBranch).toContain("password: ''");
     expect(ftpBranch).not.toContain("safe.ftp.password");
+    expect(ftpBranch).not.toContain("ftpPassword");
   });
 
   it("keeps FTP hidden for new configs unless the experimental flag or existing config is present", () => {

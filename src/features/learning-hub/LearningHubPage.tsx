@@ -31,7 +31,7 @@ import { DotsSixVertical, SquaresFour, Gear } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useUIStore } from '@/stores/uiStore';
-import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout, DEFAULT_GESTURE_IGNORE_SELECTOR, type ScreenPosition } from '@/components/layout';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
 import { useVfsContextInject, useLearningHubEvents } from './hooks';
 import type {
@@ -380,9 +380,12 @@ export const LearningHubPage: React.FC = () => {
   const handleCloseAppRef = useRef<() => void>(() => {});
   const canInjectCurrentResourceRef = useRef<() => boolean>(() => false);
 
-  /** 自带手势的内容（PDF/思维导图/富文本编辑器）内不启动三屏布局手势 */
-  const mobileGestureIgnoreSelector =
-    '[data-no-screen-swipe], .react-pdf__Page, .ds-pdf__viewer, .mindmap-canvas, .ProseMirror';
+  /**
+   * 自带手势的内容（PDF/思维导图/富文本编辑器）内不启动三屏布局手势。
+   * A8-2: 收敛到 MobileSlidingLayout 的默认豁免集（修正了原 .ds-pdf__viewer /
+   * .mindmap-canvas 两个从未匹配的失效类名）。
+   */
+  const mobileGestureIgnoreSelector = DEFAULT_GESTURE_IGNORE_SELECTOR;
 
   // ========== 📱 移动端顶栏导航逻辑 ==========
   // 判断是否在子文件夹中（不在根目录）

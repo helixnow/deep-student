@@ -549,7 +549,7 @@ html, body, #root {
   overscroll-behavior: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   /* 移动端全局溢出控制 - 仅在根级别应用 */
   html, body, #root {
     overflow-x: hidden;

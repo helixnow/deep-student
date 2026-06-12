@@ -253,7 +253,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .filter-builder {
     width: 95%;
     max-height: 90vh;

@@ -782,6 +782,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   const handleSubmit = useCallback(async () => {
     if (!currentQuestion || !onSubmitAnswer) return;
+    // 防重入：双击/连点在 isSubmitting 渲染生效前可能触发两次提交
+    if (isSubmitting) return;
     
     const isMulti = currentQuestion.questionType === 'multiple_choice'
       || currentQuestion.questionType === 'indefinite_choice';
@@ -867,7 +869,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [currentQuestion, selectedAnswer, selectedOptions, fillBlankAnswers, fillBlankCount, onSubmitAnswer, onRefreshQuestion, streakCount, totalCorrectCount, currentIndex, totalQuestions, questionTimes, elapsedTime, aiGrading, t]);
+  }, [currentQuestion, selectedAnswer, selectedOptions, fillBlankAnswers, fillBlankCount, onSubmitAnswer, onRefreshQuestion, streakCount, totalCorrectCount, currentIndex, totalQuestions, questionTimes, elapsedTime, aiGrading, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {
@@ -971,6 +973,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     if (editMode || isSmallScreen) return; // 编辑模式和移动端不启用快捷键
     
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 带修饰键的组合（Ctrl+R 刷新、Ctrl+数字切标签等）不拦截
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
       // 如果正在输入框中，不处理快捷键
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
@@ -1502,7 +1508,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                               <Check size={14} className="text-emerald-500" />
                               <span className="text-xs font-medium text-emerald-600">{t('editor.referenceAnswer')}</span>
                             </div>
-                            <p className="text-sm">{currentQuestion.answer}</p>
+                            <LatexText content={currentQuestion.answer} className="text-sm" />
                           </div>
                         )}
                         {currentQuestion.explanation && (
@@ -1621,7 +1627,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 </div>
                                 {submitResult.correctAnswer && (
                                   <p className="text-sm text-muted-foreground pl-7.5">
-                                    {t('editor.referenceAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                                    {t('editor.referenceAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
                                   </p>
                                 )}
                                 {onMarkCorrect && (
@@ -1667,7 +1673,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                                 </div>
                                 {submitResult.correctAnswer && !submitResult.isCorrect && (
                                   <p className="text-sm text-muted-foreground pl-7.5">
-                                    {t('editor.correctAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                                    {t('editor.correctAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
                                   </p>
                                 )}
                                 {/* 解析折叠 */}
@@ -1700,7 +1706,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {/* 底部导航 - 仅保留安全区域间距（历史 tab 栏已移除） */}
             <div
               className="flex-shrink-0 px-3 pt-2 pb-2 border-t border-border/50 bg-card/50"
-              style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
+              style={{ paddingBottom: 'max(0.5rem, var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))' }}
             >
               <div className="flex items-center justify-between gap-2">
                 <NotionButton
@@ -1933,7 +1939,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           )}>
                             {opt.key}
                           </span>
-                          <span className="text-sm flex-1">{opt.content}</span>
+                          <LatexText content={opt.content} className="text-sm flex-1" />
                           {currentQuestion.answer?.includes(opt.key) && (
                             <Check size={16} className="text-emerald-500 flex-shrink-0" />
                           )}
@@ -1949,7 +1955,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         <Check size={16} className="text-emerald-500" />
                         <span className="text-sm font-medium text-emerald-600">{t('editor.referenceAnswer')}</span>
                       </div>
-                      <p className="text-sm">{currentQuestion.answer}</p>
+                      <LatexText content={currentQuestion.answer} className="text-sm" />
                     </div>
                   )}
 
@@ -2130,7 +2136,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           )}
                           {submitResult.correctAnswer && (
                             <p className="text-sm text-muted-foreground pl-7.5">
-                              {t('editor.referenceAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                              {t('editor.referenceAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
                             </p>
                           )}
                           {onMarkCorrect && (
@@ -2160,7 +2166,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           </div>
                           {submitResult.correctAnswer && (
                             <p className="text-sm text-muted-foreground pl-7.5">
-                              {t('editor.referenceAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                              {t('editor.referenceAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
                             </p>
                           )}
                           {onMarkCorrect && (
@@ -2229,7 +2235,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                           </span>
                           {submitResult.correctAnswer && !submitResult.isCorrect && (
                             <span className="text-sm text-muted-foreground">
-                              · {t('editor.correctAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
+                              · {t('editor.correctAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
                             </span>
                           )}
                         </div>

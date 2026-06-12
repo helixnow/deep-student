@@ -394,11 +394,15 @@ impl EmbeddingChunker {
         // 按字符迭代，确保 UTF-8 安全
         // ★ 2026-01 修复：使用与 estimate_tokens 一致的保守估算值
         for c in text.chars() {
+            // 与 estimate_tokens / tail_text_by_tokens 保持一致（含边界与扩展区）
             let char_tokens = if c.is_whitespace() {
                 0.2
             } else if c.is_ascii_punctuation() || is_cjk_punctuation(c) {
                 1.0
-            } else if c > '\u{4E00}' && c < '\u{9FFF}' {
+            } else if (c >= '\u{4E00}' && c <= '\u{9FFF}')
+                || (c >= '\u{3400}' && c <= '\u{4DBF}')
+                || (c >= '\u{F900}' && c <= '\u{FAFF}')
+            {
                 1.5
             } else if c.is_ascii() {
                 0.3

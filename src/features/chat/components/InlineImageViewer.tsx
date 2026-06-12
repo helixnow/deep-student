@@ -322,7 +322,7 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/42 via-black/14 to-transparent">
         <div
           className="pointer-events-none flex items-center justify-center px-3 pb-3 pt-10 sm:px-4 sm:pb-4 sm:pt-12"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom-fallback, 0px))' }}
         >
           <div className="pointer-events-none flex w-full justify-center overflow-x-auto">
             <div

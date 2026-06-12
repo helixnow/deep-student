@@ -330,14 +330,14 @@ export function useAppUpdater(): AppUpdaterController {
         // 稳定版用户遇到实验版 → 视为已是最新
         if (getUpdateChannel() === 'stable' && releaseChannel === 'experimental') {
           setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent }));
-          return;
+          return true;
         }
 
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
           // Startup check: skip if user chose to skip this specific version
           if (startup && getSkippedVersion() === latestVersion) {
             setState(prev => ({ ...prev, checking: false, available: false, upToDate: false }));
-            return;
+            return true;
           }
           setState(prev => ({
             ...prev,
@@ -379,7 +379,7 @@ export function useAppUpdater(): AppUpdaterController {
           const resp = await fetch(R2_LATEST_URL, { signal: ctrl.signal }).finally(() => clearTimeout(t));
           if (resp.ok && (await resp.json()).channel === 'experimental') {
             setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent }));
-            return;
+            return true;
           }
         } catch { /* R2 不可用，继续正常流程 */ }
       }

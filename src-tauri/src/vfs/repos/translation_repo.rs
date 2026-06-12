@@ -80,10 +80,10 @@ impl VfsTranslationRepo {
         // 搜索过滤（在 resources.data 中搜索）
         if let Some(q) = search {
             sql.push_str(&format!(
-                " AND EXISTS (SELECT 1 FROM resources r WHERE r.id = t.resource_id AND r.data LIKE ?{})",
+                " AND EXISTS (SELECT 1 FROM resources r WHERE r.id = t.resource_id AND r.data LIKE ?{} ESCAPE '\\')",
                 param_idx
             ));
-            let search_pattern = format!("%{}%", q);
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             params_vec.push(Box::new(search_pattern));
             param_idx += 1;
         }
