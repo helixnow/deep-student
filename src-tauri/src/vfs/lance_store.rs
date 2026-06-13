@@ -527,6 +527,14 @@ impl VfsLanceStore {
     }
 
     /// 删除资源的所有向量
+    ///
+    /// ★ 2026-06-13（第二轮审阅 F13）：表级删除失败不再静默吞掉（与
+    /// delete_by_embedding_ids 的 F8 修复同模式）。此前 is_ok() 吞错导致：
+    /// 1. index_handlers 的 DeleteIndexResult.lance*Ok/retryable 契约失真
+    ///    （删除失败仍上报成功，前端永远看不到可重试状态）；
+    /// 2. indexing.rs delete_resource_index 在 mm 向量删除失败时照删
+    ///    SQLite 元数据，孤儿向量无人再清。
+    /// 所有调用方都已有 Err 处理分支（warn / 传播 / `let _ =`），行为兼容。
     pub async fn delete_by_resource(&self, modality: &str, resource_id: &str) -> VfsResult<usize> {
         let conn = self.connect().await?;
         let mut deleted = 0usize;
@@ -541,14 +549,31 @@ impl VfsLanceStore {
         dims.sort_unstable();
         dims.dedup();
 
+        let mut first_err: Option<VfsError> = None;
         for dim in dims {
             let table_name = Self::table_name(modality, dim);
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
                 let expr = format!("resource_id = '{}'", resource_id.replace("'", "''"));
-                if tbl.delete(expr.as_str()).await.is_ok() {
-                    deleted += 1;
+                match tbl.delete(expr.as_str()).await {
+                    Ok(_) => deleted += 1,
+                    Err(e) => {
+                        warn!(
+                            "[VfsLanceStore] delete_by_resource failed on table {}: {}",
+                            table_name, e
+                        );
+                        if first_err.is_none() {
+                            first_err = Some(VfsError::Other(format!(
+                                "delete_by_resource failed on {}: {}",
+                                table_name, e
+                            )));
+                        }
+                    }
                 }
             }
+        }
+
+        if let Some(e) = first_err {
+            return Err(e);
         }
 
         debug!(
@@ -579,6 +604,8 @@ impl VfsLanceStore {
         dims.sort_unstable();
         dims.dedup();
 
+        // ★ 2026-06-13（第二轮审阅 F13）：同 delete_by_resource，删除失败上报错误。
+        let mut first_err: Option<VfsError> = None;
         for dim in dims {
             if dim == keep_dim {
                 continue;
@@ -586,10 +613,26 @@ impl VfsLanceStore {
             let table_name = Self::table_name(modality, dim);
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
                 let expr = format!("resource_id = '{}'", resource_id.replace("'", "''"));
-                if tbl.delete(expr.as_str()).await.is_ok() {
-                    deleted += 1;
+                match tbl.delete(expr.as_str()).await {
+                    Ok(_) => deleted += 1,
+                    Err(e) => {
+                        warn!(
+                            "[VfsLanceStore] delete_by_resource_except_dim failed on table {}: {}",
+                            table_name, e
+                        );
+                        if first_err.is_none() {
+                            first_err = Some(VfsError::Other(format!(
+                                "delete_by_resource_except_dim failed on {}: {}",
+                                table_name, e
+                            )));
+                        }
+                    }
                 }
             }
+        }
+
+        if let Some(e) = first_err {
+            return Err(e);
         }
 
         debug!(
@@ -625,6 +668,8 @@ impl VfsLanceStore {
 
         let escaped_resource_id = resource_id.replace("'", "''");
 
+        // ★ 2026-06-13（第二轮审阅 F13）：同 delete_by_resource，删除失败上报错误。
+        let mut first_err: Option<VfsError> = None;
         for dim in dims {
             let table_name = Self::table_name(modality, dim);
             if let Ok(tbl) = conn.open_table(&table_name).execute().await {
@@ -641,10 +686,26 @@ impl VfsLanceStore {
                         escaped_resource_id, in_list
                     )
                 };
-                if tbl.delete(expr.as_str()).await.is_ok() {
-                    deleted += 1;
+                match tbl.delete(expr.as_str()).await {
+                    Ok(_) => deleted += 1,
+                    Err(e) => {
+                        warn!(
+                            "[VfsLanceStore] delete_by_resource_except_ids failed on table {}: {}",
+                            table_name, e
+                        );
+                        if first_err.is_none() {
+                            first_err = Some(VfsError::Other(format!(
+                                "delete_by_resource_except_ids failed on {}: {}",
+                                table_name, e
+                            )));
+                        }
+                    }
                 }
             }
+        }
+
+        if let Some(e) = first_err {
+            return Err(e);
         }
 
         debug!(

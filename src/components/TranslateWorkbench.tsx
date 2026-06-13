@@ -60,9 +60,11 @@ interface TranslateWorkbenchProps {
   onBack?: () => void;
   /** DSTU 模式配置（必需） */
   dstuMode: TranslateWorkbenchDstuMode;
+  /** ★ A6-28 标签页：当前是否为活跃标签页；非活跃实例不响应全局快捷键 */
+  isActive?: boolean;
 }
 
-export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, dstuMode }) => {
+export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, dstuMode, isActive }) => {
   const { t } = useTranslation(['translation', 'common']);
 
   // DSTU 会话数据
@@ -644,7 +646,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, initialSession]);
 
   // 快捷键支持（注册在 document 上，处理后 stopPropagation 阻止冒泡到命令系统）
+  // ★ A6-28 标签页保活：非活跃实例不注册，防止多个翻译标签页同时响应同一按键
+  //   （对齐 MindMapContentView/MindMapCanvas 的 isActive 守卫；isActive 未传时视为活跃）
   useEffect(() => {
+    if (isActive === false) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl/Cmd + Enter: 翻译
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -677,7 +682,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sourceText, isTranslating, srcLang, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit]);
+  }, [sourceText, isTranslating, srcLang, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit, isActive]);
 
   return (
       <div className="w-full h-full flex-1 min-h-0 bg-[hsl(var(--background))] flex flex-col overflow-hidden">

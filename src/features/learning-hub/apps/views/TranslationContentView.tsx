@@ -32,6 +32,7 @@ const TranslateWorkbench = lazy(() =>
 const TranslationContentView: React.FC<ContentViewProps> = ({
   node,
   onClose,
+  isActive,
 }) => {
   const { t } = useTranslation(['translation', 'common', 'learningHub']);
 
@@ -160,6 +161,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       >
         <TranslateWorkbench
           onBack={onClose}
+          isActive={isActive}
           dstuMode={{
             session,
             onSessionSave: handleSessionSave,

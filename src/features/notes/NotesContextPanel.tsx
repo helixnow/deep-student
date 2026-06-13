@@ -333,7 +333,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 >
                                     {tag}
                                     <X
-                                        className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 cursor-pointer hover:text-destructive transition-opacity"
+                                        className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 cursor-pointer hover:text-destructive transition-opacity"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleRemoveTag(tag);

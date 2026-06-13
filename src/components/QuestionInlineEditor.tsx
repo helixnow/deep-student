@@ -484,7 +484,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                     className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
                     placeholder={`${opt.key} ...`}
 />
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive" aria-label="remove">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 text-muted-foreground hover:text-destructive" aria-label="remove">
                     <X size={10} />
                   </NotionButton>
                 </div>
@@ -618,7 +618,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       size="sm"
                       iconOnly
                       onClick={() => handleRemoveImage(img.id)}
- className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
+ className="w-6 h-6 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
                     >
                       <Trash size={12} />
                     </NotionButton>

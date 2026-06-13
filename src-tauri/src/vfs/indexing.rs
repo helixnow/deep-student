@@ -3624,11 +3624,11 @@ impl VfsFullIndexingService {
     /// 确保软删除后的资源不会在 RAG 检索中被错误返回。
     /// ★ 审计修复：复用 self.lance_store，删除后刷新 record_count
     pub async fn delete_resource_index(&self, resource_id: &str) -> VfsResult<()> {
-        // 1. 删除 text modality 的 Lance 向量（通过 pipeline）
-        self.pipeline.delete_resource_index(resource_id).await?;
-
-        // 2. 删除 multimodal modality 的 Lance 向量
-        // ★ 审计修复：复用 self.lance_store 而非每次创建新实例
+        // 1. 先删除 multimodal modality 的 Lance 向量。
+        // ★ 2026-06-13（第二轮审阅 F13 配套）：mm 向量没有 SQLite 段登记
+        // （按 resource_id 过滤删除），孤儿队列无法兜底，必须放在 SQLite
+        // 元数据清理**之前**：失败时整个删除中止、所有状态保持原样可重试。
+        // （delete_by_resource 现在会如实上报删除失败，不再静默吞错。）
         self.lance_store
             .delete_by_resource(MODALITY_MULTIMODAL, resource_id)
             .await
@@ -3638,6 +3638,10 @@ impl VfsFullIndexingService {
                     resource_id, e
                 ))
             })?;
+
+        // 2. 删除 text modality 的 Lance 向量（通过 pipeline，含 SQLite 段
+        //    的孤儿队列入列，崩溃/失败均可由后台 drain 兜底）
+        self.pipeline.delete_resource_index(resource_id).await?;
 
         // 3. 删除 SQLite 中的元数据（新架构：Units + Segments 级联删除）
         let conn = self.db.get_conn()?;

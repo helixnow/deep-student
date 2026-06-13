@@ -190,7 +190,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       }
     }
     oversizeNotifiedRef.current.delete(targetNoteId);
-    lastSavedMapRef.current.set(targetNoteId, content);
+    // ★ A6-18：仅当笔记仍被跟踪（草稿仍在或为当前笔记）时回写快照。
+    // 否则切换笔记后保存完成会把已清理的条目重新塞回 Map，长会话下
+    // lastSavedMapRef 持有大量历史笔记全文，内存无界增长。
+    if (draftByNoteRef.current.has(targetNoteId) || targetNoteId === noteIdRef.current) {
+      lastSavedMapRef.current.set(targetNoteId, content);
+    } else {
+      lastSavedMapRef.current.delete(targetNoteId);
+    }
     if (!isUnmountedRef.current && targetNoteId === noteIdRef.current) {
       setLastSaved(new Date());
     }
@@ -508,15 +515,25 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       }
       
       // 如果有新内容，直接使用；否则从 active 获取
-      if (newContent !== undefined && editorApi) {
+      if (newContent !== undefined && editorApi && currentNoteId) {
+        // ★ A6-19：对齐 R3 外部更新语义——编辑器有未保存修改时不静默覆盖，
+        // 避免吃掉用户正在输入的内容；冲突留待下次保存由乐观锁/冲突流程显式解决
+        const draft = draftByNoteRef.current.get(currentNoteId);
+        const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
+        const isDirty =
+          (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
+          pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
+          inFlightSaveRef.current !== null;
+        if (isDirty) {
+          console.warn('[NotesCrepeEditor] ⚠️ canvas 更新到达时存在未保存修改，跳过静默覆盖');
+          return;
+        }
         // 更新编辑器内容
         editorApi.setMarkdown(newContent);
         // 更新本地引用，避免被误判为未保存
         contentRef.current = newContent;
-        if (currentNoteId) {
-          draftByNoteRef.current.set(currentNoteId, newContent);
-          lastSavedMapRef.current.set(currentNoteId, newContent);
-        }
+        draftByNoteRef.current.set(currentNoteId, newContent);
+        lastSavedMapRef.current.set(currentNoteId, newContent);
       }
     };
     

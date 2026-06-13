@@ -196,6 +196,34 @@ pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde
     sanitized
 }
 
+/// 🔒 URL 脱敏：Gemini 等供应商把 API key 放在 query 参数（?key=AIza...），
+/// 审计日志/调试落盘/前端事件/错误消息里的 URL 必须先脱敏，否则每次请求都泄漏密钥。
+pub(crate) fn sanitize_url_for_log(url: &str) -> String {
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_string();
+    };
+    let sanitized_query = query
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((k, _)) => {
+                let kl = k.to_ascii_lowercase();
+                let is_sensitive = matches!(
+                    kl.as_str(),
+                    "key" | "api_key" | "apikey" | "api-key" | "token" | "access_token" | "secret"
+                );
+                if is_sensitive {
+                    format!("{}=[REDACTED]", k)
+                } else {
+                    pair.to_string()
+                }
+            }
+            None => pair.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{}?{}", base, sanitized_query)
+}
+
 fn redact_user_profile_blocks_in_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::String(s) => {
@@ -311,6 +339,27 @@ mod tests {
         let redacted = redact_user_profile_blocks_in_text(input);
         assert!(redacted.contains("<user_profile>[REDACTED]</user_profile>"));
         assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn test_sanitize_url_for_log_redacts_query_keys() {
+        // Gemini 风格：key 在 query
+        let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:streamGenerateContent?alt=sse&key=AIzaSySECRET123";
+        let sanitized = sanitize_url_for_log(url);
+        assert!(!sanitized.contains("AIzaSySECRET123"));
+        assert!(sanitized.contains("key=[REDACTED]"));
+        assert!(sanitized.contains("alt=sse"));
+
+        // 无 query 的 URL 原样返回
+        let plain = "https://api.openai.com/v1/chat/completions";
+        assert_eq!(sanitize_url_for_log(plain), plain);
+
+        // 大小写与变体参数名
+        let mixed = "https://x.example/api?API_KEY=abc&access_token=tok&foo=bar";
+        let s = sanitize_url_for_log(mixed);
+        assert!(!s.contains("abc"));
+        assert!(!s.contains("tok"));
+        assert!(s.contains("foo=bar"));
     }
 
     #[test]
@@ -629,6 +678,8 @@ pub(crate) fn log_llm_request_audit(
     persist_config: Option<&DebugPersistConfig>,
 ) {
     let sanitized = sanitize_request_body_for_audit(body);
+    // 🔒 URL 含 query 密钥（如 Gemini ?key=...）时脱敏后再进日志/落盘
+    let url = sanitize_url_for_log(url);
     match serde_json::to_string_pretty(&sanitized) {
         Ok(pretty) => info!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
@@ -642,7 +693,7 @@ pub(crate) fn log_llm_request_audit(
 
     if let Some(c) = persist_config {
         crate::debug_log_service::write_debug_log_entry(
-            &c.log_dir, tag, model, url, "", &sanitized,
+            &c.log_dir, tag, model, &url, "", &sanitized,
         );
     }
 }
@@ -670,6 +721,8 @@ pub(crate) fn log_and_emit_llm_request(
     persist_config: Option<&DebugPersistConfig>,
 ) {
     let sanitized = sanitize_request_body_for_audit(body);
+    // 🔒 URL 含 query 密钥（如 Gemini ?key=...）时脱敏后再进日志/落盘/前端事件
+    let url = sanitize_url_for_log(url);
 
     // 1. 审计日志（始终 standard 级别，避免泄漏 base64）
     match serde_json::to_string_pretty(&sanitized) {
@@ -690,7 +743,7 @@ pub(crate) fn log_and_emit_llm_request(
                 &c.log_dir,
                 tag,
                 model,
-                url,
+                &url,
                 stream_event,
                 &sanitized,
             )
@@ -1749,7 +1802,8 @@ impl LLMManager {
                 .json(&preq.body)
                 .send()
                 .await
-                .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e)))?;
+                // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key），脱敏后再进错误消息
+                .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
 
             if resp.status().is_success() {
                 break resp;
@@ -2290,6 +2344,8 @@ impl LLMManager {
                     }
                 }
                 Err(e) => {
+                    // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key）
+                    let e = e.without_url();
                     error!(
                         "{}流读取错误: {}",
                         chat_timing::format_elapsed_prefix(stream_event),
@@ -3179,7 +3235,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -3549,7 +3605,7 @@ impl LLMManager {
                     }
                 }
                 Err(e) => {
-                    error!("流式响应错误: {}", e);
+                    error!("流式响应错误: {}", e.without_url());
                     break;
                 }
             }
@@ -4015,7 +4071,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -4178,7 +4234,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("聊天元数据生成请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("聊天元数据生成请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -4561,9 +4617,11 @@ impl LLMManager {
                         }
                     } else if status == 400 {
                         // 400错误可能是模型不支持，尝试下一个
+                        // 🔒 URL 可能含 query 密钥（Gemini ?key=...），日志与用户可见错误均需脱敏
+                        let safe_url = sanitize_url_for_log(&preq.url);
                         let error_text = response.text().await.unwrap_or_default();
                         warn!("模型 {} 不支持，错误: {}", model, error_text);
-                        debug!("请求URL: {}", preq.url);
+                        debug!("请求URL: {}", safe_url);
                         debug!(
                             "请求体: {}",
                             serde_json::to_string_pretty(&preq.body).unwrap_or_default()
@@ -4572,25 +4630,27 @@ impl LLMManager {
                         if model_name.is_some() {
                             return Err(AppError::validation(format!(
                                 "API请求失败 (状态码: 400):\n请求URL: {}\n错误响应: {}\n可能原因: 模型不支持或参数错误",
-                                preq.url, error_text
+                                safe_url, error_text
                             )));
                         }
                         continue;
                     } else if status == 401 {
                         // 401是认证错误，不需要尝试其他模型
+                        let safe_url = sanitize_url_for_log(&preq.url);
                         let error_text = response.text().await.unwrap_or_default();
                         error!("API密钥认证失败: {}", status);
-                        debug!("请求URL: {}", preq.url);
+                        debug!("请求URL: {}", safe_url);
                         debug!("认证错误详情: {}", error_text);
                         return Err(AppError::validation(format!(
                             "API认证失败 (状态码: 401):\n请求URL: {}\n错误响应: {}\n请检查API密钥是否正确",
-                            preq.url, error_text
+                            safe_url, error_text
                         )));
                     } else {
                         // 其他错误
+                        let safe_url = sanitize_url_for_log(&preq.url);
                         let error_text = response.text().await.unwrap_or_default();
                         error!("API请求失败: {} - {}", status, error_text);
-                        debug!("请求URL: {}", preq.url);
+                        debug!("请求URL: {}", safe_url);
                         debug!(
                             "请求体: {}",
                             serde_json::to_string_pretty(&preq.body).unwrap_or_default()
@@ -4599,16 +4659,19 @@ impl LLMManager {
                         if model_name.is_some() {
                             return Err(AppError::validation(format!(
                                 "API请求失败 (状态码: {}):\n请求URL: {}\n错误响应: {}",
-                                status, preq.url, error_text
+                                status, safe_url, error_text
                             )));
                         }
                         continue;
                     }
                 }
                 Ok(Err(e)) => {
+                    // 🔒 without_url：错误 Display 可能含带 key 的 URL（Gemini）
+                    let cause = e.to_string();
+                    let e = e.without_url();
                     error!("API连接测试请求错误 (模型: {}): {}", model, e);
                     // 如果是连接错误，不需要尝试其他模型
-                    if e.to_string().contains("handshake") || e.to_string().contains("connect") {
+                    if cause.contains("handshake") || cause.contains("connect") {
                         return Err(AppError::network(format!("连接失败: {}", e)));
                     }
                     // 如果是用户指定的模型，直接返回失败
@@ -4877,7 +4940,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("RAW_PROMPT API请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())))?;
 
         // 6. 检查响应状态
         if !response.status().is_success() {
@@ -5148,7 +5211,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("OCR_MODEL API请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url())))?;
 
         // 6. 检查响应状态
         if !response.status().is_success() {
@@ -5262,7 +5325,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::llm(format!("OCR请求失败: {}", e)))?;
+            .map_err(|e| AppError::llm(format!("OCR请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -5546,9 +5609,11 @@ impl LLMManager {
         }
 
         let response = request_builder.json(&preq.body).send().await.map_err(|e| {
-            let error_msg = if e.to_string().contains("timed out") {
+            let cause = e.to_string();
+            let e = e.without_url();
+            let error_msg = if cause.contains("timed out") {
                 format!("Anki制卡API请求超时: {}", e)
-            } else if e.to_string().contains("connect") {
+            } else if cause.contains("connect") {
                 format!("无法连接到 Anki 制卡 API 服务器: {}", e)
             } else {
                 format!("Anki制卡API请求失败: {}", e)

@@ -759,6 +759,12 @@ impl NotesManager {
         if trimmed.is_empty() {
             return Ok(vec![]);
         }
+        // ★ A6-22：VFS 模式下 lance notes_search 表与旧 notes 表都不再被写入
+        // （sync_note_to_lance 仅旧 SQLite 路径调用），继续查询只会拿到陈旧/空结果。
+        // 直接走 VFS 检索（标题+正文 LIKE），保证 canvas AI 笔记搜索工具拿到新鲜数据。
+        if self.vfs_db.is_some() {
+            return self.search_notes_vfs(trimmed, limit);
+        }
         let table = self.lance_notes_table()?;
         let limit = limit.max(1);
         let tokens = Self::tokenize_keyword(trimmed);
@@ -839,6 +845,32 @@ impl NotesManager {
         }
         if out.is_empty() {
             return self.search_notes_sqlite(trimmed, limit, &tokens_lower);
+        }
+        Ok(out)
+    }
+
+    /// ★ A6-22：VFS 模式下的笔记搜索（供 canvas AI 工具使用）
+    #[cfg(feature = "lance")]
+    fn search_notes_vfs(
+        &self,
+        keyword: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String, Option<String>)>> {
+        let vfs_db = self
+            .vfs_db
+            .as_ref()
+            .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+        let tokens = Self::tokenize_keyword(keyword);
+        let tokens_lower: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
+        let notes = VfsNoteRepo::list_notes(vfs_db, Some(keyword), limit.max(1) as u32, 0)
+            .map_err(|e| AppError::database(format!("VFS 搜索笔记失败: {}", e)))?;
+        let mut out = Vec::with_capacity(notes.len());
+        for note in notes {
+            let snippet = VfsNoteRepo::get_note_content(vfs_db, &note.id)
+                .ok()
+                .flatten()
+                .and_then(|content| self.build_note_snippet(&content, &tokens_lower));
+            out.push((note.id, note.title, snippet));
         }
         Ok(out)
     }
@@ -1942,8 +1974,12 @@ impl NotesManager {
             expected_updated_at: expected_updated_at.map(|s| s.to_string()),
         };
 
-        let vfs_note = VfsNoteRepo::update_note(vfs_db, note_id, params)
-            .map_err(|e| AppError::database(format!("VFS update_note failed: {}", e)))?;
+        // ★ A6-20：乐观锁冲突必须保留 conflict 错误码（含 "notes.conflict" 标识），
+        // 与旧 SQLite 路径(update_note)一致；一律包装成 database 会让前端无法识别冲突
+        let vfs_note = VfsNoteRepo::update_note(vfs_db, note_id, params).map_err(|e| match &e {
+            crate::vfs::error::VfsError::Conflict { .. } => AppError::conflict(e.to_string()),
+            _ => AppError::database(format!("VFS update_note failed: {}", e)),
+        })?;
 
         // 获取更新后的内容
         let content = VfsNoteRepo::get_note_content(vfs_db, note_id)

@@ -404,7 +404,9 @@ const MindMapCanvasInner: React.FC = () => {
     setIsDragging(true);
 
     // 收集所有后代节点的相对偏移，使子树跟随拖拽
+    // ★ A6-25：先建 id→layoutNode 索引，避免每个后代各做一次 O(n) 的 allNodes.find
     const allNodes = getNodes();
+    const layoutNodeById = new Map(allNodes.map(n => [n.id, n]));
     const offsets: Record<string, { dx: number; dy: number }> = {};
     const overrides: Record<string, { x: number; y: number }> = { [node.id]: node.position };
 
@@ -412,7 +414,7 @@ const MindMapCanvasInner: React.FC = () => {
       const mmNode = findNodeById(document.root, parentId);
       if (!mmNode?.children) return;
       for (const child of mmNode.children) {
-        const layoutNode = allNodes.find(n => n.id === child.id);
+        const layoutNode = layoutNodeById.get(child.id);
         if (layoutNode) {
           offsets[child.id] = {
             dx: layoutNode.position.x - node.position.x,
@@ -456,10 +458,24 @@ const MindMapCanvasInner: React.FC = () => {
     const dragCenterX = dragPos.x + dragW / 2;
     const dragCenterY = dragPos.y + dragH / 2;
 
+    // ★ A6-25：每次 drag move 只算一次拖拽子树 id 集合（O(子树)），
+    // 替代旧实现对每个候选节点调用 isDescendantOf（每个候选 O(全树)，整体 O(n²)，
+    // 500+ 节点大图拖拽时每次 mousemove 高达数十万次节点访问，明显卡顿）。
+    const dragSubtree = findNodeById(document.root, dragId);
+    const dragSubtreeIds = new Set<string>();
+    if (dragSubtree) {
+      const stack: MindMapNode[] = [dragSubtree];
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        dragSubtreeIds.add(cur.id);
+        for (const child of cur.children) stack.push(child);
+      }
+    }
+
     for (const n of allNodes) {
       if (n.id === dragId) continue;
-      if (n.id in offsets) continue; // 跳过子树节点
-      if (isDescendantOf(document.root, dragId, n.id)) continue;
+      if (n.id in offsets) continue; // 跳过子树节点（拖拽开始时快照）
+      if (dragSubtreeIds.has(n.id)) continue; // 防御：拖拽中文档被外部更新时的新后代
 
       const nCenterX = n.position.x + (n.measured?.width || 100) / 2;
       const nCenterY = n.position.y + (n.measured?.height || 36) / 2;

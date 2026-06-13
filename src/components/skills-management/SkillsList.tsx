@@ -17,6 +17,7 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { useSkillFavorites } from '@/features/chat/skills/hooks/useSkillFavorites';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
@@ -100,6 +101,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
   // 技能收藏
   const { isFavorite, toggleFavorite } = useSkillFavorites();
+  // 触屏无 hover:收藏星标/「启用」标签需常显
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   // 选中卡片时自动滚动到可视区域
   React.useEffect(() => {
@@ -170,10 +173,10 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   <h3 className="font-medium text-sm text-foreground truncate leading-tight">
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
-                  {/* 收藏按钮 - 仅在 hover 或已收藏时显示 */}
+                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显 */}
                   <NotionButton variant="utility" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
-                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : 'opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]')}
+                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
                     aria-label="favorite"
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
@@ -209,7 +212,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     )}
                     title={isDefaultEnabled ? t('skills:management.is_default', '默认启用') : t('skills:management.set_default', '设为默认')}
                  >
-                    {isDefaultEnabled ? t('skills:management.default_abbr', '默认') : <span className="opacity-0 group-hover:opacity-100 transition-opacity">{t('skills:management.enable', '启用')}</span>}
+                    {isDefaultEnabled ? t('skills:management.default_abbr', '默认') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.enable', '启用')}</span>}
                  </div>
               </div>
             </div>

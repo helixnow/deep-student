@@ -24,6 +24,7 @@ import {
   FileText,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
@@ -158,6 +159,8 @@ const SessionCard: React.FC<SessionCardProps> = ({
   const sessionTitle = getSessionTitleText(session.title, fallbackTitle);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // 触屏无 hover:重命名/删除按钮常显(与 FinderFileItem N-4 同范式)
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   const clearDeleteConfirmTimeout = useCallback(() => {
     if (!deleteConfirmTimeoutRef.current) return;
@@ -238,14 +241,19 @@ const SessionCard: React.FC<SessionCardProps> = ({
         'cursor-pointer'
       )}
     >
-      {/* 操作按钮 - 悬停显示 (右上角) */}
+      {/* 操作按钮 - 悬停显示 (右上角);触屏无 hover → 常显并放大触控目标 */}
       {!isEditing && (
-        <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className="!h-7 !w-7">
-            <PencilSimple size={14} />
+        <div
+          className={cn(
+            'absolute top-2 right-2 flex gap-0.5 transition-opacity z-10',
+            isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+          )}
+        >
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className={isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7'}>
+            <PencilSimple size={isTouchPrimary ? 16 : 14} />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn('!h-7 !w-7', confirmingDelete ? 'text-rose-500 bg-rose-500/10' : 'hover:text-rose-500 hover:bg-rose-500/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
-            {confirmingDelete ? <Trash size={14} /> : <X size={14} />}
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn(isTouchPrimary ? '!h-9 !w-9' : '!h-7 !w-7', confirmingDelete ? 'text-rose-500 bg-rose-500/10' : 'hover:text-rose-500 hover:bg-rose-500/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
+            {confirmingDelete ? <Trash size={isTouchPrimary ? 16 : 14} /> : <X size={isTouchPrimary ? 16 : 14} />}
           </NotionButton>
         </div>
       )}

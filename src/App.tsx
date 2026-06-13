@@ -100,7 +100,6 @@ import type { ChatStore } from './features/chat/core/types';
 import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
-import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
 import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
@@ -776,11 +775,20 @@ function App() {
   }, []);
   
   // 🎯 命令面板：注册内置命令
+  // ★ 2026-06-12：命令名在注册时经 i18next.t() 一次性求值,运行时切换语言后必须
+  //   重新注册一遍,否则面板里仍显示旧语言文案
   useEffect(() => {
-    const unregister = registerBuiltinCommands();
+    let unregister = registerBuiltinCommands();
+    const refreshOnLanguageChange = () => {
+      unregister();
+      unregister = registerBuiltinCommands();
+    };
+    i18n.on('languageChanged', refreshOnLanguageChange);
     return () => {
+      i18n.off('languageChanged', refreshOnLanguageChange);
       unregister();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n 为模块级单例,引用稳定
   }, []);
 
   // ⏰ 待办提醒调度器（应用级，到点弹系统通知）

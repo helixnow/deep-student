@@ -547,7 +547,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                           style={{ maxWidth: '3.5rem' }}
 />
                       </div>
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveDimension(index)} className="!h-6 !w-6 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 flex-shrink-0" aria-label="remove">
+                      <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveDimension(index)} className="!h-6 !w-6 text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 flex-shrink-0" aria-label="remove">
                         <Trash size={12} />
                       </NotionButton>
                     </div>

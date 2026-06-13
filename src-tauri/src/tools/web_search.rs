@@ -170,6 +170,18 @@ pub struct Usage {
     pub provider: Option<String>,
 }
 
+/// 🔒 脱敏错误字符串中嵌入 URL 的密钥类 query 参数
+/// （google_cse `key=` / serpapi `api_key=` / searxng `apikey=` 等）
+fn redact_url_secrets(text: &str) -> String {
+    static SECRET_PARAM_RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)\b(key|api_key|apikey|api-key|token|access_token|secret)=[^&\s)\]\u{201D}\u{FF09}'\x22]+")
+            .expect("valid redact regex")
+    });
+    SECRET_PARAM_RE
+        .replace_all(text, "$1=[REDACTED]")
+        .into_owned()
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum ToolError {
     #[error("http error: {0}")]
@@ -325,7 +337,9 @@ impl ToolResult {
         err: ToolError,
         elapsed_ms: u128,
     ) -> Self {
-        let error_msg = err.to_string();
+        // 🔒 google_cse/serpapi/searxng 把 key 放 URL query，reqwest 错误 Display
+        // 会带完整 URL —— 错误消息统一脱敏 query 中的密钥参数后再外传/落日志
+        let error_msg = redact_url_secrets(&err.to_string());
         let error_details = StandardError::classify_error(&error_msg, None);
 
         Self {
@@ -2804,8 +2818,38 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
         .with_min_delay(Duration::from_millis(retry_cfg.initial_delay_ms))
         .with_max_times(retry_cfg.max_attempts.saturating_sub(1) as usize);
     let t0 = Instant::now();
+    // 🔧 只重试可恢复错误：配置缺失/4xx 客户端错误重试纯属浪费（之前无条件重试所有错误）。
+    // Provider 错误字符串里的状态码统一为 "{provider} http {status}: ..." 格式。
+    let is_retryable = |e: &ToolError| -> bool {
+        match e {
+            ToolError::Config(_) => false,
+            ToolError::Http(err) => {
+                // 网络层错误（连接/超时）可重试；带状态码的看是否 429/5xx
+                match err.status() {
+                    Some(status) => status.as_u16() == 429 || status.is_server_error(),
+                    None => true,
+                }
+            }
+            ToolError::Provider(msg) | ToolError::Unknown(msg) => {
+                let lower = msg.to_lowercase();
+                // 鉴权/参数类错误不重试（429 限流仍重试）
+                if lower.contains("api key")
+                    || lower.contains("unauthorized")
+                    || lower.contains("invalid key")
+                    || lower.contains("http 400")
+                    || lower.contains("http 401")
+                    || lower.contains("http 403")
+                    || lower.contains("http 404")
+                {
+                    return false;
+                }
+                true
+            }
+        }
+    };
     let res = (|| async { provider.search(&effective_cfg, &input).await })
         .retry(&backoff)
+        .when(is_retryable)
         .await;
     let elapsed = t0.elapsed().as_millis();
     let (provider_resp, usage) = match res {
@@ -2948,6 +2992,22 @@ mod tests {
         assert!((normalize_score(1, 5) - 1.0).abs() < 1e-6);
         assert!((normalize_score(5, 5) - 0.2).abs() < 1e-6);
         assert_eq!(normalize_score(6, 5), 0.0);
+    }
+    #[test]
+    fn t_redact_url_secrets() {
+        let msg = "http error: error sending request for url (https://www.googleapis.com/customsearch/v1?key=AIzaSECRET&cx=abc&q=test)";
+        let out = redact_url_secrets(msg);
+        assert!(!out.contains("AIzaSECRET"));
+        assert!(out.contains("key=[REDACTED]"));
+        assert!(out.contains("cx=abc"));
+        // serpapi 风格
+        let msg2 = "https://serpapi.com/search.json?api_key=sk123&q=x";
+        let out2 = redact_url_secrets(msg2);
+        assert!(!out2.contains("sk123"));
+        assert!(out2.contains("api_key=[REDACTED]"));
+        // 无敏感参数原样
+        let plain = "config error: missing GOOGLE_API_KEY";
+        assert_eq!(redact_url_secrets(plain), plain);
     }
     #[test]
     fn t_strip_html() {

@@ -404,9 +404,10 @@ impl ToolRegistry {
         use tokio::sync::oneshot;
         use tokio::time::{timeout, Duration};
 
-        // 超时配置（默认 60s，可由调用方指定）
-        // 🔧 修复：原默认 15s 太短，与 executor_registry 的 MCP 工具 180s 超时严重不匹配
-        // 慢速 MCP 工具（如大数据查询）会在 bridge 层被截断，造成误报超时
+        // 超时配置（默认 180s，可由调用方指定）
+        // 🔧 修复：之前默认 60s 与 executor_registry 的 MCP 工具 180s 超时不匹配，
+        // 慢速 MCP 工具（60-180s 区间，如大数据查询）会在 bridge 层被提前截断误报超时。
+        // 对齐到 180s；外层 executor_registry 超时仍是最终防线。
         let mut tool_args = args.clone();
         let preferred_server_id = tool_args.as_object_mut().and_then(|obj| {
             obj.remove("_serverId")
@@ -419,7 +420,7 @@ impl ToolRegistry {
         let timeout_ms: u64 = timeout_override
             .and_then(|v| v.as_u64())
             .map(|v| v.clamp(1_000, 300_000))
-            .unwrap_or(60_000);
+            .unwrap_or(180_000);
         let corr = uuid::Uuid::new_v4().to_string();
         let event_name = format!("mcp-bridge-response:{}", corr);
         let (tx, rx) = oneshot::channel::<serde_json::Value>();
@@ -436,6 +437,23 @@ impl ToolRegistry {
                 }
             }
         });
+
+        // 🔧 修复监听器泄漏：外层（executor_registry）超时会直接 drop 本 future，
+        // 手动 unlisten 不会执行 → 每次外层超时都会在 window 上残留一个监听器。
+        // 改用 RAII guard，无论正常返回还是被 drop 都确保注销。
+        struct ListenerGuard {
+            window: tauri::Window,
+            id: tauri::EventId,
+        }
+        impl Drop for ListenerGuard {
+            fn drop(&mut self) {
+                self.window.unlisten(self.id);
+            }
+        }
+        let _listener_guard = ListenerGuard {
+            window: window.clone(),
+            id,
+        };
 
         // 发送请求
         let payload = serde_json::json!({
@@ -456,26 +474,18 @@ impl ToolRegistry {
             );
         }
 
-        // 等待响应
+        // 等待响应（监听器由 _listener_guard 在任何路径下自动注销）
         match timeout(Duration::from_millis(timeout_ms), rx).await {
-            Err(_) => {
-                // 清理监听器
-                let _ = window.unlisten(id);
-                (false, None, Some("MCP 调用超时".into()), None, None, None)
-            }
-            Ok(Err(_)) => {
-                let _ = window.unlisten(id);
-                (
-                    false,
-                    None,
-                    Some("MCP 桥接通道中断".into()),
-                    None,
-                    None,
-                    None,
-                )
-            }
+            Err(_) => (false, None, Some("MCP 调用超时".into()), None, None, None),
+            Ok(Err(_)) => (
+                false,
+                None,
+                Some("MCP 桥接通道中断".into()),
+                None,
+                None,
+                None,
+            ),
             Ok(Ok(resp)) => {
-                let _ = window.unlisten(id);
                 let ok = resp.get("ok").and_then(|v| v.as_bool());
                 if ok.is_none() {
                     return (

@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
+import { cn } from '@/utils/cn';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -325,6 +327,8 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
   disabled,
 }) => {
   const { t } = useTranslation('anki');
+  // 触屏无 hover:模板渲染态的编辑按钮需常显(点卡片本体是翻面,不会进入编辑)
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   // 多模板解析：优先从 templateMap 中按卡片的 template_id 查找
   const resolvedTemplate = useMemo(() => {
     if (templateMap && card.template_id) {
@@ -512,10 +516,22 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-[10px] font-medium text-muted-foreground border">
           {index + 1}
         </div>
-        {/* 编辑按钮 */}
+        {/* 编辑按钮(触屏常显:卡片本体点击是翻面,编辑只能走此按钮) */}
         {!disabled && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }} className="absolute top-2 right-2 z-10 !w-6 !h-6 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border hover:bg-[var(--interactive-hover)]" aria-label="edit">
-            <Pencil size={12} className="text-muted-foreground" />
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
+            className={cn(
+              'absolute top-2 right-2 z-10 bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+              isTouchPrimary
+                ? '!w-8 !h-8 opacity-100'
+                : '!w-6 !h-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+            )}
+            aria-label="edit"
+          >
+            <Pencil size={isTouchPrimary ? 14 : 12} className="text-muted-foreground" />
           </NotionButton>
         )}
         {/* 模板渲染预览 */}

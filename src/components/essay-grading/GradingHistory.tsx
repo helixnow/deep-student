@@ -136,7 +136,7 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
                           <CommonTooltip
                             content={item.is_favorite ? t('essay_grading:history.unfavorite') : t('essay_grading:history.favorite')}
                           >
@@ -167,9 +167,9 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                           </CommonTooltip>
                         </div>
 
-                        {/* Favorite Badge (Always visible if favorited) */}
+                        {/* Favorite Badge (Always visible if favorited);触屏下按钮常显,徽标隐藏避免重叠 */}
                         {item.is_favorite && (
-                          <div className="absolute top-4 right-4 group-hover:opacity-0 transition-opacity duration-200">
+                          <div className="absolute top-4 right-4 group-hover:opacity-0 [@media(pointer:coarse)]:opacity-0 transition-opacity duration-200">
                             <Star size={14} className="text-yellow-500 fill-current" />
                           </div>
                         )}
