@@ -52,7 +52,6 @@ export interface TranslationStreamState {
 interface TranslationStreamEvent {
   type: 'data' | 'complete' | 'error' | 'cancelled';
   chunk?: string;
-  accumulated?: string;
   char_count?: number;
   word_count?: number;
   id?: string;
@@ -184,9 +183,10 @@ export function useTranslationStream() {
                 }
               }, TRANSLATION_TIMEOUT_MS);
 
+              // A6-11: 后端只回传增量 chunk，前端自行累加（startTranslation 已把 translatedText 重置为空）
               setState((prev) => ({
                 ...prev,
-                translatedText: payload.accumulated || prev.translatedText,
+                translatedText: prev.translatedText + (payload.chunk ?? ''),
                 charCount: payload.char_count ?? prev.charCount,
                 wordCount: payload.word_count ?? prev.wordCount,
               }));

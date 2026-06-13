@@ -47,7 +47,7 @@ use crate::vfs::repos::{
     CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsQuestionRepo,
 };
 use crate::vfs::types::VfsCreateExamSheetParams;
-use crate::vlm_grounding_service::{VlmExtractedQuestion, VlmGroundingService, VlmPageAnalysis};
+use crate::vlm_grounding_service::{VlmGroundingService, VlmPageAnalysis};
 
 // ============================================================================
 // 公共类型
@@ -107,6 +107,10 @@ pub enum QuestionImportProgress {
         session_id: String,
         name: String,
         total_questions: usize,
+        /// VLM 直提中途失败但已保存部分题时为 true（"可能缺题"），前端据此提示用户。
+        /// 其余完成路径均为 false；serde 默认 false 以兼容旧前端反序列化。
+        #[serde(default)]
+        partial: bool,
     },
     /// 导入失败
     Failed {
@@ -508,6 +512,7 @@ impl QuestionImportService {
                         session_id: session_id.to_string(),
                         name: qbank_name.clone(),
                         total_questions: already_saved,
+                        partial: false,
                     });
                 }
                 return Ok(ImportResult {
@@ -560,7 +565,7 @@ impl QuestionImportService {
                 });
             }
 
-            let total_saved = self
+            let (total_saved, vlm_partial) = self
                 .run_vlm_direct_extraction(
                     vfs_db,
                     session_id,
@@ -587,6 +592,7 @@ impl QuestionImportService {
                     session_id: session_id.to_string(),
                     name: qbank_name.clone(),
                     total_questions: total_saved,
+                    partial: vlm_partial,
                 });
             }
             return Ok(ImportResult {
@@ -762,6 +768,7 @@ impl QuestionImportService {
                     session_id: session_id.to_string(),
                     name: qbank_name.clone(),
                     total_questions: total_parsed,
+                    partial: false,
                 });
             }
 
@@ -1189,7 +1196,7 @@ impl QuestionImportService {
         }
 
         // ===== Stage 2: VLM 流式提取 → 逐题保存 =====
-        let total_saved = self
+        let (total_saved, vlm_partial) = self
             .run_vlm_direct_extraction(
                 vfs_db,
                 &session_id,
@@ -1219,6 +1226,7 @@ impl QuestionImportService {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
                 total_questions: total_saved,
+                partial: vlm_partial,
             });
         }
 
@@ -1252,10 +1260,12 @@ impl QuestionImportService {
         checkpoint: &mut ImportCheckpointState,
         skip_count: usize,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
-    ) -> Result<usize, AppError> {
+    ) -> Result<(usize, bool), AppError> {
         let vlm_service = VlmGroundingService::new(Arc::clone(&self.llm_manager));
 
         let mut total_saved = skip_count;
+        // ★ #6(round2): VLM 中途失败但已保存部分题时置 true，向上层/前端传达"可能缺题"
+        let mut vlm_partial = false;
         let mut vlm_question_index: usize = 0;
 
         // 恢复时按内容去重：位置跳过(skip_count)假设两轮 VLM 输出完全一致，
@@ -1391,6 +1401,7 @@ impl QuestionImportService {
                 // 如果已保存部分题目，不算完全失败
                 if total_saved > skip_count {
                     log::warn!("[QuestionImport] 已保存 {} 道题目（部分成功）", total_saved);
+                    vlm_partial = true;
                 } else {
                     if let Some(tx) = progress_tx {
                         let _ = tx.send(QuestionImportProgress::Failed {
@@ -1420,7 +1431,7 @@ impl QuestionImportService {
             return Err(AppError::validation("VLM 未能提取到任何题目"));
         }
 
-        Ok(total_saved)
+        Ok((total_saved, vlm_partial))
     }
 
     /// [DEPRECATED] DOCX 原生导入路径 — text+marker 方案，已被 import_docx_via_vlm 取代
@@ -1892,6 +1903,7 @@ impl QuestionImportService {
                 session_id: session_id.to_string(),
                 name: qbank_name.clone(),
                 total_questions: total_parsed,
+                partial: false,
             });
         }
 
@@ -2242,6 +2254,7 @@ impl QuestionImportService {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
                 total_questions: total_parsed,
+                partial: false,
             });
         }
 
@@ -2431,6 +2444,7 @@ impl QuestionImportService {
                         session_id: session_id.to_string(),
                         name: qbank_name.to_string(),
                         total_questions: total_saved,
+                        partial: false,
                     });
                 }
 

@@ -179,10 +179,6 @@ pub struct UsageRecord {
 
     /// 创建时间
     pub created_at: DateTime<Utc>,
-
-    /// 工作区 ID（可选，用于多工作区隔离）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
 }
 
 impl UsageRecord {
@@ -221,7 +217,6 @@ impl UsageRecord {
             success: true,
             error_message: None,
             created_at: Utc::now(),
-            workspace_id: None,
         }
     }
 
@@ -264,12 +259,6 @@ impl UsageRecord {
     /// Builder 方法：设置请求耗时
     pub fn with_duration(mut self, duration_ms: u64) -> Self {
         self.duration_ms = Some(duration_ms);
-        self
-    }
-
-    /// Builder 方法：设置工作区 ID
-    pub fn with_workspace_id(mut self, workspace_id: String) -> Self {
-        self.workspace_id = Some(workspace_id);
         self
     }
 
@@ -732,10 +721,6 @@ pub struct UsageQueryParams {
     /// 仅成功记录
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success_only: Option<bool>,
-
-    /// 工作区 ID 过滤
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
 
     /// 分页：偏移量
     #[serde(skip_serializing_if = "Option::is_none")]

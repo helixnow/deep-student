@@ -12,6 +12,7 @@ import { fileManager } from '@/utils/fileManager';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   FileText,
   GitBranch,
@@ -90,6 +91,11 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const clearSearch = useMindMapStore(state => state.clearSearch);
   const setDocument = useMindMapStore(state => state.setDocument);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
+
+  // A6-24: 保存冲突时暂存的本地编辑快照 + 恢复/忽略
+  const conflictSnapshot = useMindMapStore(state => state.conflictSnapshot);
+  const restoreConflictSnapshot = useMindMapStore(state => state.restoreConflictSnapshot);
+  const dismissConflictSnapshot = useMindMapStore(state => state.dismissConflictSnapshot);
   
   // 获取当前主题（用于导出时设置背景色）
   const styleId = useMindMapStore(state => state.styleId);
@@ -109,6 +115,8 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
+  // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
 
   // ★ 标签页保活：isActive 变化时 saveDraft / loadMindMap
   const prevIsActiveRef = useRef(isActive);
@@ -293,15 +301,9 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     }
   }, [mindmapDocument, currentView, t, currentTheme]);
 
-  const handleImport = useCallback(async () => {
+  // 实际执行导入（已确认或无未保存修改时调用）
+  const doImport = useCallback(async () => {
     try {
-      // M-073: 导入前检查是否有未保存的修改
-      const currentState = useMindMapStore.getState();
-      if (currentState.isDirty) {
-        const confirmed = window.confirm(t('mindmap:import.unsavedWarning'));
-        if (!confirmed) return;
-      }
-
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
@@ -321,6 +323,20 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       showGlobalNotification('error', message, t('mindmap:import.failedTitle'));
     }
   }, [setDocument, setFocusedNodeId, t]);
+
+  // M-073 / A6-16: 导入前检查未保存修改；有修改则弹声明式确认框，否则直接导入
+  const handleImport = useCallback(() => {
+    if (useMindMapStore.getState().isDirty) {
+      setShowImportConfirm(true);
+      return;
+    }
+    void doImport();
+  }, [doImport]);
+
+  const handleConfirmImport = useCallback(() => {
+    setShowImportConfirm(false);
+    void doImport();
+  }, [doImport]);
 
   const handleSave = useCallback(() => {
     save();
@@ -642,6 +658,29 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
         </div>
       </div>
 
+      {/* A6-24: 保存冲突后，本地未保存编辑已暂存，提供"恢复我的修改"入口 */}
+      {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 animate-in slide-in-from-top-1 duration-200">
+          <WarningCircle size={16} className="shrink-0" />
+          <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15"
+            onClick={() => restoreConflictSnapshot()}
+          >
+            <ArrowCounterClockwise size={14} />
+            <span className="text-xs">{t('mindmap:store.conflictRestoreMine')}</span>
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+            onClick={() => dismissConflictSnapshot()}
+          >
+            <span className="text-xs">{t('mindmap:store.conflictDismiss')}</span>
+          </NotionButton>
+        </div>
+      )}
+
       {showSearch && (
         <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] animate-in slide-in-from-top-1 duration-200">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
@@ -863,6 +902,18 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* A6-16: 导入未保存确认（替换 window.confirm） */}
+      <NotionAlertDialog
+        open={showImportConfirm}
+        onOpenChange={setShowImportConfirm}
+        title={t('mindmap:import.unsavedTitle')}
+        description={t('mindmap:import.unsavedWarning')}
+        confirmText={t('mindmap:import.unsavedConfirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={handleConfirmImport}
+      />
     </div>
     </MindMapActiveContext.Provider>
     </MindMapErrorBoundary>

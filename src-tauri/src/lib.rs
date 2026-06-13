@@ -20,7 +20,6 @@ pub mod crash_logger;
 pub mod crypto;
 #[allow(dead_code)]
 pub mod database;
-pub mod database_optimizations;
 pub mod debug_commands;
 pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
 pub mod debug_logger;
@@ -75,8 +74,6 @@ pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
-#[allow(dead_code)]
-pub mod persistent_message_queue;
 pub mod providers;
 pub mod qbank_grading;
 #[allow(dead_code)]
@@ -89,8 +86,6 @@ pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节�
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub mod secure_store;
 pub mod services;
-#[allow(dead_code)]
-pub mod session_manager;
 pub mod spaced_repetition;
 pub mod startup_cleanup;
 #[allow(dead_code)]
@@ -398,23 +393,8 @@ pub fn run() {
                 }
             }
 
-            let queue_db_path = active_app_data_dir.join("message_queue.db");
-
             // 初始化全局调试日志记录器
             crate::debug_logger::init_global_logger(base_app_data_dir.clone());
-
-            // 初始化持久化消息队列（失败不致命，记录错误并继续启动）
-            match crate::persistent_message_queue::init_persistent_message_queue(queue_db_path) {
-                Ok(_) => {
-                    info!("持久化消息队列初始化成功");
-                }
-                Err(e) => {
-                    warn!(
-                        "持久化消息队列初始化失败（将以降级模式继续运行）: {}",
-                        e
-                    );
-                }
-            }
 
             // 启动内置 Prometheus 指标服务
             crate::metrics_server::ensure_metrics_server(&app_handle);
@@ -791,29 +771,6 @@ pub fn run() {
                 });
             }
 
-            let database_for_queue = database.clone();
-
-            let llm_for_queue = app_state.inner().llm_manager.clone();
-            let app_handle_for_handlers = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = crate::persistent_message_queue::start_message_processor().await {
-                    error!("❌ 启动持久化消息队列处理器失败: {}", e);
-                    return;
-                }
-
-                // 为注册处理器与恢复任务分别克隆数据库引用，避免 move 后再使用
-                let db_for_handlers = database_for_queue.clone();
-                if let Err(e) = crate::persistent_message_queue::register_message_handlers(
-                    db_for_handlers,
-                    llm_for_queue,
-                    Some(app_handle_for_handlers),
-                )
-                .await
-                {
-                    error!("❌ 注册消息队列处理器失败: {}", e);
-                }
-            });
-
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
             {
@@ -1004,9 +961,6 @@ pub fn run() {
             crate::commands::remove_ocr_engine,
             // Lance 向量表优化命令
             crate::commands::optimize_chat_embeddings_table,
-            crate::commands::create_performance_indexes,
-            crate::commands::analyze_query_performance,
-
             crate::commands::clear_message_embeddings,
             crate::commands::generate_anki_cards_from_document,
             crate::commands::generate_anki_cards_from_document_file,
@@ -1228,6 +1182,8 @@ pub fn run() {
             // DataSpace (A/B) commands
             ,crate::data_space::get_data_space_info
             ,crate::data_space::mark_data_space_pending_switch_to_inactive
+            ,crate::data_space::purge_all_database_files
+            ,crate::data_space::purge_active_data_dir_now
             // Test Slot (C/D) commands - 用于前端全自动备份测试
             ,crate::data_space::get_test_slot_info
             ,crate::data_space::clear_test_slots
@@ -1317,6 +1273,7 @@ pub fn run() {
             ,crate::chat_v2::handlers::migration::chat_v2_rollback_migration
             // 内容搜索 + 标签管理命令
             ,crate::chat_v2::handlers::search_handlers::chat_v2_search_content
+            ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_session_tags
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_tags_batch
             ,crate::chat_v2::handlers::search_handlers::chat_v2_add_tag
@@ -1881,9 +1838,19 @@ fn build_app_state(
         llm_manager.clone(),
     ));
 
+    // ★ F7：.master_key 损坏/不可读时给出可操作的诊断，而非裸 expect。
+    // 注意：此处**不**自动重置密钥——若密钥只是被临时占用/瞬时读失败而非真损坏，
+    // 静默重置会永久销毁既有加密数据（云凭据等）的可解密性。宁可明确失败、引导用户
+    // 从备份恢复或显式重置，也不冒数据不可逆丢失的风险。
     let crypto_service = Arc::new(
-        crate::crypto::CryptoService::new(&app_data_dir)
-            .expect("Failed to initialise CryptoService"),
+        crate::crypto::CryptoService::new(&app_data_dir).unwrap_or_else(|e| {
+            log::error!(
+                "[AppState] CryptoService 初始化失败：{e}。\
+                 通常是主密钥文件(.master_key)损坏或不可读。请从备份恢复该文件；\
+                 若确认要放弃既有加密数据，可手动删除 app_data 下的 .master_key 后重启（云凭据等需重新录入）。"
+            );
+            panic!("Failed to initialise CryptoService: {e}");
+        }),
     );
 
     let temp_sessions = Arc::new(Mutex::new(HashMap::new()));

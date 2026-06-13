@@ -431,9 +431,12 @@ impl MemoryEvolution {
                                     }
                                 }
                             }
-                            if let Err(e) = index_unit_repo::delete_by_resource(&conn, res_id) {
+                            // ★ A2-X1：入孤儿队列后再删 units，Lance 删除失败由后台 drain 兜底
+                            if let Err(e) =
+                                index_unit_repo::purge_index_artifacts_by_resource(&conn, res_id)
+                            {
                                 warn!(
-                                    "[Evolution] Failed to delete index units for {}: {}",
+                                    "[Evolution] Failed to purge index artifacts for {}: {}",
                                     res_id, e
                                 );
                             }

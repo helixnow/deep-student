@@ -1684,7 +1684,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 响应式 bottom gap + 移动端检测
   useEffect(() => {
     const handleResize = () => {
-      const mobile = mobileLayout?.isMobile ?? (window.innerWidth <= MOBILE_BREAKPOINT_PX);
+      const mobile = mobileLayout?.isMobile ?? (window.innerWidth < MOBILE_BREAKPOINT_PX);
       setBottomGapPx(mobile ? MOBILE_DOCK_GAP_PX : DESKTOP_DOCK_GAP_PX);
     };
     handleResize();

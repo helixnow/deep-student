@@ -15,6 +15,7 @@ import { fileManager } from '../utils/fileManager';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
 import { NotionButton } from './ui/NotionButton';
+import { NotionAlertDialog } from './ui/NotionDialog';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 
@@ -106,6 +107,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [isAutoTranslate, setIsAutoTranslate] = useState(false);
+  // A6-16: 清空确认改为声明式 NotionAlertDialog（替换 window.confirm）
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // 错误状态管理
   const [translationError, setTranslationError] = useState<string | null>(null);
@@ -684,6 +687,26 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [sourceText, isTranslating, srcLang, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit, isActive]);
 
+  // A6-16: 清空逻辑拆分 —— 有内容时弹声明式确认框，否则直接清空
+  const doClear = useCallback(() => {
+    setSourceText('');
+    setTranslatedText('');
+    setTranslationQuality(null);
+  }, [setTranslatedText]);
+
+  const handleClearRequest = useCallback(() => {
+    if (sourceText) {
+      setShowClearConfirm(true);
+    } else {
+      doClear();
+    }
+  }, [sourceText, doClear]);
+
+  const handleConfirmClear = useCallback(() => {
+    setShowClearConfirm(false);
+    doClear();
+  }, [doClear]);
+
   return (
       <div className="w-full h-full flex-1 min-h-0 bg-[hsl(var(--background))] flex flex-col overflow-hidden">
         <MacTopSafeDragZone className="translate-top-safe-drag-zone" />
@@ -762,10 +785,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onRestoreDefaultPrompt={handleRestoreDefaultPrompt}
               onTranslate={handleTranslate}
               onCancelTranslation={() => translationStream.cancelTranslation()}
-              onClear={() => {
-                if (sourceText && !window.confirm(t('translation:confirm.clear', '确定清空所有内容？'))) return;
-                setSourceText(''); setTranslatedText(''); setTranslationQuality(null);
-              }}
+              onClear={handleClearRequest}
               onEditTranslation={handleEditTranslation}
               onSaveEditedTranslation={handleSaveEditedTranslation}
               onCancelEdit={handleCancelEdit}
@@ -775,6 +795,18 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onRateTranslation={handleRateTranslation}
 />
         </div>
+
+        {/* A6-16: 清空确认（替换 window.confirm） */}
+        <NotionAlertDialog
+          open={showClearConfirm}
+          onOpenChange={setShowClearConfirm}
+          title={t('translation:confirm.clear_title')}
+          description={t('translation:confirm.clear')}
+          confirmText={t('common:clear')}
+          cancelText={t('common:cancel')}
+          confirmVariant="danger"
+          onConfirm={handleConfirmClear}
+        />
       </div>
   );
 };

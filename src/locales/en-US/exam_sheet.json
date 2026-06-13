@@ -509,6 +509,7 @@
     "ocr_image_progress": "Recognizing image {{current}}/{{total}}...",
     "ocr_phase_done": "{{total}} images recognized, starting question parsing...",
     "import_done": "Import complete! {{count}} questions total",
+    "import_done_partial": "Import complete (VLM interrupted, some questions may be missing): {{count}} questions saved",
     "import_interrupted": "Import interrupted, {{count}} questions saved",
     "resume_import": "Resume Import",
     "resuming": "Resuming...",

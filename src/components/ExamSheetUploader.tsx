@@ -216,6 +216,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         total_parsed?: number;
         questions_in_chunk?: number;
         total_questions?: number;
+        partial?: boolean;
         total_images?: number;
         total_chars?: number;
         image_index?: number;
@@ -362,9 +363,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             }));
             break;
           case 'Completed':
+            // ★ #6(round2): VLM 中途失败但已存部分题时 partial=true，显式提示"可能缺题"（非阻塞，不触发失败态）
             setLlmProgress({
               percent: 100,
-              message: t('exam_sheet:uploader.import_done', { count: payload.total_questions }),
+              message: payload.partial
+                ? t('exam_sheet:uploader.import_done_partial', { count: payload.total_questions })
+                : t('exam_sheet:uploader.import_done', { count: payload.total_questions }),
               parsedCount: payload.total_questions || 0,
             });
             break;

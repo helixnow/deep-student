@@ -893,21 +893,21 @@ impl MultimodalEmbeddingService {
         let actual_mode = if self.is_mode_available(mode).await {
             mode
         } else {
-            // 尝试回退到另一个模式
-            let fallback = match mode {
-                MultimodalIndexingMode::VLEmbedding => {
-                    MultimodalIndexingMode::VLSummaryThenTextEmbed
+            // ★ A3-X5：VLSummaryThenTextEmbed 已永久弃用（is_mode_available 恒 false，
+            // 第一模型已移除）。此前 VLEmbedding 不可用时回退到它必然再次失败，用户只看到
+            // 笼统的“未配置任何多模态嵌入模型”。改为直接尝试唯一存活的 VLEmbedding，
+            // 仍不可用时给出针对性提示（不再误导用户去配置已弃用的“VL 摘要+文本嵌入”链路）。
+            if self
+                .is_mode_available(MultimodalIndexingMode::VLEmbedding)
+                .await
+            {
+                if mode != MultimodalIndexingMode::VLEmbedding {
+                    log::warn!("⚠️ 请求的模式 {:?} 不可用（或已弃用），回退到 VLEmbedding", mode);
                 }
-                MultimodalIndexingMode::VLSummaryThenTextEmbed => {
-                    MultimodalIndexingMode::VLEmbedding
-                }
-            };
-            if self.is_mode_available(fallback).await {
-                log::warn!("⚠️ 请求的模式 {:?} 不可用，回退到 {:?}", mode, fallback);
-                fallback
+                MultimodalIndexingMode::VLEmbedding
             } else {
                 return Err(AppError::configuration(
-                    "未配置任何多模态嵌入模型。请在设置中配置 VL-Embedding 模型或 VL 聊天模型 + 文本嵌入模型。"
+                    "未配置 VL-Embedding 多模态嵌入模型。请在设置 → 维度管理中配置 VL-Embedding 模型。（注：旧的“VL 摘要 + 文本嵌入”方案已弃用。）"
                 ));
             }
         };

@@ -39,22 +39,14 @@ pub(crate) fn extract_reasoning_sections(content: &str) -> Vec<serde_json::Value
         return sections;
     }
 
-    // 策略2: 尝试数字列表格式提取
-    if let Some(sections) = extract_numbered_list_format(content) {
-        return sections;
-    }
-
-    // 策略3: 尝试关键词段落格式提取
+    // 策略2: 尝试关键词段落格式提取
     if let Some(sections) = extract_keyword_sections(content) {
         return sections;
     }
 
-    // 策略4: 尝试markdown格式提取
-    if let Some(sections) = extract_markdown_sections(content) {
-        return sections;
-    }
-
-    // 策略5: 回退到语义分割
+    // 策略3: 回退到语义分割
+    // 注：原“数字列表/markdown 标题”两策略所用 look-around 正则被 regex crate 拒绝、
+    // Regex::new 恒 Err，从不生效；已于 round 2 删除（净零行为变更）。
     extract_semantic_sections(content)
 }
 
@@ -80,38 +72,7 @@ pub(crate) fn extract_standard_cot_format(content: &str) -> Option<Vec<serde_jso
     None
 }
 
-/// 策略2: 提取数字列表格式（如 "1. 分析", "2. 推理"）
-pub(crate) fn extract_numbered_list_format(content: &str) -> Option<Vec<serde_json::Value>> {
-    use regex::Regex;
-
-    if let Ok(re) = Regex::new(r"(?m)^(\d+\.\s+.+?)(?=^\d+\.\s|\z)") {
-        let sections: Vec<_> = re
-            .captures_iter(content)
-            .enumerate()
-            .filter_map(|(i, cap)| {
-                let full_match = cap.get(0)?.as_str();
-                let lines: Vec<&str> = full_match.lines().collect();
-                let title = lines.first().unwrap_or(&"").trim();
-                let content_lines = &lines[1..];
-
-                Some(json!({
-                    "title": title,
-                    "content": content_lines.join("\n").trim(),
-                    "section_index": i,
-                    "extraction_method": "numbered_list"
-                }))
-            })
-            .collect();
-
-        if !sections.is_empty() {
-            return Some(sections);
-        }
-    }
-
-    None
-}
-
-/// 策略3: 提取关键词段落格式
+/// 策略2: 提取关键词段落格式
 pub(crate) fn extract_keyword_sections(content: &str) -> Option<Vec<serde_json::Value>> {
     let mut sections = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
@@ -202,36 +163,7 @@ pub(crate) fn extract_keyword_sections(content: &str) -> Option<Vec<serde_json::
     }
 }
 
-/// 策略4: 提取markdown格式
-pub(crate) fn extract_markdown_sections(content: &str) -> Option<Vec<serde_json::Value>> {
-    use regex::Regex;
-
-    if let Ok(re) = Regex::new(r"(?m)^(#{1,6}\s+.+?)$((?:(?!^#{1,6}\s).)*?)") {
-        let sections: Vec<_> = re
-            .captures_iter(content)
-            .enumerate()
-            .map(|(i, cap)| {
-                let title = cap.get(1).map(|m| m.as_str()).unwrap_or("").trim();
-                let section_content = cap.get(2).map(|m| m.as_str()).unwrap_or("").trim();
-
-                json!({
-                    "title": title.trim_start_matches('#').trim(),
-                    "content": section_content,
-                    "section_index": i,
-                    "extraction_method": "markdown"
-                })
-            })
-            .collect();
-
-        if !sections.is_empty() {
-            return Some(sections);
-        }
-    }
-
-    None
-}
-
-/// 策略5: 语义分割回退方案
+/// 策略3: 语义分割回退方案
 pub(crate) fn extract_semantic_sections(content: &str) -> Vec<serde_json::Value> {
     let trimmed_content = content.trim();
 

@@ -336,6 +336,10 @@ const SessionRow: React.FC<{
   // P0: 内联删除确认
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 组件卸载时清理内联删除确认计时器，避免在已卸载组件上触发 setState
+  useEffect(() => () => {
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+  }, []);
 
   const group = classify(session);
 

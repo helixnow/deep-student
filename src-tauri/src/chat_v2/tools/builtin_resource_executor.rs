@@ -2983,11 +2983,15 @@ impl BuiltinResourceExecutor {
         let data = op.get("data").ok_or("add_node: missing 'data'")?;
 
         let mut new_node = data.clone();
-        Self::ensure_node_id(&mut new_node);
 
         let index = op.get("index").and_then(|v| v.as_u64());
 
         let root = doc.get_mut("root").ok_or("Document has no 'root' node")?;
+
+        // ★ A6-27：先收集文档现有 id，再为新子树分配全局唯一 id（消除重复 id）
+        let mut existing_ids = std::collections::HashSet::new();
+        Self::collect_node_ids(root, &mut existing_ids);
+        Self::ensure_unique_subtree_ids(&mut new_node, &mut existing_ids);
 
         let parent = Self::find_node_mut(root, parent_id)
             .ok_or_else(|| format!("add_node: parent '{}' not found", parent_id))?;
@@ -3206,6 +3210,15 @@ impl BuiltinResourceExecutor {
     /// 将 patch 合并到节点上（style 字段深度合并）
     fn apply_update_patch(node: &mut Value, patch: &Value) {
         if let Some(patch_obj) = patch.as_object() {
+            // ★ A6-27：对齐前端 updateNode 语义——patch 改了 text（且与现值不同）时
+            // 自动清除旧 blankedRanges（挖空区间是字符索引，文本一变即失效，否则
+            // 背诵模式遮挡错位）。若 patch 自身带了 blankedRanges 则以 patch 为准
+            // （下方循环会写入），不清除。
+            let text_changed = match patch_obj.get("text") {
+                Some(new_text) => node.get("text") != Some(new_text),
+                None => false,
+            };
+            let patch_has_blanked = patch_obj.contains_key("blankedRanges");
             for (key, value) in patch_obj {
                 if key == "style" {
                     // style 字段：深度合并而非替换
@@ -3231,26 +3244,54 @@ impl BuiltinResourceExecutor {
                     node[key] = value.clone();
                 }
             }
+            if text_changed && !patch_has_blanked {
+                if let Some(obj) = node.as_object_mut() {
+                    obj.remove("blankedRanges");
+                }
+            }
         }
     }
 
-    /// 确保新节点有 id 和 children 字段
-    fn ensure_node_id(node: &mut Value) {
-        // 如果没有 id，生成一个
-        if node.get("id").and_then(|v| v.as_str()).is_none() {
-            node["id"] = json!(format!("n_{}", nanoid::nanoid!(8)));
+    /// 收集子树内所有节点 id（含自身）到集合，用于 add_node 的去重。
+    fn collect_node_ids(node: &Value, out: &mut std::collections::HashSet<String>) {
+        if let Some(id) = node.get("id").and_then(|v| v.as_str()) {
+            out.insert(id.to_string());
         }
+        if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+            for child in children {
+                Self::collect_node_ids(child, out);
+            }
+        }
+    }
 
-        // 确保有 children 数组
+    /// ★ A6-27：确保新子树每个节点都有 id 与 children 数组；id 缺失或与文档中既有
+    /// id 冲突时重新生成（LLM 多轮编辑常复制旧节点 JSON 再 add，会带来重复 id，
+    /// 破坏前端 findNodeById / React key 的唯一性假设）。`existing` 随新分配的 id
+    /// 一起增长，避免新子树内部自冲突。
+    fn ensure_unique_subtree_ids(node: &mut Value, existing: &mut std::collections::HashSet<String>) {
+        let current = node
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let final_id = match current {
+            Some(id) if !id.is_empty() && !existing.contains(&id) => id,
+            _ => loop {
+                let candidate = format!("n_{}", nanoid::nanoid!(8));
+                if !existing.contains(&candidate) {
+                    break candidate;
+                }
+            },
+        };
+        existing.insert(final_id.clone());
+        node["id"] = json!(final_id);
+
         if node.get("children").is_none() {
             node["children"] = json!([]);
         }
-
-        // 递归处理嵌套子节点
         if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
             let len = children.len();
             for i in 0..len {
-                Self::ensure_node_id(&mut node["children"][i]);
+                Self::ensure_unique_subtree_ids(&mut node["children"][i], existing);
             }
         }
     }

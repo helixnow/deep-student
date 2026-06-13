@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { isTauriRuntime, withSessionId } from './shared';
+import { isTauriRuntime } from './shared';
 
 export async function saveSetting(key: string, value: string): Promise<void> {
   try {
@@ -68,140 +68,13 @@ export async function testMcpConnection(command: string, args: string[], env?: R
 
 // Deep Research APIs removed
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export async function researchGetRound(sessionId: string, roundNo: number): Promise<any> {
-  return await invoke('research_get_round', { ...withSessionId(sessionId), round_no: roundNo, roundNo });
-}
-export async function researchGetRoundVisualSummary(sessionId: string, roundNo: number): Promise<any> {
-  return await invoke('research_get_round_visual_summary', { ...withSessionId(sessionId), round_no: roundNo, roundNo });
-}
-export async function researchDeleteRound(sessionId: string, roundNo: number, cleanCoverage?: boolean): Promise<string> {
-  return await invoke('research_delete_round', { ...withSessionId(sessionId), round_no: roundNo, roundNo, clean_coverage: !!cleanCoverage });
-}
-export async function researchGenerateRoundReport(sessionId: string, roundNo: number, format?: string, options?: { include_plan?: boolean; include_summary?: boolean; include_citations?: boolean; include_metrics?: boolean; include_subagents?: boolean }): Promise<string> {
-  const opts_json = options ? JSON.stringify(options) : null;
-  return await invoke('research_generate_round_report', { ...withSessionId(sessionId), round_no: roundNo, roundNo, format: format || null, opts_json, optsJson: opts_json });
-}
-export async function researchSetRoundNote(sessionId: string, roundNo: number, note: string, tags?: string[]): Promise<string> {
-  return await invoke('research_set_round_note', { ...withSessionId(sessionId), round_no: roundNo, roundNo, note, tags: tags || null });
-}
-export async function researchGetRoundNote(sessionId: string, roundNo: number): Promise<{ note?: string; tags?: string[] }> {
-  return await invoke('research_get_round_note', { ...withSessionId(sessionId), round_no: roundNo, roundNo });
-}
-export async function researchGetRoundNotes(sessionId: string): Promise<{ items: Array<{ round_no: number; note?: string; tags?: string[] }> }> {
-  return await invoke('research_get_round_notes', { ...withSessionId(sessionId) });
-}
-export async function researchGenerateSessionReport(sessionId: string, format?: string, options?: { include_plan?: boolean; include_summary?: boolean; include_citations?: boolean; include_metrics?: boolean; include_subagents?: boolean }, rounds?: number[]): Promise<string> {
-  const opts_json = options ? JSON.stringify(options) : null;
-  return await invoke('research_generate_session_report', { ...withSessionId(sessionId), format: format || null, opts_json, optsJson: opts_json, rounds: Array.isArray(rounds) ? rounds : null });
-}
-
-
-export async function researchGetChunkText(documentId: string, chunkIndex: number, sessionId: string): Promise<string | null> {
-  const res = await invoke<{ text: string | null }>('research_get_chunk_text', { ...withSessionId(sessionId), document_id: documentId, documentId, chunk_index: chunkIndex, chunkIndex });
-  return res?.text ?? null;
-}
-
-export async function researchGetChunkContext(documentId: string, chunkIndex: number, before: number, after: number, sessionId: string): Promise<Array<{chunk_index: number; text: string}>> {
-  const res = await invoke<{ items: Array<{chunk_index: number; text: string}> }>('research_get_chunk_context', { ...withSessionId(sessionId), document_id: documentId, documentId, chunk_index: chunkIndex, chunkIndex, before, after });
-  return res?.items || [];
-}
-
-export async function researchUpdateSessionOptions(sessionId: string, options: Record<string, any>): Promise<string> {
-  const options_json = JSON.stringify(options || {});
-  return await invoke('research_update_session_options', { req: { ...withSessionId(sessionId), options_json, optionsJson: options_json } });
-}
-
-export async function researchDeleteSession(sessionId: string): Promise<string> {
-  // Some Tauri bindings may expect camelCase keys in generated bridges.
-  // Send both to be robust across environments; extra keys are ignored.
-  return await invoke('research_delete_session', { session_id: sessionId, sessionId });
-}
-
 // Utilities
 export async function saveTextToFile(path: string, content: string): Promise<void> {
   await invoke('save_text_to_file', { path, content });
 }
 
-export async function researchRunUntil(sessionId: string, maxRounds?: number, minSelected?: number, silentApproval?: boolean): Promise<string> {
-  return await invoke('research_run_until', { 
-    ...withSessionId(sessionId), 
-    max_rounds: maxRounds, maxRounds,
-    min_selected: minSelected, minSelected,
-    silent_approval: typeof silentApproval === 'boolean' ? silentApproval : null,
-    silentApproval: typeof silentApproval === 'boolean' ? silentApproval : null
-  });
-}
-
 export async function readFileText(path: string): Promise<string> {
   return await invoke<string>('read_file_text', { path });
-}
-
-export async function researchRunMacroRound(sessionId: string, keywords?: string[]): Promise<string> {
-  return await invoke('research_run_macro', { ...withSessionId(sessionId), keywords: keywords || null });
-}
-
-export async function researchRunToFullCoverage(sessionId: string): Promise<string> {
-  return await invoke('research_run_to_full_coverage', withSessionId(sessionId));
-}
-
-// Agent tool commands exposure
-export async function researchAuditUserQuestions(params: { date_range?: [string, string]; keywords?: string[]; group_by?: 'topic'|'day'|'week'; limit?: number }): Promise<any> {
-  const { date_range, keywords, group_by, limit } = params;
-  return await invoke('research_audit_user_questions', { date_range: date_range || null, dateRange: date_range || null, keywords: keywords || null, group_by: group_by || null, groupBy: group_by || null, limit: typeof limit === 'number' ? limit : null });
-}
-
-export async function researchFindSimilarQuestions(questionText: string, topK: number = 8): Promise<any> {
-  return await invoke('research_find_similar_questions', { question_text: questionText, questionText, top_k: topK, topK });
-}
-
-export async function researchGetFullChatHistory(documentId?: string, messageId?: string): Promise<any> {
-  return await invoke('research_get_full_chat_history', { document_id: documentId || null, documentId: documentId || null, message_id: messageId || null, messageId: messageId || null });
-}
-
-export async function researchDeepReadByDocs(sessionId: string, documentIds: string[], contextThreshold?: number): Promise<string> {
-  return await invoke('research_deep_read_by_docs', { ...withSessionId(sessionId), document_ids: documentIds, documentIds, context_threshold: contextThreshold || null, contextThreshold: contextThreshold || null });
-}
-
-export async function researchDeepReadByTag(sessionId: string, tag: string, contextThreshold?: number): Promise<string> {
-  return await invoke('research_deep_read_by_tag', { ...withSessionId(sessionId), tag, context_threshold: contextThreshold || null, contextThreshold: contextThreshold || null });
-}
-
-// Precise token utilities (model-aware); fallbacks handled by backend
-export async function researchCountTokensPrecise(documentIds: string[]): Promise<{ total_tokens: number; per_document: Array<{document_id: string; tokens: number}> }> {
-  return await invoke('research_count_tokens', { document_ids: documentIds, documentIds, precise: true });
-}
-
-export async function researchGetFullContentPrecise(documentIds: string[]): Promise<{ items: Array<{document_id: string; content: string; tokens_estimate: number}> }> {
-  return await invoke('research_get_full_content', { document_ids: documentIds, documentIds, precise: true });
-}
-
-// Research settings (scoped helpers)
-export async function researchGetSetting(key: string): Promise<string | null> {
-  return await invoke('research_get_setting', { key });
-}
-export async function researchSetSetting(key: string, value: string): Promise<string> {
-  return await invoke('research_set_setting', { key, value });
-}
-export async function researchDeleteSetting(key: string): Promise<string> {
-  return await invoke('research_delete_setting', { key });
-}
-
-export async function researchListArtifacts(sessionId: string, roundNo?: number): Promise<{items: Array<{id:number;round_no:number;agent:string;artifact_type:string;payload_json:string;size:number;created_at:string}>}> {
-  return await invoke('research_list_artifacts', { ...withSessionId(sessionId), round_no: typeof roundNo === 'number' ? roundNo : null, roundNo: typeof roundNo === 'number' ? roundNo : null });
 }
 
 export async function testMcpWebsocket(url: string, env?: Record<string, string>): Promise<any> {

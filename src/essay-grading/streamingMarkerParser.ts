@@ -278,7 +278,12 @@ function parseScoreFromText(text: string): ParsedScore | null {
   const maxTotal = parseFloat(maxStr ?? '');
   
   if (!Number.isFinite(maxTotal) || maxTotal <= 0 || !Number.isFinite(total)) return null;
-  const safeTotal = Math.max(0, Math.min(total, maxTotal));
+  // A6-12: LLM 返回的总分超过模式满分时（常见于把 0-9/0-150 等小满分模式当成百分制打分，
+  // 如雅思模式返回 85），不再直接 clamp（会把 85 截成 9 而丢失相对水平），改按「百分制」语义
+  // 比例换算到模式满分；仍兜底夹在 [0, maxTotal]。total 未超分时保持原值。
+  const safeTotal = total > maxTotal
+    ? Math.max(0, Math.min((total / 100) * maxTotal, maxTotal))
+    : Math.max(0, total);
   
   // 解析维度评分
   const dimensions: DimensionScore[] = [];

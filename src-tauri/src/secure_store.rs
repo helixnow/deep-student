@@ -178,9 +178,54 @@ impl SecureStore {
                 warn!("设置安全存储权限失败 {:?}: {}", path, e);
             }
         }
-        #[cfg(not(unix))]
+        #[cfg(windows)]
+        {
+            // F8: Windows 下收紧 ACL，等价于 Unix 0600/0700——移除继承的 ACE，仅保留
+            // 当前用户 + SYSTEM + Administrators（用 well-known SID 避免本地化名称问题），
+            // 阻止同机其他标准用户读取 `.secure` 下的凭据/密钥种子。
+            // 完全 best-effort：任何失败仅告警、不影响读写（与 Unix 分支一致）。
+            Self::restrict_to_owner_windows(path, is_dir);
+        }
+        #[cfg(all(not(unix), not(windows)))]
         {
             let _ = (path, is_dir);
+        }
+    }
+
+    /// F8: 用 `icacls` 把路径收紧为「仅 owner + SYSTEM + Administrators」。best-effort。
+    #[cfg(windows)]
+    fn restrict_to_owner_windows(path: &std::path::Path, is_dir: bool) {
+        use std::process::Command;
+        let user = match std::env::var("USERNAME") {
+            Ok(u) if !u.trim().is_empty() => match std::env::var("USERDOMAIN") {
+                Ok(d) if !d.trim().is_empty() => format!("{}\\{}", d.trim(), u.trim()),
+                _ => u.trim().to_string(),
+            },
+            _ => {
+                warn!("跳过 ACL 收紧：无法解析当前用户(USERNAME) {:?}", path);
+                return;
+            }
+        };
+        // 目录需带 (OI)(CI) 让新建子项继承；文件不需要。
+        let suffix = if is_dir { "(OI)(CI)(F)" } else { "(F)" };
+        let grants = [
+            format!("{}:{}", user, suffix),
+            format!("*S-1-5-18:{}", suffix),     // SYSTEM
+            format!("*S-1-5-32-544:{}", suffix), // Administrators
+        ];
+        let mut cmd = Command::new("icacls");
+        cmd.arg(path).arg("/inheritance:r");
+        for g in &grants {
+            cmd.arg("/grant:r").arg(g);
+        }
+        match cmd.output() {
+            Ok(out) if out.status.success() => {}
+            Ok(out) => warn!(
+                "icacls 收紧权限未成功 {:?}: {}",
+                path,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => warn!("无法执行 icacls 收紧权限 {:?}: {}", path, e),
         }
     }
 
@@ -414,9 +459,29 @@ impl SecureStore {
     }
 
     /// 获取所有敏感键
+    ///
+    /// ★ F9：此前恒返回空集（注释停留在 keyring 时代）。迁移到文件存储后凭据以
+    /// `{key.replace('/', "_")}.enc` 落在 secure_dir，恒空会让“清理所有凭据”类逻辑漏删。
+    /// 改为扫描 secure_dir 下的 `*.enc` 文件名（不含扩展名）。注意：保存时 `/` 被替换为 `_`，
+    /// 文件名无法无损还原原始 key；返回的是与 save/get/delete 同一替换规则下的消毒键名，
+    /// 按此键名调用 delete 可正确命中（再替换为自身）。
     pub fn list_sensitive_keys(&self) -> Result<HashSet<String>, SecureStoreError> {
-        // keyring 不支持列出所有键，返回空集合
-        Ok(HashSet::new())
+        let secure_dir = match self.get_secure_dir() {
+            Ok(d) => d,
+            Err(_) => return Ok(HashSet::new()),
+        };
+        let mut keys = HashSet::new();
+        if let Ok(entries) = std::fs::read_dir(&secure_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("enc") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        keys.insert(stem.to_string());
+                    }
+                }
+            }
+        }
+        Ok(keys)
     }
 
     /// 检查安全存储可用性

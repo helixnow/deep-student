@@ -103,8 +103,48 @@ impl CryptoService {
             let perms = fs::Permissions::from_mode(0o600);
             fs::set_permissions(key_path, perms)?;
         }
+        #[cfg(windows)]
+        {
+            // F8: best-effort 收紧 .master_key 的 ACL（owner+SYSTEM+Administrators，移除继承），
+            // 等价于 Unix 0600。失败仅告警、不阻断密钥创建（文件已写入且 owner 可读）。
+            Self::restrict_master_key_acl_windows(key_path);
+        }
         tracing::info!("🔐 [Crypto] 新主密钥已创建");
         Ok(key)
+    }
+
+    /// F8: 用 `icacls` 把 `.master_key` 收紧为「仅 owner + SYSTEM + Administrators」。best-effort。
+    #[cfg(windows)]
+    fn restrict_master_key_acl_windows(key_path: &Path) {
+        use std::process::Command;
+        let user = match std::env::var("USERNAME") {
+            Ok(u) if !u.trim().is_empty() => match std::env::var("USERDOMAIN") {
+                Ok(d) if !d.trim().is_empty() => format!("{}\\{}", d.trim(), u.trim()),
+                _ => u.trim().to_string(),
+            },
+            _ => {
+                tracing::warn!("跳过 .master_key ACL 收紧：无法解析当前用户(USERNAME)");
+                return;
+            }
+        };
+        let grants = [
+            format!("{}:(F)", user),
+            "*S-1-5-18:(F)".to_string(),     // SYSTEM
+            "*S-1-5-32-544:(F)".to_string(), // Administrators
+        ];
+        let mut cmd = Command::new("icacls");
+        cmd.arg(key_path).arg("/inheritance:r");
+        for g in &grants {
+            cmd.arg("/grant:r").arg(g);
+        }
+        match cmd.output() {
+            Ok(out) if out.status.success() => {}
+            Ok(out) => tracing::warn!(
+                "icacls 收紧 .master_key 权限未成功: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => tracing::warn!("无法执行 icacls 收紧 .master_key 权限: {}", e),
+        }
     }
 
     fn cipher(&self) -> Aes256Gcm {

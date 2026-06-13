@@ -187,6 +187,10 @@ installConsoleWarningFilter();
 
 const installTauriLabFrontendLogBridge = () => {
   if (typeof window === 'undefined') return;
+  // F21: tauri-lab 前端日志桥仅服务于开发/测试 harness（后端 `tauri_lab_frontend_log`
+  // 在没有 TAURI_LAB_* 环境变量时本就直接 no-op）。生产构建下跳过安装，消除每条
+  // warn/error 触发的无谓 IPC（原先 prod 也启用）。
+  if ((import.meta as any).env?.MODE === 'production') return;
   const key = '__TAURI_LAB_FRONTEND_LOG_BRIDGE__';
   if ((window as any)[key]) return;
   (window as any)[key] = true;
@@ -207,9 +211,20 @@ const installTauriLabFrontendLogBridge = () => {
     }
   };
 
+  // F21: 去重节流——相同 (level+message) 在窗口期内只上报一次，避免高频 warn/error 刷爆 IPC。
+  const recentSends = new Map<string, number>();
+  const SEND_THROTTLE_MS = 5_000;
   const send = (level: 'warn' | 'error', args: unknown[], stack?: string) => {
     const message = args.map(serializeArg).filter(Boolean).join(' ');
     if (!message && !stack) return;
+    const dedupeKey = `${level}:${message}`;
+    const now = Date.now();
+    for (const [storedKey, storedAt] of recentSends) {
+      if (now - storedAt > SEND_THROTTLE_MS) recentSends.delete(storedKey);
+    }
+    const last = recentSends.get(dedupeKey);
+    if (last && now - last < SEND_THROTTLE_MS) return;
+    recentSends.set(dedupeKey, now);
     void getInvoke()
       .then(invoke => invoke('tauri_lab_frontend_log', { level, message, stack }))
       .catch(() => {});
@@ -426,14 +441,22 @@ const appTree = (
   </ErrorBoundary>
 );
 
-// 在开发态移除 StrictMode，避免 effect/事件监听的二次执行造成噪声与性能影响；
-// 生产环境仍保留 StrictMode 以捕获潜在问题。
+// F22: React 18 的 StrictMode 双调用诊断仅在开发态生效，生产构建为 no-op——
+// 因此原先「仅 prod 启用」等于全程没有 StrictMode 检查（注释意图与 React 行为相反）。
+// 调整为：
+//   - 开发态可通过 VITE_ENABLE_STRICT_MODE=true 显式开启，按需排查 effect/副作用幂等性；
+//     默认关闭以保持现有开发体验（团队此前因二次执行噪声移除，需先清理后再常态化）。
+//   - 生产构建仍包裹 StrictMode（运行时无副作用），保持渲染树一致。
+const enableDevStrictMode =
+  (import.meta as any).env?.MODE !== 'production' &&
+  (import.meta as any).env?.VITE_ENABLE_STRICT_MODE === 'true';
+
 if (IS_POMODORO_MINI_WINDOW) {
   // 置顶小窗：只渲染番茄钟 UI，跳过 App 与全部重量级初始化
   import('./features/pomodoro/components/PomodoroMiniWindow').then(({ PomodoroMiniWindow }) => {
     root.render(<PomodoroMiniWindow />);
   });
-} else if ((import.meta as any).env?.MODE === 'production') {
+} else if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
   initSentryIfConfigured().finally(() => {
     root.render(<React.StrictMode>{appTree}</React.StrictMode>);
   });

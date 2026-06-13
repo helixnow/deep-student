@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
   parseStreamingContent,
+  hasScoreMarker,
   type StreamingMarker,
   type StreamingParseResult,
   type ParsedScore,
@@ -234,6 +235,13 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   
   const { markers, score } = preParsedResult ?? internalParseResult!;
 
+  // A6-30: 文本含 <score> 标签但解析失败（畸形标签）且流已结束时，给一条降级提示，
+  // 避免评分区静默缺失。无 score 标签的作文不触发。
+  const scoreParseFailed = useMemo(
+    () => showScore && !isStreaming && !score && hasScoreMarker(text),
+    [showScore, isStreaming, score, text]
+  );
+
   const filteredMarkers = useMemo(() => {
     if (!markerFilter || markerFilter === 'all') return markers;
     return markers.map(marker => {
@@ -260,6 +268,11 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
       )}
       {showScore && score && (!isStreaming || score.isComplete) && (
         <ScoreCard score={score} />
+      )}
+      {scoreParseFailed && (
+        <div className="px-4 py-3 rounded-lg border border-border/30 bg-muted/20 text-sm text-muted-foreground">
+          {t('essay_grading:score.parse_failed')}
+        </div>
       )}
       
       {/* 批注文本 - Notion 风格排版 */}

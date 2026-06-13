@@ -2861,6 +2861,27 @@ impl ChatV2Repo {
         }
     }
 
+    /// 重建消息内容 FTS5 索引：清空后从 chat_v2_blocks 全量回填，返回回填行数。
+    ///
+    /// 供设置页「全局索引维护」修复 FTS 漂移/缺失（例如历史导入、迁移异常或触发器
+    /// 短暂缺失导致的索引与正文不一致）。回填条件与 V20260301 迁移的初始回填、以及
+    /// trg_blocks_fts_* 触发器完全一致（content 非空且 block_type ∈ {content, thinking}）。
+    pub fn rebuild_content_fts(conn: &Connection) -> ChatV2Result<usize> {
+        // 外部内容 FTS5 表，直接清空即可（无 'delete' 命令的外部内容表负担）
+        conn.execute("DELETE FROM chat_v2_content_fts", [])?;
+        let inserted = conn.execute(
+            r#"
+            INSERT INTO chat_v2_content_fts(rowid, content)
+            SELECT b.rowid, b.content
+            FROM chat_v2_blocks b
+            WHERE b.content IS NOT NULL AND b.content != ''
+              AND b.block_type IN ('content', 'thinking')
+            "#,
+            [],
+        )?;
+        Ok(inserted)
+    }
+
     /// 搜索消息内容（FTS5 全文搜索）
     pub fn search_content(
         conn: &Connection,

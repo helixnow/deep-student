@@ -448,7 +448,6 @@ impl LlmUsageRepo {
                 success: status == "success",
                 error_message: row.get(14)?,
                 created_at,
-                workspace_id: None,
             })
         })?;
 

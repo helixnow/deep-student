@@ -190,7 +190,8 @@
     "timeout": "翻译超时，请重试"
   },
   "confirm": {
-    "clear": "确定清空所有内容？"
+    "clear": "确定清空所有内容？",
+    "clear_title": "清空内容"
   },
   "toast": {
     "translate_success": "翻译成功",

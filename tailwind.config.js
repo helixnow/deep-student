@@ -9,9 +9,9 @@ module.exports = {
 		'./src/**/*.{ts,tsx,js,jsx}',
 	],
 	theme: {
-		// 统一断点配置（与useBreakpoint hooks保持一致）
+		// 统一断点配置（断点单一来源见 src/config/breakpoints.ts，数值需与之保持一致）
 		screens: {
-			'xs': '480px',   // 大屏手机（双列布局临界点）
+			'xs': '480px',   // 大屏手机（双列布局临界点）——仅 Tailwind 工具类，无对应 JS hook
 			'sm': '640px',   // 手机横屏/小平板
 			'md': '768px',   // 平板竖屏
 			'lg': '1024px',  // 平板横屏/小笔记本

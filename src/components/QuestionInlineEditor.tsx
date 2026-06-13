@@ -25,9 +25,11 @@ import {
   WarningCircle,
   Image,
   Image as ImageIcon,
+  Eye,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { LatexText } from '@/components/LatexText';
 import type { Question, QuestionType, Difficulty, QuestionImage } from '@/api/questionBankApi';
 
 export interface QuestionInlineEditorProps {
@@ -104,6 +106,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [imagePreviewUrls, setImagePreviewUrls] = useState<Record<string, string>>({});
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -651,6 +654,59 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             placeholder={t('exam_sheet:questionBank.edit.notePlaceholder')}
             className="text-sm"
 />
+        </div>
+
+        {/* 实时预览（复用 LatexText 渲染公式；默认折叠，单题编辑无虚拟列表性能顾虑） */}
+        <div className="space-y-1.5">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPreview((v) => !v)}
+            className="h-6 text-xs"
+            aria-expanded={showPreview}
+          >
+            <Eye size={14} className="mr-1" />
+            {t('common:preview')}
+          </NotionButton>
+          {showPreview && (
+            <div className="rounded-md border border-border/40 bg-muted/10 p-3 space-y-2 text-sm">
+              {editData.content.trim() ? (
+                <LatexText content={editData.content} />
+              ) : (
+                <span className="text-muted-foreground">
+                  {t('exam_sheet:questionBank.edit.contentPlaceholder')}
+                </span>
+              )}
+              {isChoiceType && editData.options.some((o) => o.content.trim()) && (
+                <div className="space-y-1 pt-1">
+                  {editData.options.map((opt, index) =>
+                    opt.content.trim() ? (
+                      <div key={index} className="flex items-start gap-1.5">
+                        <span className="flex-shrink-0 font-medium text-muted-foreground">{opt.key}.</span>
+                        <LatexText content={opt.content} />
+                      </div>
+                    ) : null
+                  )}
+                </div>
+              )}
+              {editData.answer.trim() && (
+                <div className="flex items-start gap-1.5 border-t border-border/30 pt-1">
+                  <span className="flex-shrink-0 text-xs text-muted-foreground">
+                    {t('exam_sheet:questionBank.edit.answer')}:
+                  </span>
+                  <LatexText content={editData.answer} />
+                </div>
+              )}
+              {editData.explanation.trim() && (
+                <div className="flex items-start gap-1.5">
+                  <span className="flex-shrink-0 text-xs text-muted-foreground">
+                    {t('exam_sheet:questionBank.edit.explanation')}:
+                  </span>
+                  <LatexText content={editData.explanation} />
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

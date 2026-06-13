@@ -60,9 +60,11 @@ interface EssayGradingWorkbenchProps {
   onBack?: () => void;
   /** DSTU 模式配置（必需），由 Learning Hub 管理会话 */
   dstuMode: EssayDstuModeConfig;
+  /** ★ A6-29 标签页：当前是否为活跃标签页；非活跃实例不响应全局快捷键 */
+  isActive?: boolean;
 }
 
-export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ onBack, dstuMode }) => {
+export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ onBack, dstuMode, isActive }) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
   // 流式批改管线
@@ -559,7 +561,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
 
     const safeInputText = inputText ?? '';
-    if (!safeInputText.trim()) {
+    // A6-13: 允许纯图作文提交（有作文原图时即使文本为空也放行，由多模态模型读图批改）
+    if (!safeInputText.trim() && uploadedImages.length === 0) {
       showGlobalNotification('warning', t('essay_grading:errors.empty_text'));
       return;
     }
@@ -696,6 +699,24 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
       }
     }
   }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, gradingStream, loadSessionRounds, dstuMode, uploadedImages, topicImages, topicText]);
+
+  // A6-29: Ctrl/Cmd+Enter 提交批改快捷键（对齐翻译工作台）
+  // ★ 标签页保活：非活跃实例不注册，避免多个作文标签页同时响应同一按键
+  //   （isActive 未传时视为活跃；handleGrade 内部已含离线/isGrading/空文本/未改动守卫）
+  useEffect(() => {
+    if (isActive === false) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isGrading) {
+          handleGrade();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isActive, isGrading, handleGrade]);
 
   // P1-19: 监听命令面板 LEARNING_GRADE_ESSAY 事件
   // 'LEARNING_GRADE_ESSAY' — dispatched by CommandPalette to trigger essay grading.

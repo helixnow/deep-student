@@ -445,18 +445,33 @@ impl VfsBlobRepo {
         let mut cleaned = 0u32;
 
         for (hash, relative_path) in blobs {
-            // 删除文件
+            // ★ 2026-06-13（审阅 R2-2）：先做带 `ref_count = 0` 守卫的原子删行，再删文件，
+            // 与单 blob 版 `cleanup_blob_with_conn` 一致。上面的 SELECT 与此处删除之间，
+            // 可能有并发 `store_blob_with_conn` 复活该 blob（INSERT ON CONFLICT ref_count+1）；
+            // 旧实现无条件删行+删文件，会误删已被重新引用的 blob → 悬挂引用/数据丢失。
+            // 守卫删行受影响行数为 0 即说明已被复活，跳过物理删除。
+            let deleted = conn.execute(
+                "DELETE FROM blobs WHERE hash = ?1 AND ref_count = 0",
+                params![hash],
+            )?;
+            if deleted == 0 {
+                debug!(
+                    "[VFS::BlobRepo] Blob {} re-referenced during sweep; skip physical delete",
+                    hash
+                );
+                continue;
+            }
+
+            // 行已确认 ref_count=0 并删除，再删物理文件。
+            // 注意：此时若物理删除失败，行已删除 → 残留孤儿文件（磁盘泄漏，远轻于数据丢失，
+            // 且极罕见）；不再因文件删除失败而保留行（保留会与已删行语义不一致）。
             let file_path = blobs_dir.join(&relative_path);
             let file_size = fs::metadata(&file_path).ok().map(|m| m.len() as i64);
             if file_path.exists() {
                 if let Err(e) = fs::remove_file(&file_path) {
                     error!("[VFS::BlobRepo] Failed to delete blob file {}: {}", hash, e);
-                    continue;
                 }
             }
-
-            // 删除记录
-            conn.execute("DELETE FROM blobs WHERE hash = ?1", params![hash])?;
 
             // 入删除队列（老 schema 下失败不阻塞）
             let deleted_at = chrono::Utc::now().to_rfc3339();

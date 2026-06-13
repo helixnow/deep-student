@@ -331,33 +331,15 @@ export async function getChatIndexStats(): Promise<{ total_fts: number; total_ve
   }
 }
 
-// ========== Research Reports ==========
-export async function researchListReports(params?: { limit?: number }): Promise<Array<{id:string; created_at:string; segments:number; context_window:number}>> {
-  const limit = typeof params?.limit === 'number' ? params!.limit : null;
-  return await invoke('research_list_reports', { request: { limit } });
-}
-
-export async function researchGetReport(id: string): Promise<{ id:string; created_at:string; segments:number; context_window:number; report:string; metadata?: any }>{
-  return await invoke('research_get_report', { id });
-}
-
-export async function researchDeleteReport(id: string): Promise<boolean> {
-  return await invoke('research_delete_report', { id });
-}
-
-export async function researchExportAllReportsZip(params: { format: 'md'|'json'; path: string }): Promise<string> {
-  const { format, path } = params;
-  return await invoke('research_export_all_reports_zip', { request: { format, path } });
-}
-
 // ★ 2026-01 清理：continueMistakeChat 和 continueMistakeChatStream 已删除（错题功能废弃）
+// ★ 2026-06-13（round 2）：research_* 报告类死包装已删除（后端命令未注册、前端无调用方）
 
-/** @deprecated R6 废弃 - 后端 command 已移除，仅为 saveRequestHandler 死代码保留编译兼容 */
+/** @deprecated R6 废弃 - 后端 command 已移除；saveRequestHandler 已删(round2)，现仅 dev/ChatSaveTestPanel 引用 */
 export async function runtimeAutosaveCommit(_params: any): Promise<any> {
   throw new Error('runtimeAutosaveCommit is deprecated: backend command removed');
 }
 
-/** @deprecated R6 废弃 - 后端 command 已移除，仅为 saveRequestHandler 死代码保留编译兼容 */
+/** @deprecated R6 废弃 - 后端 command 已移除；saveRequestHandler 已删(round2)，现仅 dev/ChatSaveTestPanel 引用 */
 export async function updateMistake(_item: any): Promise<any> {
   throw new Error('updateMistake is deprecated: backend command removed');
 }

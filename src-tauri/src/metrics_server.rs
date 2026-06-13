@@ -83,11 +83,7 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
 }
 
 fn gather_metrics() -> String {
-    let mut sections = Vec::new();
-
-    if let Some(queue_metrics) = crate::persistent_message_queue::export_queue_metrics() {
-        sections.push(queue_metrics);
-    }
-
-    sections.join("\n")
+    // round 2 / 代理1（R2-09）：持久化消息队列 stub 已移除，曾为唯一指标源。
+    // 当前无指标源，返回空串；后续如新增指标可在此聚合。
+    String::new()
 }

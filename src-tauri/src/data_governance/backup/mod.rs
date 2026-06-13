@@ -788,77 +788,9 @@ impl BackupManager {
     pub fn backup_full(&self) -> Result<BackupManifest, BackupError> {
         info!("开始执行完整备份");
 
-        // 1. 创建备份目录
-        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(None)?;
-
-        info!("备份目录: {:?}", backup_subdir);
-
-        // 2. 创建清单
-        let mut manifest = BackupManifest::new(&self.app_version);
-        manifest.backup_id = backup_id;
-
-        // 3. 备份所有数据库
-        let all_dbs = DatabaseId::all_ordered();
-        let total = all_dbs.len();
-        for (idx, db_id) in all_dbs.into_iter().enumerate() {
-            let db_path = self.get_database_path(&db_id);
-
-            // 检查数据库是否存在
-            if !db_path.exists() {
-                warn!("数据库不存在，跳过: {:?}", db_path);
-                continue;
-            }
-
-            // 发送进度回调
-            if let Some(ref cb) = self.progress_callback {
-                cb(idx, total, db_id.as_str(), 0, 0);
-            }
-
-            info!("备份数据库: {:?} -> {:?}", db_id, db_path);
-
-            // 备份单个数据库
-            let backup_file =
-                self.backup_single_database(&db_id, &db_path, &backup_subdir, idx, total)?;
-            manifest.add_file(backup_file);
-
-            // 获取 schema 版本
-            let version = self.get_schema_version(&db_path)?;
-            manifest.set_schema_version(db_id.as_str(), version);
-        }
-
-        // 3.5 备份加密密钥（跨设备恢复支持）
-        match self.backup_crypto_keys(&backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("加密密钥备份完成: {} 个文件", count);
-                }
-            }
-            Err(e) => {
-                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
-            }
-        }
-
-        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
-        match self.backup_audit_db(&backup_subdir) {
-            Ok(true) => info!("审计数据库备份完成"),
-            Ok(false) => debug!("审计数据库不存在，跳过备份"),
-            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
-        }
-
-        // 3.6 备份工作区数据库（ws_*.db）
-        let active_dir_for_ws = crate::data_space::get_data_space_manager()
-            .map(|mgr| mgr.active_dir())
-            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
-        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("工作区数据库备份完成: {} 个", count);
-                }
-            }
-            Err(e) => {
-                warn!("工作区数据库备份失败（非致命）: {}", e);
-            }
-        }
+        // 步骤 1–3.6（建目录/清单/全部数据库/加密密钥/审计库/工作区库）与 backup_with_assets
+        // 完全一致，抽到 backup_core 复用（F3）。
+        let (manifest, backup_subdir) = self.backup_core()?;
 
         // 4. 保存清单
         let manifest_path = backup_subdir.join(MANIFEST_FILENAME);
@@ -890,77 +822,8 @@ impl BackupManager {
     ) -> Result<BackupManifest, BackupError> {
         info!("开始执行包含资产的完整备份");
 
-        // 1. 创建备份目录
-        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(None)?;
-
-        info!("备份目录: {:?}", backup_subdir);
-
-        // 2. 创建清单
-        let mut manifest = BackupManifest::new(&self.app_version);
-        manifest.backup_id = backup_id;
-
-        // 3. 备份所有数据库
-        let all_dbs = DatabaseId::all_ordered();
-        let total = all_dbs.len();
-        for (idx, db_id) in all_dbs.into_iter().enumerate() {
-            let db_path = self.get_database_path(&db_id);
-
-            // 检查数据库是否存在
-            if !db_path.exists() {
-                warn!("数据库不存在，跳过: {:?}", db_path);
-                continue;
-            }
-
-            // 发送进度回调
-            if let Some(ref cb) = self.progress_callback {
-                cb(idx, total, db_id.as_str(), 0, 0);
-            }
-
-            info!("备份数据库: {:?} -> {:?}", db_id, db_path);
-
-            // 备份单个数据库
-            let backup_file =
-                self.backup_single_database(&db_id, &db_path, &backup_subdir, idx, total)?;
-            manifest.add_file(backup_file);
-
-            // 获取 schema 版本
-            let version = self.get_schema_version(&db_path)?;
-            manifest.set_schema_version(db_id.as_str(), version);
-        }
-
-        // 3.5 备份加密密钥（跨设备恢复支持）
-        match self.backup_crypto_keys(&backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("加密密钥备份完成: {} 个文件", count);
-                }
-            }
-            Err(e) => {
-                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
-            }
-        }
-
-        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
-        match self.backup_audit_db(&backup_subdir) {
-            Ok(true) => info!("审计数据库备份完成"),
-            Ok(false) => debug!("审计数据库不存在，跳过备份"),
-            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
-        }
-
-        // 3.6 备份工作区数据库（ws_*.db）
-        let active_dir_for_ws = crate::data_space::get_data_space_manager()
-            .map(|mgr| mgr.active_dir())
-            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
-        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("工作区数据库备份完成: {} 个", count);
-                }
-            }
-            Err(e) => {
-                warn!("工作区数据库备份失败（非致命）: {}", e);
-            }
-        }
+        // 步骤 1–3.6 与 backup_full 完全一致，复用 backup_core（F3）。
+        let (mut manifest, backup_subdir) = self.backup_core()?;
 
         // 4. 备份资产文件
         let config = asset_config.unwrap_or_default();
@@ -1001,6 +864,87 @@ impl BackupManager {
         );
 
         Ok(manifest)
+    }
+
+    /// F3：backup_full 与 backup_with_assets 的公共前半段（步骤 1–3.6）。
+    ///
+    /// 建备份目录 → 建清单 → 备份全部核心数据库 → 加密密钥 → 审计库 → 工作区库。
+    /// 返回 `(manifest, backup_subdir)`，调用方据此继续追加资产或直接保存清单。
+    /// 行为与原内联实现逐字一致（仅抽取，不改语义）。
+    fn backup_core(&self) -> Result<(BackupManifest, std::path::PathBuf), BackupError> {
+        // 1. 创建备份目录
+        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(None)?;
+
+        info!("备份目录: {:?}", backup_subdir);
+
+        // 2. 创建清单
+        let mut manifest = BackupManifest::new(&self.app_version);
+        manifest.backup_id = backup_id;
+
+        // 3. 备份所有数据库
+        let all_dbs = DatabaseId::all_ordered();
+        let total = all_dbs.len();
+        for (idx, db_id) in all_dbs.into_iter().enumerate() {
+            let db_path = self.get_database_path(&db_id);
+
+            // 检查数据库是否存在
+            if !db_path.exists() {
+                warn!("数据库不存在，跳过: {:?}", db_path);
+                continue;
+            }
+
+            // 发送进度回调
+            if let Some(ref cb) = self.progress_callback {
+                cb(idx, total, db_id.as_str(), 0, 0);
+            }
+
+            info!("备份数据库: {:?} -> {:?}", db_id, db_path);
+
+            // 备份单个数据库
+            let backup_file =
+                self.backup_single_database(&db_id, &db_path, &backup_subdir, idx, total)?;
+            manifest.add_file(backup_file);
+
+            // 获取 schema 版本
+            let version = self.get_schema_version(&db_path)?;
+            manifest.set_schema_version(db_id.as_str(), version);
+        }
+
+        // 3.5 备份加密密钥（跨设备恢复支持）
+        match self.backup_crypto_keys(&backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("加密密钥备份完成: {} 个文件", count);
+                }
+            }
+            Err(e) => {
+                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
+            }
+        }
+
+        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
+        match self.backup_audit_db(&backup_subdir) {
+            Ok(true) => info!("审计数据库备份完成"),
+            Ok(false) => debug!("审计数据库不存在，跳过备份"),
+            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
+        }
+
+        // 3.6 备份工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库备份完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库备份失败（非致命）: {}", e);
+            }
+        }
+
+        Ok((manifest, backup_subdir))
     }
 
     /// 备份加密密钥文件到备份目录

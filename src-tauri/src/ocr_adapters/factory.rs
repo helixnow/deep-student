@@ -72,7 +72,9 @@ impl OcrAdapterFactory {
                 description:
                     "百度开源 OCR 视觉语言模型 1.5 版，支持 109 种语言，精度 94.5%，完全免费",
                 recommended_model: "PaddlePaddle/PaddleOCR-VL-1.5",
-                supports_grounding: true,
+                // PaddleOCR-VL 不原生支持 grounding/bbox（见 ocr_adapters/paddle.rs:build_prompt），
+                // 故能力徽章不声明坐标定位；结构化降级时靠解析器尽力而为，不保证坐标。
+                supports_grounding: false,
                 is_free: true,
                 is_dedicated_ocr: true,
             },
@@ -80,9 +82,9 @@ impl OcrAdapterFactory {
                 engine_type: OcrEngineType::PaddleOcrVlV1,
                 name: "PaddleOCR-VL",
                 description:
-                    "百度开源 OCR 视觉语言模型旧版，支持坐标输出，完全免费，作为 1.5 版的备用",
+                    "百度开源 OCR 视觉语言模型旧版，完全免费，作为 1.5 版的备用",
                 recommended_model: "PaddlePaddle/PaddleOCR-VL",
-                supports_grounding: true,
+                supports_grounding: false,
                 is_free: true,
                 is_dedicated_ocr: true,
             },

@@ -33,6 +33,7 @@ import type { ChatStore, Block } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { getModelDisplayName, formatMessageTime } from '@/utils/formatUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 // 🔧 编辑/重试调试日志
 import { logChatV2 } from '../debug/chatV2Logger';
 // 🆕 调试信息导出
@@ -605,6 +606,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 📱 移动端适配：检测是否为小屏幕
   const { isSmallScreen } = useBreakpoint();
+  // 📱 触屏平板（≥768 但无 hover）：历史消息 footer 的 hover 显隐对触屏不可达，coarse 指针下保持常显
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
 
   // 📱 移动端多变体：需要使用不同布局（头像和内容分行显示）
   const isMobileMultiVariant = isSmallScreen && isMultiVariant && !isUser;
@@ -730,7 +733,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   const shouldHideLatestAssistantFooter = !isUser && isLatest && (sessionStatus === 'streaming' || hasActiveBlock);
   const showAssistantFooterAlways = !isUser && isLatest && !shouldHideLatestAssistantFooter;
-  const assistantFooterClassName = showAssistantFooterAlways
+  // ≥768 触屏平板无 hover：coarse 指针下与小屏一样常显，避免历史消息操作（复制/重试/编辑/删除）不可达
+  // 注：|| 优先级高于 ?:，等价于 (showAssistantFooterAlways || isCoarsePointer) ? ...，且保留桌面端 fine 指针的 hover 显隐契约
+  const assistantFooterClassName = showAssistantFooterAlways || isCoarsePointer
     ? 'mt-3'
     : 'mt-3 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity';
 

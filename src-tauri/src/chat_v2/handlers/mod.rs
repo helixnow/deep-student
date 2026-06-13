@@ -63,7 +63,7 @@ pub use migration::{
 pub use ocr::chat_v2_perform_ocr;
 pub use search_handlers::{
     chat_v2_add_tag, chat_v2_get_session_tags, chat_v2_get_tags_batch, chat_v2_list_all_tags,
-    chat_v2_remove_tag, chat_v2_search_content,
+    chat_v2_remove_tag, chat_v2_search_content, rebuild_chat_fts,
 };
 pub use send_message::{
     chat_v2_cancel_stream, chat_v2_continue_message, chat_v2_edit_and_resend,

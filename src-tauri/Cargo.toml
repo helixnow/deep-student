@@ -194,6 +194,9 @@ windows = { version = "0.58", features = [
     "Storage_Streams",
     "Globalization",
     "Foundation",
+    # ★ A3-C2：迭代 OcrResult.Lines()（IVectorView<OcrLine>）需要此 feature，
+    # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
+    "Foundation_Collections",
 ] }
 
 [profile.release]

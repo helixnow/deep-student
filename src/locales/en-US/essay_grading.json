@@ -167,7 +167,8 @@
       "good": "Good",
       "pass": "Pass",
       "fail": "Fail"
-    }
+    },
+    "parse_failed": "Failed to parse the score. Please refer to the grading details below."
   },
   "markers": {
     "delete": "Suggest deletion",

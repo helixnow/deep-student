@@ -39,7 +39,7 @@
 //!
 //! 冲突表保留在每个业务数据库内，跟随数据库一起备份/恢复。
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -116,11 +116,6 @@ pub struct ConflictResolver {
 impl ConflictResolver {
     pub fn new(policy: ConflictPolicy) -> Self {
         Self { policy }
-    }
-
-    pub fn with_tolerance(self, secs: i64) -> Self {
-        let _ = secs;
-        self
     }
 
     /// 在一个数据库连接上初始化冲突表（幂等）

@@ -98,6 +98,10 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
   let timeoutId: number | null = null;
   let recordingStartedAt = 0;
   let holdHotkeyActive = false;
+  // 同步重入标志：startRecording 在 await getUserMedia 期间 phase 仍为 'idle'，
+  // 仅靠 phase 守卫无法阻止两次近同时触发（命令面板事件 + 热键 / 快速双击），
+  // 否则第二次会覆盖 recorderSession，导致第一个 MediaStream/AudioContext 永不释放（麦克风泄漏）。
+  let startingRecording = false;
   const listeners = new Set<() => void>();
 
   const emit = () => {
@@ -221,10 +225,11 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
   };
 
   const startRecording = async () => {
-    if (state.phase !== 'idle') {
+    if (state.phase !== 'idle' || startingRecording) {
       return;
     }
 
+    startingRecording = true;
     try {
       recorderSession = await (deps.createRecorderSession ?? startBrowserVoiceRecording)({
         onLevel: (level) => setState({ level }),
@@ -244,6 +249,8 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
       const code = getErrorCode(error);
       notify(code);
       resetToIdle(code);
+    } finally {
+      startingRecording = false;
     }
   };
 

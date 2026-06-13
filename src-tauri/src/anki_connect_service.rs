@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::time::Duration;
+use tracing::{debug, warn};
 
 const ANKI_CONNECT_URL: &str = "http://127.0.0.1:8765";
 
@@ -156,17 +157,17 @@ fn build_fields_with_model_names(
 /// 检查AnkiConnect是否可用
 #[tauri::command]
 pub async fn check_anki_connect_availability() -> Result<bool, String> {
-    println!("🔍 正在检查AnkiConnect连接到: {}", ANKI_CONNECT_URL);
+    debug!("🔍 正在检查AnkiConnect连接到: {}", ANKI_CONNECT_URL);
 
     // 首先检查端口8765是否开放
-    println!("🔍 第0步：检查端口8765是否开放...");
+    debug!("🔍 第0步：检查端口8765是否开放...");
     let local_anki_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 8765));
     match TcpStream::connect_timeout(&local_anki_addr, Duration::from_secs(5)) {
         Ok(_) => {
-            println!("✅ 端口8765可访问");
+            debug!("✅ 端口8765可访问");
         }
         Err(e) => {
-            println!("❌ 端口8765无法访问: {}", e);
+            warn!("❌ 端口8765无法访问: {}", e);
             return Err(format!("端口8765无法访问: {} \n\n这通常意味着：\n1. Anki桌面程序未运行\n2. AnkiConnect插件未安装或未启用\n3. 端口被其他程序占用\n\n解决方法：\n1. 启动Anki桌面程序\n2. 安装AnkiConnect插件（代码：2055492159）\n3. 重启Anki以激活插件", e));
         }
     }
@@ -179,26 +180,26 @@ pub async fn check_anki_connect_availability() -> Result<bool, String> {
         .build()
         .map_err(|e| format!("创建HTTP客户端失败: {}", e))?;
 
-    println!("🔍 第一步：尝试探测AnkiConnect（GET 非阻塞）...");
+    debug!("🔍 第一步：尝试探测AnkiConnect（GET 非阻塞）...");
     match client.get(ANKI_CONNECT_URL).send().await {
         Ok(response) => {
-            println!("✅ AnkiConnect GET 响应状态: {}", response.status());
+            debug!("✅ AnkiConnect GET 响应状态: {}", response.status());
         }
         Err(e) => {
             // 有些版本/配置可能不响应GET，这里仅记录告警并继续进行POST版本探测
-            println!("⚠️ AnkiConnect GET 探测失败（忽略，继续版本检测）: {}", e);
+            debug!("⚠️ AnkiConnect GET 探测失败（忽略，继续版本检测）: {}", e);
         }
     }
 
     // 如果基础连接成功，再尝试API请求
-    println!("🔍 第二步：测试AnkiConnect API...");
+    debug!("🔍 第二步：测试AnkiConnect API...");
     let request = AnkiConnectRequest {
         action: "version".to_string(),
         version: 6,
         params: None,
     };
 
-    println!(
+    debug!(
         "📤 发送API请求: {}",
         serde_json::to_string(&request).unwrap_or_else(|_| "序列化失败".to_string())
     );
@@ -215,18 +216,18 @@ pub async fn check_anki_connect_availability() -> Result<bool, String> {
     {
         Ok(response) => {
             let status_code = response.status();
-            println!("📥 收到响应状态: {}", status_code);
+            debug!("📥 收到响应状态: {}", status_code);
             if status_code.is_success() {
                 let response_text = response
                     .text()
                     .await
                     .map_err(|e| format!("读取响应内容失败: {}", e))?;
-                println!("📥 响应内容: {}", response_text);
+                debug!("📥 响应内容: {}", response_text);
 
                 match serde_json::from_str::<AnkiConnectResponse>(&response_text) {
                     Ok(anki_response) => {
                         if anki_response.error.is_none() {
-                            println!("✅ AnkiConnect版本检查成功");
+                            debug!("✅ AnkiConnect版本检查成功");
                             Ok(true)
                         } else {
                             Err(format!(
@@ -252,7 +253,7 @@ pub async fn check_anki_connect_availability() -> Result<bool, String> {
             }
         }
         Err(e) => {
-            println!("❌ AnkiConnect连接错误详情: {:?}", e);
+            warn!("❌ AnkiConnect连接错误详情: {:?}", e);
             if e.is_timeout() {
                 Err(
                     "AnkiConnect连接超时，请确保Anki桌面程序正在运行并启用了AnkiConnect插件"
@@ -503,7 +504,7 @@ pub async fn create_model_from_template(
     });
 
     invoke_anki_connect_action("createModel", Some(params), 15).await?;
-    println!("✅ 已在 Anki 中创建模型: {}", model_name);
+    debug!("✅ 已在 Anki 中创建模型: {}", model_name);
     Ok(())
 }
 
@@ -602,18 +603,18 @@ pub async fn add_notes_to_anki_detailed(
                         match create_model_from_template(template).await {
                             Ok(()) => created_models.push(model_name.clone()),
                             Err(e) => {
-                                println!("⚠️ 自动创建模型 {} 失败: {}", model_name, e);
+                                warn!("⚠️ 自动创建模型 {} 失败: {}", model_name, e);
                             }
                         }
                     } else {
-                        println!(
+                        warn!(
                             "⚠️ Anki 中缺少模型 {} 且无对应模板，可能导致同步失败",
                             model_name
                         );
                     }
                 }
             }
-            Err(e) => println!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e),
+            Err(e) => warn!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e),
         }
     }
 
@@ -622,7 +623,7 @@ pub async fn add_notes_to_anki_detailed(
             Ok(names) if !names.is_empty() => Some(names),
             Ok(_) => None,
             Err(e) => {
-                println!("⚠️ 获取模型字段失败: {} — 将使用基本字段映射", e);
+                warn!("⚠️ 获取模型字段失败: {} — 将使用基本字段映射", e);
                 None
             }
         };

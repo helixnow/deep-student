@@ -2405,9 +2405,14 @@ impl MemoryService {
             );
         }
         if let Ok(conn) = self.vfs_db.get_conn() {
-            if let Err(e) = index_unit_repo::delete_by_resource(&conn, &note.resource_id) {
+            // ★ A2-X1：改用 purge_index_artifacts_by_resource——删除 units 前先把段的
+            // lance_row_id 入 __lance_orphan_queue。即便上面的直接 Lance 删除失败（仅 warn），
+            // 后台 drain 也能兜底清理孤儿向量；幂等，重复入列/删除均安全。
+            if let Err(e) =
+                index_unit_repo::purge_index_artifacts_by_resource(&conn, &note.resource_id)
+            {
                 warn!(
-                    "[Memory] Failed to delete index units for {}: {}",
+                    "[Memory] Failed to purge index artifacts for {}: {}",
                     note.resource_id, e
                 );
             }

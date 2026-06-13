@@ -275,7 +275,12 @@ impl UsageCollector {
                 rusqlite::params![
                     record.id,
                     record.created_at.to_rfc3339(),
-                    Self::extract_provider(&record.model_id),
+                    // 优先使用调用方显式设置的 provider_id（如 voice_input 的 "siliconflow"），
+                    // 仅在缺省时回退到基于 model_id 的启发式推断，避免丢失真实供应商归属。
+                    record
+                        .provider_id
+                        .clone()
+                        .unwrap_or_else(|| Self::extract_provider(&record.model_id)),
                     record.model_id,
                     Option::<String>::None, // adapter
                     record.config_id,

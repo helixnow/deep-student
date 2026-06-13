@@ -21,6 +21,15 @@ use uuid::Uuid;
 
 const RETRY_ASSIGNMENT_MARK: &str = "[RETRY_ASSIGNED]";
 
+// F3（round2）：将原先散落的控制流魔法字符串集中为常量，降低笔误与“字符串即协议”的脆弱性。
+// 注：这是低风险硬化，未改为类型化错误枚举（那属跨层中风险重构，已登记待评估）。
+/// 用户主动取消的内部哨兵消息：流式取消路径以 `AppError::validation` 携带，
+/// 调度层据此判定“用户取消”而非真正错误。
+const CANCELLED_BY_USER_MSG: &str = "CANCELLED_BY_USER";
+/// `handle_task_error` 据错误消息判定 `Truncated` 的关键词（上游 LLM 截断/超时提示）。
+const ERR_KEYWORD_TIMEOUT: &str = "超时";
+const ERR_KEYWORD_TRUNCATED: &str = "截断";
+
 #[derive(Clone)]
 pub struct StreamingAnkiService {
     db: Arc<Database>,
@@ -188,6 +197,9 @@ impl StreamingAnkiService {
         &self,
         task: DocumentTask,
         window: Window,
+        // F5（round2）：调度层在 spawn 前传入就绪信号；本任务注册取消通道后立即回执，
+        // 调度层据此确定性等待（替代固定 sleep(20ms)）。None 表示调用方不关心就绪时机。
+        ready_signal: Option<tokio::sync::oneshot::Sender<()>>,
     ) -> Result<(), AppError> {
         let task_id = task.id.clone();
 
@@ -292,6 +304,11 @@ impl StreamingAnkiService {
             let mut senders = CANCEL_SENDERS.lock().await;
             senders.insert(task_id.clone(), cancel_tx);
         }
+        // F5（round2）：取消通道已注册，确定性通知调度层（替代非确定性的 sleep(20ms)）。
+        // 任一提前返回路径都会 drop 掉 ready_signal，使调度层的 await 立即返回，不会死等。
+        if let Some(ready_tx) = ready_signal {
+            let _ = ready_tx.send(());
+        }
         let result = self
             .stream_cards_from_ai(
                 &api_config,
@@ -312,7 +329,7 @@ impl StreamingAnkiService {
                     .await?;
             }
             Err(e) => {
-                if e.message == "CANCELLED_BY_USER" {
+                if e.message == CANCELLED_BY_USER_MSG {
                     // 由上层 EnhancedAnkiService 负责将任务状态置为 Paused 并派发事件，避免重复事件
                     info!("🛑 任务被用户取消，保持暂停态由调度层处理: {}", task_id);
                 } else {
@@ -753,7 +770,7 @@ impl StreamingAnkiService {
             let next_item = tokio::select! {
                 _ = cancel_rx.changed() => {
                     info!("🛑 检测到取消信号，终止流式制卡");
-                    return Err(AppError::validation("CANCELLED_BY_USER".to_string()));
+                    return Err(AppError::validation(CANCELLED_BY_USER_MSG.to_string()));
                 },
                 res = timeout(IDLE_TIMEOUT, stream.next()) => {
                     res.map_err(|_| AppError::network("AI响应超时"))?
@@ -791,7 +808,7 @@ impl StreamingAnkiService {
                             }
                             buffer.push_str(&content);
                             if *cancel_rx.borrow() {
-                                return Err(AppError::validation("CANCELLED_BY_USER".to_string()));
+                                return Err(AppError::validation(CANCELLED_BY_USER_MSG.to_string()));
                             }
 
                             // 检查是否有完整的卡片
@@ -2143,7 +2160,9 @@ impl StreamingAnkiService {
         document_id: Option<&str>,
     ) -> Result<(), AppError> {
         let error_message = error.message.clone();
-        let final_status = if error_message.contains("超时") || error_message.contains("截断") {
+        let final_status = if error_message.contains(ERR_KEYWORD_TIMEOUT)
+            || error_message.contains(ERR_KEYWORD_TRUNCATED)
+        {
             TaskStatus::Truncated
         } else {
             TaskStatus::Failed

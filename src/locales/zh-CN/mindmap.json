@@ -72,7 +72,9 @@
     "failedTitle": "导入失败",
     "importedMap": "导入的导图",
     "emptyMap": "空导图",
-    "unsavedWarning": "当前导图有未保存的修改，导入将覆盖这些修改。是否继续？"
+    "unsavedWarning": "当前导图有未保存的修改，导入将覆盖这些修改。是否继续？",
+    "unsavedTitle": "导入将覆盖未保存修改",
+    "unsavedConfirm": "继续导入"
   },
   "loading": "正在加载思维导图...",
   "loadFailed": "思维导图加载失败",
@@ -174,6 +176,10 @@
     "updateConflict": "内容已在其他处更新，正在自动刷新获取最新版本…",
     "conflictResolved": "已自动刷新为最新版本",
     "conflictReloadFailed": "自动刷新失败，请手动刷新页面获取最新内容",
+    "conflictSnapshotKept": "内容已在别处更新，已切换到最新版本；你刚才的未保存修改已暂存，可点击「恢复我的修改」",
+    "conflictBannerTitle": "你的未保存修改已暂存",
+    "conflictRestoreMine": "恢复我的修改",
+    "conflictDismiss": "采用服务端版本",
     "depthExceeded": "导图层级过深，超过最大限制，无法保存",
     "nodeCountExceeded": "导图节点过多，超过最大限制，无法保存",
     "invalidContent": "导图内容异常，无法保存，请稍后重试",

@@ -256,13 +256,15 @@ impl EnhancedAnkiService {
                         entry.current_task_id = Some(task_id.clone());
                     }
 
+                    // F5（round2）：就绪信号替代 sleep(20ms)，确定性等待取消通道注册完成
+                    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
                     // 创建任务处理句柄
                     let handle = tokio::spawn({
                         let service = service.clone();
                         let window_clone = window_clone.clone();
                         async move {
                             if let Err(e) = service
-                                .process_task_and_generate_cards_stream(task, window_clone)
+                                .process_task_and_generate_cards_stream(task, window_clone, Some(ready_tx))
                                 .await
                             {
                                 warn!("任务处理失败: {}", e);
@@ -273,8 +275,8 @@ impl EnhancedAnkiService {
                     // 记录运行句柄，便于硬暂停时直接中止
                     RUNNING_HANDLES.insert(task_id.clone(), handle);
 
-                    // 短暂让出以便流任务完成取消通道注册，降低竞态窗口
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    // 确定性等待取消通道注册完成（任务若在注册前提前返回，ready_tx 被 drop，此处立即返回）
+                    let _ = ready_rx.await;
 
                     // 等待任务完成
                     let owned_handle_opt = RUNNING_HANDLES.remove(&task_id).map(|(_, h)| h);
@@ -343,9 +345,11 @@ impl EnhancedAnkiService {
                     let window_clone = window.clone();
                     let task_id_for_map = retry_task.id.clone();
 
+                    // F5（round2）：就绪信号替代 sleep(20ms)
+                    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
                     let handle = tokio::spawn(async move {
                         if let Err(e) = service
-                            .process_task_and_generate_cards_stream(retry_task, window_clone)
+                            .process_task_and_generate_cards_stream(retry_task, window_clone, Some(ready_tx))
                             .await
                         {
                             warn!("统一重试任务处理失败: {}", e);
@@ -354,7 +358,8 @@ impl EnhancedAnkiService {
 
                     // 记录运行句柄
                     RUNNING_HANDLES.insert(task_id_for_map.clone(), handle);
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    // 确定性等待取消通道注册完成（替代 sleep(20ms)）
+                    let _ = ready_rx.await;
                     let owned_handle_opt = RUNNING_HANDLES.remove(&task_id_for_map).map(|(_, h)| h);
                     if let Some(handle) = owned_handle_opt {
                         let _ = handle.await;
@@ -594,7 +599,7 @@ impl EnhancedAnkiService {
 
         tokio::spawn(async move {
             if let Err(e) = streaming_service
-                .process_task_and_generate_cards_stream(task, window_clone)
+                .process_task_and_generate_cards_stream(task, window_clone, None)
                 .await
             {
                 tracing::warn!("任务处理失败: {}", e);

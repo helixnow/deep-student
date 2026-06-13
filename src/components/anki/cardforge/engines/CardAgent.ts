@@ -452,7 +452,7 @@ export class CardAgent {
             message: '已暂停文档处理',
           };
 
-        case 'resume':
+        case 'resume': {
           await invoke('resume_document_processing', { documentId: input.documentId });
           const tasks = await this.getTaskStatus(input.documentId);
           return {
@@ -460,6 +460,7 @@ export class CardAgent {
             message: '已恢复文档处理',
             tasks,
           };
+        }
 
         case 'retry':
           if (!input.taskId) {
@@ -1342,18 +1343,51 @@ export class CardAgent {
     let completed = false;
     let paused = false;
     let expectedDocumentId: string | null = null;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let idleTimerId: ReturnType<typeof setTimeout> | null = null;
     let resolveWithState: ((value: { cards: AnkiCardResult[]; paused: boolean }) => void) | null = null;
 
+    // 🔧 F21（round2）：空闲超时替代固定总超时。
+    // 旧实现对整个文档用固定 5 分钟总超时，大文档多分段累计耗时极易误触发，
+    // 超时后以“部分卡片成功”返回，与后端继续生成后的库内数量不一致。
+    // 改为“距上次生成活动”的空闲超时：每收到新卡/错误卡/任务进度/任务完成事件即重置计时器，
+    // 仅在长时间无任何活动（疑似卡死）时才返回已收集卡片。
+    const IDLE_TIMEOUT_MS = 300000; // 5 分钟无任何生成活动视为卡死
+
     const cleanup = () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
+      if (idleTimerId) {
+        clearTimeout(idleTimerId);
+        idleTimerId = null;
       }
       unsubscribeCard();
       unsubscribeErrorCard();
       unsubscribeComplete();
       unsubscribePaused(); // 🔧 三轮修复 #8: 清理暂停事件监听
+      unsubscribeProgress(); // 🔧 F21: 清理进度事件监听（仅用于重置空闲计时器）
+      unsubscribeTaskComplete(); // 🔧 F21: 清理任务完成事件监听
+    };
+
+    const finishWithIdleTimeout = () => {
+      if (completed) return;
+      completed = true;
+      console.warn(
+        `[CardAgent] 文档生成空闲超时（${IDLE_TIMEOUT_MS / 1000}s 无新事件），已收集 ${cards.length} 张卡片`
+      );
+      this.emit('task:error', {
+        error: `生成空闲超时，已收集 ${cards.length} 张卡片`,
+        isTimeout: true,
+        partialCards: cards.length,
+      }, expectedDocumentId ?? undefined);
+      cleanup();
+      if (resolveWithState) {
+        resolveWithState({ cards, paused: false });
+      }
+    };
+
+    // 重置空闲计时器；仅在已开始等待（waitForComplete 已设置 resolver）后计时，避免无人接收。
+    const resetIdleTimer = () => {
+      if (completed || !resolveWithState) return;
+      if (idleTimerId) clearTimeout(idleTimerId);
+      idleTimerId = setTimeout(finishWithIdleTimeout, IDLE_TIMEOUT_MS);
     };
 
     // 立即开始监听事件（在调用后端之前）
@@ -1365,6 +1399,7 @@ export class CardAgent {
         return;
       }
       cards.push(event.payload.card);
+      resetIdleTimer(); // 🔧 F21: 有新卡，重置空闲超时
     });
 
     const unsubscribeErrorCard = this.on<{ card: AnkiCardResult }>('card:error', (event) => {
@@ -1375,6 +1410,7 @@ export class CardAgent {
         return;
       }
       cards.push(event.payload.card);
+      resetIdleTimer(); // 🔧 F21: 有错误卡，仍属生成活动，重置空闲超时
     });
 
     const unsubscribeComplete = this.on('document:complete', (event) => {
@@ -1412,6 +1448,27 @@ export class CardAgent {
       }
     });
 
+    // 🔧 F21: 任务进度/完成事件也算“生成活动”，重置空闲超时（不收集卡片，仅防误超时）
+    const unsubscribeProgress = this.on('task:progress', (event) => {
+      if (!expectedDocumentId) {
+        return;
+      }
+      if (event.documentId && event.documentId !== expectedDocumentId) {
+        return;
+      }
+      resetIdleTimer();
+    });
+
+    const unsubscribeTaskComplete = this.on('task:complete', (event) => {
+      if (!expectedDocumentId) {
+        return;
+      }
+      if (event.documentId && event.documentId !== expectedDocumentId) {
+        return;
+      }
+      resetIdleTimer();
+    });
+
     return {
       waitForComplete: (): Promise<{ cards: AnkiCardResult[]; paused: boolean }> => {
         // 如果在调用 waitForComplete 之前就已完成，立即返回
@@ -1421,23 +1478,8 @@ export class CardAgent {
 
         return new Promise((resolve) => {
           resolveWithState = resolve;
-
-          // 超时保护 (5分钟)
-          timeoutId = setTimeout(() => {
-            if (!completed) {
-              completed = true;
-              console.warn(`[CardAgent] 文档生成超时 (5分钟)，已收集 ${cards.length} 张卡片`);
-
-              this.emit('task:error', {
-                error: `生成超时，已收集 ${cards.length} 张卡片`,
-                isTimeout: true,
-                partialCards: cards.length,
-              }, expectedDocumentId ?? undefined);
-
-              cleanup();
-              resolve({ cards, paused: false });
-            }
-          }, 300000);
+          // 启动空闲计时器；后续每次生成活动都会重置它（见 resetIdleTimer）
+          resetIdleTimer();
         });
       },
       setDocumentId: (documentId: string) => {

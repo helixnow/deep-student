@@ -480,7 +480,19 @@ export function SyncConflictDialog({
     try {
       // 如果选择了全部，使用批量 API
       if (selectedIds.size === conflicts.length) {
-        await batchResolveSyncConflicts(examId, batchStrategy);
+        const result = await batchResolveSyncConflicts(examId, batchStrategy);
+        // ★ #20(round2): 显式提示部分失败（此前仅后端 warn，前端无感知）
+        if (result.failed.length > 0) {
+          unifiedAlert(
+            t("notifications.conflictBatchResolvePartial", {
+              defaultValue:
+                "部分冲突解决失败：成功 {{resolved}} 个，失败 {{failed}} 个",
+              resolved: result.resolved.length,
+              failed: result.failed.length,
+            }),
+            "warning",
+          );
+        }
       } else {
         // 否则逐个解决
         for (const id of selectedIds) {

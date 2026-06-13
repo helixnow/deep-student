@@ -190,7 +190,8 @@
     "timeout": "Translation timed out, please try again"
   },
   "confirm": {
-    "clear": "Are you sure you want to clear all content?"
+    "clear": "Are you sure you want to clear all content?",
+    "clear_title": "Clear content"
   },
   "toast": {
     "translate_success": "Translation successful",

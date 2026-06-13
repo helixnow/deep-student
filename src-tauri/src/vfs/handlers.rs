@@ -2217,6 +2217,12 @@ pub async fn vfs_upload_file(
                     "[VFS::handlers] 文件记录创建失败，补偿清理 blob: hash={}…",
                     &hash[..hash.len().min(16)]
                 );
+                // ★ 2026-06-13（审阅 R2-3）：store_blob_with_conn 已把 ref_count 置/加到 1
+                // （去重命中时 N→N+1），而 create_file 不增 ref。旧补偿直接 cleanup_blob
+                // （ref_count=1>0 → no-op）会漏删 → 孤儿 blob 残留（原 2071 注释已知此问题）。
+                // 正确补偿：先 decrement_ref 抵消本次 store 的 +1（去重命中回到 N，仍被他人引用），
+                // 再 cleanup（仅当回到 0 时真正删除文件+记录）。
+                let _ = VfsBlobRepo::decrement_ref_with_conn(&conn, &blobs_dir, hash);
                 if let Err(cleanup_err) =
                     VfsBlobRepo::cleanup_blob_with_conn(&conn, &blobs_dir, hash)
                 {

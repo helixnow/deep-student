@@ -56,8 +56,13 @@ pub async fn run_grading(
     // 1. 获取批阅模式
     let grading_mode = get_grading_mode(&request.mode_id, &deps.custom_modes);
 
-    // 2. 构造批改 Prompt
-    let (system_prompt, user_prompt) = build_grading_prompts(&request, &grading_mode)?;
+    // 2. 构造批改 Prompt（A6-13: 纯图作文允许空文本，由多模态模型直接读原图）
+    let has_essay_images = request
+        .image_base64_list
+        .as_ref()
+        .map_or(false, |list| list.iter().any(|s| !s.trim().is_empty()));
+    let (system_prompt, user_prompt) =
+        build_grading_prompts(&request, &grading_mode, has_essay_images)?;
 
     // 3. 获取模型配置
     // 优先使用用户选择的模型，否则默认使用 Model2
@@ -463,9 +468,11 @@ fn truncate_keep_head_tail(input: &str, max_chars: usize) -> String {
 fn build_grading_prompts(
     request: &GradingRequest,
     mode: &GradingMode,
+    has_essay_images: bool,
 ) -> Result<(String, String), AppError> {
     // ★ PP-1: 验证输入长度
-    if request.input_text.trim().is_empty() {
+    // A6-13: 允许纯图作文（多模态模型直接读原图）；仅当既无文本又无作文图片时才报错
+    if request.input_text.trim().is_empty() && !has_essay_images {
         return Err(AppError::validation("作文内容不能为空".to_string()));
     }
     let input_char_count = request.input_text.chars().count();
@@ -596,7 +603,12 @@ fn build_grading_prompts(
     user_prompt.push_str(&build_stats_prompt_block(&input_stats));
 
     // ★ PP-1: 作文内容本身不做净化（保留原始内容以便正确批改）
-    user_prompt.push_str(&format!("【学生作文】\n{}", request.input_text));
+    if request.input_text.trim().is_empty() && has_essay_images {
+        // A6-13: 纯图作文——正文在原图中，提示模型直接读图批改
+        user_prompt.push_str("【学生作文】（正文见下方原始图片，请直接阅读图片进行批改）");
+    } else {
+        user_prompt.push_str(&format!("【学生作文】\n{}", request.input_text));
+    }
 
     Ok((system_prompt, user_prompt))
 }
@@ -921,7 +933,7 @@ mod tests {
     fn prompt_includes_system_stats_block() {
         let mode = get_default_grading_mode();
         let request = sample_request("你好，world! It's fine.");
-        let (_, user_prompt) = build_grading_prompts(&request, &mode).expect("prompt should build");
+        let (_, user_prompt) = build_grading_prompts(&request, &mode, false).expect("prompt should build");
 
         assert!(user_prompt.contains("【写作统计（系统自动计算）】"));
         assert!(user_prompt.contains("中文字数（汉字）"));

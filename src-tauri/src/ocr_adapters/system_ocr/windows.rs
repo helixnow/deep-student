@@ -73,11 +73,23 @@ pub fn recognize_text_blocking(image_data: &[u8]) -> Result<String, OcrError> {
             OcrError::ImageProcessing(format!("Failed to complete OCR recognition: {}", e))
         })?;
 
-    // 提取文本（OcrResult.Text 包含所有行文本，已由换行符分隔）
-    let text = result
-        .Text()
-        .map_err(|e| OcrError::ImageProcessing(format!("Failed to get OCR text: {}", e)))?
-        .to_string();
+    // ★ A3-C2：逐行提取并以 \n 连接，保留换行结构。
+    // 此前用 OcrResult.Text() —— 它把所有行用空格拼成单行，丢失换行（注释却称
+    // “已由换行符分隔”，与实际不符），影响下游分块/索引质量。改为遍历
+    // OcrResult.Lines()（IVectorView<OcrLine>，需 Foundation_Collections feature），
+    // 行内单词仍由 OcrLine.Text() 以空格连接，行间用 \n。
+    let lines = result
+        .Lines()
+        .map_err(|e| OcrError::ImageProcessing(format!("Failed to get OCR lines: {}", e)))?;
+    let mut out_lines: Vec<String> = Vec::new();
+    for line in lines {
+        let line_text = line
+            .Text()
+            .map_err(|e| OcrError::ImageProcessing(format!("Failed to get OCR line text: {}", e)))?
+            .to_string();
+        out_lines.push(line_text);
+    }
+    let text = out_lines.join("\n");
 
     Ok(text)
 }

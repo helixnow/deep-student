@@ -123,40 +123,48 @@ async fn speak_macos(
     rate: Option<f32>,
     _volume: Option<f32>,
 ) -> Result<(), AppError> {
-    use std::process::Command;
+    let text = text.to_string();
+    let lang = lang.map(|value| value.to_string());
 
-    // 使用 macOS 的 say 命令
-    let mut cmd = Command::new("say");
+    // `say` 会阻塞直到整段语音播放完成，放到 spawn_blocking，避免阻塞异步运行时 worker 线程。
+    tokio::task::spawn_blocking(move || {
+        use std::process::Command;
 
-    // 设置语言/语音
-    if let Some(lang_code) = lang {
-        let voice = match lang_code {
-            "zh-CN" | "zh" => "Ting-Ting",
-            "en-US" | "en" => "Alex",
-            "ja-JP" | "ja" => "Kyoko",
-            _ => "Alex",
-        };
-        cmd.arg("-v").arg(voice);
-    }
+        // 使用 macOS 的 say 命令
+        let mut cmd = Command::new("say");
 
-    // 设置语速（say 命令使用 words per minute）
-    if let Some(r) = rate {
-        let wpm = (175.0 * r) as u32; // 默认 175 wpm
-        cmd.arg("-r").arg(wpm.to_string());
-    }
+        // 设置语言/语音
+        if let Some(lang_code) = lang.as_deref() {
+            let voice = match lang_code {
+                "zh-CN" | "zh" => "Ting-Ting",
+                "en-US" | "en" => "Alex",
+                "ja-JP" | "ja" => "Kyoko",
+                _ => "Alex",
+            };
+            cmd.arg("-v").arg(voice);
+        }
 
-    cmd.arg(text);
+        // 设置语速（say 命令使用 words per minute）
+        if let Some(r) = rate {
+            let wpm = (175.0 * r) as u32; // 默认 175 wpm
+            cmd.arg("-r").arg(wpm.to_string());
+        }
 
-    let output = cmd
-        .output()
-        .map_err(|e| AppError::internal(format!("执行 say 命令失败: {}", e)))?;
+        cmd.arg(&text);
 
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(AppError::internal(format!("TTS 失败: {}", stderr)))
-    }
+        let output = cmd
+            .output()
+            .map_err(|e| AppError::internal(format!("执行 say 命令失败: {}", e)))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(AppError::internal(format!("TTS 失败: {}", stderr)))
+        }
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("TTS 任务调度失败: {}", e)))?
 }
 
 #[cfg(target_os = "linux")]
@@ -166,38 +174,46 @@ async fn speak_linux(
     rate: Option<f32>,
     _volume: Option<f32>,
 ) -> Result<(), AppError> {
-    use std::process::Command;
+    let text = text.to_string();
+    let lang = lang.map(|value| value.to_string());
 
-    // 使用 espeak 命令
-    let mut cmd = Command::new("espeak");
+    // espeak 会阻塞直到整段语音播放完成，放到 spawn_blocking，避免阻塞异步运行时 worker 线程。
+    tokio::task::spawn_blocking(move || {
+        use std::process::Command;
 
-    // 设置语言
-    if let Some(lang_code) = lang {
-        let espeak_lang = match lang_code {
-            "zh-CN" | "zh" => "zh",
-            "en-US" | "en" => "en",
-            "ja-JP" | "ja" => "ja",
-            _ => "en",
-        };
-        cmd.arg("-v").arg(espeak_lang);
-    }
+        // 使用 espeak 命令
+        let mut cmd = Command::new("espeak");
 
-    // 设置语速 (espeak 使用 words per minute)
-    if let Some(r) = rate {
-        let wpm = (175.0 * r) as u32;
-        cmd.arg("-s").arg(wpm.to_string());
-    }
+        // 设置语言
+        if let Some(lang_code) = lang.as_deref() {
+            let espeak_lang = match lang_code {
+                "zh-CN" | "zh" => "zh",
+                "en-US" | "en" => "en",
+                "ja-JP" | "ja" => "ja",
+                _ => "en",
+            };
+            cmd.arg("-v").arg(espeak_lang);
+        }
 
-    cmd.arg(text);
+        // 设置语速 (espeak 使用 words per minute)
+        if let Some(r) = rate {
+            let wpm = (175.0 * r) as u32;
+            cmd.arg("-s").arg(wpm.to_string());
+        }
 
-    let output = cmd
-        .output()
-        .map_err(|e| AppError::internal(format!("执行 espeak 命令失败: {}", e)))?;
+        cmd.arg(&text);
 
-    if output.status.success() {
-        Ok(())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(AppError::internal(format!("TTS 失败: {}", stderr)))
-    }
+        let output = cmd
+            .output()
+            .map_err(|e| AppError::internal(format!("执行 espeak 命令失败: {}", e)))?;
+
+        if output.status.success() {
+            Ok(())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(AppError::internal(format!("TTS 失败: {}", stderr)))
+        }
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("TTS 任务调度失败: {}", e)))?
 }

@@ -324,7 +324,7 @@ export function dispatchOpenAnkiPanelEvent(params: OpenAnkiPanelParams): void {
  * 桌面端（>768px）：不做任何处理，直接渲染 children + className，
  * 保持原有 CSS 布局（如 calc(-50vw + 50%) 等）。
  *
- * 移动端（≤768px）：使用 getBoundingClientRect 精确计算元素距视口
+ * 移动端（<768px）：使用 getBoundingClientRect 精确计算元素距视口
  * 左侧的偏移，通过 inline style 突破所有父容器限制实现真正全宽。
  * 解决移动端头像/padding 导致 CSS calc 偏移不准的问题。
  */
@@ -341,8 +341,9 @@ export const FullWidthCardWrapper: React.FC<{
     const el = wrapperRef.current;
     if (!el) return;
 
-    // 桌面端：清除所有 inline 定位，完全交给 CSS
-    if (window.innerWidth > MOBILE_BREAKPOINT) {
+    // 桌面端（≥768，与 App shell isSmallScreen=<768 边界对齐）：清除所有 inline 定位，完全交给 CSS。
+    // 用 >= 而非 >：768px（如 iPad 竖屏）属桌面双栏布局，不应套用移动端全宽 inline 计算
+    if (window.innerWidth >= MOBILE_BREAKPOINT) {
       if (el.style.width || el.style.marginLeft) {
         el.style.width = '';
         el.style.marginLeft = '';

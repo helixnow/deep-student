@@ -9,7 +9,7 @@ use image::{image_dimensions, ImageFormat};
 use pdfium_render::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::fs as async_fs;
 use tokio::sync::{mpsc, watch, Mutex};
 use tokio::task::spawn_blocking;
@@ -851,71 +851,6 @@ struct RenderedPage {
 }
 
 impl PdfOcrService {
-    /// 初始化 Pdfium 库（保留供未来使用，当前在 spawn_blocking 中直接初始化）
-    #[allow(dead_code)]
-    fn init_pdfium(&self, app_handle: &AppHandle) -> Result<Pdfium> {
-        // 尝试从应用资源目录加载
-        let resource_path = app_handle
-            .path()
-            .resource_dir()
-            .ok()
-            .map(|p| p.join(Pdfium::pdfium_platform_library_name()));
-
-        let pdfium =
-            if let Some(ref path) = resource_path {
-                if path.exists() {
-                    info!("[PDF-OCR] 从资源目录加载 Pdfium: {:?}", path);
-                    Pdfium::new(Pdfium::bind_to_library(path).map_err(|e| {
-                        AppError::configuration(format!("绑定 Pdfium 失败: {:?}", e))
-                    })?)
-                } else {
-                    // 尝试系统库
-                    info!("[PDF-OCR] 尝试加载系统 Pdfium 库");
-                    Pdfium::new(Pdfium::bind_to_system_library().map_err(|e| {
-                        AppError::configuration(format!(
-                            "加载 Pdfium 库失败: {:?}。桌面版加速功能需要 pdfium 动态库支持。",
-                            e
-                        ))
-                    })?)
-                }
-            } else {
-                // 尝试系统库
-                info!("[PDF-OCR] 尝试加载系统 Pdfium 库");
-                Pdfium::new(Pdfium::bind_to_system_library().map_err(|e| {
-                    AppError::configuration(format!(
-                        "加载 Pdfium 库失败: {:?}。桌面版加速功能需要 pdfium 动态库支持。",
-                        e
-                    ))
-                })?)
-            };
-
-        Ok(pdfium)
-    }
-
-    /// 渲染 PDF 页面为图片（保留供未来使用，当前在 spawn_blocking 中直接渲染）
-    #[allow(dead_code)]
-    fn render_page_to_image(
-        &self,
-        page: &PdfPage,
-        config: &PdfRenderConfig,
-        output_path: &Path,
-    ) -> Result<(u32, u32)> {
-        let bitmap = page
-            .render_with_config(config)
-            .map_err(|e| AppError::file_system(format!("渲染页面失败: {:?}", e)))?;
-
-        let image = bitmap.as_image();
-        let rgb_image = image.to_rgb8();
-        let (width, height) = rgb_image.dimensions();
-
-        // 保存为 JPEG（比 PNG 更小）
-        rgb_image
-            .save_with_format(output_path, ImageFormat::Jpeg)
-            .map_err(|e| AppError::file_system(format!("保存图片失败: {:?}", e)))?;
-
-        Ok((width, height))
-    }
-
     async fn run_worker(
         self,
         temp_id: String,

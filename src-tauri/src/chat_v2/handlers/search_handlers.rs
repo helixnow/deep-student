@@ -19,6 +19,14 @@ pub async fn chat_v2_search_content(
     ChatV2Repo::search_content(&conn, &query, limit).map_err(|e| e.to_string())
 }
 
+/// 重建聊天内容 FTS5 索引（清空后从 chat_v2_blocks 全量回填），返回回填行数。
+/// 供设置页「全局索引维护」修复 FTS 与正文不一致。
+#[tauri::command]
+pub async fn rebuild_chat_fts(db: State<'_, Arc<ChatV2Database>>) -> Result<usize, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    ChatV2Repo::rebuild_content_fts(&conn).map_err(|e| e.to_string())
+}
+
 /// 获取会话标签
 #[tauri::command]
 pub async fn chat_v2_get_session_tags(

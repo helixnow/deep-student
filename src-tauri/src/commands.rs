@@ -3,7 +3,6 @@
 use log::{debug, error, info, warn};
 
 use crate::database::{Database, DatabaseManager};
-use crate::database_optimizations::DatabaseOptimizationExt;
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{
     should_use_openai_responses_for_config, ApiConfig, ModelProfile, VendorConfig,
@@ -1871,35 +1870,6 @@ async fn cleanup_orphan_chat_embeddings(db: Arc<Database>) -> usize {
     };
 
     orphan_count
-}
-
-/// Create performance indexes for better query speed
-#[tauri::command]
-pub async fn create_performance_indexes(state: State<'_, AppState>) -> Result<String> {
-    info!("创建性能索引");
-
-    state
-        .database
-        .create_performance_indexes()
-        .map_err(|e| AppError::database(format!("创建性能索引失败: {}", e)))?;
-
-    Ok("性能索引创建成功".to_string())
-}
-
-/// Analyze query performance
-#[tauri::command]
-pub async fn analyze_query_performance(
-    query: String,
-    state: State<'_, AppState>,
-) -> Result<String> {
-    debug!("分析查询性能: {}", query);
-
-    let analysis = state
-        .database
-        .analyze_query_performance(&query)
-        .map_err(|e| AppError::database(format!("查询性能分析失败: {}", e)))?;
-
-    Ok(analysis)
 }
 
 /// 从模型输出中提取思维链内容
@@ -4101,7 +4071,7 @@ pub async fn get_injection_budget_config(state: State<'_, AppState>) -> Result<s
         "default_config": crate::injection_budget::BudgetConfig::default()
     }))
 }
-/// 更新注入预算配置
+/// 模拟注入预算分配（预览/调参用；注：当前 allocate() 未接入真实注入路径，仅模拟）
 #[tauri::command]
 pub async fn simulate_budget_allocation(
     state: State<'_, AppState>,
@@ -4264,121 +4234,9 @@ pub async fn get_all_recent_cards(
 
 // ================= Enhanced Chat Search (FTS + Semantic) =================
 
-// Reports CRUD
-#[derive(Debug, serde::Deserialize)]
-pub struct ResearchListRequest {
-    pub limit: Option<u32>,
-}
-#[tauri::command]
-pub async fn research_list_reports(
-    request: ResearchListRequest,
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::models::ResearchReportSummary>> {
-    state
-        .database
-        .list_research_reports(request.limit)
-        .map_err(|e| AppError::database(format!("获取研究报告列表失败: {}", e)))
-}
-
-#[tauri::command]
-pub async fn research_get_report(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<crate::models::ResearchReport> {
-    match state.database.get_research_report(&id) {
-        Ok(Some(r)) => Ok(r),
-        Ok(None) => Err(AppError::not_found("研究报告不存在")),
-        Err(e) => Err(AppError::database(format!("获取研究报告失败: {}", e))),
-    }
-}
-
-#[tauri::command]
-pub async fn research_delete_report(id: String, state: State<'_, AppState>) -> Result<bool> {
-    state
-        .database
-        .delete_research_report(&id)
-        .map_err(|e| AppError::database(format!("删除研究报告失败: {}", e)))
-}
-
-// 批量导出所有研究报告为ZIP
-#[derive(Debug, serde::Deserialize)]
-pub struct ResearchExportZipRequest {
-    pub format: String,
-    pub path: String,
-}
-#[tauri::command]
-pub async fn research_export_all_reports_zip(
-    request: ResearchExportZipRequest,
-    state: State<'_, AppState>,
-) -> Result<String> {
-    use std::fs::File;
-    use std::io::Write;
-    use zip::write::FileOptions;
-    use zip::CompressionMethod;
-    let format = request.format.to_lowercase();
-    if format != "md" && format != "json" {
-        return Err(AppError::validation("格式必须为 md 或 json"));
-    }
-    let list = state
-        .database
-        .list_research_reports(None)
-        .map_err(|e| AppError::database(format!("获取研究报告列表失败: {}", e)))?;
-    let path = std::path::Path::new(&request.path);
-    let f = File::create(path).map_err(|e| AppError::file_system(e.to_string()))?;
-    let mut zip = zip::ZipWriter::new(f);
-    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
-    for s in list.into_iter() {
-        if let Some(full) = state
-            .database
-            .get_research_report(&s.id)
-            .map_err(|e| AppError::database(e.to_string()))?
-        {
-            let safe_ts = full
-                .created_at
-                .to_rfc3339()
-                .replace(":", "-")
-                .replace("T", "-");
-            let subject_val = "通用";
-            let base = format!(
-                "研究报告-{}-{}",
-                subject_val,
-                &safe_ts[..std::cmp::min(19, safe_ts.len())]
-            );
-            if format == "md" {
-                let content = format!(
-                    "# 科目：{}\n\n- 生成时间：{}\n- 分段数：{}\n- 上下文窗口：{}\n\n---\n\n{}\n",
-                    subject_val,
-                    full.created_at.to_rfc3339(),
-                    full.segments,
-                    full.context_window,
-                    full.report
-                );
-                let filename = format!("{}.md", base);
-                zip.start_file(filename, options)
-                    .map_err(|e| AppError::file_system(e.to_string()))?;
-                zip.write_all(content.as_bytes())
-                    .map_err(|e| AppError::file_system(e.to_string()))?;
-            } else {
-                let obj = serde_json::json!({
-                    "id": full.id, "subject": "通用", "created_at": full.created_at.to_rfc3339(),
-                    "segments": full.segments, "context_window": full.context_window, "report": full.report
-                });
-                let filename = format!("{}.json", base);
-                zip.start_file(filename, options)
-                    .map_err(|e| AppError::file_system(e.to_string()))?;
-                zip.write_all(
-                    serde_json::to_string_pretty(&obj)
-                        .unwrap_or_default()
-                        .as_bytes(),
-                )
-                .map_err(|e| AppError::file_system(e.to_string()))?;
-            }
-        }
-    }
-    zip.finish()
-        .map_err(|e| AppError::file_system(e.to_string()))?;
-    Ok(request.path)
-}
+// Reports CRUD（research_* 报告命令已删除 — round 2 / 代理1：lib.rs 未注册、前端死包装已移除。
+// 底层 Database::{list,get,delete}_research_report 与 models::ResearchReport* 若无其它调用方，
+// 由数据层负责人（代理2）评估清理。）
 
 // =================================================
 // 包管理器检测和安装相关命令

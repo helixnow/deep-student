@@ -32,6 +32,7 @@ const EssayGradingWorkbench = lazy(() =>
 const EssayContentView: React.FC<ContentViewProps> = ({
   node,
   onClose,
+  isActive,
 }) => {
   const { t } = useTranslation(['essay_grading', 'common', 'learningHub']);
 
@@ -177,6 +178,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       >
         <EssayGradingWorkbench
           onBack={onClose}
+          isActive={isActive}
           dstuMode={{
             session,
             onSessionSave: handleSessionSave,

@@ -72,7 +72,9 @@
     "failedTitle": "Import Failed",
     "importedMap": "Imported Mind Map",
     "emptyMap": "Empty Mind Map",
-    "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?"
+    "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?",
+    "unsavedTitle": "Import will overwrite unsaved changes",
+    "unsavedConfirm": "Continue import"
   },
   "errors": {
     "notFound": "Mind map not found"
@@ -177,6 +179,10 @@
     "updateConflict": "Content has been updated elsewhere. Auto-refreshing to the latest version…",
     "conflictResolved": "Successfully refreshed to the latest version.",
     "conflictReloadFailed": "Auto-refresh failed. Please manually refresh the page to get the latest content.",
+    "conflictSnapshotKept": "Content was updated elsewhere; switched to the latest version. Your unsaved edits were preserved — click \"Restore my edits\".",
+    "conflictBannerTitle": "Your unsaved edits were preserved",
+    "conflictRestoreMine": "Restore my edits",
+    "conflictDismiss": "Use server version",
     "depthExceeded": "Mind map depth exceeds the maximum limit and cannot be saved.",
     "nodeCountExceeded": "Mind map node count exceeds the maximum limit and cannot be saved.",
     "invalidContent": "Mind map content is abnormal and cannot be saved. Please try again later.",

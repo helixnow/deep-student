@@ -393,9 +393,9 @@ pub struct ProviderStrategy {
 pub struct SpecialHandling {
     pub handle_429_retry_after: bool, // 是否处理429状态码的Retry-After头
     pub exponential_backoff_on_5xx: bool, // 5xx错误时是否使用指数退避
-    pub circuit_breaker_enabled: bool, // 是否启用熔断器
-    pub circuit_breaker_failure_threshold: Option<u32>, // 熔断器失败阈值
-    pub circuit_breaker_recovery_timeout_ms: Option<u64>, // 熔断器恢复超时
+    // ★ A1-F18：移除 circuit_breaker_enabled / failure_threshold / recovery_timeout_ms 三个
+    // 死配置字段——全仓无任何读取方，熔断能力从未实现（SerpAPI 默认 enabled=true 也是空话）。
+    // web_search 已有多引擎聚合 + 可恢复错误才重试（O16）兜底；如需真熔断应作为独立功能立项。
 }
 
 impl Default for ProviderStrategy {
@@ -414,9 +414,6 @@ impl Default for ProviderStrategy {
             special_handling: Some(SpecialHandling {
                 handle_429_retry_after: true,
                 exponential_backoff_on_5xx: true,
-                circuit_breaker_enabled: false,
-                circuit_breaker_failure_threshold: Some(5),
-                circuit_breaker_recovery_timeout_ms: Some(30000),
             }),
         }
     }
@@ -452,9 +449,6 @@ impl Default for ProviderStrategies {
                 special_handling: Some(SpecialHandling {
                     handle_429_retry_after: true,
                     exponential_backoff_on_5xx: true,
-                    circuit_breaker_enabled: true, // SerpAPI启用熔断器
-                    circuit_breaker_failure_threshold: Some(3),
-                    circuit_breaker_recovery_timeout_ms: Some(60000),
                 }),
                 ..Default::default()
             }),
@@ -477,8 +471,6 @@ impl Default for ProviderStrategies {
                 special_handling: Some(SpecialHandling {
                     handle_429_retry_after: false, // SearXNG可能不返回标准头
                     exponential_backoff_on_5xx: false,
-                    circuit_breaker_enabled: false,
-                    ..Default::default()
                 }),
                 ..Default::default()
             }),

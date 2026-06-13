@@ -3,13 +3,13 @@
 //! Visual-First 管线的第一阶段：将所有文档格式归一化为高清页面图片。
 //!
 //! 设计要点：
-//! - 拆分 CPU 密集的渲染（可 spawn_blocking）与 DB 存储（需 async 上下文）
+//! - 渲染与入库合一：逐页渲染后立即写入 VFS Blob，峰值内存仅单页（避免全部页 JPEG 同时驻留）
 //! - 包含完整的安全检查（ZIP Bomb / 加密 / 文件大小限制）
-//! - 渲染后立即释放原始文档字节，只保留页面图片
+//! - 整体在 spawn_blocking 中调用（见 question_import_service::stage1_rasterize），循环内同步写 Blob 安全
 
 use base64::Engine;
 use pdfium_render::prelude::PdfRenderConfig;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::document_parser::DocumentParser;
 use crate::models::AppError;
@@ -38,15 +38,6 @@ pub struct RasterizerResult {
     pub source_format: String,
 }
 
-/// 渲染阶段的中间产物（纯 CPU 计算，可在 spawn_blocking 中运行）
-struct RenderedPage {
-    page_index: usize,
-    image_bytes: Vec<u8>,
-    text_hint: Option<String>,
-    width: u32,
-    height: u32,
-}
-
 #[derive(Debug)]
 enum DocxConversionResult {
     PdfBytes(Vec<u8>),
@@ -58,9 +49,7 @@ pub struct PageRasterizer;
 impl PageRasterizer {
     /// PDF base64 → 高清页面图片（300 DPI）+ text_hint
     ///
-    /// 内部拆分为两步：
-    /// 1. `render_pdf_pages`（纯 CPU，可 spawn_blocking）
-    /// 2. 将渲染结果存入 VFS Blob
+    /// 逐页渲染并立即入库（见 `render_and_store_pdf_pages`），峰值内存仅单页。
     pub fn rasterize_pdf(
         base64_content: &str,
         vfs_db: &VfsDatabase,
@@ -74,12 +63,19 @@ impl PageRasterizer {
             .check_pdf_encryption_bytes(&pdf_bytes, "document.pdf")
             .map_err(|e| AppError::validation(format!("{}", e)))?;
 
-        let rendered = Self::render_pdf_pages(&pdf_bytes)?;
-        Self::store_rendered_pages(rendered, "pdf", vfs_db)
+        Self::render_and_store_pdf_pages(&pdf_bytes, "pdf", vfs_db)
     }
 
-    /// 纯 CPU 渲染（不涉及 DB，可安全在 spawn_blocking 中调用）
-    fn render_pdf_pages(pdf_bytes: &[u8]) -> Result<Vec<RenderedPage>, AppError> {
+    /// 逐页渲染 + 立即入库：每页渲染→编码 JPEG→写入 VFS Blob→丢弃字节，
+    /// 峰值内存仅单页（避免 300DPI 多页 PDF 全部 JPEG 同时驻留，旧实现 500 页可达 0.5~1.5GB）。
+    ///
+    /// 调用方 `question_import_service::stage1_rasterize` 在 `spawn_blocking` 中整体调用，
+    /// 且 `VfsBlobRepo::store_blob` 为同步（rusqlite），故循环内同步写 Blob 不阻塞 Tokio worker。
+    fn render_and_store_pdf_pages(
+        pdf_bytes: &[u8],
+        source_format: &str,
+        vfs_db: &VfsDatabase,
+    ) -> Result<RasterizerResult, AppError> {
         let pdfium = crate::pdfium_utils::load_pdfium()
             .map_err(|e| AppError::internal(format!("加载 pdfium 失败: {}", e)))?;
 
@@ -93,7 +89,7 @@ impl PageRasterizer {
         }
 
         info!(
-            "[PageRasterizer] PDF 共 {} 页，开始 {}DPI 渲染",
+            "[PageRasterizer] PDF 共 {} 页，开始 {}DPI 渲染（边渲染边入库）",
             total_pages, RENDER_DPI as u32
         );
 
@@ -101,7 +97,7 @@ impl PageRasterizer {
             .set_target_width((RENDER_DPI * PAGE_WIDTH_INCHES) as i32)
             .set_maximum_height((RENDER_DPI * PAGE_HEIGHT_INCHES) as i32);
 
-        let mut rendered = Vec::with_capacity(total_pages);
+        let mut pages = Vec::with_capacity(total_pages);
 
         for page_idx in 0..total_pages {
             let page = document
@@ -137,51 +133,30 @@ impl PageRasterizer {
                 .map_err(|e| {
                     AppError::internal(format!("编码页面 {} JPEG 失败: {}", page_idx + 1, e))
                 })?;
+            let jpeg_bytes = jpeg_buffer.into_inner();
 
-            rendered.push(RenderedPage {
-                page_index: page_idx,
-                image_bytes: jpeg_buffer.into_inner(),
-                text_hint,
-                width,
-                height,
-            });
-        }
-
-        Ok(rendered)
-    }
-
-    /// 将渲染结果存入 VFS Blob 并生成 PageSlice
-    fn store_rendered_pages(
-        rendered: Vec<RenderedPage>,
-        source_format: &str,
-        vfs_db: &VfsDatabase,
-    ) -> Result<RasterizerResult, AppError> {
-        let total = rendered.len();
-        let mut pages = Vec::with_capacity(total);
-
-        for rp in rendered {
-            let blob =
-                VfsBlobRepo::store_blob(vfs_db, &rp.image_bytes, Some("image/jpeg"), Some("jpg"))
-                    .map_err(|e| {
-                    AppError::database(format!("页面 {} Blob 存储失败: {}", rp.page_index + 1, e))
+            // 立即入库；jpeg_bytes 在本次迭代结束即释放，不跨页累积
+            let blob = VfsBlobRepo::store_blob(vfs_db, &jpeg_bytes, Some("image/jpeg"), Some("jpg"))
+                .map_err(|e| {
+                    AppError::database(format!("页面 {} Blob 存储失败: {}", page_idx + 1, e))
                 })?;
 
             debug!(
                 "[PageRasterizer] 页面 {}/{}: {}x{}, text_hint={} chars, blob={}",
-                rp.page_index + 1,
-                total,
-                rp.width,
-                rp.height,
-                rp.text_hint.as_ref().map(|t| t.len()).unwrap_or(0),
+                page_idx + 1,
+                total_pages,
+                width,
+                height,
+                text_hint.as_ref().map(|t| t.len()).unwrap_or(0),
                 &blob.hash[..blob.hash.len().min(12)]
             );
 
             pages.push(PageSlice {
-                page_index: rp.page_index,
+                page_index: page_idx,
                 blob_hash: blob.hash,
-                text_hint: rp.text_hint,
-                width: rp.width,
-                height: rp.height,
+                text_hint,
+                width,
+                height,
             });
         }
 
@@ -296,8 +271,7 @@ impl PageRasterizer {
         let result = match conversion {
             DocxConversionResult::PdfBytes(pdf_bytes) => {
                 info!("[PageRasterizer] DOCX → PDF 转换成功，开始渲染");
-                let rendered = Self::render_pdf_pages(&pdf_bytes)?;
-                Self::store_rendered_pages(rendered, "docx", vfs_db)
+                Self::render_and_store_pdf_pages(&pdf_bytes, "docx", vfs_db)
             }
             DocxConversionResult::NotAvailable(reason) => Err(AppError::validation(format!(
                 "DOCX → PDF 转换不可用 ({})",
