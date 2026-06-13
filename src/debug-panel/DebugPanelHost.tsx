@@ -68,7 +68,6 @@ import ToolCallLifecycleDebugPlugin from './plugins/ToolCallLifecycleDebugPlugin
 import ExamSheetProcessingDebugPlugin from './plugins/ExamSheetProcessingDebugPlugin';
 import QuestionImportDebugPlugin from './plugins/QuestionImportDebugPlugin';
 import ChatAnkiIntegrationTestPlugin from './plugins/ChatAnkiIntegrationTestPlugin';
-import DataPurgePlugin from './plugins/DataPurgePlugin';
 
 export interface DebugPanelHostProps {
   visible: boolean;
@@ -475,15 +474,6 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: DstuDebugPlugin,
     labelDefault: 'DSTU API 调试',
     descriptionDefault: '监听所有 DSTU API 调用（createEmpty、create、update 等），实时显示请求参数、响应结果和错误信息，支持过滤、复制和导出。',
-    groupId: 'infra-quality',
-  },
-  {
-    id: 'data-purge',
-    labelKey: 'debug_panel.plugin_data_purge',
-    descriptionKey: 'debug_panel.plugin_data_purge_desc',
-    Component: DataPurgePlugin,
-    labelDefault: '清空数据',
-    descriptionDefault: '清空所有应用数据，触发应用重启。仅供调试使用。',
     groupId: 'infra-quality',
   },
   {

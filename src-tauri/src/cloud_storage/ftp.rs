@@ -18,53 +18,54 @@ use super::traits::{
     CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback,
 };
 use crate::models::AppError;
-use std::cell::Cell;
-use std::rc::Rc;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::task::{Context, Poll};
 
 /// 带进度的异步读取器包装器
 /// 在每次 read() 后回调已传输字节数
-pub(crate) struct ProgressReader<R> {
+pub(crate) struct ProgressReader<'a, R> {
     inner: R,
     total_size: u64,
-    transferred: Rc<Cell<u64>>,
-    callback: Option<Rc<dyn Fn(u64, u64)>>,
+    transferred: Arc<AtomicU64>,
+    callback: Option<&'a UploadProgressCallback>,
 }
 
-impl<R> ProgressReader<R> {
+impl<'a, R> ProgressReader<'a, R> {
     pub fn new(
         inner: R,
         total_size: u64,
-        callback: Option<&UploadProgressCallback>,
-    ) -> (Self, Rc<Cell<u64>>) {
-        let transferred = Rc::new(Cell::new(0u64));
-        let cb = callback.map(|cb| {
-            let cb = cb.clone();
-            let transferred = Rc::clone(&transferred);
-            Rc::new(move |chunk_bytes: u64| {
-                let done = transferred.get() + chunk_bytes;
-                transferred.set(done);
-                cb(done, total_size);
-            }) as Rc<dyn Fn(u64)>
-        });
+        callback: Option<&'a UploadProgressCallback>,
+    ) -> (Self, Arc<AtomicU64>) {
+        let transferred = Arc::new(AtomicU64::new(0));
         (
             Self {
                 inner,
                 total_size,
-                transferred: Rc::clone(&transferred),
-                callback: cb,
+                transferred: Arc::clone(&transferred),
+                callback,
             },
             transferred,
         )
     }
 }
 
-impl<R: async_std::io::Read + Unpin> async_std::io::Read for ProgressReader<R> {
-    async fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let n = self.inner.read(buf).await?;
-        if let Some(ref cb) = self.callback {
-            cb(n as u64);
+impl<R: async_std::io::Read + Unpin> async_std::io::Read for ProgressReader<'_, R> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let result = Pin::new(&mut this.inner).poll_read(cx, buf);
+        if let Poll::Ready(Ok(n)) = &result {
+            let done = this.transferred.fetch_add(*n as u64, Ordering::Relaxed) + *n as u64;
+            if let Some(ref cb) = this.callback {
+                cb(done, this.total_size);
+            }
         }
-        Ok(n)
+        result
     }
 }
 
@@ -875,6 +876,7 @@ impl CloudStorage for FtpStorage {
         local_path: &Path,
         progress: Option<UploadProgressCallback>,
     ) -> Result<String> {
+        let progress_ref = &progress;
         self.with_retry(|| async {
             let metadata = tokio::fs::metadata(local_path)
                 .await
@@ -892,7 +894,7 @@ impl CloudStorage for FtpStorage {
             .await
             .map_err(|e| AppError::internal(format!("计算校验和任务失败：{}", e)))??;
 
-            if let Some(ref cb) = progress {
+            if let Some(cb) = progress_ref.as_ref() {
                 cb(0, file_size);
             }
 
@@ -916,13 +918,8 @@ impl CloudStorage for FtpStorage {
             let mut file = async_std::fs::File::open(local_path)
                 .await
                 .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
-            self.upload_reader_atomic(&mut client, filename, &mut file)
+            self.upload_reader_atomic(&mut client, filename, &mut file, file_size, progress_ref.as_ref())
                 .await?;
-
-            // 报告进度
-            if let Some(ref cb) = progress {
-                cb(file_size, file_size);
-            }
 
             client.quit().await?;
 

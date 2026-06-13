@@ -415,7 +415,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setHasStoredFtpConfig(false);
     setWebdavConfig({ endpoint: '', username: '', password: '' });
     setS3Config({ endpoint: '', bucket: '', accessKeyId: '', secretAccessKey: '', region: '', pathStyle: false });
-    setFtpConfig({ host: '', port: 21, username: '', password: '', useTls: false });
+    setFtpConfig({ host: '', port: 21, username: '', password: '', useTls: false, endpoint: '' });
     setRoot('deep-student-sync');
     setEncryptionPassword('');
     setConnectionStatus('unknown');
