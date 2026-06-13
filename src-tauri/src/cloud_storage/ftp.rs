@@ -18,6 +18,55 @@ use super::traits::{
     CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback,
 };
 use crate::models::AppError;
+use std::cell::Cell;
+use std::rc::Rc;
+
+/// 带进度的异步读取器包装器
+/// 在每次 read() 后回调已传输字节数
+pub(crate) struct ProgressReader<R> {
+    inner: R,
+    total_size: u64,
+    transferred: Rc<Cell<u64>>,
+    callback: Option<Rc<dyn Fn(u64, u64)>>,
+}
+
+impl<R> ProgressReader<R> {
+    pub fn new(
+        inner: R,
+        total_size: u64,
+        callback: Option<&UploadProgressCallback>,
+    ) -> (Self, Rc<Cell<u64>>) {
+        let transferred = Rc::new(Cell::new(0u64));
+        let cb = callback.map(|cb| {
+            let cb = cb.clone();
+            let transferred = Rc::clone(&transferred);
+            Rc::new(move |chunk_bytes: u64| {
+                let done = transferred.get() + chunk_bytes;
+                transferred.set(done);
+                cb(done, total_size);
+            }) as Rc<dyn Fn(u64)>
+        });
+        (
+            Self {
+                inner,
+                total_size,
+                transferred: Rc::clone(&transferred),
+                callback: cb,
+            },
+            transferred,
+        )
+    }
+}
+
+impl<R: async_std::io::Read + Unpin> async_std::io::Read for ProgressReader<R> {
+    async fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.inner.read(buf).await?;
+        if let Some(ref cb) = self.callback {
+            cb(n as u64);
+        }
+        Ok(n)
+    }
+}
 
 /// FTP/FTPS 存储实现
 pub struct FtpStorage {
@@ -191,10 +240,14 @@ impl FtpStorage {
         client: &mut FtpClient,
         final_name: &str,
         reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+        file_size: u64,
+        progress: Option<&UploadProgressCallback>,
     ) -> Result<()> {
         let nonce = Uuid::new_v4().simple();
         let temp_name = format!("{final_name}.tmp-{nonce}");
-        client.put_file(&temp_name, reader).await?;
+        // 包装 reader 以支持进度回调
+        let (mut progress_reader, _) = ProgressReader::new(reader, file_size, progress);
+        client.put_file(&temp_name, &mut progress_reader).await?;
         if let Err(err) = client.rename(&temp_name, final_name).await {
             let _ = client.rm(&temp_name).await;
             return Err(err);
@@ -593,7 +646,7 @@ impl CloudStorage for FtpStorage {
             }
 
             let mut cursor = async_std::io::Cursor::new(data);
-            self.upload_reader_atomic(&mut client, filename, &mut cursor)
+            self.upload_reader_atomic(&mut client, filename, &mut cursor, data.len() as u64, None)
                 .await?;
 
             client.quit().await?;

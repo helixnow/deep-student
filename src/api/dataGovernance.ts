@@ -1413,6 +1413,20 @@ export async function discardQuarantine(
   });
 }
 
+export interface BatchQuarantineResult {
+  success: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function retryAllQuarantine(): Promise<BatchQuarantineResult> {
+  return invoke<BatchQuarantineResult>("data_governance_retry_all_quarantine");
+}
+
+export async function discardAllQuarantine(): Promise<BatchQuarantineResult> {
+  return invoke<BatchQuarantineResult>("data_governance_discard_all_quarantine");
+}
+
 // ==================== Tombstone（删除传播）API ====================
 
 import type { CloudStorageConfig as CloudCfg } from "../types/dataGovernance";
@@ -1573,6 +1587,8 @@ export const DataGovernanceApi = {
   listQuarantine,
   retryQuarantine,
   discardQuarantine,
+  retryAllQuarantine,
+  discardAllQuarantine,
 
   // Tombstone 删除传播
   markBlobDeleted,

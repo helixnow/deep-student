@@ -1717,6 +1717,8 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_list_quarantine
             ,crate::data_governance::commands_sync::data_governance_retry_quarantine
             ,crate::data_governance::commands_sync::data_governance_discard_quarantine
+            ,crate::data_governance::commands_sync::data_governance_retry_all_quarantine
+            ,crate::data_governance::commands_sync::data_governance_discard_all_quarantine
             // Tombstone 删除传播
             ,crate::data_governance::commands_sync::data_governance_mark_blob_deleted
             ,crate::data_governance::commands_sync::data_governance_mark_asset_deleted

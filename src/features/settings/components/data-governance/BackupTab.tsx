@@ -53,7 +53,7 @@ import {
   getDatabaseDisplayName,
 } from '@/types/dataGovernance';
 import type { BackupJobEvent, ResumableJob, BackupConfig } from '@/api/dataGovernance';
-import { getBackupConfig, setBackupConfig, DataGovernanceApi } from '@/api/dataGovernance';
+import { getBackupConfig, setBackupConfig } from '@/api/dataGovernance';
 import { Input } from '@/components/ui/shad/Input';
 
 export type BackupJobOperation = 'backup' | 'tiered_backup' | 'zip_export' | 'zip_import' | 'restore';
@@ -345,34 +345,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       setIsActionRunning(false);
       setSelectedBackup(null);
       setActionType(null);
-    }
-  };
-
-  // 清空所有数据状态与处理
-  const [showPurgeDialog, setShowPurgeDialog] = useState(false);
-  const [isPurgeRunning, setIsPurgeRunning] = useState(false);
-
-  const handleOpenPurgeDialog = () => {
-    setShowPurgeDialog(true);
-  };
-
-  const handlePurgeAllData = async () => {
-    if (isPurgeRunning) return;
-    setIsPurgeRunning(true);
-    try {
-      await DataGovernanceApi.purgeAllData();
-      showGlobalNotification(
-        'info',
-        t('data:governance.purge_initiated'),
-      );
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      showGlobalNotification(
-        'error',
-        message,
-        t('data:governance.purge_failed'),
-      );
-      setIsPurgeRunning(false);
     }
   };
 
@@ -948,53 +920,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </Table>
         </div>
       </div>
-
-      {/* 危险操作：清空所有数据 */}
-      <div className="border-t border-border/40" />
-      <div className="space-y-4">
-        <div className="space-y-1">
-          <h3 className="text-base font-medium text-destructive">
-            {t('data:governance.danger_zone')}
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            {t('data:governance.danger_zone_desc')}
-          </p>
-        </div>
-
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
-          <div className="space-y-1">
-            <div className="text-sm font-medium text-foreground">
-              {t('data:governance.purge_all_data_title')}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {t('data:governance.purge_all_data_desc')}
-            </p>
-          </div>
-          <NotionButton
-            variant="danger"
-            size="sm"
-            onClick={handleOpenPurgeDialog}
-            disabled={isBackupRunning}
-          >
-            <Trash className="h-4 w-4 mr-2" />
-            {t('data:governance.purge_all_data_button')}
-          </NotionButton>
-        </div>
-      </div>
-
-      {/* 清空数据二次确认对话框 */}
-      <NotionAlertDialog
-        open={showPurgeDialog}
-        onOpenChange={(open) => { if (!open) setShowPurgeDialog(false); }}
-        title={t('data:governance.purge_confirm_title')}
-        description={t('data:governance.purge_confirm_desc')}
-        confirmText={t('data:governance.purge_confirm_button')}
-        cancelText={t('common:actions.cancel')}
-        confirmVariant="danger"
-        onConfirm={handlePurgeAllData}
-        loading={isPurgeRunning}
-        disabled={isPurgeRunning}
-      />
 
       {/* 确认对话框 */}
       <NotionAlertDialog

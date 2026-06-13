@@ -3881,6 +3881,141 @@ pub async fn data_governance_discard_quarantine(
     Ok(deleted > 0)
 }
 
+/// 批量检疫操作结果
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BatchQuarantineResult {
+    pub success: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+}
+
+/// 批量重试所有检疫记录。
+#[tauri::command]
+pub async fn data_governance_retry_all_quarantine(
+    app: tauri::AppHandle,
+) -> Result<BatchQuarantineResult, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let mut success = 0;
+    let mut failed = 0;
+    let mut errors = Vec::new();
+
+    for db_id in _DatabaseId::all_ordered() {
+        let db_path =
+            crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+        if !db_path.exists() {
+            continue;
+        }
+        let conn = match open_sync_connection(&db_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if !sqlite_table_exists(&conn, "__sync_quarantine") {
+            continue;
+        }
+
+        // 获取所有检疫记录
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, payload_json FROM __sync_quarantine WHERE payload_json IS NOT NULL",
+            )
+            .map_err(|e| format!("准备批量查询失败: {}", e))?;
+
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| format!("执行批量查询失败: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (quarantine_id, payload_json) in rows {
+            let change: SyncChangeWithData = match serde_json::from_str(&payload_json) {
+                Ok(c) => c,
+                Err(e) => {
+                    errors.push(format!("记录 {}: 解析失败 - {}", quarantine_id, e));
+                    failed += 1;
+                    continue;
+                }
+            };
+
+            match SyncManager::apply_downloaded_changes(
+                &conn,
+                &[change],
+                Some(&id_column_map()),
+            ) {
+                Ok(result) if result.failure_count == 0 => {
+                    let _ = conn.execute(
+                        "DELETE FROM __sync_quarantine WHERE id=?1",
+                        rusqlite::params![quarantine_id],
+                    );
+                    success += 1;
+                }
+                Ok(result) => {
+                    let error = result
+                        .failures
+                        .first()
+                        .map(|f| f.error.clone())
+                        .unwrap_or_else(|| "重试后仍未能应用".to_string());
+                    let _ = conn.execute(
+                        "UPDATE __sync_quarantine SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now') WHERE id=?2",
+                        rusqlite::params![error, quarantine_id],
+                    );
+                    errors.push(format!("记录 {}: {}", quarantine_id, error));
+                    failed += 1;
+                }
+                Err(e) => {
+                    let _ = conn.execute(
+                        "UPDATE __sync_quarantine SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now') WHERE id=?2",
+                        rusqlite::params![e.to_string(), quarantine_id],
+                    );
+                    errors.push(format!("记录 {}: {}", quarantine_id, e));
+                    failed += 1;
+                }
+            }
+        }
+    }
+
+    Ok(BatchQuarantineResult {
+        success,
+        failed,
+        errors,
+    })
+}
+
+/// 批量清除所有检疫记录。
+#[tauri::command]
+pub async fn data_governance_discard_all_quarantine(
+    app: tauri::AppHandle,
+) -> Result<BatchQuarantineResult, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let mut success = 0;
+
+    for db_id in _DatabaseId::all_ordered() {
+        let db_path =
+            crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+        if !db_path.exists() {
+            continue;
+        }
+        let conn = match open_sync_connection(&db_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if !sqlite_table_exists(&conn, "__sync_quarantine") {
+            continue;
+        }
+
+        let deleted = conn
+            .execute("DELETE FROM __sync_quarantine", [])
+            .map_err(|e| format!("批量清除失败: {}", e))?;
+
+        success += deleted;
+    }
+
+    Ok(BatchQuarantineResult {
+        success,
+        failed: 0,
+        errors: Vec::new(),
+    })
+}
+
 /// 单条记录级冲突
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct RecordConflictRow {
