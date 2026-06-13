@@ -23,6 +23,7 @@ import { CustomScrollArea } from './custom-scroll-area';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { NotionAlertDialog } from './ui/NotionDialog';
 
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { calculateEssayTextStats } from '@/essay-grading/textStats';
 
@@ -702,36 +703,37 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
 
   // A6-29: Ctrl/Cmd+Enter 提交批改快捷键（对齐翻译工作台）
   // ★ 标签页保活：非活跃实例不注册，避免多个作文标签页同时响应同一按键
-  //   （isActive 未传时视为活跃；handleGrade 内部已含离线/isGrading/空文本/未改动守卫）
-  useEffect(() => {
-    if (isActive === false) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!isGrading) {
-          handleGrade();
-        }
+  const handleGradeShortcut = useCallback((e: Event) => {
+    const ke = e as KeyboardEvent;
+    if ((ke.ctrlKey || ke.metaKey) && ke.key === 'Enter') {
+      ke.preventDefault();
+      ke.stopPropagation();
+      if (!isGrading) {
+        handleGrade();
       }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isActive, isGrading, handleGrade]);
+    }
+  }, [isGrading, handleGrade]);
+
+  useEventRegistry(
+    isActive === false
+      ? []
+      : [{ target: 'document', type: 'keydown', listener: handleGradeShortcut }],
+    [isActive, handleGradeShortcut],
+  );
 
   // P1-19: 监听命令面板 LEARNING_GRADE_ESSAY 事件
-  // 'LEARNING_GRADE_ESSAY' — dispatched by CommandPalette to trigger essay grading.
-  // TODO: Migrate to a centralised event hook/registry (e.g. useAppEvent or EventBus).
-  useEffect(() => {
-    const handleGradeEvent = (evt: Event) => {
-      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
-      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) return;
-      handleGrade();
-    };
-    window.addEventListener('LEARNING_GRADE_ESSAY', handleGradeEvent);
-    return () => {
-      window.removeEventListener('LEARNING_GRADE_ESSAY', handleGradeEvent);
-    };
+  const handleGradeEvent = useCallback((evt: Event) => {
+    const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+    if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
+      return;
+    }
+    handleGrade();
   }, [handleGrade, dstuMode.resourceId]);
+
+  useEventRegistry(
+    [{ target: 'window', type: 'LEARNING_GRADE_ESSAY', listener: handleGradeEvent }],
+    [handleGradeEvent],
+  );
 
   // P1-19: 监听命令面板 LEARNING_ESSAY_SUGGESTIONS 事件
   // 当用户请求改进建议时，如果已有批改结果则显示提示，否则触发批改

@@ -195,26 +195,15 @@ export async function testApiConnection(apiKey: string, apiBase: string, model?:
   }
 }
 
-// 统计信息API
-export async function getStatistics(): Promise<any> {
-  try {
-    const response = await invoke<any>('get_statistics');
-    return response;
-  } catch (error) {
-    console.error('Failed to get statistics:', error);
-    throw new Error(`Failed to get statistics: ${error}`);
-  }
-}
-
 // 获取增强版统计信息（包含所有模块）
+// ★ 2026-06-13：后端 `get_statistics` 命令已随旧 Dashboard 移除；仅保留 get_enhanced_statistics。
 export async function getEnhancedStatistics(): Promise<any> {
   try {
     const response = await invoke<any>('get_enhanced_statistics');
     return response;
   } catch (error) {
     console.error('Failed to get enhanced statistics:', error);
-    // 降级到基础统计
-    return getStatistics();
+    throw new Error(`Failed to get enhanced statistics: ${error}`);
   }
 }
 

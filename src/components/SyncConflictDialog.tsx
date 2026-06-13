@@ -79,7 +79,6 @@ interface SyncConflictDialogProps {
 // ============================================================================
 
 /** 获取冲突类型的显示标签和颜色 */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getConflictTypeInfo(
   type: string,
   t: (...args: any[]) => any,
@@ -456,10 +455,7 @@ export function SyncConflictDialog({
         const message = getErrorMessage(err);
         console.error("Failed to resolve conflict:", err);
         unifiedAlert(
-          t("notifications.conflictResolveFailed", {
-            defaultValue: "解决冲突失败: {{error}}",
-            error: message,
-          }),
+          t("notifications.conflictResolveFailed", { error: message }),
           "error",
         );
       } finally {
@@ -485,8 +481,6 @@ export function SyncConflictDialog({
         if (result.failed.length > 0) {
           unifiedAlert(
             t("notifications.conflictBatchResolvePartial", {
-              defaultValue:
-                "部分冲突解决失败：成功 {{resolved}} 个，失败 {{failed}} 个",
               resolved: result.resolved.length,
               failed: result.failed.length,
             }),
@@ -505,10 +499,7 @@ export function SyncConflictDialog({
       const message = getErrorMessage(err);
       console.error("Failed to batch resolve conflicts:", err);
       unifiedAlert(
-        t("notifications.conflictBatchResolveFailed", {
-          defaultValue: "批量解决冲突失败: {{error}}",
-          error: message,
-        }),
+        t("notifications.conflictBatchResolveFailed", { error: message }),
         "error",
       );
     }

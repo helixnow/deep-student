@@ -44,7 +44,7 @@ export const LazySettings = React.lazy(() =>
 );
 
 // ★ 2026-02：批量分析已废弃（旧错题系统已移除）
-// ★ 2026-06-13：移除 LazyDashboard（components/Dashboard.tsx 旧仪表盘已被 components/dashboard/* 取代且无人引用，连同 get_statistics 死命令一并清理）
+// ★ 2026-06-13：移除 LazyDashboard（components/Dashboard.tsx 旧仪表盘已被 SOTADashboardLite 取代且无人引用；后端 get_statistics 命令已移除，统计走 get_enhanced_statistics）
 
 // SOTA 仪表盘
 export const LazySOTADashboard = React.lazy(() =>

@@ -331,15 +331,5 @@ export async function getChatIndexStats(): Promise<{ total_fts: number; total_ve
   }
 }
 
-// ★ 2026-01 清理：continueMistakeChat 和 continueMistakeChatStream 已删除（错题功能废弃）
 // ★ 2026-06-13（round 2）：research_* 报告类死包装已删除（后端命令未注册、前端无调用方）
-
-/** @deprecated R6 废弃 - 后端 command 已移除；saveRequestHandler 已删(round2)，现仅 dev/ChatSaveTestPanel 引用 */
-export async function runtimeAutosaveCommit(_params: any): Promise<any> {
-  throw new Error('runtimeAutosaveCommit is deprecated: backend command removed');
-}
-
-/** @deprecated R6 废弃 - 后端 command 已移除；saveRequestHandler 已删(round2)，现仅 dev/ChatSaveTestPanel 引用 */
-export async function updateMistake(_item: any): Promise<any> {
-  throw new Error('updateMistake is deprecated: backend command removed');
-}
+// 错题自动保存 stub（runtimeAutosaveCommit / updateMistake）已迁至 testApi.ts，仅供 dev 面板使用。

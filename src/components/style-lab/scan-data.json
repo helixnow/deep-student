@@ -496,13 +496,11 @@
       "files": 156,
       "topFiles": [
         "src/App.tsx",
-        "src/app/services/saveRequestHandler.ts",
         "src/command-palette/CommandPalette.tsx",
         "src/command-palette/CommandPaletteProvider.tsx",
         "src/command-palette/components/ShortcutSettings.tsx",
         "src/components/CsvImportDialog.tsx",
         "src/components/DataImportExport.tsx",
-        "src/components/DocumentViewer.tsx",
         "src/components/EssayGradingWorkbench.tsx",
         "src/components/ExamSheetUploader.tsx",
         "src/components/ImageCropDialog.tsx",
