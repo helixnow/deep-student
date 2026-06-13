@@ -163,66 +163,24 @@ pub trait CloudStorage: Send + Sync {
         progress: Option<UploadProgressCallback>,
     ) -> Result<String> {
         use sha2::{Digest, Sha256};
-        use std::io::Read;
 
-        let metadata = std::fs::metadata(local_path)
-            .map_err(|e| AppError::file_system(format!("读取文件元信息失败: {e}")))?;
-        let file_size = metadata.len();
+        // 默认实现：整体读入内存后 `put`。`put` trait 方法本身就是整体缓冲语义，
+        // 默认实现无法做真正的流式/分块上传。**GB 级大文件请由具体后端覆盖本方法**
+        // （S3 multipart / FTP 流式 STOR / WebDAV 流式 PUT，均已在各后端实现），
+        // 避免在内存中驻留整个文件。
+        let data = std::fs::read(local_path)
+            .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
+        let file_size = data.len() as u64;
 
-        // 计算 SHA256 并读取文件
-        let mut file = std::fs::File::open(local_path)
-            .map_err(|e| AppError::file_system(format!("打开文件失败: {e}")))?;
-
-        let mut hasher = Sha256::new();
-        let mut buffer = Vec::with_capacity(file_size.min(CHUNK_SIZE as u64) as usize);
-
-        // 对于小文件，直接读取并上传
-        if file_size < MIN_MULTIPART_SIZE {
-            file.read_to_end(&mut buffer)
-                .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
-            hasher.update(&buffer);
-
-            if let Some(ref cb) = progress {
-                cb(0, file_size);
-            }
-
-            self.put(key, &buffer).await?;
-
-            if let Some(ref cb) = progress {
-                cb(file_size, file_size);
-            }
-
-            let checksum = format!("{:x}", hasher.finalize());
-            return Ok(checksum);
+        if let Some(ref cb) = progress {
+            cb(0, file_size);
         }
 
-        // 大文件：分块读取，边读边计算哈希
-        // 默认实现仍然一次性上传（子类可覆盖实现真正的分块上传）
-        tracing::info!(
-            "大文件上传 ({:.2} MB)，使用默认策略",
-            file_size as f64 / 1024.0 / 1024.0
-        );
-
-        let mut data = Vec::with_capacity(file_size as usize);
-        let mut uploaded = 0u64;
-        let chunk_size = CHUNK_SIZE;
-        buffer.resize(chunk_size, 0);
-
-        loop {
-            let bytes_read = file
-                .read(&mut buffer)
-                .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
-            if bytes_read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..bytes_read]);
-            data.extend_from_slice(&buffer[..bytes_read]);
-            uploaded += bytes_read as u64;
-
-            if let Some(ref cb) = progress {
-                cb(uploaded / 2, file_size); // 读取进度占 50%
-            }
-        }
+        let checksum = {
+            let mut hasher = Sha256::new();
+            hasher.update(&data);
+            format!("{:x}", hasher.finalize())
+        };
 
         self.put(key, &data).await?;
 
@@ -230,7 +188,6 @@ pub trait CloudStorage: Send + Sync {
             cb(file_size, file_size);
         }
 
-        let checksum = format!("{:x}", hasher.finalize());
         Ok(checksum)
     }
 

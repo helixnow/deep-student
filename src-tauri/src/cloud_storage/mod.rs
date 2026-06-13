@@ -244,16 +244,13 @@ pub async fn cloud_sync_upload(
         .as_deref()
         .filter(|s| !s.is_empty())
     {
-        tracing::info!("[CloudSync] 端到端加密已启用，加密上传...");
-        let plaintext = std::fs::read(&zip_path)
-            .map_err(|e| AppError::file_system(format!("读取 ZIP 失败: {}", e)))?;
-        let ciphertext = crate::crypto::backup_crypto::encrypt_backup(&plaintext, pwd)
-            .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
-        // 写临时加密文件（同目录，确保同一文件系统 → 快）
+        tracing::info!("[CloudSync] 端到端加密已启用，流式加密上传...");
+        // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
+        // 内存占用恒定，避免多 GB 备份一次性读入内存导致 OOM。
         let original = std::path::Path::new(&zip_path);
         let temp_path = original.with_extension("zip.dsbk");
-        std::fs::write(&temp_path, &ciphertext)
-            .map_err(|e| AppError::file_system(format!("写入加密文件失败: {}", e)))?;
+        crate::crypto::backup_crypto::encrypt_backup_file(original, &temp_path, pwd)
+            .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
         encrypted_temp = Some(temp_path.clone());
         temp_path
     } else {
@@ -402,25 +399,22 @@ pub async fn cloud_sync_download(
                     .to_string(),
             )
         })?;
-        tracing::info!("[CloudSync] 检测到加密备份，开始解密...");
-        let ciphertext = std::fs::read(downloaded_path)
-            .map_err(|e| AppError::file_system(format!("读取加密备份失败: {}", e)))?;
-        let plaintext =
-            crate::crypto::backup_crypto::decrypt_backup(&ciphertext, pwd).map_err(|e| {
-                AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
-            })?;
+        tracing::info!("[CloudSync] 检测到加密备份，开始流式解密...");
+        // [F14] 流式分块解密到同目录临时文件再原子改名，内存占用恒定，避免多 GB
+        // 备份一次性入内存；同时兼容旧的 DSBK v1（整文件）格式。
         let parent = downloaded_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
-        let temp = tempfile::Builder::new()
-            .prefix(".decrypt-")
-            .tempfile_in(parent)
-            .map_err(|e| AppError::file_system(format!("创建解密临时文件失败: {}", e)))?;
-        let temp_path = temp.path().to_path_buf();
-        std::fs::write(&temp_path, &plaintext)
-            .map_err(|e| AppError::file_system(format!("写入解密临时 ZIP 失败: {}", e)))?;
-        std::fs::rename(&temp_path, downloaded_path)
-            .map_err(|e| AppError::file_system(format!("保存解密后 ZIP 失败: {}", e)))?;
+        let temp_path = parent.join(format!(".decrypt-{}.tmp", uuid::Uuid::new_v4().simple()));
+        crate::crypto::backup_crypto::decrypt_backup_file(downloaded_path, &temp_path, pwd)
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&temp_path);
+                AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
+            })?;
+        std::fs::rename(&temp_path, downloaded_path).map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            AppError::file_system(format!("保存解密后 ZIP 失败: {}", e))
+        })?;
     }
 
     emit_sync_progress(

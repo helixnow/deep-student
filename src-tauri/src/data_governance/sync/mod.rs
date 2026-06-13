@@ -3372,74 +3372,6 @@ impl SyncManager {
         parse_flexible_timestamp_public(timestamp).map(|dt| dt.timestamp_millis())
     }
 
-    /// 应用合并策略到数据库（实际执行更新）
-    ///
-    /// 根据合并结果，执行实际的数据库更新操作。
-    /// 采用"DELETE + INSERT"策略处理 UPDATE，确保数据完整性。
-    ///
-    /// # 参数
-    /// * `conn` - 数据库连接
-    /// * `table_name` - 表名
-    /// * `records_to_pull` - 需要从云端拉取更新的记录 ID 列表
-    /// * `cloud_data` - 云端数据映射（record_id -> JSON 数据）
-    /// * `id_column` - 主键列名
-    ///
-    /// # 策略
-    /// 1. 开启事务
-    /// 2. 对于每条记录：DELETE 旧数据 + INSERT 新数据
-    /// 3. 提交事务（失败则回滚）
-    ///
-    /// # 返回
-    /// * 成功应用的记录数量
-    pub fn apply_merge_to_database(
-        conn: &Connection,
-        table_name: &str,
-        records_to_pull: &[String],
-        cloud_data: &HashMap<String, serde_json::Value>,
-        id_column: &str,
-    ) -> Result<usize, SyncError> {
-        if records_to_pull.is_empty() {
-            return Ok(0);
-        }
-
-        let mut updated = 0;
-
-        for record_id in records_to_pull {
-            if let Some(data) = cloud_data.get(record_id) {
-                match Self::apply_single_record(conn, table_name, record_id, data, None, false) {
-                    Ok(()) => {
-                        updated += 1;
-                        tracing::debug!(
-                            "[sync] 成功应用记录 {}.{} = {}",
-                            table_name,
-                            id_column,
-                            record_id
-                        );
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "[sync] 应用记录失败 {}.{} = {}: {}",
-                            table_name,
-                            id_column,
-                            record_id,
-                            e
-                        );
-                        // 继续处理其他记录，记录失败
-                    }
-                }
-            } else {
-                tracing::warn!(
-                    "[sync] 云端数据缺失 {}.{} = {}，跳过",
-                    table_name,
-                    id_column,
-                    record_id
-                );
-            }
-        }
-
-        Ok(updated)
-    }
-
     /// 获取指定表的 UPSERT 冲突目标子句（不含 DO UPDATE SET 部分）。
     ///
     /// 用于处理业务唯一键冲突。当一张表除了主键 `id` 之外还有额外的 UNIQUE 约束
@@ -4156,33 +4088,109 @@ impl SyncManager {
         Ok(violations)
     }
 
+    /// 收集指定表集合的外键违规（作用域化）。
+    ///
+    /// [PERF-1] 此前对**整库**执行 `PRAGMA foreign_key_check`，并在每条变更后重复一次，
+    /// 大批量同步 = N+1 次全库扫描。改为仅检查本批触碰的表及其子表（见
+    /// `fk_batch_check_tables`/`build_fk_child_map`），单次扫描成本与批次相关而非与库规模相关。
+    /// 正确性不变：任何一条变更只可能在「它写入的表」或「引用它的子表」上引入新违规，
+    /// 二者都包含在传入的 `tables` 中。
     fn collect_foreign_key_violation_set(
         conn: &Connection,
+        tables: &[String],
     ) -> Result<ForeignKeyViolationSet, SyncError> {
-        let mut stmt = conn
-            .prepare("PRAGMA foreign_key_check")
-            .map_err(|e| SyncError::Database(format!("准备 foreign_key_check 失败: {}", e)))?;
-
-        let rows = stmt
-            .query_map([], |row| {
-                let table: String = row.get(0)?;
-                let rowid: rusqlite::types::Value = row.get(1)?;
-                let parent: String = row.get(2)?;
-                let fkid: rusqlite::types::Value = row.get(3)?;
-                Ok(format!(
-                    "table={}, rowid={:?}, parent={}, fkid={:?}",
-                    table, rowid, parent, fkid
-                ))
-            })
-            .map_err(|e| SyncError::Database(format!("执行 foreign_key_check 失败: {}", e)))?;
-
         let mut violations = ForeignKeyViolationSet::new();
-        for row in rows {
-            violations.insert(
-                row.map_err(|e| SyncError::Database(format!("读取外键检查结果失败: {}", e)))?,
-            );
+        for table in tables {
+            let ident = match Self::quote_identifier(table) {
+                Ok(id) => id,
+                Err(_) => continue,
+            };
+            let sql = format!("PRAGMA foreign_key_check({})", ident);
+            let mut stmt = match conn.prepare(&sql) {
+                Ok(stmt) => stmt,
+                // 表不存在（legacy / 子表尚未建）等：跳过，等同无违规
+                Err(_) => continue,
+            };
+            let rows = stmt
+                .query_map([], |row| {
+                    let table: String = row.get(0)?;
+                    let rowid: rusqlite::types::Value = row.get(1)?;
+                    let parent: String = row.get(2)?;
+                    let fkid: rusqlite::types::Value = row.get(3)?;
+                    Ok(format!(
+                        "table={}, rowid={:?}, parent={}, fkid={:?}",
+                        table, rowid, parent, fkid
+                    ))
+                })
+                .map_err(|e| SyncError::Database(format!("执行 foreign_key_check 失败: {}", e)))?;
+            for row in rows {
+                violations.insert(
+                    row.map_err(|e| {
+                        SyncError::Database(format!("读取外键检查结果失败: {}", e))
+                    })?,
+                );
+            }
         }
         Ok(violations)
+    }
+
+    /// 构建 parent_table -> [child_table...] 的反向外键依赖图（每次应用批构建一次）。
+    ///
+    /// 用于把「删除/改动某父表」可能波及的子表纳入外键检查作用域：删除父行后，
+    /// 引用它的子表会出现悬挂外键，而 `PRAGMA foreign_key_check(child)` 才能查出。
+    fn build_fk_child_map(
+        conn: &Connection,
+    ) -> Result<HashMap<String, Vec<String>>, SyncError> {
+        let table_names: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'",
+                )
+                .map_err(|e| SyncError::Database(format!("列举表失败: {}", e)))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| SyncError::Database(format!("读取表名失败: {}", e)))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        let mut map: HashMap<String, Vec<String>> = HashMap::new();
+        for child in &table_names {
+            let ident = match Self::quote_identifier(child) {
+                Ok(id) => id,
+                Err(_) => continue,
+            };
+            let sql = format!("PRAGMA foreign_key_list({})", ident);
+            let mut stmt = match conn.prepare(&sql) {
+                Ok(stmt) => stmt,
+                Err(_) => continue,
+            };
+            // foreign_key_list 第 2 列（索引 2）是被引用的父表名
+            let parents: Vec<String> = match stmt.query_map([], |row| row.get::<_, String>(2)) {
+                Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+                Err(_) => continue,
+            };
+            for parent in parents {
+                map.entry(parent).or_default().push(child.clone());
+            }
+        }
+        Ok(map)
+    }
+
+    /// 计算本批应用需要纳入外键检查的表集合：每张被触碰的表 + 其全部子表。
+    fn fk_batch_check_tables(
+        changes: &[SyncChangeWithData],
+        child_map: &HashMap<String, Vec<String>>,
+    ) -> Vec<String> {
+        let mut set: HashSet<String> = HashSet::new();
+        for change in changes {
+            set.insert(change.table_name.clone());
+            if let Some(children) = child_map.get(&change.table_name) {
+                for child in children {
+                    set.insert(child.clone());
+                }
+            }
+        }
+        set.into_iter().collect()
     }
 
     fn foreign_key_columns(
@@ -5073,8 +5081,9 @@ impl SyncManager {
     fn validate_no_new_fk_violations(
         conn: &Connection,
         baseline: &ForeignKeyViolationSet,
+        tables: &[String],
     ) -> Result<(), SyncError> {
-        let current = Self::collect_foreign_key_violation_set(conn)?;
+        let current = Self::collect_foreign_key_violation_set(conn, tables)?;
         let new_violations = current
             .difference(baseline)
             .take(20)
@@ -5178,8 +5187,8 @@ impl SyncManager {
 
         // 注意：SQLite 在事务内修改 foreign_keys 是无操作（no-op），
         // 必须在 BEGIN 之前修改，或者使用 defer_foreign_keys = ON。
-        conn.execute_batch("PRAGMA defer_foreign_keys = ON;")
-            .map_err(|e| SyncError::Database(format!("开启延迟外键检查失败: {}", e)))?;
+        // [D5.4] 应用连接全程 foreign_keys=OFF，违规由作用域 foreign_key_check 差集守卫；
+        // defer_foreign_keys 对 OFF 连接是空操作，已移除以免误导。
 
         conn.execute_batch("BEGIN IMMEDIATE;")
             .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
@@ -5188,7 +5197,9 @@ impl SyncManager {
             Self::ensure_quarantine_table(conn)?;
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
             let shadowed_incomplete_upserts = Self::incomplete_upserts_shadowed_by_delete(changes);
-            let fk_baseline = Self::collect_foreign_key_violation_set(conn)?;
+            let fk_child_map = Self::build_fk_child_map(conn)?;
+            let fk_batch_tables = Self::fk_batch_check_tables(changes, &fk_child_map);
+            let fk_baseline = Self::collect_foreign_key_violation_set(conn, &fk_batch_tables)?;
             let pending_local_change_keys = Self::collect_pending_local_change_keys(conn)?;
 
             let ordered_changes = Self::ordered_changes_for_apply(changes);
@@ -5272,7 +5283,7 @@ impl SyncManager {
                         );
                     }
 
-                    Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+                    Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
                     Ok(())
                 })();
 
@@ -5303,7 +5314,7 @@ impl SyncManager {
 
             Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
-            Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+            Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
 
             Ok(())
         })();
@@ -5651,8 +5662,8 @@ impl SyncManager {
         let original_fk: i64 = conn
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
             .unwrap_or(1);
-        conn.execute_batch("PRAGMA defer_foreign_keys = ON;")
-            .map_err(|e| SyncError::Database(format!("开启延迟外键检查失败: {}", e)))?;
+        // [D5.4] 应用连接全程 foreign_keys=OFF，违规由作用域 foreign_key_check 差集守卫；
+        // defer_foreign_keys 对 OFF 连接是空操作，已移除以免误导。
         conn.execute_batch("BEGIN IMMEDIATE;")
             .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
 
@@ -5660,7 +5671,9 @@ impl SyncManager {
         let apply_result: Result<(), SyncError> = (|| {
             Self::ensure_quarantine_table(conn)?;
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
-            let fk_baseline = Self::collect_foreign_key_violation_set(conn)?;
+            let fk_child_map = Self::build_fk_child_map(conn)?;
+            let fk_batch_tables = Self::fk_batch_check_tables(changes, &fk_child_map);
+            let fk_baseline = Self::collect_foreign_key_violation_set(conn, &fk_batch_tables)?;
 
             let ordered_changes = Self::ordered_changes_for_apply(changes);
             for (index, change) in ordered_changes.into_iter().enumerate() {
@@ -5711,7 +5724,7 @@ impl SyncManager {
                         );
                     }
 
-                    Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+                    Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
                     Ok(())
                 })();
 
@@ -5727,7 +5740,7 @@ impl SyncManager {
 
             Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
-            Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+            Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
             Ok(())
         })();
 
@@ -5803,8 +5816,8 @@ impl SyncManager {
         let original_fk: i64 = conn
             .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
             .unwrap_or(1);
-        conn.execute_batch("PRAGMA defer_foreign_keys = ON;")
-            .map_err(|e| SyncError::Database(format!("开启延迟外键检查失败: {}", e)))?;
+        // [D5.4] 应用连接全程 foreign_keys=OFF，违规由作用域 foreign_key_check 差集守卫；
+        // defer_foreign_keys 对 OFF 连接是空操作，已移除以免误导。
         conn.execute_batch("BEGIN IMMEDIATE;")
             .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
 
@@ -5816,7 +5829,9 @@ impl SyncManager {
             Self::ensure_quarantine_table(conn)?;
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
             let shadowed_incomplete_upserts = Self::incomplete_upserts_shadowed_by_delete(changes);
-            let fk_baseline = Self::collect_foreign_key_violation_set(conn)?;
+            let fk_child_map = Self::build_fk_child_map(conn)?;
+            let fk_batch_tables = Self::fk_batch_check_tables(changes, &fk_child_map);
+            let fk_baseline = Self::collect_foreign_key_violation_set(conn, &fk_batch_tables)?;
             let pending_local_change_keys = Self::collect_pending_local_change_keys(conn)?;
 
             let ordered_changes = Self::ordered_changes_for_apply(changes);
@@ -6017,7 +6032,7 @@ impl SyncManager {
                         }
                     }
 
-                    Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+                    Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
                     Ok(())
                 })();
 
@@ -6050,7 +6065,7 @@ impl SyncManager {
 
             Self::recompute_derived_ref_counts_if_relevant(conn, changes)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
-            Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+            Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
 
             Ok(())
         })();

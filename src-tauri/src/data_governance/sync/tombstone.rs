@@ -797,10 +797,21 @@ pub async fn apply_blob_tombstones(
                     );
                 }
             } else {
-                tracing::warn!(
-                    "[sync] tombstone {} 无 relative_path 且本地无此文件，跳过",
-                    hash
-                );
+                // [orphan 修复] 无 relative_path 且本地无文件：尽力在云端按 hash 前缀桶
+                // 定位真实 key 后删除，避免删除型 tombstone 只标记不落地、云端 blob 永久残留。
+                match find_cloud_blob_key_by_hash(storage, blobs_cloud_prefix, hash).await {
+                    Some(key) => {
+                        if let Err(e) = storage.delete(&key).await {
+                            tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
+                        }
+                    }
+                    None => {
+                        tracing::warn!(
+                            "[sync] tombstone {} 无 relative_path 且云端未找到匹配对象，跳过云端删除",
+                            hash
+                        );
+                    }
+                }
             }
         }
 
@@ -829,6 +840,33 @@ fn find_blob_by_hash(blobs_dir: &Path, hash: &str) -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// 在云端按 hash 定位真实 blob key（`{prefix}/{ab}/{hash}.{ext}`）。
+///
+/// 仅在 tombstone 缺 `relative_path`（旧格式）且本地无该文件时使用：列举
+/// `{prefix}/{hash[..2]}/` 前缀，返回 stem 与 hash 相等的对象 key。列表被截断
+/// 时返回 None（宁可漏删也不误删）。
+async fn find_cloud_blob_key_by_hash(
+    storage: &dyn CloudStorage,
+    blobs_cloud_prefix: &str,
+    hash: &str,
+) -> Option<String> {
+    if hash.len() < 2 {
+        return None;
+    }
+    let bucket = format!("{}/{}", blobs_cloud_prefix.trim_end_matches('/'), &hash[..2]);
+    let outcome = storage.list_outcome(&bucket).await.ok()?;
+    if outcome.truncated {
+        return None;
+    }
+    outcome.files.into_iter().map(|f| f.key).find(|key| {
+        std::path::Path::new(key)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|stem| stem == hash)
+            .unwrap_or(false)
+    })
 }
 
 /// 清理过期的 tombstone（按 deleted_at 与保留天数比较）

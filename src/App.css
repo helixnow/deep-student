@@ -1,1 +1,6 @@
-styles/theme-colors.css
+/*
+ * App.css 历史上是指向 styles/theme-colors.css 的符号链接（git mode 120000）。
+ * 在 Windows（core.symlinks=false）检出时会被还原成内容为链接目标路径的损坏文本文件，
+ * 因此改为显式 @import，保持「App.css 等价于 theme-colors.css」的原意且跨平台可用。
+ */
+@import './styles/theme-colors.css';
