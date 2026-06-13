@@ -227,7 +227,8 @@ impl ConflictResolver {
     ///
     /// 云端 payload 经常只包含被写入者关心的字段（例如只改 title 的用户只发 title）。
     /// 为避免"云端缺字段就被判为不等"的误冲突，我们**只比较云端 payload 里出现的字段**。
-    /// 这与 apply_single_record 的 COALESCE 语义一致：没出现的字段保留本地，不参与业务等值判断。
+    /// 这与 apply_single_record 的写入语义一致：payload 未出现的列不进入 UPSERT 列集、保留本地，
+    /// 因而不参与业务等值判断（apply 端用 `SET col = excluded.col`，仅覆盖 payload 中出现的列）。
     fn differs_semantically(local: &serde_json::Value, cloud: &serde_json::Value) -> bool {
         let cloud_keys: std::collections::HashSet<String> = match cloud {
             serde_json::Value::Object(obj) => obj.keys().cloned().collect(),

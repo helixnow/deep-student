@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 /// Sync classification for every table in every database
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyncCategory {
-    /// Row-level incremental sync via __change_log + COALESCE UPSERT
+    /// Row-level incremental sync via __change_log + UPSERT (`SET col = excluded.col`)
     RowSync,
     /// File-level sync (content-addressed blobs, workspace .db files)
     FileSync,

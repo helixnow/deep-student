@@ -3543,10 +3543,12 @@ impl SyncManager {
     ///
     /// ## NULL 字段语义
     ///
-    /// - **普通字段的 null**：走 UPSERT 的 COALESCE 语义，保留本地已有值。
-    ///   这保护了"云端因为 schema 差异或序列化缺字段"场景下本地数据不被误清。
+    /// - **payload 中出现的 null 字段**：作为 SQL NULL 写入（UPSERT `SET col = excluded.col`），
+    ///   表示远端明确清空该列（[D11.1] 已弃用 COALESCE，否则置空无法跨设备传播）。
+    ///   payload 中**未出现**的列不进入 UPSERT 列集，因而保留本地已有值——
+    ///   这保护了"云端因 schema 差异或序列化缺字段"场景下本地数据不被误清。
     /// - **`deleted_at` 的显式 null**：表示"复活一条软删除记录"的明确意图，
-    ///   在 UPSERT 之后执行一条独立 `UPDATE SET deleted_at = NULL`。
+    ///   在 UPSERT 之后再执行一条独立 `UPDATE SET deleted_at = NULL` 兜底。
     ///   这对应 scenarios_tests 中"Delete 后又 Insert 同 id" 的幂等性需求。
 
     /// 返回某表需要字段级合并的列清单（在 UPSERT 之前抓取原始本地值用）。
@@ -3631,7 +3633,7 @@ impl SyncManager {
         let columns_list: Vec<&str> = columns.split(", ").collect();
 
         // 字段级合并准备：在 UPSERT 改写本地值之前，先读取字段级合并列的“原始本地值”。
-        // 否则 UPSERT 的 COALESCE 语义会把远端值直接写进本地，local_val 读取到的
+        // 否则 UPSERT 的 `SET col = excluded.col` 会把远端值直接写进本地，local_val 读取到的
         // 就是“刚被改写后的值”（即 == remote_val），merge_field 永远检测不到冲突。
         let local_before: std::collections::HashMap<String, serde_json::Value> = {
             let picklist = Self::field_merge_column_picklist(table_name);
@@ -3820,9 +3822,9 @@ impl SyncManager {
         }
 
         // 字段级合并策略（在 UPSERT 之后、使用 UPSERT 前保存的原始本地值）
-        // COALESCE UPSERT 已经把远端有值的列写入了本地。此步骤用 UPSERT 之前抓取的
-        // 本地值 (local_before) 与远端值做 domain-aware 合并，弥补 COALESCE 无法表达
-        // 的计数器、标签合集、布尔 OR、JSON deep merge 等语义。
+        // UPSERT（`SET col = excluded.col`）已经把远端有值的列写入了本地。此步骤用 UPSERT
+        // 之前抓取的本地值 (local_before) 与远端值做 domain-aware 合并，弥补行级覆盖无法
+        // 表达的计数器、标签合集、布尔 OR 等可交换语义。
         if !local_before.is_empty() {
             for (col_name, original_local) in &local_before {
                 let remote_val = match obj.get(col_name.as_str()) {
