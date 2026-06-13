@@ -54,7 +54,7 @@
     "password": "密码",
     "passwordPlaceholder": "您的 FTP 密码",
     "useTls": "使用 FTPS 加密",
-    "useTlsHint": "启用显式 FTPS（AUTH TLS）以保护凭据（仅 localhost 允许明文）",
+    "useTlsHint": "启用显式 FTPS（AUTH TLS）以保护凭据（推荐）",
     "experimentalWarning": "FTP/FTPS 云同步仍处于实验阶段，当前存在已知数据一致性风险。请优先使用 WebDAV 或 S3。"
   },
 

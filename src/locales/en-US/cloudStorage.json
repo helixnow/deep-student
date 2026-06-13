@@ -54,7 +54,7 @@
     "password": "Password",
     "passwordPlaceholder": "Your FTP password",
     "useTls": "Use FTPS Encryption",
-    "useTlsHint": "Enable explicit FTPS (AUTH TLS) to protect credentials (plaintext allowed for localhost only)",
+    "useTlsHint": "Enable explicit FTPS (AUTH TLS) to protect credentials (recommended)",
     "experimentalWarning": "FTP/FTPS cloud sync is experimental and has known data consistency risks. Prefer WebDAV or S3."
   },
 

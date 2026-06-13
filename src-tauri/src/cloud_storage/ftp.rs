@@ -1,6 +1,6 @@
 //! FTP/FTPS 存储实现
 //!
-//! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和 localhost 明文 FTP
+//! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和明文 FTP
 
 use async_std::io::{ReadExt, WriteExt};
 use async_trait::async_trait;
@@ -45,12 +45,6 @@ impl FtpStorage {
             return Err(AppError::validation("FTP host 不能为空"));
         }
 
-        if !Self::is_local_ftp_host(host) && !config.use_tls {
-            return Err(AppError::validation(
-                "FTP 必须启用 FTPS（仅 localhost 允许明文 FTP）",
-            ));
-        }
-
         Ok(Self {
             host: host.to_string(),
             port: config.port,
@@ -59,12 +53,6 @@ impl FtpStorage {
             use_tls: config.use_tls,
             root: root.trim_matches('/').to_string(),
         })
-    }
-
-    /// 判断 FTP host 是否为本地地址
-    fn is_local_ftp_host(host: &str) -> bool {
-        let host = host.trim().to_lowercase();
-        matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1")
     }
 
     /// 创建 FTP 客户端连接（带总超时：黑洞主机/防火墙 DROP 下 connect
@@ -112,7 +100,7 @@ impl FtpStorage {
 
             Ok(FtpClient::Secure(secure_stream))
         } else {
-            // 明文 FTP 仅允许 localhost，避免远程凭据明文传输
+            // 明文 FTP
             let mut stream = AsyncFtpStream::connect(&address)
                 .await
                 .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
@@ -975,23 +963,6 @@ mod tests {
         assert_eq!(
             storage.remote_path("objects/basic/hello.txt"),
             "deep-student-sync/objects/basic/hello.txt"
-        );
-    }
-
-    #[test]
-    fn test_is_local_ftp_host() {
-        assert!(FtpStorage::is_local_ftp_host("localhost"));
-        assert!(FtpStorage::is_local_ftp_host("127.0.0.1"));
-        assert!(FtpStorage::is_local_ftp_host("::1"));
-        assert!(FtpStorage::is_local_ftp_host("  localhost  "));
-
-        assert!(
-            !FtpStorage::is_local_ftp_host("ftp.example.com"),
-            "remote host should not be treated as local"
-        );
-        assert!(
-            !FtpStorage::is_local_ftp_host("localhost.evil.com"),
-            "localhost.evil.com should not be treated as local"
         );
     }
 
