@@ -2588,3 +2588,27 @@ async fn execute_tiered_backup_with_progress(
         result_payload,
     );
 }
+
+// ==================== 清空数据命令 ====================
+
+/// 清空所有应用数据
+///
+/// 写入清理标记并触发应用重启，下次启动时会自动清除 active_app_data_dir 下所有数据。
+#[tauri::command]
+pub fn data_governance_purge_all_data(app: tauri::AppHandle) -> Result<String, String> {
+    use crate::startup_cleanup;
+
+    let base_dir = get_app_data_dir(&app)?;
+
+    // 写入清理标记
+    startup_cleanup::write_purge_marker(&base_dir)
+        .map_err(|e| format!("写入清理标记失败: {}", e))?;
+
+    info!("[data_governance] 已设置清空数据标记，将重启应用执行清理");
+
+    // 触发应用重启
+    app.restart();
+
+    // restart() 返回 !（不返回），但 Rust 需要返回类型匹配
+    unreachable!("应用应已重启")
+}

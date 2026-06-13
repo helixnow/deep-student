@@ -7,8 +7,8 @@
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
 
 use deep_student_lib::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, S3Config, StorageProvider,
-    WebDavConfig,
+    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, FtpConfig, S3Config,
+    StorageProvider, WebDavConfig,
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
@@ -1693,6 +1693,51 @@ async fn s3_storage_with_secret(secret: &str) -> Box<dyn CloudStorage> {
     .expect("create S3 storage")
 }
 
+async fn ftp_storage() -> Box<dyn CloudStorage> {
+    create_storage(&CloudStorageConfig {
+        provider: StorageProvider::Ftp,
+        ftp: Some(FtpConfig {
+            host: std::env::var("DS_SYNC_FTP_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            port: std::env::var("DS_SYNC_FTP_PORT")
+                .unwrap_or_else(|_| "2121".to_string())
+                .parse()
+                .unwrap_or(2121),
+            username: std::env::var("DS_SYNC_FTP_USERNAME")
+                .unwrap_or_else(|_| "ftpuser".to_string()),
+            password: std::env::var("DS_SYNC_FTP_PASSWORD")
+                .unwrap_or_else(|_| "ftpuser123".to_string()),
+            use_tls: false,
+        }),
+        root: Some(unique_root("ftp")),
+        ..Default::default()
+    })
+    .await
+    .expect("create FTP storage")
+}
+
+async fn ftp_storage_with_password(password: &str) -> Box<dyn CloudStorage> {
+    create_storage(&CloudStorageConfig {
+        provider: StorageProvider::Ftp,
+        ftp: Some(FtpConfig {
+            host: std::env::var("DS_SYNC_FTP_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            port: std::env::var("DS_SYNC_FTP_PORT")
+                .unwrap_or_else(|_| "2121".to_string())
+                .parse()
+                .unwrap_or(2121),
+            username: std::env::var("DS_SYNC_FTP_USERNAME")
+                .unwrap_or_else(|_| "ftpuser".to_string()),
+            password: password.to_string(),
+            use_tls: false,
+        }),
+        root: Some(unique_root("ftp-bad-auth")),
+        ..Default::default()
+    })
+    .await
+    .expect("create FTP storage")
+}
+
 #[cfg(feature = "cloud_storage_s3")]
 async fn run_s3_list_pagination_contract(storage: Box<dyn CloudStorage>) {
     storage
@@ -2077,4 +2122,141 @@ async fn s3_list_pagination_contract() {
 async fn s3_multipart_file_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_s3_multipart_file_contract(s3_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_basic_object_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_basic_object_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_object_semantics_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_object_semantics_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_file_checksum_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_file_checksum_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_encrypted_backup_payload_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_encrypted_backup_payload_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_file_checksum_mismatch_preserves_local_target_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_file_checksum_mismatch_preserves_local_target_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_sync_manager_roundtrip_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_sync_manager_roundtrip_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_encrypted_data_governance_payload_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_encrypted_data_governance_payload_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_mixed_plaintext_and_encrypted_change_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_mixed_plaintext_and_encrypted_change_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_duplicate_enriched_change_files_are_idempotent_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_duplicate_enriched_change_files_are_idempotent_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_corrupt_change_file_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_corrupt_change_file_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_corrupt_manifest_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_corrupt_manifest_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_prune_old_changes_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_prune_old_changes_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_workspace_database_file_sync_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_workspace_database_file_sync_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_workspace_remote_same_size_corruption_rejected_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_workspace_remote_same_size_corruption_rejected_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_vfs_blob_file_sync_and_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_vfs_blob_file_sync_and_tombstone_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_vfs_blob_remote_same_size_corruption_rejected_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_vfs_blob_remote_same_size_corruption_rejected_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_asset_directories_file_sync_and_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_directories_file_sync_and_tombstone_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_asset_remote_same_size_corruption_rejected_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_remote_same_size_corruption_rejected_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_bad_credentials_rejected() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    let storage = ftp_storage_with_password("definitely-wrong-password").await;
+    assert!(
+        storage.check_connection().await.is_err(),
+        "FTP bad credentials must fail check_connection"
+    );
 }

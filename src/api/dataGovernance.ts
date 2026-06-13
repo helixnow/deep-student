@@ -1470,6 +1470,18 @@ export async function detectPruneGap(
   });
 }
 
+// ==================== 清空数据 API ====================
+
+/**
+ * 清空所有应用数据
+ *
+ * 写入清理标记并触发应用重启，下次启动时自动清除 active_app_data_dir 下所有数据。
+ * 调用前必须经过二次确认。
+ */
+export async function purgeAllData(): Promise<string> {
+  return invoke<string>("data_governance_purge_all_data");
+}
+
 export const DataGovernanceApi = {
   // Schema 相关
   getSchemaRegistry,
@@ -1568,6 +1580,9 @@ export const DataGovernanceApi = {
 
   // Prune 断层检测
   detectPruneGap,
+
+  // 清空数据
+  purgeAllData,
 };
 
 export default DataGovernanceApi;

@@ -642,7 +642,25 @@ impl CloudStorage for FtpStorage {
                 }
             }
 
-            let data = client.retr_to_vec(filename).await?;
+            // 使用临时文件流式下载，避免大文件占用过多内存
+            let temp_dir = std::env::temp_dir();
+            let temp_file = tempfile::Builder::new()
+                .prefix("ftp-get-")
+                .tempfile_in(&temp_dir)
+                .map_err(|e| AppError::file_system(format!("创建临时文件失败: {}", e)))?;
+            let temp_path = temp_file.path().to_path_buf();
+
+            let checksum = client
+                .retr_to_file(filename, &temp_path, size, None)
+                .await?;
+
+            // 读取临时文件内容
+            let data = tokio::fs::read(&temp_path)
+                .await
+                .map_err(|e| AppError::file_system(format!("读取临时文件失败: {}", e)))?;
+
+            // 清理临时文件
+            let _ = tokio::fs::remove_file(&temp_path).await;
 
             client.quit().await?;
             Ok(Some(data))
@@ -774,8 +792,17 @@ impl CloudStorage for FtpStorage {
                 }
             };
 
-            // 获取修改时间
-            let modified = client.mdtm(filename).await?;
+            // 获取修改时间（mdtm 失败应按 not-found 处理）
+            let modified = match client.mdtm(filename).await {
+                Ok(dt) => dt,
+                Err(err) => {
+                    client.quit().await?;
+                    if Self::is_not_found_error(&err) {
+                        return Ok(None);
+                    }
+                    return Err(err);
+                }
+            };
 
             client.quit().await?;
 
