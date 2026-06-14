@@ -3,6 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageManagerInfo {
@@ -300,6 +304,7 @@ pub async fn auto_install_package_manager(manager_type: &str) -> PackageInstallR
         Command::new("powershell")
             .arg("-Command")
             .arg(&install_cmd)
+            .creation_flags(CREATE_NO_WINDOW)
             .output()
     } else {
         Command::new("sh").arg("-c").arg(&install_cmd).output()

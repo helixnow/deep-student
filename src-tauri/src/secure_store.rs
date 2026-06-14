@@ -195,6 +195,7 @@ impl SecureStore {
     /// F8: 用 `icacls` 把路径收紧为「仅 owner + SYSTEM + Administrators」。best-effort。
     #[cfg(windows)]
     fn restrict_to_owner_windows(path: &std::path::Path, is_dir: bool) {
+        use std::os::windows::process::CommandExt;
         use std::process::Command;
         let user = match std::env::var("USERNAME") {
             Ok(u) if !u.trim().is_empty() => match std::env::var("USERDOMAIN") {
@@ -218,7 +219,7 @@ impl SecureStore {
         for g in &grants {
             cmd.arg("/grant:r").arg(g);
         }
-        match cmd.output() {
+        match cmd.creation_flags(0x08000000).output() {
             Ok(out) if out.status.success() => {}
             Ok(out) => warn!(
                 "icacls 收紧权限未成功 {:?}: {}",
