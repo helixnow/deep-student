@@ -1,6 +1,6 @@
 //! FTP/FTPS 存储实现
 //!
-//! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和 localhost 明文 FTP
+//! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和明文 FTP
 
 use async_std::io::{ReadExt, WriteExt};
 use async_trait::async_trait;
@@ -18,6 +18,56 @@ use super::traits::{
     CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback,
 };
 use crate::models::AppError;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::task::{Context, Poll};
+
+/// 带进度的异步读取器包装器
+/// 在每次 read() 后回调已传输字节数
+pub(crate) struct ProgressReader<'a, R> {
+    inner: R,
+    total_size: u64,
+    transferred: Arc<AtomicU64>,
+    callback: Option<&'a UploadProgressCallback>,
+}
+
+impl<'a, R> ProgressReader<'a, R> {
+    pub fn new(
+        inner: R,
+        total_size: u64,
+        callback: Option<&'a UploadProgressCallback>,
+    ) -> (Self, Arc<AtomicU64>) {
+        let transferred = Arc::new(AtomicU64::new(0));
+        (
+            Self {
+                inner,
+                total_size,
+                transferred: Arc::clone(&transferred),
+                callback,
+            },
+            transferred,
+        )
+    }
+}
+
+impl<R: async_std::io::Read + Unpin> async_std::io::Read for ProgressReader<'_, R> {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let result = Pin::new(&mut this.inner).poll_read(cx, buf);
+        if let Poll::Ready(Ok(n)) = &result {
+            let done = this.transferred.fetch_add(*n as u64, Ordering::Relaxed) + *n as u64;
+            if let Some(ref cb) = this.callback {
+                cb(done, this.total_size);
+            }
+        }
+        result
+    }
+}
 
 /// FTP/FTPS 存储实现
 pub struct FtpStorage {
@@ -45,12 +95,6 @@ impl FtpStorage {
             return Err(AppError::validation("FTP host 不能为空"));
         }
 
-        if !Self::is_local_ftp_host(host) && !config.use_tls {
-            return Err(AppError::validation(
-                "FTP 必须启用 FTPS（仅 localhost 允许明文 FTP）",
-            ));
-        }
-
         Ok(Self {
             host: host.to_string(),
             port: config.port,
@@ -59,12 +103,6 @@ impl FtpStorage {
             use_tls: config.use_tls,
             root: root.trim_matches('/').to_string(),
         })
-    }
-
-    /// 判断 FTP host 是否为本地地址
-    fn is_local_ftp_host(host: &str) -> bool {
-        let host = host.trim().to_lowercase();
-        matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1")
     }
 
     /// 创建 FTP 客户端连接（带总超时：黑洞主机/防火墙 DROP 下 connect
@@ -112,7 +150,7 @@ impl FtpStorage {
 
             Ok(FtpClient::Secure(secure_stream))
         } else {
-            // 明文 FTP 仅允许 localhost，避免远程凭据明文传输
+            // 明文 FTP
             let mut stream = AsyncFtpStream::connect(&address)
                 .await
                 .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
@@ -203,10 +241,14 @@ impl FtpStorage {
         client: &mut FtpClient,
         final_name: &str,
         reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+        file_size: u64,
+        progress: Option<&UploadProgressCallback>,
     ) -> Result<()> {
         let nonce = Uuid::new_v4().simple();
         let temp_name = format!("{final_name}.tmp-{nonce}");
-        client.put_file(&temp_name, reader).await?;
+        // 包装 reader 以支持进度回调
+        let (mut progress_reader, _) = ProgressReader::new(reader, file_size, progress);
+        client.put_file(&temp_name, &mut progress_reader).await?;
         if let Err(err) = client.rename(&temp_name, final_name).await {
             let _ = client.rm(&temp_name).await;
             return Err(err);
@@ -605,7 +647,7 @@ impl CloudStorage for FtpStorage {
             }
 
             let mut cursor = async_std::io::Cursor::new(data);
-            self.upload_reader_atomic(&mut client, filename, &mut cursor)
+            self.upload_reader_atomic(&mut client, filename, &mut cursor, data.len() as u64, None)
                 .await?;
 
             client.quit().await?;
@@ -654,7 +696,25 @@ impl CloudStorage for FtpStorage {
                 }
             }
 
-            let data = client.retr_to_vec(filename).await?;
+            // 使用临时文件流式下载，避免大文件占用过多内存
+            let temp_dir = std::env::temp_dir();
+            let temp_file = tempfile::Builder::new()
+                .prefix("ftp-get-")
+                .tempfile_in(&temp_dir)
+                .map_err(|e| AppError::file_system(format!("创建临时文件失败: {}", e)))?;
+            let temp_path = temp_file.path().to_path_buf();
+
+            let checksum = client
+                .retr_to_file(filename, &temp_path, size, None)
+                .await?;
+
+            // 读取临时文件内容
+            let data = tokio::fs::read(&temp_path)
+                .await
+                .map_err(|e| AppError::file_system(format!("读取临时文件失败: {}", e)))?;
+
+            // 清理临时文件
+            let _ = tokio::fs::remove_file(&temp_path).await;
 
             client.quit().await?;
             Ok(Some(data))
@@ -786,8 +846,17 @@ impl CloudStorage for FtpStorage {
                 }
             };
 
-            // 获取修改时间
-            let modified = client.mdtm(filename).await?;
+            // 获取修改时间（mdtm 失败应按 not-found 处理）
+            let modified = match client.mdtm(filename).await {
+                Ok(dt) => dt,
+                Err(err) => {
+                    client.quit().await?;
+                    if Self::is_not_found_error(&err) {
+                        return Ok(None);
+                    }
+                    return Err(err);
+                }
+            };
 
             client.quit().await?;
 
@@ -807,6 +876,7 @@ impl CloudStorage for FtpStorage {
         local_path: &Path,
         progress: Option<UploadProgressCallback>,
     ) -> Result<String> {
+        let progress_ref = &progress;
         self.with_retry(|| async {
             let metadata = tokio::fs::metadata(local_path)
                 .await
@@ -824,7 +894,7 @@ impl CloudStorage for FtpStorage {
             .await
             .map_err(|e| AppError::internal(format!("计算校验和任务失败：{}", e)))??;
 
-            if let Some(ref cb) = progress {
+            if let Some(cb) = progress_ref.as_ref() {
                 cb(0, file_size);
             }
 
@@ -848,13 +918,8 @@ impl CloudStorage for FtpStorage {
             let mut file = async_std::fs::File::open(local_path)
                 .await
                 .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
-            self.upload_reader_atomic(&mut client, filename, &mut file)
+            self.upload_reader_atomic(&mut client, filename, &mut file, file_size, progress_ref.as_ref())
                 .await?;
-
-            // 报告进度
-            if let Some(ref cb) = progress {
-                cb(file_size, file_size);
-            }
 
             client.quit().await?;
 
@@ -975,23 +1040,6 @@ mod tests {
         assert_eq!(
             storage.remote_path("objects/basic/hello.txt"),
             "deep-student-sync/objects/basic/hello.txt"
-        );
-    }
-
-    #[test]
-    fn test_is_local_ftp_host() {
-        assert!(FtpStorage::is_local_ftp_host("localhost"));
-        assert!(FtpStorage::is_local_ftp_host("127.0.0.1"));
-        assert!(FtpStorage::is_local_ftp_host("::1"));
-        assert!(FtpStorage::is_local_ftp_host("  localhost  "));
-
-        assert!(
-            !FtpStorage::is_local_ftp_host("ftp.example.com"),
-            "remote host should not be treated as local"
-        );
-        assert!(
-            !FtpStorage::is_local_ftp_host("localhost.evil.com"),
-            "localhost.evil.com should not be treated as local"
         );
     }
 

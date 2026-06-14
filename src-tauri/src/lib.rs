@@ -1717,6 +1717,8 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_list_quarantine
             ,crate::data_governance::commands_sync::data_governance_retry_quarantine
             ,crate::data_governance::commands_sync::data_governance_discard_quarantine
+            ,crate::data_governance::commands_sync::data_governance_retry_all_quarantine
+            ,crate::data_governance::commands_sync::data_governance_discard_all_quarantine
             // Tombstone 删除传播
             ,crate::data_governance::commands_sync::data_governance_mark_blob_deleted
             ,crate::data_governance::commands_sync::data_governance_mark_asset_deleted
@@ -1731,6 +1733,8 @@ pub fn run() {
             ,crate::data_governance::commands_backup::data_governance_resume_backup_job
             ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs
             ,crate::data_governance::commands_backup::data_governance_cleanup_persisted_jobs
+            // 清空数据命令
+            ,crate::data_governance::commands_backup::data_governance_purge_all_data
             // 资产管理命令
             ,crate::data_governance::commands_asset::data_governance_scan_assets
             ,crate::data_governance::commands_asset::data_governance_get_asset_types

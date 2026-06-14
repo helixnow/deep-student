@@ -75,7 +75,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     region: '',
     pathStyle: false,
   });
-  const [ftpConfig, setFtpConfig] = useState<cloudApi.FtpConfig>({
+  const [ftpConfig, setFtpConfig] = useState<cloudApi.FtpConfig & { endpoint: string }>({
+    endpoint: '',
     host: '',
     port: 21,
     username: '',
@@ -117,6 +118,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 删除确认对话框状态
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
+
+  // 不安全 FTP 警告对话框状态
+  const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
   useEffect(() => {
@@ -175,7 +179,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             }
           }
           if (config.ftp) {
-            setFtpConfig(prev => ({ ...prev, ...config.ftp, password: '' }));
+            const scheme = config.ftp.useTls ? 'ftps' : 'ftp';
+            const hostPort = config.ftp.port ? `:${config.ftp.port}` : '';
+            const endpoint = `${scheme}://${config.ftp.host}${hostPort}`;
+            setFtpConfig(prev => ({ ...prev, ...config.ftp, password: '', endpoint }));
             if (config.ftp.password) {
               leakedCredentials.ftpPassword = config.ftp.password;
             }
@@ -226,7 +233,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             }
           }
           if (oldConfig.ftp) {
-            setFtpConfig(prev => ({ ...prev, ...oldConfig.ftp, password: '' }));
+            const scheme = oldConfig.ftp.useTls ? 'ftps' : 'ftp';
+            const hostPort = oldConfig.ftp.port ? `:${oldConfig.ftp.port}` : '';
+            const endpoint = `${scheme}://${oldConfig.ftp.host}${hostPort}`;
+            setFtpConfig(prev => ({ ...prev, ...oldConfig.ftp, password: '', endpoint }));
             if (oldConfig.ftp.password) {
               credentials.ftpPassword = oldConfig.ftp.password;
             }
@@ -302,29 +312,42 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 构建配置对象
   const buildConfig = useCallback((): cloudApi.CloudStorageConfig => {
+    let ftp: cloudApi.FtpConfig | undefined;
+    if (provider === 'ftp') {
+      // 从 endpoint URL 解析出 host/port/useTls
+      try {
+        const url = new URL(ftpConfig.endpoint);
+        ftp = {
+          host: url.hostname,
+          port: parseInt(url.port, 10) || 21,
+          username: ftpConfig.username,
+          password: ftpConfig.password,
+          useTls: url.protocol === 'ftps:',
+        };
+      } catch {
+        // URL 解析失败时回退到原始字段（用于迁移/加载旧配置）
+        ftp = {
+          host: ftpConfig.host,
+          port: ftpConfig.port || 21,
+          username: ftpConfig.username,
+          password: ftpConfig.password,
+          useTls: ftpConfig.useTls,
+        };
+      }
+    }
     return {
       provider,
       webdav: provider === 'webdav' ? webdavConfig : undefined,
       s3: provider === 's3' ? s3Config : undefined,
-      ftp: provider === 'ftp' ? ftpConfig : undefined,
+      ftp,
       root,
       encryptionPassword: encryptionPassword || undefined,
     };
   }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
 
-  // 保存配置
-  const saveConfig = useCallback(async () => {
-    // 保存非敏感配置到 localStorage（不含加密密码——它是高敏感）
+  // 实际执行保存逻辑
+  const doSaveConfig = useCallback(async () => {
     const config = buildConfig();
-    if (
-      (config.provider === 'webdav' && !webdavConfig.password.trim()) ||
-      (config.provider === 's3' && !s3Config.secretAccessKey.trim()) ||
-      (config.provider === 'ftp' && !ftpConfig.password.trim())
-    ) {
-      showGlobalNotification('error', t('cloudStorage:errors.passwordRequired'));
-      return;
-    }
-
     const safeConfig = {
       ...config,
       webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
@@ -350,6 +373,33 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     onConfigChanged?.();
   }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, t, onConfigChanged]);
 
+  // 保存配置（先检查不安全 FTP）
+  const saveConfig = useCallback(async () => {
+    const config = buildConfig();
+    if (
+      (config.provider === 'webdav' && !webdavConfig.password.trim()) ||
+      (config.provider === 's3' && !s3Config.secretAccessKey.trim()) ||
+      (config.provider === 'ftp' && !ftpConfig.password.trim())
+    ) {
+      showGlobalNotification('error', t('cloudStorage:errors.passwordRequired'));
+      return;
+    }
+
+    // FTP 明文连接警告：如果 endpoint 以 ftp:// 开头（非 ftps://），弹窗确认
+    if (config.provider === 'ftp' && ftpConfig.endpoint.trim().toLowerCase().startsWith('ftp://')) {
+      setShowInsecureFtpWarning(true);
+      return;
+    }
+
+    await doSaveConfig();
+  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig, encryptionPassword, t, doSaveConfig]);
+
+  // 确认保存不安全 FTP 配置
+  const handleConfirmInsecureFtpSave = useCallback(async () => {
+    setShowInsecureFtpWarning(false);
+    await doSaveConfig();
+  }, [doSaveConfig]);
+
   // 清除配置
   const clearConfig = useCallback(async () => {
     // 清除 localStorage
@@ -365,7 +415,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setHasStoredFtpConfig(false);
     setWebdavConfig({ endpoint: '', username: '', password: '' });
     setS3Config({ endpoint: '', bucket: '', accessKeyId: '', secretAccessKey: '', region: '', pathStyle: false });
-    setFtpConfig({ host: '', port: 21, username: '', password: '', useTls: false });
+    setFtpConfig({ host: '', port: 21, username: '', password: '', useTls: false, endpoint: '' });
     setRoot('deep-student-sync');
     setEncryptionPassword('');
     setConnectionStatus('unknown');
@@ -437,12 +487,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return true;
     } else {
       // FTP provider
-      const host = ftpConfig.host.trim();
+      const endpoint = ftpConfig.endpoint.trim();
       const username = ftpConfig.username.trim();
       const password = ftpConfig.password.trim();
-      if (!host || !username || !password) return false;
-      // Validate port range
-      if (ftpConfig.port < 1 || ftpConfig.port > 65535) return false;
+      if (!endpoint || !username || !password) return false;
+      try {
+        const url = new URL(endpoint);
+        if (!['ftp:', 'ftps:'].includes(url.protocol)) return false;
+      } catch { return false; }
       return true;
     }
   }, [provider, webdavConfig, s3Config, ftpConfig]);
@@ -896,28 +948,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <div className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
               {t('cloudStorage:ftp.experimentalWarning')}
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="ftp-host">{t('cloudStorage:ftp.host')}</Label>
-                <Input
-                  id="ftp-host"
-                  placeholder={t('cloudStorage:ftp.hostPlaceholder')}
-                  value={ftpConfig.host}
-                  onChange={(e) => setFtpConfig({ ...ftpConfig, host: e.target.value })}
-                />
-                <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.hostHint')}</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ftp-port">{t('cloudStorage:ftp.port')}</Label>
-                <Input
-                  id="ftp-port"
-                  type="number"
-                  placeholder={t('cloudStorage:ftp.portPlaceholder')}
-                  value={ftpConfig.port}
-                  onChange={(e) => setFtpConfig({ ...ftpConfig, port: parseInt(e.target.value) || 21 })}
-                />
-                <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.portHint')}</p>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="ftp-endpoint">{t('cloudStorage:ftp.endpoint')}</Label>
+              <Input
+                id="ftp-endpoint"
+                placeholder={t('cloudStorage:ftp.endpointPlaceholder')}
+                value={ftpConfig.endpoint}
+                onChange={(e) => setFtpConfig({ ...ftpConfig, endpoint: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.endpointHint')}</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -943,19 +982,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   hideLabel={t('common:securePassword.hidePassword')}
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="ftp-use-tls"
-                  checked={ftpConfig.useTls}
-                  onCheckedChange={(checked) => setFtpConfig({ ...ftpConfig, useTls: checked })}
-                />
-                <Label htmlFor="ftp-use-tls" className="font-normal">
-                  {t('cloudStorage:ftp.useTls')}
-                </Label>
-              </div>
-              <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.useTlsHint')}</p>
             </div>
           </TabsContent>
         </Tabs>
@@ -1241,6 +1267,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     />
   );
 
+  // 不安全 FTP 连接警告对话框
+  const insecureFtpWarningDialog = (
+    <NotionAlertDialog
+      open={showInsecureFtpWarning}
+      onOpenChange={(open) => { if (!open) setShowInsecureFtpWarning(false); }}
+      title={t('cloudStorage:ftp.insecureWarning.title')}
+      description={t('cloudStorage:ftp.insecureWarning.description')}
+      confirmText={t('cloudStorage:ftp.insecureWarning.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="warning"
+      onConfirm={handleConfirmInsecureFtpSave}
+    />
+  );
+
   // Dialog 模式下直接渲染内容
   if (isDialog) {
     return (
@@ -1257,6 +1297,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         </div>
         {restoreConfirmDialog}
         {deleteConfirmDialog}
+        {insecureFtpWarningDialog}
       </>
     );
   }
@@ -1278,6 +1319,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       </Card>
       {restoreConfirmDialog}
       {deleteConfirmDialog}
+      {insecureFtpWarningDialog}
     </>
   );
 };

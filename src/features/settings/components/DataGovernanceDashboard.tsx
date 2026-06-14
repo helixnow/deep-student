@@ -25,10 +25,13 @@ import {
   XCircle,
   Play,
   Database,
+  Trash,
+  CircleNotch,
 } from '@phosphor-icons/react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -80,7 +83,7 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
 // ==================== 调试面板（DEV only） ====================
 
 export const DebugTab: React.FC = () => {
-  const { t } = useTranslation(['data']);
+  const { t } = useTranslation(['data', 'common']);
   const { showMigrationStatus, clearMigrationStatus } = useSystemStatusStore(
     useShallow((state) => ({
       showMigrationStatus: state.showMigrationStatus,
@@ -93,6 +96,21 @@ export const DebugTab: React.FC = () => {
   const [slotCResult, setSlotCResult] = useState<{ success: boolean; report: string; finishedAt: string } | null>(null);
   const [slotDResult, setSlotDResult] = useState<{ success: boolean; report: string; finishedAt: string } | null>(null);
   const flowTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [showPurgeDialog, setShowPurgeDialog] = useState(false);
+  const [isPurgeRunning, setIsPurgeRunning] = useState(false);
+
+  const handlePurgeAllData = useCallback(async () => {
+    if (isPurgeRunning) return;
+    setIsPurgeRunning(true);
+    try {
+      await DataGovernanceApi.purgeAllData();
+      showGlobalNotification('info', t('data:governance.purge_initiated'));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      showGlobalNotification('error', message, t('data:governance.purge_failed'));
+      setIsPurgeRunning(false);
+    }
+  }, [isPurgeRunning, t]);
 
   // 清理所有定时器
   useEffect(() => {
@@ -383,6 +401,45 @@ export const DebugTab: React.FC = () => {
           <li>{t('data:governance.debug_toast_behavior_error')}</li>
           <li>{t('data:governance.debug_toast_behavior_flow')}</li>
         </ul>
+      </div>
+
+      {/* 清空所有应用数据（危险操作） */}
+      <div className="border-t border-border/40 pt-6">
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+          <div className="flex items-center gap-2 text-destructive font-medium">
+            <Trash size={16} />
+            {t('data:governance.danger_zone')}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {t('data:governance.purge_all_data_desc')}
+          </p>
+          <NotionButton
+            variant="danger"
+            size="sm"
+            onClick={() => setShowPurgeDialog(true)}
+            disabled={isPurgeRunning}
+          >
+            {isPurgeRunning ? (
+              <CircleNotch className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Trash className="h-4 w-4 mr-2" />
+            )}
+            {t('data:governance.purge_all_data_button')}
+          </NotionButton>
+        </div>
+
+        <NotionAlertDialog
+          open={showPurgeDialog}
+          onOpenChange={(open) => { if (!open) setShowPurgeDialog(false); }}
+          title={t('data:governance.purge_confirm_title')}
+          description={t('data:governance.purge_confirm_desc')}
+          confirmText={t('data:governance.purge_confirm_button')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="danger"
+          onConfirm={handlePurgeAllData}
+          loading={isPurgeRunning}
+          disabled={isPurgeRunning}
+        />
       </div>
     </div>
   );
@@ -1505,12 +1562,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           <Image className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_cache')}</span>
         </TabsTrigger>
-        {import.meta.env.DEV && (
-          <TabsTrigger value="debug" className="flex items-center gap-1 text-muted-foreground">
-            <Bug className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
-          </TabsTrigger>
-        )}
+        <TabsTrigger value="debug" className="flex items-center gap-1 text-muted-foreground">
+          <Bug className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
+        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview">
@@ -1630,11 +1685,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         </div>
       </TabsContent>
 
-      {import.meta.env.DEV && (
-        <TabsContent value="debug">
-          <DebugTab />
-        </TabsContent>
-      )}
+      <TabsContent value="debug">
+        <DebugTab />
+      </TabsContent>
     </Tabs>
   );
 

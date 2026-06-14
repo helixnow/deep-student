@@ -208,12 +208,6 @@ impl CloudStorageConfig {
             .unwrap_or(false)
     }
 
-    /// 判断 FTP host 是否为本地地址
-    fn is_local_ftp_host(host: &str) -> bool {
-        let host = host.trim().to_lowercase();
-        matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1")
-    }
-
     /// 验证配置是否完整
     pub fn validate(&self) -> Result<(), String> {
         match self.provider {
@@ -276,10 +270,6 @@ impl CloudStorageConfig {
                 }
                 if config.password.trim().is_empty() {
                     return Err("FTP 密码不能为空".into());
-                }
-                let is_local = Self::is_local_ftp_host(&config.host);
-                if !is_local && !config.use_tls {
-                    return Err("FTP 必须启用 FTPS（仅 localhost 允许明文 FTP）".into());
                 }
                 Ok(())
             }
@@ -548,12 +538,12 @@ mod tests {
         config.ftp.as_mut().unwrap().password = "".into();
         assert!(config.validate().is_err());
 
-        // 非 localhost 不使用 TLS 应该被拒绝
+        // 非 localhost 不使用 TLS 现在应该被允许
         config.ftp.as_mut().unwrap().password = "pass".into();
         config.ftp.as_mut().unwrap().use_tls = false;
-        assert!(config.validate().is_err());
+        assert!(config.validate().is_ok());
 
-        // localhost 不使用 TLS 应该被允许
+        // localhost 不使用 TLS 也应该被允许
         config.ftp.as_mut().unwrap().host = "localhost".into();
         config.ftp.as_mut().unwrap().use_tls = false;
         assert!(config.validate().is_ok());
@@ -574,22 +564,5 @@ mod tests {
             "password should be redacted in Debug"
         );
         assert!(debug.contains("[REDACTED]"));
-    }
-
-    #[test]
-    fn test_is_local_ftp_host() {
-        assert!(CloudStorageConfig::is_local_ftp_host("localhost"));
-        assert!(CloudStorageConfig::is_local_ftp_host("127.0.0.1"));
-        assert!(CloudStorageConfig::is_local_ftp_host("::1"));
-        assert!(CloudStorageConfig::is_local_ftp_host("  localhost  "));
-
-        assert!(
-            !CloudStorageConfig::is_local_ftp_host("ftp.example.com"),
-            "remote host should not be treated as local"
-        );
-        assert!(
-            !CloudStorageConfig::is_local_ftp_host("localhost.evil.com"),
-            "localhost.evil.com should not be treated as local"
-        );
     }
 }

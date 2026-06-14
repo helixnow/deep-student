@@ -116,6 +116,7 @@ impl CryptoService {
     /// F8: 用 `icacls` 把 `.master_key` 收紧为「仅 owner + SYSTEM + Administrators」。best-effort。
     #[cfg(windows)]
     fn restrict_master_key_acl_windows(key_path: &Path) {
+        use std::os::windows::process::CommandExt;
         use std::process::Command;
         let user = match std::env::var("USERNAME") {
             Ok(u) if !u.trim().is_empty() => match std::env::var("USERDOMAIN") {
@@ -137,7 +138,7 @@ impl CryptoService {
         for g in &grants {
             cmd.arg("/grant:r").arg(g);
         }
-        match cmd.output() {
+        match cmd.creation_flags(0x08000000).output() {
             Ok(out) if out.status.success() => {}
             Ok(out) => tracing::warn!(
                 "icacls 收紧 .master_key 权限未成功: {}",

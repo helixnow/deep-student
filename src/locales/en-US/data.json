@@ -958,6 +958,16 @@
     "maintenance_export": "Exporting data, do not close the app",
     "maintenance_import": "Importing data, do not close the app",
     "maintenance_restore": "Restoring data, do not close the app",
-    "maintenance_sync": "Syncing data, do not close the app"
+    "maintenance_sync": "Syncing data, do not close the app",
+    "danger_zone": "Danger Zone",
+    "danger_zone_desc": "The following operations may cause permanent data loss, please use with caution",
+    "purge_all_data_title": "Purge All App Data",
+    "purge_all_data_desc": "This will delete all databases, chat history, notes, mistakes, and other data. Backup files will be preserved. This action cannot be undone.",
+    "purge_all_data_button": "Purge All Data",
+    "purge_confirm_title": "Confirm Purge All Data",
+    "purge_confirm_desc": "This will delete all app data (databases, chat history, notes, mistakes, etc.), backup files will be preserved. Once deleted, data cannot be recovered. The app will restart immediately to complete the cleanup.",
+    "purge_confirm_button": "Confirm Purge & Restart",
+    "purge_initiated": "Purging data, app will restart shortly...",
+    "purge_failed": "Failed to purge data"
   }
 }

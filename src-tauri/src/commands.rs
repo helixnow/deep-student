@@ -3521,10 +3521,17 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
     // 根据操作系统选择合适的命令打开文件（使用规范化路径）
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = Command::new("notepad").arg(&canonical_path).spawn() {
+        use std::os::windows::process::CommandExt;
+
+        if let Err(e) = Command::new("notepad")
+            .arg(&canonical_path)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn()
+        {
             // 如果notepad失败，尝试默认程序
             if let Err(e2) = Command::new("cmd")
                 .args(&["/C", "start", "", canonical_path.to_str().unwrap_or("")])
+                .creation_flags(0x08000000)
                 .spawn()
             {
                 return Err(AppError::file_system(format!(

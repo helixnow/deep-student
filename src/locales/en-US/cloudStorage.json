@@ -43,19 +43,19 @@
   },
   
   "ftp": {
-    "host": "Server Host",
-    "hostPlaceholder": "ftp.example.com",
-    "hostHint": "FTP server hostname or IP address",
-    "port": "Port",
-    "portPlaceholder": "21",
-    "portHint": "FTP port (default: 21)",
+    "endpoint": "Server URL",
+    "endpointPlaceholder": "ftps://ftp.example.com",
+    "endpointHint": "Full URL of the FTP server. ftps:// for encrypted FTPS, ftp:// for plaintext FTP",
     "username": "Username",
     "usernamePlaceholder": "ftpuser",
     "password": "Password",
     "passwordPlaceholder": "Your FTP password",
-    "useTls": "Use FTPS Encryption",
-    "useTlsHint": "Enable explicit FTPS (AUTH TLS) to protect credentials (plaintext allowed for localhost only)",
-    "experimentalWarning": "FTP/FTPS cloud sync is experimental and has known data consistency risks. Prefer WebDAV or S3."
+    "experimentalWarning": "FTP/FTPS cloud sync is experimental and has known data consistency risks. Prefer WebDAV or S3.",
+    "insecureWarning": {
+      "title": "Insecure FTP Connection",
+      "description": "You are using plaintext FTP (ftp://). Your username, password, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use FTPS (ftps://) for encrypted connections.",
+      "confirm": "Use Plaintext Anyway"
+    }
   },
 
   "root": {

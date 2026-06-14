@@ -43,19 +43,19 @@
   },
   
   "ftp": {
-    "host": "服务器地址",
-    "hostPlaceholder": "ftp.example.com",
-    "hostHint": "FTP 服务器的主机名或 IP 地址",
-    "port": "端口",
-    "portPlaceholder": "21",
-    "portHint": "FTP 端口（默认 21）",
+    "endpoint": "服务器地址",
+    "endpointPlaceholder": "ftps://ftp.example.com",
+    "endpointHint": "FTP 服务器的完整 URL，ftps:// 表示加密连接，ftp:// 表示明文连接",
     "username": "用户名",
     "usernamePlaceholder": "ftpuser",
     "password": "密码",
     "passwordPlaceholder": "您的 FTP 密码",
-    "useTls": "使用 FTPS 加密",
-    "useTlsHint": "启用显式 FTPS（AUTH TLS）以保护凭据（仅 localhost 允许明文）",
-    "experimentalWarning": "FTP/FTPS 云同步仍处于实验阶段，当前存在已知数据一致性风险。请优先使用 WebDAV 或 S3。"
+    "experimentalWarning": "FTP/FTPS 云同步仍处于实验阶段，当前存在已知数据一致性风险。请优先使用 WebDAV 或 S3。",
+    "insecureWarning": {
+      "title": "不安全的 FTP 连接",
+      "description": "您正在使用明文 FTP（ftp://），用户名、密码以及传输的数据将以明文形式在网络中传输，可能被中间人窃取。建议使用 FTPS（ftps://）加密连接。",
+      "confirm": "确认使用明文"
+    }
   },
 
   "root": {

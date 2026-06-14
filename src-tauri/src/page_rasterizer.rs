@@ -309,6 +309,8 @@ impl PageRasterizer {
         docx_path: &std::path::Path,
         pdf_path: &std::path::Path,
     ) -> Result<Vec<u8>, String> {
+        use std::os::windows::process::CommandExt;
+
         let docx_str = docx_path.to_string_lossy().replace('\\', "\\\\");
         let pdf_str = pdf_path.to_string_lossy().replace('\\', "\\\\");
 
@@ -321,6 +323,7 @@ impl PageRasterizer {
 
         let output = std::process::Command::new("powershell")
             .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()
             .map_err(|e| format!("启动 PowerShell 失败: {}", e))?;
 

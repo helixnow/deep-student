@@ -10,6 +10,7 @@ import {
 import * as DataGovernanceApi from "@/api/dataGovernance";
 import type { SyncQuarantineRow } from "@/api/dataGovernance";
 import { NotionButton } from "@/components/ui/NotionButton";
+import { NotionAlertDialog } from "@/components/ui/NotionDialog";
 import {
   Card,
   CardContent,
@@ -36,6 +37,9 @@ export const SyncQuarantinePanel: React.FC<{
   const [rows, setRows] = useState<SyncQuarantineRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [showRetryAllDialog, setShowRetryAllDialog] = useState(false);
+  const [showDiscardAllDialog, setShowDiscardAllDialog] = useState(false);
+  const [isBatchRunning, setIsBatchRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -114,6 +118,49 @@ export const SyncQuarantinePanel: React.FC<{
     [refresh, t],
   );
 
+  const handleRetryAll = useCallback(async () => {
+    if (isBatchRunning || rows.length === 0) return;
+    setIsBatchRunning(true);
+    try {
+      const result = await DataGovernanceApi.retryAllQuarantine();
+      const msg = t("data:governance.quarantine_retry_all_success", {
+        success: result.success,
+        failed: result.failed,
+      });
+      showGlobalNotification(result.failed > 0 ? "warning" : "success", msg);
+      await refresh();
+    } catch (e: unknown) {
+      showGlobalNotification(
+        "error",
+        t("data:governance.quarantine_retry_all_failed", { error: getErrorMessage(e) }),
+      );
+    } finally {
+      setIsBatchRunning(false);
+      setShowRetryAllDialog(false);
+    }
+  }, [isBatchRunning, rows.length, refresh, t]);
+
+  const handleDiscardAll = useCallback(async () => {
+    if (isBatchRunning || rows.length === 0) return;
+    setIsBatchRunning(true);
+    try {
+      const result = await DataGovernanceApi.discardAllQuarantine();
+      showGlobalNotification(
+        "success",
+        t("data:governance.quarantine_discard_all_success", { count: result.success }),
+      );
+      await refresh();
+    } catch (e: unknown) {
+      showGlobalNotification(
+        "error",
+        t("data:governance.quarantine_discard_all_failed", { error: getErrorMessage(e) }),
+      );
+    } finally {
+      setIsBatchRunning(false);
+      setShowDiscardAllDialog(false);
+    }
+  }, [isBatchRunning, rows.length, refresh, t]);
+
   return (
     <Card>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
@@ -126,20 +173,50 @@ export const SyncQuarantinePanel: React.FC<{
             {t("data:governance.quarantine_description")}
           </CardDescription>
         </div>
-        <NotionButton
-          variant="ghost"
-          size="sm"
-          onClick={refresh}
-          disabled={loading}
-          className="h-8"
-        >
-          {loading ? (
-            <CircleNotch size={14} className="mr-1.5 animate-spin" />
-          ) : (
-            <ArrowClockwise size={14} className="mr-1.5" />
+        <div className="flex gap-2">
+          {rows.length > 0 && (
+            <>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowRetryAllDialog(true)}
+                disabled={isBatchRunning || loading}
+                className="h-8 text-xs"
+              >
+                {isBatchRunning ? (
+                  <CircleNotch size={14} className="mr-1 animate-spin" />
+                ) : (
+                  <ArrowClockwise size={14} className="mr-1" />
+                )}
+                {t("data:governance.quarantine_retry_all", "全部重试")}
+              </NotionButton>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDiscardAllDialog(true)}
+                disabled={isBatchRunning || loading}
+                className="h-8 text-xs text-destructive hover:text-destructive"
+              >
+                <Trash size={14} className="mr-1" />
+                {t("data:governance.quarantine_discard_all", "全部清除")}
+              </NotionButton>
+            </>
           )}
-          {t("actions.refresh")}
-        </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={refresh}
+            disabled={loading}
+            className="h-8"
+          >
+            {loading ? (
+              <CircleNotch size={14} className="mr-1.5 animate-spin" />
+            ) : (
+              <ArrowClockwise size={14} className="mr-1.5" />
+            )}
+            {t("actions.refresh")}
+          </NotionButton>
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
         {rows.length === 0 && !loading && (
@@ -216,6 +293,34 @@ export const SyncQuarantinePanel: React.FC<{
           );
         })}
       </CardContent>
+
+      {/* 批量重试确认对话框 */}
+      <NotionAlertDialog
+        open={showRetryAllDialog}
+        onOpenChange={(open) => { if (!open) setShowRetryAllDialog(false); }}
+        title={t("data:governance.quarantine_retry_all_confirm_title", "确认全部重试")}
+        description={t("data:governance.quarantine_retry_all_confirm_desc", "将对 {{count}} 条隔离记录执行重试操作。失败的记录会增加重试次数并更新错误信息。", { count: rows.length })}
+        confirmText={t("common:actions.retry_all", "全部重试")}
+        cancelText={t("common:actions.cancel")}
+        confirmVariant="primary"
+        onConfirm={handleRetryAll}
+        loading={isBatchRunning}
+        disabled={isBatchRunning}
+      />
+
+      {/* 批量清除确认对话框 */}
+      <NotionAlertDialog
+        open={showDiscardAllDialog}
+        onOpenChange={(open) => { if (!open) setShowDiscardAllDialog(false); }}
+        title={t("data:governance.quarantine_discard_all_confirm_title", "确认全部清除")}
+        description={t("data:governance.quarantine_discard_all_confirm_desc", "将永久删除 {{count}} 条隔离记录。此操作不可逆。", { count: rows.length })}
+        confirmText={t("data:governance.quarantine_discard_all_confirm", "确认清除")}
+        cancelText={t("common:actions.cancel")}
+        confirmVariant="danger"
+        onConfirm={handleDiscardAll}
+        loading={isBatchRunning}
+        disabled={isBatchRunning}
+      />
     </Card>
   );
 };

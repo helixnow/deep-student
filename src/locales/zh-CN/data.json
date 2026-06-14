@@ -958,6 +958,16 @@
     "maintenance_export": "正在导出数据，请勿关闭应用",
     "maintenance_import": "正在导入数据，请勿关闭应用",
     "maintenance_restore": "正在恢复数据，请勿关闭应用",
-    "maintenance_sync": "正在同步数据，请勿关闭应用"
+    "maintenance_sync": "正在同步数据，请勿关闭应用",
+    "danger_zone": "危险操作",
+    "danger_zone_desc": "以下操作可能导致数据永久丢失，请谨慎使用",
+    "purge_all_data_title": "清空所有应用数据",
+    "purge_all_data_desc": "将删除所有数据库、聊天记录、笔记、错题本等数据。备份文件将被保留。此操作不可撤销。",
+    "purge_all_data_button": "清空所有数据",
+    "purge_confirm_title": "确认清空所有数据",
+    "purge_confirm_desc": "此操作将删除所有应用数据（数据库、聊天记录、笔记、错题本等），仅保留备份文件。数据一旦删除将无法恢复。此操作会立即重启应用以完成清理。",
+    "purge_confirm_button": "确认清空并重启",
+    "purge_initiated": "正在清空数据，应用即将重启...",
+    "purge_failed": "清空数据失败"
   }
 }

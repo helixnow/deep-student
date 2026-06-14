@@ -1413,6 +1413,20 @@ export async function discardQuarantine(
   });
 }
 
+export interface BatchQuarantineResult {
+  success: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function retryAllQuarantine(): Promise<BatchQuarantineResult> {
+  return invoke<BatchQuarantineResult>("data_governance_retry_all_quarantine");
+}
+
+export async function discardAllQuarantine(): Promise<BatchQuarantineResult> {
+  return invoke<BatchQuarantineResult>("data_governance_discard_all_quarantine");
+}
+
 // ==================== Tombstone（删除传播）API ====================
 
 import type { CloudStorageConfig as CloudCfg } from "../types/dataGovernance";
@@ -1468,6 +1482,18 @@ export async function detectPruneGap(
   return invoke<PruneGapResponse>("data_governance_detect_prune_gap", {
     cloudConfig,
   });
+}
+
+// ==================== 清空数据 API ====================
+
+/**
+ * 清空所有应用数据
+ *
+ * 写入清理标记并触发应用重启，下次启动时自动清除 active_app_data_dir 下所有数据。
+ * 调用前必须经过二次确认。
+ */
+export async function purgeAllData(): Promise<string> {
+  return invoke<string>("data_governance_purge_all_data");
 }
 
 export const DataGovernanceApi = {
@@ -1561,6 +1587,8 @@ export const DataGovernanceApi = {
   listQuarantine,
   retryQuarantine,
   discardQuarantine,
+  retryAllQuarantine,
+  discardAllQuarantine,
 
   // Tombstone 删除传播
   markBlobDeleted,
@@ -1568,6 +1596,9 @@ export const DataGovernanceApi = {
 
   // Prune 断层检测
   detectPruneGap,
+
+  // 清空数据
+  purgeAllData,
 };
 
 export default DataGovernanceApi;
