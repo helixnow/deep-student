@@ -54,7 +54,7 @@ import {
   collectContextTypeHints,
   truncateContextByTokens,
 } from './contextHelper';
-import { ensureModelsCacheLoaded, getModelInfoByConfigId, isModelMultimodal, isModelMultimodalAsync } from '../hooks/useAvailableModels';
+import { ensureModelsCacheLoaded, getCachedModels, getModelInfoByConfigId, isModelMultimodal, isModelMultimodalAsync } from '../hooks/useAvailableModels';
 import type { ContextRef } from '../resources/types';
 import { logAttachment } from '../debug/chatV2Logger';
 import { collectSchemaToolIds } from '../tools/collector';
@@ -3376,6 +3376,21 @@ export class ChatV2TauriAdapter {
       }
     } catch (error) {
       console.warn(LOG_PREFIX, 'Failed to resolve default model assignment:', getErrorMessage(error));
+    }
+
+    // 兜底：运行时从已缓存模型中取第一个可用的
+    try {
+      await ensureModelsCacheLoaded();
+      const cachedModels = getCachedModels();
+      if (cachedModels && cachedModels.length > 0) {
+        const fallbackId = cachedModels[0].id;
+        console.warn(LOG_PREFIX, 'Runtime fallback to first available model:', fallbackId);
+        if (!validIds || validIds.size === 0 || validIds.has(fallbackId)) {
+          return fallbackId;
+        }
+      }
+    } catch {
+      // fall through to throw
     }
 
     throw new Error('No chat model configured: missing chatParams.modelId and model_assignments.model2_config_id');

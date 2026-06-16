@@ -1428,7 +1428,9 @@
     "copyFailed": "Copy failed"
   },
   "readiness": {
-    "model2_missing": "Please configure a chat model in Settings → Model Assignment before sending messages."
+    "model2_missing": "Please configure a chat model in Settings → Model Assignment before sending messages.",
+    "model2_auto_assigned": "Auto-assigned {{count}} models: {{models}}. You can review or change this in Settings → Model Assignment.",
+    "model2_auto_assigned_single": "Auto-assigned \"{{model}}\" as the default chat model. You can review or change this in Settings → Model Assignment."
   },
   "imagePreview": {
     "partialNotFound": "Some image resources not found",
