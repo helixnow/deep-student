@@ -364,6 +364,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey };
       await upsertVendor(updated);
+      // 保存成功后触发自动获取模型 + 自动分配（fire-and-forget）
+      triggerPostSaveAutoFlow(updated);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -745,6 +747,27 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   }, [modelProfiles, persistModelProfiles]);
 
+  // ===== 自动流程编排（保存 Key → 获取模型 → 自动分配） =====
+
+  /** 保存 API Key 后的自动流程：获取模型 → 添加模型 → 自动分配槽位 */
+  const triggerPostSaveAutoFlow = useCallback(
+    async (vendor: VendorConfig) => {
+      try {
+        const existingModelIds = modelProfiles
+          .filter(p => p.vendorId === vendor.id)
+          .map(p => p.model);
+        const { autoPostSaveFlow } = await import('./vendorModelService');
+        await autoPostSaveFlow(vendor, {
+          existingModelIds,
+          onAddModels: handleAddVendorModels,
+        });
+      } catch (error) {
+        console.error('[useSettingsVendorState] Post-save auto-flow failed:', error);
+      }
+    },
+    [modelProfiles, handleAddVendorModels]
+  );
+
   // 获取所有启用的对话模型，支持包含当前已分配但被禁用的模型
   const getAllEnabledApis = (currentValue?: string) => {
     const enabledApis = config.apiConfigs.filter(api => api.enabled && !api.isEmbedding && !api.isReranker);
@@ -962,5 +985,5 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     return sensitivePatterns.some(pattern => key.includes(pattern));
   };
 
-  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, maskApiKey, apiConfigsForApisTab };
+  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, triggerPostSaveAutoFlow, isSensitiveKey, maskApiKey, apiConfigsForApisTab };
 }

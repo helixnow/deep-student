@@ -134,6 +134,7 @@ export const VendorDetailPanel: React.FC = () => {
     handleBatchCreateConfigs,
     handleBatchConfigsCreated,
     onAddVendorModels,
+    triggerPostSaveAutoFlow,
     isSmallScreen,
   } = useVendorSettings();
 
@@ -469,9 +470,33 @@ export const VendorDetailPanel: React.FC = () => {
                     </div>
                     <div>
                       {selectedVendorIsSiliconflow ? (
-                        <SiliconFlowSection variant="inline" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
+                        <SiliconFlowSection
+                          variant="inline"
+                          onCreateConfig={handleSiliconFlowConfig}
+                          onBatchCreateConfigs={handleBatchCreateConfigs}
+                          onBatchConfigsCreated={handleBatchConfigsCreated}
+                          showMessage={showGlobalNotification}
+                          onApiKeySaved={(apiKey) => {
+                            triggerPostSaveAutoFlow?.({
+                              ...selectedVendor,
+                              apiKey,
+                            });
+                          }}
+                        />
                       ) : (
-                        <VendorApiKeySection key={selectedVendor.id} vendor={selectedVendor} onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)} onClear={() => handleClearVendorApiKey(selectedVendor.id)} showMessage={showGlobalNotification} />
+                        <VendorApiKeySection
+                          key={selectedVendor.id}
+                          vendor={selectedVendor}
+                          onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)}
+                          onClear={() => handleClearVendorApiKey(selectedVendor.id)}
+                          showMessage={showGlobalNotification}
+                          onApiKeySaved={(apiKey) => {
+                            triggerPostSaveAutoFlow?.({
+                              ...selectedVendor,
+                              apiKey,
+                            });
+                          }}
+                        />
                       )}
                     </div>
                   </div>

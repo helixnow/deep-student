@@ -60,6 +60,7 @@ interface ApisTabProps {
   onReorderVendors: (reorderedVendors: VendorConfig[]) => void;
   onAddVendorModels?: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
   isSmallScreen?: boolean;
+  triggerPostSaveAutoFlow?: (vendor: VendorConfig) => Promise<void>;
 }
 
 export const ApisTab: React.FC<ApisTabProps> = (props) => {
@@ -106,6 +107,7 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
     handleBatchConfigsCreated: props.handleBatchConfigsCreated,
     onReorderVendors: props.onReorderVendors,
     onAddVendorModels: props.onAddVendorModels,
+    triggerPostSaveAutoFlow: props.triggerPostSaveAutoFlow,
   };
 
   return (

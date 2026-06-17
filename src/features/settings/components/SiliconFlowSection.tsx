@@ -74,9 +74,11 @@ interface SiliconFlowSectionProps {
   onBatchConfigsCreated?: (configIds: { [key: string]: string }) => void;
   onBatchCreateConfigs?: (configs: Array<Omit<ApiConfig, 'id'> & { tempId: string }>) => Promise<{ success: boolean; idMap: { [tempId: string]: string } }> | void | undefined;
   variant?: SiliconFlowSectionVariant;
+  /** 保存成功后触发（用于自动获取模型 + 自动分配） */
+  onApiKeySaved?: (apiKey: string) => void;
 }
 
-export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, variant = 'full' }) => {
+export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, onApiKeySaved, variant = 'full' }) => {
   const { t } = useTranslation(['common', 'settings']);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<SiliconFlowModel[]>([]);
@@ -95,6 +97,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [isFromCache, setIsFromCache] = useState(false); // 是否来自缓存
   const lastSavedApiKeyRef = React.useRef('');
   const statusTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearStatusTimer = useCallback(() => {
     if (statusTimerRef.current) {
@@ -316,6 +319,9 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   React.useEffect(() => {
     return () => {
       clearStatusTimer();
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
     };
   }, [clearStatusTimer]);
 
@@ -349,7 +355,30 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     if (!value.trim()) {
       setShowApiKey(false);
     }
-    setApiKeyStatus(value.trim() === lastSavedApiKeyRef.current ? 'idle' : 'dirty');
+    const isDirty = value.trim() !== lastSavedApiKeyRef.current;
+    setApiKeyStatus(isDirty ? 'dirty' : 'idle');
+
+    // 防抖自动保存：输入停止 800ms 后自动保存
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    if (isDirty) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        void handleSaveApiKey();
+      }, 800);
+    }
+  };
+
+  const handleApiKeyBlur = () => {
+    // 失焦时取消防抖 timer 并立即保存（如果内容已变更）
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    const trimmed = apiKey.trim();
+    if (trimmed && trimmed !== lastSavedApiKeyRef.current) {
+      void handleSaveApiKey();
+    }
   };
 
   const handleSaveApiKey = useCallback(async () => {
@@ -365,6 +394,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       await persistApiKey(trimmed);
       lastSavedApiKeyRef.current = trimmed;
       scheduleStatusReset('saved');
+      onApiKeySaved?.(trimmed);
       showMessage?.('success', t('settings:vendor_panel.api_key_saved'));
     } catch (error: unknown) {
       console.error('保存 SiliconFlow API 密钥失败:', error);
@@ -969,6 +999,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
+        onBlur={handleApiKeyBlur}
         onKeyDown={e => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
