@@ -344,6 +344,8 @@ export interface VendorConfig {
   maxTokensLimit?: number;
   /** 供应商官网链接 */
   websiteUrl?: string;
+  /** 无需 API Key（适用于自搭建后端，如 Ollama、vLLM 等） */
+  noApiKey?: boolean;
 }
 
 export interface ModelProfile {

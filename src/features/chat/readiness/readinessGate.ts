@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 
-export type ReadinessCode = 'MODEL2_MISSING';
+export type ReadinessCode = 'MODEL2_MISSING' | 'MODEL2_AUTO_ASSIGNED';
 export type ReadinessAction = 'OPEN_SETTINGS_MODELS';
 
 interface ModelAssignments {
@@ -45,9 +45,7 @@ export const resolveChatReadiness = async (
       });
 
     const assignments = await fetchAssignments();
-    return checkChatReadiness({
-      model2Configured: Boolean(assignments?.model2_config_id),
-    });
+    return checkChatReadiness({ model2Configured: Boolean(assignments?.model2_config_id) });
   } catch {
     // 无法探测配置时不阻断发送，仍由后端做最终校验。
     return { ok: true };

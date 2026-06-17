@@ -322,6 +322,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       setVendorFormData({});
       setSelectedVendorId(saved.id);
       showGlobalNotification('success', t('common:config_saved'));
+      // noApiKey 供应商：编辑保存后自动获取模型列表
+      if (saved.noApiKey) {
+        triggerPostSaveAutoFlow(saved);
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.vendor_save_failed', { error: errorMessage }));
@@ -342,6 +346,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         closeRightPanel();
       }
       showGlobalNotification('success', t('common:config_saved'));
+      // noApiKey 供应商：创建后自动获取模型列表
+      if (saved.noApiKey) {
+        triggerPostSaveAutoFlow(saved);
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.vendor_save_failed', { error: errorMessage }));
@@ -395,6 +403,34 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey: '' };
       await upsertVendor(updated);
+
+      // 清空 Key 后：禁用该供应商所有模型 + 清除模型分配
+      const vendorProfileIds = new Set(
+        modelProfiles.filter(p => p.vendorId === vendorId).map(p => p.id)
+      );
+      if (vendorProfileIds.size > 0) {
+        // 禁用模型
+        const updatedProfiles = modelProfiles.map(p =>
+          vendorProfileIds.has(p.id)
+            ? { ...p, enabled: false, status: 'disabled' as const }
+            : p
+        );
+        await persistModelProfiles(updatedProfiles);
+
+        // 清除涉及该供应商模型的分配
+        const clearedAssignments: ModelAssignments = { ...modelAssignments };
+        let assignmentChanged = false;
+        for (const key of Object.keys(clearedAssignments) as Array<keyof ModelAssignments>) {
+          const val = clearedAssignments[key];
+          if (typeof val === 'string' && vendorProfileIds.has(val)) {
+            clearedAssignments[key] = null;
+            assignmentChanged = true;
+          }
+        }
+        if (assignmentChanged) {
+          await persistAssignments(clearedAssignments);
+        }
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -674,10 +710,18 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     let changed = false;
     for (const { modelId, label } of models) {
       const normalizedModel = modelId.trim().toLowerCase();
-      const existing = nextProfiles.find(
+      const existingIdx = nextProfiles.findIndex(
         p => p.vendorId === vendor.id && p.model.trim().toLowerCase() === normalizedModel
       );
-      if (existing) continue; // 已存在，跳过
+      if (existingIdx >= 0) {
+        // 已存在但被禁用 → 重新启用
+        const existingProfile = nextProfiles[existingIdx];
+        if (!existingProfile.enabled) {
+          nextProfiles[existingIdx] = { ...existingProfile, enabled: true, status: 'enabled' };
+          changed = true;
+        }
+        continue;
+      }
 
       const caps = inferCapabilities({ id: modelId, providerScope: vendor.providerType, name: label });
       const extCaps = inferApiCapabilities({ id: modelId, name: label, providerScope: vendor.providerType });

@@ -1,12 +1,13 @@
 import React, { useEffect, useState, forwardRef, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Key, LinkSimple, NotePencil, Trash } from '@phosphor-icons/react';
+import { Key, LinkSimple, NotePencil, Trash, Prohibit } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Label } from '@/components/ui/shad/Label';
+import { Switch } from '@/components/ui/shad/Switch';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ApiProtocol, VendorConfig } from '@/types';
@@ -286,8 +287,30 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           className="mt-2 font-mono"
         />
       </div>
+      {/* 无需密钥（自搭建后端） */}
+      {!formData.isBuiltin && (
+        <div className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <Prohibit className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+            <div className="space-y-0.5">
+              <Label htmlFor="vendor-no-api-key" className="text-sm font-normal leading-none cursor-pointer">
+                {t('settings:vendor_modal.no_api_key_label', { defaultValue: '无需 API Key' })}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t('settings:vendor_modal.no_api_key_desc', { defaultValue: '适用于自搭建后端（Ollama / vLLM / llama.cpp 等）' })}
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="vendor-no-api-key"
+            checked={formData.noApiKey ?? false}
+            onCheckedChange={(checked) => setFormData(prev => ({ ...prev, noApiKey: checked }))}
+          />
+        </div>
+      )}
       {isEditing && (
         <>
+          {!formData.noApiKey && (
           <div>
             <Label className="inline-flex items-center gap-1.5">
               <Key className="h-3.5 w-3.5" aria-hidden="true" />
@@ -327,6 +350,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
               </div>
             )}
           </div>
+          )}
           <div>
             <Label className="inline-flex items-center gap-1.5">
               <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />

@@ -62,10 +62,16 @@ const isStreamChannelError = (error: unknown): boolean => {
 
 /**
  * 解析供应商的明文 API Key。
- * 内置供应商 → 从 Tauri 安全存储读取
+ * 内置供应商 → 优先从 Tauri 安全存储读取，回退到 vendor.apiKey
  * 普通供应商 → 直接返回（排除掩码 ***）
+ * noApiKey 供应商 → 返回空字符串（允许无 Key 获取模型）
  */
 export async function resolveApiKey(vendor: VendorConfig): Promise<string | null> {
+  // noApiKey 供应商：无需 Key，返回空字符串表示"可跳过认证"
+  if (vendor.noApiKey) {
+    return '';
+  }
+
   const isBuiltin = vendor.isBuiltin || vendor.id.startsWith('builtin-');
 
   if (isBuiltin) {
@@ -75,9 +81,21 @@ export async function resolveApiKey(vendor: VendorConfig): Promise<string | null
       if (!key && vendor.id === 'builtin-siliconflow') {
         key = await TauriAPI.getSetting('siliconflow.api_key');
       }
+      // 回退：Tauri 存储为空时，检查 vendor.apiKey（handleSaveVendorApiKey 临时存入）
+      if (!key) {
+        const raw = vendor.apiKey?.trim();
+        if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
+          return raw;
+        }
+      }
       return key && key.trim() ? key.trim() : null;
     } catch {
       console.warn(`[vendorModelService] Failed to resolve builtin API key for ${vendor.id}`);
+      // 异常时回退到 vendor.apiKey
+      const raw = vendor.apiKey?.trim();
+      if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
+        return raw;
+      }
       return null;
     }
   }
@@ -132,9 +150,13 @@ async function fetchOpenAICompatible(
   baseUrl: string,
   apiKey: string
 ): Promise<FetchedModel[]> {
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
   const response = await doFetch(`${baseUrl}/models`, {
     method: 'GET',
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers,
   });
 
   if (!response.ok) {
@@ -241,7 +263,8 @@ export async function autoPostSaveFlow(
 
   // 1. 解析 API Key
   const resolvedKey = await resolveApiKey(vendor);
-  if (!resolvedKey) {
+  // noApiKey 供应商返回空字符串（而非 null），允许无 Key 获取模型
+  if (resolvedKey === null) {
     console.warn(
       `[autoPostSaveFlow] Cannot resolve API key for vendor ${vendor.id} (${vendor.name}), skipping auto-fetch.`
     );
