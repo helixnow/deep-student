@@ -372,6 +372,16 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey };
       await upsertVendor(updated);
+      // 保存 Key 后：该供应商所有模型 → 启用滑块
+      const vendorProfiles = modelProfiles.filter(p => p.vendorId === vendorId);
+      if (vendorProfiles.length > 0) {
+        const nextProfiles = modelProfiles.map(p =>
+          p.vendorId === vendorId && !p.enabled
+            ? { ...p, enabled: true, status: 'enabled' as const }
+            : p
+        );
+        await persistModelProfiles(nextProfiles);
+      }
       // 保存成功后触发自动获取模型 + 自动分配（fire-and-forget）
       triggerPostSaveAutoFlow(updated);
     } catch (error) {
@@ -404,7 +414,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       const updated = { ...vendor, apiKey: '' };
       await upsertVendor(updated);
 
-      // 清空 Key 后：禁用该供应商所有模型 + 清除模型分配
+      // 清空 Key 后：禁用该供应商所有模型 + 清除模型分配 + 重新分配
       const vendorProfileIds = new Set(
         modelProfiles.filter(p => p.vendorId === vendorId).map(p => p.id)
       );
@@ -430,6 +440,25 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         if (assignmentChanged) {
           await persistAssignments(clearedAssignments);
         }
+      }
+
+      // 尝试自动重新分配：用其他供应商的可用模型填补空槽位
+      try {
+        const { autoAssignAllModels } = await import(
+          '@/features/chat/readiness/autoAssignModel'
+        );
+        const result = await autoAssignAllModels();
+        if (result.assigned) {
+          console.log(
+            `[clearKey] Auto-reassigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`
+          );
+        } else {
+          console.log(
+            `[clearKey] Auto-reassign skipped: ${result.reason ?? 'no available models'}`
+          );
+        }
+      } catch (err) {
+        console.error('[clearKey] Auto-reassign failed:', err);
       }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
