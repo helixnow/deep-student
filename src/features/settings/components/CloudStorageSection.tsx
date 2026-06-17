@@ -119,8 +119,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteVersionId, setPendingDeleteVersionId] = useState<string | null>(null);
 
-  // 不安全 FTP 警告对话框状态
+  // 不安全连接警告对话框状态
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
+  const [showInsecureWebdavWarning, setShowInsecureWebdavWarning] = useState(false);
+  const [showInsecureS3Warning, setShowInsecureS3Warning] = useState(false);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
   useEffect(() => {
@@ -373,7 +375,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     onConfigChanged?.();
   }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, t, onConfigChanged]);
 
-  // 保存配置（先检查不安全 FTP）
+  // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
     const config = buildConfig();
     if (
@@ -391,12 +393,36 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
 
+    // WebDAV HTTP 连接警告：如果 endpoint 以 http:// 开头（非 https://），弹窗确认
+    if (config.provider === 'webdav' && webdavConfig.endpoint.trim().toLowerCase().startsWith('http://')) {
+      setShowInsecureWebdavWarning(true);
+      return;
+    }
+
+    // S3 HTTP 连接警告：如果 endpoint 以 http:// 开头（非 https://），弹窗确认
+    if (config.provider === 's3' && s3Config.endpoint.trim().toLowerCase().startsWith('http://')) {
+      setShowInsecureS3Warning(true);
+      return;
+    }
+
     await doSaveConfig();
-  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig, encryptionPassword, t, doSaveConfig]);
+  }, [buildConfig, webdavConfig.password, webdavConfig.endpoint, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, encryptionPassword, t, doSaveConfig]);
 
   // 确认保存不安全 FTP 配置
   const handleConfirmInsecureFtpSave = useCallback(async () => {
     setShowInsecureFtpWarning(false);
+    await doSaveConfig();
+  }, [doSaveConfig]);
+
+  // 确认保存不安全 WebDAV 配置
+  const handleConfirmInsecureWebdavSave = useCallback(async () => {
+    setShowInsecureWebdavWarning(false);
+    await doSaveConfig();
+  }, [doSaveConfig]);
+
+  // 确认保存不安全 S3 配置
+  const handleConfirmInsecureS3Save = useCallback(async () => {
+    setShowInsecureS3Warning(false);
     await doSaveConfig();
   }, [doSaveConfig]);
 
@@ -1281,6 +1307,34 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     />
   );
 
+  // 不安全 WebDAV 连接警告对话框
+  const insecureWebdavWarningDialog = (
+    <NotionAlertDialog
+      open={showInsecureWebdavWarning}
+      onOpenChange={(open) => { if (!open) setShowInsecureWebdavWarning(false); }}
+      title={t('cloudStorage:webdav.insecureWarning.title')}
+      description={t('cloudStorage:webdav.insecureWarning.description')}
+      confirmText={t('cloudStorage:webdav.insecureWarning.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="warning"
+      onConfirm={handleConfirmInsecureWebdavSave}
+    />
+  );
+
+  // 不安全 S3 连接警告对话框
+  const insecureS3WarningDialog = (
+    <NotionAlertDialog
+      open={showInsecureS3Warning}
+      onOpenChange={(open) => { if (!open) setShowInsecureS3Warning(false); }}
+      title={t('cloudStorage:s3.insecureWarning.title')}
+      description={t('cloudStorage:s3.insecureWarning.description')}
+      confirmText={t('cloudStorage:s3.insecureWarning.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="warning"
+      onConfirm={handleConfirmInsecureS3Save}
+    />
+  );
+
   // Dialog 模式下直接渲染内容
   if (isDialog) {
     return (
@@ -1298,6 +1352,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {restoreConfirmDialog}
         {deleteConfirmDialog}
         {insecureFtpWarningDialog}
+        {insecureWebdavWarningDialog}
+        {insecureS3WarningDialog}
       </>
     );
   }
@@ -1320,6 +1376,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       {restoreConfirmDialog}
       {deleteConfirmDialog}
       {insecureFtpWarningDialog}
+      {insecureWebdavWarningDialog}
+      {insecureS3WarningDialog}
     </>
   );
 };

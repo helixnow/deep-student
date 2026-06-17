@@ -22,7 +22,12 @@
     "usernamePlaceholder": "your@email.com",
     "password": "密码",
     "passwordPlaceholder": "应用专用密码",
-    "passwordHint": "建议使用应用专用密码而非登录密码"
+    "passwordHint": "建议使用应用专用密码而非登录密码",
+    "insecureWarning": {
+      "title": "不安全的 WebDAV 连接",
+      "description": "您正在使用明文 HTTP（http://）连接 WebDAV 服务器，用户名、密码以及传输的数据将以明文形式在网络中传输，可能被中间人窃取。建议使用 HTTPS（https://）加密连接。",
+      "confirm": "确认使用明文"
+    }
   },
   
   "s3": {
@@ -39,7 +44,12 @@
     "regionPlaceholder": "us-east-1",
     "regionHint": "某些 S3 兼容服务可能不需要",
     "pathStyle": "使用 Path Style",
-    "pathStyleHint": "MinIO 等自建服务需要启用"
+    "pathStyleHint": "MinIO 等自建服务需要启用",
+    "insecureWarning": {
+      "title": "不安全的 S3 连接",
+      "description": "您正在使用明文 HTTP（http://）连接 S3 服务，Access Key、Secret Key 以及传输的数据将以明文形式在网络中传输，可能被中间人窃取。建议使用 HTTPS（https://）加密连接。",
+      "confirm": "确认使用明文"
+    }
   },
   
   "ftp": {
