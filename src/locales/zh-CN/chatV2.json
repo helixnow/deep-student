@@ -1428,7 +1428,9 @@
     "copyFailed": "复制失败"
   },
   "readiness": {
-    "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。"
+    "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
+    "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
+    "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。"
   },
   "imagePreview": {
     "partialNotFound": "部分图片资源未找到",

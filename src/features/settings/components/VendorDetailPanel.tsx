@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, DownloadSimple, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
+import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, DownloadSimple, Key, LinkSimple, NotePencil, PencilSimple, Plus, Prohibit, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -134,6 +134,7 @@ export const VendorDetailPanel: React.FC = () => {
     handleBatchCreateConfigs,
     handleBatchConfigsCreated,
     onAddVendorModels,
+    triggerPostSaveAutoFlow,
     isSmallScreen,
   } = useVendorSettings();
 
@@ -144,12 +145,14 @@ export const VendorDetailPanel: React.FC = () => {
   const [isModelFetcherDialogOpen, setIsModelFetcherDialogOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 判断连接是否已配置（有 baseUrl 且有 apiKey）
+  // 判断连接是否已配置（有 baseUrl 且有 apiKey，或 noApiKey 模式）
   const isConnectionConfigured = useMemo(() => {
-    const hasUrl = !!(selectedVendor?.baseUrl?.trim());
-    const hasKey = !!(selectedVendor?.apiKey?.trim());
+    if (!selectedVendor) return false;
+    const hasUrl = !!(selectedVendor.baseUrl?.trim());
+    if (selectedVendor.noApiKey) return hasUrl;
+    const hasKey = !!(selectedVendor.apiKey?.trim());
     return hasUrl && hasKey;
-  }, [selectedVendor?.baseUrl, selectedVendor?.apiKey]);
+  }, [selectedVendor?.baseUrl, selectedVendor?.apiKey, selectedVendor?.noApiKey]);
 
   // 模型按家族分组（GPT-4 / Claude Opus / Gemini 2.5 …）
   const familyGroups = useMemo(
@@ -415,7 +418,13 @@ export const VendorDetailPanel: React.FC = () => {
                     <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
                     <span className="truncate font-mono text-xs">{selectedVendor.baseUrl}</span>
                     <span className="text-muted-foreground/60 shrink-0">·</span>
-                    <span className="text-xs shrink-0">{t('settings:vendor_panel.api_key_configured_short', { defaultValue: 'Key \u2713' })}</span>
+                    {selectedVendor.noApiKey ? (
+                      <span className="text-xs shrink-0 text-muted-foreground">
+                        {t('settings:vendor_panel.no_api_key_short', { defaultValue: '无 Key' })}
+                      </span>
+                    ) : (
+                      <span className="text-xs shrink-0">{t('settings:vendor_panel.api_key_configured_short', { defaultValue: 'Key ✓' })}</span>
+                    )}
                   </span>
                 ) : (
                   <span className="text-muted-foreground text-xs">
@@ -469,9 +478,38 @@ export const VendorDetailPanel: React.FC = () => {
                     </div>
                     <div>
                       {selectedVendorIsSiliconflow ? (
-                        <SiliconFlowSection variant="inline" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
+                        <SiliconFlowSection
+                          variant="inline"
+                          onCreateConfig={handleSiliconFlowConfig}
+                          onBatchCreateConfigs={handleBatchCreateConfigs}
+                          onBatchConfigsCreated={handleBatchConfigsCreated}
+                          showMessage={showGlobalNotification}
+                          onApiKeySaved={(apiKey) => {
+                            triggerPostSaveAutoFlow?.({
+                              ...selectedVendor,
+                              apiKey,
+                            });
+                          }}
+                        />
+                      ) : selectedVendor.noApiKey ? (
+                        <div className="flex items-center gap-2 rounded-lg border border-border/40 px-4 py-3 text-sm text-muted-foreground">
+                          <Prohibit className="h-4 w-4 shrink-0" />
+                          <span>{t('settings:vendor_panel.no_api_key_hint', { defaultValue: '无需 API Key，保存后将自动获取模型列表' })}</span>
+                        </div>
                       ) : (
-                        <VendorApiKeySection key={selectedVendor.id} vendor={selectedVendor} onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)} onClear={() => handleClearVendorApiKey(selectedVendor.id)} showMessage={showGlobalNotification} />
+                        <VendorApiKeySection
+                          key={selectedVendor.id}
+                          vendor={selectedVendor}
+                          onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)}
+                          onClear={() => handleClearVendorApiKey(selectedVendor.id)}
+                          showMessage={showGlobalNotification}
+                          onApiKeySaved={(apiKey) => {
+                            triggerPostSaveAutoFlow?.({
+                              ...selectedVendor,
+                              apiKey,
+                            });
+                          }}
+                        />
                       )}
                     </div>
                   </div>

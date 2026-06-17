@@ -98,14 +98,32 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           if (!key && vendor.id === 'builtin-siliconflow') {
             key = await TauriAPI.getSetting('siliconflow.api_key');
           }
+          // 回退：Tauri 存储为空时，检查 vendor.apiKey（handleSaveVendorApiKey 临时存入）
+          if (!key) {
+            const raw = vendor.apiKey?.trim();
+            if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
+              key = raw;
+            }
+          }
           if (!cancelled) {
             setResolvedApiKey(key && key.trim() ? key.trim() : null);
           }
         } catch {
-          if (!cancelled) setResolvedApiKey(null);
+          // 异常时回退到 vendor.apiKey
+          if (!cancelled) {
+            const raw = vendor.apiKey?.trim();
+            if (raw && raw !== '***' && !raw.split('').every(c => c === '*')) {
+              setResolvedApiKey(raw);
+            } else {
+              setResolvedApiKey(null);
+            }
+          }
         } finally {
           resolvingRef.current = false;
         }
+      } else if (vendor.noApiKey) {
+        // 无需 Key 的供应商：允许无 Key 请求
+        if (!cancelled) setResolvedApiKey('');
       } else {
         // 非内置供应商：vendor.apiKey 是明文
         const raw = vendor.apiKey?.trim();
@@ -120,7 +138,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     return () => { cancelled = true; };
   }, [vendor.id, vendor.apiKey, isBuiltinVendor]);
 
-  const hasApiKey = resolvedApiKey !== null;
+  const hasApiKey = resolvedApiKey !== null || !!vendor.noApiKey;
   const hasBaseUrl = !!(vendor.baseUrl && vendor.baseUrl.trim());
 
   const isGemini = (vendor.providerType ?? '').toLowerCase() === GEMINI_PROVIDER;
@@ -192,9 +210,13 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   /** 获取 OpenAI 兼容 API 的模型列表 */
   const fetchOpenAICompatible = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
     const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
+    const headers: Record<string, string> = {};
+    if (resolvedApiKey) {
+      headers['Authorization'] = `Bearer ${resolvedApiKey}`;
+    }
     const response = await doFetch(`${baseUrl}/models`, {
       method: 'GET',
-      headers: { 'Authorization': `Bearer ${resolvedApiKey!}` },
+      headers,
     });
     if (!response.ok) {
       let detail: string;
@@ -231,7 +253,10 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   /** 获取 Google Gemini API 的模型列表 */
   const fetchGemini = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
     const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
-    const response = await doFetch(`${baseUrl}/v1beta/models?key=${resolvedApiKey!}&pageSize=100`, {
+    const url = resolvedApiKey
+      ? `${baseUrl}/v1beta/models?key=${resolvedApiKey}&pageSize=100`
+      : `${baseUrl}/v1beta/models?pageSize=100`;
+    const response = await doFetch(url, {
       method: 'GET',
     });
     if (!response.ok) {

@@ -57,6 +57,8 @@ export interface VendorSettingsContextValue {
   handleBatchConfigsCreated: (mapping: { [key: string]: string }) => void;
   onReorderVendors: (reorderedVendors: VendorConfig[]) => void;
   onAddVendorModels?: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
+  /** 保存 API Key 后自动获取模型 + 自动分配 */
+  triggerPostSaveAutoFlow?: (vendor: VendorConfig) => Promise<void>;
 }
 
 const VendorSettingsContext = createContext<VendorSettingsContextValue | null>(null);

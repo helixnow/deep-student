@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 
-export type ReadinessCode = 'MODEL2_MISSING';
+export type ReadinessCode = 'MODEL2_MISSING' | 'MODEL2_AUTO_ASSIGNED';
 export type ReadinessAction = 'OPEN_SETTINGS_MODELS';
 
 interface ModelAssignments {
