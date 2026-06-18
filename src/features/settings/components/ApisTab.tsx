@@ -66,6 +66,26 @@ interface ApisTabProps {
 export const ApisTab: React.FC<ApisTabProps> = (props) => {
   const { t } = useTranslation(['settings', 'common']);
 
+  // 组件卸载时执行一次自动分配模型
+  React.useEffect(() => {
+    return () => {
+      console.log('[ApisTab] Leaving model service page, running auto-assign...');
+      (async () => {
+        try {
+          const { autoAssignAllModels } = await import('@/features/chat/readiness/autoAssignModel');
+          const result = await autoAssignAllModels();
+          if (result.assigned) {
+            console.log(`[ApisTab] Auto-assigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`);
+          } else {
+            console.log(`[ApisTab] Auto-assign skipped: ${result.reason ?? 'no changes'}`);
+          }
+        } catch (err) {
+          console.error('[ApisTab] Auto-assign failed:', err);
+        }
+      })();
+    };
+  }, []);
+
   // 将 props 映射为 Context value
   const contextValue: VendorSettingsContextValue = {
     vendors: props.vendors,

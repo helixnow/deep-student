@@ -55,6 +55,7 @@ function isRerankerModel(api: ApiConfig): boolean {
 
 /** 是否为可用的图像生成模型（与 useSettingsVendorState.isImageGenerationApi 一致） */
 function isImageGenerationModel(api: ApiConfig): boolean {
+  if (!api.enabled) return false;
   if (api.isEmbedding || api.isReranker) return false;
   if (api.isImageGeneration === true) return true;
   const caps = inferApiCapabilities({
@@ -90,8 +91,6 @@ interface AssignmentSlot {
   field: keyof ModelAssignments;
   /** 过滤函数 */
   filter: (api: ApiConfig) => boolean;
-  /** 在通知中显示的中文/英文标签 */
-  label: string;
 }
 
 /**
@@ -99,19 +98,20 @@ interface AssignmentSlot {
  * 注意：不包含 translation_display_mode（非模型字段）
  */
 const SLOTS: AssignmentSlot[] = [
-  { field: 'model2_config_id', filter: isChatModel, label: '对话模型' },
-  { field: 'anki_card_model_config_id', filter: isChatModel, label: 'Anki 卡片生成' },
-  { field: 'qbank_ai_grading_model_config_id', filter: isChatModel, label: '题库 AI 评分' },
-  { field: 'chat_title_model_config_id', filter: isChatModel, label: '聊天标题生成' },
-  { field: 'translation_model_config_id', filter: isChatModel, label: '翻译' },
-  { field: 'memory_decision_model_config_id', filter: isChatModel, label: '记忆决策' },
-  { field: 'image_generation_model_config_id', filter: isImageGenerationModel, label: '图像生成' },
-  { field: 'voice_input_asr_model_config_id', filter: isAsrModel, label: '语音输入 ASR' },
-  { field: 'reranker_model_config_id', filter: isRerankerModel, label: '重排序' },
-  { field: 'vl_reranker_model_config_id', filter: isRerankerModel, label: '多模态重排序' },
-  { field: 'embedding_model_config_id', filter: isEmbeddingModel, label: '嵌入' },
-  { field: 'vl_embedding_model_config_id', filter: isEmbeddingModel, label: '多模态嵌入' },
-  { field: 'exam_sheet_ocr_model_config_id', filter: isMultimodalModel, label: '试卷 OCR' },
+  { field: 'model2_config_id', filter: isChatModel },
+  { field: 'review_analysis_model_config_id', filter: isChatModel },
+  { field: 'anki_card_model_config_id', filter: isChatModel },
+  { field: 'qbank_ai_grading_model_config_id', filter: isChatModel },
+  { field: 'chat_title_model_config_id', filter: isChatModel },
+  { field: 'translation_model_config_id', filter: isChatModel },
+  { field: 'memory_decision_model_config_id', filter: isChatModel },
+  { field: 'image_generation_model_config_id', filter: isImageGenerationModel },
+  { field: 'voice_input_asr_model_config_id', filter: isAsrModel },
+  { field: 'reranker_model_config_id', filter: isRerankerModel },
+  { field: 'vl_reranker_model_config_id', filter: isRerankerModel },
+  { field: 'embedding_model_config_id', filter: isEmbeddingModel },
+  { field: 'vl_embedding_model_config_id', filter: isEmbeddingModel },
+  { field: 'exam_sheet_ocr_model_config_id', filter: isMultimodalModel },
 ];
 
 // ============================================================================
@@ -154,13 +154,29 @@ export async function autoAssignAllModels(): Promise<AutoAssignResult> {
     const assignedNames: string[] = [];
 
     for (const slot of SLOTS) {
-      // 跳过已分配的槽位
       const currentValue = currentAssignments[slot.field];
-      if (currentValue && currentValue !== '' && currentValue !== null) {
+      const isAssigned = currentValue && currentValue !== '' && currentValue !== null;
+
+      if (isAssigned) {
+        // 已分配的槽位：检查模型是否被禁用或不存在
+        const assignedApi = sortedConfigs.find(c => c.id === currentValue);
+        if (!assignedApi || !assignedApi.enabled) {
+          // 模型被禁用或已删除，需要重新分配
+          const matched = sortedConfigs.find(slot.filter);
+          if (matched) {
+            changes[slot.field] = matched.id as any;
+            assignedNames.push(matched.name || matched.model);
+          } else {
+            // 一个能用的都没有，清空为 null
+            changes[slot.field] = null as any;
+            assignedNames.push('(无)');
+          }
+        }
+        // 模型存在且启用，跳过
         continue;
       }
 
-      // 按过滤条件找第一个
+      // 未分配的槽位：找第一个可用模型
       const matched = sortedConfigs.find(slot.filter);
       if (matched) {
         changes[slot.field] = matched.id as any;
