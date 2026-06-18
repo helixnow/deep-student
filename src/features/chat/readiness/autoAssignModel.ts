@@ -114,6 +114,21 @@ const SLOTS: AssignmentSlot[] = [
   { field: 'exam_sheet_ocr_model_config_id', filter: isMultimodalModel },
 ];
 
+/**
+ * OCR 引擎信息
+ */
+interface OcrEngineEntry {
+  config_id: string;
+  model: string;
+  engine_type: string;
+  name: string;
+  is_free: boolean;
+  enabled: boolean;
+  priority: number;
+}
+
+const SYSTEM_OCR_CONFIG_ID = '__system_ocr__';
+
 // ============================================================================
 // 广播事件
 // ============================================================================
@@ -125,6 +140,69 @@ function broadcastModelAssignmentsChange(): void {
     }
   } catch {
     // 非浏览器环境忽略
+  }
+}
+
+/**
+ * 为指定 API 配置注册 OCR 引擎，确保系统 OCR 优先级最低
+ */
+async function ensureOcrEngineRegistered(apiConfig: ApiConfig): Promise<void> {
+  try {
+    // 读取现有 OCR 引擎列表
+    let existingEngines: OcrEngineEntry[] = [];
+    try {
+      existingEngines = await invoke<OcrEngineEntry[]>('get_available_ocr_models');
+    } catch {
+      // 无列表，从空开始
+    }
+
+    // 检查该 API 配置是否已注册为 OCR 引擎
+    const alreadyExists = existingEngines.some(e => e.config_id === apiConfig.id);
+    if (alreadyExists) return;
+
+    // 推断 engine_type
+    const caps = inferApiCapabilities({
+      id: apiConfig.model,
+      name: apiConfig.name,
+      providerScope: apiConfig.providerScope ?? apiConfig.providerType,
+    });
+    // 有 vision 能力的多模态模型作为 OCR 引擎
+    const engineType = caps.vision ? 'generic_vlm' : 'generic_vlm';
+
+    // 注册新 OCR 引擎
+    await invoke('add_ocr_engine', {
+      configId: apiConfig.id,
+      model: apiConfig.model,
+      name: apiConfig.name || apiConfig.model,
+      engineType,
+    });
+
+    // 确保系统 OCR 优先级最低：重新排列优先级
+    // 读取最新列表
+    let updatedEngines: OcrEngineEntry[] = [];
+    try {
+      updatedEngines = await invoke<OcrEngineEntry[]>('get_available_ocr_models');
+    } catch {
+      return;
+    }
+
+    // 找出系统 OCR 的当前优先级
+    const systemOcr = updatedEngines.find(e => e.config_id === SYSTEM_OCR_CONFIG_ID);
+    if (!systemOcr) return;
+
+    // 如果系统 OCR 不是优先级最低的，把它移到最后
+    const maxPriority = Math.max(...updatedEngines.map(e => e.priority));
+    if (systemOcr.priority !== maxPriority) {
+      const reordered = updatedEngines
+        .filter(e => e.config_id !== SYSTEM_OCR_CONFIG_ID)
+        .map((e, i) => ({ configId: e.config_id, enabled: e.enabled }));
+      // 系统 OCR 放在最后
+      reordered.push({ configId: SYSTEM_OCR_CONFIG_ID, enabled: systemOcr.enabled });
+
+      await invoke('update_ocr_engine_priority', { engineList: reordered });
+    }
+  } catch (err) {
+    console.error('[autoAssignModel] Failed to register OCR engine:', err);
   }
 }
 
@@ -166,6 +244,10 @@ export async function autoAssignAllModels(): Promise<AutoAssignResult> {
           if (matched) {
             changes[slot.field] = matched.id as any;
             assignedNames.push(matched.name || matched.model);
+            // OCR 槽位变更时注册为 OCR 引擎
+            if (slot.field === 'exam_sheet_ocr_model_config_id') {
+              void ensureOcrEngineRegistered(matched);
+            }
           } else {
             // 一个能用的都没有，清空为 null
             changes[slot.field] = null as any;
@@ -181,6 +263,10 @@ export async function autoAssignAllModels(): Promise<AutoAssignResult> {
       if (matched) {
         changes[slot.field] = matched.id as any;
         assignedNames.push(matched.name || matched.model);
+        // OCR 槽位分配时注册为 OCR 引擎
+        if (slot.field === 'exam_sheet_ocr_model_config_id') {
+          void ensureOcrEngineRegistered(matched);
+        }
       }
     }
 
