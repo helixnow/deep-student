@@ -413,6 +413,31 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     await doSaveConfig();
   }, [buildConfig, webdavConfig.password, webdavConfig.endpoint, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, encryptionPassword, t, doSaveConfig]);
 
+  // 实际执行测试连接逻辑
+  const doTestConnection = useCallback(async () => {
+    setTesting(true);
+    setConnectionStatus('unknown');
+    try {
+      const config = buildConfig();
+      await cloudApi.checkConnection(config);
+      setConnectionStatus('connected');
+      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+      
+      // 获取同步状态
+      const status = await cloudApi.getSyncStatus(config);
+      setSyncStatus(status);
+      
+      // 获取版本列表
+      const versionList = await cloudApi.listVersions(config);
+      setVersions(versionList);
+    } catch (e: unknown) {
+      setConnectionStatus('failed');
+      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${getErrorMessage(e)}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [buildConfig, t]);
+
   // 确认保存不安全 FTP/WebDAV/S3 配置
   const handleConfirmInsecureFtpSave = useCallback(async () => {
     setShowInsecureFtpWarning(false);
@@ -497,32 +522,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     await doTestConnection();
-  }, [provider, ftpConfig.endpoint, webdavConfig.endpoint, s3Config.endpoint]);
-
-  // 实际执行测试连接逻辑
-  const doTestConnection = useCallback(async () => {
-    setTesting(true);
-    setConnectionStatus('unknown');
-    try {
-      const config = buildConfig();
-      await cloudApi.checkConnection(config);
-      setConnectionStatus('connected');
-      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
-      
-      // 获取同步状态
-      const status = await cloudApi.getSyncStatus(config);
-      setSyncStatus(status);
-      
-      // 获取版本列表
-      const versionList = await cloudApi.listVersions(config);
-      setVersions(versionList);
-    } catch (e: unknown) {
-      setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${getErrorMessage(e)}`);
-    } finally {
-      setTesting(false);
-    }
-  }, [buildConfig, t]);
+  }, [provider, ftpConfig.endpoint, webdavConfig.endpoint, s3Config.endpoint, doTestConnection]);
 
   // 刷新状态
   const refreshStatus = useCallback(async () => {
