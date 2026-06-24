@@ -16,6 +16,7 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   vl_embedding_model_config_id: null,
   vl_reranker_model_config_id: null,
   memory_decision_model_config_id: null,
+  review_analysis_model_config_id: null,
   voice_input_asr_model_config_id: null,
   image_generation_model_config_id: null,
   translation_display_mode: null,
