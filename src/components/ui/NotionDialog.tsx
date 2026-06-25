@@ -129,8 +129,10 @@ export function NotionDialog({
   return (
     <ModalPortal open={open}>
       <motion.div
+        data-overlay-container="true"
+        onPointerDown={(e) => e.stopPropagation()}
         className={cn(
-          'fixed inset-0 flex',
+          'pointer-events-auto fixed inset-0 flex',
           isMobileSheet ? 'items-end justify-center p-0' : 'items-center justify-center p-4 sm:p-6',
         )}
         style={{ zIndex: Z_INDEX.modal }}
@@ -348,7 +350,9 @@ export function NotionAlertDialog({
   return (
     <ModalPortal open={open}>
       <motion.div
-        className="fixed inset-0 flex items-center justify-center p-4"
+        data-overlay-container="true"
+        onPointerDown={(e) => e.stopPropagation()}
+        className="pointer-events-auto fixed inset-0 flex items-center justify-center p-4"
         style={{ zIndex: Z_INDEX.modal }}
         initial="hidden"
         animate="visible"

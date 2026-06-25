@@ -844,7 +844,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             </div>
           )}
           <span className="font-medium">{t('cloudStorage:provider.webdav')}</span>
-          <span className="text-xs text-muted-foreground line-clamp-2">
+          <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">
             {t('cloudStorage:provider.webdavDesc')}
           </span>
         </NotionButton>
@@ -869,7 +869,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <span className={`font-medium ${s3Enabled === false ? 'line-through' : ''}`}>
             {t('cloudStorage:provider.s3')}
           </span>
-          <span className={`text-xs line-clamp-2 ${s3Enabled === false ? 'text-destructive/70' : 'text-muted-foreground'}`}>
+          <span className={`text-xs line-clamp-2 whitespace-normal ${s3Enabled === false ? 'text-destructive/70' : 'text-muted-foreground'}`}>
             {s3Enabled === false 
               ? t('cloudStorage:provider.s3Disabled')
               : t('cloudStorage:provider.s3Desc')}
@@ -892,7 +892,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </div>
             )}
             <span className="font-medium">{t('cloudStorage:provider.ftp')}</span>
-            <span className="text-xs text-warning line-clamp-2">
+            <span className="text-xs text-warning line-clamp-2 whitespace-normal">
               {t('cloudStorage:provider.ftpDescExperimental')}
             </span>
           </NotionButton>
@@ -1120,7 +1120,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <NotionButton onClick={saveConfig} disabled={!isConfigValid()}>
             {t('cloudStorage:actions.save')}
           </NotionButton>
-          <NotionButton variant="ghost" onClick={clearConfig}>
+          <NotionButton variant="danger" onClick={clearConfig}>
             {t('cloudStorage:actions.clearConfig')}
           </NotionButton>
         </div>
