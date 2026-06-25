@@ -300,15 +300,15 @@ pub async fn auto_install_package_manager(manager_type: &str) -> PackageInstallR
     // 执行安装命令
     log::info!("正在自动安装 {}: {}", manager_type, install_cmd);
 
-    let result = if cfg!(target_os = "windows") {
-        Command::new("powershell")
-            .arg("-Command")
-            .arg(&install_cmd)
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-    } else {
-        Command::new("sh").arg("-c").arg(&install_cmd).output()
-    };
+    #[cfg(target_os = "windows")]
+    let result = Command::new("powershell")
+        .arg("-Command")
+        .arg(&install_cmd)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    #[cfg(not(target_os = "windows"))]
+    let result = Command::new("sh").arg("-c").arg(&install_cmd).output();
 
     match result {
         Ok(output) if output.status.success() => {
