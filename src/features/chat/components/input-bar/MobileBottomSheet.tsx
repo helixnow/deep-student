@@ -230,6 +230,8 @@ export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
         )}
         style={{
           height: `${currentHeight}px`,
+          // Android 键盘弹出时，抽屉紧贴键盘上方
+          bottom: 0,
         }}
         onClick={(e) => e.stopPropagation()}
       >

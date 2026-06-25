@@ -31,7 +31,7 @@ import { GlobalPomodoroWidget } from '@/features/pomodoro';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
-import { isWindows, isMacOS } from './utils/platform';
+import { isWindows, isMacOS, isAndroid } from './utils/platform';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // 🚀 P0-1 性能优化：NoteEditorPortal 改为懒加载，避免 CrepeEditor → mermaid (~1.6MB) 进入首屏 bundle
 const LazyNoteEditorPortal = React.lazy(() => import('./features/notes/NoteEditorPortal').then(m => ({ default: m.NoteEditorPortal })));
@@ -1576,6 +1576,12 @@ function App() {
     const handleMobileSidebarNavigate = (event: Event) => {
       const view = (event as CustomEvent<{ view?: CurrentView }>).detail?.view;
       if (!view) return;
+
+      // Android 键盘弹出时，阻止导航事件（防止输入框粘贴/切换时误触路由跳转）
+      if (isAndroid() && (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA')) {
+        return;
+      }
+
       handleViewChange(view);
     };
 

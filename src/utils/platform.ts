@@ -71,6 +71,8 @@ export const initPlatformClasses = (): void => {
     html.classList.add('is-android');
     // 初始化 Android 安全区域 CSS 变量
     initAndroidSafeArea();
+    // 初始化键盘状态监听
+    initAndroidKeyboardDetection();
   }
 
   // 桌面平台检测
@@ -85,6 +87,35 @@ export const initPlatformClasses = (): void => {
   if (isMobilePlatform()) {
     html.classList.add('is-mobile');
   }
+};
+
+/**
+ * 初始化 Android 键盘弹出/收起状态检测
+ * 使用 visualViewport API 监听键盘状态，给 html 添加/移除 keyboard-shown class
+ */
+const initAndroidKeyboardDetection = (): void => {
+  if (typeof window === 'undefined') return;
+  const visualViewport = window.visualViewport;
+  if (!visualViewport) return;
+
+  const KEYBOARD_THRESHOLD = 150;
+  let initialHeight = visualViewport.height;
+
+  const handleResize = () => {
+    const html = document.documentElement;
+    const heightDiff = initialHeight - visualViewport.height;
+
+    if (heightDiff > KEYBOARD_THRESHOLD) {
+      // 键盘弹出
+      html.classList.add('keyboard-shown');
+    } else if (heightDiff < -KEYBOARD_THRESHOLD) {
+      // 键盘收起
+      html.classList.remove('keyboard-shown');
+      initialHeight = visualViewport.height;
+    }
+  };
+
+  visualViewport.addEventListener('resize', handleResize);
 };
 
 /**

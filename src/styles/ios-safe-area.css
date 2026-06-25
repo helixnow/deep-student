@@ -16,6 +16,23 @@
   --safe-area-inset-left: env(safe-area-inset-left, 0px);
 }
 
+/*
+ * Android 键盘弹出适配
+ * 使用 dvh (dynamic viewport height) 替代 vh，确保键盘弹出时布局不被压缩
+ * 同时配合 visualViewport API 使用
+ */
+.is-android {
+  /* 全屏容器使用 dvh 而非 vh */
+  --app-height: 100dvh;
+}
+
+/* 当键盘弹出时，body 高度不应被压缩 */
+.is-android.keyboard-shown body,
+.is-android.keyboard-shown .app-root {
+  height: 100dvh;
+  overflow: visible;
+}
+
 /* 应用全局容器适配 */
 .app {
   /* 移除全局顶部安全区内边距，避免重复偏移 */

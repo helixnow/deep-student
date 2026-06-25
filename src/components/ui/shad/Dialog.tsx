@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../../lib/utils';
 import { Slot } from '@radix-ui/react-slot';
 import { Z_INDEX } from '@/config/zIndex';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
+import { isAndroid } from '@/utils/platform';
 
 type DialogContextValue = {
   open: boolean;
@@ -154,6 +156,10 @@ export function DialogContent({
   // 如果指定了容器，使用 absolute 定位；否则使用 fixed 定位
   const positionClass = containerSelector ? 'absolute' : 'fixed';
 
+  // Android 键盘高度检测：键盘弹出时让 dialog 靠上
+  const keyboardHeight = useKeyboardHeight();
+  const isAndroidKeyboard = isAndroid() && keyboardHeight > 0;
+
   return (
     <DialogPortal open={ctx.open} containerSelector={containerSelector}>
       {/* Overlay - 实色遮罩，无高斯模糊。颜色随主题切换。 */}
@@ -178,7 +184,11 @@ export function DialogContent({
           "inset-0 flex items-center justify-center p-4 sm:p-6 pointer-events-none",
           positionClass
         )}
-        style={{ zIndex: Z_INDEX.modal + 1 }}
+        style={{
+          zIndex: Z_INDEX.modal + 1,
+          // Android 键盘弹出时，让 dialog 靠上显示，避免被键盘遮挡
+          ...(isAndroidKeyboard ? { alignItems: 'flex-start', paddingTop: '12px' } : {}),
+        }}
         initial="hidden"
         animate="visible"
         exit="exit"
@@ -190,6 +200,8 @@ export function DialogContent({
           variants={contentVariants}
           className={cn(
             'pointer-events-auto w-full max-w-lg rounded-xl border border-border/40 bg-background p-5 text-foreground shadow-none',
+            // Android 键盘弹出时，dialog 宽度占满，减少左右边距
+            isAndroidKeyboard ? 'max-w-full mx-0' : '',
             className
           )}
           onClick={(e) => {
