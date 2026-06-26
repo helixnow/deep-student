@@ -126,7 +126,6 @@ const SLOTS: AssignmentSlot[] = [
 interface OcrEngineEntry {
   configId: string;
   model: string;
-  engineType: string;
   name: string;
   isFree: boolean;
   enabled: boolean;
@@ -242,8 +241,7 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
         await invoke('add_ocr_engine', {
           configId: config.id,
           model: config.model,
-          name: config.name || config.model,
-          engineType: 'generic_vlm',
+          name: config.name || config.model
         });
         registeredCount++;
         console.log('[autoAssignModel] 注册 OCR 引擎:', config.name || config.model);
