@@ -49,8 +49,8 @@ export const toolPackSkill: SkillDefinition = {
 **参数说明**：
 - \`tools\`: 要并行执行的工具数组（必填），每个元素包含:
   - \`name\`: 工具名称（必填），支持前缀（builtin-）或无前缀形式
-  - \`args\`: 工具参数（可选），默认为空对象
-- \`timeout\`: 整体超时时间（秒），默认 300 秒，范围 1-600
+  - \`args\`: Required arguments object. Use {} when the sub-tool has no arguments.
+- \`timeout\`: 整体超时时间（秒），默认 300 秒，范围 1-600 秒
 
 **限制**：
 - 最多支持 20 个子工具
@@ -82,9 +82,8 @@ export const toolPackSkill: SkillDefinition = {
     {
       name: 'builtin-tool_pack',
       description:
-        'Execute multiple built-in tools in parallel. Use when you need data from several sources simultaneously. ' +
-        'Provide a "tools" array where each element has a "name" (tool name) and optional "args" (parameters). ' +
-        'Results are collected and returned together. Supports up to 20 sub-tools with 10 concurrent executions.',
+        'Runs multiple existing built-in tools in parallel through the Rust backend executor. ' +
+        'The frontend only exposes this schema and does not orchestrate tool execution.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -93,18 +92,24 @@ export const toolPackSkill: SkillDefinition = {
             items: {
               type: 'object',
               properties: {
-                name: { type: 'string', description: 'Name of the built-in tool to execute (e.g., builtin-rag_search, builtin-web_fetch)' },
-                args: { type: 'object', description: 'Arguments for the tool (default: empty object)' },
+                name: {
+                  type: 'string',
+                  description: 'Name of the built-in tool to execute, for example builtin-rag_search or builtin-web_fetch',
+                },
+                args: {
+                  type: 'object',
+                  description: 'Required arguments object for the sub-tool. Use {} when the tool has no arguments.',
+                },
               },
-              required: ['name'],
+              required: ['name', 'args'],
             },
-            description: 'Array of tools to execute in parallel',
+            description: 'Array of built-in tool calls to execute in parallel',
             minItems: 1,
             maxItems: 20,
           },
           timeout: {
             type: 'integer',
-            description: 'Optional: pack-level timeout in seconds (default: 300)',
+            description: 'Optional pack-level timeout in seconds. Defaults to 300.',
             minimum: 1,
             maximum: 600,
           },
