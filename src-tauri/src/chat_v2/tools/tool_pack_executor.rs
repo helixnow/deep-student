@@ -83,11 +83,18 @@ impl ToolExecutor for ToolPackExecutor {
             })?;
 
         // Parse optional pack-level timeout
-        let pack_timeout_secs = call
-            .arguments
-            .get("timeout")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(DEFAULT_PACK_TIMEOUT_SECS);
+        let pack_timeout_secs = match call.arguments.get("timeout").and_then(|v| v.as_u64()) {
+            Some(t) if (1..=600).contains(&t) => t,
+            Some(t) => {
+                log::warn!(
+                    "[ToolPack] timeout value {} out of range, using default {}s",
+                    t,
+                    DEFAULT_PACK_TIMEOUT_SECS
+                );
+                DEFAULT_PACK_TIMEOUT_SECS
+            }
+            None => DEFAULT_PACK_TIMEOUT_SECS,
+        };
 
         // === Input Validation ===
         if tools.is_empty() {
