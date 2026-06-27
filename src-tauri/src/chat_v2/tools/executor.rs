@@ -120,6 +120,12 @@ pub struct ExecutionContext {
     pub rag_enable_reranking: Option<bool>,
     /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
     pub pdf_processing_service: Option<Arc<PdfProcessingService>>,
+    /// 🆕 Feature flags for sub-tool security preflight (ToolPack)
+    pub memory_enabled: bool,
+    /// 🆕 Whether RAG search is enabled
+    pub rag_enabled: bool,
+    /// 🆕 Whether web search is enabled
+    pub web_search_enabled: bool,
 }
 
 impl ExecutionContext {
@@ -158,6 +164,9 @@ impl ExecutionContext {
             rag_top_k: None,
             rag_enable_reranking: None,
             pdf_processing_service: None,
+            memory_enabled: true,
+            rag_enabled: true,
+            web_search_enabled: true,
         }
     }
 
@@ -263,6 +272,19 @@ impl ExecutionContext {
         service: Option<Arc<PdfProcessingService>>,
     ) -> Self {
         self.pdf_processing_service = service;
+        self
+    }
+
+    /// 🆕 设置功能开关（用于 ToolPack 子工具安全预检）
+    pub fn with_feature_flags(
+        mut self,
+        memory_enabled: bool,
+        rag_enabled: bool,
+        web_search_enabled: bool,
+    ) -> Self {
+        self.memory_enabled = memory_enabled;
+        self.rag_enabled = rag_enabled;
+        self.web_search_enabled = web_search_enabled;
         self
     }
 
