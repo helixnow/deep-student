@@ -134,14 +134,24 @@ impl ToolExecutor for ToolPackExecutor {
 
             // Non-existent tool check — use has_specific_executor to avoid
             // GeneralToolExecutor catch-all matching any unknown tool name
-            if !registry.has_specific_executor(name) {
+            let effective_name = if registry.has_specific_executor(name) {
+                name.to_string()
+            } else if name.starts_with("builtin-") {
                 let msg = format!("tool '{}' not found in tool registry", name);
                 ctx.emit_tool_call_error(&msg);
                 return Err(msg);
-            }
+            } else {
+                let prefixed = format!("builtin-{}", name);
+                if !registry.has_specific_executor(&prefixed) {
+                    let msg = format!("tool '{}' not found in tool registry", name);
+                    ctx.emit_tool_call_error(&msg);
+                    return Err(msg);
+                }
+                prefixed
+            };
 
             sub_tools.push(SubTool {
-                name: name.to_string(),
+                name: effective_name,
                 args,
                 index: i,
             });
