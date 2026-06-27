@@ -27,6 +27,7 @@ export { xlsxToolsSkill } from './xlsx-tools';
 export { sessionManagerSkill } from './session-manager';
 export { userTodoToolsSkill } from './user-todo-tools';
 export { imageGenerationSkill } from './image-generation';
+export { toolPackSkill } from './tool-pack';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -48,6 +49,7 @@ import { xlsxToolsSkill } from './xlsx-tools';
 import { sessionManagerSkill } from './session-manager';
 import { userTodoToolsSkill } from './user-todo-tools';
 import { imageGenerationSkill } from './image-generation';
+import { toolPackSkill } from './tool-pack';
 import type { SkillDefinition } from '../types';
 
 /**
@@ -77,6 +79,7 @@ export const builtinToolSkills: SkillDefinition[] = [
   sessionManagerSkill,
   userTodoToolsSkill,
   imageGenerationSkill,
+  toolPackSkill,
 ];
 
 /**
