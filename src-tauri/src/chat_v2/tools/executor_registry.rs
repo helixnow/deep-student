@@ -61,7 +61,7 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         | "xlsx_replace_text" => 300, // 5 分钟
         // 子代理调用工具（可能执行复杂任务）
         "subagent_call" => 300, // 5 分钟
-        "tool_pack" => 300, // 5 minutes (ToolPack pack-level timeout)
+        "tool_pack" => 600, // 10 minutes (matches ToolPack schema maximum)
         _ => {
             // ChatAnki 工具：chatanki_wait 内部有 30 分钟超时，外层需匹配
             if stripped == "chatanki_wait" {
@@ -435,8 +435,8 @@ mod tests {
     }
 
     #[test]
-    fn tool_pack_uses_five_minute_timeout() {
-        assert_eq!(get_tool_timeout_secs("builtin-tool_pack"), 300);
-        assert_eq!(get_tool_timeout_secs("tool_pack"), 300);
+    fn tool_pack_uses_ten_minute_timeout() {
+        assert_eq!(get_tool_timeout_secs("builtin-tool_pack"), 600);
+        assert_eq!(get_tool_timeout_secs("tool_pack"), 600);
     }
 }

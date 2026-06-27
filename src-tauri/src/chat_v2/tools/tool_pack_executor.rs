@@ -325,7 +325,7 @@ impl ToolExecutor for ToolPackExecutor {
                         return ToolResultInfo::failure(
                             Some(sub_call_id),
                             Some(sub_block_id),
-                            sub.name,
+                            sub.name.clone(),
                             sub.args,
                             format!(
                                 "Tool '{}' requires user approval (sensitivity: {:?}) and cannot be executed inside tool_pack",
