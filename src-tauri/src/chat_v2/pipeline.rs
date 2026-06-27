@@ -219,45 +219,54 @@ impl ChatV2Pipeline {
     fn create_executor_registry_with_workspace(
         workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     ) -> Arc<ToolExecutorRegistry> {
-        let mut registry = ToolExecutorRegistry::new();
+        let mut executors: Vec<Arc<dyn super::tools::ToolExecutor>> = Vec::new();
 
-        registry.register(Arc::new(AttemptCompletionExecutor::new()));
-        registry.register(Arc::new(CanvasToolExecutor::new()));
+        executors.push(Arc::new(AttemptCompletionExecutor::new()));
+        executors.push(Arc::new(CanvasToolExecutor::new()));
         // AnkiToolExecutor 已移除 — 旧 CardForge 2.0 管线由 ChatAnki 完全接管
-        registry.register(Arc::new(ChatAnkiToolExecutor::new()));
-        registry.register(Arc::new(BuiltinRetrievalExecutor::new()));
-        registry.register(Arc::new(BuiltinResourceExecutor::new()));
-        registry.register(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
-        registry.register(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
-        registry.register(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
-        registry.register(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
-        registry.register(Arc::new(KnowledgeExecutor::new()));
-        registry.register(Arc::new(super::tools::TodoListExecutor::new()));
-        registry.register(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
-        registry.register(Arc::new(MemoryToolExecutor::new()));
-        registry.register(Arc::new(UserTodoExecutor::new()));
-        registry.register(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
-        registry.register(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
-        registry.register(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
-        registry.register(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器
-        registry.register(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
-        registry.register(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
-        registry.register(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
-        registry.register(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
+        executors.push(Arc::new(ChatAnkiToolExecutor::new()));
+        executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
+        executors.push(Arc::new(BuiltinResourceExecutor::new()));
+        executors.push(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
+        executors.push(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
+        executors.push(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
+        executors.push(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
+        executors.push(Arc::new(KnowledgeExecutor::new()));
+        executors.push(Arc::new(super::tools::TodoListExecutor::new()));
+        executors.push(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
+        executors.push(Arc::new(MemoryToolExecutor::new()));
+        executors.push(Arc::new(UserTodoExecutor::new()));
+        executors.push(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
+        executors.push(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
+        executors.push(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
+        executors.push(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器
+        executors.push(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
+        executors.push(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
+        executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
+        executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
 
         if let Some(coordinator) = workspace_coordinator {
-            registry.register(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
+            executors.push(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
             // 注册 SubagentExecutor（subagent_call 语法糖）
-            registry.register(Arc::new(super::tools::SubagentExecutor::new(
+            executors.push(Arc::new(super::tools::SubagentExecutor::new(
                 coordinator.clone(),
             )));
             // 🆕 注册 CoordinatorSleepExecutor（主代理睡眠/唤醒机制）
-            registry.register(Arc::new(super::tools::CoordinatorSleepExecutor::new(
+            executors.push(Arc::new(super::tools::CoordinatorSleepExecutor::new(
                 coordinator,
             )));
         }
 
-        registry.register(Arc::new(GeneralToolExecutor::new()));
+                // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
+        let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
+            // ToolPackExecutor must be registered before GeneralToolExecutor
+            executors.push(Arc::new(
+                super::tools::ToolPackExecutor::new(weak.clone()),
+            ));
+            // GeneralToolExecutor must be last (catch-all)
+            executors.push(Arc::new(GeneralToolExecutor::new()));
+            ToolExecutorRegistry::from_vec(executors)
+        });
 
         log::info!(
             "[ChatV2::pipeline] ToolExecutorRegistry initialized with {} executors: {:?}",
@@ -265,7 +274,7 @@ impl ChatV2Pipeline {
             registry.executor_names()
         );
 
-        Arc::new(registry)
+        registry
     }
 
     /// 根据工具名称判断正确的 block_type
@@ -839,5 +848,28 @@ impl ChatV2Pipeline {
         }
 
         Ok(())
+    }
+}
+
+// ============================================================================
+// 单元测试
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tool_pack_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        // Directly verify that the executor matched for tool_pack is ToolPackExecutor
+        let executor = registry
+            .get_executor("builtin-tool_pack")
+            .expect("builtin-tool_pack must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "ToolPackExecutor",
+            "ToolPackExecutor must be matched before GeneralToolExecutor"
+        );
     }
 }

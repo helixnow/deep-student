@@ -34,32 +34,34 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         return NO_TOOL_TIMEOUT_SECS;
     }
 
-    // 精确匹配：内置检索和搜索工具
-    match tool_name {
+    // 精确匹配：内置检索和搜索工具（使用 stripped name 以同时支持
+    // `builtin-` 前缀和 ToolPack 子工具传入的无前缀名称）
+    match stripped {
         // 网络搜索工具（需要较长时间）
-        "builtin-web_search" => 180, // 3 分钟
+        "web_search" => 180, // 3 分钟
         // 学术论文搜索工具（arXiv / OpenAlex API）
-        "builtin-arxiv_search" | "builtin-scholar_search" => 180, // 3 分钟
+        "arxiv_search" | "scholar_search" => 180, // 3 分钟
         // 论文保存工具（下载 PDF + VFS 存储，批量最多 5 篇）
-        "builtin-paper_save" => 600, // 10 分钟（批量下载+处理）
+        "paper_save" => 600, // 10 分钟（批量下载+处理）
         // 引用格式化工具（纯计算，无网络）
-        "builtin-cite_format" => 30, // 30 秒
+        "cite_format" => 30, // 30 秒
         // 网络请求和 HTML 解析工具（涉及网络请求和 HTML 解析）
-        "builtin-web_fetch" => 180, // 3 分钟
+        "web_fetch" => 180, // 3 分钟
         // RAG 检索工具（可能涉及大量数据）
-        "builtin-rag_search" | "builtin-multimodal_search" | "builtin-unified_search" => 180, // 3 分钟
+        "rag_search" | "multimodal_search" | "unified_search" => 180, // 3 分钟
         // 文档写入/转换工具（大文件处理可能耗时较长）
-        "builtin-docx_create"
-        | "builtin-pptx_create"
-        | "builtin-xlsx_create"
-        | "builtin-docx_to_spec"
-        | "builtin-pptx_to_spec"
-        | "builtin-xlsx_to_spec"
-        | "builtin-docx_replace_text"
-        | "builtin-pptx_replace_text"
-        | "builtin-xlsx_replace_text" => 300, // 5 分钟
+        "docx_create"
+        | "pptx_create"
+        | "xlsx_create"
+        | "docx_to_spec"
+        | "pptx_to_spec"
+        | "xlsx_to_spec"
+        | "docx_replace_text"
+        | "pptx_replace_text"
+        | "xlsx_replace_text" => 300, // 5 分钟
         // 子代理调用工具（可能执行复杂任务）
         "subagent_call" => 300, // 5 分钟
+        "tool_pack" => 600, // 10 minutes (matches ToolPack schema maximum)
         _ => {
             // ChatAnki 工具：chatanki_wait 内部有 30 分钟超时，外层需匹配
             if stripped == "chatanki_wait" {
@@ -68,7 +70,7 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
                 600 // 10 分钟（chatanki_run/start/export/sync 可能涉及大量 IO）
             } else if stripped == "image_generate" {
                 300 // 5 分钟（第三方生图 API 可能排队）
-            } else if tool_name.starts_with("mcp_") {
+            } else if stripped.starts_with("mcp_") {
                 // 前缀匹配：MCP 工具通常需要网络请求
                 180 // 3 分钟
             } else {
@@ -96,6 +98,13 @@ impl ToolExecutorRegistry {
         Self {
             executors: Vec::new(),
         }
+    }
+
+    /// Create registry from existing executor Vec
+    ///
+    /// Used with `Arc::new_cyclic` to avoid circular initialization.
+    pub fn from_vec(executors: Vec<Arc<dyn ToolExecutor>>) -> Self {
+        Self { executors }
     }
 
     /// 注册执行器
@@ -280,6 +289,16 @@ impl ToolExecutorRegistry {
         self.get_executor(tool_name).is_some()
     }
 
+    /// 检查是否有特异性（非兜底）执行器能处理指定工具
+    ///
+    /// 与 `can_handle` 不同，此方法排除 `GeneralToolExecutor` 等兜底执行器。
+    /// 用于验证工具是否在注册表中实际存在（而非被兜底捕获）。
+    pub fn has_specific_executor(&self, tool_name: &str) -> bool {
+        self.get_executor(tool_name)
+            .map(|e| e.name() != "GeneralToolExecutor")
+            .unwrap_or(false)
+    }
+
     /// 获取已注册的执行器数量
     pub fn len(&self) -> usize {
         self.executors.len()
@@ -413,5 +432,11 @@ mod tests {
     fn ask_user_tool_is_not_subject_to_global_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-ask_user"), 0);
         assert_eq!(get_tool_timeout_secs("ask_user"), 0);
+    }
+
+    #[test]
+    fn tool_pack_uses_ten_minute_timeout() {
+        assert_eq!(get_tool_timeout_secs("builtin-tool_pack"), 600);
+        assert_eq!(get_tool_timeout_secs("tool_pack"), 600);
     }
 }

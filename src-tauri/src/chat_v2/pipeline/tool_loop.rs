@@ -2057,7 +2057,8 @@ impl ChatV2Pipeline {
         .with_pdf_processing_service(self.pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
         .with_rag_config(rag_top_k, rag_enable_reranking)
         .with_variant_id(variant_id.map(|s| s.to_string()))
-        .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()));
+        .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
+        .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
 
         ctx.emitter.register_block_event_meta(
             &ctx.block_id,
