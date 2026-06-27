@@ -11,6 +11,7 @@
 //! - ?????? pipeline CancellationToken ??? token
 //! - Panic ????? spawn ? `catch_unwind` ??
 
+use std::collections::HashSet;
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Weak};
 use std::time::Instant;
@@ -121,14 +122,11 @@ impl ToolExecutor for ToolPackExecutor {
 
         let mut sub_tools: Vec<SubTool> = Vec::with_capacity(tools.len());
         for (i, tool) in tools.iter().enumerate() {
-            let name = tool
-                .get("name")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    let msg = format!("sub-tool {} missing 'name' field", i);
-                    ctx.emit_tool_call_error(&msg);
-                    msg
-                })?;
+            let name = tool.get("name").and_then(|v| v.as_str()).ok_or_else(|| {
+                let msg = format!("sub-tool {} missing 'name' field", i);
+                ctx.emit_tool_call_error(&msg);
+                msg
+            })?;
 
             let args = tool.get("args").cloned().unwrap_or(json!({}));
 
@@ -174,9 +172,14 @@ impl ToolExecutor for ToolPackExecutor {
         // === Execute sub-tools in parallel ===
         let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENCY));
         let total = sub_tools.len();
+        let expected_sub_tools: Vec<(String, Value)> = sub_tools
+            .iter()
+            .map(|sub| (sub.name.clone(), sub.args.clone()))
+            .collect();
         let mut futs = FuturesUnordered::new();
 
         for sub in sub_tools {
+            let sub_index = sub.index;
             let registry_clone = registry.clone();
             let sem = semaphore.clone();
             let token = child_token.clone();
@@ -253,11 +256,8 @@ impl ToolExecutor for ToolPackExecutor {
                 };
 
                 // Create sub-tool call
-                let sub_call = ToolCall::new(
-                    sub_call_id.clone(),
-                    sub.name.clone(),
-                    sub.args.clone(),
-                );
+                let sub_call =
+                    ToolCall::new(sub_call_id.clone(), sub.name.clone(), sub.args.clone());
 
                 // Create sub-context
                 let sub_ctx = ExecutionContext {
@@ -292,9 +292,7 @@ impl ToolExecutor for ToolPackExecutor {
 
                 // === Security preflight checks (mirrors pipeline execute_single_tool) ===
                 // Feature flag checks
-                let sub_short_name = sub.name
-                    .strip_prefix("builtin-")
-                    .unwrap_or(&sub.name);
+                let sub_short_name = sub.name.strip_prefix("builtin-").unwrap_or(&sub.name);
                 let is_memory_tool = sub_short_name.starts_with("memory_");
                 let is_rag_tool = sub_short_name.starts_with("rag_");
                 let is_web_search_tool = sub_short_name == "web_search";
@@ -355,11 +353,10 @@ impl ToolExecutor for ToolPackExecutor {
                 }
 
                 // Execute with catch_unwind to prevent panic propagation
-                let result = AssertUnwindSafe(async {
-                    registry_clone.execute(&sub_call, &sub_ctx).await
-                })
-                .catch_unwind()
-                .await;
+                let result =
+                    AssertUnwindSafe(async { registry_clone.execute(&sub_call, &sub_ctx).await })
+                        .catch_unwind()
+                        .await;
 
                 let elapsed = sub_start.elapsed().as_millis() as u64;
 
@@ -381,11 +378,7 @@ impl ToolExecutor for ToolPackExecutor {
                         } else {
                             "task panicked".to_string()
                         };
-                        log::error!(
-                            "[ToolPack] Sub-tool '{}' panicked: {}",
-                            sub.name,
-                            panic_msg
-                        );
+                        log::error!("[ToolPack] Sub-tool '{}' panicked: {}", sub.name, panic_msg);
                         ToolResultInfo::failure(
                             Some(sub_call_id),
                             Some(sub_block_id),
@@ -398,33 +391,42 @@ impl ToolExecutor for ToolPackExecutor {
                 }
             });
 
-            futs.push(handle);
+            futs.push(async move { (sub_index, handle.await) });
         }
 
         // Wait for all sub-tools with pack-level timeout
         let pack_timeout_duration = Duration::from_secs(pack_timeout_secs);
         let mut results: Vec<ToolResultInfo> = Vec::with_capacity(total);
+        let mut completed_indices: HashSet<usize> = HashSet::with_capacity(total);
         let pack_deadline = tokio::time::sleep(pack_timeout_duration);
         tokio::pin!(pack_deadline);
 
         loop {
             tokio::select! {
-                Some(join_result) = futs.next() => {
+                Some((sub_index, join_result)) = futs.next() => {
                     match join_result {
-                        Ok(tool_result) => results.push(tool_result),
+                        Ok(tool_result) => {
+                            completed_indices.insert(sub_index);
+                            results.push(tool_result);
+                        }
                         Err(join_err) => {
                             log::error!("[ToolPack] Task join error: {}", join_err);
+                            completed_indices.insert(sub_index);
+                            let (tool_name, args) = expected_sub_tools
+                                .get(sub_index)
+                                .cloned()
+                                .unwrap_or_else(|| ("unknown".to_string(), json!(null)));
                             results.push(ToolResultInfo::failure(
-                                None,
-                                None,
-                                "unknown".to_string(),
-                                json!(null),
+                                Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                                Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                                tool_name,
+                                args,
                                 format!("task join error: {}", join_err),
                                 0,
                             ));
                         }
                     }
-                    if results.len() == total {
+                    if completed_indices.len() == total {
                         break;
                     }
                 }
@@ -437,20 +439,42 @@ impl ToolExecutor for ToolPackExecutor {
                     child_token.cancel();
                     // Grace period: wait for running sub-tools to exit
                     let grace = Duration::from_secs(CANCEL_GRACE_PERIOD_SECS);
-                    while let Ok(Some(join_result)) = timeout(grace, futs.next()).await {
+                    while let Ok(Some((sub_index, join_result))) = timeout(grace, futs.next()).await {
                         match join_result {
-                            Ok(tool_result) => results.push(tool_result),
+                            Ok(tool_result) => {
+                                completed_indices.insert(sub_index);
+                                results.push(tool_result);
+                            }
                             Err(join_err) => {
+                                completed_indices.insert(sub_index);
+                                let (tool_name, args) = expected_sub_tools
+                                    .get(sub_index)
+                                    .cloned()
+                                    .unwrap_or_else(|| ("unknown".to_string(), json!(null)));
                                 results.push(ToolResultInfo::failure(
-                                    None,
-                                    None,
-                                    "unknown".to_string(),
-                                    json!(null),
+                                    Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                                    Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                                    tool_name,
+                                    args,
                                     format!("task join error: {}", join_err),
                                     0,
                                 ));
                             }
                         }
+                    }
+                    for (sub_index, (tool_name, args)) in expected_sub_tools.iter().enumerate() {
+                        if completed_indices.contains(&sub_index) {
+                            continue;
+                        }
+                        results.push(ToolResultInfo::failure(
+                            Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                            Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                            tool_name.clone(),
+                            args.clone(),
+                            "tool_pack timeout: sub-tool did not complete within grace period".to_string(),
+                            pack_timeout_secs * 1000,
+                        ));
+                        completed_indices.insert(sub_index);
                     }
                     break;
                 }
