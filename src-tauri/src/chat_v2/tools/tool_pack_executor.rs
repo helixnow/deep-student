@@ -51,6 +51,69 @@ impl ToolPackExecutor {
     }
 }
 
+fn create_sub_context(
+    parent: &ExecutionContext,
+    block_id: String,
+    token: CancellationToken,
+) -> ExecutionContext {
+    ExecutionContext {
+        session_id: parent.session_id.clone(),
+        message_id: parent.message_id.clone(),
+        variant_id: parent.variant_id.clone(),
+        skill_state_version: parent.skill_state_version,
+        round_id: parent.round_id.clone(),
+        block_id,
+        emitter: parent.emitter.clone(),
+        canvas_note_id: parent.canvas_note_id.clone(),
+        notes_manager: parent.notes_manager.clone(),
+        tool_registry: parent.tool_registry.clone(),
+        main_db: parent.main_db.clone(),
+        anki_db: parent.anki_db.clone(),
+        window: parent.window.clone(),
+        vfs_db: parent.vfs_db.clone(),
+        vfs_lance_store: parent.vfs_lance_store.clone(),
+        llm_manager: parent.llm_manager.clone(),
+        chat_v2_db: parent.chat_v2_db.clone(),
+        question_bank_service: parent.question_bank_service.clone(),
+        skill_contents: parent.skill_contents.clone(),
+        skill_embedded_tools: parent.skill_embedded_tools.clone(),
+        cancellation_token: Some(token),
+        rag_top_k: parent.rag_top_k,
+        rag_enable_reranking: parent.rag_enable_reranking,
+        pdf_processing_service: parent.pdf_processing_service.clone(),
+        memory_enabled: parent.memory_enabled,
+        rag_enabled: parent.rag_enabled,
+        web_search_enabled: parent.web_search_enabled,
+    }
+}
+
+fn finalize_synthetic_sub_result(
+    ctx: &ExecutionContext,
+    result: &ToolResultInfo,
+    emit_start: bool,
+) {
+    if emit_start {
+        ctx.emit_tool_call_start(
+            &result.tool_name,
+            result.input.clone(),
+            result.tool_call_id.as_deref(),
+        );
+    }
+
+    if let Some(error) = result.error.as_deref() {
+        ctx.emit_tool_call_error(error);
+    } else {
+        ctx.emit_tool_call_end(Some(json!({
+            "result": result.output.clone(),
+            "durationMs": result.duration_ms.unwrap_or(0),
+        })));
+    }
+
+    if let Err(e) = ctx.save_tool_block(result) {
+        log::warn!("[ToolPack] Failed to save synthetic sub-tool result: {}", e);
+    }
+}
+
 #[async_trait]
 impl ToolExecutor for ToolPackExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
@@ -156,6 +219,15 @@ impl ToolExecutor for ToolPackExecutor {
                 prefixed
             };
 
+            if registry.is_no_timeout_tool(&effective_name) {
+                let msg = format!(
+                    "tool_pack cannot execute blocking/no-timeout tool '{}'",
+                    effective_name
+                );
+                ctx.emit_tool_call_error(&msg);
+                return Err(msg);
+            }
+
             sub_tools.push(SubTool {
                 name: effective_name,
                 args,
@@ -184,47 +256,29 @@ impl ToolExecutor for ToolPackExecutor {
             let registry_clone = registry.clone();
             let sem = semaphore.clone();
             let token = child_token.clone();
-            let parent_block_id = ctx.block_id.clone();
-            let session_id = ctx.session_id.clone();
-            let message_id = ctx.message_id.clone();
-            let variant_id = ctx.variant_id.clone();
-            let skill_state_version = ctx.skill_state_version;
-            let round_id = ctx.round_id.clone();
-            let emitter = ctx.emitter.clone();
-            let canvas_note_id = ctx.canvas_note_id.clone();
-            let notes_manager = ctx.notes_manager.clone();
-            let tool_registry = ctx.tool_registry.clone();
-            let main_db = ctx.main_db.clone();
-            let anki_db = ctx.anki_db.clone();
-            let window = ctx.window.clone();
-            let vfs_db = ctx.vfs_db.clone();
-            let vfs_lance_store = ctx.vfs_lance_store.clone();
-            let llm_manager = ctx.llm_manager.clone();
-            let chat_v2_db = ctx.chat_v2_db.clone();
-            let question_bank_service = ctx.question_bank_service.clone();
-            let skill_contents = ctx.skill_contents.clone();
-            let skill_embedded_tools = ctx.skill_embedded_tools.clone();
-            let rag_top_k = ctx.rag_top_k;
-            let rag_enable_reranking = ctx.rag_enable_reranking;
-            let pdf_processing_service = ctx.pdf_processing_service.clone();
-            let memory_enabled = ctx.memory_enabled;
-            let rag_enabled = ctx.rag_enabled;
-            let web_search_enabled = ctx.web_search_enabled;
+            let sub_block_id = format!("{}-tool_pack-{}", ctx.block_id, sub.index);
+            let sub_call_id = format!("{}-tp-{}", ctx.block_id, sub.index);
+            let sub_ctx = create_sub_context(ctx, sub_block_id.clone(), token.clone());
 
             let handle = tokio::spawn(async move {
                 let sub_start = Instant::now();
-                let sub_block_id = format!("{}-tool_pack-{}", parent_block_id, sub.index);
-                let sub_call_id = format!("{}-tp-{}", parent_block_id, sub.index);
+
+                // Create sub-tool call/context before preflight so synthetic failures
+                // can close and persist the exact sub-tool block.
+                let sub_call =
+                    ToolCall::new(sub_call_id.clone(), sub.name.clone(), sub.args.clone());
 
                 // Cancellation check (early exit)
                 if token.is_cancelled() {
-                    return ToolResultInfo::cancelled(
+                    let result = ToolResultInfo::cancelled(
                         Some(sub_call_id),
                         Some(sub_block_id),
-                        sub.name,
-                        sub.args,
+                        sub.name.clone(),
+                        sub.args.clone(),
                         0,
                     );
+                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                    return result;
                 }
 
                 // Acquire semaphore permit with cancellation-aware select
@@ -234,61 +288,30 @@ impl ToolExecutor for ToolPackExecutor {
                             Ok(permit) => permit,
                             Err(e) => {
                                 log::error!("[ToolPack] Semaphore acquire error for '{}': {}", sub.name, e);
-                                return ToolResultInfo::failure(
+                                let result = ToolResultInfo::failure(
                                     Some(sub_call_id),
                                     Some(sub_block_id),
-                                    sub.name,
-                                    sub.args,
+                                    sub.name.clone(),
+                                    sub.args.clone(),
                                     format!("Concurrency limit error: {}", e),
                                     0,
                                 );
+                                finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                                return result;
                             }
                         }
                     }
                     _ = token.cancelled() => {
-                        return ToolResultInfo::cancelled(
+                        let result = ToolResultInfo::cancelled(
                             Some(sub_call_id),
                             Some(sub_block_id),
-                            sub.name,
-                            sub.args,
+                            sub.name.clone(),
+                            sub.args.clone(),
                             0,
                         );
+                        finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                        return result;
                     }
-                };
-
-                // Create sub-tool call
-                let sub_call =
-                    ToolCall::new(sub_call_id.clone(), sub.name.clone(), sub.args.clone());
-
-                // Create sub-context
-                let sub_ctx = ExecutionContext {
-                    session_id,
-                    message_id,
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                    block_id: sub_block_id.clone(),
-                    emitter,
-                    canvas_note_id,
-                    notes_manager,
-                    tool_registry,
-                    main_db,
-                    anki_db,
-                    window,
-                    vfs_db,
-                    vfs_lance_store,
-                    llm_manager,
-                    chat_v2_db,
-                    question_bank_service,
-                    skill_contents,
-                    skill_embedded_tools,
-                    cancellation_token: Some(token.clone()),
-                    rag_top_k,
-                    rag_enable_reranking,
-                    pdf_processing_service,
-                    memory_enabled,
-                    rag_enabled,
-                    web_search_enabled,
                 };
 
                 // === Security preflight checks (mirrors pipeline execute_single_tool) ===
@@ -298,35 +321,41 @@ impl ToolExecutor for ToolPackExecutor {
                 let is_rag_tool = sub_short_name.starts_with("rag_");
                 let is_web_search_tool = sub_short_name == "web_search";
 
-                if is_memory_tool && !memory_enabled {
-                    return ToolResultInfo::failure(
+                if is_memory_tool && !sub_ctx.memory_enabled {
+                    let result = ToolResultInfo::failure(
                         Some(sub_call_id),
                         Some(sub_block_id),
-                        sub.name,
-                        sub.args,
+                        sub.name.clone(),
+                        sub.args.clone(),
                         "memory function disabled, sub-tool blocked".to_string(),
                         0,
                     );
+                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                    return result;
                 }
-                if is_rag_tool && !rag_enabled {
-                    return ToolResultInfo::failure(
+                if is_rag_tool && !sub_ctx.rag_enabled {
+                    let result = ToolResultInfo::failure(
                         Some(sub_call_id),
                         Some(sub_block_id),
-                        sub.name,
-                        sub.args,
+                        sub.name.clone(),
+                        sub.args.clone(),
                         "RAG function disabled, sub-tool blocked".to_string(),
                         0,
                     );
+                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                    return result;
                 }
-                if is_web_search_tool && !web_search_enabled {
-                    return ToolResultInfo::failure(
+                if is_web_search_tool && !sub_ctx.web_search_enabled {
+                    let result = ToolResultInfo::failure(
                         Some(sub_call_id),
                         Some(sub_block_id),
-                        sub.name,
-                        sub.args,
+                        sub.name.clone(),
+                        sub.args.clone(),
                         "WebSearch function disabled, sub-tool blocked".to_string(),
                         0,
                     );
+                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                    return result;
                 }
 
                 // Sensitivity check — block high-sensitivity tools that require user approval
@@ -338,11 +367,11 @@ impl ToolExecutor for ToolPackExecutor {
                             sub.name,
                             sensitivity
                         );
-                        return ToolResultInfo::failure(
+                        let result = ToolResultInfo::failure(
                             Some(sub_call_id),
                             Some(sub_block_id),
                             sub.name.clone(),
-                            sub.args,
+                            sub.args.clone(),
                             format!(
                                 "Tool '{}' requires user approval (sensitivity: {:?}) and cannot be executed inside tool_pack",
                                 sub.name,
@@ -350,6 +379,8 @@ impl ToolExecutor for ToolPackExecutor {
                             ),
                             0,
                         );
+                        finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                        return result;
                     }
                 }
 
@@ -363,14 +394,18 @@ impl ToolExecutor for ToolPackExecutor {
 
                 match result {
                     Ok(Ok(tool_result)) => tool_result,
-                    Ok(Err(err_msg)) => ToolResultInfo::failure(
-                        Some(sub_call_id),
-                        Some(sub_block_id),
-                        sub.name,
-                        sub.args,
-                        err_msg,
-                        elapsed,
-                    ),
+                    Ok(Err(err_msg)) => {
+                        let result = ToolResultInfo::failure(
+                            Some(sub_call_id),
+                            Some(sub_block_id),
+                            sub.name,
+                            sub.args,
+                            err_msg,
+                            elapsed,
+                        );
+                        finalize_synthetic_sub_result(&sub_ctx, &result, false);
+                        result
+                    }
                     Err(panic_info) => {
                         let panic_msg = if let Some(s) = panic_info.downcast_ref::<String>() {
                             s.clone()
@@ -380,14 +415,16 @@ impl ToolExecutor for ToolPackExecutor {
                             "task panicked".to_string()
                         };
                         log::error!("[ToolPack] Sub-tool '{}' panicked: {}", sub.name, panic_msg);
-                        ToolResultInfo::failure(
+                        let result = ToolResultInfo::failure(
                             Some(sub_call_id),
                             Some(sub_block_id),
                             sub.name,
                             sub.args,
                             format!("task panicked: {}", panic_msg),
                             elapsed,
-                        )
+                        );
+                        finalize_synthetic_sub_result(&sub_ctx, &result, false);
+                        result
                     }
                 }
             });
@@ -397,7 +434,7 @@ impl ToolExecutor for ToolPackExecutor {
 
         // Wait for all sub-tools with pack-level timeout
         let pack_timeout_duration = Duration::from_secs(pack_timeout_secs);
-        let mut results: Vec<ToolResultInfo> = Vec::with_capacity(total);
+        let mut results: Vec<(usize, ToolResultInfo)> = Vec::with_capacity(total);
         let mut completed_indices: HashSet<usize> = HashSet::with_capacity(total);
         let pack_deadline = tokio::time::sleep(pack_timeout_duration);
         tokio::pin!(pack_deadline);
@@ -408,7 +445,7 @@ impl ToolExecutor for ToolPackExecutor {
                     match join_result {
                         Ok(tool_result) => {
                             completed_indices.insert(sub_index);
-                            results.push(tool_result);
+                            results.push((sub_index, tool_result));
                         }
                         Err(join_err) => {
                             log::error!("[ToolPack] Task join error: {}", join_err);
@@ -417,14 +454,21 @@ impl ToolExecutor for ToolPackExecutor {
                                 .get(sub_index)
                                 .cloned()
                                 .unwrap_or_else(|| ("unknown".to_string(), json!(null)));
-                            results.push(ToolResultInfo::failure(
+                            let result = ToolResultInfo::failure(
                                 Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
                                 Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
                                 tool_name,
                                 args,
                                 format!("task join error: {}", join_err),
                                 0,
-                            ));
+                            );
+                            let sub_ctx = create_sub_context(
+                                ctx,
+                                format!("{}-tool_pack-{}", ctx.block_id, sub_index),
+                                child_token.clone(),
+                            );
+                            finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                            results.push((sub_index, result));
                         }
                     }
                     if completed_indices.len() == total {
@@ -435,7 +479,7 @@ impl ToolExecutor for ToolPackExecutor {
                     log::warn!(
                         "[ToolPack] Pack timeout after {}s, cancelling {} remaining sub-tools",
                         pack_timeout_secs,
-                        total - results.len()
+                        total - completed_indices.len()
                     );
                     child_token.cancel();
                     // Grace period: wait for running sub-tools to exit
@@ -444,7 +488,7 @@ impl ToolExecutor for ToolPackExecutor {
                         match join_result {
                             Ok(tool_result) => {
                                 completed_indices.insert(sub_index);
-                                results.push(tool_result);
+                                results.push((sub_index, tool_result));
                             }
                             Err(join_err) => {
                                 completed_indices.insert(sub_index);
@@ -452,14 +496,21 @@ impl ToolExecutor for ToolPackExecutor {
                                     .get(sub_index)
                                     .cloned()
                                     .unwrap_or_else(|| ("unknown".to_string(), json!(null)));
-                                results.push(ToolResultInfo::failure(
+                                let result = ToolResultInfo::failure(
                                     Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
                                     Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
                                     tool_name,
                                     args,
                                     format!("task join error: {}", join_err),
                                     0,
-                                ));
+                                );
+                                let sub_ctx = create_sub_context(
+                                    ctx,
+                                    format!("{}-tool_pack-{}", ctx.block_id, sub_index),
+                                    child_token.clone(),
+                                );
+                                finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                                results.push((sub_index, result));
                             }
                         }
                     }
@@ -467,14 +518,76 @@ impl ToolExecutor for ToolPackExecutor {
                         if completed_indices.contains(&sub_index) {
                             continue;
                         }
-                        results.push(ToolResultInfo::failure(
+                        let result = ToolResultInfo::failure(
                             Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
                             Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
                             tool_name.clone(),
                             args.clone(),
                             "tool_pack timeout: sub-tool did not complete within grace period".to_string(),
                             pack_timeout_secs * 1000,
-                        ));
+                        );
+                        let sub_ctx = create_sub_context(
+                            ctx,
+                            format!("{}-tool_pack-{}", ctx.block_id, sub_index),
+                            child_token.clone(),
+                        );
+                        finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                        results.push((sub_index, result));
+                        completed_indices.insert(sub_index);
+                    }
+                    break;
+                }
+                _ = child_token.cancelled() => {
+                    log::info!("[ToolPack] Pack cancelled, draining completed sub-tools");
+                    let grace = Duration::from_secs(CANCEL_GRACE_PERIOD_SECS);
+                    while let Ok(Some((sub_index, join_result))) = timeout(grace, futs.next()).await {
+                        match join_result {
+                            Ok(tool_result) => {
+                                completed_indices.insert(sub_index);
+                                results.push((sub_index, tool_result));
+                            }
+                            Err(join_err) => {
+                                completed_indices.insert(sub_index);
+                                let (tool_name, args) = expected_sub_tools
+                                    .get(sub_index)
+                                    .cloned()
+                                    .unwrap_or_else(|| ("unknown".to_string(), json!(null)));
+                                let result = ToolResultInfo::failure(
+                                    Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                                    Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                                    tool_name,
+                                    args,
+                                    format!("task join error: {}", join_err),
+                                    0,
+                                );
+                                let sub_ctx = create_sub_context(
+                                    ctx,
+                                    format!("{}-tool_pack-{}", ctx.block_id, sub_index),
+                                    child_token.clone(),
+                                );
+                                finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                                results.push((sub_index, result));
+                            }
+                        }
+                    }
+                    for (sub_index, (tool_name, args)) in expected_sub_tools.iter().enumerate() {
+                        if completed_indices.contains(&sub_index) {
+                            continue;
+                        }
+                        let result = ToolResultInfo::cancelled(
+                            Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                            Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                            tool_name.clone(),
+                            args.clone(),
+                            start.elapsed().as_millis() as u64,
+                        );
+                        let sub_ctx = create_sub_context(
+                            ctx,
+                            format!("{}-tool_pack-{}", ctx.block_id, sub_index),
+                            child_token.clone(),
+                        );
+                        finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                        results.push((sub_index, result));
                         completed_indices.insert(sub_index);
                     }
                     break;
@@ -483,14 +596,17 @@ impl ToolExecutor for ToolPackExecutor {
         }
 
         // === Aggregate Results ===
+        results.sort_by_key(|(index, _)| *index);
         let total_ms = start.elapsed().as_millis() as u64;
-        let succeeded = results.iter().filter(|r| r.success).count();
+        let succeeded = results.iter().filter(|(_, r)| r.success).count();
         let failed = results.len() - succeeded;
 
         let results_json: Vec<Value> = results
             .iter()
-            .map(|r| {
+            .map(|(index, r)| {
                 json!({
+                    "index": index,
+                    "tool_call_id": r.tool_call_id,
                     "tool_name": r.tool_name,
                     "success": r.success,
                     "output": r.output,
