@@ -14,6 +14,7 @@ import {
 } from '@/features/chat/core/middleware/eventBridge';
 import { chunkBuffer } from '@/features/chat/core/middleware/chunkBuffer';
 import { eventRegistry } from '@/features/chat/registry/eventRegistry';
+import { toolCallEventHandler } from '@/features/chat/plugins/events/toolCall';
 import type { ChatStore } from '@/features/chat/core/types';
 
 // ============================================================================
@@ -99,6 +100,11 @@ function createMockStore(overrides: Partial<ChatStore> = {}): ChatStore {
     getOrderedMessages: vi.fn(() => []),
     ...overrides,
   } as unknown as ChatStore;
+}
+
+function registerActualToolCallPlugin() {
+  eventRegistry.clear();
+  eventRegistry.register('tool_call', toolCallEventHandler);
 }
 
 // ============================================================================
@@ -395,6 +401,120 @@ describe('eventBridge', () => {
       });
 
       expect(onEnd).toHaveBeenCalledWith(mockStore, tool1BlockId, { success: true });
+    });
+  });
+
+  describe('tool_pack tool_call bridge interleaving', () => {
+    beforeEach(() => {
+      registerActualToolCallPlugin();
+    });
+
+    it('routes tool_pack tool_call events by explicit backend blockId even when end events are reversed', () => {
+      const resultA = { result: { valid: true, source: 'a' }, durationMs: 11 };
+      const resultB = { result: { success: true, source: 'b' }, durationMs: 7 };
+
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'start',
+        messageId: 'msg-1',
+        blockId: 'parent-tool_pack-0',
+        payload: {
+          toolName: 'builtin-template_validate',
+          toolInput: { template: { name: 'A' } },
+          toolCallId: 'parent-tp-0',
+        },
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'start',
+        messageId: 'msg-1',
+        blockId: 'parent-tool_pack-1',
+        payload: {
+          toolName: 'builtin-user_todo_create_item',
+          toolInput: { title: 'B' },
+          toolCallId: 'parent-tp-1',
+        },
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'end',
+        blockId: 'parent-tool_pack-1',
+        result: resultB,
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'end',
+        blockId: 'parent-tool_pack-0',
+        result: resultA,
+      });
+
+      expect(mockStore.createBlockWithId).toHaveBeenNthCalledWith(
+        1,
+        'msg-1',
+        'mcp_tool',
+        'parent-tool_pack-0'
+      );
+      expect(mockStore.createBlockWithId).toHaveBeenNthCalledWith(
+        2,
+        'msg-1',
+        'mcp_tool',
+        'parent-tool_pack-1'
+      );
+      expect(mockStore.setBlockResult).toHaveBeenNthCalledWith(
+        1,
+        'parent-tool_pack-1',
+        resultB
+      );
+      expect(mockStore.setBlockResult).toHaveBeenNthCalledWith(
+        2,
+        'parent-tool_pack-0',
+        resultA
+      );
+    });
+
+    it('routes tool_pack tool_call error by explicit backend blockId', () => {
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'start',
+        messageId: 'msg-1',
+        blockId: 'parent-tool_pack-0',
+        payload: {
+          toolName: 'builtin-template_validate',
+          toolInput: { template: { name: 'A' } },
+          toolCallId: 'parent-tp-0',
+        },
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'start',
+        messageId: 'msg-1',
+        blockId: 'parent-tool_pack-1',
+        payload: {
+          toolName: 'builtin-user_todo_create_item',
+          toolInput: { title: 'B' },
+          toolCallId: 'parent-tp-1',
+        },
+      });
+
+      handleBackendEvent(mockStore, {
+        type: 'tool_call',
+        phase: 'error',
+        blockId: 'parent-tool_pack-1',
+        error: 'phase 3 bridge failure',
+      });
+
+      expect(mockStore.setBlockError).toHaveBeenCalledWith(
+        'parent-tool_pack-1',
+        'phase 3 bridge failure'
+      );
+      expect(mockStore.setBlockError).not.toHaveBeenCalledWith(
+        'parent-tool_pack-0',
+        'phase 3 bridge failure'
+      );
     });
   });
 });
