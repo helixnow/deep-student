@@ -1,9 +1,12 @@
+use deep_student_lib::chat_v2::database::ChatV2Database;
 use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::tools::{
-    AskUserExecutor, ExecutionContext, GeneralToolExecutor, TemplateDesignerExecutor, ToolExecutor,
-    ToolExecutorRegistry, ToolPackExecutor,
+    AskUserExecutor, ExecutionContext, GeneralToolExecutor, SessionToolExecutor,
+    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolPackExecutor,
 };
 use deep_student_lib::chat_v2::types::{ToolCall, ToolResultInfo};
+use deep_student_lib::data_governance::migration::coordinator::MigrationCoordinator;
+use deep_student_lib::data_governance::schema_registry::DatabaseId;
 use deep_student_lib::tools::ToolRegistry;
 use serde_json::{json, Value};
 use std::sync::{
@@ -40,6 +43,7 @@ fn create_tool_pack_registry() -> Arc<ToolExecutorRegistry> {
     Arc::new_cyclic(|weak| {
         ToolExecutorRegistry::from_vec(vec![
             Arc::new(TemplateDesignerExecutor::new()) as Arc<dyn ToolExecutor>,
+            Arc::new(SessionToolExecutor::new()),
             Arc::new(AskUserExecutor::new()),
             Arc::new(ToolPackExecutor::new(weak.clone())),
             Arc::new(GeneralToolExecutor::new()),
@@ -274,6 +278,41 @@ fn create_timeout_registry(
     })
 }
 
+fn create_chat_v2_db() -> (tempfile::TempDir, Arc<ChatV2Database>) {
+    let temp_dir = tempfile::TempDir::new().expect("failed to create Chat V2 temp dir");
+    let mut coordinator =
+        MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+    coordinator
+        .migrate_single(DatabaseId::ChatV2)
+        .expect("Chat V2 migrations should apply cleanly");
+    let db = ChatV2Database::new(temp_dir.path()).expect("failed to create Chat V2 database");
+    (temp_dir, Arc::new(db))
+}
+
+fn valid_template_fixture() -> Value {
+    json!({
+        "name": "Phase 3 Valid Template",
+        "noteType": "Basic",
+        "fields": ["Front", "Back"],
+        "frontTemplate": "{{Front}}",
+        "backTemplate": "{{Back}}",
+        "cssStyle": ".card { font-family: arial; }",
+        "generationPrompt": "Create a concise study card.",
+        "fieldExtractionRules": {
+            "Front": {
+                "field_type": "Text",
+                "is_required": true,
+                "description": "Question side"
+            },
+            "Back": {
+                "field_type": "Text",
+                "is_required": true,
+                "description": "Answer side"
+            }
+        }
+    })
+}
+
 fn tool_pack_call(arguments: Value) -> ToolCall {
     ToolCall::new(
         "phase-3-pack-call".to_string(),
@@ -293,6 +332,133 @@ async fn tool_pack_harness_constructs_execution_context() {
     assert_eq!(harness.context.window.label(), "tool-pack-test");
     assert_eq!(harness.context.emitter.session_id(), "phase-3-session");
     assert!(harness.registry.has_specific_executor("builtin-tool_pack"));
+}
+
+#[tokio::test]
+async fn tool_pack_executes_real_builtin_tools_and_returns_one_aggregate() {
+    let registry = create_tool_pack_registry();
+    let (_temp_dir, chat_v2_db) = create_chat_v2_db();
+    let mut harness = create_execution_context("parent-block", registry.clone());
+    harness.context = harness.context.with_chat_v2_db(Some(chat_v2_db));
+    let call = tool_pack_call(json!({
+        "tools": [
+            {
+                "name": "builtin-template_validate",
+                "args": { "template": valid_template_fixture() }
+            },
+            {
+                "name": "builtin-session_list",
+                "args": { "limit": 5, "include_tags": false }
+            }
+        ]
+    }));
+
+    let result = registry
+        .execute(&call, &harness.context)
+        .await
+        .expect("valid real built-in pack should return aggregate result");
+
+    assert!(result.success);
+    assert_eq!(result.tool_name, "builtin-tool_pack");
+    assert_eq!(result.output["succeeded"], 2);
+    assert_eq!(result.output["failed"], 0);
+
+    let results = result.output["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().all(|item| !item["duration_ms"].is_null()));
+    assert!(results.iter().all(|item| !item["block_id"].is_null()));
+    assert!(results.iter().any(|item| {
+        item["tool_name"] == "builtin-template_validate"
+            && item["success"] == true
+            && item["output"]["valid"] == true
+    }));
+    assert!(results.iter().any(|item| {
+        item["tool_name"] == "builtin-session_list"
+            && item["success"] == true
+            && item["output"]["sessions"].is_array()
+    }));
+
+    let block_ids: Vec<&str> = results
+        .iter()
+        .filter_map(|item| item["block_id"].as_str())
+        .collect();
+    assert!(block_ids.contains(&"parent-block-tool_pack-0"));
+    assert!(block_ids.contains(&"parent-block-tool_pack-1"));
+}
+
+#[tokio::test]
+async fn tool_pack_mixed_success_failure_preserves_successful_results() {
+    let registry = create_tool_pack_registry();
+    let harness = create_execution_context("mixed-pack", registry.clone());
+    let call = tool_pack_call(json!({
+        "tools": [
+            {
+                "name": "builtin-template_validate",
+                "args": { "template": valid_template_fixture() }
+            },
+            {
+                "name": "builtin-template_validate",
+                "args": {}
+            }
+        ]
+    }));
+
+    let result = registry
+        .execute(&call, &harness.context)
+        .await
+        .expect("registered sub-tool runtime failure should return aggregate result");
+
+    assert!(result.success);
+    assert_eq!(result.output["succeeded"], 1);
+    assert_eq!(result.output["failed"], 1);
+
+    let results = result.output["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+    assert!(results.iter().any(|item| {
+        item["tool_name"] == "builtin-template_validate" && item["success"] == true
+    }));
+    assert!(results.iter().any(|item| {
+        item["tool_name"] == "builtin-template_validate"
+            && item["success"] == false
+            && item["error"]
+                .as_str()
+                .map(|error| !error.is_empty())
+                .unwrap_or(false)
+    }));
+}
+
+#[tokio::test]
+async fn tool_pack_blocks_sensitive_subtool_without_bypassing_approval() {
+    let registry = create_tool_pack_registry();
+    let harness = create_execution_context("sensitive-pack", registry.clone());
+    let call = tool_pack_call(json!({
+        "tools": [
+            {
+                "name": "builtin-template_delete",
+                "args": { "templateId": "phase-3-sensitive" }
+            }
+        ]
+    }));
+
+    let result = registry
+        .execute(&call, &harness.context)
+        .await
+        .expect("sensitive sub-tool should be blocked inside aggregate result");
+
+    assert!(result.success);
+    assert_eq!(result.output["succeeded"], 0);
+    assert_eq!(result.output["failed"], 1);
+
+    let results = result.output["results"].as_array().unwrap();
+    assert_eq!(results.len(), 1);
+    let failed = &results[0];
+    assert_eq!(failed["tool_name"], "builtin-template_delete");
+    assert_eq!(failed["success"], false);
+    assert!(failed["output"].is_null());
+    assert!(failed["error"]
+        .as_str()
+        .unwrap_or_default()
+        .contains("requires user approval"));
 }
 
 #[tokio::test]
