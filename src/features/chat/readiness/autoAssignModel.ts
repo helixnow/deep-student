@@ -205,7 +205,7 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
       console.log('[autoAssignModel] 已移除', enginesToRemove.length, '个不可用 OCR 引擎');
     }
 
-    // 重新读取引擎列表，检查是否只剩系统 OCR
+    // 重新读取引擎列表
     let currentEngines: OcrEngineEntry[] = [];
     try {
       currentEngines = await invoke<OcrEngineEntry[]>('get_available_ocr_models');
@@ -214,19 +214,11 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
     }
 
     const customEngines = currentEngines.filter(e => e.configId !== SYSTEM_OCR_CONFIG_ID);
-    const onlySystemOcrLeft = customEngines.length === 0;
-
     console.log('[autoAssignModel] 清理后剩余自定义 OCR 引擎数量:', customEngines.length);
 
-    // 如果只剩系统 OCR，继续注册新的视觉模型
-    if (!onlySystemOcrLeft) {
-      console.log('[autoAssignModel] 仍有自定义 OCR 模型，跳过注册新引擎');
-      // 但仍需确保系统 OCR 优先级最低
-      await ensureSystemOcrLastPriority();
-      return;
-    }
-
-    console.log('[autoAssignModel] 只剩系统 OCR，开始注册视觉模型...');
+    // 始终注册所有可用的视觉模型，不因已有自定义引擎而跳过
+    // 确保当前槽位分配的模型一定被注册到 OCR 引擎列表中
+    console.log('[autoAssignModel] 开始注册视觉模型...');
 
     const existingConfigIds = new Set(currentEngines.map(e => e.configId));
     let registeredCount = 0;
@@ -342,10 +334,10 @@ export async function autoAssignAllModels(): Promise<AutoAssignResult> {
       const isAssigned = currentValue && currentValue !== '' && currentValue !== null && !isSystemOcr;
 
       if (isAssigned) {
-        // 已分配的槽位：检查模型是否被禁用或不存在
+        // 已分配的槽位：检查模型是否被禁用、不存在或不再满足该槽位类型要求
         const assignedApi = sortedConfigs.find(c => c.id === currentValue);
-        if (!assignedApi || !assignedApi.enabled) {
-          // 模型被禁用或已删除，需要重新分配
+        if (!assignedApi || !assignedApi.enabled || !slot.filter(assignedApi)) {
+          // 模型被禁用、已删除或类型不匹配，需要重新分配
           const matched = sortedConfigs.find(slot.filter);
           if (matched) {
             changes[slot.field] = matched.id as any;
