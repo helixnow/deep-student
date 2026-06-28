@@ -23,7 +23,6 @@ use futures::FutureExt;
 use serde_json::{json, Value};
 use tokio::sync::Semaphore;
 use tokio::time::{timeout, Duration};
-use tokio_util::sync::CancellationToken;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::executor_registry::ToolExecutorRegistry;
@@ -155,6 +154,15 @@ impl ToolExecutor for ToolPackExecutor {
                 }
                 prefixed
             };
+
+            if registry.is_no_timeout_tool(&effective_name) {
+                let msg = format!(
+                    "tool_pack cannot execute blocking/no-timeout tool '{}'",
+                    effective_name
+                );
+                ctx.emit_tool_call_error(&msg);
+                return Err(msg);
+            }
 
             sub_tools.push(SubTool {
                 name: effective_name,
@@ -474,6 +482,47 @@ impl ToolExecutor for ToolPackExecutor {
                             args.clone(),
                             "tool_pack timeout: sub-tool did not complete within grace period".to_string(),
                             pack_timeout_secs * 1000,
+                        ));
+                        completed_indices.insert(sub_index);
+                    }
+                    break;
+                }
+                _ = child_token.cancelled() => {
+                    log::info!("[ToolPack] Pack cancelled, draining completed sub-tools");
+                    let grace = Duration::from_secs(CANCEL_GRACE_PERIOD_SECS);
+                    while let Ok(Some((sub_index, join_result))) = timeout(grace, futs.next()).await {
+                        match join_result {
+                            Ok(tool_result) => {
+                                completed_indices.insert(sub_index);
+                                results.push(tool_result);
+                            }
+                            Err(join_err) => {
+                                completed_indices.insert(sub_index);
+                                let (tool_name, args) = expected_sub_tools
+                                    .get(sub_index)
+                                    .cloned()
+                                    .unwrap_or_else(|| ("unknown".to_string(), json!(null)));
+                                results.push(ToolResultInfo::failure(
+                                    Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                                    Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                                    tool_name,
+                                    args,
+                                    format!("task join error: {}", join_err),
+                                    0,
+                                ));
+                            }
+                        }
+                    }
+                    for (sub_index, (tool_name, args)) in expected_sub_tools.iter().enumerate() {
+                        if completed_indices.contains(&sub_index) {
+                            continue;
+                        }
+                        results.push(ToolResultInfo::cancelled(
+                            Some(format!("{}-tp-{}", ctx.block_id, sub_index)),
+                            Some(format!("{}-tool_pack-{}", ctx.block_id, sub_index)),
+                            tool_name.clone(),
+                            args.clone(),
+                            start.elapsed().as_millis() as u64,
                         ));
                         completed_indices.insert(sub_index);
                     }

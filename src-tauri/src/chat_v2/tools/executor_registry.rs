@@ -299,6 +299,10 @@ impl ToolExecutorRegistry {
             .unwrap_or(false)
     }
 
+    pub(crate) fn is_no_timeout_tool(&self, tool_name: &str) -> bool {
+        get_tool_timeout_secs(tool_name) == NO_TOOL_TIMEOUT_SECS
+    }
+
     /// 获取已注册的执行器数量
     pub fn len(&self) -> usize {
         self.executors.len()
@@ -432,6 +436,15 @@ mod tests {
     fn ask_user_tool_is_not_subject_to_global_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-ask_user"), 0);
         assert_eq!(get_tool_timeout_secs("ask_user"), 0);
+    }
+
+    #[test]
+    fn ask_user_is_no_timeout_tool_for_pack_validation() {
+        let registry = ToolExecutorRegistry::new();
+        assert!(registry.is_no_timeout_tool("builtin-ask_user"));
+        assert!(registry.is_no_timeout_tool("ask_user"));
+        assert!(!registry.is_no_timeout_tool("builtin-template_validate"));
+        assert!(!registry.is_no_timeout_tool("builtin-tool_pack"));
     }
 
     #[test]
