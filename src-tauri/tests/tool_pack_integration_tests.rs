@@ -85,6 +85,7 @@ struct Phase3ConcurrencyProbeExecutor {
     in_flight: Arc<AtomicUsize>,
     max_in_flight: Arc<AtomicUsize>,
     started_ten: Arc<Notify>,
+    released: Arc<AtomicBool>,
     release: Arc<Notify>,
 }
 
@@ -119,7 +120,13 @@ impl ToolExecutor for Phase3ConcurrencyProbeExecutor {
             self.started_ten.notify_waiters();
         }
 
-        self.release.notified().await;
+        loop {
+            let release_notified = self.release.notified();
+            if self.released.load(Ordering::SeqCst) {
+                break;
+            }
+            release_notified.await;
+        }
         self.in_flight.fetch_sub(1, Ordering::SeqCst);
 
         Ok(ToolResultInfo::success(
@@ -230,6 +237,7 @@ fn create_concurrency_registry(
     in_flight: Arc<AtomicUsize>,
     max_in_flight: Arc<AtomicUsize>,
     started_ten: Arc<Notify>,
+    released: Arc<AtomicBool>,
     release: Arc<Notify>,
 ) -> Arc<ToolExecutorRegistry> {
     Arc::new_cyclic(|weak| {
@@ -239,6 +247,7 @@ fn create_concurrency_registry(
                 in_flight,
                 max_in_flight,
                 started_ten,
+                released,
                 release,
             }) as Arc<dyn ToolExecutor>,
             Arc::new(ToolPackExecutor::new(weak.clone())),
@@ -394,9 +403,11 @@ fn tool_pack_selected_real_subtools_shared_state_audit_matches_allowed_paths() {
     assert!(user_todo_source.contains("VfsTodoRepo::create_todo_item"));
     assert!(session_source.contains("ChatV2Database") || session_source.contains("chat_v2_db"));
     assert!(executor_source.contains("save_tool_block"));
-    assert!(template_source.contains("emit_tool_call")
-        || session_source.contains("emit_tool_call")
-        || user_todo_source.contains("emit_tool_call"));
+    assert!(
+        template_source.contains("emit_tool_call")
+            || session_source.contains("emit_tool_call")
+            || user_todo_source.contains("emit_tool_call")
+    );
     assert!(user_todo_source.contains("emit_todo_changed"));
     assert!(tool_pack_source.contains("ToolExecutorRegistry"));
     assert!(tool_pack_source.contains("registry_clone.execute"));
@@ -600,9 +611,7 @@ async fn tool_pack_repeated_vfs_write_load_remains_free_of_sqlite_lock_errors() 
         let block_id = format!("write-repeat-{}", round);
         let mut harness = create_execution_context(&block_id, registry.clone());
         harness.context = harness.context.with_vfs_db(Some(vfs_db.clone()));
-        harness.context = harness
-            .context
-            .with_chat_v2_db(Some(chat_v2_db.clone()));
+        harness.context = harness.context.with_chat_v2_db(Some(chat_v2_db.clone()));
         let call = tool_pack_call(json!({
             "timeout": 30,
             "tools": create_user_todo_create_tools(&format!("phase-3-repeat-{}", round))
@@ -722,12 +731,14 @@ async fn tool_pack_executes_subtools_concurrently_and_respects_max_concurrency()
     let in_flight = Arc::new(AtomicUsize::new(0));
     let max_in_flight = Arc::new(AtomicUsize::new(0));
     let started_ten = Arc::new(Notify::new());
+    let released = Arc::new(AtomicBool::new(false));
     let release = Arc::new(Notify::new());
     let registry = create_concurrency_registry(
         started.clone(),
         in_flight.clone(),
         max_in_flight.clone(),
         started_ten.clone(),
+        released.clone(),
         release.clone(),
     );
     let harness = create_execution_context("parallel-pack", registry.clone());
@@ -739,17 +750,25 @@ async fn tool_pack_executes_subtools_concurrently_and_respects_max_concurrency()
     let pack = registry.execute(&call, &harness.context);
     tokio::pin!(pack);
 
-    timeout(Duration::from_secs(2), started_ten.notified())
-        .await
-        .expect("first 10 sub-tools should start before release");
+    tokio::select! {
+        _ = started_ten.notified() => {}
+        result = &mut pack => panic!("pack completed before concurrency was observed: {:?}", result),
+        _ = tokio::time::sleep(Duration::from_secs(2)) => {
+            panic!("first 10 sub-tools should start before release");
+        }
+    }
 
     assert_eq!(started.load(Ordering::SeqCst), 10);
     assert!(max_in_flight.load(Ordering::SeqCst) >= 2);
     assert!(max_in_flight.load(Ordering::SeqCst) <= 10);
 
+    released.store(true, Ordering::SeqCst);
     release.notify_waiters();
 
-    let result = pack.await.expect("tool_pack should complete");
+    let result = timeout(Duration::from_secs(5), &mut pack)
+        .await
+        .expect("released pack should complete")
+        .expect("tool_pack should complete");
     let output = result.output;
     assert_eq!(output["succeeded"], 12);
     assert_eq!(output["failed"], 0);
@@ -819,9 +838,13 @@ async fn tool_pack_parent_cancellation_preserves_completed_results() {
     let pack = registry.execute(&call, &harness.context);
     tokio::pin!(pack);
 
-    timeout(Duration::from_secs(2), fast_notify.notified())
-        .await
-        .expect("fast sub-tool should signal completion");
+    tokio::select! {
+        _ = fast_notify.notified() => {}
+        result = &mut pack => panic!("pack completed before cancellation handoff: {:?}", result),
+        _ = tokio::time::sleep(Duration::from_secs(2)) => {
+            panic!("fast sub-tool should signal completion");
+        }
+    }
     assert!(fast_completed.load(Ordering::SeqCst));
 
     parent_token.cancel();
