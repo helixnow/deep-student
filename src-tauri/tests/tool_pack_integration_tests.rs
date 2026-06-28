@@ -3,11 +3,13 @@ use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::tools::{
     AskUserExecutor, ExecutionContext, GeneralToolExecutor, SessionToolExecutor,
     TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolPackExecutor,
+    UserTodoExecutor,
 };
 use deep_student_lib::chat_v2::types::{ToolCall, ToolResultInfo};
 use deep_student_lib::data_governance::migration::coordinator::MigrationCoordinator;
 use deep_student_lib::data_governance::schema_registry::DatabaseId;
 use deep_student_lib::tools::ToolRegistry;
+use deep_student_lib::vfs::VfsDatabase;
 use serde_json::{json, Value};
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -44,6 +46,7 @@ fn create_tool_pack_registry() -> Arc<ToolExecutorRegistry> {
         ToolExecutorRegistry::from_vec(vec![
             Arc::new(TemplateDesignerExecutor::new()) as Arc<dyn ToolExecutor>,
             Arc::new(SessionToolExecutor::new()),
+            Arc::new(UserTodoExecutor::new()),
             Arc::new(AskUserExecutor::new()),
             Arc::new(ToolPackExecutor::new(weak.clone())),
             Arc::new(GeneralToolExecutor::new()),
@@ -289,6 +292,17 @@ fn create_chat_v2_db() -> (tempfile::TempDir, Arc<ChatV2Database>) {
     (temp_dir, Arc::new(db))
 }
 
+fn create_vfs_db() -> (tempfile::TempDir, Arc<VfsDatabase>) {
+    let temp_dir = tempfile::TempDir::new().expect("failed to create VFS temp dir");
+    let mut coordinator =
+        MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+    coordinator
+        .migrate_single(DatabaseId::Vfs)
+        .expect("VFS migrations should apply cleanly");
+    let db = VfsDatabase::new(temp_dir.path()).expect("failed to create VFS database");
+    (temp_dir, Arc::new(db))
+}
+
 fn valid_template_fixture() -> Value {
     json!({
         "name": "Phase 3 Valid Template",
@@ -313,6 +327,41 @@ fn valid_template_fixture() -> Value {
     })
 }
 
+fn create_user_todo_create_tools(prefix: &str) -> Vec<Value> {
+    (0..20)
+        .map(|i| {
+            json!({
+                "name": "builtin-user_todo_create_item",
+                "args": {
+                    "title": format!("{}-{}", prefix, i),
+                    "priority": "none"
+                }
+            })
+        })
+        .collect()
+}
+
+fn assert_no_sqlite_lock_errors(results: &[Value]) {
+    for item in results {
+        let error = item["error"].as_str().unwrap_or_default().to_lowercase();
+        assert!(
+            !error.contains("database is locked"),
+            "unexpected SQLite lock error in result: {}",
+            item
+        );
+        assert!(
+            !error.contains("sqlite_busy"),
+            "unexpected SQLITE_BUSY error in result: {}",
+            item
+        );
+        assert!(
+            !error.contains("database table is locked"),
+            "unexpected SQLite table lock error in result: {}",
+            item
+        );
+    }
+}
+
 fn tool_pack_call(arguments: Value) -> ToolCall {
     ToolCall::new(
         "phase-3-pack-call".to_string(),
@@ -332,6 +381,50 @@ async fn tool_pack_harness_constructs_execution_context() {
     assert_eq!(harness.context.window.label(), "tool-pack-test");
     assert_eq!(harness.context.emitter.session_id(), "phase-3-session");
     assert!(harness.registry.has_specific_executor("builtin-tool_pack"));
+}
+
+#[test]
+fn tool_pack_selected_real_subtools_shared_state_audit_matches_allowed_paths() {
+    let template_source = include_str!("../src/chat_v2/tools/template_executor.rs");
+    let session_source = include_str!("../src/chat_v2/tools/session_executor.rs");
+    let user_todo_source = include_str!("../src/chat_v2/tools/user_todo_executor.rs");
+    let tool_pack_source = include_str!("../src/chat_v2/tools/tool_pack_executor.rs");
+    let executor_source = include_str!("../src/chat_v2/tools/executor.rs");
+
+    assert!(user_todo_source.contains("VfsTodoRepo::create_todo_item"));
+    assert!(session_source.contains("ChatV2Database") || session_source.contains("chat_v2_db"));
+    assert!(executor_source.contains("save_tool_block"));
+    assert!(template_source.contains("emit_tool_call")
+        || session_source.contains("emit_tool_call")
+        || user_todo_source.contains("emit_tool_call"));
+    assert!(user_todo_source.contains("emit_todo_changed"));
+    assert!(tool_pack_source.contains("ToolExecutorRegistry"));
+    assert!(tool_pack_source.contains("registry_clone.execute"));
+
+    let selected_sources = [
+        ("template_executor.rs", template_source),
+        ("session_executor.rs", session_source),
+        ("user_todo_executor.rs", user_todo_source),
+    ];
+    let forbidden_patterns = [
+        "AppState",
+        ".state::<",
+        "Mutex<",
+        "RwLock<",
+        ".lock().await",
+        "blocking_lock",
+        "std::sync::Mutex",
+        "tokio::sync::Mutex",
+    ];
+
+    for (label, source) in selected_sources {
+        for pattern in forbidden_patterns {
+            assert!(
+                !source.contains(pattern),
+                "{label} contains forbidden shared-lock pattern {pattern}"
+            );
+        }
+    }
 }
 
 #[tokio::test]
@@ -459,6 +552,77 @@ async fn tool_pack_blocks_sensitive_subtool_without_bypassing_approval() {
         .as_str()
         .unwrap_or_default()
         .contains("requires user approval"));
+}
+
+#[tokio::test]
+async fn tool_pack_vfs_write_load_does_not_surface_sqlite_busy_or_database_locked() {
+    let registry = create_tool_pack_registry();
+    let (_vfs_temp_dir, vfs_db) = create_vfs_db();
+    let (_chat_temp_dir, chat_v2_db) = create_chat_v2_db();
+    let mut harness = create_execution_context("write-pack", registry.clone());
+    harness.context = harness.context.with_vfs_db(Some(vfs_db));
+    harness.context = harness.context.with_chat_v2_db(Some(chat_v2_db));
+    let call = tool_pack_call(json!({
+        "timeout": 30,
+        "tools": create_user_todo_create_tools("phase-3-write")
+    }));
+
+    let result = registry
+        .execute(&call, &harness.context)
+        .await
+        .expect("write-heavy pack should return aggregate result");
+
+    assert!(result.success);
+    assert_eq!(result.output["succeeded"], 20);
+    assert_eq!(result.output["failed"], 0);
+
+    let results = result.output["results"].as_array().unwrap();
+    assert_eq!(results.len(), 20);
+    assert_no_sqlite_lock_errors(results);
+
+    let block_ids: Vec<&str> = results
+        .iter()
+        .filter_map(|item| item["block_id"].as_str())
+        .collect();
+    assert!(block_ids.contains(&"write-pack-tool_pack-0"));
+    assert!(block_ids.contains(&"write-pack-tool_pack-19"));
+
+    let _keep_app_alive = &harness._app;
+}
+
+#[tokio::test]
+async fn tool_pack_repeated_vfs_write_load_remains_free_of_sqlite_lock_errors() {
+    let registry = create_tool_pack_registry();
+    let (_vfs_temp_dir, vfs_db) = create_vfs_db();
+    let (_chat_temp_dir, chat_v2_db) = create_chat_v2_db();
+
+    for round in 0..3 {
+        let block_id = format!("write-repeat-{}", round);
+        let mut harness = create_execution_context(&block_id, registry.clone());
+        harness.context = harness.context.with_vfs_db(Some(vfs_db.clone()));
+        harness.context = harness
+            .context
+            .with_chat_v2_db(Some(chat_v2_db.clone()));
+        let call = tool_pack_call(json!({
+            "timeout": 30,
+            "tools": create_user_todo_create_tools(&format!("phase-3-repeat-{}", round))
+        }));
+
+        let result = registry
+            .execute(&call, &harness.context)
+            .await
+            .expect("repeated write-heavy pack should return aggregate result");
+
+        assert!(result.success);
+        assert_eq!(result.output["succeeded"], 20);
+        assert_eq!(result.output["failed"], 0);
+
+        let results = result.output["results"].as_array().unwrap();
+        assert_eq!(results.len(), 20);
+        assert_no_sqlite_lock_errors(results);
+
+        let _keep_app_alive = &harness._app;
+    }
 }
 
 #[tokio::test]
