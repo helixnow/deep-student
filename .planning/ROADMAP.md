@@ -9,6 +9,7 @@ This milestone adds `tool_pack`, a built-in tool that lets an agent submit a lis
 - [x] **Phase 1: Backend ToolPackExecutor** - Implement the Rust backend parallel execution engine and register it before the general executor.
 - [x] **Phase 2: Frontend Skill Definition** - Register `tool_pack` as a built-in SkillDefinition so the LLM can discover and call it with the correct schema.
 - [x] **Phase 3: Integration Testing & Edge Cases** - Validate end-to-end behavior, cancellation, mixed success/failure, and concurrent UI/database safety under realistic tool mixes.
+- [x] **Phase 4: Implement windowed loading for markdown editor** - Mount configurable markdown line windows in Learning Hub notes and load more content on scroll while preserving save/conflict semantics.
 
 ## Phase Details
 
@@ -67,3 +68,18 @@ Plans:
 | 1. Backend ToolPackExecutor | 1/1 | Complete | 2026-06-27 |
 | 2. Frontend Skill Definition | 1/1 | Complete | 2026-06-27 |
 | 3. Integration Testing & Edge Cases | 4/4 | Complete | 2026-06-28 |
+| 4. Implement windowed loading for markdown editor | 5/5 | Complete | 2026-06-29 |
+
+### Phase 4: Implement windowed loading for markdown editor
+
+**Goal:** Large Learning Hub markdown notes open without freezing by mounting only a configurable initial line window in the existing Crepe editor, loading more content as the user scrolls, and preserving save/conflict behavior across window expansion.
+**Requirements**: TBD
+**Depends on:** Phase 3
+**Plans:** 5 plans
+
+Plans:
+- [x] 04-01-PLAN.md - Markdown window contracts and settings loader.
+- [x] 04-02-PLAN.md - Initial line window settings UI.
+- [x] 04-03-PLAN.md - Editor expansion, sentinel, and in-place Crepe updates.
+- [x] 04-04-PLAN.md - Learning Hub window ownership and safe saves.
+- [x] 04-05-PLAN.md - Final source contracts and performance verification.

@@ -27,6 +27,34 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import type { CrepeEditorApi } from '@/components/crepe';
+import {
+  DEFAULT_INITIAL_LINE_WINDOW,
+  composeWindowedSave,
+  createMarkdownWindow,
+  expandMarkdownWindow,
+  getLoadMoreLineChunk,
+  shouldWindowMarkdown,
+  type MarkdownLoadMoreResult,
+  type MarkdownWindow,
+} from '@/features/notes/markdownWindow';
+import { loadInitialLineWindowSetting } from '@/features/notes/markdownWindowSettings';
+
+function getMarkdownLineCount(markdown: string): number {
+  return markdown.split('\n').length;
+}
+
+function projectMarkdownWindow(markdown: string, requestedLines: number): MarkdownWindow {
+  const projected = createMarkdownWindow(markdown, requestedLines);
+  if (!shouldWindowMarkdown(projected.totalLineCount, requestedLines)) {
+    return {
+      loadedMarkdown: markdown,
+      loadedLineCount: projected.totalLineCount,
+      totalLineCount: projected.totalLineCount,
+      hasMore: false,
+    };
+  }
+  return projected;
+}
 
 /**
  * 笔记内容视图
@@ -68,6 +96,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 笔记内容状态
   // 🔧 修复：使用 null 表示"未加载"，空字符串表示"已加载但内容为空"
   const [content, setContent] = useState<string | null>(null);
+  const [markdownWindow, setMarkdownWindowState] = useState<MarkdownWindow | null>(null);
+  const markdownWindowRef = useRef<MarkdownWindow | null>(null);
+  const [initialLineWindow, setInitialLineWindow] = useState(DEFAULT_INITIAL_LINE_WINDOW);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const fullContentRef = useRef<string>('');
+  const setMarkdownWindow = useCallback((nextWindow: MarkdownWindow | null) => {
+    markdownWindowRef.current = nextWindow;
+    setMarkdownWindowState(nextWindow);
+  }, []);
   // ★ R1 修复：记录 content 归属的笔记 ID。
   // SWR 切换笔记时旧内容会短暂保留，若直接传给编辑器会把旧笔记内容
   // 初始化进新笔记的草稿（数据污染）。归属不匹配时编辑器渲染 loading。
@@ -107,9 +145,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // 配合顶部的透明 Loading 指示器，实现无缝切换
 
     // ★ R3：并行获取最新节点（新鲜的 updatedAt/title/tags）与内容
-    const [nodeResult, result] = await Promise.all([
+    const [nodeResult, result, settingValue] = await Promise.all([
       dstu.get(node.path),
       dstu.getContent(node.path),
+      loadInitialLineWindowSetting(),
     ]);
 
     // 🔧 修复：检查是否仍在加载同一笔记（防止竞态条件）
@@ -129,16 +168,22 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
     const contentStr = typeof result.value === 'string' ? result.value : '';
     const freshNode = nodeResult.ok ? nodeResult.value : null;
+    const nextWindow = projectMarkdownWindow(contentStr, settingValue);
 
+    fullContentRef.current = contentStr;
     setContent(contentStr);
     setContentNoteId(currentNoteId);
+    setInitialLineWindow(settingValue);
+    setMarkdownWindow(nextWindow);
+    setIsLoadingMore(false);
+    setLoadMoreError(null);
     persistedContentRef.current = contentStr;
     updateKnownBaseline(freshNode?.updatedAt ?? node.updatedAt ?? null);
     setTitle(freshNode?.name ?? node.name ?? '');
     // 重新加载时同步最新的 tags（node 可能已更新）
     setTags(((freshNode?.metadata?.tags ?? node.metadata?.tags) as string[]) || []);
     setIsLoading(false);
-  }, [node.id, node.path, node.name, updateKnownBaseline]);
+  }, [node.id, node.path, node.name, node.updatedAt, setMarkdownWindow, updateKnownBaseline]);
 
   useEffect(() => {
     void loadNoteContent();
@@ -172,14 +217,17 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       return;
     }
     const latest = typeof contentResult.value === 'string' ? contentResult.value : '';
+    const nextWindow = projectMarkdownWindow(latest, initialLineWindow);
+    fullContentRef.current = latest;
     setContent(latest);
     setContentNoteId(currentNoteId);
+    setMarkdownWindow(nextWindow);
     persistedContentRef.current = latest;
     // 通知编辑器原位刷新（由 NotesCrepeEditor 监听，带脏检查）
     window.dispatchEvent(new CustomEvent('notes:external-updated', {
-      detail: { noteId: currentNoteId, content: latest, force: forceApply },
+      detail: { noteId: currentNoteId, content: nextWindow.loadedMarkdown, force: forceApply },
     }));
-  }, [node.id, node.path, updateKnownBaseline]);
+  }, [initialLineWindow, node.id, node.path, setMarkdownWindow, updateKnownBaseline]);
 
   const refreshFromDiskRef = useRef(refreshFromDisk);
   refreshFromDiskRef.current = refreshFromDisk;
@@ -204,6 +252,34 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     return unwatch;
   }, [node.id, updateKnownBaseline]);
 
+  const handleRequestLoadMore = useCallback(async (
+    currentMarkdown: string,
+  ): Promise<MarkdownLoadMoreResult | null> => {
+    const currentWindow = markdownWindowRef.current;
+    if (!currentWindow || !currentWindow.hasMore || isLoadingMore || content === null) {
+      return null;
+    }
+
+    setLoadMoreError(null);
+    setIsLoadingMore(true);
+    try {
+      const result = expandMarkdownWindow(
+        fullContentRef.current,
+        currentMarkdown,
+        currentWindow.loadedLineCount,
+        getLoadMoreLineChunk(initialLineWindow),
+      );
+      setMarkdownWindow(result);
+      return result;
+    } catch (err) {
+      console.error('[NoteContentView] Failed to load more markdown lines:', err);
+      setLoadMoreError(t('notes:editor.windowing.load_more_failed', 'Could not load more lines. Retry loading more lines.'));
+      return null;
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [content, initialLineWindow, isLoadingMore, setMarkdownWindow, t]);
+
   // ========== 保存回调 ==========
   // 内容保存
   const handleSave = useCallback(async (newContent: string) => {
@@ -214,16 +290,41 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       return;
     }
     // ★ R3：携带乐观锁基线，防止静默覆盖其他位置的更新
+    const currentWindow = markdownWindowRef.current;
+    const saveContent = currentWindow
+      ? composeWindowedSave(newContent, fullContentRef.current, currentWindow.loadedLineCount, currentWindow.hasMore)
+      : newContent;
     const applySuccess = (updatedAt?: number) => {
-      setContent(newContent);
+      fullContentRef.current = saveContent;
+      setContent(saveContent);
       setContentNoteId(node.id);
-      persistedContentRef.current = newContent;
+      persistedContentRef.current = saveContent;
+      if (currentWindow) {
+        if (currentWindow.hasMore) {
+          const loadedLineCount = getMarkdownLineCount(newContent);
+          const totalLineCount = getMarkdownLineCount(saveContent);
+          setMarkdownWindow({
+            loadedMarkdown: newContent,
+            loadedLineCount,
+            totalLineCount,
+            hasMore: loadedLineCount < totalLineCount,
+          });
+        } else {
+          const totalLineCount = getMarkdownLineCount(saveContent);
+          setMarkdownWindow({
+            loadedMarkdown: saveContent,
+            loadedLineCount: totalLineCount,
+            totalLineCount,
+            hasMore: false,
+          });
+        }
+      }
       updateKnownBaseline(updatedAt ?? lastKnownUpdatedAtRef.current);
     };
 
     isSavingContentRef.current = true;
     try {
-      const result = await dstu.update(node.path, newContent, node.type, {
+      const result = await dstu.update(node.path, saveContent, node.type, {
         expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
       });
       if (result.ok) {
@@ -251,7 +352,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           updateKnownBaseline(latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current);
           setTitle(latestNode.value.name || '');
           setTags((latestNode.value.metadata?.tags as string[]) || []);
-          const retry = await dstu.update(node.path, newContent, node.type, {
+          const retry = await dstu.update(node.path, saveContent, node.type, {
             expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
           });
           if (retry.ok) {
@@ -264,7 +365,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         // 但用户版本不丢弃——通知中提供"恢复我的版本"动作。
         console.warn('[NoteContentView] ⚠️ 保存冲突，刷新为最新版本:', result.error);
         const conflictNoteId = node.id;
-        const userVersion = newContent;
+        const userVersionFull = saveContent;
         showGlobalNotification(
           'warning',
           t('notes:editor.conflict_refreshed', '笔记已在其他位置被修改，已刷新为最新版本'),
@@ -275,11 +376,17 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               onClick: () => {
                 // 把用户版本写回编辑器（force 路径会同步草稿基线），
                 // 并显式入队保存：以已刷新的乐观锁基线覆盖外部版本。
+                const userWindow = projectMarkdownWindow(userVersionFull, initialLineWindow);
+                fullContentRef.current = userVersionFull;
+                setContent(userVersionFull);
+                setContentNoteId(conflictNoteId);
+                setMarkdownWindow(userWindow);
+                persistedContentRef.current = userVersionFull;
                 window.dispatchEvent(new CustomEvent('notes:external-updated', {
-                  detail: { noteId: conflictNoteId, content: userVersion, force: true },
+                  detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true },
                 }));
                 window.dispatchEvent(new CustomEvent('notes:request-save', {
-                  detail: { noteId: conflictNoteId, content: userVersion },
+                  detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown },
                 }));
               },
             },
@@ -297,7 +404,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     } finally {
       isSavingContentRef.current = false;
     }
-  }, [node.id, node.path, node.type, readOnly, t, refreshFromDisk, updateKnownBaseline]);
+  }, [initialLineWindow, node.id, node.path, node.type, readOnly, t, refreshFromDisk, setMarkdownWindow, updateKnownBaseline]);
 
   // 标题变更
   const handleTitleChange = useCallback(async (newTitle: string) => {
@@ -389,12 +496,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 切换笔记的过渡期（content 还是旧笔记的）渲染 loading，
   // 防止旧笔记内容被初始化进新笔记的草稿并被自动保存。
   const isContentReady = content !== null && contentNoteId === node.id;
+  const visibleContent = markdownWindow?.loadedMarkdown ?? (content ?? '');
 
   if (isLoading && content === null) {
     return (
       <div className="flex items-center justify-center h-full">
         <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
+          {t('notes:editor.windowing.loading_note', 'Loading note...')}
+        </span>
+        <span className="ml-2 text-muted-foreground hidden">
           {t('common:loading', '加载中...')}
         </span>
       </div>
@@ -461,7 +572,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         >
           {isContentReady ? (
             <NotesCrepeEditor
-              initialContent={content}
+              initialContent={visibleContent}
               initialTitle={title}
               onSave={readOnly ? undefined : handleSave}
               onTitleChange={readOnly ? undefined : handleTitleChange}
@@ -471,6 +582,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               onEditorReady={(api) => {
                 editorApiRef.current = api;
               }}
+              windowingState={markdownWindow ? {
+                enabled: true,
+                loadedLineCount: markdownWindow.loadedLineCount,
+                totalLineCount: markdownWindow.totalLineCount,
+                hasMore: markdownWindow.hasMore,
+                isLoadingMore,
+                loadMoreError,
+              } : undefined}
+              onRequestLoadMore={handleRequestLoadMore}
+              onRetryLoadMore={() => setLoadMoreError(null)}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center">
@@ -510,7 +631,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                   createdAt={node.createdAt}
                   updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
                   tags={tags}
-                  content={isContentReady ? (content || '') : ''}
+                  content={isContentReady ? (visibleContent) : ''}
                   onTagsChange={readOnly ? undefined : handleTagsChange}
                 />
               )}
@@ -529,7 +650,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               createdAt={node.createdAt}
               updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
               tags={tags}
-              content={isContentReady ? (content || '') : ''}
+              content={isContentReady ? (visibleContent) : ''}
               onTagsChange={readOnly ? undefined : handleTagsChange}
             />
           </SheetContent>
