@@ -7,6 +7,14 @@
   "save_success": "设置保存成功",
   "save_failed": "设置保存失败",
   "auto_saved": "所有更改已自动保存",
+  "notes_editor": {
+    "initial_line_window": {
+      "title": "初始加载行数",
+      "desc": "较大的笔记会先加载较小窗口，并在滚动时继续扩展。",
+      "reset": "重置初始加载行数",
+      "unit": "行"
+    }
+  },
   "groups": {
     "core_models": "基础核心模型",
     "feature_models": "功能增强模型",

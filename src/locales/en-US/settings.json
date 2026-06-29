@@ -7,6 +7,14 @@
   "save_success": "Settings saved successfully",
   "save_failed": "Failed to save settings",
   "auto_saved": "All changes have been auto-saved",
+  "notes_editor": {
+    "initial_line_window": {
+      "title": "Initial line window",
+      "desc": "Larger notes start with a smaller window and extend as you scroll.",
+      "reset": "Reset initial line window",
+      "unit": "lines"
+    }
+  },
   "groups": {
     "core_models": "Core Models",
     "feature_models": "Feature Models",

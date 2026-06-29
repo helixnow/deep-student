@@ -141,6 +141,39 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           debugLog.error('[CrepeEditor] setMarkdown failed:', e);
         }
       },
+
+      captureSelection: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return null;
+        try {
+          const view = crepe.editor.ctx.get(editorViewCtx);
+          if (!view?.state?.selection) return null;
+          return {
+            from: view.state.selection.from,
+            to: view.state.selection.to,
+          };
+        } catch {
+          return null;
+        }
+      },
+
+      restoreSelection: (snapshot) => {
+        if (!snapshot) return;
+        const crepe = crepeRef.current;
+        if (!crepe) return;
+        try {
+          const view = crepe.editor.ctx.get(editorViewCtx);
+          if (!view?.state?.doc || !view.dispatch) return;
+          const docSize = view.state.doc.content.size;
+          const from = Math.max(0, Math.min(snapshot.from, docSize));
+          const to = Math.max(from, Math.min(snapshot.to, docSize));
+          const selection = TextSelection.create(view.state.doc, from, to);
+          view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+          view.focus();
+        } catch (e) {
+          debugLog.error('[CrepeEditor] restoreSelection failed:', e);
+        }
+      },
       
       focus: () => {
         const crepe = crepeRef.current;

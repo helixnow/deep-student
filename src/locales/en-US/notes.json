@@ -436,6 +436,12 @@
       "quote": "Quote",
       "divider": "Divider"
     },
+    "windowing": {
+      "loading_note": "Loading note...",
+      "loading_more": "Loading more lines...",
+      "load_more_failed": "Could not load more lines. Retry loading more lines.",
+      "retry": "Retry"
+    },
     "table": {
       "add_row_before": "Insert row above",
       "add_row_after": "Insert row below",

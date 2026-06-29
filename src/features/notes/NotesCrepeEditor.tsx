@@ -9,11 +9,12 @@
  * - Find & Replace（待实现）
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, ArrowSquareOut, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, ArrowSquareOut, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { shouldRequestLoadMore, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
 import { useNotesOptional } from './NotesContext';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -45,6 +46,16 @@ type PendingSavePayload = {
   content: string;
 };
 
+export type NotesEditorWindowingState = {
+  enabled: boolean;
+  loadedLineCount: number;
+  totalLineCount: number;
+  hasMore: boolean;
+  isLoadingMore?: boolean;
+  loadMoreError?: string | null;
+  preloadPx?: number;
+};
+
 // ========== DSTU 模式 Props ==========
 export interface NotesCrepeEditorProps {
   /** DSTU 模式：初始内容 */
@@ -63,6 +74,9 @@ export interface NotesCrepeEditorProps {
   className?: string;
   /** 编辑器实例变化回调（创建/销毁） */
   onEditorReady?: (api: CrepeEditorApi | null) => void;
+  windowingState?: NotesEditorWindowingState;
+  onRequestLoadMore?: (currentMarkdown: string) => Promise<MarkdownLoadMoreResult | null | void>;
+  onRetryLoadMore?: () => void;
 }
 
 export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
@@ -74,6 +88,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   readOnly = false,
   className,
   onEditorReady,
+  windowingState,
+  onRequestLoadMore,
+  onRetryLoadMore,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   
@@ -112,6 +129,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const noteIdRef = useRef<string | null>(null);
   const prevNoteIdRef = useRef<string | null>(null);
   const isUnmountedRef = useRef(false);
+  const programmaticUpdateRef = useRef(false);
+  const loadMoreInFlightRef = useRef(false);
+  const lastAppliedWindowLineCountRef = useRef<number | null>(null);
   const isComposingRef = useRef(false); // IME 合成状态追踪
   const contentChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 内容变化事件防抖
   const saveRetryCountRef = useRef(0); // 🔒 审计修复: 自动保存重试计数（指数退避）
@@ -400,7 +420,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   }, [initialValue, noteId, active?.updated_at]);
 
   // 🔧 新增：只在 noteId 变化时重置 editorApi（这会触发 CrepeEditor 重新挂载）
-  useEffect(() => {
+  useLayoutEffect(() => {
     setEditorApi(null);
   }, [noteId]);
 
@@ -411,6 +431,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   const handleChange = useCallback((markdown: string) => {
     if (effectiveReadOnly) {
+      return;
+    }
+    if (programmaticUpdateRef.current) {
+      contentRef.current = markdown;
+      if (noteId) {
+        draftByNoteRef.current.set(noteId, markdown);
+      }
+      setCharCount(countNoteChars(markdown));
       return;
     }
     contentRef.current = markdown;
@@ -770,6 +798,75 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
   }, []);
 
+  const isCurrentNoteDirty = useCallback(() => {
+    const currentNoteId = noteIdRef.current;
+    if (!currentNoteId) return false;
+    const draft = draftByNoteRef.current.get(currentNoteId);
+    const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
+    return (
+      (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
+      pendingSaveQueueRef.current.some((payload) => payload.noteId === currentNoteId) ||
+      inFlightSaveRef.current !== null
+    );
+  }, []);
+
+  const applyWindowExpansion = useCallback((result: MarkdownLoadMoreResult) => {
+    if (!editorApi || !noteId) {
+      return;
+    }
+    const wasDirty = isCurrentNoteDirty();
+    const selection = editorApi.captureSelection?.() ?? null;
+    const viewportMetrics = captureViewportMetrics();
+
+    programmaticUpdateRef.current = true;
+    editorApi.setMarkdown(result.loadedMarkdown);
+    contentRef.current = result.loadedMarkdown;
+    draftByNoteRef.current.set(noteId, result.loadedMarkdown);
+    if (!wasDirty) {
+      lastSavedMapRef.current.set(noteId, result.loadedMarkdown);
+    }
+    setCharCount(countNoteChars(result.loadedMarkdown));
+
+    requestAnimationFrame(() => {
+      const viewport = scrollViewportRef.current;
+      if (viewport && viewportMetrics) {
+        viewport.scrollTop = viewportMetrics.scrollTop;
+      }
+      editorApi.restoreSelection?.(selection);
+      lastAppliedWindowLineCountRef.current = result.loadedLineCount;
+      programmaticUpdateRef.current = false;
+    });
+  }, [captureViewportMetrics, editorApi, isCurrentNoteDirty, noteId]);
+
+  const handleWindowScroll = useCallback(() => {
+    if (
+      !windowingState?.enabled ||
+      !windowingState.hasMore ||
+      windowingState.isLoadingMore ||
+      loadMoreInFlightRef.current ||
+      !editorApi ||
+      !onRequestLoadMore
+    ) {
+      return;
+    }
+
+    const metrics = captureViewportMetrics();
+    if (!metrics || !shouldRequestLoadMore(metrics, windowingState.preloadPx)) {
+      return;
+    }
+
+    loadMoreInFlightRef.current = true;
+    void onRequestLoadMore(editorApi.getMarkdown())
+      .then((result) => {
+        if (result) {
+          applyWindowExpansion(result);
+        }
+      })
+      .finally(() => {
+        loadMoreInFlightRef.current = false;
+      });
+  }, [applyWindowExpansion, captureViewportMetrics, editorApi, onRequestLoadMore, windowingState]);
+
   // 处理大纲滚动事件
   useEffect(() => {
     const handleScrollToHeading = (e: CustomEvent<{ text: string; normalizedText?: string; level: number; noteId?: string }>) => {
@@ -1082,6 +1179,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             className="notes-editor-content-scroll flex-1"
             viewportClassName="overflow-x-visible"
             viewportRef={scrollViewportRef}
+            viewportProps={{ onScroll: handleWindowScroll }}
           >
             {/* 编辑器内容区域 */}
             <div
@@ -1100,6 +1198,28 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 onReady={handleEditorReady}
                 readonly={effectiveReadOnly}
               />
+              {windowingState?.enabled && (windowingState.hasMore || windowingState.isLoadingMore || windowingState.loadMoreError) && (
+                <div className="mt-6 flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground/70">
+                  {windowingState.isLoadingMore ? (
+                    <>
+                      <CircleNotch size={14} className="animate-spin text-primary" />
+                      <span>{t('notes:editor.windowing.loading_more', 'Loading more lines...')}</span>
+                    </>
+                  ) : windowingState.loadMoreError ? (
+                    <>
+                      <span>{t('notes:editor.windowing.load_more_failed', 'Could not load more lines. Retry loading more lines.')}</span>
+                      <NotionButton
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={onRetryLoadMore}
+                      >
+                        {t('notes:editor.windowing.retry', 'Retry')}
+                      </NotionButton>
+                    </>
+                  ) : null}
+                </div>
+              )}
             </div>
           </CustomScrollArea>
         </>

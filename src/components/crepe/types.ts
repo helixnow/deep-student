@@ -5,6 +5,11 @@
 
 import type { Crepe } from '@milkdown/crepe';
 
+export type CrepeSelectionSnapshot = {
+  from: number;
+  to: number;
+};
+
 /**
  * Crepe 编辑器对外暴露的 API
  */
@@ -14,6 +19,10 @@ export interface CrepeEditorApi {
   
   /** 设置 Markdown 内容（会替换当前内容） */
   setMarkdown: (markdown: string) => void;
+
+  captureSelection?: () => CrepeSelectionSnapshot | null;
+
+  restoreSelection?: (snapshot: CrepeSelectionSnapshot | null) => void;
   
   /** 聚焦编辑器 */
   focus: () => void;

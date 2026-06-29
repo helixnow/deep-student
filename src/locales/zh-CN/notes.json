@@ -363,6 +363,12 @@
       "quote": "引用",
       "divider": "分隔线"
     },
+    "windowing": {
+      "loading_note": "正在加载笔记...",
+      "loading_more": "正在加载更多行...",
+      "load_more_failed": "无法加载更多行。请重试加载更多行。",
+      "retry": "重试"
+    },
     "table": {
       "add_row_before": "在上方插入行",
       "add_row_after": "在下方插入行",

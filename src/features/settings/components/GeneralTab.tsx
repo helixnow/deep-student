@@ -6,6 +6,7 @@ import { CircleNotch } from '@phosphor-icons/react';
 import { SettingSection } from './SettingsCommon';
 import { VoiceInputSettingsSection } from './VoiceInputSettingsSection';
 import { MemorySettingsSection } from './MemorySettingsSection';
+import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -179,6 +180,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               />
               {queueModeLoading && <div aria-hidden="true" className="h-7 w-[132px] animate-pulse rounded-[var(--radius-shell-control)] bg-muted/50" />}
             </SettingRow>
+
+            <MarkdownEditorWindowSettings />
 
             <SettingRow
               title={t('settings:system_notification.title', '系统通知')}
