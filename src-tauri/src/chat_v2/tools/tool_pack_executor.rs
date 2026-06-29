@@ -256,71 +256,17 @@ impl ToolExecutor for ToolPackExecutor {
             let registry_clone = registry.clone();
             let sem = semaphore.clone();
             let token = child_token.clone();
-            let parent_block_id = ctx.block_id.clone();
-            let session_id = ctx.session_id.clone();
-            let message_id = ctx.message_id.clone();
-            let variant_id = ctx.variant_id.clone();
-            let skill_state_version = ctx.skill_state_version;
-            let round_id = ctx.round_id.clone();
-            let emitter = ctx.emitter.clone();
-            let canvas_note_id = ctx.canvas_note_id.clone();
-            let notes_manager = ctx.notes_manager.clone();
-            let tool_registry = ctx.tool_registry.clone();
-            let main_db = ctx.main_db.clone();
-            let anki_db = ctx.anki_db.clone();
-            let window = ctx.window.clone();
-            let vfs_db = ctx.vfs_db.clone();
-            let vfs_lance_store = ctx.vfs_lance_store.clone();
-            let llm_manager = ctx.llm_manager.clone();
-            let chat_v2_db = ctx.chat_v2_db.clone();
-            let question_bank_service = ctx.question_bank_service.clone();
-            let skill_contents = ctx.skill_contents.clone();
-            let skill_embedded_tools = ctx.skill_embedded_tools.clone();
-            let rag_top_k = ctx.rag_top_k;
-            let rag_enable_reranking = ctx.rag_enable_reranking;
-            let pdf_processing_service = ctx.pdf_processing_service.clone();
-            let memory_enabled = ctx.memory_enabled;
-            let rag_enabled = ctx.rag_enabled;
-            let web_search_enabled = ctx.web_search_enabled;
+            let sub_block_id = format!("{}-tool_pack-{}", ctx.block_id, sub.index);
+            let sub_call_id = format!("{}-tp-{}", ctx.block_id, sub.index);
+            let sub_ctx = create_sub_context(ctx, sub_block_id.clone(), token.clone());
 
             let handle = tokio::spawn(async move {
                 let sub_start = Instant::now();
-                let sub_block_id = format!("{}-tool_pack-{}", parent_block_id, sub.index);
-                let sub_call_id = format!("{}-tp-{}", parent_block_id, sub.index);
 
                 // Create sub-tool call/context before preflight so synthetic failures
                 // can close and persist the exact sub-tool block.
                 let sub_call =
                     ToolCall::new(sub_call_id.clone(), sub.name.clone(), sub.args.clone());
-                let sub_ctx = ExecutionContext {
-                    session_id,
-                    message_id,
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                    block_id: sub_block_id.clone(),
-                    emitter,
-                    canvas_note_id,
-                    notes_manager,
-                    tool_registry,
-                    main_db,
-                    anki_db,
-                    window,
-                    vfs_db,
-                    vfs_lance_store,
-                    llm_manager,
-                    chat_v2_db,
-                    question_bank_service,
-                    skill_contents,
-                    skill_embedded_tools,
-                    cancellation_token: Some(token.clone()),
-                    rag_top_k,
-                    rag_enable_reranking,
-                    pdf_processing_service,
-                    memory_enabled,
-                    rag_enabled,
-                    web_search_enabled,
-                };
 
                 // Cancellation check (early exit)
                 if token.is_cancelled() {
@@ -375,7 +321,7 @@ impl ToolExecutor for ToolPackExecutor {
                 let is_rag_tool = sub_short_name.starts_with("rag_");
                 let is_web_search_tool = sub_short_name == "web_search";
 
-                if is_memory_tool && !memory_enabled {
+                if is_memory_tool && !sub_ctx.memory_enabled {
                     let result = ToolResultInfo::failure(
                         Some(sub_call_id),
                         Some(sub_block_id),
@@ -387,7 +333,7 @@ impl ToolExecutor for ToolPackExecutor {
                     finalize_synthetic_sub_result(&sub_ctx, &result, true);
                     return result;
                 }
-                if is_rag_tool && !rag_enabled {
+                if is_rag_tool && !sub_ctx.rag_enabled {
                     let result = ToolResultInfo::failure(
                         Some(sub_call_id),
                         Some(sub_block_id),
@@ -399,7 +345,7 @@ impl ToolExecutor for ToolPackExecutor {
                     finalize_synthetic_sub_result(&sub_ctx, &result, true);
                     return result;
                 }
-                if is_web_search_tool && !web_search_enabled {
+                if is_web_search_tool && !sub_ctx.web_search_enabled {
                     let result = ToolResultInfo::failure(
                         Some(sub_call_id),
                         Some(sub_block_id),
