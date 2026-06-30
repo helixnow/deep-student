@@ -1063,6 +1063,28 @@ mod tests {
     #[test]
     fn ftp_contract_source_guards() {
         let source = include_str!("ftp.rs");
+        let production_source = source.split("#[cfg(test)]").next().unwrap_or(source);
+
+        assert!(
+            production_source.contains("suppaftp::tokio::AsyncRustlsConnector"),
+            "FTP FTPS must use rustls"
+        );
+        assert!(
+            production_source.contains("suppaftp::tokio::{AsyncFtpStream, AsyncRustlsFtpStream}"),
+            "FTP must stay on suppaftp tokio backend"
+        );
+        assert!(
+            !production_source.contains("async-std"),
+            "FTP must not depend on async-std"
+        );
+        assert!(
+            !production_source.contains("native-tls"),
+            "FTP must not depend on native-tls"
+        );
+        assert!(
+            !production_source.contains("openssl"),
+            "FTP must not depend on openssl"
+        );
 
         assert!(
             source.contains("async fn upload_reader_atomic"),

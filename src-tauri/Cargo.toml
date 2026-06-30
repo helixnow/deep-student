@@ -127,7 +127,7 @@ urlencoding = "2.1.3"
 roxmltree = "0.20"
 argon2 = "0.5"
 zeroize = { version = "1", features = ["derive"] }
-# FTP/FTPS 支持（v7+ 支持 tokio + rustls，不再需要 async-std/openssl）
+# FTP/FTPS 支持（v7+ 已切到 tokio + rustls）
 suppaftp = { version = "7", default-features = false, features = ["tokio", "tokio-rustls"] }
 tokio-rustls = "0.26"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
