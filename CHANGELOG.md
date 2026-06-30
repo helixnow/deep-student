@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.41](https://github.com/helixnow/deep-student/compare/v0.9.40...v0.9.41) (2026-06-30)
+
+
+### Features
+
+* add save botton to siliconflow section ([#87](https://github.com/helixnow/deep-student/issues/87)) ([3bab9cf](https://github.com/helixnow/deep-student/commit/3bab9cf725066a67352902a074503f8a41a9434b))
+
+
+### Bug Fixes
+
+* add RECORD_AUDIO permission for Android manifest ([#89](https://github.com/helixnow/deep-student/issues/89)) ([d2f4424](https://github.com/helixnow/deep-student/commit/d2f442488d8a292e0b7d80be4ca2c2b91c723f2b))
+
 ## [0.9.40](https://github.com/helixnow/deep-student/compare/v0.9.39...v0.9.40) (2026-05-27)
 
 
