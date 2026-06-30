@@ -52,7 +52,7 @@ jobs:
           fi
           echo "✅ Tag format valid: ${TAG_NAME}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.inputs.tag_name }}
 
@@ -115,13 +115,13 @@ jobs:
       matrix:
         target: [aarch64-apple-darwin, x86_64-apple-darwin]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ needs.verify.outputs.tag_name }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -229,7 +229,7 @@ jobs:
           ls -la "$BUNDLE_DIR"/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: macos-${{ matrix.target }}
           path: |
@@ -243,13 +243,17 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.symlinks
+          GIT_CONFIG_VALUE_0: "false"
         with:
           fetch-depth: 0
           ref: ${{ needs.verify.outputs.tag_name }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -283,7 +287,7 @@ jobs:
         run: npx tauri build --target x86_64-pc-windows-msvc
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-x86_64
           path: |
@@ -296,13 +300,13 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ needs.verify.outputs.tag_name }}
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -361,7 +365,7 @@ jobs:
           ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-x86_64
           path: |
@@ -377,7 +381,7 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ needs.verify.outputs.tag_name }}
@@ -431,7 +435,7 @@ jobs:
           swapon --show || true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -589,7 +593,7 @@ jobs:
           ls -lh android-output/
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-arm64
           path: android-output/*.apk
@@ -610,12 +614,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.verify.outputs.tag_name }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -745,7 +749,7 @@ jobs:
           files: release-files/*
 
       - name: Setup Node.js for wrangler
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 

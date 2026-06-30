@@ -75,7 +75,7 @@ jobs:
     env:
       NODE_OPTIONS: '--max-old-space-size=4096'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.source_ref }}
@@ -129,7 +129,7 @@ jobs:
           swapon --show || true
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -297,7 +297,7 @@ jobs:
           ls -lh android-output/
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: android-arm64
           path: android-output/*.apk
@@ -312,7 +312,7 @@ jobs:
       contents: write
     steps:
       - name: Download APK artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: android-arm64
           path: android-output
@@ -349,7 +349,7 @@ jobs:
           echo "✅ APK uploaded to GitHub Release"
 
       - name: Setup Node.js for wrangler
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
 
