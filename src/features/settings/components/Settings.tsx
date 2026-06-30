@@ -474,6 +474,29 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     })();
   }, []);
 
+  // 从 API 配置页切换到其他页时，触发一次自动分配模型
+  const prevActiveTabRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prevTab = prevActiveTabRef.current;
+    prevActiveTabRef.current = activeTab;
+
+    if (prevTab === 'apis' && activeTab !== 'apis') {
+      (async () => {
+        try {
+          const { autoAssignAllModels } = await import('@/features/chat/readiness/autoAssignModel');
+          const result = await autoAssignAllModels();
+          if (result.assigned) {
+            console.log(`[Settings] Auto-assigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`);
+          } else {
+            console.log(`[Settings] Auto-assign skipped: ${result.reason ?? 'no changes'}`);
+          }
+        } catch (err) {
+          console.error('[Settings] Auto-assign failed:', err);
+        }
+      })();
+    }
+  }, [activeTab]);
+
   // 标签页指示器状态
   const [indicatorStyle, setIndicatorStyle] = useState({ transform: 'translateX(0)', width: 0 });
   const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
