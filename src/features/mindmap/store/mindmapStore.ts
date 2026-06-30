@@ -94,6 +94,21 @@ function createDefaultDocument(title?: string): MindMapDocument {
 // Store 状态定义
 // ============================================================================
 
+/**
+ * A6-24: 保存冲突时暂存的本地未保存编辑快照，供用户"恢复我的修改"。
+ * 冲突分支会先重载服务端版本，再把冲突前的本地文档存入此快照。
+ */
+export interface MindMapConflictSnapshot {
+  mindmapId: string;
+  document: MindMapDocument;
+  currentView: MindMapViewType;
+  focusedNodeId: string | null;
+  layoutId: string;
+  layoutDirection: LayoutDirection;
+  styleId: string;
+  edgeType: EdgeType;
+}
+
 interface MindMapStoreState {
   // 元数据
   mindmapId: string | null;
@@ -225,6 +240,13 @@ interface MindMapStoreState {
   markDirty: () => void;
   /** M-069: 同步写入 localStorage 草稿，用于组件卸载/关闭时防止异步 save 未完成导致丢失 */
   saveDraftSync: () => void;
+
+  // A6-24: 保存冲突时暂存的本地编辑快照 + 恢复/忽略入口
+  conflictSnapshot: MindMapConflictSnapshot | null;
+  /** 把暂存的本地快照重新应用为当前文档（标脏，下次保存以最新基线覆盖服务端） */
+  restoreConflictSnapshot: () => void;
+  /** 放弃暂存的本地快照（采用已重载的服务端版本） */
+  dismissConflictSnapshot: () => void;
 
   // 布局和样式切换
   setLayoutId: (layoutId: string) => void;
@@ -380,7 +402,10 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
     const pushHistory = (doc: MindMapDocument) => {
       set((state) => {
-        state.history.past.push(JSON.parse(JSON.stringify(doc)));
+        // ★ 性能：store 经 immer 中间件，document 是 frozen 不可变树，
+        // 每次 mutation 产生结构共享的新树。历史栈直接存引用即可，
+        // 全量深克隆（旧实现）在大导图上每次编辑都有明显开销且浪费内存。
+        state.history.past.push(doc);
         if (state.history.past.length > MAX_HISTORY) {
           state.history.past.shift();
         }
@@ -394,7 +419,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
       if (!s.mindmapId) return null;
       return {
         mindmapId: s.mindmapId,
-        document: JSON.parse(JSON.stringify(overrides?.document ?? s.document)),
+        // frozen 树可直接被 JSON.stringify 序列化写入草稿，无需先深克隆
+        document: overrides?.document ?? s.document,
         currentView: overrides?.currentView ?? s.currentView,
         focusedNodeId: overrides?.focusedNodeId ?? s.focusedNodeId,
         savedAt: new Date().toISOString(),
@@ -470,6 +496,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
       lastSavedAt: null,
       _documentVersion: 0,
       _loadSeq: 0,
+      conflictSnapshot: null,
       reciteMode: false,
       revealedBlanks: {},
       searchQuery: '',
@@ -635,6 +662,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
           state.isSaving = false;
           state.lastSavedAt = null; // 修复: 重置最后保存时间
           state._documentVersion = 0;
+          state.conflictSnapshot = null; // A6-24: 切换/重置导图时清除暂存冲突快照
           state.measuredNodeHeights = {};
           // 修复: 重置搜索状态
           state.searchQuery = '';
@@ -917,7 +945,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
         set((state) => {
           const prev = state.history.past.pop();
           if (prev) {
-            state.history.future.push(JSON.parse(JSON.stringify(document)));
+            // document 为 immer frozen 树，直接存引用（见 pushHistory）
+            state.history.future.push(document);
             state.document = prev;
             state.isDirty = true;
             state._documentVersion += 1;
@@ -954,7 +983,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
         set((state) => {
           const next = state.history.future.pop();
           if (next) {
-            state.history.past.push(JSON.parse(JSON.stringify(document)));
+            // document 为 immer frozen 树，直接存引用（见 pushHistory）
+            state.history.past.push(document);
             state.document = next;
             state.isDirty = true;
             state._documentVersion += 1;
@@ -1033,6 +1063,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
           set((state) => {
             state.isSaving = false;
             state.lastSavedAt = Date.now();
+            state.conflictSnapshot = null; // A6-24: 保存成功后清除暂存的冲突快照
             if (state.mindmapId === savingMindmapId) {
               state.metadata = updated;
             }
@@ -1067,9 +1098,21 @@ export const useMindMapStore = create<MindMapStoreState>()(
                 ? error.message
                 : '';
 
-          // M-074: 冲突时自动刷新，提供恢复路径
+          // M-074 / A6-24: 冲突时自动重载服务端版本，并暂存本地未保存编辑供"恢复我的修改"
           if (errorMessage.includes('MINDMAP_UPDATE_CONFLICT')) {
-            showGlobalNotification('warning', i18next.t('store.updateConflict', { ns: 'mindmap' }));
+            // A6-24: 先捕获冲突前的本地文档快照（含视图/渲染配置），避免被服务端重载静默覆盖
+            const localSnapshot: MindMapConflictSnapshot | null = savingMindmapId
+              ? {
+                  mindmapId: savingMindmapId,
+                  document: get().document,
+                  currentView: get().currentView,
+                  focusedNodeId: get().focusedNodeId,
+                  layoutId: get().layoutId,
+                  layoutDirection: get().layoutDirection,
+                  styleId: get().styleId,
+                  edgeType: get().edgeType,
+                }
+              : null;
             // 清除过期本地草稿，避免 loadMindMap 恢复出冲突的旧版本
             if (savingMindmapId) {
               clearDraft(savingMindmapId);
@@ -1078,7 +1121,15 @@ export const useMindMapStore = create<MindMapStoreState>()(
             if (get().mindmapId === savingMindmapId) {
               try {
                 await get().loadMindMap(savingMindmapId);
-                showGlobalNotification('success', i18next.t('store.conflictResolved', { ns: 'mindmap' }));
+                // ★ A6-24: 重载完成后再写入快照（避免被 loadMindMap 的状态重置覆盖）
+                if (localSnapshot && get().mindmapId === savingMindmapId) {
+                  set((state) => {
+                    state.conflictSnapshot = localSnapshot;
+                  });
+                  showGlobalNotification('warning', i18next.t('store.conflictSnapshotKept', { ns: 'mindmap' }));
+                } else {
+                  showGlobalNotification('success', i18next.t('store.conflictResolved', { ns: 'mindmap' }));
+                }
               } catch (reloadError) {
                 console.error('[MindMapStore] conflict auto-reload failed:', reloadError);
                 showGlobalNotification('error', i18next.t('store.conflictReloadFailed', { ns: 'mindmap' }));
@@ -1112,6 +1163,45 @@ export const useMindMapStore = create<MindMapStoreState>()(
             }, 5000);
           }
         }
+      },
+
+      // A6-24: 把暂存的本地冲突快照重新应用为当前文档
+      restoreConflictSnapshot: () => {
+        const snap = get().conflictSnapshot;
+        if (!snap) return;
+        // 仅当仍停留在同一导图时才恢复，避免把快照写到别的导图
+        if (get().mindmapId !== snap.mindmapId) {
+          set((state) => {
+            state.conflictSnapshot = null;
+          });
+          return;
+        }
+        pushHistory(get().document);
+        set((state) => {
+          state.document = snap.document;
+          state.currentView = snap.currentView;
+          state.focusedNodeId = snap.focusedNodeId;
+          state.layoutId = snap.layoutId;
+          state.layoutDirection = snap.layoutDirection;
+          state.styleId = snap.styleId;
+          state.edgeType = snap.edgeType;
+          state.isDirty = true;
+          state._documentVersion += 1;
+          state.conflictSnapshot = null;
+        });
+        const nextState = get();
+        if (nextState.mindmapId) {
+          scheduleDraftPersist();
+        }
+        // 以重载后的最新基线保存，使"我的修改"覆盖服务端
+        debounceSave();
+      },
+
+      // A6-24: 放弃暂存快照，采用已重载的服务端版本
+      dismissConflictSnapshot: () => {
+        set((state) => {
+          state.conflictSnapshot = null;
+        });
       },
 
       markDirty: () => {

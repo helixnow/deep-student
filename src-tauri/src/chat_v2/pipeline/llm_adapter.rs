@@ -161,6 +161,8 @@ pub struct ChatV2LLMAdapter {
     preparing_block_ids: std::sync::Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲，减少事件频率）
     args_delta_buffer: std::sync::Mutex<HashMap<String, String>>,
+    /// 🔧 F2 修复：最近一次收到流式数据的时刻（用于空闲超时判定）
+    last_activity_at: std::sync::Mutex<std::time::Instant>,
 }
 
 impl ChatV2LLMAdapter {
@@ -190,12 +192,29 @@ impl ChatV2LLMAdapter {
             cached_thought_signature: std::sync::Mutex::new(None),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
             args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
+            last_activity_at: std::sync::Mutex::new(std::time::Instant::now()),
         }
     }
 
     /// 生成块 ID
     pub(crate) fn generate_block_id() -> String {
         format!("blk_{}", Uuid::new_v4())
+    }
+
+    /// 🔧 F2 修复：刷新流式活动时间戳（每次收到任何流式数据时调用）
+    fn touch_activity(&self) {
+        *self
+            .last_activity_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = std::time::Instant::now();
+    }
+
+    /// 🔧 F2 修复：距最近一次流式活动的时长（用于 Pipeline 层空闲超时判定）
+    pub fn idle_elapsed(&self) -> std::time::Duration {
+        self.last_activity_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .elapsed()
     }
 
     /// 刷新指定 tool_call_id 的 args delta 缓冲（参数累积完成时调用）
@@ -412,6 +431,58 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+
+    /// 重试前重置流式累积状态
+    ///
+    /// 外层重试（Pipeline 级超时/瞬时网络错误）复用同一 adapter 实例（Arc），
+    /// 重新注册 hooks 并不会清空累积状态。若失败尝试已流出部分内容或已收集
+    /// 工具调用，不重置会导致重试响应被追加到旧的部分内容之后（内容重复落库），
+    /// 甚至同一工具调用被收集两次而重复执行。
+    ///
+    /// 注意：保留 thinking/content 块 ID，使重试内容继续写入同一前端块，
+    /// 避免 UI 留下永远处于 running 状态的孤儿块。
+    pub fn reset_stream_state(&self) {
+        self.accumulated_content
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.accumulated_reasoning
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        *self
+            .reasoning_content_observed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = false;
+        self.collected_tool_calls
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        *self.api_usage.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *self.in_think_tag.lock().unwrap_or_else(|e| e.into_inner()) = false;
+        self.think_tag_buffer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        *self
+            .cached_thought_signature
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        self.preparing_block_ids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.args_delta_buffer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        // 🔧 F2：重试视为一次新的流，重置空闲计时
+        self.touch_activity();
+        log::info!(
+            "[ChatV2::LLMAdapter] Stream state reset for retry: message_id={}",
+            self.message_id
+        );
     }
 
     /// 获取并清空收集的工具调用
@@ -742,6 +813,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     /// `<think>...</think>` 或 `<thinking>...</thinking>` 标签嵌入到普通内容中。
     /// 此方法实时解析这些标签，将内容正确路由到 thinking 或 content 块。
     fn on_content_chunk(&self, text: &str) {
+        self.touch_activity();
         if text.is_empty() {
             return;
         }
@@ -758,6 +830,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     }
 
     fn on_reasoning_chunk(&self, text: &str) {
+        self.touch_activity();
         if !self.enable_thinking {
             return;
         }
@@ -795,6 +868,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     /// 🆕 2026-01-15: 工具调用参数开始累积时通知前端
     /// 在 LLM 开始生成工具调用参数时立即调用，让前端显示"正在准备工具调用"
     fn on_tool_call_start(&self, tool_call_id: &str, tool_name: &str) {
+        self.touch_activity();
         log::info!(
             "[ChatV2::pipeline] Tool call start: id={}, name={} (参数累积中...)",
             tool_call_id,
@@ -845,6 +919,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     /// 工具调用参数流式片段回调（带节流）
     /// 每累积 ≥500 字符发射一次 chunk，避免事件风暴
     fn on_tool_call_args_delta(&self, tool_call_id: &str, delta: &str) {
+        self.touch_activity();
         let block_id = {
             let guard = self
                 .preparing_block_ids
@@ -949,6 +1024,7 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     }
 
     fn on_usage(&self, usage: &Value) {
+        self.touch_activity();
         // 解析 API 返回的 usage，支持多种格式
         // 注意：流式响应中每个 token 都会触发 usage 更新，这里只存储不打印日志
         // 最终 usage 会在 LLM 调用结束后的 Token usage for round 日志中输出

@@ -519,6 +519,7 @@ fn get_disk_space_df_fallback(path: &Path) -> Option<u64> {
 /// 仅在 GetDiskFreeSpaceExW 失败时使用。
 #[cfg(windows)]
 fn get_disk_space_wmic_fallback(path: &Path) -> Option<u64> {
+    use std::os::windows::process::CommandExt;
     use std::process::Command;
 
     let drive = path
@@ -535,6 +536,7 @@ fn get_disk_space_wmic_fallback(path: &Path) -> Option<u64> {
             "get",
             "FreeSpace",
         ])
+        .creation_flags(0x08000000) // CREATE_NO_WINDOW
         .output()
         .ok()?;
 

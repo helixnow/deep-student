@@ -68,26 +68,11 @@ export async function registerAllStores(): Promise<void> {
       module: () => import('../stores/templateAiStore'),
       exportName: 'useTemplateAIStore',
     },
-    // MindMap 相关
+    // MindMap 相关（整合版 mindmapStore；旧拆分 store 已移除）
     {
       name: 'mindmap',
       module: () => import('../features/mindmap/store/mindmapStore'),
       exportName: 'useMindMapStore',
-    },
-    {
-      name: 'mindmapUI',
-      module: () => import('../features/mindmap/store/uiStore'),
-      exportName: 'useUIStore',
-    },
-    {
-      name: 'mindmapHistory',
-      module: () => import('../features/mindmap/store/historyStore'),
-      exportName: 'useHistoryStore',
-    },
-    {
-      name: 'mindmapDocument',
-      module: () => import('../features/mindmap/store/documentStore'),
-      exportName: 'useDocumentStore',
     },
     // Learning Hub
     {

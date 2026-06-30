@@ -38,6 +38,7 @@ import { TodoListPanel, type TodoStep, type TodoListOutput } from '../../plugins
 import { NoteToolPreview, isNoteTool, type NoteToolPreviewProps } from './NoteToolPreview';
 import { isTemplateVisualOutput, TemplateToolOutput } from '../../plugins/blocks/components';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
 import './ActivityTimeline.css';
 
@@ -651,6 +652,60 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
 const ToolOutputSummary: React.FC<{ output: unknown }> = ({ output }) => {
   const { t } = useTranslation('chatV2');
 
+  if (output && typeof output === 'object' && !Array.isArray(output)) {
+    const root = output as Record<string, unknown>;
+    const obj = root.result && typeof root.result === 'object' && !Array.isArray(root.result)
+      ? root.result as Record<string, unknown>
+      : root;
+    const loadedSkillIds = Array.isArray(obj.loaded_skill_ids)
+      ? obj.loaded_skill_ids.filter((item): item is string => typeof item === 'string' && item.length > 0)
+      : [];
+    const loadedToolNames = Array.isArray(obj.loaded_tool_names)
+      ? obj.loaded_tool_names.filter((item): item is string => typeof item === 'string' && item.length > 0)
+      : [];
+    const message = typeof obj.message === 'string' ? obj.message : '';
+
+    if (loadedSkillIds.length > 0 || loadedToolNames.length > 0 || message) {
+      return (
+        <div className="space-y-1">
+          {loadedSkillIds.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-foreground/80">{t('timeline.tool.loadedSkills', { defaultValue: 'Loaded skills' })}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {loadedSkillIds.map((skillId) => (
+                  <span
+                    key={skillId}
+                    className="inline-flex items-center rounded-full border border-border/50 bg-background/70 px-2 py-0.5 text-[11px] text-foreground"
+                  >
+                    {skillId}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loadedToolNames.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-foreground/80">{t('timeline.tool.loadedTools', { defaultValue: 'Loaded tools' })}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {loadedToolNames.map((toolName) => (
+                  <code
+                    key={toolName}
+                    className="inline-flex items-center rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  >
+                    {toolName}
+                  </code>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {message && <div>{message}</div>}
+        </div>
+      );
+    }
+  }
+
   if (typeof output === 'string') {
     return <>{output.length > 100 ? output.slice(0, 100) + '...' : output || t('timeline.tool.noOutput')}</>;
   }
@@ -765,13 +820,15 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
       return t('timeline.tool.failed', { ns: 'chatV2' });
     }
     if (isSuccess) {
-      if (durationMs !== undefined) {
-        return t('timeline.tool.completed', { ms: durationMs, ns: 'chatV2' });
-      }
       return t('timeline.tool.success', { ns: 'chatV2' });
     }
     return t('timeline.tool.pending', { ns: 'chatV2' });
-  }, [isPreparing, isRunning, isError, isSuccess, durationMs, t]);
+  }, [isPreparing, isRunning, isError, isSuccess, t]);
+
+  const durationText = useMemo(() => {
+    if (!isSuccess || durationMs === undefined) return '';
+    return formatToolDurationShort(durationMs);
+  }, [durationMs, isSuccess]);
 
   // 获取状态图标 - 只在错误状态显示图标
   const StatusIcon = useMemo(() => {
@@ -841,6 +898,11 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
               <span className={cn('text-xs', statusColor)}>
                 {statusText}
               </span>
+              {durationText && (
+                <span className="text-xs text-muted-foreground/70">
+                  {durationText}
+                </span>
+              )}
             </>
           )}
         </NotionButton>

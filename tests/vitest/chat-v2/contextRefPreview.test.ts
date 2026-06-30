@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import type { ContextRef } from '../../../src/chat-v2/context/types';
-import { dispatchContextRefPreview } from '../../../src/chat-v2/utils/contextRefPreview';
+import type { ContextRef } from '../../../src/features/chat/context/types';
+import { dispatchContextRefPreview } from '../../../src/features/chat/utils/contextRefPreview';
 
 describe('dispatchContextRefPreview', () => {
   it('dispatches context-ref preview event with resolved path detail', () => {

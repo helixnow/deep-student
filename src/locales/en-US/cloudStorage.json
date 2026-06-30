@@ -8,7 +8,10 @@
     "webdavDesc": "Jianguoyun, Nextcloud, self-hosted WebDAV, etc.",
     "s3": "S3 Compatible",
     "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
-    "s3Disabled": "Not enabled (requires S3 feature at compile time)"
+    "s3Disabled": "Not enabled (requires S3 feature at compile time)",
+    "ftp": "FTP/FTPS",
+    "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support",
+    "ftpDescExperimental": "Experimental backend with known data-risk issues"
   },
   
   "webdav": {
@@ -19,7 +22,12 @@
     "usernamePlaceholder": "your@email.com",
     "password": "Password",
     "passwordPlaceholder": "App-specific password",
-    "passwordHint": "Recommended to use app-specific password instead of login password"
+    "passwordHint": "Recommended to use app-specific password instead of login password",
+    "insecureWarning": {
+      "title": "Insecure WebDAV Connection",
+      "description": "You are using plaintext HTTP (http://) to connect to the WebDAV server. Your username, password, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use HTTPS (https://) for encrypted connections.",
+      "confirm": "Use Plaintext Anyway"
+    }
   },
   
   "s3": {
@@ -36,9 +44,30 @@
     "regionPlaceholder": "us-east-1",
     "regionHint": "Some S3-compatible services may not require this",
     "pathStyle": "Use Path Style",
-    "pathStyleHint": "Required for self-hosted services like MinIO"
+    "pathStyleHint": "Required for self-hosted services like MinIO",
+    "insecureWarning": {
+      "title": "Insecure S3 Connection",
+      "description": "You are using plaintext HTTP (http://) to connect to the S3 service. Your Access Key, Secret Key, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use HTTPS (https://) for encrypted connections.",
+      "confirm": "Use Plaintext Anyway"
+    }
   },
   
+  "ftp": {
+    "endpoint": "Server URL",
+    "endpointPlaceholder": "ftps://ftp.example.com",
+    "endpointHint": "Full URL of the FTP server. ftps:// for encrypted FTPS, ftp:// for plaintext FTP",
+    "username": "Username",
+    "usernamePlaceholder": "ftpuser",
+    "password": "Password",
+    "passwordPlaceholder": "Your FTP password",
+    "experimentalWarning": "FTP/FTPS cloud sync is experimental and has known data consistency risks. Prefer WebDAV or S3.",
+    "insecureWarning": {
+      "title": "Insecure FTP Connection",
+      "description": "You are using plaintext FTP (ftp://). Your username, password, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use FTPS (ftps://) for encrypted connections.",
+      "confirm": "Use Plaintext Anyway"
+    }
+  },
+
   "root": {
     "label": "Root Directory",
     "placeholder": "deep-student-sync",
@@ -63,7 +92,7 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "notConfigured": "Not Configured",
-    "lastSync": "Last Sync",
+    "lastSync": "This Device Last Sync",
     "cloudVersions": "Cloud Versions",
     "latestVersion": "Latest Version",
     "deviceId": "Device ID",
@@ -119,6 +148,7 @@
     "downloadFailed": "Download failed",
     "deleteFailed": "Delete failed",
     "configInvalid": "Invalid configuration",
+    "passwordRequired": "Enter the cloud storage password before saving",
     "networkError": "Network error",
     "permissionDenied": "Permission denied",
     "notFound": "File not found",

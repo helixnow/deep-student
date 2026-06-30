@@ -45,6 +45,16 @@ describe('providerProtocolRegistry', () => {
     ).toBe('openai_chat_completions');
   });
 
+  it('keeps OpenAI-labeled relay base URLs on chat completions unless explicitly supported', () => {
+    expect(
+      resolvePreferredProtocol({
+        providerType: 'openai',
+        baseUrl: 'https://proxy.example.com/v1',
+        adapter: 'general',
+      }),
+    ).toBe('openai_chat_completions');
+  });
+
   it('uses responses when a third-party provider explicitly declares support', () => {
     expect(
       resolvePreferredProtocol({

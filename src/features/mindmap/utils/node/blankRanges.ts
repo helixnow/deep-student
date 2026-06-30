@@ -10,13 +10,16 @@ export interface TextSegment {
 export function mergeRanges(ranges: BlankRange[]): BlankRange[] {
   if (ranges.length <= 1) return ranges;
   const sorted = [...ranges].sort((a, b) => a.start - b.start);
-  const merged: BlankRange[] = [sorted[0]];
+  // ★ A6-26：复制区间对象再合并。旧实现直接改 last.end，会原地修改调用方传入的
+  // 区间对象——store 的 document 是 immer frozen 树，若有调用方直接传 node.blankedRanges
+  // （未先经 validateRanges 复制）将抛 TypeError。
+  const merged: BlankRange[] = [{ ...sorted[0] }];
   for (let i = 1; i < sorted.length; i++) {
     const last = merged[merged.length - 1];
     if (sorted[i].start <= last.end) {
       last.end = Math.max(last.end, sorted[i].end);
     } else {
-      merged.push(sorted[i]);
+      merged.push({ ...sorted[i] });
     }
   }
   return merged;

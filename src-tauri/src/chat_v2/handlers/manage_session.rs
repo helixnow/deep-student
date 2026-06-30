@@ -19,6 +19,8 @@ use crate::chat_v2::types::{
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
+const MANUALLY_ARCHIVED_BY_KEY: &str = "manuallyArchivedBy";
+
 /// 将 `Value` 中所有出现在 `id_map` 里的字符串原值替换为新 ID。
 /// 仅替换“整字符串完全等于映射键”的情况，避免对 UUID 子串、URL、日志文本等产生误命中。
 /// 递归遍历对象与数组；对象的 KEY 不变更（避免破坏 schema）。
@@ -46,7 +48,10 @@ fn remap_ids_in_value(
     }
 }
 
-fn session_has_running_anki_blocks(db: &ChatV2Database, session_id: &str) -> Result<bool, String> {
+pub(crate) fn session_has_running_anki_blocks(
+    db: &ChatV2Database,
+    session_id: &str,
+) -> Result<bool, String> {
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     let count: i64 = conn
         .query_row(
@@ -738,6 +743,37 @@ pub async fn chat_v2_session_message_count(
     Ok(count)
 }
 
+/// 全局消息统计摘要（供统计面板展示真实数据）
+#[derive(serde::Serialize)]
+pub struct MessageSummary {
+    pub total_messages: u32,
+    pub user_messages: u32,
+    pub assistant_messages: u32,
+}
+
+/// 统计全部会话的消息总量与角色分布
+#[tauri::command]
+pub async fn chat_v2_get_message_summary(
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<MessageSummary, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let (total, user, assistant): (u32, u32, u32) = conn
+        .query_row(
+            "SELECT COUNT(*),
+                    COALESCE(SUM(CASE WHEN role = 'user' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN role = 'assistant' THEN 1 ELSE 0 END), 0)
+             FROM chat_v2_messages",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .map_err(|e| format!("Failed to summarize messages: {}", e))?;
+    Ok(MessageSummary {
+        total_messages: total,
+        user_messages: user,
+        assistant_messages: assistant,
+    })
+}
+
 // ============================================================================
 // 内部辅助函数（调用 ChatV2Repo 实现）
 // ============================================================================
@@ -749,7 +785,11 @@ pub async fn chat_v2_session_message_count(
 ///
 /// **不去重**：引用计数是逐消息递增的，必须逐条递减以保持一致。
 /// 失败仅记录警告，不会阻断调用方流程。
-fn decrement_vfs_refs_for_session(db: &ChatV2Database, vfs_db: &VfsDatabase, session_id: &str) {
+pub(crate) fn decrement_vfs_refs_for_session(
+    db: &ChatV2Database,
+    vfs_db: &VfsDatabase,
+    session_id: &str,
+) {
     let messages = match ChatV2Repo::get_session_messages_v2(db, session_id) {
         Ok(msgs) => msgs,
         Err(e) => {
@@ -847,6 +887,13 @@ fn update_session_settings_in_db(
     let existing = ChatV2Repo::get_session_v2(db, session_id)?
         .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
 
+    if existing.persist_status != PersistStatus::Active {
+        return Err(ChatV2Error::Validation(format!(
+            "只能归档活跃会话，当前状态: {:?}",
+            existing.persist_status
+        )));
+    }
+
     let now = chrono::Utc::now();
 
     // 业界最佳实践：用户显式传入 title 时锁定标题，自动摘要永不再覆盖
@@ -899,6 +946,20 @@ fn archive_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<(), Ch
         .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
 
     let now = chrono::Utc::now();
+    let mut metadata = existing
+        .metadata
+        .unwrap_or_else(|| Value::Object(Default::default()));
+    if !metadata.is_object() {
+        metadata = Value::Object(Default::default());
+    }
+    if let Some(obj) = metadata.as_object_mut() {
+        obj.insert(
+            MANUALLY_ARCHIVED_BY_KEY.to_string(),
+            serde_json::json!({
+                "archivedAt": now.to_rfc3339(),
+            }),
+        );
+    }
 
     // 构建归档后的会话
     let archived_session = ChatSession {
@@ -911,7 +972,7 @@ fn archive_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<(), Ch
         persist_status: PersistStatus::Archived,
         created_at: existing.created_at,
         updated_at: now,
-        metadata: existing.metadata,
+        metadata: Some(metadata),
         group_id: existing.group_id,
         tags_hash: existing.tags_hash,
         tags: None,
@@ -964,6 +1025,29 @@ fn restore_session_in_db(
         .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
 
     let now = chrono::Utc::now();
+    let mut metadata = existing.metadata;
+    if let Some(Value::Object(obj)) = metadata.as_mut() {
+        obj.remove(MANUALLY_ARCHIVED_BY_KEY);
+        obj.remove("groupArchivedBy");
+    }
+    if let Some(group_id) = existing.group_id.as_deref() {
+        let conn = db.get_conn_safe()?;
+        let Some(group) = ChatV2Repo::get_group_with_conn(&conn, group_id)? else {
+            return Err(ChatV2Error::GroupNotFound(group_id.to_string()));
+        };
+        match group.persist_status {
+            PersistStatus::Active => {}
+            PersistStatus::Archived => {
+                return Err(ChatV2Error::Validation(
+                    "该会话属于已归档课题，请先恢复整个课题，避免其它历史会话脱离课题分组。"
+                        .to_string(),
+                ));
+            }
+            PersistStatus::Deleted => {
+                return Err(ChatV2Error::GroupNotFound(group_id.to_string()));
+            }
+        }
+    }
 
     // 构建恢复后的会话
     let restored_session = ChatSession {
@@ -976,7 +1060,7 @@ fn restore_session_in_db(
         persist_status: PersistStatus::Active,
         created_at: existing.created_at,
         updated_at: now,
-        metadata: existing.metadata,
+        metadata,
         group_id: existing.group_id,
         tags_hash: existing.tags_hash,
         tags: None,

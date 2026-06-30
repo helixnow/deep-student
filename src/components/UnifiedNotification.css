@@ -1,7 +1,9 @@
 /* 通知容器 */
 .notification-container {
   position: fixed;
-  top: calc(12px + env(safe-area-inset-top, 0px));
+
+  /* Android env() 不可靠，--android-safe-area-top 由 platform.ts/SA-1 注入 */
+  top: calc(12px + var(--android-safe-area-top, env(safe-area-inset-top, 0px)));
   left: 50%;
   right: auto;
   width: min(420px, calc(100vw - 24px));
@@ -227,6 +229,36 @@
   stroke-width: 2;
 }
 
+.unified-notification-copy {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--foreground) / 0.58);
+  background: transparent;
+  opacity: 0.74;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out, opacity 150ms ease-out;
+}
+
+.unified-notification-copy:hover,
+.unified-notification-copy:focus-visible {
+  color: hsl(var(--foreground) / 0.88);
+  background: hsl(var(--foreground) / 0.08);
+  opacity: 1;
+}
+
+.unified-notification-copy-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
 .unified-notification-progress {
   position: absolute;
   left: 12px;
@@ -263,10 +295,11 @@
   }
 }
 
-/* 响应式设计 - 移动端优化 */
-@media (max-width: 640px) {
+/* 响应式设计 - 移动端优化
+   CSS-3: 断点与 shell <768 对齐；top 避让 56px 移动顶栏（--mobile-header-total-height 已含安全区） */
+@media (max-width: 767.98px) {
   .notification-container {
-    top: calc(10px + env(safe-area-inset-top, 0px));
+    top: calc(var(--mobile-header-total-height, calc(56px + env(safe-area-inset-top, 0px))) + 8px);
     left: 50%;
     right: auto;
     width: calc(100vw - 20px);

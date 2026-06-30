@@ -31,6 +31,7 @@ import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
 import { deriveContextWindowUsage } from './contextWindowUsage';
+import { useSessionUsageSummary } from './useSessionUsageSummary';
 import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
@@ -81,21 +82,21 @@ interface ModelProfileDisplayRecord {
 
 const THINKING_DEPTH_LABELS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
   'openai-effort': {
-    low: 'Low',
-    medium: 'Medium',
-    high: 'High',
-    xhigh: 'XHigh',
+    low: '低',
+    medium: '中',
+    high: '高',
+    xhigh: '超高',
   },
   'v4-effort': {
-    high: 'High',
-    max: 'Max',
+    high: '高',
+    max: '超高',
   },
   'v32-budget-effort': {
-    low: 'Low',
-    medium: 'Medium',
-    high: 'High',
-    xhigh: 'XHigh',
-    max: 'Max',
+    low: '低',
+    medium: '中',
+    high: '高',
+    xhigh: '超高',
+    max: '超高',
   },
   'toggle-only': {},
 };
@@ -406,6 +407,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       [contextUsageLimitTokens, lastAssistantUsage]
     );
 
+    // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
+    const sessionUsage = useSessionUsageSummary(sessionId, lastAssistantUsage);
+
     const thinkingControl = useMemo(
       () =>
         resolveDeepSeekRuntimeReasoningControl({
@@ -522,12 +526,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const thinkingStateLabel = useMemo(() => {
-      if (!runtimeModelSupportsReasoning) return '不支持推理';
-      if (!effectiveEnableThinking) return '关闭';
-      return getThinkingDepthLabel(
+      if (!runtimeModelSupportsReasoning) return '推理: 不支持';
+      if (!effectiveEnableThinking) return '推理: 关闭';
+      const depthLabel = getThinkingDepthLabel(
         thinkingControl.kind,
         normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined
       );
+      return `推理: ${depthLabel}`;
     }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
@@ -993,6 +998,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         queueFull={queueLength >= QUEUE_HARD_CAP}
         canSubmit={canSubmit}
         contextWindowUsage={contextWindowUsage}
+        sessionUsage={sessionUsage}
         attachments={attachments}
         panelStates={panelStates}
         // 回调

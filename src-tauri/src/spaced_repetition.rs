@@ -228,7 +228,8 @@ pub fn calculate_next_review_advanced(
 /// * ISO 8601 格式的日期字符串（YYYY-MM-DD）
 pub fn calculate_next_review_date(interval: u32) -> String {
     let fuzzed = fuzz_interval(interval);
-    let now = chrono::Utc::now();
+    // 基于本地日期推进（"今天"语义与 todo 模块一致，避免 UTC+8 清晨 8 小时窗口偏差）
+    let now = chrono::Local::now();
     let next_date = now + chrono::Duration::days(fuzzed as i64);
     next_date.format("%Y-%m-%d").to_string()
 }
@@ -293,7 +294,7 @@ pub fn calculate_next_review_date_from_last(
 pub fn is_due_for_review(next_review_date: &str) -> bool {
     use chrono::NaiveDate;
 
-    let today = chrono::Utc::now().date_naive();
+    let today = chrono::Local::now().date_naive();
 
     if let Ok(review_date) = NaiveDate::parse_from_str(next_review_date, "%Y-%m-%d") {
         review_date <= today
@@ -313,7 +314,7 @@ pub fn is_due_for_review(next_review_date: &str) -> bool {
 pub fn days_overdue(next_review_date: &str) -> i64 {
     use chrono::NaiveDate;
 
-    let today = chrono::Utc::now().date_naive();
+    let today = chrono::Local::now().date_naive();
 
     if let Ok(review_date) = NaiveDate::parse_from_str(next_review_date, "%Y-%m-%d") {
         (today - review_date).num_days()
@@ -440,18 +441,18 @@ mod tests {
 
     #[test]
     fn test_is_due_for_review() {
-        // 昨天应该到期
-        let yesterday = (chrono::Utc::now() - chrono::Duration::days(1))
+        // 昨天应该到期（"今天"语义为本地时区，与生产代码一致）
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
             .format("%Y-%m-%d")
             .to_string();
         assert!(is_due_for_review(&yesterday));
 
         // 今天应该到期
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         assert!(is_due_for_review(&today));
 
         // 明天不应该到期
-        let tomorrow = (chrono::Utc::now() + chrono::Duration::days(1))
+        let tomorrow = (chrono::Local::now() + chrono::Duration::days(1))
             .format("%Y-%m-%d")
             .to_string();
         assert!(!is_due_for_review(&tomorrow));
@@ -459,12 +460,12 @@ mod tests {
 
     #[test]
     fn test_days_overdue() {
-        let yesterday = (chrono::Utc::now() - chrono::Duration::days(3))
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(3))
             .format("%Y-%m-%d")
             .to_string();
         assert_eq!(days_overdue(&yesterday), 3);
 
-        let tomorrow = (chrono::Utc::now() + chrono::Duration::days(2))
+        let tomorrow = (chrono::Local::now() + chrono::Duration::days(2))
             .format("%Y-%m-%d")
             .to_string();
         assert_eq!(days_overdue(&tomorrow), -2);
@@ -485,9 +486,9 @@ mod tests {
         let ef5 = calculate_ease_factor(2.5, 5.0);
         assert!(ef5 > 2.5);
 
-        // 质量 4 应该稍微增加 EF
+        // 标准 SM-2 公式下质量 4 的 ΔEF = 0.1 - 1*(0.08+0.02) = 0，EF 保持不变
         let ef4 = calculate_ease_factor(2.5, 4.0);
-        assert!(ef4 > 2.5);
+        assert!((ef4 - 2.5).abs() < 1e-9);
 
         // 质量 3 应该降低 EF
         let ef3 = calculate_ease_factor(2.5, 3.0);

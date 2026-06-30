@@ -26,8 +26,9 @@ use super::error::{VfsError, VfsResult};
 const DATABASE_FILENAME: &str = "vfs.db";
 
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
-/// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260212;
+/// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准。
+/// 单测 `test_current_schema_version_in_sync` 会校验它与 VFS_MIGRATION_SET 一致。
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260615;
 
 /// SQLite 连接池类型
 pub type VfsPool = Pool<SqliteConnectionManager>;
@@ -430,6 +431,28 @@ pub struct VfsDatabaseStats {
 }
 
 // ============================================================================
+// 测试支撑（供 vfs 各 repo 单测共享）
+// ============================================================================
+
+/// 创建已应用全部 VFS 迁移的测试数据库
+///
+/// `VfsDatabase::new` 本身不执行迁移（迁移由 MigrationCoordinator 在应用
+/// 启动时统一执行），直接用它建出来的是无表空库。本辅助函数走与生产一致的
+/// 迁移路径（`MigrationCoordinator::migrate_single(Vfs)`），保证 repo 单测
+/// 运行在真实 schema 上。
+#[cfg(test)]
+pub(crate) fn setup_migrated_test_db() -> (tempfile::TempDir, VfsDatabase) {
+    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
+    let mut coordinator =
+        crate::data_governance::migration::MigrationCoordinator::new(temp_dir.path().to_path_buf());
+    coordinator
+        .migrate_single(crate::data_governance::schema_registry::DatabaseId::Vfs)
+        .expect("VFS migrations should apply cleanly");
+    let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create VFS database");
+    (temp_dir, db)
+}
+
+// ============================================================================
 // 单元测试
 // ============================================================================
 
@@ -439,11 +462,9 @@ mod tests {
     use rusqlite::params;
     use tempfile::TempDir;
 
-    /// 创建测试数据库
+    /// 创建测试数据库（已应用全部迁移）
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create database");
-        (temp_dir, db)
+        setup_migrated_test_db()
     }
 
     #[test]
@@ -460,6 +481,16 @@ mod tests {
 
         // 验证数据库路径正确
         assert_eq!(db.db_path(), db_file);
+    }
+
+    #[test]
+    fn test_current_schema_version_in_sync() {
+        // 防止 CURRENT_SCHEMA_VERSION 与实际迁移集合脱节
+        assert_eq!(
+            CURRENT_SCHEMA_VERSION as i32,
+            crate::data_governance::migration::VFS_MIGRATION_SET.latest_version(),
+            "CURRENT_SCHEMA_VERSION 需与 VFS_MIGRATION_SET 最新版本保持一致"
+        );
     }
 
     #[test]
@@ -531,11 +562,12 @@ mod tests {
         let conn = db.get_conn().expect("Failed to get connection");
 
         // 验证所有表存在（包括 002_folders 迁移的表）
-        // 注意：refinery_schema_history 表由 Refinery 框架在迁移时创建
+        // 注意：refinery_schema_history 表由 Refinery 框架在迁移时创建。
+        // textbooks 已在 V20260130 init 中与 attachments 合并为 files 表。
         let tables = [
             "resources",
             "notes",
-            "textbooks",
+            "files",
             "exam_sheets",
             "translations",
             "essays",
@@ -773,12 +805,11 @@ mod tests {
         let (_temp_dir, db) = setup_test_db();
         let conn = db.get_conn().expect("Failed to get connection");
 
-        // 迁移 009 后，索引结构已改变
-        // 验证 folders 表新索引
+        // 当前 schema（V20260612）下 folders 表的有效索引
         let folder_indexes = [
             "idx_folders_parent",
-            "idx_folders_parent_sort",
-            "idx_folders_deleted_only",
+            "idx_folders_sort",
+            "idx_folders_deleted",
         ];
 
         for idx in folder_indexes {
@@ -792,11 +823,13 @@ mod tests {
             assert_eq!(exists, 1, "Index {} should exist", idx);
         }
 
-        // 验证 folder_items 表新索引
+        // 验证 folder_items 表有效索引
+        // （idx_folder_items_unique_v2 已被 V20260523 的
+        //   idx_folder_items_item_active_unique 取代）
         let item_indexes = [
-            "idx_folder_items_item_unique",
+            "idx_folder_items_item_active_unique",
             "idx_folder_items_folder",
-            "idx_folder_items_folder_sort",
+            "idx_folder_items_type_id",
         ];
 
         for idx in item_indexes {
@@ -1134,7 +1167,6 @@ mod tests {
             "idx_folders_deleted",
             "idx_folder_items_folder",
             "idx_folder_items_type_id",
-            "idx_folder_items_unique_v2",
         ];
 
         for idx in new_indexes {
@@ -1148,8 +1180,13 @@ mod tests {
             assert_eq!(exists, 1, "Index {} should exist", idx);
         }
 
-        // 验证 subject 相关索引已删除
-        let old_indexes = ["idx_folders_subject", "idx_folder_items_subject"];
+        // 验证 subject 相关索引已删除；
+        // idx_folder_items_unique_v2 已被 V20260523 替换为 item_active_unique
+        let old_indexes = [
+            "idx_folders_subject",
+            "idx_folder_items_subject",
+            "idx_folder_items_unique_v2",
+        ];
 
         for idx in old_indexes {
             let exists: i64 = conn

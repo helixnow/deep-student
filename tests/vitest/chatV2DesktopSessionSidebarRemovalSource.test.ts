@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('ChatV2Page desktop session sidebar removal', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'), 'utf-8');
+  const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
 
   it('does not render the desktop UnifiedSidebar session rail', () => {
     expect(source).not.toContain('<UnifiedSidebar');

@@ -3,7 +3,7 @@
 //! 负责将同步进度事件发送到前端，支持节流以避免过于频繁的更新。
 
 use super::progress::{SyncPhase, SyncProgress};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Mutex;
@@ -25,6 +25,8 @@ pub struct SyncProgressEmitter {
     last_emit: Arc<Mutex<Option<Instant>>>,
     /// 上次发射的阶段（用于检测阶段变化）
     last_phase: Arc<Mutex<Option<SyncPhase>>>,
+    /// 上次已发送的百分比（用于防止 UI 进度回退）
+    last_percent: Arc<StdMutex<f32>>,
 }
 
 impl SyncProgressEmitter {
@@ -37,6 +39,7 @@ impl SyncProgressEmitter {
             app,
             last_emit: Arc::new(Mutex::new(None)),
             last_phase: Arc::new(Mutex::new(None)),
+            last_percent: Arc::new(StdMutex::new(0.0)),
         }
     }
 
@@ -60,6 +63,7 @@ impl SyncProgressEmitter {
 
         // 如果阶段变化或达到终止状态，强制发射
         if phase_changed || is_terminal {
+            let progress = self.normalize_progress(progress);
             self.do_emit(&progress);
             *last_emit_guard = Some(now);
             *last_phase_guard = Some(progress.phase);
@@ -73,6 +77,7 @@ impl SyncProgressEmitter {
         };
 
         if should_emit {
+            let progress = self.normalize_progress(progress);
             self.do_emit(&progress);
             *last_emit_guard = Some(now);
             *last_phase_guard = Some(progress.phase);
@@ -86,7 +91,35 @@ impl SyncProgressEmitter {
     /// # 参数
     /// * `progress` - 当前进度
     pub fn emit_force(&self, progress: SyncProgress) {
+        let progress = self.normalize_progress(progress);
         self.do_emit(&progress);
+    }
+
+    /// 归一化进度百分比，保证前端看到的同步进度单调前进。
+    fn normalize_progress(&self, mut progress: SyncProgress) -> SyncProgress {
+        let mut last_percent = self.last_percent.lock().unwrap_or_else(|e| e.into_inner());
+        progress.percent = progress.percent.clamp(0.0, 100.0);
+
+        match progress.phase {
+            SyncPhase::Preparing => {
+                progress.percent = 0.0;
+                *last_percent = 0.0;
+            }
+            SyncPhase::Completed => {
+                progress.percent = 100.0;
+                *last_percent = 100.0;
+            }
+            SyncPhase::Failed => {
+                progress.percent = progress.percent.max(*last_percent);
+                *last_percent = progress.percent;
+            }
+            _ => {
+                progress.percent = progress.percent.max(*last_percent);
+                *last_percent = progress.percent;
+            }
+        }
+
+        progress
     }
 
     /// 发射准备中状态
@@ -192,6 +225,7 @@ impl Clone for SyncProgressEmitter {
             app: self.app.clone(),
             last_emit: Arc::clone(&self.last_emit),
             last_phase: Arc::clone(&self.last_phase),
+            last_percent: Arc::clone(&self.last_percent),
         }
     }
 }

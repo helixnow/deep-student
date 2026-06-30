@@ -9,7 +9,6 @@
 
 use crate::commands::AppState;
 use crate::models::AppError;
-use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -50,33 +49,6 @@ pub struct DebugRawChatMessage {
     pub meta: Option<serde_json::Value>,
 }
 
-/// 调试专用：错题的原始数据库记录
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DebugRawMistakeRecord {
-    pub id: String,
-    pub created_at: String,
-    pub updated_at: String,
-    pub last_accessed_at: String,
-    pub user_question: String,
-    pub ocr_text: String,
-    pub ocr_note: Option<String>,
-    pub tags: Vec<String>,
-    pub mistake_type: String,
-    pub status: String,
-    pub chat_category: String,
-    pub question_images: Vec<String>,
-    pub analysis_images: Vec<String>,
-    pub mistake_summary: Option<String>,
-    pub user_error_analysis: Option<String>,
-    pub chat_metadata: Option<serde_json::Value>,
-
-    // 核心：原始聊天历史（JSON 字符串）
-    pub chat_history_raw_json: String,
-
-    // 反序列化后的聊天历史
-    pub chat_history: Vec<DebugRawChatMessage>,
-}
-
 /// 调试专用：数据库统计信息
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DebugDatabaseStats {
@@ -89,254 +61,6 @@ pub struct DebugDatabaseStats {
     pub messages_with_memory_sources: usize,
     pub messages_with_web_sources: usize,
     pub messages_with_persistent_id: usize,
-}
-
-/// 调试专用：获取错题的原始数据库记录（绕过业务逻辑）
-///
-/// 与 `get_mistake_details` 的区别：
-/// - 不经过任何业务逻辑处理或数据转换
-/// - 直接返回数据库中的 JSON 原文
-/// - 包含原始的 chat_history JSON 字符串
-/// - 用于验证数据库存储是否正确
-#[tauri::command]
-pub async fn debug_get_raw_mistake(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<Option<DebugRawMistakeRecord>, AppError> {
-    println!("🔍 [DEBUG] 直接读取数据库原始记录: {}", id);
-
-    let conn = state
-        .database
-        .get_conn_safe()
-        .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
-
-    let result = conn
-        .query_row(
-            "SELECT
-                id, created_at, updated_at, last_accessed_at,
-                user_question, ocr_text, ocr_note, tags, mistake_type,
-                status, chat_category, question_images, analysis_images,
-                mistake_summary, user_error_analysis,
-                chat_metadata, chat_history
-            FROM mistakes
-            WHERE id = ?1",
-            params![&id],
-            |row| {
-                let tags_json: String = row.get(7)?;
-                let question_images_json: String = row.get(11)?;
-                let analysis_images_json: String = row.get(12)?;
-                let chat_history_raw: String = row.get(16)?;
-                let mistake_id: String = row.get(0)?;
-
-                // P1 修复：不静默隐藏解析错误
-                let tags: Vec<String> = match serde_json::from_str(&tags_json) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("⚠️ [DEBUG] 解析 tags JSON 失败 ({}): {}", mistake_id, e);
-                        Vec::new()
-                    }
-                };
-
-                let question_images: Vec<String> = match serde_json::from_str(&question_images_json)
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!(
-                            "⚠️ [DEBUG] 解析 question_images JSON 失败 ({}): {}",
-                            mistake_id, e
-                        );
-                        Vec::new()
-                    }
-                };
-
-                let analysis_images: Vec<String> = match serde_json::from_str(&analysis_images_json)
-                {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!(
-                            "⚠️ [DEBUG] 解析 analysis_images JSON 失败 ({}): {}",
-                            mistake_id, e
-                        );
-                        Vec::new()
-                    }
-                };
-
-                // 反序列化聊天历史
-                let chat_history: Vec<DebugRawChatMessage> =
-                    match serde_json::from_str(&chat_history_raw) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            eprintln!(
-                                "⚠️ [DEBUG] 解析 chat_history JSON 失败 ({}): {}",
-                                mistake_id, e
-                            );
-                            Vec::new()
-                        }
-                    };
-
-                let chat_metadata_str: Option<String> = row.get(15)?;
-                let chat_metadata: Option<serde_json::Value> =
-                    chat_metadata_str.and_then(|s| serde_json::from_str(&s).ok());
-
-                Ok(DebugRawMistakeRecord {
-                    id: row.get(0)?,
-                    created_at: row.get(1)?,
-                    updated_at: row.get(2)?,
-                    last_accessed_at: row.get(3)?,
-                    user_question: row.get(4)?,
-                    ocr_text: row.get(5)?,
-                    ocr_note: row.get(6)?,
-                    tags,
-                    mistake_type: row.get(8)?,
-                    status: row.get(9)?,
-                    chat_category: row.get(10)?,
-                    question_images,
-                    analysis_images,
-                    mistake_summary: row.get(13)?,
-                    user_error_analysis: row.get(14)?,
-                    chat_metadata,
-                    chat_history_raw_json: chat_history_raw,
-                    chat_history,
-                })
-            },
-        )
-        .optional()
-        .map_err(|e| AppError::database(format!("查询错题失败: {}", e)))?;
-
-    Ok(result)
-}
-
-/// 调试专用：批量获取多个错题的原始记录
-/// P1 修复：使用 IN 子句优化性能，避免 N+1 查询问题
-#[tauri::command]
-pub async fn debug_get_raw_mistakes_batch(
-    ids: Vec<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<DebugRawMistakeRecord>, AppError> {
-    println!("🔍 [DEBUG] 批量读取 {} 个错题的原始记录", ids.len());
-
-    if ids.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let conn = state
-        .database
-        .get_conn_safe()
-        .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
-
-    // 构建 IN 子句的占位符
-    let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
-    let query = format!(
-        "SELECT
-            id, created_at, updated_at, last_accessed_at,
-            user_question, ocr_text, ocr_note, tags, mistake_type,
-            status, chat_category, question_images, analysis_images,
-            mistake_summary, user_error_analysis,
-            chat_metadata, chat_history
-        FROM mistakes
-        WHERE id IN ({})",
-        placeholders
-    );
-
-    let mut stmt = conn
-        .prepare(&query)
-        .map_err(|e| AppError::database(format!("准备批量查询失败: {}", e)))?;
-
-    // 将 String 引用转换为 rusqlite 可接受的参数
-    let params_refs: Vec<&dyn rusqlite::ToSql> =
-        ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-    let rows = stmt
-        .query_map(params_refs.as_slice(), |row| {
-            let tags_json: String = row.get(7)?;
-            let question_images_json: String = row.get(11)?;
-            let analysis_images_json: String = row.get(12)?;
-            let chat_history_raw: String = row.get(16)?;
-
-            // P1 修复：不静默隐藏解析错误
-            let tags: Vec<String> = match serde_json::from_str(&tags_json) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("⚠️ [DEBUG] 解析 tags JSON 失败: {}", e);
-                    Vec::new()
-                }
-            };
-
-            let question_images: Vec<String> = match serde_json::from_str(&question_images_json) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("⚠️ [DEBUG] 解析 question_images JSON 失败: {}", e);
-                    Vec::new()
-                }
-            };
-
-            let analysis_images: Vec<String> = match serde_json::from_str(&analysis_images_json) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("⚠️ [DEBUG] 解析 analysis_images JSON 失败: {}", e);
-                    Vec::new()
-                }
-            };
-
-            let chat_history: Vec<DebugRawChatMessage> =
-                match serde_json::from_str(&chat_history_raw) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        eprintln!("⚠️ [DEBUG] 解析 chat_history JSON 失败: {}", e);
-                        Vec::new()
-                    }
-                };
-
-            let chat_metadata_str: Option<String> = row.get(15)?;
-            let chat_metadata: Option<serde_json::Value> = chat_metadata_str.and_then(|s| {
-                serde_json::from_str(&s)
-                    .map_err(|e| {
-                        eprintln!("⚠️ [DEBUG] 解析 chat_metadata JSON 失败: {}", e);
-                        e
-                    })
-                    .ok()
-            });
-
-            Ok(DebugRawMistakeRecord {
-                id: row.get(0)?,
-                created_at: row.get(1)?,
-                updated_at: row.get(2)?,
-                last_accessed_at: row.get(3)?,
-                user_question: row.get(4)?,
-                ocr_text: row.get(5)?,
-                ocr_note: row.get(6)?,
-                tags,
-                mistake_type: row.get(8)?,
-                status: row.get(9)?,
-                chat_category: row.get(10)?,
-                question_images,
-                analysis_images,
-                mistake_summary: row.get(13)?,
-                user_error_analysis: row.get(14)?,
-                chat_metadata,
-                chat_history_raw_json: chat_history_raw,
-                chat_history,
-            })
-        })
-        .map_err(|e| AppError::database(format!("批量查询失败: {}", e)))?;
-
-    let mut results = Vec::new();
-    for row_result in rows {
-        match row_result {
-            Ok(record) => results.push(record),
-            Err(e) => {
-                eprintln!("⚠️ [DEBUG] 处理批量查询结果失败: {}", e);
-            }
-        }
-    }
-
-    println!(
-        "🔍 [DEBUG] 批量读取完成: 成功 {}/{} 条记录",
-        results.len(),
-        ids.len()
-    );
-
-    Ok(results)
 }
 
 /// 调试专用：获取数据库统计信息
@@ -428,207 +152,60 @@ pub async fn debug_get_database_stats(
     })
 }
 
-/// 调试专用：验证特定错题的数据完整性
-#[tauri::command]
-pub async fn debug_verify_mistake_integrity(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<DebugIntegrityReport, AppError> {
-    println!("🔬 [DEBUG] 验证错题数据完整性: {}", id);
-
-    let raw = debug_get_raw_mistake(id.clone(), state.clone())
-        .await?
-        .ok_or_else(|| AppError::not_found(format!("错题不存在: {}", id)))?;
-
-    let mut issues = Vec::new();
-    let mut warnings = Vec::new();
-
-    // 检查1: chat_history JSON 是否可解析
-    if raw.chat_history_raw_json.is_empty() {
-        warnings.push("chat_history 为空数组".to_string());
-    } else if raw.chat_history.is_empty() {
-        issues.push("chat_history JSON 解析失败或为空".to_string());
-    }
-
-    // 检查2: 每条消息的字段完整性
-    for (idx, msg) in raw.chat_history.iter().enumerate() {
-        // P2 新增：role 有效性检查
-        if !["user", "assistant", "system", "tool"].contains(&msg.role.as_str()) {
-            issues.push(format!("消息 #{} 的 role 无效: {}", idx, msg.role));
-        }
-
-        if msg.content.is_empty() && msg.tool_call.is_none() {
-            warnings.push(format!("消息 #{} 的 content 为空且无工具调用", idx));
-        }
-
-        // P2 新增：content 类型验证（检查是否为有效的 JSON 数组）
-        if msg.content.starts_with('[') {
-            match serde_json::from_str::<Vec<serde_json::Value>>(&msg.content) {
-                Ok(parts) => {
-                    for (part_idx, part) in parts.iter().enumerate() {
-                        let part_type = part.get("type").and_then(|t| t.as_str());
-                        if !matches!(part_type, Some("text") | Some("image_url")) {
-                            warnings.push(format!(
-                                "消息 #{} 的 content part[{}] 类型无效: {:?}",
-                                idx, part_idx, part_type
-                            ));
-                        }
-                    }
-                }
-                Err(_) => {
-                    warnings.push(format!("消息 #{} 的 content 像是数组但解析失败", idx));
-                }
-            }
-        }
-
-        // 检查图片字段的一致性
-        let has_image_base64 = msg.image_base64.as_ref().map_or(false, |v| !v.is_empty());
-        let has_image_paths = msg.image_paths.as_ref().map_or(false, |v| !v.is_empty());
-
-        if has_image_base64 || has_image_paths {
-            // 检查 content 是否包含 image_url
-            if !msg.content.contains("image_url") {
-                warnings.push(format!(
-                    "消息 #{} 有图片字段但 content 中无 image_url 引用",
-                    idx
-                ));
-            }
-        }
-
-        // 检查 persistent_stable_id 的唯一性
-        if let Some(stable_id) = &msg.persistent_stable_id {
-            let duplicates = raw
-                .chat_history
-                .iter()
-                .filter(|m| m.persistent_stable_id.as_ref() == Some(stable_id))
-                .count();
-
-            if duplicates > 1 {
-                issues.push(format!(
-                    "消息 #{} 的 persistent_stable_id 重复 ({} 次): {}",
-                    idx, duplicates, stable_id
-                ));
-            }
-        }
-    }
-
-    // 检查3: 时间戳顺序
-    let mut prev_timestamp: Option<String> = None;
-    for (idx, msg) in raw.chat_history.iter().enumerate() {
-        if let Some(prev) = &prev_timestamp {
-            if msg.timestamp < *prev {
-                warnings.push(format!("消息 #{} 的时间戳早于前一条消息", idx));
-            }
-        }
-        prev_timestamp = Some(msg.timestamp.clone());
-    }
-
-    // 检查4: textbook_pages 字段一致性（P0 新增）
-    for (idx, msg) in raw.chat_history.iter().enumerate() {
-        if let Some(textbook_pages) = &msg.textbook_pages {
-            if !textbook_pages.is_null() {
-                // 检查 content 是否引用了教材页
-                if msg.role == "user" && !msg.content.contains("image_url") {
-                    warnings.push(format!(
-                        "消息 #{} 有 textbook_pages 但 content 中无 image_url 引用",
-                        idx
-                    ));
-                }
-            }
-        }
-    }
-
-    // 检查5: _meta 字段泄漏检查（P0 新增）
-    for (idx, msg) in raw.chat_history.iter().enumerate() {
-        if let Some(meta) = &msg.meta {
-            if !meta.is_null() {
-                // _meta 不应该持久化到数据库，如果存在说明有清理问题
-                issues.push(format!(
-                    "消息 #{} 包含 _meta 字段，这不应该被持久化到数据库",
-                    idx
-                ));
-            }
-        }
-    }
-
-    // 检查6: 工具调用配对检查（P2 新增）
-    let mut tool_call_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut tool_result_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-
-    for (idx, msg) in raw.chat_history.iter().enumerate() {
-        if let Some(tool_call) = &msg.tool_call {
-            if let Some(id) = tool_call.get("id").and_then(|v| v.as_str()) {
-                tool_call_ids.insert(id.to_string());
-            } else {
-                warnings.push(format!("消息 #{} 的 tool_call 缺少 id 字段", idx));
-            }
-        }
-
-        if let Some(tool_result) = &msg.tool_result {
-            if let Some(call_id) = tool_result.get("call_id").and_then(|v| v.as_str()) {
-                tool_result_ids.insert(call_id.to_string());
-
-                // 检查对应的 tool_call 是否存在
-                if !tool_call_ids.contains(call_id) {
-                    warnings.push(format!(
-                        "消息 #{} 的 tool_result 引用了不存在的 tool_call: {}",
-                        idx, call_id
-                    ));
-                }
-            } else {
-                warnings.push(format!("消息 #{} 的 tool_result 缺少 call_id 字段", idx));
-            }
-        }
-    }
-
-    // 检查是否有未配对的 tool_call
-    for call_id in tool_call_ids.iter() {
-        if !tool_result_ids.contains(call_id) {
-            warnings.push(format!(
-                "发现未配对的 tool_call (id: {})，缺少对应的 tool_result",
-                call_id
-            ));
-        }
-    }
-
-    let is_valid = issues.is_empty();
-    let summary = if is_valid {
-        if warnings.is_empty() {
-            "✅ 数据完整性验证通过，无问题".to_string()
-        } else {
-            format!("⚠️ 数据完整性验证通过，但有 {} 个警告", warnings.len())
-        }
-    } else {
-        format!("❌ 数据完整性验证失败，发现 {} 个问题", issues.len())
-    };
-
-    Ok(DebugIntegrityReport {
-        mistake_id: id,
-        is_valid,
-        message_count: raw.chat_history.len(),
-        issues,
-        warnings,
-        summary,
-    })
-}
-
-/// 数据完整性报告
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DebugIntegrityReport {
-    pub mistake_id: String,
-    pub is_valid: bool,
-    pub message_count: usize,
-    pub issues: Vec<String>,
-    pub warnings: Vec<String>,
-    pub summary: String,
-}
-
 /// 记录前端调试消息
 #[tauri::command]
 pub async fn log_debug_message(message: String) -> Result<(), String> {
     use tracing::info;
     info!(target: "frontend_debug", "{}", message);
     println!("🔍 [FRONTEND] {}", message);
+    Ok(())
+}
+
+/// tauri-lab 专用前端日志桥。普通运行时没有 TAURI_LAB_* 环境变量会直接 no-op。
+#[tauri::command]
+pub async fn tauri_lab_frontend_log(
+    level: String,
+    message: String,
+    stack: Option<String>,
+) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use tracing::{debug, error, info, warn};
+
+    let instance_id = std::env::var("TAURI_LAB_INSTANCE_ID").ok();
+    let log_path = std::env::var("TAURI_LAB_FRONTEND_LOG").ok();
+    if instance_id.is_none() && log_path.is_none() {
+        return Ok(());
+    }
+
+    let entry = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339(),
+        "instance_id": instance_id,
+        "level": level,
+        "message": message,
+        "stack": stack,
+    });
+    let line = format!("{}\n", entry);
+
+    if let Some(path) = log_path {
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| e.to_string())?;
+        file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    match level.as_str() {
+        "error" => error!(target: "tauri_lab_frontend", "{}", message),
+        "warn" => warn!(target: "tauri_lab_frontend", "{}", message),
+        "info" => info!(target: "tauri_lab_frontend", "{}", message),
+        _ => debug!(target: "tauri_lab_frontend", "{}", message),
+    }
+
     Ok(())
 }
 

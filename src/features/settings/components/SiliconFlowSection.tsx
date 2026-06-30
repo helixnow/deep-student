@@ -74,9 +74,11 @@ interface SiliconFlowSectionProps {
   onBatchConfigsCreated?: (configIds: { [key: string]: string }) => void;
   onBatchCreateConfigs?: (configs: Array<Omit<ApiConfig, 'id'> & { tempId: string }>) => Promise<{ success: boolean; idMap: { [tempId: string]: string } }> | void | undefined;
   variant?: SiliconFlowSectionVariant;
+  /** 保存成功后触发（用于自动获取模型 + 自动分配） */
+  onApiKeySaved?: (apiKey: string) => void;
 }
 
-export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, variant = 'full' }) => {
+export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreateConfig, showMessage, onBatchConfigsCreated, onBatchCreateConfigs, onApiKeySaved, variant = 'full' }) => {
   const { t } = useTranslation(['common', 'settings']);
   const [apiKey, setApiKey] = useState('');
   const [models, setModels] = useState<SiliconFlowModel[]>([]);
@@ -87,15 +89,31 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [error, setError] = useState<string | null>(null); // New state for error message
   const [showApiKey, setShowApiKey] = useState(false);
   const [confirmingClearApiKey, setConfirmingClearApiKey] = useState(false);
-  type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const lastSavedKeyRef = useRef('');
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savingApiKey, setSavingApiKey] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState<'idle' | 'dirty' | 'saving' | 'saved' | 'error'>('idle');
   const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
   const siliconFlowLegacyKey = 'siliconflow.api_key';
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null); // 上次获取时间
   const [isFromCache, setIsFromCache] = useState(false); // 是否来自缓存
+  const lastSavedApiKeyRef = React.useRef('');
+  const statusTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearStatusTimer = useCallback(() => {
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleStatusReset = useCallback((nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
+    clearStatusTimer();
+    setApiKeyStatus(nextStatus);
+    statusTimerRef.current = setTimeout(() => {
+      setApiKeyStatus('idle');
+      statusTimerRef.current = null;
+    }, timeoutMs);
+  }, [clearStatusTimer]);
 
   const getModelCapabilities = useCallback((modelLike: SiliconFlowModel | string | null | undefined) => {
     const model = typeof modelLike === 'string' ? models.find(m => m.id === modelLike) : modelLike ?? undefined;
@@ -242,45 +260,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
   }, [showGlobalNotification, siliconFlowVendorKey, siliconFlowLegacyKey, t]);
 
-  const clearStatusTimer = useCallback(() => {
-    if (statusTimerRef.current) {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleStatusReset = useCallback((nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
-    clearStatusTimer();
-    setSaveStatus(nextStatus);
-    statusTimerRef.current = setTimeout(() => {
-      setSaveStatus('idle');
-      statusTimerRef.current = null;
-    }, timeoutMs);
-  }, [clearStatusTimer]);
-
-  const handleSaveApiKey = useCallback(async () => {
-    const trimmed = apiKey.trim();
-    if (!trimmed || trimmed === lastSavedKeyRef.current) {
-      return;
-    }
-
-    try {
-      setSaving(true);
-      clearStatusTimer();
-      setSaveStatus('saving');
-      await persistApiKey(trimmed);
-      lastSavedKeyRef.current = trimmed;
-      scheduleStatusReset('saved');
-      showGlobalNotification('success', t('settings:vendor_panel.api_key_saved'));
-    } catch (error: unknown) {
-      console.error('保存API密钥失败:', error);
-      scheduleStatusReset('error', 3200);
-      showGlobalNotification('error', t('settings:vendor_panel.api_key_save_failed'));
-    } finally {
-      setSaving(false);
-    }
-  }, [apiKey, persistApiKey, clearStatusTimer, scheduleStatusReset, showGlobalNotification, t]);
-
   // 组件加载时从持久化存储恢复API密钥
   React.useEffect(() => {
     let mounted = true;
@@ -302,7 +281,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
         if (mounted && savedApiKey) {
           setApiKey(savedApiKey);
-          lastSavedKeyRef.current = savedApiKey;
+          lastSavedApiKeyRef.current = savedApiKey.trim();
         }
       } catch (error: unknown) {
         console.error('加载SiliconFlow API Key失败:', error);
@@ -324,12 +303,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     const handleApiKeyChanged = (event: Event) => {
       const customEvent = event as CustomEvent<{ apiKey: string }>;
       if (customEvent.detail?.apiKey !== undefined) {
-        const newKey = customEvent.detail.apiKey;
-        setApiKey(newKey);
-        lastSavedKeyRef.current = newKey.trim();
-        setSaveStatus('idle');
+        setApiKey(customEvent.detail.apiKey);
+        lastSavedApiKeyRef.current = customEvent.detail.apiKey.trim();
         setConfirmingClearApiKey(false);
-        if (!newKey.trim()) {
+        clearStatusTimer();
+        setApiKeyStatus('idle');
+        if (!customEvent.detail.apiKey.trim()) {
           setShowApiKey(false);
         }
       }
@@ -341,7 +320,16 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         window.removeEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
       };
     }
-  }, []);
+  }, [clearStatusTimer]);
+
+  React.useEffect(() => {
+    return () => {
+      clearStatusTimer();
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [clearStatusTimer]);
 
   // API密钥加载后自动加载缓存的模型列表
   React.useEffect(() => {
@@ -366,7 +354,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
   }, [apiKey, loadCachedModels]);
 
-  // API密钥变化时跟踪保存状态
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
     setConfirmingClearApiKey(false);
@@ -374,9 +361,55 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     if (!value.trim()) {
       setShowApiKey(false);
     }
-    const trimmed = value.trim();
-    setSaveStatus(trimmed && trimmed !== lastSavedKeyRef.current ? 'dirty' : 'idle');
+    const isDirty = value.trim() !== lastSavedApiKeyRef.current;
+    setApiKeyStatus(isDirty ? 'dirty' : 'idle');
+
+    // 防抖自动保存：输入停止 800ms 后自动保存
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    if (isDirty) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        void handleSaveApiKey();
+      }, 800);
+    }
   };
+
+  const handleApiKeyBlur = () => {
+    // 失焦时取消防抖 timer 并立即保存（如果内容已变更）
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    const trimmed = apiKey.trim();
+    if (trimmed && trimmed !== lastSavedApiKeyRef.current) {
+      void handleSaveApiKey();
+    }
+  };
+
+  const handleSaveApiKey = useCallback(async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed || trimmed === lastSavedApiKeyRef.current) {
+      return;
+    }
+
+    try {
+      setSavingApiKey(true);
+      clearStatusTimer();
+      setApiKeyStatus('saving');
+      await persistApiKey(trimmed);
+      lastSavedApiKeyRef.current = trimmed;
+      scheduleStatusReset('saved');
+      onApiKeySaved?.(trimmed);
+      showMessage?.('success', t('settings:vendor_panel.api_key_saved'));
+    } catch (error: unknown) {
+      console.error('保存 SiliconFlow API 密钥失败:', error);
+      scheduleStatusReset('error', 3200);
+      showMessage?.('error', t('settings:vendor_panel.api_key_save_failed'));
+    } finally {
+      setSavingApiKey(false);
+    }
+  }, [apiKey, clearStatusTimer, persistApiKey, scheduleStatusReset, showMessage, t]);
 
   // 清除保存的API密钥
   const clearSavedApiKey = async () => {
@@ -386,11 +419,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     setApiKey('');
-    lastSavedKeyRef.current = '';
+    lastSavedApiKeyRef.current = '';
     setShowApiKey(false);
     setConfirmingClearApiKey(false);
     clearStatusTimer();
-    setSaveStatus('idle');
+    setApiKeyStatus('idle');
     setModels([]);
     setAvailableModels([]);
     setSelectedModel('');
@@ -945,24 +978,25 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const showModelControls = variant === 'full' || variant === 'models';
   const isInline = variant === 'inline';
   const canRevealApiKey = apiKey.trim().length > 0;
-  const canSave = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedKeyRef.current && !saving;
-  const canClearStoredKey = saving || lastSavedKeyRef.current.length > 0;
-  const statusText =
-    saveStatus === 'saving'
+  const canSaveApiKey = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedApiKeyRef.current && !savingApiKey;
+  const apiKeyStatusText =
+    apiKeyStatus === 'saving'
       ? t('settings:vendor_panel.api_key_saving', { defaultValue: '正在保存…' })
-      : saveStatus === 'saved'
+      : apiKeyStatus === 'saved'
         ? t('settings:vendor_panel.api_key_saved')
-        : saveStatus === 'error'
+        : apiKeyStatus === 'error'
           ? t('settings:vendor_panel.api_key_save_failed')
-          : saveStatus === 'dirty'
+          : apiKeyStatus === 'dirty'
             ? t('settings:vendor_panel.api_key_unsaved', { defaultValue: '有未保存的更改' })
-            : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
-  const statusToneClassName =
-    saveStatus === 'error'
+            : lastSavedApiKeyRef.current
+              ? t('settings:vendor_panel.api_key_securely_stored', { defaultValue: '已安全保存，下次无需重新输入' })
+              : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
+  const apiKeyStatusToneClassName =
+    apiKeyStatus === 'error'
       ? 'text-destructive'
-      : saveStatus === 'saved'
+      : apiKeyStatus === 'saved'
         ? 'text-green-600 dark:text-green-400'
-        : saveStatus === 'dirty'
+        : apiKeyStatus === 'dirty'
           ? 'text-amber-600 dark:text-amber-400'
           : 'text-muted-foreground';
 
@@ -971,6 +1005,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
+        onBlur={handleApiKeyBlur}
         onKeyDown={e => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();
@@ -985,34 +1020,36 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         hideLabel={t('common:siliconflow.hide_api_key')}
       />
       <div
-        className={['flex items-center gap-2 text-xs transition-colors', statusToneClassName].join(' ')}
+        className={['flex items-center gap-2 text-xs transition-colors', apiKeyStatusToneClassName].join(' ')}
         aria-live="polite"
       >
-        {saveStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
-        {saveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
-        {saveStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
-        <span>{statusText}</span>
+        {apiKeyStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
+        {apiKeyStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+        {apiKeyStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
+        <span>{apiKeyStatusText}</span>
       </div>
-      <div className="flex flex-wrap gap-2 pt-1">
-        <NotionButton
-          variant="primary"
-          size="sm"
-          onClick={() => {
-            void handleSaveApiKey();
-          }}
-          disabled={!canSave}
-          title={t('common:actions.save')}
-        >
-          {saveStatus === 'saving' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
-          {t('common:actions.save')}
-        </NotionButton>
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <div className="flex flex-wrap gap-2">
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              void handleSaveApiKey();
+            }}
+            disabled={!canSaveApiKey}
+            title={t('common:actions.save')}
+          >
+            {savingApiKey ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
+            {t('common:actions.save')}
+          </NotionButton>
+        </div>
         {/* Notion 风格按钮 - 一键分配 */}
         <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
         </NotionButton>
-        {/* Notion 风格按钮 - 清除 */}
-        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={!canClearStoredKey} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
+        {/* Notion 风格按钮 - 清除 (右对齐) */}
+        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || (!apiKey && !lastSavedApiKeyRef.current)} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
           <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')

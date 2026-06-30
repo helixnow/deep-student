@@ -12,6 +12,10 @@
 - **mistral.svg** - Mistral AI
 - **grok.svg** - xAI (Grok)
 - **azure.svg** - Microsoft Azure AI
+- **perplexity.svg** - Perplexity
+- **huggingface.svg** - Hugging Face
+- **together.svg** - Together AI
+- **nvidia.svg** - NVIDIA
 
 ### 中国供应商
 - **deepseek.svg** - DeepSeek
@@ -28,6 +32,13 @@
 - **siliconcloud.svg** - 硅基流动
 - **baichuan.svg** - 百川智能
 - **sensenova.svg** - 商汤日日新
+- **stepfun.svg** - 阶跃星辰
+- **internlm.svg** - 书生浦语 (InternLM)
+- **baai.svg** - 智源研究院 (BAAI)
+- **teleai.svg** - 中国电信 TeleAI
+- **kwaipilot.svg** - 快手 KwaiPilot
+- **mimo.svg** - 小米 MiMo
+- **youdao.svg** - 网易有道
 
 ### 图像/视频生成
 - **midjourney.svg** - Midjourney

@@ -174,6 +174,9 @@ impl LlmStructurer {
     /// 返回与 `batch` 等长的 `Vec<Option<Value>>`。
     fn align_by_label(batch: &[QuestionWithFigures], parsed: &[Value]) -> Vec<Option<Value>> {
         let mut result: Vec<Option<Value>> = vec![None; batch.len()];
+        // 标记已被消费的 parsed 项：位置回退只取尚未消费的项，避免把已按 label
+        // 匹配走的 parsed 重复分配给另一题（label 错位 + 数量恰好相等的场景）。
+        let mut used: Vec<bool> = vec![false; parsed.len()];
 
         // 如果数量完全一致且无 _source_label，按位置回退
         let has_labels = parsed
@@ -188,7 +191,7 @@ impl LlmStructurer {
         }
 
         // 按 _source_label 匹配
-        for p in parsed {
+        for (p_idx, p) in parsed.iter().enumerate() {
             let p_label = p
                 .get("_source_label")
                 .and_then(|v| v.as_str())
@@ -206,17 +209,28 @@ impl LlmStructurer {
                 }
                 if qwf.merged.question.label.trim() == p_label {
                     result[i] = Some(p.clone());
+                    used[p_idx] = true;
                     break;
                 }
             }
         }
 
-        // 未匹配的用位置回退（仅当数量一致时）
+        // 未匹配的题槽用「尚未被 label 消费的 parsed 项」依序回退（仅当数量一致时）
         if parsed.len() == batch.len() {
-            for (i, p) in parsed.iter().enumerate() {
-                if result[i].is_none() {
-                    result[i] = Some(p.clone());
+            let mut next_unused = 0usize;
+            for slot in result.iter_mut() {
+                if slot.is_some() {
+                    continue;
                 }
+                while next_unused < parsed.len() && used[next_unused] {
+                    next_unused += 1;
+                }
+                if next_unused >= parsed.len() {
+                    break;
+                }
+                *slot = Some(parsed[next_unused].clone());
+                used[next_unused] = true;
+                next_unused += 1;
             }
         }
 

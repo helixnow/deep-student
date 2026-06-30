@@ -20,6 +20,8 @@ pub(crate) struct VariantLLMAdapter {
     preparing_block_ids: Mutex<HashMap<String, String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲）
     args_delta_buffer: Mutex<HashMap<String, String>>,
+    /// 🔧 F2 修复：最近一次收到流式数据的时刻（用于空闲超时判定）
+    last_activity_at: Mutex<std::time::Instant>,
 }
 
 impl VariantLLMAdapter {
@@ -41,7 +43,24 @@ impl VariantLLMAdapter {
             think_tag_buffer: Mutex::new(String::new()),
             preparing_block_ids: Mutex::new(HashMap::new()),
             args_delta_buffer: Mutex::new(HashMap::new()),
+            last_activity_at: Mutex::new(std::time::Instant::now()),
         }
+    }
+
+    /// 🔧 F2 修复：刷新流式活动时间戳
+    fn touch_activity(&self) {
+        *self
+            .last_activity_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = std::time::Instant::now();
+    }
+
+    /// 🔧 F2 修复：距最近一次流式活动的时长（用于空闲超时判定）
+    pub(crate) fn idle_elapsed(&self) -> std::time::Duration {
+        self.last_activity_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .elapsed()
     }
 
     fn finalize_thinking(&self) {
@@ -350,6 +369,8 @@ impl VariantLLMAdapter {
             .think_tag_buffer
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = String::new();
+        // 🔧 F2：新一轮视为新的流，重置空闲计时
+        self.touch_activity();
         self.ctx.reset_for_new_round();
     }
 }
@@ -361,6 +382,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     /// `<think>...</think>` 或 `<thinking>...</thinking>` 标签嵌入到普通内容中。
     /// 此方法实时解析这些标签，将内容正确路由到 thinking 或 content 块。
     fn on_content_chunk(&self, text: &str) {
+        self.touch_activity();
         if text.is_empty() {
             return;
         }
@@ -377,6 +399,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     }
 
     fn on_reasoning_chunk(&self, text: &str) {
+        self.touch_activity();
         if !self.enable_thinking {
             return;
         }
@@ -400,6 +423,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     }
 
     fn on_tool_call_start(&self, tool_call_id: &str, tool_name: &str) {
+        self.touch_activity();
         log::info!(
             "[ChatV2::VariantAdapter] Tool call start: variant={}, id={}, name={}",
             self.ctx.variant_id(),
@@ -438,6 +462,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     }
 
     fn on_tool_call_args_delta(&self, tool_call_id: &str, delta: &str) {
+        self.touch_activity();
         let block_id = {
             let guard = self
                 .preparing_block_ids
@@ -523,6 +548,7 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
     }
 
     fn on_usage(&self, usage: &serde_json::Value) {
+        self.touch_activity();
         let token_usage = parse_api_usage(usage);
 
         if let Some(u) = token_usage {

@@ -35,7 +35,14 @@ pub(crate) const CHARS_PER_TOKEN_ASCII: f64 = 0.25;
 
 /// 🔧 P1修复：LLM 流式调用超时（秒）
 /// 流式响应需要较长时间，设置为 10 分钟
+///
+/// 🔧 F2 修复后语义：作为「空闲超时」使用 —— 流式期间只要有数据持续到达就不会
+/// 触发；连续 10 分钟无任何 chunk/usage/工具调用增量才判定为挂起。
 pub(crate) const LLM_STREAM_TIMEOUT_SECS: u64 = 600;
+
+/// 🔧 F2 修复：LLM 流式调用绝对时长上限（秒）
+/// 即使流式持续健康输出，单次 LLM 调用也不允许超过 2 小时（防御病态慢滴流）
+pub(crate) const LLM_STREAM_MAX_TOTAL_SECS: u64 = 7_200;
 
 /// 🔧 P1修复：LLM 非流式调用超时（秒）
 /// 用于摘要生成等简单调用，设置为 2 分钟

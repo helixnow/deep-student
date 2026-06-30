@@ -1106,6 +1106,16 @@ impl MemoryService {
             }
         }
 
+        // 🔧 幂等预留泄漏修复：预留成功后，任何 Err 早退路径都必须清掉 in_progress
+        // 预留，否则该幂等键会卡死到 TTL 过期（后续同 key 请求一直拿到 Conflict）。
+        // decision 主路径的 Err 已由函数末尾统一清理；这里覆盖主路径之前的早退点。
+        let cleanup_on_err = |e: VfsError| -> VfsError {
+            if let Some(key) = idempotency_key {
+                let _ = self.clear_smart_write_reservation(key);
+            }
+            e
+        };
+
         if MemoryAutoExtractor::contains_sensitive_pattern_pub(content)
             || MemoryAutoExtractor::contains_sensitive_pattern_pub(title)
         {
@@ -1150,8 +1160,9 @@ impl MemoryService {
         }
 
         if memory_type == MemoryType::Note {
-            let output =
-                self.write_explicit_memory(folder_path, title, content, MemoryType::Note, purpose)?;
+            let output = self
+                .write_explicit_memory(folder_path, title, content, MemoryType::Note, purpose)
+                .map_err(cleanup_on_err)?;
             if let Some(resource_id) = &output.resource_id {
                 self.index_immediately(resource_id).await;
             }
@@ -1172,13 +1183,9 @@ impl MemoryService {
         }
 
         if memory_type == MemoryType::Study {
-            let output = self.write_explicit_memory(
-                folder_path,
-                title,
-                content,
-                MemoryType::Study,
-                purpose,
-            )?;
+            let output = self
+                .write_explicit_memory(folder_path, title, content, MemoryType::Study, purpose)
+                .map_err(cleanup_on_err)?;
             if let Some(resource_id) = &output.resource_id {
                 self.index_immediately(resource_id).await;
             }
@@ -1215,12 +1222,16 @@ impl MemoryService {
             return Ok(output);
         }
 
-        if self.config.is_privacy_mode()? {
+        if self.config.is_privacy_mode().map_err(cleanup_on_err)? {
             // 隐私模式下使用本地标题匹配做基础去重（不涉及外部 API 调用）
-            let root_id = self.ensure_root_folder_id()?;
-            let target_folder_id =
-                self.resolve_write_target_folder_id(folder_path, false, &root_id)?;
-            if let Some(existing) = self.find_note_by_title(target_folder_id.as_deref(), title)? {
+            let root_id = self.ensure_root_folder_id().map_err(cleanup_on_err)?;
+            let target_folder_id = self
+                .resolve_write_target_folder_id(folder_path, false, &root_id)
+                .map_err(cleanup_on_err)?;
+            if let Some(existing) = self
+                .find_note_by_title(target_folder_id.as_deref(), title)
+                .map_err(cleanup_on_err)?
+            {
                 let output = SmartWriteOutput {
                     note_id: existing.id,
                     event: "NONE".to_string(),
@@ -1235,14 +1246,16 @@ impl MemoryService {
                 }
                 return Ok(output);
             }
-            let result = self.write_typed(
-                folder_path,
-                title,
-                content,
-                WriteMode::Create,
-                memory_type,
-                purpose,
-            )?;
+            let result = self
+                .write_typed(
+                    folder_path,
+                    title,
+                    content,
+                    WriteMode::Create,
+                    memory_type,
+                    purpose,
+                )
+                .map_err(cleanup_on_err)?;
             let output = SmartWriteOutput {
                 note_id: result.note_id,
                 event: "ADD".to_string(),
@@ -2392,9 +2405,14 @@ impl MemoryService {
             );
         }
         if let Ok(conn) = self.vfs_db.get_conn() {
-            if let Err(e) = index_unit_repo::delete_by_resource(&conn, &note.resource_id) {
+            // ★ A2-X1：改用 purge_index_artifacts_by_resource——删除 units 前先把段的
+            // lance_row_id 入 __lance_orphan_queue。即便上面的直接 Lance 删除失败（仅 warn），
+            // 后台 drain 也能兜底清理孤儿向量；幂等，重复入列/删除均安全。
+            if let Err(e) =
+                index_unit_repo::purge_index_artifacts_by_resource(&conn, &note.resource_id)
+            {
                 warn!(
-                    "[Memory] Failed to delete index units for {}: {}",
+                    "[Memory] Failed to purge index artifacts for {}: {}",
                     note.resource_id, e
                 );
             }

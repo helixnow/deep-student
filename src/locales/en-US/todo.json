@@ -7,32 +7,104 @@
     "inbox": "Inbox",
     "today": "Today",
     "upcoming": "Upcoming",
+    "matrix": "Matrix",
     "overdue": "Overdue",
     "completed": "Completed"
   },
+  "matrix": {
+    "urgentImportant": "Urgent & Important",
+    "importantNotUrgent": "Important, Not Urgent",
+    "urgentNotImportant": "Urgent, Not Important",
+    "neither": "Neither",
+    "empty": "No tasks"
+  },
+  "reviewLink": {
+    "title": "{{count}} questions due for review today",
+    "subtitle": "Spaced repetition plan is ready",
+    "withOverdue": "{{overdue}} of them are overdue",
+    "action": "Review"
+  },
   "actions": {
-    "quickAddPlaceholder": "Add a todo...",
+    "quickAddPlaceholder": "Add a todo, try \"essay tomorrow !high\"...",
     "add": "Add",
     "search": "Search",
     "searchLists": "Search lists...",
     "newList": "New list",
     "newListPlaceholder": "New list name...",
+    "renameList": "Rename list",
     "favorite": "Favorite",
     "unfavorite": "Unfavorite",
-    "startFocusSession": "Start Focus Session"
+    "startFocusSession": "Start Focus Session",
+    "markCompleted": "Mark as completed",
+    "markPending": "Mark as pending",
+    "deleteItem": "Delete todo",
+    "dragToReorder": "Drag to reorder"
+  },
+  "reschedule": {
+    "title": "Reschedule",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "nextMonday": "Next Monday",
+    "clear": "Remove date"
+  },
+  "notifications": {
+    "operationFailed": "Operation failed",
+    "listDeleted": "Deleted list \"{{title}}\"",
+    "itemDeleted": "Deleted \"{{title}}\"",
+    "undo": "Undo"
+  },
+  "dialogs": {
+    "deleteList": {
+      "title": "Delete list",
+      "description": "Delete list \"{{title}}\"? Its todos will be moved to the recycle bin. You can undo this action."
+    }
+  },
+  "subtasks": {
+    "title": "Subtasks",
+    "progress": "Subtasks {{done}}/{{total}}",
+    "addPlaceholder": "Add a subtask...",
+    "aiBreakdown": "AI Breakdown",
+    "aiBreaking": "Breaking down...",
+    "aiBreakdownHint": "Let AI break this task into actionable subtasks"
   },
   "filters": {
     "showCompleted": "Show Completed"
   },
+  "sort": {
+    "label": "Sort",
+    "manual": "Manual",
+    "dueDate": "By due date",
+    "priority": "By priority",
+    "title": "By title"
+  },
+  "groups": {
+    "overdue": "Overdue",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "thisWeek": "Next 7 days",
+    "later": "Later"
+  },
   "stats": {
     "pending": "pending",
-    "completed": "completed"
+    "completed": "completed",
+    "pomodoroLoad": "~{{count}} pomodoros",
+    "pomodoroLoadHint": "Estimated pomodoros for today's remaining tasks"
   },
   "empty": {
     "noItems": "No items yet",
     "hint": "Keep the momentum going.",
     "noLists": "No lists yet",
-    "noMatchingLists": "No matching lists"
+    "noMatchingLists": "No matching lists",
+    "todayClear": "All clear for today",
+    "todayClearHint": "Enjoy the moment, or plan ahead in Upcoming.",
+    "upcomingClear": "Nothing due in the next 7 days",
+    "upcomingClearHint": "Use quick add to leave a note for your future self.",
+    "overdueClear": "No overdue tasks",
+    "overdueClearHint": "Great job staying on top of things.",
+    "completedEmpty": "No completed tasks yet",
+    "completedEmptyHint": "Finished tasks will show up here.",
+    "noSearchResults": "No matching tasks",
+    "noSearchResultsHint": "Try a different keyword."
   },
   "detail": {
     "title": "Details",
@@ -44,7 +116,81 @@
     "dueDate": "Due Date",
     "dueTime": "Time",
     "description": "Description",
-    "pomodoros": "Pomodoros"
+    "pomodoros": "Pomodoros",
+    "repeat": "Repeat",
+    "reminder": "Reminder",
+    "tags": "Tags"
+  },
+  "reminder": {
+    "clear": "Clear reminder",
+    "notificationTitle": "Reminder: {{title}}",
+    "notificationBody": "Time to work on this task",
+    "notificationBodyWithDue": "Due {{due}} — don't forget"
+  },
+  "dailyDigest": {
+    "title": "{{count}} tasks due today",
+    "bodyMore": "{{titles}} and {{rest}} more"
+  },
+  "tags": {
+    "addPlaceholder": "Add tag...",
+    "remove": "Remove tag {{tag}}"
+  },
+  "focusHistory": {
+    "title": "Focus History",
+    "summary": "{{count}} pomodoros · {{minutes}} min",
+    "minutes": "{{count}} min",
+    "more": "{{count}} more sessions"
+  },
+  "repeat": {
+    "none": "None",
+    "daily": "Daily",
+    "weekdays": "Weekdays",
+    "weekly": "Weekly",
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "everyNDays": "Every {{count}} days",
+    "everyNWeeks": "Every {{count}} weeks",
+    "everyNMonths": "Every {{count}} months",
+    "everyNYears": "Every {{count}} years",
+    "weeklyOn": "Weekly on {{days}}",
+    "everyNWeeksOn": "Every {{count}} weeks on {{days}}",
+    "weekdayJoin": ", ",
+    "weekdayShort": {
+      "0": "Sun",
+      "1": "Mon",
+      "2": "Tue",
+      "3": "Wed",
+      "4": "Thu",
+      "5": "Fri",
+      "6": "Sat"
+    },
+    "pickWeekdays": "Pick weekdays",
+    "nextOccurrence": "Next: {{date}}"
+  },
+  "trash": {
+    "title": "Recycle Bin",
+    "description": "Deleted lists and todos are kept here. Restore them or delete permanently.",
+    "listsSection": "Lists",
+    "itemsSection": "Todos",
+    "empty": "Recycle bin is empty",
+    "deletedAt": "Deleted {{time}}",
+    "restore": "Restore",
+    "restored": "Restored \"{{title}}\"",
+    "purge": "Delete Forever",
+    "purgeConfirmTitle": "Delete Forever",
+    "purgeConfirmDescription": "Permanently delete \"{{title}}\"? This cannot be undone.",
+    "emptyAll": "Empty Recycle Bin",
+    "emptyAllConfirmTitle": "Empty Recycle Bin",
+    "emptyAllConfirmDescription": "Empty the recycle bin? All deleted lists and todos will be permanently removed. This cannot be undone.",
+    "emptied": "Recycle bin emptied",
+    "loadMore": "Load older entries"
+  },
+  "overdue": {
+    "badgeAria_one": "{{count}} overdue todo",
+    "badgeAria_other": "{{count}} overdue todos",
+    "notificationTitle": "Todo Reminder",
+    "notificationBody_one": "You have {{count}} overdue todo",
+    "notificationBody_other": "You have {{count}} overdue todos"
   },
   "status": {
     "completed": "Completed",
@@ -61,5 +207,106 @@
   "placeholders": {
     "description": "Add a description...",
     "title": "Task title"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "Focusing",
+      "shortBreak": "Short Break",
+      "longBreak": "Long Break",
+      "ready": "Ready",
+      "idle": "Pomodoro"
+    },
+    "controls": {
+      "start": "Start",
+      "startFocus": "Start Focus",
+      "pause": "Pause",
+      "resume": "Resume",
+      "stop": "Stop",
+      "finish": "Finish",
+      "skipBreak": "Skip Break",
+      "immersive": "Immersive Mode",
+      "enterImmersive": "Enter immersive focus mode",
+      "exitImmersive": "Exit focus mode (ESC)",
+      "pauseSpace": "Pause (Space)",
+      "startSpace": "Start (Space)",
+      "noiseOn": "Enable ambient sound",
+      "noiseOff": "Disable ambient sound",
+      "noiseCycle": "Cycle sound",
+      "popOut": "Pop out floating window"
+    },
+    "miniWindow": {
+      "close": "Return to main window"
+    },
+    "countUpLabel": "Stopwatch",
+    "strictBadge": "Strict",
+    "strictHint": "Pausing is disabled in strict mode",
+    "noise": {
+      "brown": "Waves",
+      "pink": "Drizzle",
+      "white": "White noise",
+      "rain": "Rain"
+    },
+    "statsPopover": {
+      "title": "Focus Trend",
+      "rangeDays": "{{count}}d",
+      "heatmap": "Heatmap",
+      "totalPomodoros": "Pomodoros",
+      "dailyAvg": "Daily avg",
+      "pomodoroCount": "{{count}} pomodoros",
+      "empty": "No focus sessions in this range",
+      "thisWeek": "This week",
+      "weekUp": "+{{value}}% vs same time last week",
+      "weekDown": "-{{value}}% vs same time last week",
+      "weekFlat": "Same as last week",
+      "weekNoBase": "No record same time last week"
+    },
+    "stats": {
+      "todayLabel": "Today",
+      "pomodoroUnit": "pomodoros",
+      "todayCount": "{{value}} pomodoros today",
+      "focusLabel": "Focused",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "interrupted": "Interrupted {{value}} times",
+      "goalProgress": "Daily goal {{done}}/{{goal}}",
+      "goalReached": "Goal reached"
+    },
+    "notifications": {
+      "workCompleteTitle": "Pomodoro Complete",
+      "workCompleteBody": "Focus session finished. Time for a break ({{value}} pomodoros today)",
+      "breakCompleteTitle": "Break Over",
+      "breakCompleteBody": "Break finished. Ready for the next pomodoro?",
+      "endReminderTitle": "Almost done",
+      "endReminderBodyWork": "About {{minutes}} min of focus left — start wrapping up",
+      "endReminderBodyBreak": "About {{minutes}} min of break left",
+      "dailyGoalTitle": "Daily goal reached!",
+      "dailyGoalBody": "{{value}} pomodoros done — you hit today's goal. Treat yourself!"
+    },
+    "settings": {
+      "title": "Pomodoro Settings",
+      "workDuration": "Focus duration",
+      "shortBreak": "Short break",
+      "longBreak": "Long break",
+      "longBreakInterval": "Long break interval",
+      "minutesUnit": "min",
+      "pomodorosUnit": "",
+      "autoStartBreaks": "Auto-start breaks",
+      "autoStartWork": "Auto-start focus after break",
+      "strictMode": "Strict mode (no pausing)",
+      "countUp": "Stopwatch (count up)",
+      "endReminder": "End reminder (0 = off)",
+      "noiseType": "Ambient sound",
+      "noiseVolume": "Volume",
+      "dailyGoal": "Daily goal (0 = off)"
+    },
+    "progressTitle": "{{done}}/{{total}} pomodoros completed",
+    "completedCount": "{{count}} completed",
+    "immersive": {
+      "currentTask": "Current Task",
+      "hintEscPrefix": "Press ",
+      "hintEscSuffix": " to exit",
+      "hintSpacePrefix": "",
+      "hintSpaceSuffix": " to pause/resume"
+    }
   }
 }

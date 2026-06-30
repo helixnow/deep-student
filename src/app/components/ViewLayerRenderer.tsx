@@ -2,6 +2,7 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 import type { CurrentView } from '@/types/navigation';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ViewErrorFallback } from '@/components/ViewErrorFallback';
 
 export interface ViewLayerRendererProps {
   view: CurrentView;
@@ -27,7 +28,12 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
   }
 
   const content = errorBoundaryName ? (
-    <ErrorBoundary name={errorBoundaryName}>
+    <ErrorBoundary
+      name={errorBoundaryName}
+      fallback={(error, _componentStack, reset) => (
+        <ViewErrorFallback error={error} onRetry={reset} viewName={errorBoundaryName} />
+      )}
+    >
       {children}
     </ErrorBoundary>
   ) : children;

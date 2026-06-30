@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ArrowLeft, CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -16,7 +16,8 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@
 import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
-import { CloudStorageSection } from '@/features/settings';
+// ★ 2026-06-12：绕过 features/settings barrel 深路径导入,避免把 Settings.tsx 整树拖进首屏 bundle
+import { CloudStorageSection } from '@/features/settings/components/CloudStorageSection';
 import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
 import { TaskDashboardPage } from '@/components/anki/TaskDashboardPage';
@@ -27,7 +28,8 @@ import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
-import { GlobalPomodoroWidget } from '@/features/pomodoro';
+import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
+import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
@@ -69,13 +71,14 @@ import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
-import { SettingsShellSidebar } from '@/features/settings';
-import { TodoShellSidebar } from '@/features/todo';
+import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
+import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
-import { settingsMobileSheetCloseButtonClassName } from '@/features/settings';
+import { settingsMobileSheetCloseButtonClassName } from '@/features/settings/components/SettingsCommon';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
+import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
 import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
 import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
@@ -97,7 +100,6 @@ import type { ChatStore } from './features/chat/core/types';
 import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
-import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
 import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
@@ -282,23 +284,42 @@ function SidebarUpdateBadge({
   visible,
   onClick,
   downloading,
+  compact,
+  className,
 }: {
   visible: boolean;
   onClick: () => void;
   downloading: boolean;
+  compact?: boolean;
+  className?: string;
 }) {
   if (!visible) return null;
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        data-slot="sidebar-update-badge"
+        className={cn('desktop-shell-update-badge desktop-shell-update-badge--compact', className)}
+        onClick={onClick}
+        disabled={downloading}
+        aria-label={downloading ? '下载中...' : '点击更新'}
+      >
+        {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
+      </button>
+    );
+  }
 
   return (
     <button
       type="button"
       data-slot="sidebar-update-badge"
-      className="desktop-shell-update-badge"
+      className={cn('desktop-shell-update-badge', className)}
       onClick={onClick}
       disabled={downloading}
       aria-label={downloading ? '下载中...' : '点击更新'}
     >
-      {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : '更新'}
+      {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
     </button>
   );
 }
@@ -310,6 +331,7 @@ function DesktopSidebarAccessory({
   updateVisible,
   onUpdate,
   updateDownloading,
+  compact,
 }: {
   onToggle: () => void;
   label: string;
@@ -317,6 +339,7 @@ function DesktopSidebarAccessory({
   updateVisible: boolean;
   onUpdate: () => void;
   updateDownloading: boolean;
+  compact?: boolean;
 }) {
   return (
     <div className="desktop-shell-accessory-group flex min-w-0 items-center">
@@ -331,26 +354,13 @@ function DesktopSidebarAccessory({
           {collapsed ? <SidebarFrameIcon /> : <SidebarFrameWithLeftRailIcon />}
         </NotionButton>
       </CommonTooltip>
-      <div
-        aria-hidden={collapsed}
-        className={cn(
-          'overflow-hidden transition-[width,opacity,margin-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-          collapsed ? 'ml-0 w-0 opacity-0' : 'ml-1.5 w-[3.125rem] opacity-100'
-        )}
-      >
-        <div
-          className={cn(
-            'flex items-center justify-start transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-            collapsed ? '-translate-x-1 opacity-0' : 'translate-x-0 opacity-100'
-          )}
-        >
-          <SidebarUpdateBadge
-            visible={updateVisible && !collapsed}
-            onClick={onUpdate}
-            downloading={updateDownloading}
-          />
-        </div>
-      </div>
+      <SidebarUpdateBadge
+        visible={updateVisible && !collapsed}
+        onClick={onUpdate}
+        downloading={updateDownloading}
+        compact={compact}
+        className={compact ? 'ml-0.5' : 'ml-1.5'}
+      />
     </div>
   );
 }
@@ -454,13 +464,6 @@ const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
  *  搭配 useMemo 缓存子树后，保活视图的 re-render 成本接近零。
  */
 const MAX_ALIVE_VIEWS = 8;
-
-interface AnnStatusResponse {
-  indexed: boolean;
-  items: number;
-  size_mb: number;
-  last_dump_at?: string;
-}
 
 /**
  * 学习资源顶栏面包屑导航
@@ -772,11 +775,32 @@ function App() {
   }, []);
   
   // 🎯 命令面板：注册内置命令
+  // ★ 2026-06-12：命令名在注册时经 i18next.t() 一次性求值,运行时切换语言后必须
+  //   重新注册一遍,否则面板里仍显示旧语言文案
   useEffect(() => {
-    const unregister = registerBuiltinCommands();
+    let unregister = registerBuiltinCommands();
+    const refreshOnLanguageChange = () => {
+      unregister();
+      unregister = registerBuiltinCommands();
+    };
+    i18n.on('languageChanged', refreshOnLanguageChange);
     return () => {
+      i18n.off('languageChanged', refreshOnLanguageChange);
       unregister();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n 为模块级单例,引用稳定
+  }, []);
+
+  // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
+  useEffect(() => initReminderScheduler(), []);
+
+  // ★ 4.2 制卡完成通知（应用级，后台时发系统通知）
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    import('@/features/anki/ankiCompletionNotifier').then((m) => {
+      cleanup = m.initAnkiCompletionNotifier();
+    });
+    return () => cleanup?.();
   }, []);
 
   // 🎯 命令面板：语言切换回调
@@ -791,25 +815,10 @@ function App() {
     void params;
   }, []);
 
-  // page-container 的 top 值：现在 content-body 有 position: relative，
-  // page-container 相对于 content-body 定位，content-body 已经在 content-header 之后了
-  // 所以 pageContainerTop 应该始终为 0，无论桌面端还是移动端
-  const pageContainerTop = 0;
-  
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
-  const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
-  const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
-    setDesktopPageSidebarTarget(node);
-  }, []);
-  const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
-  const usesDesktopPageShellSidebar =
-    currentView === 'learning-hub' || currentView === 'template-management';
-  const shouldShowDesktopPageBackButton =
-    currentView === 'learning-hub' ||
-    (currentView === 'template-management' && templateManagementShellBackVisible);
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
   const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;
@@ -818,6 +827,7 @@ function App() {
   const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
+  const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
   const desktopCollapsedLeadingWidth = 148;
   const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
@@ -841,7 +851,7 @@ function App() {
       onToggle={useUIStore.getState().toggleLeftPanel}
       label={desktopSidebarToggleLabel}
       collapsed={leftPanelCollapsed}
-      updateVisible={!updater.checking && updater.available && !!updater.info}
+      updateVisible={updateBadgeVisible}
       onUpdate={() => void updater.performUpdateAction()}
       updateDownloading={updater.downloading}
     />
@@ -858,6 +868,8 @@ function App() {
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
   }) as React.CSSProperties, [desktopNavigationWidth, shellSidebarWidth, topbarTopMargin]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
+  const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   const isSmallScreenRef = useRef(isSmallScreen);
   const [mobileSettingsSheetOpen, setMobileSettingsSheetOpen] = useState(false);
@@ -1383,6 +1395,21 @@ function App() {
     canGoForward: unifiedCanGoForward,
   });
 
+  // 🤖 Android 系统返回键接管（A-5）：
+  // overlay 由协调器内部 handler/Escape 兜底处理；这里注册最低优先级的导航 fallback。
+  useEffect(() => {
+    installAndroidBackBridge();
+  }, []);
+  const unifiedGoBackRef = useRef({ canGoBack: unifiedCanGoBack, goBack: unifiedGoBack });
+  unifiedGoBackRef.current = { canGoBack: unifiedCanGoBack, goBack: unifiedGoBack };
+  useEffect(() => {
+    return registerBackHandler(() => {
+      if (!unifiedGoBackRef.current.canGoBack) return false;
+      unifiedGoBackRef.current.goBack();
+      return true;
+    }, BACK_PRIORITY.navigation);
+  }, []);
+
   // 🎯 P0-01 修复: 监听命令面板导航事件
   // 🎯 P1-04 修复: 监听 GLOBAL_SHORTCUT_SETTINGS 等事件
   const handleShortcutSettings = useCallback(() => {
@@ -1753,47 +1780,44 @@ function App() {
     />
   ), [leftPanelCollapsed, setCurrentView]);
 
+  const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
+    setDesktopPageSidebarTarget(node);
+  }, []);
+  const shouldShowDesktopPageBackButton =
+    currentView === 'learning-hub'
+    || (currentView === 'template-management' && templateManagementShellBackVisible);
   const desktopPageShellSidebarElement = useMemo(() => (
-    <div
-      data-shell-layer="navigation"
-      data-shell-surface="navigation"
-      className={cn(
-        'study-shell-sidebar-frame font-sidebar-study-ui h-full w-full min-w-0 flex flex-col overflow-hidden bg-[color:var(--shell-navigation-panel)] text-[color:var(--shell-navigation-foreground)]',
-        'border-r border-[color:var(--shell-navigation-border)]'
-      )}
-      style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
-    >
+    <div className="sidebar-shell-surface font-sidebar-study-ui flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       {shouldShowDesktopPageBackButton ? (
-        <div className="shrink-0 px-2 py-1 space-y-0.5">
+        <div className="flex shrink-0 items-center px-3 pb-2 pt-[var(--sidebar-header-height)]">
           <NotionButton
-            variant="nav"
-            size="md"
+            variant="ghost"
+            size="sm"
             onClick={() => setCurrentView('chat-v2')}
-            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left"
+            className="desktop-shell-sidebar-row w-full justify-start"
           >
-            <ArrowLeft size={18} className="h-[18px] w-[18px]" />
-            <span className="truncate">
+            <CaretLeft size={14} aria-hidden="true" />
+            <span className="desktop-shell-sidebar-row-title truncate">
               {t('common:actions.backToHome', { defaultValue: '返回主页' })}
             </span>
           </NotionButton>
         </div>
       ) : null}
-      <div ref={handleDesktopPageSidebarTarget} className="min-h-0 flex-1 w-full min-w-0 overflow-hidden" />
+      <div ref={handleDesktopPageSidebarTarget} className="min-h-0 flex-1 overflow-hidden" />
     </div>
   ), [handleDesktopPageSidebarTarget, setCurrentView, shouldShowDesktopPageBackButton, t]);
+  const desktopShellSidebarPortalValue = useMemo(() => ({
+    target: desktopPageSidebarTarget,
+    currentView,
+  }), [currentView, desktopPageSidebarTarget]);
 
   const desktopShellSidebarElement = currentView === 'settings'
     ? settingsShellSidebarElement
     : currentView === 'todo'
     ? todoShellSidebarElement
-    : usesDesktopPageShellSidebar
+    : currentView === 'learning-hub' || currentView === 'template-management'
     ? desktopPageShellSidebarElement
     : sidebarElement;
-
-  const desktopShellSidebarPortalValue = useMemo(() => ({
-    target: desktopPageSidebarTarget,
-    currentView,
-  }), [desktopPageSidebarTarget, currentView]);
 
   const syncSessionSidebarContext = useCallback(() => {
     setSessionSidebarViewContext({
@@ -1840,42 +1864,6 @@ function App() {
 
   // ★ 分析模式已废弃（旧错题系统已移除）- handleCoreStateUpdate, handleSaveRequest, analysisHostProps 已移除
   // const renderAnalysisView = () => null; // 已废弃
-
-  const [annProgress, setAnnProgress] = useState<{ loading: boolean; status?: AnnStatusResponse | null }>({ loading: false, status: null });
-
-  // Poll ANN status on startup
-  useEffect(() => {
-    let pollInterval: ReturnType<typeof setTimeout> | undefined;
-    let cancelled = false;
-    
-    const checkAnnStatus = async () => {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        if (cancelled) return;
-        const status = await invoke<AnnStatusResponse>('get_ann_status');
-        if (cancelled) return;
-        const building = !status.indexed && status.items > 0;
-        setAnnProgress({ loading: building, status });
-        
-        if (building) {
-          // Keep polling if building index
-          pollInterval = setTimeout(checkAnnStatus, 2000);
-        }
-      } catch (e) {
-        // ANN 功能可能尚未启用，只在非预期错误时输出警告
-        const errMsg = String(e);
-        if (!errMsg.includes('not found') && !errMsg.includes('not implemented')) {
-          console.warn('ANN status check failed:', e);
-        }
-      }
-    };
-    
-    checkAnnStatus();
-    return () => {
-      cancelled = true;
-      if (pollInterval) clearTimeout(pollInterval);
-    };
-  }, []);
 
   const navigationShortcuts = getNavigationShortcutText();
   const commandPaletteTriggerRef = useRef<(() => void) | null>(null);
@@ -1978,7 +1966,7 @@ function App() {
       defaultValue: '在 {{groupName}} 中新建会话',
     })
     : desktopHeaderNavHotzoneLabel;
-  const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
+  const shouldShowDesktopHeaderNavControls = leftPanelCollapsed && currentView !== 'settings' && currentView !== 'todo';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
       canGoBack={unifiedCanGoBack}
@@ -2144,6 +2132,8 @@ function App() {
       'ui-lab': t('sidebar:navigation.ui_lab', '样式调试'),
       'template-json-preview': t('common:navigation.template_json_preview', '模板预览'),
       'pdf-reader': t('common:navigation.pdf_reader', 'PDF 阅读器'),
+      'sandbox-workbench': t('common:navigation.sandbox_workbench', '沙箱工作台'),
+      'todo': t('common:navigation.todo', '待办'),
       'tree-test': t('common:navigation.tree_test', 'Tree Test'),
       'crepe-demo': t('common:navigation.crepe_demo', 'Crepe Demo'),
       'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
@@ -2160,7 +2150,10 @@ function App() {
   const dashboardContent = useMemo(() => (
     <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
       <Suspense fallback={<PageLoadingFallback />}>
-        <LazySOTADashboard onBack={() => setCurrentView('chat-v2')} />
+        <LazySOTADashboard
+          onBack={() => setCurrentView('chat-v2')}
+          onNavigate={(view) => setCurrentView(view)}
+        />
       </Suspense>
     </CustomScrollArea>
   ), [setCurrentView]);
@@ -2343,6 +2336,7 @@ function App() {
           <UnifiedMobileHeader
             canGoBack={unifiedCanGoBack}
             onBack={unifiedGoBack}
+            fallbackTitle={desktopShellViewLabel}
             className="fixed top-0 left-0 right-0 z-[1100]"
           />
         )}
@@ -2351,12 +2345,12 @@ function App() {
         {!isSmallScreen && (
         <header
           data-shell-layer="window-chrome"
-          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] grid transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+          data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
+          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none"
           style={{
             paddingTop: `${topbarTopMargin}px`,
             height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
             minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-            gridTemplateColumns: `${desktopNavigationWidth}px minmax(0, 1fr)`,
           }}
           onMouseDown={handleDesktopTitlebarMouseDown}
         >
@@ -2382,9 +2376,12 @@ function App() {
 
           <div
             className={cn(
-              'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 items-center justify-end overflow-hidden transition-[padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+              'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
               leftPanelCollapsed ? 'px-0' : 'px-4'
             )}
+            style={{
+              width: `${desktopNavigationWidth}px`,
+            }}
           >
             <div
               className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
@@ -2406,7 +2403,7 @@ function App() {
 
           <div
             data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
-            className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex min-w-0 items-center justify-between px-5 transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+            className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
             style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
           >
             <div
@@ -2504,8 +2501,6 @@ function App() {
             role="main"
             className={cn(
               "flex-1 relative overflow-hidden w-full"
-              // 移除 pb-16: InputBarUI 已通过 bottom: 64px 处理底部导航间距
-              // 之前的 pb-16 会缩小 content-body 高度，导致输入框被双重偏移
             )}
             data-tour-id="analysis-main"
           >
@@ -2605,33 +2600,6 @@ function App() {
 
       </div>
       {/* CmdK 由 Notes 模块内部管理 */}
-      {annProgress.loading && (
-        <div className="ann-progress-bar" style={{
-          position: 'fixed',
-          top: pageContainerTop,
-          left: 0,
-          right: 0,
-          height: '4px',
-          backgroundColor: 'hsl(var(--primary))',
-          zIndex: 10000,
-          animation: 'pulse 2s ease-in-out infinite'
-        }}>
-          <div style={{
-            position: 'absolute',
-            top: '4px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'hsl(var(--popover))',
-            color: 'hsl(var(--popover-foreground))',
-            padding: '4px 8px',
-            borderRadius: '0 0 4px 4px',
-            fontSize: '12px'
-          }}>
-            {t('common:ann_indexing', { count: annProgress.status?.items ?? 0 })}
-          </div>
-        </div>
-      )}
-      
       {/* 全局通知容器 */}
       <NotificationContainer />
 

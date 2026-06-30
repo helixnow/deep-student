@@ -154,7 +154,7 @@
 }
 
 /* 响应式调整 */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .common-tooltip {
     max-width: calc(100vw - 32px) !important;
   }
@@ -169,6 +169,36 @@
 .common-tooltip {
   isolation: isolate;
   will-change: opacity, transform;
+}
+
+/* 快捷键角标 */
+.common-tooltip__row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.common-tooltip__shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.common-tooltip__kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--muted) / 0.6);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1;
+  color: hsl(var(--muted-foreground));
 }
 
 /* 长文本处理 */

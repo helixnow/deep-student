@@ -275,10 +275,18 @@ impl NotesExporter {
                     continue;
                 }
                 let zip_entry = format!("assets/{}", relative);
+                // A6-23: 逐个附件读盘后立即写入 zip，避免全部附件字节常驻内存
+                let bytes = match fs::read(&attachment.absolute_path) {
+                    Ok(buf) => buf,
+                    Err(err) => {
+                        log::warn!("读取附件失败，跳过 {}: {}", zip_entry, err);
+                        continue;
+                    }
+                };
                 zip.start_file(&zip_entry, file_options).map_err(|e| {
                     AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
                 })?;
-                zip.write_all(&attachment.bytes).map_err(|e| {
+                zip.write_all(&bytes).map_err(|e| {
                     AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
                 })?;
             }
@@ -564,12 +572,11 @@ impl NotesExporter {
             }
             let abs_path = self.file_manager.get_app_data_dir().join(&path_str);
             if abs_path.exists() {
-                if let Ok(bytes) = std::fs::read(&abs_path) {
-                    attachments.push(ExportAttachmentInternal {
-                        relative_path: PathBuf::from(&path_str),
-                        bytes,
-                    });
-                }
+                // A6-23: 不再在此读盘，改为 zip 写入时逐个流式读取
+                attachments.push(ExportAttachmentInternal {
+                    relative_path: PathBuf::from(&path_str),
+                    absolute_path: abs_path,
+                });
             }
         }
 
@@ -703,11 +710,19 @@ impl NotesExporter {
                 continue;
             }
             let zip_entry = format!("assets/{}", relative);
+            // A6-23: 流式读取附件，避免一次性载入内存
+            let bytes = match fs::read(&attachment.absolute_path) {
+                Ok(buf) => buf,
+                Err(err) => {
+                    log::warn!("读取附件失败，跳过 {}: {}", zip_entry, err);
+                    continue;
+                }
+            };
             zip.start_file(&zip_entry, file_options.clone())
                 .map_err(|e| {
                     AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
                 })?;
-            zip.write_all(&attachment.bytes).map_err(|e| {
+            zip.write_all(&bytes).map_err(|e| {
                 AppError::file_system(format!("写入附件 {} 失败: {}", zip_entry, e))
             })?;
         }
@@ -898,20 +913,11 @@ impl NotesExporter {
                 log::info!("正在读取第 {} 个附件: {}", idx + 1, disk_path.display());
             }
 
-            let bytes = match fs::read(&disk_path) {
-                Ok(buf) => {
-                    log::info!(
-                        "成功读取附件 ({} bytes): {}",
-                        buf.len(),
-                        disk_path.display()
-                    );
-                    buf
-                }
-                Err(err) => {
-                    log::warn!("读取附件失败 ({}): {}", disk_path.to_string_lossy(), err);
-                    continue;
-                }
-            };
+            // A6-23: 仅校验文件存在，不在此读盘；附件字节延迟到 zip 写入时逐个读取
+            if !disk_path.exists() {
+                log::warn!("附件文件不存在，跳过: {}", disk_path.to_string_lossy());
+                continue;
+            }
             attachment_count += 1;
             let normalized_path = strip_notes_assets_prefix(relative_path)
                 .unwrap_or_else(|| relative_path.to_path_buf());
@@ -931,7 +937,7 @@ impl NotesExporter {
                 .push(record);
             attachment_payloads.push(ExportAttachmentInternal {
                 relative_path: normalized_path,
-                bytes,
+                absolute_path: disk_path,
             });
         }
         log::info!("附件处理完成，共读取 {} 个附件文件", attachment_count);
@@ -1099,12 +1105,11 @@ impl NotesExporter {
             }
             let abs_path = self.file_manager.get_app_data_dir().join(&path_str);
             if abs_path.exists() {
-                if let Ok(bytes) = std::fs::read(&abs_path) {
-                    attachments.push(ExportAttachmentInternal {
-                        relative_path: PathBuf::from(&path_str),
-                        bytes,
-                    });
-                }
+                // A6-23: 不再在此读盘，改为 zip 写入时逐个流式读取
+                attachments.push(ExportAttachmentInternal {
+                    relative_path: PathBuf::from(&path_str),
+                    absolute_path: abs_path,
+                });
             }
         }
 
@@ -1133,7 +1138,8 @@ struct SubjectBundle {
 #[derive(Clone)]
 struct ExportAttachmentInternal {
     relative_path: PathBuf,
-    bytes: Vec<u8>,
+    /// A6-23: 只保存附件磁盘绝对路径，写入 zip 时再逐个读盘，避免一次性把所有附件字节载入内存。
+    absolute_path: PathBuf,
 }
 
 #[derive(Clone)]

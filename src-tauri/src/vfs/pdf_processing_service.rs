@@ -1613,6 +1613,30 @@ impl PdfProcessingService {
         if has_text {
             ready_modes.push("text".to_string());
         }
+        // ★ 2026-06-12（第二轮审阅）：已有压缩版本且物理存在时直接跳过。
+        // 旧实现每次流水线重跑都重新压缩并 store_blob(+1)，旧引用不递减，
+        // 反复 reprocess 会让压缩 blob 引用计数只增不减（虚引用泄漏）。
+        // hash 已设但物理缺失时不跳过，走重压缩修复并在下方配平旧引用。
+        let existing_compressed: Option<String> = conn
+            .query_row(
+                "SELECT compressed_blob_hash FROM files WHERE id = ?1",
+                params![file_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(ref existing) = existing_compressed {
+            if !existing.trim().is_empty()
+                && VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, existing)?.is_some()
+            {
+                debug!(
+                    "[MediaProcessingService] Image {} already compressed ({}), skipping",
+                    file_id, existing
+                );
+                return Ok(true);
+            }
+        }
+
         let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, blob_hash)?
             .ok_or_else(|| VfsError::NotFound {
                 resource_type: "Blob".to_string(),
@@ -1655,16 +1679,18 @@ impl PdfProcessingService {
             hasher.update(&compressed_data);
             let compressed_hash = format!("{:x}", hasher.finalize());
 
-            // 存储压缩后的 blob（如果还不存在）
-            if VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &compressed_hash)?.is_none() {
-                VfsBlobRepo::store_blob_with_conn(
-                    &conn,
-                    blobs_dir,
-                    &compressed_data,
-                    Some("image/jpeg"),
-                    Some("jpg"),
-                )?;
-            }
+            // 存储压缩后的 blob
+            // ★ 2026-06-12（第二轮审阅）：无条件调用 store_blob。
+            // 旧实现"已存在则跳过"会漏掉 ON CONFLICT 的 ref_count+1：
+            // 两个文件压缩出相同 blob 时引用计数欠账，先删者会把共享
+            // 压缩图的 ref_count 减到 0 触发物理清扫，后者图片变砖。
+            VfsBlobRepo::store_blob_with_conn(
+                &conn,
+                blobs_dir,
+                &compressed_data,
+                Some("image/jpeg"),
+                Some("jpg"),
+            )?;
 
             info!(
                 "[MediaProcessingService] Image compressed for file {}: {} -> {} bytes ({:.1}% reduction, hash: {})",
@@ -1681,6 +1707,29 @@ impl PdfProcessingService {
             "UPDATE files SET compressed_blob_hash = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![final_hash, file_id],
         )?;
+
+        // ★ 2026-06-12（第二轮审阅）修复路径配平：旧压缩 hash（物理缺失）的
+        // 引用转移到新值。压缩有效时 store_blob 已 +1（新旧相同则净零重建文件）；
+        // 不划算时引用转移到原始 blob（等值不计数）。
+        // 注意与原始 blob 等值的旧 hash 不可能走到这里（原始缺失会提前 NotFound）。
+        if let Some(ref stale) = existing_compressed {
+            if !stale.trim().is_empty() && stale != blob_hash {
+                match VfsBlobRepo::decrement_ref_with_conn(&conn, blobs_dir, stale) {
+                    Ok(remaining) => {
+                        info!(
+                            "[MediaProcessingService] Repaired missing compressed blob for {} (stale {} -> remaining {})",
+                            file_id, stale, remaining
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[MediaProcessingService] Failed to decrement stale compressed blob {}: {}",
+                            stale, e
+                        );
+                    }
+                }
+            }
+        }
 
         // 返回 true 表示压缩阶段已完成（无论是否真正压缩）
         Ok(true)
@@ -1767,9 +1816,20 @@ impl PdfProcessingService {
             }
 
             // 跳过已经有压缩版本的页面
-            if page.compressed_blob_hash.is_some() {
-                skipped_count += 1;
-                continue;
+            // ★ 2026-06-12（第二轮审阅）：仅当压缩 blob 物理存在时才跳过。
+            // 旧实现只看 hash 是否已设，而检测端 check_pdf_pages_need_compression
+            // 还会校验物理文件 → hash 已设但 blob 丢失（历史误清扫/磁盘损坏）时
+            // 每次启动都被标记"需要压缩"却永远不被修复，死循环不自愈。
+            let mut stale_compressed_hash: Option<String> = None;
+            if let Some(ref existing) = page.compressed_blob_hash {
+                if !existing.trim().is_empty()
+                    && VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, existing)?.is_some()
+                {
+                    skipped_count += 1;
+                    continue;
+                }
+                // 物理缺失：记录旧 hash 用于配平引用计数，走重压缩修复
+                stale_compressed_hash = Some(existing.clone());
             }
 
             // 获取原始页面图片
@@ -1832,18 +1892,17 @@ impl PdfProcessingService {
                 hasher.update(&compressed_data);
                 let compressed_hash = format!("{:x}", hasher.finalize());
 
-                // 存储压缩后的 blob（如果不存在）
-                if VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, &compressed_hash)?
-                    .is_none()
-                {
-                    VfsBlobRepo::store_blob_with_conn(
-                        &conn,
-                        blobs_dir,
-                        &compressed_data,
-                        Some("image/jpeg"),
-                        Some("jpg"),
-                    )?;
-                }
+                // 存储压缩后的 blob
+                // ★ 2026-06-12（第二轮审阅）：无条件 store，依赖 ON CONFLICT ref_count+1。
+                // 多页/多文件压缩出相同 blob（如空白页）时每个引用都计数，
+                // 与 purge 时逐页 -1 对称，否则提前归零导致共享页图被误删。
+                VfsBlobRepo::store_blob_with_conn(
+                    &conn,
+                    blobs_dir,
+                    &compressed_data,
+                    Some("image/jpeg"),
+                    Some("jpg"),
+                )?;
 
                 page.compressed_blob_hash = Some(compressed_hash.clone());
                 compressed_count += 1;
@@ -1855,6 +1914,28 @@ impl PdfProcessingService {
                     compressed_size,
                     (1.0 - compressed_size as f64 / original_size as f64) * 100.0
                 );
+            }
+
+            // ★ 2026-06-12（第二轮审阅）修复路径配平：旧压缩 hash 的引用已转移。
+            // - 压缩有效：store_blob 已为新 hash +1（重压缩结果与旧 hash 相同时
+            //   净零，仅重建物理文件——两阶段删除不会删掉刚写入的文件）；
+            // - 压缩不划算：引用转移到原始页图（按惯例等值不额外计数）。
+            // 两种情况旧 hash 都要 -1，否则丢失的 blob 行残留虚引用永不回收。
+            if let Some(ref stale) = stale_compressed_hash {
+                match VfsBlobRepo::decrement_ref_with_conn(&conn, blobs_dir, stale) {
+                    Ok(remaining) => {
+                        info!(
+                            "[PdfProcessingService] Repaired missing compressed blob for page {} (stale {} -> remaining {})",
+                            index, stale, remaining
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[PdfProcessingService] Failed to decrement stale compressed blob {}: {}",
+                            stale, e
+                        );
+                    }
+                }
             }
 
             // 发送进度事件（统一事件）
@@ -2063,8 +2144,9 @@ impl PdfProcessingService {
                 if !progress.ready_modes.contains(&"ocr".to_string()) {
                     progress.ready_modes.push("ocr".to_string());
                     if let Ok(new_json) = serde_json::to_string(&progress) {
+                        // ★ G2 修复：处理状态写入不触碰业务 updated_at
                         conn.execute(
-                            "UPDATE files SET processing_progress = ?1, updated_at = datetime('now') WHERE id = ?2",
+                            "UPDATE files SET processing_progress = ?1 WHERE id = ?2",
                             params![new_json, file_id],
                         )?;
                     }
@@ -2127,6 +2209,8 @@ impl PdfProcessingService {
             let progress_json = progress.map(|p| serde_json::to_string(p).unwrap_or_default());
             let now_ms = chrono::Utc::now().timestamp_millis();
 
+            // ★ G2 修复：处理状态/进度写入不再触碰业务 updated_at，
+            // 避免长流水线期间"按修改时间排序"列表浮动和同步噪声
             if stage == ProcessingStage::Completed {
                 // 完成
                 conn.execute(
@@ -2135,8 +2219,7 @@ impl PdfProcessingService {
                     SET processing_status = ?1,
                         processing_progress = ?2,
                         processing_completed_at = ?3,
-                        processing_error = NULL,
-                        updated_at = datetime('now')
+                        processing_error = NULL
                     WHERE id = ?4
                     "#,
                     params![
@@ -2163,8 +2246,7 @@ impl PdfProcessingService {
                     SET processing_status = ?1,
                         processing_progress = ?2,
                         processing_completed_at = ?3,
-                        processing_error = COALESCE(?4, processing_error),
-                        updated_at = datetime('now')
+                        processing_error = COALESCE(?4, processing_error)
                     WHERE id = ?5
                     "#,
                     params![
@@ -2181,8 +2263,7 @@ impl PdfProcessingService {
                     r#"
                     UPDATE files
                     SET processing_status = ?1,
-                        processing_progress = ?2,
-                        updated_at = datetime('now')
+                        processing_progress = ?2
                     WHERE id = ?3
                     "#,
                     params![stage.as_str(), progress_json, file_id],
@@ -2194,8 +2275,7 @@ impl PdfProcessingService {
                     UPDATE files
                     SET processing_status = ?1,
                         processing_progress = ?2,
-                        processing_started_at = COALESCE(processing_started_at, ?3),
-                        updated_at = datetime('now')
+                        processing_started_at = COALESCE(processing_started_at, ?3)
                     WHERE id = ?4
                     "#,
                     params![stage.as_str(), progress_json, now_ms, file_id],
@@ -2242,8 +2322,7 @@ impl PdfProcessingService {
             UPDATE files
             SET processing_status = 'error',
                 processing_error = ?1,
-                processing_completed_at = ?2,
-                updated_at = datetime('now')
+                processing_completed_at = ?2
             WHERE id = ?3
             "#,
             params![error, now_ms, file_id],
@@ -2336,7 +2415,15 @@ impl PdfProcessingService {
         let status = self.get_status(file_id)?;
 
         match status {
-            Some(s) if s.stage == "error" || s.stage == "completed_with_issues" => {
+            // ★ G1 修复：retry 放宽到 pending——重启恢复后被重置为 pending 的任务
+            // 此前无法通过重试按钮续跑（仅 error/completed_with_issues 可重试）。
+            // is_running 防护避免对正在运行的任务重复启动。
+            Some(s)
+                if (s.stage == "error"
+                    || s.stage == "completed_with_issues"
+                    || s.stage == "pending")
+                    && !self.is_running(file_id) =>
+            {
                 // 检测媒体类型，选择正确的重试起始阶段
                 let media_type = self.detect_media_type(file_id)?;
                 let start_stage = match media_type {
@@ -2384,8 +2471,9 @@ impl PdfProcessingService {
     /// 处于中间状态（ocr_processing / vector_indexing / page_compression 等）的文件。
     /// 这些文件不会自动恢复，用户也无法通过 retry 修复（retry 仅处理 error 状态）。
     ///
-    /// 此方法将所有 stuck 文件重置为 pending 状态，允许后续重新处理。
-    pub fn recover_stuck_tasks(&self) -> VfsResult<usize> {
+    /// 此方法将所有 stuck 文件重置为 pending 状态，并返回恢复的文件 ID 列表，
+    /// 供调用方（lib.rs 启动逻辑）通过 `resume_recovered_tasks` 自动续跑（G1 修复）。
+    pub fn recover_stuck_tasks(&self) -> VfsResult<Vec<String>> {
         let conn = self.db.get_conn_safe()?;
 
         // 查找所有处于中间处理状态的文件
@@ -2410,22 +2498,21 @@ impl PdfProcessingService {
 
         if stuck_ids.is_empty() {
             debug!("[MediaProcessingService] No stuck tasks found at startup");
-            return Ok(0);
+            return Ok(Vec::new());
         }
 
-        let count = stuck_ids.len();
         info!(
             "[MediaProcessingService] Found {} stuck tasks at startup, resetting to pending",
-            count
+            stuck_ids.len()
         );
 
+        let mut recovered = Vec::with_capacity(stuck_ids.len());
         for file_id in &stuck_ids {
             let affected = conn
                 .execute(
                     r#"UPDATE files
                    SET processing_status = 'pending',
-                       processing_error = 'recovered: interrupted by app restart',
-                       updated_at = datetime('now')
+                       processing_error = 'recovered: interrupted by app restart'
                    WHERE id = ?1"#,
                     params![file_id],
                 )
@@ -2436,10 +2523,60 @@ impl PdfProcessingService {
                     "[MediaProcessingService] Reset stuck file {} to pending",
                     file_id
                 );
+                recovered.push(file_id.clone());
             }
         }
 
-        Ok(count)
+        Ok(recovered)
+    }
+
+    /// ★ G1 修复：启动后自动续跑被重启打断的任务
+    ///
+    /// `recover_stuck_tasks` 把中间态任务重置为 pending 后，此前全链路无人消费：
+    /// retry 不接受 pending、前端也没有任何入口调用 start_pipeline，
+    /// 导致被打断的 OCR/压缩/向量索引永久停摆。
+    ///
+    /// 此方法依次对恢复出的文件重新启动流水线，通过 `running_count` 轮询
+    /// 限制并发（流水线内部 OCR 已有并发=4，多文件叠加会打爆 LLM 配额）。
+    /// 应在后台任务中调用，不阻塞启动流程。
+    pub async fn resume_recovered_tasks(self: &Arc<Self>, file_ids: Vec<String>) {
+        const MAX_AUTO_RESUME_CONCURRENCY: usize = 2;
+
+        if file_ids.is_empty() {
+            return;
+        }
+
+        info!(
+            "[MediaProcessingService] Auto-resuming {} recovered tasks",
+            file_ids.len()
+        );
+
+        for file_id in file_ids {
+            // 等待并发槽位（含用户手动触发的任务）
+            while self.running_count() >= MAX_AUTO_RESUME_CONCURRENCY {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+
+            // 任务可能在等待期间被用户手动重试/启动
+            if self.is_running(&file_id) {
+                continue;
+            }
+
+            match self.start_pipeline(&file_id, None).await {
+                Ok(()) => {
+                    info!(
+                        "[MediaProcessingService] Auto-resumed pipeline for recovered file: {}",
+                        file_id
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "[MediaProcessingService] Failed to auto-resume file {}: {}",
+                        file_id, e
+                    );
+                }
+            }
+        }
     }
 
     // ========================================================================
@@ -2461,12 +2598,12 @@ impl PdfProcessingService {
         // 兼容轮询链路：将最新进度持久化到 DB，避免前端只能在 completed 才看到 ready_modes 变化。
         if let Ok(conn) = self.db.get_conn_safe() {
             let progress_json = serde_json::to_string(&progress).unwrap_or_default();
+            // ★ G2 修复：高频进度持久化不触碰业务 updated_at
             if let Err(e) = conn.execute(
                 r#"
                 UPDATE files
                 SET processing_status = ?1,
-                    processing_progress = ?2,
-                    updated_at = datetime('now')
+                    processing_progress = ?2
                 WHERE id = ?3
                 "#,
                 params![progress.stage.clone(), progress_json, file_id],

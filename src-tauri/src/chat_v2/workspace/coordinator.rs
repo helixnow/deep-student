@@ -13,6 +13,7 @@ use super::subagent_task::SubagentTaskManager;
 use super::types::*;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::data_governance::file_deletion_queue::enqueue_workspace_deletion;
 use tauri::AppHandle;
 
 struct WorkspaceInstance {
@@ -254,7 +255,30 @@ impl WorkspaceCoordinator {
             .unwrap_or_default();
 
         self.close_workspace(workspace_id)?;
+        let db_path = self.workspaces_dir.join(format!("ws_{}.db", workspace_id));
+        let deleted_size = std::fs::metadata(&db_path).ok().map(|m| m.len());
         self.db_manager.delete(workspace_id)?;
+
+        if let Some(db) = &self.chat_v2_db {
+            match db.get_conn_safe() {
+                Ok(conn) => {
+                    if let Err(err) = enqueue_workspace_deletion(&conn, workspace_id, deleted_size)
+                    {
+                        log::warn!(
+                            "[WorkspaceCoordinator] 写入工作区删除队列失败（不阻塞删除）: workspace_id={}, err={}",
+                            workspace_id,
+                            err
+                        );
+                    }
+                }
+                Err(err) => {
+                    log::warn!(
+                        "[WorkspaceCoordinator] 打开 chat_v2.db 写删除队列失败（不阻塞删除）: {}",
+                        err
+                    );
+                }
+            }
+        }
 
         // 从 workspace_index 删除记录
         self.remove_from_index(workspace_id)?;

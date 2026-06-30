@@ -2,8 +2,6 @@ import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
-  BookOpen,
-  Crosshair,
   TrendUp,
   DownloadSimple,
   FileText,
@@ -18,6 +16,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/shad/Card';
 import { Badge } from './ui/shad/Badge';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { fileManager } from '../utils/fileManager';
@@ -114,9 +113,11 @@ const STAT_VARIANTS: Record<StatVariant, { gradient: string; iconColor: string; 
 interface SOTADashboardProps {
   onBack?: () => void;
   embedded?: boolean;
+  /** ★ 5.1 今日指挥中心导航回调 */
+  onNavigate?: (view: 'learning-hub' | 'todo' | 'task-dashboard') => void;
 }
 
-export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded = false }) => {
+export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded = false, onNavigate }) => {
   const { isActive } = useViewVisibility('dashboard');
   const shouldAutoRefresh = embedded ? true : isActive;
   // 使用数据 Hook
@@ -345,6 +346,9 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           </div>
         </div>
 
+        {/* ★ 5.1 今日指挥中心：可行动入口置顶，统计下沉 */}
+        <TodayCommandCenter onNavigate={onNavigate} />
+
         {/* 所有统计卡片平铺展示 */}
         <div className="sota-stats-grid">
           {/* 学习记录统计 */}
@@ -356,24 +360,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             variant="primary"
             trend={enhancedStats?.recent_growth}
 />
-          {/* ★ 文档31清理：subject_stats 已废弃，科目统计功能即将推出 */}
-          <Card className="overflow-hidden opacity-60">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.secondary.iconBg }}>
-                    <BookOpen size={20} color={STAT_VARIANTS.secondary.iconColor} />
-                  </div>
-                  <CardTitle className="text-base">{t('stats_cards.subjects_count')}</CardTitle>
-                </div>
-                <Badge variant="outline" className="text-xs" style={{ color: DESIGN.colors.textMuted, borderColor: DESIGN.colors.border }}>{t('stats_cards.coming_soon_badge')}</Badge>
-              </div>
-              <CardDescription>{t('stats_cards.subjects_count_subtitle')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold" style={{ color: DESIGN.colors.textMuted }}>—</div>
-            </CardContent>
-          </Card>
+          {/* ★ 占位卡治理（2026-06）：未上线功能不渲染占位卡（科目统计、统一回顾统计已移除） */}
           <StatCard
             title={t('stats_cards.tags_count')}
             value={Object.keys(enhancedStats?.basic_stats?.tag_stats || {}).length}
@@ -405,24 +392,6 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             variant="info"
 />
 
-          {/* 已移除：统一回顾统计，功能即将推出 */}
-          <Card className="overflow-hidden opacity-60">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.success.iconBg }}>
-                    <Crosshair size={20} color={STAT_VARIANTS.success.iconColor} />
-                  </div>
-                  <CardTitle className="text-base">{t('stats_cards.review_sessions')}</CardTitle>
-                </div>
-                <Badge variant="outline" className="text-xs" style={{ color: DESIGN.colors.textMuted, borderColor: DESIGN.colors.border }}>{t('stats_cards.coming_soon_badge')}</Badge>
-              </div>
-              <CardDescription>{t('stats_cards.review_sessions_subtitle')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold" style={{ color: DESIGN.colors.textMuted }}>—</div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* 图表区域 */}
@@ -562,7 +531,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           to { transform: rotate(360deg); }
         }
 
-        @media (max-width: 768px) {
+        @media (max-width: 767.98px) {
 
           .sota-nav {
             padding: 0 16px;

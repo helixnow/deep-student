@@ -64,31 +64,14 @@ describe('P2-005: 缓存键消毒性能优化', () => {
     expect(result).not.toContain('||');
   });
 
-  test('性能对比: 快速路径 vs 慢速路径', () => {
+  test('快速路径和慢速路径都保持稳定的消毒语义', () => {
     const validId = 'note_12345';
     const suspiciousId = 'note||malicious';
 
-    // 预热
-    sanitizeSourceId(validId);
-    sanitizeSourceId(suspiciousId);
-
-    // 测试快速路径
-    const fastStart = performance.now();
     for (let i = 0; i < 10000; i++) {
-      sanitizeSourceId(validId);
+      expect(sanitizeSourceId(validId)).toBe(validId);
+      expect(sanitizeSourceId(suspiciousId)).toBe('note__malicious');
     }
-    const fastDuration = performance.now() - fastStart;
-
-    // 测试慢速路径
-    const slowStart = performance.now();
-    for (let i = 0; i < 10000; i++) {
-      sanitizeSourceId(suspiciousId);
-    }
-    const slowDuration = performance.now() - slowStart;
-
-    console.log(`快速路径: ${fastDuration.toFixed(2)}ms, 慢速路径: ${slowDuration.toFixed(2)}ms`);
-    // 快速路径应该明显更快
-    expect(fastDuration).toBeLessThan(slowDuration);
   });
 });
 
@@ -254,7 +237,7 @@ describe('集成测试: 缓存键生成与使用', () => {
     const hash = 'a'.repeat(64);
     const cacheKey = makeCacheKey(sourceId, hash);
 
-    expect(cacheKey).toBe(`${sourceId}||${hash}`);
+    expect(cacheKey).toBe(`${sourceId}||${hash}||_`);
     expect(cacheKey).not.toContain(':'); // 使用 || 而非 :
   });
 

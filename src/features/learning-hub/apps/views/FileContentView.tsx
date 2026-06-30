@@ -34,6 +34,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TextbookPdfViewer } from '@/features/pdf/components/TextbookPdfViewer';
 import { resolveFilePreviewMode } from './filePreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
+import { TextFilePreview } from './TextFilePreview';
 
 /**
  * 根据 MIME 类型获取对应图标
@@ -186,6 +187,10 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       document.removeEventListener('pdf-page-refs:clear', handleClear);
       document.removeEventListener('pdf-page-refs:remove', handleRemove);
+      // ★ 卸载（关闭 tab）时广播空选择，避免聊天 chips 残留指向已关闭的 PDF
+      document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
+        detail: { sourceId: node.sourceId, sourceName: '', pages: [] },
+      }));
     };
   }, [node.sourceId]);
 
@@ -521,13 +526,11 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       );
     }
 
-    // 纯文本预览（带滚动容器）
+    // 文本预览（md 富渲染 / csv 表格化 / 纯文本，带滚动容器）
     if (textContent) {
       return (
         <div className="h-full overflow-auto">
-          <pre className="whitespace-pre-wrap text-sm p-4 m-0 min-h-full text-foreground">
-            {textContent}
-          </pre>
+          <TextFilePreview content={textContent} fileName={node.name} />
         </div>
       );
     }
@@ -545,10 +548,16 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         <p className="text-sm text-center">
           {t('learningHub:file.downloadHint', '您可以下载文件后使用其他应用程序打开')}
         </p>
-        <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-          <ArrowClockwise className="h-3.5 w-3.5" />
-          {t('common:retry', '重试')}
-        </NotionButton>
+        <div className="flex items-center gap-2">
+          <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
+            {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            {t('learningHub:file.saveToDevice', '保存到本地打开')}
+          </NotionButton>
+          <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
+            <ArrowClockwise className="h-3.5 w-3.5" />
+            {t('common:retry', '重试')}
+          </NotionButton>
+        </div>
       </div>
     );
   };

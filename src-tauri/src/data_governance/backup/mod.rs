@@ -788,77 +788,9 @@ impl BackupManager {
     pub fn backup_full(&self) -> Result<BackupManifest, BackupError> {
         info!("开始执行完整备份");
 
-        // 1. 创建备份目录
-        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(None)?;
-
-        info!("备份目录: {:?}", backup_subdir);
-
-        // 2. 创建清单
-        let mut manifest = BackupManifest::new(&self.app_version);
-        manifest.backup_id = backup_id;
-
-        // 3. 备份所有数据库
-        let all_dbs = DatabaseId::all_ordered();
-        let total = all_dbs.len();
-        for (idx, db_id) in all_dbs.into_iter().enumerate() {
-            let db_path = self.get_database_path(&db_id);
-
-            // 检查数据库是否存在
-            if !db_path.exists() {
-                warn!("数据库不存在，跳过: {:?}", db_path);
-                continue;
-            }
-
-            // 发送进度回调
-            if let Some(ref cb) = self.progress_callback {
-                cb(idx, total, db_id.as_str(), 0, 0);
-            }
-
-            info!("备份数据库: {:?} -> {:?}", db_id, db_path);
-
-            // 备份单个数据库
-            let backup_file =
-                self.backup_single_database(&db_id, &db_path, &backup_subdir, idx, total)?;
-            manifest.add_file(backup_file);
-
-            // 获取 schema 版本
-            let version = self.get_schema_version(&db_path)?;
-            manifest.set_schema_version(db_id.as_str(), version);
-        }
-
-        // 3.5 备份加密密钥（跨设备恢复支持）
-        match self.backup_crypto_keys(&backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("加密密钥备份完成: {} 个文件", count);
-                }
-            }
-            Err(e) => {
-                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
-            }
-        }
-
-        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
-        match self.backup_audit_db(&backup_subdir) {
-            Ok(true) => info!("审计数据库备份完成"),
-            Ok(false) => debug!("审计数据库不存在，跳过备份"),
-            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
-        }
-
-        // 3.6 备份工作区数据库（ws_*.db）
-        let active_dir_for_ws = crate::data_space::get_data_space_manager()
-            .map(|mgr| mgr.active_dir())
-            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
-        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("工作区数据库备份完成: {} 个", count);
-                }
-            }
-            Err(e) => {
-                warn!("工作区数据库备份失败（非致命）: {}", e);
-            }
-        }
+        // 步骤 1–3.6（建目录/清单/全部数据库/加密密钥/审计库/工作区库）与 backup_with_assets
+        // 完全一致，抽到 backup_core 复用（F3）。
+        let (manifest, backup_subdir) = self.backup_core()?;
 
         // 4. 保存清单
         let manifest_path = backup_subdir.join(MANIFEST_FILENAME);
@@ -890,77 +822,8 @@ impl BackupManager {
     ) -> Result<BackupManifest, BackupError> {
         info!("开始执行包含资产的完整备份");
 
-        // 1. 创建备份目录
-        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(None)?;
-
-        info!("备份目录: {:?}", backup_subdir);
-
-        // 2. 创建清单
-        let mut manifest = BackupManifest::new(&self.app_version);
-        manifest.backup_id = backup_id;
-
-        // 3. 备份所有数据库
-        let all_dbs = DatabaseId::all_ordered();
-        let total = all_dbs.len();
-        for (idx, db_id) in all_dbs.into_iter().enumerate() {
-            let db_path = self.get_database_path(&db_id);
-
-            // 检查数据库是否存在
-            if !db_path.exists() {
-                warn!("数据库不存在，跳过: {:?}", db_path);
-                continue;
-            }
-
-            // 发送进度回调
-            if let Some(ref cb) = self.progress_callback {
-                cb(idx, total, db_id.as_str(), 0, 0);
-            }
-
-            info!("备份数据库: {:?} -> {:?}", db_id, db_path);
-
-            // 备份单个数据库
-            let backup_file =
-                self.backup_single_database(&db_id, &db_path, &backup_subdir, idx, total)?;
-            manifest.add_file(backup_file);
-
-            // 获取 schema 版本
-            let version = self.get_schema_version(&db_path)?;
-            manifest.set_schema_version(db_id.as_str(), version);
-        }
-
-        // 3.5 备份加密密钥（跨设备恢复支持）
-        match self.backup_crypto_keys(&backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("加密密钥备份完成: {} 个文件", count);
-                }
-            }
-            Err(e) => {
-                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
-            }
-        }
-
-        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
-        match self.backup_audit_db(&backup_subdir) {
-            Ok(true) => info!("审计数据库备份完成"),
-            Ok(false) => debug!("审计数据库不存在，跳过备份"),
-            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
-        }
-
-        // 3.6 备份工作区数据库（ws_*.db）
-        let active_dir_for_ws = crate::data_space::get_data_space_manager()
-            .map(|mgr| mgr.active_dir())
-            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
-        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("工作区数据库备份完成: {} 个", count);
-                }
-            }
-            Err(e) => {
-                warn!("工作区数据库备份失败（非致命）: {}", e);
-            }
-        }
+        // 步骤 1–3.6 与 backup_full 完全一致，复用 backup_core（F3）。
+        let (mut manifest, backup_subdir) = self.backup_core()?;
 
         // 4. 备份资产文件
         let config = asset_config.unwrap_or_default();
@@ -1001,6 +864,87 @@ impl BackupManager {
         );
 
         Ok(manifest)
+    }
+
+    /// F3：backup_full 与 backup_with_assets 的公共前半段（步骤 1–3.6）。
+    ///
+    /// 建备份目录 → 建清单 → 备份全部核心数据库 → 加密密钥 → 审计库 → 工作区库。
+    /// 返回 `(manifest, backup_subdir)`，调用方据此继续追加资产或直接保存清单。
+    /// 行为与原内联实现逐字一致（仅抽取，不改语义）。
+    fn backup_core(&self) -> Result<(BackupManifest, std::path::PathBuf), BackupError> {
+        // 1. 创建备份目录
+        let (backup_id, backup_subdir) = self.create_unique_backup_subdir(None)?;
+
+        info!("备份目录: {:?}", backup_subdir);
+
+        // 2. 创建清单
+        let mut manifest = BackupManifest::new(&self.app_version);
+        manifest.backup_id = backup_id;
+
+        // 3. 备份所有数据库
+        let all_dbs = DatabaseId::all_ordered();
+        let total = all_dbs.len();
+        for (idx, db_id) in all_dbs.into_iter().enumerate() {
+            let db_path = self.get_database_path(&db_id);
+
+            // 检查数据库是否存在
+            if !db_path.exists() {
+                warn!("数据库不存在，跳过: {:?}", db_path);
+                continue;
+            }
+
+            // 发送进度回调
+            if let Some(ref cb) = self.progress_callback {
+                cb(idx, total, db_id.as_str(), 0, 0);
+            }
+
+            info!("备份数据库: {:?} -> {:?}", db_id, db_path);
+
+            // 备份单个数据库
+            let backup_file =
+                self.backup_single_database(&db_id, &db_path, &backup_subdir, idx, total)?;
+            manifest.add_file(backup_file);
+
+            // 获取 schema 版本
+            let version = self.get_schema_version(&db_path)?;
+            manifest.set_schema_version(db_id.as_str(), version);
+        }
+
+        // 3.5 备份加密密钥（跨设备恢复支持）
+        match self.backup_crypto_keys(&backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("加密密钥备份完成: {} 个文件", count);
+                }
+            }
+            Err(e) => {
+                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
+            }
+        }
+
+        // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
+        match self.backup_audit_db(&backup_subdir) {
+            Ok(true) => info!("审计数据库备份完成"),
+            Ok(false) => debug!("审计数据库不存在，跳过备份"),
+            Err(e) => warn!("审计数据库备份失败（非致命）: {}", e),
+        }
+
+        // 3.6 备份工作区数据库（ws_*.db）
+        let active_dir_for_ws = crate::data_space::get_data_space_manager()
+            .map(|mgr| mgr.active_dir())
+            .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
+        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
+            Ok(count) => {
+                if count > 0 {
+                    info!("工作区数据库备份完成: {} 个", count);
+                }
+            }
+            Err(e) => {
+                warn!("工作区数据库备份失败（非致命）: {}", e);
+            }
+        }
+
+        Ok((manifest, backup_subdir))
     }
 
     /// 备份加密密钥文件到备份目录
@@ -1069,6 +1013,26 @@ impl BackupManager {
         if !crypto_src.exists() || !crypto_src.is_dir() {
             info!("[Restore] 备份中无加密密钥文件（旧版备份），跳过");
             return Ok(0);
+        }
+
+        // 密钥是全局文件（不随插槽切换），覆盖即不可逆。
+        // 覆盖前把当前密钥快照到预恢复目录，失败/放弃恢复后可借助
+        // rollback_from_pre_restore 或手动复制找回。
+        // 注意：从预恢复目录本身回滚时（backup_subdir == .pre_restore）跳过快照，
+        // 否则会先用当前密钥覆盖快照、导致回滚失效。
+        let pre_restore_root = self.backup_dir.join(PRE_RESTORE_DIR);
+        if backup_subdir != pre_restore_root {
+            let snapshot_crypto = pre_restore_root.join("crypto");
+            if snapshot_crypto.exists() {
+                let _ = fs::remove_dir_all(&snapshot_crypto);
+            }
+            match self.backup_crypto_keys(&pre_restore_root) {
+                Ok(n) if n > 0 => {
+                    info!("[Restore] 已快照当前加密密钥到预恢复目录: {} 个文件", n)
+                }
+                Ok(_) => {}
+                Err(e) => warn!("[Restore] 当前加密密钥快照失败（继续恢复）: {}", e),
+            }
         }
 
         let mut count = 0;
@@ -1630,9 +1594,16 @@ impl BackupManager {
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
 
-            // 手动分批复制，每次 100 页，间隔 50ms
-            // 每批复制后通过回调报告页面级进度
+        // 手动分批复制，每次 100 页，间隔 50ms
+        // 每批复制后通过回调报告页面级进度
             use rusqlite::backup::StepResult;
+
+            // 与恢复路径一致：Busy/Locked 设置重试上限，避免源库持续被锁时备份无限挂起
+            const RETRY_SLEEP_MS: u64 = 50;
+            const MAX_BUSY_RETRIES: u32 = 1200; // 约 60 秒无进展则放弃
+
+            let mut busy_retries: u32 = 0;
+
             loop {
                 let step_result = backup.step(100)?;
 
@@ -1645,11 +1616,30 @@ impl BackupManager {
 
                 match step_result {
                     StepResult::Done => break,
-                    StepResult::More | StepResult::Busy | StepResult::Locked => {
-                        std::thread::sleep(Duration::from_millis(50));
+                    StepResult::More => {
+                        busy_retries = 0;
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
+                    }
+                    StepResult::Busy | StepResult::Locked => {
+                        busy_retries = busy_retries.saturating_add(1);
+                        if busy_retries % 200 == 0 {
+                            let p = backup.progress();
+                            warn!(
+                                "[Backup] 备份数据库等待锁释放: db={:?}, retry={}/{}, remaining_pages={}/{}",
+                                db_id, busy_retries, MAX_BUSY_RETRIES, p.remaining, p.pagecount
+                            );
+                        }
+                        if busy_retries >= MAX_BUSY_RETRIES {
+                            return Err(BackupError::Database(format!(
+                                "备份数据库超时：源数据库持续被锁定（db={:?}, source={}）",
+                                db_id,
+                                source_path.display()
+                            )));
+                        }
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
                     }
                     _ => {
-                        std::thread::sleep(Duration::from_millis(50));
+                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
                     }
                 }
             }
@@ -2100,6 +2090,15 @@ impl BackupManager {
             warn!("工作区数据库回滚失败（非致命）: {}", e);
         }
 
+        // 回滚加密密钥（restore_crypto_keys 覆盖前的快照，若存在）
+        if pre_restore_dir.join("crypto").exists() {
+            match self.restore_crypto_keys(pre_restore_dir) {
+                Ok(n) if n > 0 => info!("加密密钥已回滚: {} 个文件", n),
+                Ok(_) => {}
+                Err(e) => warn!("加密密钥回滚失败（API 密钥可能需重新配置）: {}", e),
+            }
+        }
+
         Ok(())
     }
 
@@ -2389,9 +2388,25 @@ impl BackupManager {
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
             use rusqlite::backup::StepResult;
+            // 与恢复路径一致：Busy/Locked 设置重试上限，避免无限挂起
+            let mut busy_retries: u32 = 0;
             loop {
                 match backup.step(100)? {
                     StepResult::Done => break,
+                    StepResult::More => {
+                        busy_retries = 0;
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    StepResult::Busy | StepResult::Locked => {
+                        busy_retries = busy_retries.saturating_add(1);
+                        if busy_retries >= 1200 {
+                            return Err(BackupError::Database(format!(
+                                "备份数据库超时：源数据库持续被锁定（source={}）",
+                                src_path.display()
+                            )));
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
                     _ => std::thread::sleep(Duration::from_millis(50)),
                 }
             }

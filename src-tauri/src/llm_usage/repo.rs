@@ -4,8 +4,8 @@ use tracing::debug;
 
 use super::database::LlmUsageResult;
 use super::types::{
-    CallerType, CallerTypeSummary, DailySummary, ModelSummary, TimeGranularity, UsageRecord,
-    UsageSummary, UsageTrendPoint,
+    CallerType, CallerTypeSummary, DailySummary, ModelSummary, SessionUsageSummary,
+    TimeGranularity, UsageRecord, UsageSummary, UsageTrendPoint,
 };
 
 pub struct LlmUsageRepo;
@@ -370,6 +370,38 @@ impl LlmUsageRepo {
         Ok(summary)
     }
 
+    /// ★ 1.2 会话级用量聚合（caller_id = session_id）
+    pub fn get_session_usage(
+        conn: &Connection,
+        session_id: &str,
+    ) -> LlmUsageResult<SessionUsageSummary> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                COUNT(*) as request_count,
+                COALESCE(SUM(prompt_tokens), 0) as prompt_tokens,
+                COALESCE(SUM(completion_tokens), 0) as completion_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                SUM(cost_estimate) as cost_estimate
+            FROM llm_usage_logs
+            WHERE caller_id = ?1
+            "#,
+        )?;
+
+        let summary = stmt.query_row(params![session_id], |row| {
+            Ok(SessionUsageSummary {
+                session_id: session_id.to_string(),
+                request_count: row.get::<_, i64>(0)? as u64,
+                prompt_tokens: row.get::<_, i64>(1)? as u64,
+                completion_tokens: row.get::<_, i64>(2)? as u64,
+                total_tokens: row.get::<_, i64>(3)? as u64,
+                estimated_cost_usd: row.get::<_, Option<f64>>(4)?,
+            })
+        })?;
+
+        Ok(summary)
+    }
+
     pub fn get_recent_usage(conn: &Connection, limit: u32) -> LlmUsageResult<Vec<UsageRecord>> {
         let mut stmt = conn.prepare(
             r#"
@@ -416,7 +448,6 @@ impl LlmUsageRepo {
                 success: status == "success",
                 error_message: row.get(14)?,
                 created_at,
-                workspace_id: None,
             })
         })?;
 

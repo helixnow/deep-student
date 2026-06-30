@@ -259,7 +259,3 @@ export interface CommonTooltipProps {
 ## 🤝 贡献
 
 如有问题或建议，欢迎提出issue或PR。
-
-## 📄 许可
-
-MIT License

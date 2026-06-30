@@ -19,7 +19,7 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback,
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -55,8 +55,11 @@ impl WebDavStorage {
         }
 
         let http = Client::builder()
-            .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
+            // 死连接保护：reqwest 0.11 没有 read_timeout，依靠 TCP keepalive
+            // 检测对端消失；流式读写的逐块停滞保护见 get_file/put_file。
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .map_err(|e| AppError::internal(format!("构建 HTTP 客户端失败: {e}")))?;
@@ -184,10 +187,19 @@ impl WebDavStorage {
                 builder
             };
 
-            match builder.send().await {
-                Ok(resp) => return Ok(resp),
-                Err(e) => {
-                    last_error = Some(e);
+            // send() 覆盖"连接 + 发送内存体 + 等响应头"，不覆盖流式响应体下载，
+            // 因此对 get_file 的大文件流式下载无影响（其逐块停滞保护在 get_file 内）。
+            // 防止服务器收下 TCP 连接后无限沉默导致 send() 永久挂起。
+            match tokio::time::timeout(std::time::Duration::from_secs(120), builder.send()).await {
+                Ok(Ok(resp)) => return Ok(resp),
+                Ok(Err(e)) => {
+                    last_error = Some(e.to_string());
+                    if attempt == max_retries - 1 {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    last_error = Some("等待响应头超时（120 秒）".to_string());
                     if attempt == max_retries - 1 {
                         break;
                     }
@@ -199,7 +211,90 @@ impl WebDavStorage {
             "WebDAV {} 请求失败（已重试 {} 次）: {}",
             method,
             max_retries,
-            last_error.map(|e| e.to_string()).unwrap_or_default()
+            last_error.unwrap_or_default()
+        )))
+    }
+
+    /// 发送 PROPFIND 请求（带 120s 响应头超时、60s 响应体超时、网络错误重试）。
+    ///
+    /// 返回 `Ok(None)` 表示目标不存在（404）；非 2xx/404 状态码立即报错不重试
+    /// （客户端错误重试无意义）；网络层失败与超时按指数退避重试。
+    /// 此前 list_outcome/stat 的 PROPFIND 直接裸调 `self.http.send()`，
+    /// 无任何超时——服务器收下连接后沉默会让整个同步流程永久挂起。
+    async fn propfind_with_retry(
+        &self,
+        url: Url,
+        depth: &str,
+        context: &str,
+    ) -> Result<Option<String>> {
+        const PROPFIND_BODY: &str = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
+        let max_retries = 3;
+        let mut last_error: Option<String> = None;
+
+        for attempt in 0..max_retries {
+            if attempt > 0 {
+                let delay = Duration::from_millis(500 * (1 << attempt));
+                tokio::time::sleep(delay).await;
+                tracing::debug!(
+                    "WebDAV PROPFIND {} 重试 {}/{}",
+                    context,
+                    attempt + 1,
+                    max_retries
+                );
+            }
+
+            let send_result = tokio::time::timeout(
+                Duration::from_secs(120),
+                self.http
+                    .request(Self::propfind_method()?, url.clone())
+                    .header("Authorization", self.auth_header())
+                    .header("Depth", depth)
+                    .header("Content-Type", "application/xml")
+                    .body(PROPFIND_BODY)
+                    .send(),
+            )
+            .await;
+
+            let res = match send_result {
+                Ok(Ok(res)) => res,
+                Ok(Err(e)) => {
+                    last_error = Some(e.to_string());
+                    continue;
+                }
+                Err(_) => {
+                    last_error = Some("等待响应头超时（120 秒）".to_string());
+                    continue;
+                }
+            };
+
+            if res.status() == StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
+            if !res.status().is_success() {
+                return Err(AppError::network(format!(
+                    "WebDAV PROPFIND 失败: {} {}",
+                    res.status(),
+                    res.status().canonical_reason().unwrap_or(""),
+                )));
+            }
+
+            // PROPFIND 响应是有限大小的 XML，60 秒读不完视为连接停滞。
+            match tokio::time::timeout(Duration::from_secs(60), res.text()).await {
+                Ok(Ok(xml)) => return Ok(Some(xml)),
+                Ok(Err(e)) => {
+                    last_error = Some(format!("读取 PROPFIND 响应失败: {e}"));
+                }
+                Err(_) => {
+                    last_error = Some("读取 PROPFIND 响应超时（60 秒）".to_string());
+                }
+            }
+        }
+
+        Err(AppError::network(format!(
+            "WebDAV PROPFIND {} 失败（已重试 {} 次）: {}",
+            context,
+            max_retries,
+            last_error.unwrap_or_default()
         )))
     }
 
@@ -271,7 +366,11 @@ impl WebDavStorage {
                 .and_then(|n| n.text())
                 .unwrap_or_default();
 
-            if href.ends_with('/') {
+            let is_collection = response
+                .descendants()
+                .any(|n| n.has_tag_name((dav_ns, "collection")));
+
+            if is_collection || href.ends_with('/') {
                 continue;
             }
 
@@ -313,17 +412,43 @@ impl WebDavStorage {
     fn extract_relative_key(&self, href: &str, prefix: &str) -> String {
         // URL 解码
         let decoded = urlencoding::decode(href).unwrap_or_else(|_| href.into());
+        let href_path = Url::parse(&decoded)
+            .map(|url| url.path().to_string())
+            .unwrap_or_else(|_| decoded.to_string());
 
-        // 提取 root 之后的路径
-        let root_path = format!("/{}/", self.root);
-        if let Some(idx) = decoded.find(&root_path) {
-            let relative = &decoded[idx + root_path.len()..];
-            // 如果有 prefix，检查是否匹配
-            if !prefix.is_empty() && relative.starts_with(prefix) {
-                return relative.to_string();
-            } else if prefix.is_empty() {
-                return relative.to_string();
+        let base_path = self.base_url.path().trim_end_matches('/');
+        let root = self.root.trim_matches('/');
+        let root_path = match (base_path.is_empty(), root.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => format!("/{root}"),
+            (false, true) => base_path.to_string(),
+            (false, false) => format!("{base_path}/{root}"),
+        };
+
+        let relative = if root_path.is_empty() {
+            href_path.trim_start_matches('/').to_string()
+        } else if href_path == root_path || href_path == format!("{root_path}/") {
+            String::new()
+        } else {
+            let prefix_with_slash = format!("{root_path}/");
+            href_path
+                .strip_prefix(&prefix_with_slash)
+                .map(ToOwned::to_owned)
+                .unwrap_or_default()
+        };
+
+        if relative.is_empty() {
+            return String::new();
+        }
+
+        // 如果有 prefix，检查是否匹配
+        if !prefix.is_empty() {
+            let prefix = prefix.trim_matches('/');
+            if relative == prefix || relative.starts_with(&format!("{prefix}/")) {
+                return relative;
             }
+        } else {
+            return relative;
         }
         String::new()
     }
@@ -362,7 +487,11 @@ impl WebDavStorage {
                 .and_then(|n| n.text())
                 .unwrap_or_default();
 
-            if href.ends_with('/') {
+            let is_collection = response
+                .descendants()
+                .any(|n| n.has_tag_name((dav_ns, "collection")));
+
+            if is_collection || href.ends_with('/') {
                 // 目录项：提取相对路径（不做 prefix 过滤）
                 let key = self.extract_relative_key(href, "");
                 let dir_path = key.trim_matches('/');
@@ -418,6 +547,15 @@ impl CloudStorage for WebDavStorage {
         "WebDAV"
     }
 
+    fn instance_binding_hint(&self) -> String {
+        format!(
+            "webdav|endpoint={}|user={}|root={}",
+            self.base_url.as_str().trim_end_matches('/'),
+            self.username,
+            self.root
+        )
+    }
+
     async fn check_connection(&self) -> Result<()> {
         // 先确保同步根目录存在，再做连接探测
         self.ensure_directory(&self.root).await?;
@@ -466,45 +604,85 @@ impl CloudStorage for WebDavStorage {
         .await
         .map_err(|e| AppError::internal(format!("计算校验和任务失败: {e}")))??;
 
-        let file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(|e| AppError::file_system(format!("打开文件失败: {e}")))?;
+        let url = self.build_url(key)?;
+        // 流式上传的 send() 覆盖整个请求体传输：用按体积放缩的超时做停滞保护
+        // （下限 64KB/s + 120 秒余量），避免固定超时杀死慢速大文件上传。
+        let upload_timeout = std::time::Duration::from_secs(120 + file_size / (64 * 1024))
+            .max(std::time::Duration::from_secs(300));
 
-        let uploaded = Arc::new(AtomicU64::new(0));
-        let progress_cb = progress.clone();
-        let stream = ReaderStream::new(file).map(move |chunk| {
-            if let Ok(ref bytes) = chunk {
-                let new_total =
-                    uploaded.fetch_add(bytes.len() as u64, Ordering::SeqCst) + bytes.len() as u64;
-                if let Some(cb) = progress_cb.as_ref() {
-                    cb(new_total, file_size);
+        // 流式 PUT 无法复用 request_with_path 的重试（body 不可克隆），这里
+        // 显式按尝试重建文件流重试：网络错误/超时/5xx 可重试，4xx 立即失败。
+        // PUT 是整文件覆盖写，重传天然幂等。
+        let max_retries = 3;
+        let mut last_error: Option<AppError> = None;
+        // 跨重试的进度高水位：重传从头读文件时不向 UI 上报回跳的进度
+        let reported_max = Arc::new(AtomicU64::new(0));
+
+        for attempt in 0..max_retries {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_millis(500 * (1 << attempt));
+                tokio::time::sleep(delay).await;
+                tracing::debug!("WebDAV PUT {} 重试 {}/{}", key, attempt + 1, max_retries);
+            }
+
+            let file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(|e| AppError::file_system(format!("打开文件失败: {e}")))?;
+
+            let uploaded = Arc::new(AtomicU64::new(0));
+            let progress_cb = progress.clone();
+            let reported = reported_max.clone();
+            let stream = ReaderStream::new(file).map(move |chunk| {
+                if let Ok(ref bytes) = chunk {
+                    let new_total = uploaded.fetch_add(bytes.len() as u64, Ordering::SeqCst)
+                        + bytes.len() as u64;
+                    let prev_max = reported.fetch_max(new_total, Ordering::SeqCst);
+                    if new_total > prev_max {
+                        if let Some(cb) = progress_cb.as_ref() {
+                            cb(new_total, file_size);
+                        }
+                    }
+                }
+                chunk
+            });
+
+            let send_result = self
+                .http
+                .request(Method::PUT, url.clone())
+                .header("Authorization", self.auth_header())
+                .timeout(upload_timeout)
+                .body(reqwest::Body::wrap_stream(stream))
+                .send()
+                .await;
+
+            match send_result {
+                Ok(res) if res.status().is_success() => {
+                    if let Some(cb) = progress.as_ref() {
+                        cb(file_size, file_size);
+                    }
+                    return Ok(checksum);
+                }
+                Ok(res) => {
+                    let err = AppError::network(format!(
+                        "WebDAV 上传失败: {} {}",
+                        res.status(),
+                        res.status().canonical_reason().unwrap_or("")
+                    ));
+                    // 4xx 是确定性失败（认证/路径/配额等），重试无意义
+                    if !res.status().is_server_error() {
+                        return Err(err);
+                    }
+                    last_error = Some(err);
+                }
+                Err(e) => {
+                    last_error = Some(AppError::network(format!("WebDAV 上传失败: {e}")));
                 }
             }
-            chunk
-        });
-
-        let url = self.build_url(key)?;
-        let res = self
-            .http
-            .request(Method::PUT, url)
-            .header("Authorization", self.auth_header())
-            .body(reqwest::Body::wrap_stream(stream))
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("WebDAV 上传失败: {e}")))?;
-
-        if res.status().is_success() {
-            if let Some(cb) = progress.as_ref() {
-                cb(file_size, file_size);
-            }
-            Ok(checksum)
-        } else {
-            Err(AppError::network(format!(
-                "WebDAV 上传失败: {} {}",
-                res.status(),
-                res.status().canonical_reason().unwrap_or("")
-            )))
         }
+
+        Err(last_error.unwrap_or_else(|| {
+            AppError::network(format!("WebDAV 上传失败（已重试 {max_retries} 次）"))
+        }))
     }
 
     async fn get_file(
@@ -554,7 +732,17 @@ impl CloudStorage for WebDavStorage {
                 .map_err(|e| AppError::file_system(format!("创建文件失败: {e}")))?;
 
             let mut stream = res.bytes_stream();
-            while let Some(chunk) = stream.next().await {
+            loop {
+                // 逐块停滞超时：单块 90 秒收不到任何数据视为死连接。
+                // 不限制总传输时长，慢但有进展的大文件下载不受影响。
+                let next = tokio::time::timeout(std::time::Duration::from_secs(90), stream.next())
+                    .await
+                    .map_err(|_| {
+                        AppError::network("WebDAV 下载停滞超过 90 秒，连接可能已断开".to_string())
+                    })?;
+                let Some(chunk) = next else {
+                    break;
+                };
                 let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
                 file.write_all(&bytes)
                     .await
@@ -623,21 +811,25 @@ impl CloudStorage for WebDavStorage {
             )));
         }
 
-        let bytes = res
-            .bytes()
+        // get() 用于 manifest/变更文件等内存级对象：读体加总超时，
+        // 防止 request() 的响应头超时通过后、响应体传输中途停滞导致永久挂起。
+        let bytes = tokio::time::timeout(std::time::Duration::from_secs(300), res.bytes())
             .await
+            .map_err(|_| AppError::network("读取响应体超时（300 秒）".to_string()))?
             .map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
         Ok(Some(bytes.to_vec()))
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+        Ok(self.list_outcome(prefix).await?.files)
+    }
+
+    async fn list_outcome(&self, prefix: &str) -> Result<ListOutcome> {
         let start_path = if prefix.is_empty() {
             String::new()
         } else {
             prefix.trim_matches('/').to_string()
         };
-
-        let propfind_body = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
 
         let mut all_files = Vec::new();
         let mut dirs_to_visit = vec![start_path];
@@ -645,11 +837,13 @@ impl CloudStorage for WebDavStorage {
         const JIANGUOYUN_PROPFIND_LIMIT: usize = 750;
         const MAX_DIRS: usize = 200;
         let mut visited = 0usize;
+        let mut truncated = false;
 
         while let Some(dir) = dirs_to_visit.pop() {
             visited += 1;
             if visited > MAX_DIRS {
                 tracing::warn!("[WebDAV] 递归列举已访问 {MAX_DIRS} 个目录，停止遍历以防异常");
+                truncated = true;
                 break;
             }
 
@@ -662,48 +856,23 @@ impl CloudStorage for WebDavStorage {
             };
             let url = self.build_url(&dir_with_slash)?;
 
-            let res = self
-                .http
-                .request(Self::propfind_method()?, url)
-                .header("Authorization", self.auth_header())
-                .header("Depth", "1")
-                .header("Content-Type", "application/xml")
-                .body(propfind_body)
-                .send()
-                .await
-                .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
-
-            if res.status() == StatusCode::NOT_FOUND {
+            let Some(xml) = self.propfind_with_retry(url, "1", &dir_with_slash).await? else {
+                // 404：目录不存在，跳过
                 continue;
-            }
-            if !res.status().is_success() {
-                return Err(AppError::network(format!(
-                    "WebDAV PROPFIND 失败: {} {}",
-                    res.status(),
-                    res.status().canonical_reason().unwrap_or(""),
-                )));
-            }
-
-            let xml = res
-                .text()
-                .await
-                .map_err(|e| AppError::network(format!("读取 PROPFIND 响应失败: {e}")))?;
+            };
 
             let (files, subdirs) = self.parse_propfind_entries(&xml, prefix, &dir);
 
             let entry_count = files.len() + subdirs.len();
             if entry_count >= JIANGUOYUN_PROPFIND_LIMIT - 1 {
-                // [P1 Fix] 当条目数达到平台上限时，记录错误级别日志并继续。
-                // 不能直接返回 Err，否则 prune_old_changes 内部的 list() 也会失败，
-                // 导致用户无法通过清理来解决问题（鸡生蛋死锁）。
-                // 返回已列出的文件，让调用方至少能处理已知文件（如执行清理）。
                 tracing::error!(
                     "[WebDAV] PROPFIND 返回 {} 条目（达到坚果云 {} 上限），\
-                     目录 '{}' 下可能有未列出的文件！建议尽快清理旧的同步变更文件。",
+                     目录 '{}' 下可能有未列出的文件。",
                     entry_count,
                     JIANGUOYUN_PROPFIND_LIMIT,
                     dir
                 );
+                truncated = true;
             }
 
             all_files.extend(files);
@@ -711,7 +880,10 @@ impl CloudStorage for WebDavStorage {
         }
 
         all_files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
-        Ok(all_files)
+        Ok(ListOutcome {
+            files: all_files,
+            truncated,
+        })
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
@@ -731,32 +903,9 @@ impl CloudStorage for WebDavStorage {
     async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
         let url = self.build_url(key)?;
 
-        let res = self
-            .http
-            .request(Self::propfind_method()?, url)
-            .header("Authorization", self.auth_header())
-            .header("Depth", "0")
-            .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
-
-        if res.status() == StatusCode::NOT_FOUND {
+        let Some(xml) = self.propfind_with_retry(url, "0", key).await? else {
             return Ok(None);
-        }
-        if !res.status().is_success() {
-            return Err(AppError::network(format!(
-                "WebDAV PROPFIND 失败: {} {}",
-                res.status(),
-                res.status().canonical_reason().unwrap_or(""),
-            )));
-        }
-
-        let xml = res
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("读取 PROPFIND 响应失败: {e}")))?;
+        };
 
         let files = self.parse_propfind_response(&xml, "");
         Ok(files.into_iter().next())
@@ -775,6 +924,18 @@ mod tests {
                 password: "webdav123".to_string(),
             },
             "deep-student-sync-contract/webdav/uuid".to_string(),
+        )
+        .expect("create test storage")
+    }
+
+    fn test_storage_with_root(root: &str) -> WebDavStorage {
+        WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "http://localhost:8080/dav/".to_string(),
+                username: "webdav".to_string(),
+                password: "webdav123".to_string(),
+            },
+            root.to_string(),
         )
         .expect("create test storage")
     }
@@ -817,6 +978,57 @@ mod tests {
         assert_eq!(
             storage.build_url("objects/").unwrap().path(),
             "/deep-student-sync-contract/webdav/uuid/objects/"
+        );
+    }
+
+    #[test]
+    fn extract_relative_key_handles_empty_root() {
+        let storage = test_storage_with_root("");
+
+        assert_eq!(
+            storage.extract_relative_key("/dav/data_governance/manifest.json", ""),
+            "data_governance/manifest.json"
+        );
+        assert_eq!(
+            storage.extract_relative_key(
+                "http://localhost:8080/dav/data_governance/changes/device/1.json.zst",
+                "data_governance/changes"
+            ),
+            "data_governance/changes/device/1.json.zst"
+        );
+        assert_eq!(storage.extract_relative_key("/dav/", ""), "");
+    }
+
+    #[test]
+    fn extract_relative_key_handles_root_slash_normalization() {
+        let storage = test_storage_with_root("/");
+
+        assert_eq!(
+            storage.extract_relative_key("/dav/backups/one.zip", "backups"),
+            "backups/one.zip"
+        );
+        assert_eq!(storage.root, "");
+    }
+
+    #[test]
+    fn webdav_contract_source_guards() {
+        let source = include_str!("webdav.rs");
+
+        assert!(
+            source.contains("<d:resourcetype/>"),
+            "WebDAV PROPFIND must request resourcetype for reliable directory detection"
+        );
+        assert!(
+            source.contains("async fn list_outcome"),
+            "WebDAV list must expose truncation state"
+        );
+        assert!(
+            source.contains("truncated = true"),
+            "WebDAV list must mark server/client traversal limits as truncated"
+        );
+        assert!(
+            source.contains("is_collection || href.ends_with('/')"),
+            "Directory detection must use resourcetype with href suffix only as fallback"
         );
     }
 }

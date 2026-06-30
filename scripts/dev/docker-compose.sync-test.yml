@@ -1,6 +1,7 @@
-# 本地 WebDAV + S3 (MinIO) 同步测试环境
+# 本地 WebDAV + S3 (MinIO) + FTP 同步测试环境
 # 启动: docker compose -f scripts/dev/docker-compose.sync-test.yml up -d
 # 停止: docker compose -f scripts/dev/docker-compose.sync-test.yml down -v
+# 注意: dstu-test/docker/docker-compose.sync-test.yml 是本文件的副本（npm run dstu-test:cloud:* 使用），修改时需同步两份
 
 services:
   # ============== MinIO (S3 兼容) ==============
@@ -50,6 +51,24 @@ services:
     volumes:
       - webdav_data:/var/lib/dav
 
+  # ============== FTP ==============
+  ftp:
+    image: stilliard/pure-ftpd:latest
+    container_name: ds-ftp
+    ports:
+      - "127.0.0.1:2121:21"     # FTP 控制端口
+      - "127.0.0.1:30000-30009:30000-30009"  # 被动模式数据端口
+    environment:
+      FTP_USER_NAME: ftpuser
+      FTP_USER_PASS: ftpuser123
+      FTP_USER_HOME: /home/ftpuser
+      PUBLICHOST: localhost
+      FTP_MAX_CLIENTS: 50
+      FTP_PASSIVE_PORTS: "30000:30009"
+    volumes:
+      - ftp_data:/home/ftpuser/data
+
 volumes:
   minio_data:
   webdav_data:
+  ftp_data:

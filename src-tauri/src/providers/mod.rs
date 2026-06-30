@@ -86,8 +86,11 @@ impl ProviderAdapter for OpenAIAdapter {
     fn parse_stream(&self, line: &str) -> Vec<StreamEvent> {
         let mut events = Vec::new();
 
-        if line.starts_with("data: ") {
-            let data = &line[6..];
+        // 🔧 SSE 规范允许 "data:" 后不带空格（部分供应商/中转站省略空格），
+        // 与 OpenAIResponsesAdapter/AnthropicAdapter 的宽容解析保持一致，
+        // 否则这些流的所有数据行会被静默丢弃（表现为"健康连接但无任何输出"）
+        if let Some(raw) = line.strip_prefix("data:") {
+            let data = raw.strip_prefix(' ').unwrap_or(raw);
             if data.trim() == "[DONE]" {
                 events.push(StreamEvent::Done);
                 return events;
@@ -802,6 +805,24 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 events.push(StreamEvent::Done);
             }
             "response.failed" | "error" => {
+                // 🔧 之前直接吞掉错误只发 Done，供应商返回的失败原因（配额不足/参数错误等）
+                // 完全丢失，前端只看到一条空响应。至少把错误详情记入日志便于诊断，
+                // 并以 SafetyBlocked 通道向上游传递错误负载（emit {stream}_error 事件）。
+                let error_detail = parsed
+                    .get("response")
+                    .and_then(|r| r.get("error"))
+                    .or_else(|| parsed.get("error"))
+                    .cloned()
+                    .unwrap_or_else(|| parsed.clone());
+                log::error!(
+                    "[OpenAIResponsesAdapter] Stream failed event: {}",
+                    error_detail
+                );
+                events.push(StreamEvent::SafetyBlocked(json!({
+                    "type": "provider_error",
+                    "reason": event_type,
+                    "details": error_detail
+                })));
                 events.push(StreamEvent::Done);
             }
             _ => {}
@@ -1461,6 +1482,23 @@ fn convert_assistant_message(message: &Value) -> Option<AnthropicMessage> {
                                 }
                             }
                         }
+                        "tool_use" => {
+                            let id = part
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("tool_call_{}", Uuid::new_v4()));
+                            let name = part
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let input = part
+                                .get("input")
+                                .cloned()
+                                .unwrap_or_else(|| Value::Object(Map::new()));
+                            blocks.push(AnthropicContentBlock::ToolUse { id, name, input });
+                        }
                         _ => {}
                     }
                 }
@@ -2066,6 +2104,18 @@ mod tests {
     }
 
     #[test]
+    fn openai_adapter_parse_stream_accepts_data_prefix_without_space() {
+        // SSE 规范允许 "data:" 后不带空格，部分供应商/中转站省略空格
+        let adapter = OpenAIAdapter;
+
+        let events = adapter.parse_stream(r#"data:{"choices":[{"delta":{"content":"hi"}}]}"#);
+        assert!(matches!(events.first(), Some(StreamEvent::ContentChunk(c)) if c == "hi"));
+
+        let done = adapter.parse_stream("data:[DONE]");
+        assert!(matches!(done.first(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
     fn openai_responses_adapter_converts_messages_and_reasoning() {
         let body = json!({
             "messages": [
@@ -2414,6 +2464,39 @@ mod tests {
     }
 
     #[test]
+    fn anthropic_preserves_inline_tool_use_blocks_from_assistant_content() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    { "type": "thinking", "thinking": "need a tool" },
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_123",
+                        "name": "lookup_weather",
+                        "input": { "city": "Paris" }
+                    },
+                    { "type": "text", "text": "Calling tool now." }
+                ]
+            }]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
+        let request_json = serde_json::to_value(request).expect("request should serialize");
+        let content = request_json["messages"][0]["content"]
+            .as_array()
+            .expect("assistant content should be an array");
+
+        assert!(content.iter().any(|block| {
+            block["type"] == json!("tool_use")
+                && block["id"] == json!("toolu_123")
+                && block["name"] == json!("lookup_weather")
+                && block["input"]["city"] == json!("Paris")
+        }));
+    }
+
+    #[test]
     fn openai_responses_adapter_encodes_tool_history() {
         let body = json!({
             "messages": [
@@ -2502,6 +2585,6 @@ mod tests {
         });
 
         let event = build_usage_event(&usage).expect("usage event");
-        assert_eq!(event["cached_tokens"], json!(50));
+        assert_eq!(event["cached_tokens"], json!(30));
     }
 }

@@ -21,23 +21,25 @@
 //! ```
 
 mod config;
+mod ftp;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
 mod sync_manager;
 mod traits;
 mod webdav;
 
-pub use config::{CloudStorageConfig, S3Config, StorageProvider, WebDavConfig};
+pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
 pub use sync_manager::{
-    get_device_id, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult, SyncStatus,
-    UploadResult,
+    get_device_id, rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager,
+    DownloadResult, SyncStatus, UploadResult,
 };
-pub use traits::{CloudStorage, FileInfo, Result};
+pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::AppError;
+use ftp::FtpStorage;
 #[cfg(feature = "cloud_storage_s3")]
 use s3::S3Storage;
 use webdav::WebDavStorage;
@@ -101,6 +103,14 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
         StorageProvider::S3 => Err(AppError::configuration(
             "S3 存储支持未启用，请在编译时启用 cloud_storage_s3 feature".to_string(),
         )),
+        StorageProvider::Ftp => {
+            let ftp_config = config
+                .ftp
+                .clone()
+                .ok_or_else(|| AppError::validation("缺少 FTP 配置"))?;
+            let storage = FtpStorage::new(ftp_config, root)?;
+            Ok(Box::new(storage))
+        }
     }
 }
 
@@ -108,7 +118,11 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
 
 /// 检查云存储连接
 #[tauri::command]
-pub async fn cloud_storage_check_connection(config: CloudStorageConfig) -> Result<bool> {
+pub async fn cloud_storage_check_connection(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+) -> Result<bool> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.check_connection().await?;
     Ok(true)
@@ -117,17 +131,24 @@ pub async fn cloud_storage_check_connection(config: CloudStorageConfig) -> Resul
 /// 上传文件到云存储
 #[tauri::command]
 pub async fn cloud_storage_put(
-    config: CloudStorageConfig,
+    app: AppHandle,
+    mut config: CloudStorageConfig,
     key: String,
     data: Vec<u8>,
 ) -> Result<()> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.put(&key, &data).await
 }
 
 /// 从云存储下载文件
 #[tauri::command]
-pub async fn cloud_storage_get(config: CloudStorageConfig, key: String) -> Result<Option<Vec<u8>>> {
+pub async fn cloud_storage_get(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+    key: String,
+) -> Result<Option<Vec<u8>>> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.get(&key).await
 }
@@ -135,16 +156,23 @@ pub async fn cloud_storage_get(config: CloudStorageConfig, key: String) -> Resul
 /// 列出云存储中的文件
 #[tauri::command]
 pub async fn cloud_storage_list(
-    config: CloudStorageConfig,
+    app: AppHandle,
+    mut config: CloudStorageConfig,
     prefix: String,
 ) -> Result<Vec<FileInfo>> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.list(&prefix).await
 }
 
 /// 删除云存储中的文件
 #[tauri::command]
-pub async fn cloud_storage_delete(config: CloudStorageConfig, key: String) -> Result<()> {
+pub async fn cloud_storage_delete(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+    key: String,
+) -> Result<()> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.delete(&key).await
 }
@@ -152,16 +180,23 @@ pub async fn cloud_storage_delete(config: CloudStorageConfig, key: String) -> Re
 /// 获取文件信息
 #[tauri::command]
 pub async fn cloud_storage_stat(
-    config: CloudStorageConfig,
+    app: AppHandle,
+    mut config: CloudStorageConfig,
     key: String,
 ) -> Result<Option<FileInfo>> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.stat(&key).await
 }
 
 /// 检查文件是否存在
 #[tauri::command]
-pub async fn cloud_storage_exists(config: CloudStorageConfig, key: String) -> Result<bool> {
+pub async fn cloud_storage_exists(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+    key: String,
+) -> Result<bool> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     storage.exists(&key).await
 }
@@ -170,7 +205,8 @@ pub async fn cloud_storage_exists(config: CloudStorageConfig, key: String) -> Re
 
 /// 获取同步状态
 #[tauri::command]
-pub async fn cloud_sync_get_status(config: CloudStorageConfig) -> Result<SyncStatus> {
+pub async fn cloud_sync_get_status(app: AppHandle, mut config: CloudStorageConfig) -> Result<SyncStatus> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
     Ok(manager.get_status().await)
@@ -178,7 +214,11 @@ pub async fn cloud_sync_get_status(config: CloudStorageConfig) -> Result<SyncSta
 
 /// 列出云端所有备份版本
 #[tauri::command]
-pub async fn cloud_sync_list_versions(config: CloudStorageConfig) -> Result<Vec<BackupVersion>> {
+pub async fn cloud_sync_list_versions(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+) -> Result<Vec<BackupVersion>> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
     manager.list_versions().await
@@ -190,11 +230,12 @@ pub async fn cloud_sync_list_versions(config: CloudStorageConfig) -> Result<Vec<
 #[tauri::command]
 pub async fn cloud_sync_upload(
     app_handle: AppHandle,
-    config: CloudStorageConfig,
+    mut config: CloudStorageConfig,
     zip_path: String,
     app_version: Option<String>,
     note: Option<String>,
 ) -> Result<UploadResult> {
+    crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
     // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
     // 临时文件在 ZIP 附近创建，上传成功后删除
     let mut encrypted_temp: Option<std::path::PathBuf> = None;
@@ -203,16 +244,13 @@ pub async fn cloud_sync_upload(
         .as_deref()
         .filter(|s| !s.is_empty())
     {
-        tracing::info!("[CloudSync] 端到端加密已启用，加密上传...");
-        let plaintext = std::fs::read(&zip_path)
-            .map_err(|e| AppError::file_system(format!("读取 ZIP 失败: {}", e)))?;
-        let ciphertext = crate::crypto::backup_crypto::encrypt_backup(&plaintext, pwd)
-            .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
-        // 写临时加密文件（同目录，确保同一文件系统 → 快）
+        tracing::info!("[CloudSync] 端到端加密已启用，流式加密上传...");
+        // [F14] 流式分块加密到临时文件（同目录 → 同一文件系统，rename/上传快），
+        // 内存占用恒定，避免多 GB 备份一次性读入内存导致 OOM。
         let original = std::path::Path::new(&zip_path);
         let temp_path = original.with_extension("zip.dsbk");
-        std::fs::write(&temp_path, &ciphertext)
-            .map_err(|e| AppError::file_system(format!("写入加密文件失败: {}", e)))?;
+        crate::crypto::backup_crypto::encrypt_backup_file(original, &temp_path, pwd)
+            .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
         encrypted_temp = Some(temp_path.clone());
         temp_path
     } else {
@@ -290,10 +328,11 @@ pub async fn cloud_sync_upload(
 #[tauri::command]
 pub async fn cloud_sync_download(
     app_handle: AppHandle,
-    config: CloudStorageConfig,
+    mut config: CloudStorageConfig,
     version_id: Option<String>,
     local_dir: String,
 ) -> Result<DownloadResult> {
+    crate::secure_store::hydrate_cloud_config(&app_handle, &mut config);
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
 
@@ -360,15 +399,22 @@ pub async fn cloud_sync_download(
                     .to_string(),
             )
         })?;
-        tracing::info!("[CloudSync] 检测到加密备份，开始解密...");
-        let ciphertext = std::fs::read(downloaded_path)
-            .map_err(|e| AppError::file_system(format!("读取加密备份失败: {}", e)))?;
-        let plaintext =
-            crate::crypto::backup_crypto::decrypt_backup(&ciphertext, pwd).map_err(|e| {
+        tracing::info!("[CloudSync] 检测到加密备份，开始流式解密...");
+        // [F14] 流式分块解密到同目录临时文件再原子改名，内存占用恒定，避免多 GB
+        // 备份一次性入内存；同时兼容旧的 DSBK v1（整文件）格式。
+        let parent = downloaded_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let temp_path = parent.join(format!(".decrypt-{}.tmp", uuid::Uuid::new_v4().simple()));
+        crate::crypto::backup_crypto::decrypt_backup_file(downloaded_path, &temp_path, pwd)
+            .map_err(|e| {
+                let _ = std::fs::remove_file(&temp_path);
                 AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
             })?;
-        std::fs::write(downloaded_path, &plaintext)
-            .map_err(|e| AppError::file_system(format!("写入解密后 ZIP 失败: {}", e)))?;
+        std::fs::rename(&temp_path, downloaded_path).map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            AppError::file_system(format!("保存解密后 ZIP 失败: {}", e))
+        })?;
     }
 
     emit_sync_progress(
@@ -389,9 +435,11 @@ pub async fn cloud_sync_download(
 /// 删除云端备份版本
 #[tauri::command]
 pub async fn cloud_sync_delete_version(
-    config: CloudStorageConfig,
+    app: AppHandle,
+    mut config: CloudStorageConfig,
     version_id: String,
 ) -> Result<()> {
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
     manager.delete_version(&version_id).await

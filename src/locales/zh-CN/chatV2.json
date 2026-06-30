@@ -118,6 +118,9 @@
       "hideErrorDetails": "收起错误详情",
       "genericError": "本次回复生成失败"
     },
+    "reconnect": {
+      "inline": "正在重试 {{attempt}}/{{max}}"
+    },
     "modelRetry": {
       "clickToRetry": "点击选择模型重试",
       "dialogTitle": "选择模型重试",
@@ -411,6 +414,8 @@
         "success": "执行完成",
         "error": "执行失败"
       },
+      "loadedSkills": "已加载技能",
+      "loadedTools": "已加载工具",
       "viewSourceFile": "查看源文件"
     },
     "imageGen": {
@@ -502,7 +507,8 @@
           "taskCreated": "任务已创建，正在分段处理...",
           "paused": "已暂停，可稍后继续。",
           "cancelled": "已取消生成。",
-          "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。"
+          "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
+          "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
         }
       },
       "errors": {
@@ -519,13 +525,14 @@
         "statusNotFound": "未找到该文档任务，请稍候或重新发起生成。",
         "ankiConnectUnavailable": "AnkiConnect 不可用。请打开 Anki 并启用 AnkiConnect 后重试。",
         "missingClozeNoteType": "Anki 缺少 Cloze 笔记类型。请在 Anki 中创建后重试。",
-        "ankiSyncEmpty": "未导入任何卡片。请检查 AnkiConnect、笔记类型、重复卡片与字段映射。"
+        "ankiSyncEmpty": "未导入任何卡片。请检查 Anki 是否运行、笔记类型是否存在、卡片字段是否为空。"
       },
       "warnings": {
         "imageTruncated": "仅使用了前 {{shown}} 张图片（上限 {{limit}}，共 {{total}} 张）。建议拆分附件后重试。",
         "contextRefInvalid": "{{count}} 个附件无法解析，必要时移除并重新添加。",
         "textTruncated": "文档内容超过 {{limitMB}}MB 上限，仅处理了前 {{limitMB}}MB 部分。建议拆分文档分批制卡。",
-        "templateLoadPartial": "{{count}} 个模板加载失败，已跳过并继续生成。请检查模板是否被删除，或去模板设置重新启用后重试。"
+        "templateLoadPartial": "{{count}} 个模板加载失败，已跳过并继续生成。请检查模板是否被删除，或去模板设置重新启用后重试。",
+        "overLimitCardsRemoved": "并发生成超出上限 {{limit}} 张，已移除多余的 {{count}} 张卡片。"
       },
       "action": {
         "saveFailed": "保存失败",
@@ -541,10 +548,13 @@
         "syncFailedDetail": "同步失败：未导入任何卡片（请检查 AnkiConnect/笔记类型/重复卡片）",
         "syncPartialTitle": "部分同步到 Anki",
         "syncPartialDetail": "已导入 {{added}} 张，{{failed}} 张失败。请检查 AnkiConnect / 笔记类型 / 重复卡片 / 字段映射。",
+        "syncAllDuplicatesTitle": "卡片均已存在",
+        "syncAllDuplicatesDetail": "{{count}} 张卡片均已存在于 Anki 中（重复跳过），未新增卡片。",
         "syncedCount": "已同步 {{count}} 张到 Anki",
         "syncedCountWithHint": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
         "syncFailedWithHint": "同步失败。请确认 Anki 正在运行且 AnkiConnect 已启用后重试。",
         "persistFailed": "卡片编辑保存失败，切换会话后可能丢失。请重试编辑。",
+        "dbSyncFailed": "卡片改动未能同步到卡片库，AI 导出/同步结果可能不包含此改动。",
         "exportCancelled": "已取消导出",
         "exportSkippedErrors": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。"
       }
@@ -674,6 +684,25 @@
     "clear": "清空",
     "saveAsTemplate": "保存为模板",
     "newTemplateName": "新模板",
+    "personas": {
+      "title": "语气人格",
+      "coach": {
+        "label": "严格教练",
+        "content": "语气要求：像一位严格但公正的教练。直接指出错误和薄弱点，不绕弯子；要求我给出推理过程；当我答错时先让我自己再试一次。"
+      },
+      "companion": {
+        "label": "温和陪伴",
+        "content": "语气要求：像一位耐心温和的学习伙伴。多鼓励、少批评；解释时循序渐进，允许我犯错；在我沮丧时先安抚再继续。"
+      },
+      "socratic": {
+        "label": "苏格拉底",
+        "content": "语气要求：采用苏格拉底式提问。不直接给出答案，而是通过一连串引导性问题让我自己推导出结论；只有当我明确放弃时才揭示答案。"
+      },
+      "concise": {
+        "label": "简洁应试",
+        "content": "语气要求：以应试为导向，回答尽量简短、结构化。先给结论/答案，再用要点列出关键步骤与易错点，避免冗长展开。"
+      }
+    },
     "variables": {
       "grade": {
         "label": "年级",
@@ -792,6 +821,7 @@
     "pinSession": "置顶线程",
     "unpinSession": "取消置顶",
     "archiveSession": "归档线程",
+    "archivedSessionsEntry": "已归档会话",
     "confirmArchiveSession": "确认归档线程",
     "archiveSessionToast": "已归档。查看已归档的会话：设置",
     "archiveSessionToastMessage": "已归档。查看已归档的会话：",
@@ -826,6 +856,10 @@
     "loadMore": "加载更多",
     "studySessions": "课题",
     "studySessionsEmpty": "暂无课题",
+    "recentSessions": "最近",
+    "pinnedSessions": "置顶会话",
+    "sessionActions": "会话操作",
+    "primaryNavigation": "主入口",
     "resourceUnsupported": "该资源类型暂不支持在学习中心打开",
     "groupSaveFailed": "保存分组失败",
     "openNoteFailed": "打开笔记失败"
@@ -866,6 +900,9 @@
     "contextRemainingPercent": "剩余 {{percent}}%",
     "contextUsedTokens": "已用 {{tokens}}",
     "contextRemainingTokens": "剩余 {{tokens}}",
+    "contextHighWaterHint": "上下文接近上限，建议新开会话或精简引用内容",
+    "sessionTotal": "本会话累计",
+    "sessionCost": "本会话费用",
     "tokens": "tokens",
     "inputEstimate": "估算输入 token 数量",
     "source": {
@@ -874,6 +911,11 @@
       "heuristic": "启发式估算",
       "mixed": "混合来源"
     }
+  },
+  "agentPanel": {
+    "plan": "计划",
+    "sources": "来源",
+    "artifacts": "产物"
   },
   "timeline": {
     "thinking": {
@@ -914,7 +956,9 @@
       "objectResult": "对象结果",
       "emptyResult": "无结果",
       "itemsResult": "返回 {{count}} 条结果",
-      "moreItems": "...还有 {{count}} 条"
+      "moreItems": "...还有 {{count}} 条",
+      "loadedSkills": "已加载技能",
+      "loadedTools": "已加载工具"
     },
     "noteTool": {
       "read": "读取笔记",
@@ -1067,6 +1111,8 @@
     "createdAt": "创建时间",
     "groupByTime": "按时间分组",
     "groupByGroup": "按分组浏览",
+    "staleTopic": "待修复分组",
+    "staleTopicDescription": "原分组已不可用的会话。",
     "ungrouped": "未分组"
   },
   "search": {
@@ -1091,6 +1137,7 @@
     "arguments": "参数",
     "approve": "批准",
     "reject": "拒绝",
+    "allowSession": "本会话允许",
     "alwaysAllow": "始终允许",
     "alwaysDeny": "始终拒绝",
     "timeout": "审批超时",
@@ -1110,7 +1157,7 @@
       "expiredTitle": "审批已过期",
       "expiredDetail": "该审批已失效，请重新发起工具请求。",
       "responseFailedTitle": "审批响应发送失败",
-      "responseFailedDetail": "请检查连接后重试。"
+      "responseFailedDetail": "请检查连接后重试"
     },
     "expandArgs": "展开完整参数",
     "collapseArgs": "收起参数",
@@ -1381,7 +1428,9 @@
     "copyFailed": "复制失败"
   },
   "readiness": {
-    "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。"
+    "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
+    "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
+    "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。"
   },
   "imagePreview": {
     "partialNotFound": "部分图片资源未找到",

@@ -1,6 +1,6 @@
 # Chat V2 块渲染/互动/持久化 — 开发者参考手册
 
-> **适用版本**：2026-02-09  
+> **适用版本**：2026-06-11（BlockType 清单已与 `core/types/common.ts` 同步；其余章节基于 2026-02-09 版架构，三注册表机制未变）  
 > **适用场景**：新增块类型、扩展工具渲染、调试块生命周期、理解引用系统
 
 ---
@@ -71,20 +71,40 @@ Chat V2 采用 **三注册表协作** 的插件化架构：
 
 ```typescript
 export type BlockType =
-  | 'thinking'           // 思维链
-  | 'content'            // 正文
-  | 'rag'                // 文档知识库 RAG
-  | 'memory'             // 用户记忆
-  | 'web_search'         // 网络搜索
-  | 'multimodal_rag'     // 多模态知识库
-  | 'mcp_tool'           // MCP 工具调用
-  | 'image_gen'          // 图片生成
-  | 'anki_cards'         // Anki 卡片生成
-  | 'workspace_status'   // 工作区状态面板
-  | 'subagent_retry'     // 子代理重试提醒块
-  | 'tool_limit'         // 工具递归限制提示
-  | string;              // 插件扩展
+  // 流式内容块
+  | 'thinking'         // 思维链
+  | 'content'          // 正文
+  // 知识检索块
+  | 'rag'              // 文档知识库 RAG
+  | 'memory'           // 用户记忆
+  | 'web_search'       // 网络搜索
+  | 'multimodal_rag'   // 多模态知识库
+  | 'academic_search'  // 学术搜索
+  // 工具调用块
+  | 'mcp_tool'         // MCP 工具调用
+  | 'image_gen'        // 图片生成
+  // 特殊功能块
+  | 'anki_cards'       // Anki 卡片生成
+  | 'todo_list'        // 待办列表
+  | 'ask_user'         // 用户交互
+  | 'template_preview' // 模板预览
+  // 多 Agent 协作块
+  | 'workspace_status' // 工作区状态面板
+  | 'subagent_embed'   // 子代理嵌入
+  | 'subagent_retry'   // 子代理重试提醒块
+  | 'sleep'            // 协调器休眠
+  // 系统提示块
+  | 'tool_limit'       // 工具递归限制提示
+  // 知识图谱（后端 graph_search 工具映射）
+  | 'graph'            // 知识图谱检索
+  // 后端扩展块
+  | 'paper_save'       // 论文保存
+  // 通用/回退（兜底后端新增的未知块类型）
+  | 'generic'
+  | (string & {});     // 保持可扩展性，允许后端发送新块类型
 ```
+
+> 以上清单与 `core/types/common.ts` 同步于 2026-06-11；新增块类型时请同时更新两处。
 
 ### 2.2 Block 状态机
 

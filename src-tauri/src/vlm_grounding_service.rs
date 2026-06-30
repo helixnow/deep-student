@@ -250,7 +250,7 @@ impl VlmGroundingService {
                 .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
 
             if matches!(status.as_u16(), 429 | 502 | 503 | 504) {
-                last_error = format!("VLM API 返回 {}: {}", status, &body[..body.len().min(200)]);
+                last_error = format!("VLM API 返回 {}: {}", status, truncate_utf8(&body, 200));
                 if attempt < MAX_RETRIES {
                     warn!("[VLM-Grounding] {}", last_error);
                     continue;
@@ -262,7 +262,7 @@ impl VlmGroundingService {
                 return Err(AppError::llm(format!(
                     "VLM API 返回错误 {}: {}",
                     status,
-                    &body[..body.len().min(500)]
+                    truncate_utf8(&body, 500)
                 )));
             }
 
@@ -380,7 +380,7 @@ impl VlmGroundingService {
             return Err(AppError::llm(format!(
                 "VLM 图片描述 API 返回 {}: {}",
                 status,
-                &body[..body.len().min(300)]
+                truncate_utf8(&body, 300)
             )));
         }
 
@@ -526,7 +526,7 @@ impl VlmGroundingService {
             // 非流式错误响应（4xx/5xx 可重试）
             if matches!(status.as_u16(), 429 | 502 | 503 | 504) {
                 let body = response.text().await.unwrap_or_default();
-                last_error = format!("VLM API 返回 {}: {}", status, &body[..body.len().min(200)]);
+                last_error = format!("VLM API 返回 {}: {}", status, truncate_utf8(&body, 200));
                 if attempt < MAX_RETRIES {
                     warn!("[VLM-Grounding] {}", last_error);
                     continue;
@@ -539,7 +539,7 @@ impl VlmGroundingService {
                 return Err(AppError::llm(format!(
                     "VLM DOCX 提取 API 返回错误 {}: {}",
                     status,
-                    &body[..body.len().min(500)]
+                    truncate_utf8(&body, 500)
                 )));
             }
 
@@ -825,7 +825,7 @@ impl VlmGroundingService {
 
         warn!(
             "[VLM-Grounding] 无法解析 DOCX 提取响应: {}",
-            &json_str[..json_str.len().min(500)]
+            truncate_utf8(json_str, 500)
         );
         Err(AppError::llm("VLM 响应无法解析为题目列表"))
     }
@@ -888,7 +888,7 @@ impl VlmGroundingService {
 
         warn!(
             "[VLM-Grounding] 无法解析 VLM 响应为结构化数据，原始内容: {}",
-            &json_str[..json_str.len().min(500)]
+            truncate_utf8(json_str, 500)
         );
         Err(AppError::llm("VLM 响应无法解析为题目分析结果"))
     }
@@ -1161,6 +1161,21 @@ impl VlmGroundingService {
     }
 }
 
+/// 按字节上限截断字符串，并保证落在 UTF-8 字符边界上。
+///
+/// ★ 2026-06-12（代理 3 审阅 F3）：旧代码多处 `&body[..body.len().min(N)]`
+/// 直接按字节切片，中文错误消息/响应在非字符边界会 panic。
+fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
     if data.starts_with(b"\x89PNG") {
         ("image/png", "png")
@@ -1170,5 +1185,59 @@ fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
         ("image/webp", "webp")
     } else {
         ("image/png", "png")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_truncate_utf8_ascii() {
+        assert_eq!(truncate_utf8("hello", 10), "hello");
+        assert_eq!(truncate_utf8("hello", 3), "hel");
+        assert_eq!(truncate_utf8("", 5), "");
+    }
+
+    #[test]
+    fn test_truncate_utf8_multibyte_boundary() {
+        // "错" 为 3 字节（E9 94 99），截断点落在字符中间时应回退到边界
+        let s = "错误信息"; // 12 字节
+        assert_eq!(truncate_utf8(s, 12), "错误信息");
+        assert_eq!(truncate_utf8(s, 11), "错误信"); // 回退到 9
+        assert_eq!(truncate_utf8(s, 10), "错误信");
+        assert_eq!(truncate_utf8(s, 9), "错误信");
+        assert_eq!(truncate_utf8(s, 8), "错误"); // 回退到 6
+        assert_eq!(truncate_utf8(s, 2), "");
+    }
+
+    #[test]
+    fn test_crop_figure_default_bbox_yields_minimal_crop() {
+        // 默认 bbox [0,0,0,0] 应得到 1x1 裁切而非 panic
+        let mut img = image::RgbImage::new(100, 80);
+        img.put_pixel(0, 0, image::Rgb([255, 0, 0]));
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut buf, image::ImageOutputFormat::Png)
+            .unwrap();
+        let bytes = buf.into_inner();
+
+        let result = VlmGroundingService::crop_figure_from_page(&bytes, &[0.0, 0.0, 0.0, 0.0]);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_crop_figure_inverted_and_out_of_range_bbox() {
+        let img = image::RgbImage::new(100, 80);
+        let mut buf = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut buf, image::ImageOutputFormat::Png)
+            .unwrap();
+        let bytes = buf.into_inner();
+
+        // 颠倒坐标 + 超出 0-1 范围都应被归一化处理
+        let result =
+            VlmGroundingService::crop_figure_from_page(&bytes, &[0.9, 1.5, 0.1, -0.2]);
+        assert!(result.is_ok());
     }
 }

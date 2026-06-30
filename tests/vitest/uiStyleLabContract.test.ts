@@ -20,39 +20,39 @@ describe('UI style lab navigation contract', () => {
     expect(appSource).toContain("renderViewLayer('ui-lab'");
   });
 
-  it('loads a real style debugging page with the future primitive contract stated in-source', () => {
+  const styleDebugSource = [
+    'src/components/style-lab/StyleDebugPage.tsx',
+    'src/components/style-lab/MigrationOverviewTab.tsx',
+    'src/components/style-lab/ComponentCompareTab.tsx',
+    'src/components/style-lab/TokenInspectorTab.tsx',
+    'src/components/style-lab/MixedUsageTab.tsx',
+  ].map(readSource).join('\n');
+
+  it('loads a real style debugging page with the current primitive contract stated in-source', () => {
     expect(appSource).toContain('LazyStyleDebugPage');
 
-    const styleDebugPageSource = readSource('src/components/style-lab/StyleDebugPage.tsx');
-    expect(styleDebugPageSource).toContain('一个 token 系统');
-    expect(styleDebugPageSource).toContain('少数稳定 primitive');
-    expect(styleDebugPageSource).toContain('业务组件只组合');
-    expect(styleDebugPageSource).toContain('NotionButton');
-    expect(styleDebugPageSource).toContain('shad Button');
-    expect(styleDebugPageSource).toContain('原生控件');
+    expect(styleDebugSource).toContain('UI 迁移工作台');
+    expect(styleDebugSource).toContain('真实扫描数据驱动');
+    expect(styleDebugSource).toContain('NotionButton (目标)');
+    expect(styleDebugSource).toContain('shad Button (遗留)');
+    expect(styleDebugSource).toContain('原生 button');
   });
 
   it('shows repeated component previews so humans can choose what to unify first', () => {
-    const styleDebugPageSource = readSource('src/components/style-lab/StyleDebugPage.tsx');
-
-    expect(styleDebugPageSource).toContain('重复组件预览');
-    expect(styleDebugPageSource).toContain('Button 重复实现');
-    expect(styleDebugPageSource).toContain('Form controls 重复实现');
-    expect(styleDebugPageSource).toContain('Dialog / Sheet 重复实现');
-    expect(styleDebugPageSource).toContain('Surface / Card 重复实现');
-    expect(styleDebugPageSource).toContain('Sidebar row 重复实现');
-    expect(styleDebugPageSource).toContain('Status badge 重复实现');
-    expect(styleDebugPageSource).toContain('推荐统一入口');
-    expect(styleDebugPageSource).toContain('当前混用入口');
-    expect(styleDebugPageSource).toContain('旧写法样本');
+    expect(styleDebugSource).toContain('组件族迁移进度');
+    expect(styleDebugSource).toContain('Button');
+    expect(styleDebugSource).toContain('Form Controls');
+    expect(styleDebugSource).toContain('Dialog / Overlay');
+    expect(styleDebugSource).toContain('Sidebar');
+    expect(styleDebugSource).toContain('Notification');
+    expect(styleDebugSource).toContain('推荐入口');
+    expect(styleDebugSource).toContain('待收敛入口');
   });
 
   it('keeps inventory and component list sections focused on DeepStudent instead of study-ui migration fixtures', () => {
-    const styleDebugPageSource = readSource('src/components/style-lab/StyleDebugPage.tsx');
-
-    expect(styleDebugPageSource).toContain('主应用包装入口');
-    expect(styleDebugPageSource).toContain('当前可用主应用业务组件');
-    expect(styleDebugPageSource).not.toContain('当前可用 study-ui 组件');
-    expect(styleDebugPageSource).not.toContain('study-ui demo shell');
+    expect(styleDebugSource).toContain('DeepStudent');
+    expect(styleDebugSource).toContain('业务代码保留 shad 主路径');
+    expect(styleDebugSource).not.toContain('当前可用 study-ui 组件');
+    expect(styleDebugSource).not.toContain('study-ui demo shell');
   });
 });

@@ -44,9 +44,20 @@ export function resolveFilePreviewMode(
   if (normalizedMime.startsWith('audio/')) return 'audio';
   if (normalizedMime.startsWith('video/')) return 'video';
   if (normalizedMime.includes('pdf')) return 'pdf';
+  // ★ 2026-06-12（审阅问题 R3）：富文档渲染仅匹配 OOXML MIME。
+  // 老格式 MIME（application/vnd.ms-excel、application/msword、
+  // application/vnd.ms-powerpoint、oasis.opendocument.*）此前被宽泛的
+  // 'spreadsheet'/'excel'/'powerpoint' 规则误路由到富渲染组件，必然解析失败。
+  // 现统一降级：电子表格老格式 → text（后端可提取文本），其余老格式走扩展名兜底。
   if (normalizedMime.includes('wordprocessingml')) return 'docx';
-  if (normalizedMime.includes('spreadsheet') || normalizedMime.includes('excel')) return 'xlsx';
-  if (normalizedMime.includes('presentationml') || normalizedMime.includes('powerpoint')) return 'pptx';
+  if (normalizedMime.includes('spreadsheetml')) return 'xlsx';
+  if (normalizedMime.includes('presentationml')) return 'pptx';
+  if (
+    normalizedMime.includes('ms-excel') ||
+    normalizedMime.includes('opendocument.spreadsheet')
+  ) {
+    return 'text';
+  }
 
   if (
     normalizedMime.startsWith('text/') ||

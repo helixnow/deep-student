@@ -13,6 +13,8 @@ pub enum StorageProvider {
     WebDav,
     /// S3 兼容存储（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等）
     S3,
+    /// FTP/FTPS 存储（支持显式 FTPS）
+    Ftp,
 }
 
 impl Default for StorageProvider {
@@ -26,6 +28,7 @@ impl std::fmt::Display for StorageProvider {
         match self {
             StorageProvider::WebDav => write!(f, "WebDAV"),
             StorageProvider::S3 => write!(f, "S3"),
+            StorageProvider::Ftp => write!(f, "FTP"),
         }
     }
 }
@@ -93,6 +96,40 @@ impl std::fmt::Debug for S3Config {
     }
 }
 
+/// FTP/FTPS 配置
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FtpConfig {
+    /// FTP 服务器主机名或 IP 地址
+    pub host: String,
+    /// FTP 端口（默认 21）
+    #[serde(default = "default_ftp_port")]
+    pub port: u16,
+    /// 用户名
+    pub username: String,
+    /// 密码
+    pub password: String,
+    /// 是否使用 TLS（FTPS 显式加密）
+    #[serde(default)]
+    pub use_tls: bool,
+}
+
+fn default_ftp_port() -> u16 {
+    21
+}
+
+impl std::fmt::Debug for FtpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FtpConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("use_tls", &self.use_tls)
+            .finish()
+    }
+}
+
 /// 统一的云存储配置
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -106,6 +143,9 @@ pub struct CloudStorageConfig {
     /// S3 配置（当 provider 为 S3 时使用）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub s3: Option<S3Config>,
+    /// FTP 配置（当 provider 为 Ftp 时使用）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ftp: Option<FtpConfig>,
     /// 根目录路径（所有操作都在此目录下）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<String>,
@@ -126,6 +166,7 @@ impl std::fmt::Debug for CloudStorageConfig {
             .field("provider", &self.provider)
             .field("webdav", &self.webdav)
             .field("s3", &self.s3)
+            .field("ftp", &self.ftp)
             .field("root", &self.root)
             .field(
                 "encryption_password",
@@ -141,12 +182,16 @@ impl std::fmt::Debug for CloudStorageConfig {
 
 impl CloudStorageConfig {
     /// 获取根目录路径，默认为 "deep-student-sync"
+    ///
+    /// [P0-12/F11] 归一化顺序修正：必须先 `trim_matches('/')` 再判空。
+    /// 旧实现先按 `!trim().is_empty()` 过滤、后 `trim_matches('/')`，导致 root 为
+    /// `"/"` 时通过过滤却被 trim 成空串 → WebDAV `"//"` 前缀不命中、FTP 双斜杠路径。
     pub fn root(&self) -> String {
         self.root
             .as_deref()
-            .filter(|r| !r.trim().is_empty())
+            .map(|r| r.trim().trim_matches('/').trim())
+            .filter(|r| !r.is_empty())
             .unwrap_or("deep-student-sync")
-            .trim_matches('/')
             .to_string()
     }
 
@@ -158,6 +203,7 @@ impl CloudStorageConfig {
         Url::parse(endpoint.trim())
             .ok()
             .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
+            .map(|host| host.trim_matches(['[', ']']).to_string())
             .map(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
             .unwrap_or(false)
     }
@@ -172,6 +218,9 @@ impl CloudStorageConfig {
                 }
                 if config.username.trim().is_empty() {
                     return Err("WebDAV 用户名不能为空".into());
+                }
+                if config.password.trim().is_empty() {
+                    return Err("WebDAV 密码不能为空".into());
                 }
                 let is_local = Self::is_local_endpoint(&config.endpoint);
                 if !is_local
@@ -211,6 +260,19 @@ impl CloudStorageConfig {
                 }
                 Ok(())
             }
+            StorageProvider::Ftp => {
+                let config = self.ftp.as_ref().ok_or("缺少 FTP 配置")?;
+                if config.host.trim().is_empty() {
+                    return Err("FTP host 不能为空".into());
+                }
+                if config.username.trim().is_empty() {
+                    return Err("FTP 用户名不能为空".into());
+                }
+                if config.password.trim().is_empty() {
+                    return Err("FTP 密码不能为空".into());
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -236,6 +298,13 @@ mod tests {
         // 缺少 endpoint
         config.webdav.as_mut().unwrap().endpoint = "".into();
         assert!(config.validate().is_err());
+
+        config.webdav.as_mut().unwrap().endpoint = "https://dav.example.com".into();
+        config.webdav.as_mut().unwrap().password = " ".into();
+        assert!(
+            config.validate().is_err(),
+            "empty WebDAV password should be rejected"
+        );
 
         // S3 配置验证
         let config = CloudStorageConfig {
@@ -351,6 +420,18 @@ mod tests {
         assert_eq!(config.root(), "deep-student-sync");
 
         let config = CloudStorageConfig {
+            root: Some("".into()),
+            ..Default::default()
+        };
+        assert_eq!(config.root(), "deep-student-sync");
+
+        let config = CloudStorageConfig {
+            root: Some("/".into()),
+            ..Default::default()
+        };
+        assert_eq!(config.root(), "deep-student-sync");
+
+        let config = CloudStorageConfig {
             root: Some("  /custom/path/  ".into()),
             ..Default::default()
         };
@@ -415,5 +496,73 @@ mod tests {
             config.validate().is_err(),
             "S3 http://localhost.evil.com should be rejected as non-local HTTP"
         );
+    }
+
+    #[test]
+    fn test_ftp_config_validation() {
+        // FTP 配置验证
+        let config = CloudStorageConfig {
+            provider: StorageProvider::Ftp,
+            ftp: Some(FtpConfig {
+                host: "ftp.example.com".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: true,
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+
+        // 缺少 host
+        let mut config = CloudStorageConfig {
+            provider: StorageProvider::Ftp,
+            ftp: Some(FtpConfig {
+                host: "".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: true,
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+
+        // 缺少用户名
+        config.ftp.as_mut().unwrap().username = "".into();
+        config.ftp.as_mut().unwrap().host = "ftp.example.com".into();
+        assert!(config.validate().is_err());
+
+        // 缺少密码
+        config.ftp.as_mut().unwrap().username = "user".into();
+        config.ftp.as_mut().unwrap().password = "".into();
+        assert!(config.validate().is_err());
+
+        // 非 localhost 不使用 TLS 现在应该被允许
+        config.ftp.as_mut().unwrap().password = "pass".into();
+        config.ftp.as_mut().unwrap().use_tls = false;
+        assert!(config.validate().is_ok());
+
+        // localhost 不使用 TLS 也应该被允许
+        config.ftp.as_mut().unwrap().host = "localhost".into();
+        config.ftp.as_mut().unwrap().use_tls = false;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_ftp_debug_redaction() {
+        let ftp = FtpConfig {
+            host: "ftp.example.com".into(),
+            port: 21,
+            username: "user".into(),
+            password: "super-secret".into(),
+            use_tls: true,
+        };
+        let debug = format!("{:?}", ftp);
+        assert!(
+            !debug.contains("super-secret"),
+            "password should be redacted in Debug"
+        );
+        assert!(debug.contains("[REDACTED]"));
     }
 }

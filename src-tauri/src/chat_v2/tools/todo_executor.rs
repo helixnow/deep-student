@@ -719,12 +719,18 @@ impl ToolExecutor for TodoListExecutor {
         // 发射开始事件
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
 
-        // 使用 session_id 作为隔离键（如果为空则使用 message_id）
+        // 内存 TodoList 隔离键：
+        // - 单变体：session_id（为空时回退 message_id）
+        // - 多变体：session_id + variant_id 组合，保证并行变体各自的 TodoList 互不覆盖
+        //   （🔧 F9 修复后 ctx.session_id 恢复为真实会话 ID，隔离改由 variant_id 显式承担）
         let session_key = if ctx.session_id.is_empty() {
-            &ctx.message_id
+            ctx.message_id.clone()
+        } else if let Some(ref vid) = ctx.variant_id {
+            format!("{}:{}", ctx.session_id, vid)
         } else {
-            &ctx.session_id
+            ctx.session_id.clone()
         };
+        let session_key = &session_key;
 
         // 执行工具（去除 builtin: 前缀后匹配）
         let tool_name = strip_tool_namespace(&call.name);

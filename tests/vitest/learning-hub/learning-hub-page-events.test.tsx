@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT } from '@/components/learning-hub/learningHubContracts';
+import { DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT } from '@/features/learning-hub/learningHubContracts';
 
 const pageMocks = vi.hoisted(() => ({
   dstuGet: vi.fn(),
@@ -42,31 +42,31 @@ vi.mock('@/dstu', () => ({
 }));
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
 vi.mock('@/utils/pendingMemoryLocate', () => ({ setPendingMemoryLocate: pageMocks.setPendingMemoryLocate }));
-vi.mock('@/components/learning-hub/LearningHubSidebar', () => ({ LearningHubSidebar: () => <div>sidebar</div> }));
+vi.mock('@/features/learning-hub/LearningHubSidebar', () => ({ LearningHubSidebar: () => <div>sidebar</div> }));
 vi.mock('@/stores/uiStore', () => ({ useUIStore: (selector: (state: { leftPanelCollapsed: boolean; setLeftPanelCollapsed: () => void }) => unknown) => selector({ leftPanelCollapsed: false, setLeftPanelCollapsed: vi.fn() }) }));
 vi.mock('@/components/layout', () => ({ useMobileHeader: vi.fn() }));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));
-vi.mock('@/components/learning-hub/stores/finderStore', () => ({
+vi.mock('@/features/learning-hub/stores/finderStore', () => ({
   useFinderStore: (selector: (state: typeof finderState) => unknown) => selector(finderState),
 }));
-vi.mock('@/components/learning-hub/components/DstuAppLauncher', () => ({ DstuAppLauncher: () => null }));
-vi.mock('@/components/learning-hub/components/TabBar', () => ({ TabBar: () => null }));
-vi.mock('@/components/learning-hub/apps/TabPanelContainer', () => ({
+vi.mock('@/features/learning-hub/components/DstuAppLauncher', () => ({ DstuAppLauncher: () => null }));
+vi.mock('@/features/learning-hub/components/TabBar', () => ({ TabBar: () => null }));
+vi.mock('@/features/learning-hub/apps/TabPanelContainer', () => ({
   TabPanelContainer: ({ tabs }: { tabs: Array<{ title: string }> }) => <div data-testid="tab-count">{tabs.length}:{tabs[0]?.title ?? ''}</div>,
 }));
-vi.mock('@/components/learning-hub/activeTabAccessor', () => ({ setActiveTabForExternal: vi.fn() }));
+vi.mock('@/features/learning-hub/activeTabAccessor', () => ({ setActiveTabForExternal: vi.fn() }));
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ COMMAND_EVENTS: {}, useCommandEvents: vi.fn() }));
 vi.mock('@/debug-panel/hooks/usePageLifecycle', () => ({ usePageMount: vi.fn() }));
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({ debugLog: { log: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-vi.mock('@/components/learning-hub/hooks', async () => {
-  const actual = await vi.importActual<typeof import('@/components/learning-hub/hooks')>('@/components/learning-hub/hooks');
+vi.mock('@/features/learning-hub/hooks', async () => {
+  const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
   return {
     ...actual,
     useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: false, isInjecting: false }),
   };
 });
 
-import LearningHubPage from '@/components/learning-hub/LearningHubPage';
+import LearningHubPage from '@/features/learning-hub/LearningHubPage';
 
 describe('LearningHubPage events', () => {
   beforeEach(() => {

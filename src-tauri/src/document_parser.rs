@@ -352,50 +352,64 @@ impl DocumentParser {
         }
 
         // ★ 嵌套 ZIP 检测：递归检查嵌套的 ZIP 文件
+        // ★ 2026-06-12（代理 3 审阅 E1）：
+        // 1. 复用已打开的归档（旧实现对每个条目都重新打开归档、重新解析中央目录）；
+        // 2. 先只解压前 4 字节做魔数判定，命中（或扩展名命中）才完整解压——
+        //    旧实现对所有非空条目 read_to_end，等于为做检查把整个文档解压一遍。
         for (index, nested_name, is_known_zip_ext) in nested_zip_indices {
-            // 重新打开 archive（因为之前的迭代已经结束）
-            let cursor = Cursor::new(bytes);
-            let mut archive = match zip::ZipArchive::new(cursor) {
-                Ok(a) => a,
-                Err(_) => continue,
-            };
-
             let mut entry = match archive.by_index(index) {
                 Ok(e) => e,
                 Err(_) => continue,
             };
 
-            // 读取嵌套 ZIP 的内容
-            let mut nested_bytes = Vec::with_capacity(entry.size() as usize);
-            if entry.read_to_end(&mut nested_bytes).is_ok() && !nested_bytes.is_empty() {
-                // ★ 安全增强：同时使用扩展名和魔数检测
-                // 条件1: 扩展名匹配已知 ZIP 格式
-                // 条件2: 文件头匹配 ZIP 魔数（防止扩展名绕过攻击）
-                let is_zip_by_magic = Self::is_zip_magic_bytes(&nested_bytes);
-
-                // 只有扩展名或魔数至少匹配一个时才递归检测
-                if is_known_zip_ext || is_zip_by_magic {
-                    // 构造嵌套文件的完整路径用于错误消息
-                    let nested_path = format!("{} -> {}", file_name, nested_name);
-
-                    let detection_method = match (is_known_zip_ext, is_zip_by_magic) {
-                        (true, true) => "extension+magic",
-                        (true, false) => "extension",
-                        (false, true) => "magic-bytes",
-                        (false, false) => "none", // 不应该到达这里
-                    };
-
-                    log::debug!(
-                        "ZIP bomb check: recursively checking nested ZIP '{}' at depth {} (detected by: {})",
-                        nested_path,
-                        depth + 1,
-                        detection_method
-                    );
-
-                    // 递归检测嵌套 ZIP
-                    self.check_zip_bomb_recursive(&nested_bytes, &nested_path, depth + 1)?;
+            // 先读前 4 字节判断 ZIP 魔数（解压代价极小）
+            let mut head = [0u8; 4];
+            let mut head_len = 0usize;
+            while head_len < 4 {
+                match entry.read(&mut head[head_len..]) {
+                    Ok(0) => break,
+                    Ok(n) => head_len += n,
+                    Err(_) => break,
                 }
             }
+            if head_len == 0 {
+                continue;
+            }
+
+            // ★ 安全增强：同时使用扩展名和魔数检测
+            // 条件1: 扩展名匹配已知 ZIP 格式
+            // 条件2: 文件头匹配 ZIP 魔数（防止扩展名绕过攻击）
+            let is_zip_by_magic = head_len == 4 && Self::is_zip_magic_bytes(&head);
+            if !is_known_zip_ext && !is_zip_by_magic {
+                continue;
+            }
+
+            // 命中后才继续读取剩余内容
+            let mut nested_bytes = Vec::with_capacity(entry.size() as usize);
+            nested_bytes.extend_from_slice(&head[..head_len]);
+            if entry.read_to_end(&mut nested_bytes).is_err() || nested_bytes.is_empty() {
+                continue;
+            }
+
+            // 构造嵌套文件的完整路径用于错误消息
+            let nested_path = format!("{} -> {}", file_name, nested_name);
+
+            let detection_method = match (is_known_zip_ext, is_zip_by_magic) {
+                (true, true) => "extension+magic",
+                (true, false) => "extension",
+                (false, true) => "magic-bytes",
+                (false, false) => continue, // 上方已过滤，不可达
+            };
+
+            log::debug!(
+                "ZIP bomb check: recursively checking nested ZIP '{}' at depth {} (detected by: {})",
+                nested_path,
+                depth + 1,
+                detection_method
+            );
+
+            // 递归检测嵌套 ZIP
+            self.check_zip_bomb_recursive(&nested_bytes, &nested_path, depth + 1)?;
         }
 
         log::debug!(
@@ -569,7 +583,7 @@ impl DocumentParser {
             "docx" => self.extract_docx_from_path(file_path),
             "pdf" => self.extract_pdf_from_path(file_path),
             "txt" => self.extract_txt_from_path(file_path),
-            "md" => self.extract_md_from_path(file_path),
+            "md" | "markdown" => self.extract_md_from_path(file_path),
             "html" | "htm" => self.extract_html_from_path(file_path),
             "xlsx" | "xls" | "xlsb" | "ods" => self.extract_excel_from_path(file_path),
             "pptx" => self.extract_pptx_from_path(file_path),
@@ -612,7 +626,7 @@ impl DocumentParser {
             "docx" => self.extract_docx_from_bytes(bytes),
             "pdf" => self.extract_pdf_from_bytes(bytes),
             "txt" => self.extract_txt_from_bytes(bytes),
-            "md" => self.extract_md_from_bytes(bytes),
+            "md" | "markdown" => self.extract_md_from_bytes(bytes),
             "html" | "htm" => self.extract_html_from_bytes(bytes),
             "xlsx" | "xls" | "xlsb" | "ods" => self.extract_excel_from_bytes(file_name, bytes),
             "pptx" => self.extract_pptx_from_bytes(bytes),
@@ -1848,17 +1862,39 @@ impl DocumentParser {
         self.extract_txt_from_bytes(bytes)
     }
 
-    /// 从TXT字节流提取文本
-    fn extract_txt_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
-        // 尝试UTF-8解码，先不消费bytes
-        match std::str::from_utf8(&bytes) {
-            Ok(text) => Ok(text.trim().to_string()),
-            Err(_) => {
-                // 如果UTF-8失败，使用lossy转换
-                let text = String::from_utf8_lossy(&bytes);
-                Ok(text.trim().to_string())
+    /// 解码文本字节流（多编码探测）
+    ///
+    /// ★ 2026-06-12（审阅问题 M6）：旧实现 UTF-8 失败后直接 `from_utf8_lossy`，
+    /// GBK/Big5/Shift_JIS 文本全部变成 U+FFFD 乱码且不可恢复。
+    /// 现按 BOM → UTF-8 → GB18030（GBK 超集）→ Big5 → Shift_JIS 顺序探测，
+    /// 中文场景优先 GB18030。
+    fn decode_text_bytes(bytes: &[u8]) -> String {
+        // 1. BOM 检测（UTF-8 / UTF-16 LE / UTF-16 BE）
+        if let Some((encoding, _bom_len)) = encoding_rs::Encoding::for_bom(bytes) {
+            let (text, _, _) = encoding.decode(bytes);
+            return text.into_owned();
+        }
+
+        // 2. 严格 UTF-8
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            return text.to_string();
+        }
+
+        // 3. 常见 CJK 编码按优先级探测（解码无错即采用）
+        for encoding in [encoding_rs::GB18030, encoding_rs::BIG5, encoding_rs::SHIFT_JIS] {
+            let (text, had_errors) = encoding.decode_without_bom_handling(bytes);
+            if !had_errors {
+                return text.into_owned();
             }
         }
+
+        // 4. 兜底：lossy UTF-8
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+
+    /// 从TXT字节流提取文本
+    fn extract_txt_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
+        Ok(Self::decode_text_bytes(&bytes).trim().to_string())
     }
 
     /// 从MD文件路径提取文本
@@ -3113,10 +3149,12 @@ impl DocumentParser {
     fn extract_csv_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
         self.check_file_size(bytes.len())?;
 
+        // ★ M6：CSV 同样先做编码探测（Excel 导出的 CSV 常为 GBK）
+        let decoded = Self::decode_text_bytes(&bytes);
         let mut reader = csv::ReaderBuilder::new()
             .flexible(true) // 允许不规则行
             .has_headers(true)
-            .from_reader(Cursor::new(bytes));
+            .from_reader(Cursor::new(decoded.into_bytes()));
 
         let mut output = String::with_capacity(8192);
 
@@ -3284,10 +3322,145 @@ mod tests {
     }
 
     #[test]
+    fn test_txt_gbk_decoding() {
+        // ★ 审阅问题 M6：GBK 编码文本不应退化为 U+FFFD 乱码
+        let parser = DocumentParser::new();
+        // "中文测试" 的 GBK 编码
+        let gbk_bytes: Vec<u8> = vec![0xD6, 0xD0, 0xCE, 0xC4, 0xB2, 0xE2, 0xCA, 0xD4];
+        let result = parser
+            .extract_text_from_bytes("test.txt", gbk_bytes)
+            .expect("GBK text should decode");
+        assert_eq!(result, "中文测试");
+        assert!(!result.contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn test_txt_utf8_bom_decoding() {
+        let parser = DocumentParser::new();
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice("BOM 文本".as_bytes());
+        let result = parser
+            .extract_text_from_bytes("test.txt", bytes)
+            .expect("UTF-8 BOM text should decode");
+        assert_eq!(result, "BOM 文本");
+    }
+
+    #[test]
+    fn test_markdown_extension_alias() {
+        // ★ 审阅问题 R2：.markdown 扩展名应与 .md 同等支持
+        let parser = DocumentParser::new();
+        let result = parser
+            .extract_text_from_bytes("readme.markdown", b"# Title".to_vec())
+            .expect(".markdown should be supported");
+        assert_eq!(result, "# Title");
+    }
+
+    #[test]
     fn test_base64_decoding_error() {
         let parser = DocumentParser::new();
         let result = parser.extract_text_from_base64("test.docx", "invalid_base64!");
         assert!(matches!(result, Err(ParsingError::Base64DecodingError(_))));
+    }
+
+    // ========================================================================
+    // #58: EPUB 解析回归测试（anki 制卡 / 学习资源导入共用此链路）
+    // ========================================================================
+
+    /// 构造一个最小的合法 EPUB（zip 容器 + container.xml + OPF + 单章 xhtml）
+    fn build_minimal_epub() -> Vec<u8> {
+        let mut zip_buffer = Vec::new();
+        {
+            let mut zip_writer = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_buffer));
+            let options = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+
+            zip_writer.start_file("mimetype", options).unwrap();
+            zip_writer.write_all(b"application/epub+zip").unwrap();
+
+            zip_writer
+                .start_file("META-INF/container.xml", options)
+                .unwrap();
+            zip_writer
+                .write_all(
+                    br#"<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+                )
+                .unwrap();
+
+            zip_writer.start_file("OEBPS/content.opf", options).unwrap();
+            zip_writer
+                .write_all(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">test-epub-58</dc:identifier>
+    <dc:title>高数错题本</dc:title>
+    <dc:creator>测试作者</dc:creator>
+    <dc:language>zh</dc:language>
+  </metadata>
+  <manifest>
+    <item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"#
+                        .as_bytes(),
+                )
+                .unwrap();
+
+            zip_writer
+                .start_file("OEBPS/chapter1.xhtml", options)
+                .unwrap();
+            zip_writer
+                .write_all(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>第一章</title></head>
+  <body><h1>第一章 极限</h1><p>当 x 趋近于 0 时 sin(x)/x 的极限为 1。</p></body>
+</html>"#
+                        .as_bytes(),
+                )
+                .unwrap();
+
+            zip_writer.finish().unwrap();
+        }
+        zip_buffer
+    }
+
+    #[test]
+    fn test_epub_extract_text_from_bytes() {
+        let parser = DocumentParser::new();
+        let epub_bytes = build_minimal_epub();
+
+        let result = parser.extract_text_from_bytes("book.epub", epub_bytes);
+        assert!(result.is_ok(), "EPUB 解析失败: {:?}", result.err());
+
+        let text = result.unwrap();
+        assert!(text.contains("高数错题本"), "应包含书名，实际: {}", text);
+        assert!(text.contains("极限"), "应包含章节正文，实际: {}", text);
+        assert!(text.contains("sin(x)/x"), "应包含段落内容，实际: {}", text);
+    }
+
+    #[test]
+    fn test_epub_invalid_zip_reports_epub_error() {
+        let parser = DocumentParser::new();
+        let result = parser.extract_text_from_bytes("broken.epub", vec![0u8; 64]);
+        assert!(matches!(result, Err(ParsingError::EpubParsingError(_))));
+    }
+
+    #[test]
+    fn test_epub_extension_case_insensitive() {
+        let parser = DocumentParser::new();
+        let epub_bytes = build_minimal_epub();
+        // 大写扩展名同样应路由到 EPUB 解析器
+        let result = parser.extract_text_from_bytes("BOOK.EPUB", epub_bytes);
+        assert!(result.is_ok(), "大写扩展名解析失败: {:?}", result.err());
+        assert!(result.unwrap().contains("极限"));
     }
 
     // ========================================================================

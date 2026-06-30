@@ -433,6 +433,24 @@ pub struct RemoteQuestion {
 // ============================================================================
 
 /// 题目同步服务
+/// 单条冲突解决失败详情（#20 round2：让前端感知部分失败，避免静默丢弃）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictResolveFailure {
+    /// 冲突记录 ID
+    pub conflict_id: String,
+    /// 失败原因
+    pub error: String,
+}
+
+/// 批量解决冲突结果（#20 round2：区分成功解决与失败，前端可提示部分失败）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchResolveConflictsResult {
+    /// 成功解决并更新的题目
+    pub resolved: Vec<Question>,
+    /// 解决失败的冲突明细
+    pub failed: Vec<ConflictResolveFailure>,
+}
+
 pub struct QuestionSyncService;
 
 impl QuestionSyncService {
@@ -926,7 +944,7 @@ impl QuestionSyncService {
         db: &VfsDatabase,
         exam_id: &str,
         strategy: QuestionConflictStrategy,
-    ) -> VfsResult<Vec<Question>> {
+    ) -> VfsResult<BatchResolveConflictsResult> {
         let conn = db.get_conn_safe()?;
         Self::batch_resolve_conflicts_with_conn(&conn, exam_id, strategy)
     }
@@ -936,7 +954,7 @@ impl QuestionSyncService {
         conn: &Connection,
         exam_id: &str,
         strategy: QuestionConflictStrategy,
-    ) -> VfsResult<Vec<Question>> {
+    ) -> VfsResult<BatchResolveConflictsResult> {
         if strategy == QuestionConflictStrategy::Manual {
             return Err(VfsError::InvalidOperation {
                 operation: "batch_resolve_conflicts".to_string(),
@@ -947,6 +965,8 @@ impl QuestionSyncService {
         // 获取所有待处理冲突
         let conflicts = Self::list_pending_conflicts_with_conn(conn, exam_id)?;
         let mut resolved = vec![];
+        // ★ #20(round2): 收集逐条失败明细，避免静默丢弃（此前全失败也返回 Ok([])）
+        let mut failed = vec![];
 
         for conflict in conflicts {
             match Self::resolve_conflict_with_conn(conn, &conflict.id, strategy) {
@@ -956,17 +976,22 @@ impl QuestionSyncService {
                         "[QuestionSyncService] Failed to resolve conflict {}: {:?}",
                         conflict.id, e
                     );
+                    failed.push(ConflictResolveFailure {
+                        conflict_id: conflict.id.clone(),
+                        error: e.to_string(),
+                    });
                 }
             }
         }
 
         info!(
-            "[QuestionSyncService] Batch resolved {} conflicts for exam_id={}",
+            "[QuestionSyncService] Batch resolved {} conflicts ({} failed) for exam_id={}",
             resolved.len(),
+            failed.len(),
             exam_id
         );
 
-        Ok(resolved)
+        Ok(BatchResolveConflictsResult { resolved, failed })
     }
 
     // ========================================================================
@@ -1930,7 +1955,7 @@ pub async fn qbank_batch_resolve_conflicts(
     state: State<'_, AppState>,
     exam_id: String,
     strategy: String,
-) -> Result<Vec<crate::vfs::repos::question_repo::Question>, String> {
+) -> Result<BatchResolveConflictsResult, String> {
     let db = state
         .vfs_db
         .as_ref()

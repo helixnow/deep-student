@@ -459,6 +459,7 @@
   "uploader": {
     "session_name_default": "Full Sheet Recognition",
     "drop_or_click": "Click or drop files here",
+    "take_photo": "Take photo",
     "supported_formats_all": "Images (PNG/JPG/WebP/HEIC) or Documents (DOCX/XLSX/XLS/PDF/TXT/MD)",
     "selected_images": "{{count}} images selected",
     "clear": "Clear",
@@ -508,6 +509,7 @@
     "ocr_image_progress": "Recognizing image {{current}}/{{total}}...",
     "ocr_phase_done": "{{total}} images recognized, starting question parsing...",
     "import_done": "Import complete! {{count}} questions total",
+    "import_done_partial": "Import complete (VLM interrupted, some questions may be missing): {{count}} questions saved",
     "import_interrupted": "Import interrupted, {{count}} questions saved",
     "resume_import": "Resume Import",
     "resuming": "Resuming...",

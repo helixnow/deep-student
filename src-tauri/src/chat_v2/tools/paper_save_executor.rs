@@ -51,6 +51,20 @@ const UA: &str = "DeepStudent/1.0 (Academic Paper Save; mailto:support@deepstude
 /// 下载进度发射最小间隔（每 500KB 或每 5%）
 const PROGRESS_BYTES_INTERVAL: usize = 512 * 1024; // 512KB
 
+/// ★ A3-X4：UTF-8 边界安全截断（日志/错误预览用）。
+/// `&s[..s.len().min(N)]` 在 N 落到多字节字符（如中文论文标题）中间时会 panic，
+/// 且这些截断全在日志/错误处理路径上，雪上加霜。回退到最近的字符边界。
+fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 // ============================================================================
 // 进度状态
 // ============================================================================
@@ -206,7 +220,7 @@ impl PaperSaveExecutor {
                     "other"
                 },
                 raw.len(),
-                &raw[..raw.len().min(300)]
+                truncate_utf8(&raw, 300)
             );
         }
 
@@ -241,7 +255,7 @@ impl PaperSaveExecutor {
                     val_type,
                     {
                         let s = papers_val.to_string();
-                        s[..s.len().min(200)].to_string()
+                        truncate_utf8(&s, 200).to_string()
                     }
                 );
                 if let Some(arr) = papers_val.as_array() {
@@ -343,7 +357,7 @@ impl PaperSaveExecutor {
                 "[PaperSave] Cannot extract 'papers' from arguments. type={}, keys={:?}, raw_preview={}",
                 type_name,
                 keys,
-                &raw[..raw.len().min(500)]
+                truncate_utf8(&raw, 500)
             );
             return Err(format!(
                 "Missing required parameter 'papers' (array). Got arguments type={}, keys={:?}",

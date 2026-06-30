@@ -572,7 +572,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             <TableCell className="py-1 pr-4">
                               <div className={cn(
                                 "flex items-center justify-end gap-0.5 transition-opacity",
-                                isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+                                isExpanded ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
                               )}>
                                 {!isDefaultDimension(dim) && (
                                   <CommonTooltip content={dim.modelConfigId ? t('settings:dimension_management.set_as_default') : t('settings:dimension_management.bind_model_first')}>

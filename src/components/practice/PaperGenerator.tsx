@@ -33,8 +33,10 @@ import {
   CaretUp,
   CheckCircle,
 } from '@phosphor-icons/react';
+import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankStore, PaperConfig, PaperExportFormat, GeneratedPaper, Question } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 interface PaperGeneratorProps {
   examId: string;
@@ -144,11 +146,48 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     }
   }, [examId, title, typeSelection, selectedDifficulties, selectedTags, shuffle, includeAnswers, includeExplanations, exportFormat, generatePaper, onGenerate]);
   
-  // 导出试卷（待实现）
-  const handleExport = useCallback(() => {
-    // TODO: 实现导出功能
-    console.log('Export paper:', generatedPaper);
-  }, [generatedPaper]);
+  // 导出试卷：Markdown 直接落盘（复用 save 对话框 + save_text_to_file 后端命令）；
+  // PDF/Word 暂未实现，给出明确提示而非静默无反应（修复此前点击导出无任何反馈的缺口）。
+  const handleExport = useCallback(async () => {
+    if (!generatedPaper) return;
+    if (exportFormat !== 'markdown') {
+      showGlobalNotification('info', t('paper.exportComingSoon', 'PDF / Word 导出即将推出，可先用 Markdown 导出或预览'));
+      return;
+    }
+    try {
+      const answerLabel = t('paper.answer', '答案');
+      const explanationLabel = t('paper.explanation', '解析');
+      const lines: string[] = [`# ${generatedPaper.title}`, ''];
+      generatedPaper.questions.forEach((q, i) => {
+        lines.push(`## ${i + 1}. ${q.content}`, '');
+        if (q.options && q.options.length > 0) {
+          q.options.forEach((opt) => lines.push(`- ${opt.key}. ${opt.content}`));
+          lines.push('');
+        }
+        if (includeAnswers && q.answer) {
+          lines.push(`**${answerLabel}：** ${q.answer}`, '');
+        }
+        if (includeExplanations && q.explanation) {
+          lines.push(`**${explanationLabel}：** ${q.explanation}`, '');
+        }
+      });
+      const content = lines.join('\n');
+
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const path = await save({
+        title: t('paper.exportTitle', '导出试卷'),
+        defaultPath: `${generatedPaper.title || 'paper'}.md`,
+        filters: [{ name: 'Markdown', extensions: ['md'] }],
+      });
+      if (!path) return;
+
+      await invoke('save_text_to_file', { path, content });
+      showGlobalNotification('success', t('paper.exportSuccess', '试卷已导出'));
+    } catch (err: unknown) {
+      console.error('Failed to export paper:', err);
+      showGlobalNotification('error', t('paper.exportFailed', '导出失败，请重试'));
+    }
+  }, [generatedPaper, exportFormat, includeAnswers, includeExplanations, t]);
   
   // 切换题目展开
   const toggleQuestion = useCallback((id: string) => {

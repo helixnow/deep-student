@@ -52,9 +52,10 @@ pub use load_session::chat_v2_load_session;
 pub use manage_session::{
     chat_v2_archive_session, chat_v2_branch_session, chat_v2_count_sessions,
     chat_v2_create_session, chat_v2_delete_session, chat_v2_empty_deleted_sessions,
-    chat_v2_get_session, chat_v2_list_agent_sessions, chat_v2_list_sessions,
-    chat_v2_restore_session, chat_v2_save_session, chat_v2_session_message_count,
-    chat_v2_soft_delete_session, chat_v2_update_session_settings,
+    chat_v2_get_message_summary, chat_v2_get_session, chat_v2_list_agent_sessions,
+    chat_v2_list_sessions, chat_v2_restore_session, chat_v2_save_session,
+    chat_v2_session_message_count, chat_v2_soft_delete_session,
+    chat_v2_update_session_settings,
 };
 pub use migration::{
     chat_v2_check_migration_status, chat_v2_migrate_legacy_chat, chat_v2_rollback_migration,
@@ -62,7 +63,7 @@ pub use migration::{
 pub use ocr::chat_v2_perform_ocr;
 pub use search_handlers::{
     chat_v2_add_tag, chat_v2_get_session_tags, chat_v2_get_tags_batch, chat_v2_list_all_tags,
-    chat_v2_remove_tag, chat_v2_search_content,
+    chat_v2_remove_tag, chat_v2_search_content, rebuild_chat_fts,
 };
 pub use send_message::{
     chat_v2_cancel_stream, chat_v2_continue_message, chat_v2_edit_and_resend,

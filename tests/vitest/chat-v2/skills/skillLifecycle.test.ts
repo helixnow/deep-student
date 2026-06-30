@@ -10,16 +10,16 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SKILL_INSTRUCTION_TYPE_ID } from '../../../../src/chat-v2/skills/types';
-import { collectSchemaToolIds } from '../../../../src/chat-v2/tools/collector';
-import type { ContextRef } from '../../../../src/chat-v2/context/types';
+import { SKILL_INSTRUCTION_TYPE_ID } from '../../../../src/features/chat/skills/types';
+import { collectSchemaToolIds } from '../../../../src/features/chat/tools/collector';
+import type { ContextRef } from '../../../../src/features/chat/context/types';
 
 // ============================================================================
 // Mock 设置
 // ============================================================================
 
 // Mock skillRegistry
-vi.mock('../../../../src/chat-v2/skills/registry', () => ({
+vi.mock('../../../../src/features/chat/skills/registry', () => ({
   skillRegistry: {
     get: vi.fn(),
     getAll: vi.fn(() => []),
@@ -31,7 +31,7 @@ vi.mock('../../../../src/chat-v2/skills/registry', () => ({
 }));
 
 // Mock contextTypeRegistry
-vi.mock('../../../../src/chat-v2/context/registry', () => ({
+vi.mock('../../../../src/features/chat/context/registry', () => ({
   contextTypeRegistry: {
     collectToolsForTypes: vi.fn(() => ['anki_create_card', 'anki_list_decks']),
     getToolsForType: vi.fn(() => []),
@@ -108,7 +108,7 @@ describe('P0 修复：发送后 sticky skill refs 保留', () => {
 
 describe('P1-A：clearPendingContextRefs helper 已移除', () => {
   it('contextHelper 不应导出 clearPendingContextRefs', async () => {
-    const contextHelper = await import('../../../../src/chat-v2/adapters/contextHelper');
+    const contextHelper = await import('../../../../src/features/chat/adapters/contextHelper');
     
     // 验证 clearPendingContextRefs 不再导出
     expect('clearPendingContextRefs' in contextHelper).toBe(false);

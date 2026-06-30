@@ -3,7 +3,6 @@
 use log::{debug, error, info, warn};
 
 use crate::database::{Database, DatabaseManager};
-use crate::database_optimizations::DatabaseOptimizationExt;
 use crate::exam_sheet_service::ExamSheetService;
 use crate::llm_manager::{
     should_use_openai_responses_for_config, ApiConfig, ModelProfile, VendorConfig,
@@ -1873,35 +1872,6 @@ async fn cleanup_orphan_chat_embeddings(db: Arc<Database>) -> usize {
     orphan_count
 }
 
-/// Create performance indexes for better query speed
-#[tauri::command]
-pub async fn create_performance_indexes(state: State<'_, AppState>) -> Result<String> {
-    info!("创建性能索引");
-
-    state
-        .database
-        .create_performance_indexes()
-        .map_err(|e| AppError::database(format!("创建性能索引失败: {}", e)))?;
-
-    Ok("性能索引创建成功".to_string())
-}
-
-/// Analyze query performance
-#[tauri::command]
-pub async fn analyze_query_performance(
-    query: String,
-    state: State<'_, AppState>,
-) -> Result<String> {
-    debug!("分析查询性能: {}", query);
-
-    let analysis = state
-        .database
-        .analyze_query_performance(&query)
-        .map_err(|e| AppError::database(format!("查询性能分析失败: {}", e)))?;
-
-    Ok(analysis)
-}
-
 /// 从模型输出中提取思维链内容
 /// 注意：只在确有"独立推理信息"时返回，避免用完整回复充当思维链导致重复显示
 fn extract_thinking_content_from_model_output(
@@ -2123,7 +2093,11 @@ pub async fn call_llm_for_boundary(
     // 调用 call_model2_raw_prompt 进行简单的 LLM 调用
     match state
         .llm_manager
-        .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Other("boundary_detection".to_string()))
+        .call_model2_raw_prompt(
+            &prompt,
+            None,
+            crate::llm_usage::CallerType::Other("boundary_detection".to_string()),
+        )
         .await
     {
         Ok(output) => {
@@ -2192,19 +2166,128 @@ pub async fn parse_document_from_base64(
 /// 读取文件文本内容
 #[tauri::command]
 pub async fn read_file_text(window: Window, path: String) -> Result<String> {
+    deny_hidden_local_path(&window, &path)?;
     unified_file_manager::read_to_string(&window, &path)
 }
 
+/// 拒绝包含隐藏路径段（点号开头）的本地路径
+///
+/// ★ 2026-06-12（审阅问题 R4 安全配套）：`read_file_bytes`/`read_file_text`
+/// 没有任何路径白名单，前端任意 JS 都能读取 ~/.ssh、~/.aws 等敏感目录。
+/// 正常导入/预览流程只会访问用户可见文件，封掉隐藏路径段不影响功能。
+/// 应用自身数据目录（Linux 下位于 ~/.local/share）始终放行。
+fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
+    use tauri::Manager;
+
+    if unified_file_manager::is_virtual_uri(raw_path) {
+        return Ok(());
+    }
+
+    // 应用数据目录内的路径（如 VFS blob）放行
+    let app = window.app_handle();
+    let in_app_dirs = [
+        app.path().app_data_dir().ok(),
+        app.path().app_local_data_dir().ok(),
+        app.path().app_cache_dir().ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|dir| Path::new(raw_path).starts_with(&dir));
+    if in_app_dirs {
+        return Ok(());
+    }
+
+    let has_hidden_component = Path::new(raw_path).components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::Normal(name)
+                if name.to_string_lossy().starts_with('.')
+        )
+    });
+    if has_hidden_component {
+        return Err(AppError::validation(format!(
+            "拒绝读取隐藏路径: {}",
+            raw_path
+        )));
+    }
+    Ok(())
+}
+
 /// 读取文件二进制内容（支持 content://、ph:// 等移动端安全URI）
+///
+/// ★ 2026-06-12（审阅问题 R4）：返回 `tauri::ipc::Response` 原始二进制。
+/// 旧实现返回 `Vec<u8>` 会被序列化成 JSON number 数组，传输体积膨胀 3-4 倍，
+/// 200MB 文件经 IPC 后字符串近 1GB。同时把磁盘读取移入 blocking 线程。
 #[tauri::command]
-pub async fn read_file_bytes(window: Window, path: String) -> Result<Vec<u8>> {
-    unified_file_manager::read_all_bytes(&window, &path)
+pub async fn read_file_bytes(window: Window, path: String) -> Result<tauri::ipc::Response> {
+    deny_hidden_local_path(&window, &path)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        unified_file_manager::read_all_bytes(&window, &path)
+    })
+    .await
+    .map_err(|e| AppError::file_system(format!("读取任务异常终止: {}", e)))??;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// 获取文件大小（字节）
 #[tauri::command]
 pub async fn get_file_size(window: Window, path: String) -> Result<u64> {
     unified_file_manager::get_file_size(&window, &path)
+}
+
+/// pdfstream 协议可达性探测结果
+#[derive(serde::Serialize)]
+pub struct PdfStreamAccess {
+    pub available: bool,
+    pub size: Option<u64>,
+    pub reason: Option<String>,
+}
+
+/// 检查路径能否通过 pdfstream:// 协议访问（#59）
+///
+/// 与 `pdf_protocol::handle_asset_protocol` 使用完全相同的校验规则
+/// （canonicalize → 目录白名单 → .pdf 扩展名 → 文件存在），
+/// 避免前端用 `get_file_size` 探测成功、实际加载却 403 的不一致。
+#[tauri::command]
+pub async fn pdfstream_check_access(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<PdfStreamAccess> {
+    let denied = |reason: &str| PdfStreamAccess {
+        available: false,
+        size: None,
+        reason: Some(reason.to_string()),
+    };
+
+    let canonical = match std::fs::canonicalize(Path::new(&path)) {
+        Ok(p) => p,
+        Err(e) => return Ok(denied(&format!("文件不存在或不可读: {}", e))),
+    };
+
+    let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(&app);
+    if !allowed_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+        return Ok(denied("路径不在 pdfstream 白名单目录内"));
+    }
+
+    let is_pdf = canonical
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if !is_pdf {
+        return Ok(denied("非 PDF 文件"));
+    }
+
+    if !canonical.is_file() {
+        return Ok(denied("路径不是常规文件"));
+    }
+
+    let size = std::fs::metadata(&canonical).map(|m| m.len()).ok();
+    Ok(PdfStreamAccess {
+        available: true,
+        size,
+        reason: None,
+    })
 }
 /// 计算文件 SHA-256（十六进制）
 #[tauri::command]
@@ -3438,10 +3521,17 @@ pub async fn open_log_file(log_path: String, state: tauri::State<'_, AppState>) 
     // 根据操作系统选择合适的命令打开文件（使用规范化路径）
     #[cfg(target_os = "windows")]
     {
-        if let Err(e) = Command::new("notepad").arg(&canonical_path).spawn() {
+        use std::os::windows::process::CommandExt;
+
+        if let Err(e) = Command::new("notepad")
+            .arg(&canonical_path)
+            .creation_flags(0x08000000) // CREATE_NO_WINDOW
+            .spawn()
+        {
             // 如果notepad失败，尝试默认程序
             if let Err(e2) = Command::new("cmd")
                 .args(&["/C", "start", "", canonical_path.to_str().unwrap_or("")])
+                .creation_flags(0x08000000)
                 .spawn()
             {
                 return Err(AppError::file_system(format!(
@@ -3988,7 +4078,7 @@ pub async fn get_injection_budget_config(state: State<'_, AppState>) -> Result<s
         "default_config": crate::injection_budget::BudgetConfig::default()
     }))
 }
-/// 更新注入预算配置
+/// 模拟注入预算分配（预览/调参用；注：当前 allocate() 未接入真实注入路径，仅模拟）
 #[tauri::command]
 pub async fn simulate_budget_allocation(
     state: State<'_, AppState>,
@@ -4151,121 +4241,9 @@ pub async fn get_all_recent_cards(
 
 // ================= Enhanced Chat Search (FTS + Semantic) =================
 
-// Reports CRUD
-#[derive(Debug, serde::Deserialize)]
-pub struct ResearchListRequest {
-    pub limit: Option<u32>,
-}
-#[tauri::command]
-pub async fn research_list_reports(
-    request: ResearchListRequest,
-    state: State<'_, AppState>,
-) -> Result<Vec<crate::models::ResearchReportSummary>> {
-    state
-        .database
-        .list_research_reports(request.limit)
-        .map_err(|e| AppError::database(format!("获取研究报告列表失败: {}", e)))
-}
-
-#[tauri::command]
-pub async fn research_get_report(
-    id: String,
-    state: State<'_, AppState>,
-) -> Result<crate::models::ResearchReport> {
-    match state.database.get_research_report(&id) {
-        Ok(Some(r)) => Ok(r),
-        Ok(None) => Err(AppError::not_found("研究报告不存在")),
-        Err(e) => Err(AppError::database(format!("获取研究报告失败: {}", e))),
-    }
-}
-
-#[tauri::command]
-pub async fn research_delete_report(id: String, state: State<'_, AppState>) -> Result<bool> {
-    state
-        .database
-        .delete_research_report(&id)
-        .map_err(|e| AppError::database(format!("删除研究报告失败: {}", e)))
-}
-
-// 批量导出所有研究报告为ZIP
-#[derive(Debug, serde::Deserialize)]
-pub struct ResearchExportZipRequest {
-    pub format: String,
-    pub path: String,
-}
-#[tauri::command]
-pub async fn research_export_all_reports_zip(
-    request: ResearchExportZipRequest,
-    state: State<'_, AppState>,
-) -> Result<String> {
-    use std::fs::File;
-    use std::io::Write;
-    use zip::write::FileOptions;
-    use zip::CompressionMethod;
-    let format = request.format.to_lowercase();
-    if format != "md" && format != "json" {
-        return Err(AppError::validation("格式必须为 md 或 json"));
-    }
-    let list = state
-        .database
-        .list_research_reports(None)
-        .map_err(|e| AppError::database(format!("获取研究报告列表失败: {}", e)))?;
-    let path = std::path::Path::new(&request.path);
-    let f = File::create(path).map_err(|e| AppError::file_system(e.to_string()))?;
-    let mut zip = zip::ZipWriter::new(f);
-    let options = FileOptions::default().compression_method(CompressionMethod::Deflated);
-    for s in list.into_iter() {
-        if let Some(full) = state
-            .database
-            .get_research_report(&s.id)
-            .map_err(|e| AppError::database(e.to_string()))?
-        {
-            let safe_ts = full
-                .created_at
-                .to_rfc3339()
-                .replace(":", "-")
-                .replace("T", "-");
-            let subject_val = "通用";
-            let base = format!(
-                "研究报告-{}-{}",
-                subject_val,
-                &safe_ts[..std::cmp::min(19, safe_ts.len())]
-            );
-            if format == "md" {
-                let content = format!(
-                    "# 科目：{}\n\n- 生成时间：{}\n- 分段数：{}\n- 上下文窗口：{}\n\n---\n\n{}\n",
-                    subject_val,
-                    full.created_at.to_rfc3339(),
-                    full.segments,
-                    full.context_window,
-                    full.report
-                );
-                let filename = format!("{}.md", base);
-                zip.start_file(filename, options)
-                    .map_err(|e| AppError::file_system(e.to_string()))?;
-                zip.write_all(content.as_bytes())
-                    .map_err(|e| AppError::file_system(e.to_string()))?;
-            } else {
-                let obj = serde_json::json!({
-                    "id": full.id, "subject": "通用", "created_at": full.created_at.to_rfc3339(),
-                    "segments": full.segments, "context_window": full.context_window, "report": full.report
-                });
-                let filename = format!("{}.json", base);
-                zip.start_file(filename, options)
-                    .map_err(|e| AppError::file_system(e.to_string()))?;
-                zip.write_all(
-                    serde_json::to_string_pretty(&obj)
-                        .unwrap_or_default()
-                        .as_bytes(),
-                )
-                .map_err(|e| AppError::file_system(e.to_string()))?;
-            }
-        }
-    }
-    zip.finish()
-        .map_err(|e| AppError::file_system(e.to_string()))?;
-    Ok(request.path)
-}
+// Reports CRUD（research_* 报告命令已删除 — round 2 / 代理1：lib.rs 未注册、前端死包装已移除。
+// 底层 Database::{list,get,delete}_research_report 与 models::ResearchReport* 若无其它调用方，
+// 由数据层负责人（代理2）评估清理。）
 
 // =================================================
 // 包管理器检测和安装相关命令

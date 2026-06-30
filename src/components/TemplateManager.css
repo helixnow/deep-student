@@ -721,7 +721,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .template-manager-header {
     padding: 16px 20px;
   }
@@ -800,7 +800,7 @@
 }
 
 /* 方案2: 通过 media query 备用控制（扩大断点范围） */
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
   .template-browser .templates-grid {
     grid-template-columns: 1fr !important;
     padding: 0 !important;

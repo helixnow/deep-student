@@ -632,10 +632,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const handleRecentSessionArchive = useCallback(async (sessionId: string) => {
     try {
       await invoke('chat_v2_archive_session', { sessionId });
+      const remainingSessions = recentSessions.filter((item) => item.id !== sessionId);
       setRecentSessions((previous) => previous.filter((item) => item.id !== sessionId));
+
       if (activeSessionId === sessionId) {
-        setActiveSessionId(null);
+        const nextSession = remainingSessions[0] ?? null;
+        if (nextSession) {
+          handleRecentSessionOpen(nextSession.id);
+        } else {
+          setActiveSessionId(null);
+          window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+            detail: { action: 'create-session', groupId: null },
+          }));
+        }
       }
+
       setConfirmingArchiveSessionId((current) => (current === sessionId ? null : current));
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
       showArchiveSessionToast(t, 'chatV2');
@@ -643,7 +654,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       console.warn('[ModernSidebar] Failed to archive recent session:', error);
       void loadSidebarData();
     }
-  }, [activeSessionId, loadSidebarData, t]);
+  }, [activeSessionId, handleRecentSessionOpen, loadSidebarData, recentSessions, t]);
 
   const toggleRecentGroup = useCallback((groupId: string) => {
     setCollapsedRecentGroupIds((previous) => {
@@ -885,7 +896,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 <span
                   role="button"
                   tabIndex={-1}
-                  aria-label={pinned ? '取消置顶会话' : '置顶会话'}
+                  aria-label={pinned ? t('sidebar:aria.unpin_session', '取消置顶会话') : t('sidebar:aria.pin_session', '置顶会话')}
                   className={cn(
                     'flex h-4 w-4 items-center justify-center rounded-sm text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)]',
                     pinned && 'text-[color:var(--shell-navigation-foreground)]'
@@ -909,11 +920,11 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               ) : hasUnreadAssistantReply ? (
                 <SidebarUnreadReplyDot />
               ) : isHovered ? (
-                <CommonTooltip content={isConfirmingArchive ? '确认归档会话' : '归档会话'} position="right">
+                <CommonTooltip content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')} position="right">
                   <span
                     role="button"
                     tabIndex={-1}
-                    aria-label={isConfirmingArchive ? '确认归档会话' : '归档会话'}
+                    aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')}
                     className={cn(
                       'flex h-5 min-w-[20px] items-center justify-center rounded-md px-1 transition-colors',
                       isConfirmingArchive
@@ -959,7 +970,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   startRecentSessionRename(session);
                 }}
               >
-                重命名会话
+                {t('sidebar:actions.rename_session', '重命名会话')}
               </AppMenuItem>
               <AppMenuItem
                 icon={<PushPin size={16} />}
@@ -1268,7 +1279,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
   const conversationHeaderAction = (
     <span className="flex shrink-0 items-center gap-1">
-      <CommonTooltip content={newConversationLabel} position="right">
+      <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
         <NotionButton
           variant="ghost"
           size="icon"
@@ -1467,11 +1478,11 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         }}
       >
         <NotionDialogHeader>
-          <NotionDialogTitle>重命名对话</NotionDialogTitle>
+          <NotionDialogTitle>{t('sidebar:rename.title', '重命名对话')}</NotionDialogTitle>
         </NotionDialogHeader>
         <NotionDialogBody className="py-4">
           <label className="block text-sm font-medium text-foreground" htmlFor="modern-sidebar-rename-session-input">
-            对话名称
+            {t('sidebar:rename.label', '对话名称')}
           </label>
           <Input
             id="modern-sidebar-rename-session-input"
@@ -1500,7 +1511,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             onClick={cancelRecentSessionRename}
             disabled={renamingRecentSessionId !== null}
           >
-            取消
+            {t('common:cancel', '取消')}
           </NotionButton>
           <NotionButton
             type="submit"
@@ -1509,7 +1520,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             disabled={renamingRecentSessionId !== null || !editingRecentSessionTitle.trim()}
           >
             {renamingRecentSessionId !== null ? <CircleNotch size={16} className="animate-spin" /> : null}
-            确认
+            {t('common:confirm', '确认')}
           </NotionButton>
         </NotionDialogFooter>
       </form>

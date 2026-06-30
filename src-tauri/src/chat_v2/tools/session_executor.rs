@@ -38,7 +38,6 @@ use super::arg_utils::{get_json_array_arg, get_string_array_arg};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::types::{ChatSession, PersistStatus, SessionGroup, ToolCall, ToolResultInfo};
 
@@ -51,6 +50,7 @@ const SESSION_MGMT_EVENT: &str = "session_management_change";
 
 const LOG_PREFIX: &str = "[SessionExecutor]";
 const MAX_BATCH_OPS_PER_CALL: usize = 200;
+const MANUALLY_ARCHIVED_BY_KEY: &str = "manuallyArchivedBy";
 
 /// 所有会话管理工具名
 pub mod tool_names {
@@ -623,11 +623,7 @@ impl SessionToolExecutor {
             ));
         }
 
-        let archived = ChatSession {
-            persist_status: PersistStatus::Archived,
-            updated_at: chrono::Utc::now(),
-            ..existing
-        };
+        let archived = manually_archive_session(existing);
 
         ChatV2Repo::update_session_v2(db, &archived).map_err(|e| e.to_string())?;
 
@@ -655,6 +651,8 @@ impl SessionToolExecutor {
         if existing.persist_status == PersistStatus::Active {
             return Err("会话已是活跃状态，无需恢复".to_string());
         }
+
+        ensure_session_group_restorable(db, &existing)?;
 
         let restored = ChatSession {
             persist_status: PersistStatus::Active,
@@ -1007,11 +1005,7 @@ impl SessionToolExecutor {
                             existing.persist_status
                         ))
                     } else {
-                        let archived = ChatSession {
-                            persist_status: PersistStatus::Archived,
-                            updated_at: chrono::Utc::now(),
-                            ..existing
-                        };
+                        let archived = manually_archive_session(existing);
                         ChatV2Repo::update_session_v2(db, &archived).map_err(|e| e.to_string())?;
                         Ok("已归档".to_string())
                     }
@@ -1023,6 +1017,7 @@ impl SessionToolExecutor {
                     if existing.persist_status == PersistStatus::Active {
                         Err("会话已是活跃状态，无需恢复".to_string())
                     } else {
+                        ensure_session_group_restorable(db, &existing)?;
                         let restored = ChatSession {
                             persist_status: PersistStatus::Active,
                             updated_at: chrono::Utc::now(),
@@ -1081,6 +1076,52 @@ impl SessionToolExecutor {
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+fn ensure_session_group_restorable(
+    db: &ChatV2Database,
+    session: &ChatSession,
+) -> Result<(), String> {
+    let Some(group_id) = session.group_id.as_deref() else {
+        return Ok(());
+    };
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    let group = ChatV2Repo::get_group_with_conn(&conn, group_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("会话归属课题不存在: {}", group_id))?;
+    match group.persist_status {
+        PersistStatus::Active => Ok(()),
+        PersistStatus::Archived => {
+            Err("该会话属于已归档课题，请先恢复整个课题，避免历史会话脱离课题分组。".to_string())
+        }
+        PersistStatus::Deleted => Err(format!("会话归属课题已删除: {}", group_id)),
+    }
+}
+
+fn manually_archive_session(mut existing: ChatSession) -> ChatSession {
+    let now = chrono::Utc::now();
+    let mut metadata = existing
+        .metadata
+        .take()
+        .unwrap_or_else(|| Value::Object(Default::default()));
+    if !metadata.is_object() {
+        metadata = Value::Object(Default::default());
+    }
+    if let Some(obj) = metadata.as_object_mut() {
+        obj.insert(
+            MANUALLY_ARCHIVED_BY_KEY.to_string(),
+            json!({
+                "archivedAt": now.to_rfc3339(),
+            }),
+        );
+    }
+
+    ChatSession {
+        persist_status: PersistStatus::Archived,
+        updated_at: now,
+        metadata: Some(metadata),
+        ..existing
+    }
+}
 
 fn session_to_summary(s: &ChatSession) -> Value {
     json!({

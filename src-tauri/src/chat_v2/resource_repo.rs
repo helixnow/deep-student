@@ -103,22 +103,25 @@ impl ResourceRepo {
             .transpose()?;
         let created_at = Utc::now().timestamp_millis();
 
-        // data 已经是字符串（文本或 base64），直接存储
-        // 迁移 006 后新增 storage_mode 和 updated_at 字段
+        // data 已经是字符串（文本或 base64），直接存储。
+        // 注意：storage_mode 列从未存在于当前迁移系列（V20260130 init 起），
+        // 不可引用；updated_at 由 V20260523 补充（TEXT，无默认值），需要在
+        // INSERT 时显式写入毫秒时间戳，否则同步冲突解析拿到 NULL 无法比较
+        // 新旧（sync 的 parse_flexible_timestamp 支持纯数字毫秒串）。
         conn.execute(
             r#"
-            INSERT INTO resources (id, hash, type, storage_mode, source_id, data, metadata_json, ref_count, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?8)
+            INSERT INTO resources (id, hash, type, source_id, data, metadata_json, ref_count, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)
             "#,
             params![
                 resource_id,
                 hash,
                 params.resource_type.to_string(),
-                "inline", // 默认存储模式
                 params.source_id,
                 params.data,
                 metadata_json,
                 created_at,
+                created_at.to_string(),
             ],
         )?;
 
@@ -149,7 +152,7 @@ impl ResourceRepo {
     ) -> ChatV2Result<Option<Resource>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, hash, type, storage_mode, source_id, data, metadata_json, ref_count, created_at, updated_at
+            SELECT id, hash, type, source_id, data, metadata_json, ref_count, created_at
             FROM resources
             WHERE id = ?1 AND hash = ?2
             "#,
@@ -178,7 +181,7 @@ impl ResourceRepo {
     ) -> ChatV2Result<Option<Resource>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, hash, type, storage_mode, source_id, data, metadata_json, ref_count, created_at, updated_at
+            SELECT id, hash, type, source_id, data, metadata_json, ref_count, created_at
             FROM resources
             WHERE id = ?1
             ORDER BY created_at DESC
@@ -220,7 +223,7 @@ impl ResourceRepo {
     pub fn find_by_hash_with_conn(conn: &Connection, hash: &str) -> ChatV2Result<Option<Resource>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, hash, type, storage_mode, source_id, data, metadata_json, ref_count, created_at, updated_at
+            SELECT id, hash, type, source_id, data, metadata_json, ref_count, created_at
             FROM resources
             WHERE hash = ?1
             "#,
@@ -341,7 +344,7 @@ impl ResourceRepo {
     ) -> ChatV2Result<Vec<Resource>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, hash, type, storage_mode, source_id, data, metadata_json, ref_count, created_at, updated_at
+            SELECT id, hash, type, source_id, data, metadata_json, ref_count, created_at
             FROM resources
             WHERE source_id = ?1
             ORDER BY created_at DESC
@@ -373,19 +376,18 @@ impl ResourceRepo {
 
     /// 从数据库行转换为 Resource
     ///
-    /// 迁移 006 后列顺序：id, hash, type, storage_mode, source_id, data, metadata_json, ref_count, created_at, updated_at
+    /// 列顺序（与 V20260130 init 的 resources 表对齐）：
+    /// id, hash, type, source_id, data, metadata_json, ref_count, created_at
     fn row_to_resource(row: &rusqlite::Row) -> rusqlite::Result<Resource> {
         let id: String = row.get(0)?;
         let hash: String = row.get(1)?;
         let type_str: String = row.get(2)?;
-        let _storage_mode: Option<String> = row.get(3)?; // 暂时忽略，chat_v2 Resource 类型未包含此字段
-        let source_id: Option<String> = row.get(4)?;
+        let source_id: Option<String> = row.get(3)?;
         // data 字段是 TEXT 类型，直接读取为 String
-        let data: Option<String> = row.get(5)?;
-        let metadata_json: Option<String> = row.get(6)?;
-        let ref_count: i32 = row.get(7)?;
-        let created_at: i64 = row.get(8)?;
-        let _updated_at: i64 = row.get(9)?; // 暂时忽略，chat_v2 Resource 类型未包含此字段
+        let data: Option<String> = row.get(4)?;
+        let metadata_json: Option<String> = row.get(5)?;
+        let ref_count: i32 = row.get(6)?;
+        let created_at: i64 = row.get(7)?;
 
         let resource_type = ResourceType::from_str(&type_str).unwrap_or(ResourceType::File);
 
@@ -416,9 +418,17 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    /// 创建测试数据库
+    /// 创建测试数据库（已应用全部 chat_v2 迁移，含 resources 表）
     fn setup_test_db() -> (TempDir, ChatV2Database) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("ChatV2 migrations should apply cleanly");
         let db = ChatV2Database::new(temp_dir.path()).expect("Failed to create database");
         (temp_dir, db)
     }

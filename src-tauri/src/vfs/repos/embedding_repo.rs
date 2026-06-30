@@ -408,13 +408,19 @@ impl VfsIndexStateRepo {
             None
         };
 
+        // ★ G2/A11 修复：索引状态机不再触碰业务 updated_at，
+        // 避免后台索引导致"按修改时间排序"列表浮动和同步噪声
+        // ★ 2026-06-12（本轮审阅）：成功转入 indexed 时清零 index_retry_count。
+        // 否则计数终身累积：历史失败过的资源内容一更新，新一轮索引只要失败一次
+        // 就立刻触顶 max_retries，被永久卡在 failed。
         conn.execute(
             r#"
             UPDATE resources
-            SET index_state = ?1, index_hash = ?2, index_error = ?3, indexed_at = ?4, updated_at = ?5
-            WHERE id = ?6
+            SET index_state = ?1, index_hash = ?2, index_error = ?3, indexed_at = ?4,
+                index_retry_count = CASE WHEN ?1 = 'indexed' THEN 0 ELSE index_retry_count END
+            WHERE id = ?5
             "#,
-            params![state, hash, error, indexed_at, now, resource_id],
+            params![state, hash, error, indexed_at, resource_id],
         )?;
 
         debug!(
@@ -439,15 +445,15 @@ impl VfsIndexStateRepo {
 
     pub fn mark_failed(db: &VfsDatabase, resource_id: &str, error: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        let now = chrono::Utc::now().timestamp_millis();
 
+        // ★ G2/A11 修复：不再触碰业务 updated_at
         conn.execute(
             r#"
             UPDATE resources
-            SET index_state = ?1, index_error = ?2, index_retry_count = COALESCE(index_retry_count, 0) + 1, updated_at = ?3
-            WHERE id = ?4
+            SET index_state = ?1, index_error = ?2, index_retry_count = COALESCE(index_retry_count, 0) + 1
+            WHERE id = ?3
             "#,
-            params![INDEX_STATE_FAILED, error, now, resource_id],
+            params![INDEX_STATE_FAILED, error, resource_id],
         )?;
 
         Ok(())
@@ -490,15 +496,15 @@ impl VfsIndexStateRepo {
             return Ok(ids);
         }
 
-        let now = chrono::Utc::now().timestamp_millis();
+        // ★ G2/A11 修复：claim 时不再触碰业务 updated_at
         for resource_id in &ids {
             tx.execute(
                 r#"
                 UPDATE resources
-                SET index_state = ?1, index_error = NULL, updated_at = ?2
-                WHERE id = ?3
+                SET index_state = ?1, index_error = NULL
+                WHERE id = ?2
                 "#,
-                params![INDEX_STATE_INDEXING, now, resource_id],
+                params![INDEX_STATE_INDEXING, resource_id],
             )?;
         }
 
@@ -645,13 +651,16 @@ impl VfsIndexStateRepo {
             None
         };
 
+        // ★ G2/A11 修复：不再触碰业务 updated_at
+        // ★ 2026-06-12（本轮审阅）：成功转入 indexed 时清零 mm_index_retry_count（与文本侧一致）
         conn.execute(
             r#"
             UPDATE resources
-            SET mm_index_state = ?1, mm_index_error = ?2, mm_indexed_at = COALESCE(?3, mm_indexed_at), updated_at = ?4
-            WHERE id = ?5
+            SET mm_index_state = ?1, mm_index_error = ?2, mm_indexed_at = COALESCE(?3, mm_indexed_at),
+                mm_index_retry_count = CASE WHEN ?1 = 'indexed' THEN 0 ELSE mm_index_retry_count END
+            WHERE id = ?4
             "#,
-            params![state, error, indexed_at, now, resource_id],
+            params![state, error, indexed_at, resource_id],
         )?;
 
         debug!(
@@ -676,15 +685,15 @@ impl VfsIndexStateRepo {
 
     pub fn mark_mm_failed(db: &VfsDatabase, resource_id: &str, error: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        let now = chrono::Utc::now().timestamp_millis();
 
+        // ★ G2/A11 修复：不再触碰业务 updated_at
         conn.execute(
             r#"
             UPDATE resources
-            SET mm_index_state = ?1, mm_index_error = ?2, mm_index_retry_count = COALESCE(mm_index_retry_count, 0) + 1, updated_at = ?3
-            WHERE id = ?4
+            SET mm_index_state = ?1, mm_index_error = ?2, mm_index_retry_count = COALESCE(mm_index_retry_count, 0) + 1
+            WHERE id = ?3
             "#,
-            params![INDEX_STATE_FAILED, error, now, resource_id],
+            params![INDEX_STATE_FAILED, error, resource_id],
         )?;
 
         Ok(())
@@ -790,9 +799,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create database");
-        (temp_dir, db)
+        crate::vfs::database::setup_migrated_test_db()
     }
 
     #[test]

@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { useViewStore } from '@/stores/viewStore';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { SelectionRect } from '../hooks/useTextSelection';
 
 // ============================================================================
@@ -69,6 +70,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
+  // C-8: 触屏上默认放选区下方（避开系统选择气泡），并放大触控目标
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   const [position, setPosition] = useState<{ top: number; left: number; flipped: boolean }>({
     top: 0,
     left: 0,
@@ -80,15 +83,28 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     if (!selectionRect || !isVisible) return;
 
     const toolbarWidth = toolbarRef.current?.offsetWidth || 200;
+    const toolbarHeight = isTouchPrimary ? 48 : TOOLBAR_HEIGHT;
 
-    // 默认在选区上方
-    let top = selectionRect.top - TOOLBAR_HEIGHT - TOOLBAR_GAP;
-    let flipped = false;
+    let top: number;
+    let flipped: boolean;
 
-    // 如果上方空间不足，翻转到下方
-    if (top < VIEWPORT_PADDING) {
+    if (isTouchPrimary) {
+      // 触屏：默认下方（系统选择气泡通常占据选区上方）
       top = selectionRect.bottom + TOOLBAR_GAP;
       flipped = true;
+      if (top + toolbarHeight > window.innerHeight - VIEWPORT_PADDING) {
+        top = selectionRect.top - toolbarHeight - TOOLBAR_GAP;
+        flipped = false;
+      }
+    } else {
+      // 桌面：默认在选区上方
+      top = selectionRect.top - toolbarHeight - TOOLBAR_GAP;
+      flipped = false;
+      // 如果上方空间不足，翻转到下方
+      if (top < VIEWPORT_PADDING) {
+        top = selectionRect.bottom + TOOLBAR_GAP;
+        flipped = true;
+      }
     }
 
     // 水平居中于选区
@@ -99,7 +115,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     left = Math.max(VIEWPORT_PADDING, Math.min(left, maxLeft));
 
     setPosition({ top, left, flipped });
-  }, [selectionRect, isVisible]);
+  }, [selectionRect, isVisible, isTouchPrimary]);
 
   // 全局视图切换离开 chat-v2 时，强制关闭工具栏
   const currentView = useViewStore((s) => s.currentView);
@@ -155,6 +171,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     exit: { opacity: 0, scale: 0.95, transition: { duration: 0.1 } },
   };
 
+  const touchTarget = isTouchPrimary;
+
   return createPortal(
     <AnimatePresence>
       {isVisible && selectionRect && (
@@ -184,9 +202,10 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           {/* 复制 */}
           <ToolbarButton
             onClick={handleCopy}
-            icon={copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            icon={copied ? <Check size={touchTarget ? 16 : 14} className="text-green-500" /> : <Copy size={touchTarget ? 16 : 14} />}
             label={copied ? t('selectionToolbar.copied', '已复制') : t('selectionToolbar.copy', '复制')}
             isFirst
+            touchTarget={touchTarget}
           />
 
           <Divider />
@@ -194,9 +213,10 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           {/* AI 解释 */}
           <ToolbarButton
             onClick={handleExplain}
-            icon={<Sparkle size={14} />}
+            icon={<Sparkle size={touchTarget ? 16 : 14} />}
             label={t('selectionToolbar.explain', '解释')}
             disabled={!onExplain}
+            touchTarget={touchTarget}
           />
 
           <Divider />
@@ -204,9 +224,10 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           {/* 翻译 */}
           <ToolbarButton
             onClick={handleTranslate}
-            icon={<Translate size={14} />}
+            icon={<Translate size={touchTarget ? 16 : 14} />}
             label={t('selectionToolbar.translate', '翻译')}
             disabled={!onTranslate}
+            touchTarget={touchTarget}
           />
 
           <Divider />
@@ -214,10 +235,11 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           {/* 添加到聊天 */}
           <ToolbarButton
             onClick={handleAddToChat}
-            icon={<ChatDots size={14} />}
+            icon={<ChatDots size={touchTarget ? 16 : 14} />}
             label={t('selectionToolbar.addToChat', '添加到聊天')}
             disabled={!onAddToChat}
             isLast
+            touchTarget={touchTarget}
           />
         </motion.div>
       )}
@@ -237,6 +259,8 @@ interface ToolbarButtonProps {
   disabled?: boolean;
   isFirst?: boolean;
   isLast?: boolean;
+  /** 触屏放大触控目标 */
+  touchTarget?: boolean;
 }
 
 const ToolbarButton: React.FC<ToolbarButtonProps> = ({
@@ -246,14 +270,16 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   disabled,
   isFirst,
   isLast,
+  touchTarget,
 }) => (
   <button
     type="button"
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      'flex items-center gap-1.5 px-2.5 py-1.5',
-      'text-xs font-medium text-foreground/80',
+      'flex items-center gap-1.5',
+      touchTarget ? 'px-3 py-3 text-[13px]' : 'px-2.5 py-1.5 text-xs',
+      'font-medium text-foreground/80',
       'hover:bg-accent/60 hover:text-foreground',
       'transition-colors duration-100',
       'disabled:opacity-40 disabled:cursor-not-allowed',

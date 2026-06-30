@@ -933,28 +933,49 @@ impl ChatV2Pipeline {
             options.thinking_budget,
         );
 
-        let call_result =
-            match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), llm_future).await {
-                Ok(result) => result,
-                Err(_) => {
+        // 🔧 F2 修复：空闲超时 + 绝对上限（替代总时长 600s 掐断健康长流）
+        let call_result = {
+            let adapter_for_idle = emitter.clone();
+            match wait_llm_stream_with_idle_timeout(
+                llm_future,
+                Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
+                Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS),
+                move || adapter_for_idle.idle_elapsed(),
+            )
+            .await
+            {
+                LlmStreamWaitOutcome::Completed(result) => result,
+                LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
                     log::error!(
-                        "[ChatV2::VariantPipeline] LLM stream call timeout after {}s, variant={}",
-                        LLM_STREAM_TIMEOUT_SECS,
+                        "[ChatV2::VariantPipeline] LLM stream idle timeout after {}s, variant={}",
+                        idle_secs,
                         ctx.variant_id()
                     );
                     self.llm_manager
                         .unregister_stream_hooks(&stream_event)
                         .await;
-                    ctx.fail(&format!(
-                        "LLM stream call timed out after {}s",
-                        LLM_STREAM_TIMEOUT_SECS
-                    ));
-                    return Err(ChatV2Error::Timeout(format!(
-                        "LLM stream call timed out after {}s",
-                        LLM_STREAM_TIMEOUT_SECS
-                    )));
+                    let msg = format!("LLM stream timed out: no data received for {}s", idle_secs);
+                    ctx.fail(&msg);
+                    return Err(ChatV2Error::Timeout(msg));
                 }
-            };
+                LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                    log::error!(
+                        "[ChatV2::VariantPipeline] LLM stream exceeded absolute limit {}s, variant={}",
+                        total_secs,
+                        ctx.variant_id()
+                    );
+                    self.llm_manager
+                        .unregister_stream_hooks(&stream_event)
+                        .await;
+                    let msg = format!(
+                        "LLM stream exceeded absolute time limit ({}s)",
+                        total_secs
+                    );
+                    ctx.fail(&msg);
+                    return Err(ChatV2Error::Timeout(msg));
+                }
+            }
+        };
 
         // 注销 hooks
         self.llm_manager
@@ -1138,7 +1159,6 @@ impl ChatV2Pipeline {
         let canvas_note_id = options.canvas_note_id.clone();
         let active_skill_ids = options.active_skill_ids.clone();
         let skill_contents = options.skill_contents.clone();
-        let variant_session_key = format!("{}:{}", session_id, ctx.variant_id());
         let mut variant_skill_state = ctx
             .get_meta()
             .and_then(|meta| meta.skill_snapshot_after.or(meta.skill_snapshot_before))
@@ -1213,31 +1233,52 @@ impl ChatV2Pipeline {
             );
 
             // 使用 tokio::select! 支持取消（与单变体 pipeline 对齐）
+            // 🔧 F2 修复：空闲超时 + 绝对上限（替代总时长 600s 掐断健康长流）
             let call_result = tokio::select! {
-                result = timeout(
-                    Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
-                    llm_future,
-                ) => {
-                    match result {
-                        Ok(r) => Some(r),
-                        Err(_) => {
+                outcome = {
+                    let adapter_for_idle = adapter.clone();
+                    wait_llm_stream_with_idle_timeout(
+                        llm_future,
+                        Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
+                        Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS),
+                        move || adapter_for_idle.idle_elapsed(),
+                    )
+                } => {
+                    match outcome {
+                        LlmStreamWaitOutcome::Completed(r) => Some(r),
+                        LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
                             log::error!(
-                                "[ChatV2::VariantPipeline] LLM stream call timeout after {}s, variant={}, round={}",
-                                LLM_STREAM_TIMEOUT_SECS,
+                                "[ChatV2::VariantPipeline] LLM stream idle timeout after {}s, variant={}, round={}",
+                                idle_secs,
                                 ctx.variant_id(),
                                 tool_round
                             );
                             self.llm_manager
                                 .unregister_stream_hooks(&stream_event)
                                 .await;
-                            ctx.fail(&format!(
-                                "LLM stream call timed out after {}s",
-                                LLM_STREAM_TIMEOUT_SECS
-                            ));
-                            return Err(ChatV2Error::Timeout(format!(
-                                "LLM stream call timed out after {}s",
-                                LLM_STREAM_TIMEOUT_SECS
-                            )));
+                            let msg = format!(
+                                "LLM stream timed out: no data received for {}s",
+                                idle_secs
+                            );
+                            ctx.fail(&msg);
+                            return Err(ChatV2Error::Timeout(msg));
+                        }
+                        LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                            log::error!(
+                                "[ChatV2::VariantPipeline] LLM stream exceeded absolute limit {}s, variant={}, round={}",
+                                total_secs,
+                                ctx.variant_id(),
+                                tool_round
+                            );
+                            self.llm_manager
+                                .unregister_stream_hooks(&stream_event)
+                                .await;
+                            let msg = format!(
+                                "LLM stream exceeded absolute time limit ({}s)",
+                                total_secs
+                            );
+                            ctx.fail(&msg);
+                            return Err(ChatV2Error::Timeout(msg));
                         }
                     }
                 }
@@ -1300,11 +1341,15 @@ impl ChatV2Pipeline {
             let rag_enabled = options.rag_enabled.unwrap_or(true);
             let web_search_enabled = options.web_search_enabled.unwrap_or(true);
             let round_id = format!("variant-tool-round-{}", tool_round);
+            // 🔧 F9 修复：传真实 session_id（之前是 "{session}:{variant}" 复合键，
+            // 导致所有按 session 查库的工具——子代理/附件/技能状态/所有权校验——在
+            // 变体模式下全部失效）。变体间内存状态隔离改由 variant_id 参数承担
+            // （todo_executor 内部组合 session_id+variant_id 作为隔离键）。
             let tool_results = self
                 .execute_tool_calls(
                     &tool_calls,
                     &emitter_arc,
-                    &variant_session_key,
+                    &session_id,
                     ctx.message_id(),
                     Some(ctx.variant_id()),
                     options.skill_state_version,

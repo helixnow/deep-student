@@ -58,6 +58,22 @@ pub(super) fn get_backup_dir(app_data_dir: &PathBuf) -> PathBuf {
     app_data_dir.join("backups")
 }
 
+/// [P0-11/M12] 打开同步路径专用的数据库连接，统一设置 busy_timeout。
+///
+/// 同步的应用路径大量使用 `BEGIN IMMEDIATE`，一旦与其它写连接（业务写入、
+/// WAL checkpoint、并发 import）相遇，未设 busy_timeout 的连接会立即返回
+/// `SQLITE_BUSY` 而非等待，导致整批回滚 + 下轮重传。统一 5s 退避窗口。
+///
+/// 行为与 `rusqlite::Connection::open` 完全兼容（同样返回 `rusqlite::Result`），
+/// 调用方可直接替换。
+pub(super) fn open_sync_connection<P: AsRef<Path>>(
+    path: P,
+) -> rusqlite::Result<rusqlite::Connection> {
+    let conn = rusqlite::Connection::open(path)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    Ok(conn)
+}
+
 /// 统一解析数据库文件路径
 ///
 /// 根据 `DatabaseId` 和活动数据空间目录返回对应数据库文件的绝对路径。
@@ -80,6 +96,7 @@ pub(super) fn resolve_database_path(db_id: &DatabaseId, active_dir: &Path) -> Pa
 pub(super) struct ApplyToDbsResult {
     pub(super) total_success: usize,
     pub(super) total_skipped: usize,
+    pub(super) total_incomplete_skipped: usize,
     pub(super) total_failed: usize,
     /// 各库的失败明细（db_name → error message），用于精确定位部分失败
     pub(super) db_errors: Vec<(String, String)>,
@@ -228,20 +245,50 @@ fn should_apply_change_by_strategy(
                 None => return Ok(true),
             };
 
+            if let Some(cloud_data) = change.data.as_ref() {
+                if SyncManager::records_semantically_equal_for_sync(&local, cloud_data) {
+                    return Ok(false);
+                }
+            }
+
             if strategy == MergeStrategy::KeepLocal {
                 return Ok(false);
             }
 
-            let local_ts = extract_updated_at(&local);
+            let local_ts = local
+                .get("updated_at")
+                .and_then(SyncManager::timestamp_value_to_lww_string);
             let cloud_ts = change
                 .data
                 .as_ref()
-                .and_then(extract_updated_at)
-                .or_else(|| parse_sync_timestamp(&change.changed_at));
-
-            // KeepLatest：云端时间更新才覆盖本地；时间不可比较时，保守保留本地
+                .and_then(|data| {
+                    data.get("updated_at")
+                        .and_then(SyncManager::timestamp_value_to_lww_string)
+                })
+                .or_else(|| Some(change.changed_at.clone()));
+            // KeepLatest：使用统一 LWW key（timestamp → device_id → content）裁决。
+            // 设备分量必须是数据属性（写入者），不可用评估方常量（见 lww_device_pair）。
             match (local_ts, cloud_ts, change.operation) {
-                (Some(l), Some(c), _) => Ok(c >= l),
+                (Some(l), Some(c), _) => {
+                    let (local_dev, cloud_dev) = SyncManager::lww_device_pair(
+                        &local,
+                        change.data.as_ref(),
+                        change.source_device_id.as_deref(),
+                    );
+                    Ok(SyncManager::compare_lww_timestamps(
+                        &l,
+                        local_dev,
+                        &local.to_string(),
+                        &c,
+                        cloud_dev,
+                        change
+                            .data
+                            .as_ref()
+                            .map(|data| data.to_string())
+                            .as_deref()
+                            .unwrap_or(""),
+                    ) != std::cmp::Ordering::Greater)
+                }
                 (Some(_), None, _) => Ok(false),
                 (None, Some(_), _) => Ok(true),
                 (None, None, ChangeOperation::Delete) => Ok(false),
@@ -249,6 +296,21 @@ fn should_apply_change_by_strategy(
             }
         }
     }
+}
+
+fn has_unsynced_local_change(
+    conn: &rusqlite::Connection,
+    table_name: &str,
+    record_id: &str,
+) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM __change_log
+         WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0",
+        rusqlite::params![table_name, record_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|count| count > 0)
+    .unwrap_or(false)
 }
 
 /// 将下载的变更按数据库路由并应用（接入冲突保护 + 冲突表）
@@ -260,7 +322,8 @@ fn should_apply_change_by_strategy(
 /// **[P0 接入]** 使用 `apply_downloaded_changes_with_conflict_guard`：
 /// - 将 `MergeStrategy` 映射为 `ConflictPolicy`
 /// - 冲突落败方进 `__sync_conflicts` 表（每库一份），前端可据此列出待处理冲突
-/// - Manual 策略特殊处理：回退到旧行为（仍用 LWW 门 + 策略过滤，不自动解决冲突）
+/// - Manual 策略映射为 `KeepLocal`：无冲突的变更照常按 LWW 收敛；真冲突时
+///   本地保持不变、双方快照落表，由用户在冲突面板逐条裁决
 pub(super) fn apply_downloaded_changes_to_databases(
     changes: &[SyncChangeWithData],
     active_dir: &std::path::Path,
@@ -272,6 +335,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
     let mut agg = ApplyToDbsResult {
         total_success: 0,
         total_skipped: 0,
+        total_incomplete_skipped: 0,
         total_failed: 0,
         db_errors: Vec::new(),
         applied_keys: std::collections::HashSet::new(),
@@ -281,11 +345,15 @@ pub(super) fn apply_downloaded_changes_to_databases(
     let id_column_map = build_id_column_map();
 
     // 策略映射
-    let policy_opt: Option<ConflictPolicy> = match strategy {
-        MergeStrategy::KeepLocal => Some(ConflictPolicy::KeepLocal),
-        MergeStrategy::UseCloud => Some(ConflictPolicy::KeepCloud),
-        MergeStrategy::KeepLatest => Some(ConflictPolicy::KeepLatest),
-        MergeStrategy::Manual => None, // 手动模式保持老行为，不自动解决
+    let policy: ConflictPolicy = match strategy {
+        MergeStrategy::KeepLocal => ConflictPolicy::KeepLocal,
+        MergeStrategy::UseCloud => ConflictPolicy::KeepCloud,
+        MergeStrategy::KeepLatest => ConflictPolicy::KeepLatest,
+        // Manual：无冲突的云端变更照常按 LWW 应用（保持收敛）；真冲突（本地
+        // 有未同步修改且语义不同）时本地保持不变、双方快照落 __sync_conflicts，
+        // 由用户在冲突面板逐条裁决。此前 Manual 走完全绕过冲突落表的旧路径，
+        // 用户选了"手动处理"反而永远看不到待处理冲突。
+        MergeStrategy::Manual => ConflictPolicy::KeepLocal,
     };
 
     // 获取本地设备 ID（仅作为冲突记录里的 losing_device_id，真实设备 ID 由 SyncManager 持有）
@@ -300,9 +368,9 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 Some(name) => name.to_string(),
                 None => {
                     warn!(
-                            "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
-                            change.table_name, change.record_id
-                        );
+                        "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
+                        change.table_name, change.record_id
+                    );
                     agg.total_skipped += 1;
                     continue;
                 }
@@ -339,23 +407,43 @@ pub(super) fn apply_downloaded_changes_to_databases(
             continue;
         }
 
-        let conn = rusqlite::Connection::open(&db_path)
+        let conn = open_sync_connection(&db_path)
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
-        // 预过滤：先按策略决策（KeepLocal 直接跳过云端变更）
+        // KeepLatest/UseCloud/Manual 必须先进入冲突保护。
+        //
+        // 真实多设备场景里，同一记录如果本地有未同步修改且云端也有不同修改，
+        // 即使 KeepLatest 最终会保留本地，也必须把双方快照写入 __sync_conflicts。
+        // 若在这里先按时间戳过滤，本地较新的变更会直接跳过云端变更，导致冲突
+        // 保护没有机会落表，表现为静默覆盖/静默丢失。
+        //
+        // KeepLocal 仍保留原语义：本地已有且没有本地待同步冲突时跳过云端；只有
+        // 本地存在待同步修改时才进入冲突保护以落表。
         let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
-        for c in db_changes {
-            let id_column = id_column_map
-                .get(&c.table_name)
-                .map(|s| s.as_str())
-                .unwrap_or("id");
-            let should_apply = should_apply_change_by_strategy(&conn, c, id_column, strategy)?;
-            if should_apply {
+        if strategy == MergeStrategy::KeepLocal {
+            for c in db_changes {
+                let id_column = id_column_map
+                    .get(&c.table_name)
+                    .map(|s| s.as_str())
+                    .unwrap_or("id");
+                let should_apply = if strategy == MergeStrategy::KeepLocal
+                    && has_unsynced_local_change(&conn, &c.table_name, &c.record_id)
+                {
+                    true
+                } else {
+                    should_apply_change_by_strategy(&conn, c, id_column, strategy)?
+                };
+                if should_apply {
+                    let mut cloned = (*c).clone();
+                    cloned.suppress_change_log = Some(true);
+                    owned_changes.push(cloned);
+                }
+            }
+        } else {
+            for c in db_changes {
                 let mut cloned = (*c).clone();
                 cloned.suppress_change_log = Some(true);
                 owned_changes.push(cloned);
-            } else {
-                agg.total_skipped += 1;
             }
         }
 
@@ -363,26 +451,27 @@ pub(super) fn apply_downloaded_changes_to_databases(
             continue;
         }
 
-        // 根据是否有 policy 决定走冲突保护还是老路径
-        let result = if let Some(policy) = policy_opt {
-            SyncManager::apply_downloaded_changes_with_conflict_guard(
-                &conn,
-                &owned_changes,
-                Some(&id_column_map),
-                policy,
-                None, // cloud_device_id — 云端变更目前没携带，留空
-                Some(&local_device_id),
-            )
-            .map(|(apply, conflict)| (apply, Some(conflict)))
-        } else {
-            SyncManager::apply_downloaded_changes(&conn, &owned_changes, Some(&id_column_map))
-                .map(|apply| (apply, None))
-        };
+        let cloud_device_id = owned_changes
+            .iter()
+            .find_map(|change| change.source_device_id.as_deref())
+            .filter(|id| !id.trim().is_empty());
+
+        // 所有策略统一走冲突保护路径（冲突落败方写入 __sync_conflicts）
+        let result = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &owned_changes,
+            Some(&id_column_map),
+            policy,
+            cloud_device_id,
+            Some(&local_device_id),
+        )
+        .map(|(apply, conflict)| (apply, Some(conflict)));
 
         match result {
             Ok((apply_result, conflict_result)) => {
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
+                agg.total_incomplete_skipped += apply_result.skipped_incomplete_count;
                 agg.total_failed += apply_result.failure_count;
                 agg.applied_keys.extend(apply_result.applied_keys);
                 if let Some(c) = conflict_result {
@@ -410,6 +499,30 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 );
                 agg.total_failed += db_changes.len();
                 agg.db_errors.push((db_name.clone(), err_msg));
+            }
+        }
+
+        // [P1] 隔离区自动重放：时钟漂移、偶发性错误等"暂时不可应用"的隔离项
+        // 随时间推移可自愈；每次同步应用后自动重试（带 attempts 上限），
+        // 成功即清除，持续失败的条目留给 UI 手动处理。
+        match SyncManager::replay_quarantined_changes(
+            &conn,
+            Some(&id_column_map),
+            SyncManager::QUARANTINE_AUTO_REPLAY_MAX_ATTEMPTS,
+        ) {
+            Ok(replayed) if replayed > 0 => {
+                agg.total_success += replayed;
+                info!(
+                    "[data_governance] 数据库 {} 隔离区自动重放成功 {} 条",
+                    db_name, replayed
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!(
+                    "[data_governance] 数据库 {} 隔离区自动重放失败（忽略）: {}",
+                    db_name, e
+                );
             }
         }
     }
@@ -469,6 +582,204 @@ pub(super) fn validate_user_path(path: &Path, _app_data_dir: &Path) -> Result<()
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+    use serde_json::json;
+
+    fn create_chat_v2_db(path: &Path) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open(path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE chat_v2_sessions (
+                id TEXT PRIMARY KEY,
+                mode TEXT NOT NULL DEFAULT 'chat',
+                title TEXT,
+                persist_status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                device_id TEXT,
+                local_version INTEGER DEFAULT 0,
+                sync_version INTEGER DEFAULT 0,
+                deleted_at TEXT
+            );
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                sync_version INTEGER DEFAULT 0,
+                field_deltas_json TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn open_sync_connection_sets_busy_timeout() {
+        let conn = open_sync_connection(":memory:").unwrap();
+        let timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(timeout_ms, 5000);
+    }
+
+    #[test]
+    fn keep_latest_local_newer_conflict_still_falls_into_conflict_table() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = resolve_database_path(&DatabaseId::ChatV2, tmp.path());
+        let conn = create_chat_v2_db(&db_path);
+
+        conn.execute(
+            "INSERT INTO chat_v2_sessions
+             (id, mode, title, persist_status, created_at, updated_at, device_id)
+             VALUES (?1, 'chat', ?2, 'active', ?3, ?4, 'local-device')",
+            params![
+                "sess_conflict",
+                "local-newer",
+                "2026-05-31T10:00:00Z",
+                "2026-05-31T12:00:00Z"
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __change_log
+             (table_name, record_id, operation, changed_at, sync_version)
+             VALUES ('chat_v2_sessions', 'sess_conflict', 'UPDATE', ?1, 0)",
+            params!["2026-05-31T12:00:00Z"],
+        )
+        .unwrap();
+        drop(conn);
+
+        let cloud_change = SyncChangeWithData {
+            change_log_id: None,
+            table_name: "chat_v2_sessions".to_string(),
+            record_id: "sess_conflict".to_string(),
+            operation: ChangeOperation::Update,
+            changed_at: "2026-05-31T11:00:00Z".to_string(),
+            data: Some(json!({
+                "id": "sess_conflict",
+                "mode": "chat",
+                "title": "cloud-older",
+                "persist_status": "active",
+                "created_at": "2026-05-31T10:00:00Z",
+                "updated_at": "2026-05-31T11:00:00Z",
+                "device_id": "cloud-device",
+                "deleted_at": null
+            })),
+            database_name: Some("chat_v2".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        };
+
+        let agg = apply_downloaded_changes_to_databases(
+            &[cloud_change],
+            tmp.path(),
+            MergeStrategy::KeepLatest,
+        )
+        .unwrap();
+
+        assert!(
+            agg.total_conflicts >= 2,
+            "本地较新但双方都改过同一记录时，不能被预过滤跳过，必须落入冲突表"
+        );
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM chat_v2_sessions WHERE id='sess_conflict'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "local-newer");
+
+        let unresolved: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unresolved, agg.total_conflicts as i64);
+    }
+
+    #[test]
+    fn keep_local_preserves_existing_non_conflicting_local_record() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = resolve_database_path(&DatabaseId::ChatV2, tmp.path());
+        let conn = create_chat_v2_db(&db_path);
+
+        conn.execute(
+            "INSERT INTO chat_v2_sessions
+             (id, mode, title, persist_status, created_at, updated_at, device_id)
+             VALUES (?1, 'chat', ?2, 'active', ?3, ?4, 'local-device')",
+            params![
+                "sess_keep_local",
+                "local-existing",
+                "2026-05-31T10:00:00Z",
+                "2026-05-31T10:00:00Z"
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __change_log
+             (table_name, record_id, operation, changed_at, sync_version)
+             VALUES ('chat_v2_sessions', 'sess_keep_local', 'INSERT', ?1, 123)",
+            params!["2026-05-31T10:00:00Z"],
+        )
+        .unwrap();
+        drop(conn);
+
+        let cloud_change = SyncChangeWithData {
+            change_log_id: None,
+            table_name: "chat_v2_sessions".to_string(),
+            record_id: "sess_keep_local".to_string(),
+            operation: ChangeOperation::Update,
+            changed_at: "2026-05-31T12:00:00Z".to_string(),
+            data: Some(json!({
+                "id": "sess_keep_local",
+                "mode": "chat",
+                "title": "cloud-newer",
+                "persist_status": "active",
+                "created_at": "2026-05-31T10:00:00Z",
+                "updated_at": "2026-05-31T12:00:00Z",
+                "device_id": "cloud-device",
+                "deleted_at": null
+            })),
+            database_name: Some("chat_v2".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        };
+
+        let agg = apply_downloaded_changes_to_databases(
+            &[cloud_change],
+            tmp.path(),
+            MergeStrategy::KeepLocal,
+        )
+        .unwrap();
+
+        assert_eq!(agg.total_success, 0);
+        assert_eq!(agg.total_conflicts, 0);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM chat_v2_sessions WHERE id='sess_keep_local'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "local-existing");
+    }
 }
 
 pub(super) fn validate_backup_id(raw_backup_id: &str) -> Result<String, String> {
@@ -2276,4 +2587,28 @@ async fn execute_tiered_backup_with_progress(
         result.manifest.files.len() as u64,
         result_payload,
     );
+}
+
+// ==================== 清空数据命令 ====================
+
+/// 清空所有应用数据
+///
+/// 写入清理标记并触发应用重启，下次启动时会自动清除 active_app_data_dir 下所有数据。
+#[tauri::command]
+pub fn data_governance_purge_all_data(app: tauri::AppHandle) -> Result<String, String> {
+    use crate::startup_cleanup;
+
+    let base_dir = get_app_data_dir(&app)?;
+
+    // 写入清理标记
+    startup_cleanup::write_purge_marker(&base_dir)
+        .map_err(|e| format!("写入清理标记失败: {}", e))?;
+
+    info!("[data_governance] 已设置清空数据标记，将重启应用执行清理");
+
+    // 触发应用重启
+    app.restart();
+
+    // restart() 返回 !（不返回），但 Rust 需要返回类型匹配
+    unreachable!("应用应已重启")
 }

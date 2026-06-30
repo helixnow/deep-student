@@ -506,6 +506,14 @@ class SessionManagerImpl implements ISessionManager {
       this.streamingUnsubscribers.delete(sessionId);
     }
 
+    // 🔧 修复：blockingInteractionUnsubscribers 与 streaming 共享同一个退订函数，
+    // 此前淘汰路径只清 streamingUnsubscribers，导致该 Map 条目随每次淘汰累积
+    const blockingUnsubscribe = this.blockingInteractionUnsubscribers.get(sessionId);
+    if (blockingUnsubscribe && blockingUnsubscribe !== unsubscribe) {
+      blockingUnsubscribe();
+    }
+    this.blockingInteractionUnsubscribers.delete(sessionId);
+
     // 从缓存移除
     this.sessions.delete(sessionId);
     this.sessionMeta.delete(sessionId);

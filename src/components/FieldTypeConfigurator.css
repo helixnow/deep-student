@@ -280,7 +280,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .field-type-configurator {
     padding: 16px;
   }

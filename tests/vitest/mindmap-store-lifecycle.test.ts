@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { useMindMapStore } from '@/components/mindmap/store/mindmapStore';
-import type { MindMapDocument } from '@/components/mindmap/types';
+import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
+import type { MindMapDocument } from '@/features/mindmap/types';
 
 function createDocument(): MindMapDocument {
   return {
@@ -129,7 +129,19 @@ describe('mindmap store lifecycle guards', () => {
   });
 
   it('deduplicates sync draft persistence by document version', () => {
-    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem');
+    const originalLocalStorage = window.localStorage;
+    const setItemSpy = vi.fn();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: {
+        getItem: vi.fn(() => null),
+        setItem: setItemSpy,
+        removeItem: vi.fn(),
+        clear: vi.fn(),
+        key: vi.fn(),
+        length: 0,
+      },
+    });
     seedStore(createDocument());
 
     useMindMapStore.setState({
@@ -153,6 +165,9 @@ describe('mindmap store lifecycle guards', () => {
     useMindMapStore.getState().saveDraftSync();
     expect(setItemSpy).toHaveBeenCalledTimes(2);
 
-    setItemSpy.mockRestore();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: originalLocalStorage,
+    });
   });
 });

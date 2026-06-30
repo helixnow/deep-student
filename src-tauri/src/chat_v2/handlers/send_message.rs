@@ -1367,26 +1367,40 @@ fn get_message_content(db: &ChatV2Database, message_id: &str) -> Result<String, 
     Ok(content)
 }
 
+/// 在会话消息列表中定位助手消息之前最近的一条用户消息
+///
+/// 🔧 修复：与 retry/edit 的删除逻辑对齐，使用 index-based 向前查找。
+/// 之前用 timestamp <= 比较，相邻消息时间戳相同时（同毫秒）可能选到
+/// 助手消息之后的用户消息。若按 ID 找不到助手消息（理论上不应发生），
+/// 回退到旧的时间戳比较逻辑。
+fn locate_preceding_user_message<'a>(
+    messages: &'a [ChatMessage],
+    assistant_message: &ChatMessage,
+) -> Option<&'a ChatMessage> {
+    if let Some(pos) = messages.iter().position(|m| m.id == assistant_message.id) {
+        messages[..pos]
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::User)
+    } else {
+        messages
+            .iter()
+            .filter(|m| m.role == MessageRole::User && m.timestamp <= assistant_message.timestamp)
+            .last()
+    }
+}
+
 /// 查找前一条用户消息的内容
 fn find_preceding_user_message_content(
     db: &ChatV2Database,
     session_id: &str,
     assistant_message: &ChatMessage,
 ) -> Result<String, String> {
-    // 获取会话的所有消息
+    // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
     let messages =
         ChatV2Repo::get_session_messages_v2(db, session_id).map_err(|e| e.to_string())?;
 
-    // 按时间戳排序，找到助手消息之前的最近一条用户消息
-    let assistant_timestamp = &assistant_message.timestamp;
-
-    // 找到时间戳在助手消息之前的最后一条用户消息
-    let user_message = messages
-        .iter()
-        .filter(|m| m.role == MessageRole::User && m.timestamp <= *assistant_timestamp)
-        .last();
-
-    match user_message {
+    match locate_preceding_user_message(&messages, assistant_message) {
         Some(msg) => get_message_content(db, &msg.id),
         None => Err(ChatV2Error::Other("No preceding user message found".to_string()).into()),
     }
@@ -1441,18 +1455,12 @@ fn find_preceding_user_message_with_attachments(
     session_id: &str,
     assistant_message: &ChatMessage,
 ) -> Result<UserMessageRestoreResult, String> {
-    // 获取会话的所有消息
+    // 获取会话的所有消息（按 timestamp ASC, rowid ASC 稳定排序）
     let messages =
         ChatV2Repo::get_session_messages_v2(db, session_id).map_err(|e| e.to_string())?;
 
-    // 按时间戳排序，找到助手消息之前的最近一条用户消息
-    let assistant_timestamp = &assistant_message.timestamp;
-
-    // 找到时间戳在助手消息之前的最后一条用户消息
-    let user_message = messages
-        .iter()
-        .filter(|m| m.role == MessageRole::User && m.timestamp <= *assistant_timestamp)
-        .last();
+    // 🔧 修复：index-based 向前查找，避免相同时间戳时选错消息
+    let user_message = locate_preceding_user_message(&messages, assistant_message);
 
     match user_message {
         Some(msg) => {
@@ -1688,14 +1696,39 @@ pub async fn chat_v2_continue_message(
         todo_list.total_count()
     );
 
-    // 5. 恢复 TodoList 到内存
-    restore_todo_list_from_db(&db, &session_id)
-        .map_err(|e| format!("Failed to restore TodoList: {}", e))?;
+    // 5. 原子注册流（提前到任何内存状态修改之前）
+    // 🔧 修复：之前在 restore_todo_list_from_db 之后才注册流，
+    // 若会话已有活跃流，注册失败返回错误，但内存中的 TodoList 已被覆盖，
+    // 可能破坏正在运行的流的 TodoList 状态
+    let cancel_token = match chat_v2_state.try_register_stream(&session_id) {
+        Ok(token) => token,
+        Err(()) => {
+            return Err(ChatV2Error::Other(
+                "Session has an active stream. Please wait for completion or cancel first."
+                    .to_string(),
+            )
+            .into());
+        }
+    };
+
+    // 恢复 TodoList 到内存（已持有流注册，不会与活跃流冲突）
+    if let Err(e) = restore_todo_list_from_db(&db, &session_id) {
+        chat_v2_state.remove_stream(&session_id);
+        return Err(format!("Failed to restore TodoList: {}", e));
+    }
 
     // 6. 加载原消息
-    let original_message = ChatV2Repo::get_message_v2(&db, &persisted_message_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| ChatV2Error::MessageNotFound(persisted_message_id.clone()).to_string())?;
+    let original_message = match ChatV2Repo::get_message_v2(&db, &persisted_message_id) {
+        Ok(Some(msg)) => msg,
+        Ok(None) => {
+            chat_v2_state.remove_stream(&session_id);
+            return Err(ChatV2Error::MessageNotFound(persisted_message_id.clone()).to_string());
+        }
+        Err(e) => {
+            chat_v2_state.remove_stream(&session_id);
+            return Err(e.to_string());
+        }
+    };
 
     // 7. 验证变体状态（必须是 interrupted 才能继续）
     let target_variant_id = variant_id
@@ -1718,7 +1751,11 @@ pub async fn chat_v2_continue_message(
 
     // 8. 获取前一条用户消息的内容
     let user_msg_result =
-        find_preceding_user_message_with_attachments(&db, &session_id, &original_message)?;
+        find_preceding_user_message_with_attachments(&db, &session_id, &original_message)
+            .map_err(|e| {
+                chat_v2_state.remove_stream(&session_id);
+                e
+            })?;
     let user_content = user_msg_result.content;
 
     // 恢复上下文引用
@@ -1760,17 +1797,7 @@ pub async fn chat_v2_continue_message(
         workspace_id: None,
     };
 
-    // 10. 注册流并执行
-    let cancel_token = match chat_v2_state.try_register_stream(&session_id) {
-        Ok(token) => token,
-        Err(()) => {
-            return Err(ChatV2Error::Other(
-                "Failed to register stream for continue execution.".to_string(),
-            )
-            .into());
-        }
-    };
-
+    // 10. 执行（流已在步骤 5 提前注册）
     let session_id_for_cleanup = session_id.clone();
     let window_clone = window.clone();
     let pipeline_clone = pipeline.inner().clone();

@@ -339,20 +339,18 @@ function generateSummary() {
   log('cyan', '                    国际化检查摘要');
   log('cyan', '='.repeat(70) + '\n');
   
-  // 这里可以基于之前的检查结果生成总结
-  console.log('详细报告已生成至: docs/国际化检查报告.md');
+  console.log('详细的缺失键报告请运行: npm run check:i18n:missing（输出至 note/翻译键缺失详细报告.md）');
   console.log('\n建议操作:');
   console.log('  1. 创建缺失的翻译文件');
   console.log('  2. 补全翻译键');
-  console.log('  3. 修复硬编码中文最多的组件');
-  console.log('  4. 建立CI检查流程\n');
+  console.log('  3. 修复硬编码中文最多的组件\n');
 }
 
 // 主函数
 function main() {
   console.log('\n');
   log('cyan', '╔════════════════════════════════════════════════════════════╗');
-  log('cyan', '║          AI错题管理系统 - 国际化检查工具                  ║');
+  log('cyan', '║          Deep Student - 国际化检查工具                     ║');
   log('cyan', '╚════════════════════════════════════════════════════════════╝');
   
   try {

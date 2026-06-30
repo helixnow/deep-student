@@ -1702,6 +1702,9 @@ pub(crate) fn provider_supports_openai_responses(
     if resolves_to_official_openai(provider_type, base_url) {
         return true;
     }
+    if normalize_provider_protocol_registry_value(provider_type) == "openai" {
+        return false;
+    }
     get_provider_protocol_record(provider_type)
         .map(|record| record.supports_openai_responses)
         .unwrap_or(false)
@@ -1729,7 +1732,9 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
     }
 
     let allowed = provider_allowed_protocols(provider_type);
-    if provider_supports_openai_responses(provider_type, base_url, supports_openai_responses)
+    let supports_responses =
+        provider_supports_openai_responses(provider_type, base_url, supports_openai_responses);
+    if supports_responses
         && allowed
             .iter()
             .any(|protocol| protocol == "openai_responses")
@@ -1738,9 +1743,10 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
     }
 
     if let Some(record) = get_provider_protocol_record(provider_type) {
-        if allowed
-            .iter()
-            .any(|protocol| protocol == &record.default_protocol)
+        if record.default_protocol != "openai_responses"
+            && allowed
+                .iter()
+                .any(|protocol| protocol == &record.default_protocol)
         {
             return record.default_protocol.clone();
         }
@@ -1748,7 +1754,7 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
 
     allowed
         .into_iter()
-        .next()
+        .find(|protocol| supports_responses || protocol != "openai_responses")
         .unwrap_or_else(|| "openai_chat_completions".to_string())
 }
 

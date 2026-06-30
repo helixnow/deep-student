@@ -42,6 +42,7 @@ pub mod commands_sync;
 pub mod commands_types;
 pub mod commands_zip;
 pub mod dto;
+pub mod file_deletion_queue;
 pub mod init;
 pub mod migration;
 pub mod plugin;

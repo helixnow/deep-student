@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveTextbookPreviewType } from '@/components/learning-hub/apps/views/textbookPreviewResolver';
+import { resolveTextbookPreviewType } from '@/features/learning-hub/apps/views/textbookPreviewResolver';
 
 describe('textbook preview resolver', () => {
   it('keeps explicit modern preview type', () => {

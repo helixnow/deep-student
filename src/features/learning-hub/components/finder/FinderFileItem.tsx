@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { format, formatDistanceToNow } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN, enUS } from 'date-fns/locale';
 import { Star, DotsThree, Check } from '@phosphor-icons/react';
 import {
   NoteIcon,
@@ -21,6 +22,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export interface FinderFileItemProps {
   item: DstuNode;
@@ -52,34 +54,16 @@ interface SortableFinderFileItemProps extends FinderFileItemProps {
   enableDrag?: boolean;
 }
 
-/** 类型标签映射 */
-const TYPE_LABELS: Partial<Record<DstuNodeType, string>> = {
-  note: '笔记',
-  textbook: '教材',
-  exam: '题目集',
-  translation: '翻译',
-  essay: '作文',
-  image: '图片',
-  file: '文件',
-  mindmap: '导图',
-  retrieval: '检索',
-};
+/** 有类型标签的资源类型（folder 不显示标签）；文案走 i18n indexStatus.resourceType.* */
+const LABELED_TYPES: ReadonlySet<DstuNodeType> = new Set([
+  'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap', 'retrieval',
+] as DstuNodeType[]);
 
-// ★ 记忆系统改造：从笔记 tags 中提取记忆元数据
-const MEMORY_TYPE_LABELS: Record<string, string> = {
-  fact: '事实',
-  study: '学习',
-  note: '笔记',
-};
+// ★ 记忆系统改造：从笔记 tags 中提取记忆元数据（文案走 i18n finder.memoryMeta.*）
 const MEMORY_TYPE_STYLES: Record<string, string> = {
   fact: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
   study: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   note: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-};
-const MEMORY_PURPOSE_LABELS: Record<string, string> = {
-  internalized: '内化',
-  supplementary: '补充',
-  systemic: '系统',
 };
 const MEMORY_PURPOSE_STYLES: Record<string, string> = {
   internalized: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
@@ -135,12 +119,15 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   compact = false,
   isHighlighted = false,
 }: FinderFileItemProps) {
+  const { t, i18n } = useTranslation(['learningHub']);
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || GenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
   const snippet = item.metadata?.snippet as string | undefined;
   const matchSource = item.metadata?.matchSource as string | undefined;
   // ★ 记忆系统改造：提取记忆元数据
   const memoryMeta = item.type === 'note' ? extractMemoryMeta(item.metadata?.tags as string[] | undefined) : null;
+  // N-3/N-4: 触屏设备上没有 hover 和双击心智，单击直接打开、更多按钮常显
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理点击事件
@@ -151,10 +138,14 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       onSelect('toggle');
     } else if (e.shiftKey) {
       onSelect('range');
+    } else if (isTouchPrimary) {
+      // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
+      onSelect('single');
+      onOpen();
     } else {
       onSelect('single');
     }
-  }, [isEditing, onSelect]);
+  }, [isEditing, isTouchPrimary, onSelect, onOpen]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理双击事件
@@ -172,17 +163,21 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     onEditCancel?.();
   }, [onEditCancel]);
 
-  // 格式化相对时间
+  // 格式化相对时间（locale 跟随界面语言）
   const relativeTime = formatDistanceToNow(item.updatedAt, { 
     addSuffix: true, 
-    locale: zhCN 
+    locale: i18n.language?.startsWith('zh') ? zhCN : enUS 
   });
 
-  const typeLabel = TYPE_LABELS[item.type];
-  const childCountLabel = item.type === 'folder' && item.childCount !== undefined
-    ? `${item.childCount} 项`
+  const typeLabel = LABELED_TYPES.has(item.type)
+    ? t(`learningHub:indexStatus.resourceType.${item.type}`)
     : undefined;
-  const rowTitle = snippet ? `${item.name}\n${matchSource === 'index' ? '[索引] ' : ''}${snippet}` : item.name;
+  const childCountLabel = item.type === 'folder' && item.childCount !== undefined
+    ? t('learningHub:finder.childCount', { count: item.childCount, defaultValue: '{{count}} 项' })
+    : undefined;
+  const rowTitle = snippet
+    ? `${item.name}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex', '[索引]')} ` : ''}${snippet}`
+    : item.name;
 
   if (viewMode === 'list') {
     return (
@@ -233,11 +228,11 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           {memoryMeta && (
             <>
               <span className={cn('px-1 py-0 rounded text-[9px] font-medium shrink-0', MEMORY_TYPE_STYLES[memoryMeta.memoryType] || 'bg-muted')}>
-                {MEMORY_TYPE_LABELS[memoryMeta.memoryType] || memoryMeta.memoryType}
+                {t(`learningHub:finder.memoryMeta.type.${memoryMeta.memoryType}`, memoryMeta.memoryType)}
               </span>
-              {memoryMeta.memoryPurpose !== 'memorized' && MEMORY_PURPOSE_LABELS[memoryMeta.memoryPurpose] && (
+              {memoryMeta.memoryPurpose !== 'memorized' && MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] && (
                 <span className={cn('px-1 py-0 rounded text-[9px] shrink-0', MEMORY_PURPOSE_STYLES[memoryMeta.memoryPurpose] || 'bg-muted')}>
-                  {MEMORY_PURPOSE_LABELS[memoryMeta.memoryPurpose]}
+                  {t(`learningHub:finder.memoryMeta.purpose.${memoryMeta.memoryPurpose}`, memoryMeta.memoryPurpose)}
                 </span>
               )}
               {memoryMeta.isImportant && (
@@ -248,27 +243,43 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         </div>
         
         {/* 右侧元数据 - 始终可见 */}
-        {!compact && (
+        {(!compact || isTouchPrimary) && (
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* 子项数量（文件夹）或文件大小（文件类） */}
-            {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-              <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
-                {childCountLabel ?? formatSize(item.size)}
-              </span>
+            {!compact && (
+              <>
+                {/* 子项数量（文件夹）或文件大小（文件类） */}
+                {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
+                  <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
+                    {childCountLabel ?? formatSize(item.size)}
+                  </span>
+                )}
+                {/* 类型标签 */}
+                {typeLabel && (
+                  <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
+                    {typeLabel}
+                  </span>
+                )}
+                {/* 修改时间 */}
+                <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
+                  {relativeTime}
+                </span>
+              </>
             )}
-            {/* 类型标签 */}
-            {typeLabel && (
-              <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
-                {typeLabel}
-              </span>
-            )}
-            {/* 修改时间 */}
-            <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
-              {relativeTime}
-            </span>
-            {/* 更多操作按钮 - 悬停时显示 */}
-            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-[var(--interactive-hover)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
-              <DotsThree size={16} className="text-muted-foreground/60" />
+            {/* 更多操作按钮 - 桌面悬停显示，触屏常显（N-4） */}
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={cn(
+                'hover:bg-[var(--interactive-hover)] transition-opacity duration-150',
+                isTouchPrimary
+                  ? '!h-9 !w-9 !p-1.5 opacity-100'
+                  : '!h-6 !w-6 !p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+              )}
+              onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
+              aria-label="more"
+            >
+              <DotsThree size={isTouchPrimary ? 20 : 16} className="text-muted-foreground/60" />
             </NotionButton>
           </div>
         )}
@@ -309,7 +320,20 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       {/* 收藏星标 */}
       {isFavorite && (
-        <Star size={12} className="absolute top-1.5 right-1.5 text-yellow-500 fill-yellow-500" />
+        <Star size={12} className={cn('absolute top-1.5 text-yellow-500 fill-yellow-500', isTouchPrimary ? 'left-1.5' : 'right-1.5')} />
+      )}
+      {/* 触屏更多操作入口（N-4）：网格模式无 hover/双指，常显右上角 */}
+      {isTouchPrimary && !isEditing && (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
+          aria-label="more"
+        >
+          <DotsThree size={18} className="text-muted-foreground/70" />
+        </NotionButton>
       )}
       
       {/* 自定义 SVG 图标 */}

@@ -9,7 +9,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use tempfile::NamedTempFile;
-use tracing::warn; // 新增结构化日志
+use tracing::{debug, warn}; // 结构化日志
 use zip::{write::FileOptions, ZipWriter};
 
 // 使用 LazyLock 初始化别名映射
@@ -28,6 +28,131 @@ static ALIAS_MAP: LazyLock<HashMap<&'static str, &'static [&'static str]>> = Laz
 /// 清理卡片内容中的无效模板占位符
 fn clean_template_placeholders(content: &str) -> String {
     content.trim().to_string()
+}
+
+// F9（round2）：全局单调 note_id 生成器，确保跨导出 / 同毫秒多次导出都不碰撞。
+// 旧实现用「秒*1000+序号」，同秒多次导出可产生相同 id（虽有 guid 去重，仍属脆弱）。
+static APKG_NOTE_ID_GEN: LazyLock<std::sync::atomic::AtomicI64> =
+    LazyLock::new(|| std::sync::atomic::AtomicI64::new(Utc::now().timestamp_millis()));
+
+/// 返回严格单调递增的 note_id；尽量贴近毫秒时间戳习惯，但绝不回退或重复。
+fn next_apkg_note_id() -> i64 {
+    use std::sync::atomic::Ordering;
+    let now_ms = Utc::now().timestamp_millis();
+    loop {
+        let prev = APKG_NOTE_ID_GEN.load(Ordering::Relaxed);
+        let next = std::cmp::max(prev + 1, now_ms);
+        if APKG_NOTE_ID_GEN
+            .compare_exchange_weak(prev, next, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            return next;
+        }
+    }
+}
+
+/// 粗略剥离 HTML 标签（仅用于校验和计算）。
+/// F13（round2）：对齐 Anki —— note 的 csum 基于「strip-HTML 后的首字段」；
+/// 本函数不影响存储的 flds/sfld，只影响 Anki 端重复检测的精度。
+fn strip_html_for_checksum(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_tag = false;
+    for ch in text.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// 统一的字段值解析（F11 round2）：单模板与多模板导出共用，确保：
+/// - `text` 字段在 `card.text` 为空时回退 `extra_fields`；
+/// - 通用字段支持大小写无关 + `ALIAS_MAP` 别名；
+/// - 选择题模板的 `Front` 优先从 `extra_fields` 取。
+/// 消除多模板 `insert_note` 与单模板路径的字段映射差异。
+fn resolve_card_field_value(card: &AnkiCard, field_name: &str) -> String {
+    match field_name.to_lowercase().as_str() {
+        "front" => {
+            // 特殊处理选择题模板：Front 字段应从 extra_fields 中获取
+            if card
+                .template_id
+                .as_ref()
+                .map_or(false, |id| id == "choice-card")
+            {
+                let field_key = field_name.to_lowercase();
+                card.extra_fields
+                    .get(&field_key)
+                    .or_else(|| card.extra_fields.get(field_name))
+                    .cloned()
+                    .unwrap_or_else(|| clean_template_placeholders(&card.front))
+            } else {
+                clean_template_placeholders(&card.front)
+            }
+        }
+        "back" => clean_template_placeholders(&card.back),
+        "text" => {
+            let field_key = field_name.to_lowercase();
+            let fallback = card
+                .extra_fields
+                .get(&field_key)
+                .or_else(|| card.extra_fields.get(field_name))
+                .cloned();
+            let text_value = card
+                .text
+                .as_deref()
+                .map(str::trim)
+                .filter(|t| !t.is_empty())
+                .map(|t| t.to_string())
+                .or(fallback)
+                .unwrap_or_default();
+            clean_template_placeholders(&text_value)
+        }
+        "extra" => {
+            // Cloze note type 默认使用 "Extra" 字段；优先 extra_fields，否则回退 card.back
+            let field_key = field_name.to_lowercase();
+            card.extra_fields
+                .get(&field_key)
+                .or_else(|| card.extra_fields.get(field_name))
+                .cloned()
+                .unwrap_or_else(|| clean_template_placeholders(&card.back))
+        }
+        "tags" => {
+            if card.tags.is_empty() {
+                String::new()
+            } else {
+                clean_template_placeholders(&card.tags.join(", "))
+            }
+        }
+        _ => {
+            // -------- 通用字段提取逻辑（大小写无关 + Alias） --------
+            let field_key_lower = field_name.to_lowercase();
+            let raw_value = card
+                .extra_fields
+                .get(&field_key_lower)
+                .or_else(|| card.extra_fields.get(field_name))
+                .or_else(|| {
+                    ALIAS_MAP.get(field_key_lower.as_str()).and_then(|cands| {
+                        cands
+                            .iter()
+                            .find_map(|alias| card.extra_fields.get(&alias.to_string()))
+                    })
+                })
+                .cloned()
+                .unwrap_or_else(|| {
+                    warn!("字段 '{}' 未找到，使用空值", field_name);
+                    String::new()
+                });
+            // 保留原始值，对 JSON 数组/对象跳过 sanitize，否则做占位符清理
+            if raw_value.trim_start().starts_with('{') || raw_value.trim_start().starts_with('[') {
+                raw_value
+            } else {
+                clean_template_placeholders(&raw_value)
+            }
+        }
+    }
 }
 
 /// Anki的基本配置
@@ -515,11 +640,13 @@ fn initialize_anki_database_with_template(
 
 /// 生成字段校验和
 fn field_checksum(text: &str) -> i64 {
-    if text.is_empty() {
+    // F13（round2）：对齐 Anki，先 strip HTML 再算校验和（仅影响重复检测，不影响导入）
+    let stripped = strip_html_for_checksum(text);
+    if stripped.is_empty() {
         return 0;
     }
     let mut hasher = Sha1::new();
-    hasher.update(text.as_bytes());
+    hasher.update(stripped.as_bytes());
     let digest = hasher.finalize();
     let checksum = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]);
     checksum as i64
@@ -545,122 +672,36 @@ fn convert_cards_to_anki_records_with_fields(
     _template: Option<&CustomAnkiTemplate>, // 新增参数：完整的模板对象
 ) -> Result<Vec<(String, String, String, String, i64, String)>, String> {
     let mut records = Vec::new();
-    let now = Utc::now().timestamp();
 
     for card in &cards {
-        // Use a borrow here
-        let note_id = now * 1000 + records.len() as i64; // 生成唯一ID
+        // F9（round2）：全局单调 note_id，避免同秒多次导出碰撞
+        let note_id = next_apkg_note_id();
         let guid = format!("{}", uuid::Uuid::new_v4().to_string().replace("-", ""));
 
         // 根据模板字段或模型类型处理字段
         let (fields, sort_field) = if let Some(field_names) = template_fields {
-            // 🐛 调试日志：打印字段处理信息
+            // 调试日志：打印字段处理信息（debug 级别，避免卡片内容刷爆 warn 日志）
             if field_names.len() > 4 {
                 // 学术模板有6个字段
-                warn!("🎯 DEBUG: 处理学术模板，字段数量: {}", field_names.len());
-                warn!("🎯 DEBUG: 模板字段: {:?}", field_names);
-                warn!(
-                    "🎯 DEBUG: 卡片extra_fields: {:?}",
+                debug!("处理多字段模板，字段数量: {}", field_names.len());
+                debug!("模板字段: {:?}", field_names);
+                debug!(
+                    "卡片extra_fields: {:?}",
                     card.extra_fields.keys().collect::<Vec<_>>()
                 );
-                warn!("🎯 DEBUG: 卡片tags字段: {:?}", card.tags);
+                debug!("卡片tags字段: {:?}", card.tags);
             }
 
             let mut field_values = Vec::new();
 
             for field_name in field_names {
-                let value = match field_name.to_lowercase().as_str() {
-                    "front" => {
-                        // 特殊处理选择题模板：Front字段应该从extra_fields中获取
-                        if card
-                            .template_id
-                            .as_ref()
-                            .map_or(false, |id| id == "choice-card")
-                        {
-                            // 对于选择题模板，Front字段应该从extra_fields中获取
-                            let field_key = field_name.to_lowercase();
-                            card.extra_fields
-                                .get(&field_key)
-                                .or_else(|| card.extra_fields.get(field_name))
-                                .cloned()
-                                .unwrap_or_else(|| clean_template_placeholders(&card.front))
-                        } else {
-                            clean_template_placeholders(&card.front)
-                        }
-                    }
-                    "back" => clean_template_placeholders(&card.back),
-                    "text" => {
-                        let field_key = field_name.to_lowercase();
-                        let fallback = card
-                            .extra_fields
-                            .get(&field_key)
-                            .or_else(|| card.extra_fields.get(field_name))
-                            .cloned();
-                        let text_value = card
-                            .text
-                            .as_deref()
-                            .map(str::trim)
-                            .filter(|t| !t.is_empty())
-                            .map(|t| t.to_string())
-                            .or(fallback)
-                            .unwrap_or_default();
-                        clean_template_placeholders(&text_value)
-                    }
-                    "extra" => {
-                        // Cloze note type uses the "Extra" field by default. Prefer explicit
-                        // extra_fields when available, otherwise fall back to card.back.
-                        let field_key = field_name.to_lowercase();
-                        card.extra_fields
-                            .get(&field_key)
-                            .or_else(|| card.extra_fields.get(field_name))
-                            .cloned()
-                            .unwrap_or_else(|| clean_template_placeholders(&card.back))
-                    }
-                    "tags" => {
-                        // 处理标签字段：将Vec<String>转换为逗号分隔的字符串
-                        if card.tags.is_empty() {
-                            String::new()
-                        } else {
-                            clean_template_placeholders(&card.tags.join(", "))
-                        }
-                    }
-                    _ => {
-                        // -------- 通用字段提取逻辑（大小写无关 + Alias） --------
-                        let field_key_lower = field_name.to_lowercase();
+                // F11（round2）：统一字段解析（与多模板路径共用 resolve_card_field_value）
+                let value = resolve_card_field_value(card, field_name);
 
-                        let raw_value = card
-                            .extra_fields
-                            .get(&field_key_lower)
-                            .or_else(|| card.extra_fields.get(field_name))
-                            .or_else(|| {
-                                ALIAS_MAP.get(field_key_lower.as_str()).and_then(|cands| {
-                                    cands
-                                        .iter()
-                                        .find_map(|alias| card.extra_fields.get(&alias.to_string()))
-                                })
-                            })
-                            .cloned()
-                            .unwrap_or_else(|| {
-                                // 警告日志：缺失字段
-                                warn!("字段 '{}' 未找到，使用空值", field_name);
-                                String::new()
-                            });
-
-                        // 保留原始值，对于 JSON 数组/对象跳过 sanitize，否则防止 XSS 清理
-                        if raw_value.trim_start().starts_with('{')
-                            || raw_value.trim_start().starts_with('[')
-                        {
-                            raw_value.clone()
-                        } else {
-                            clean_template_placeholders(&raw_value)
-                        }
-                    }
-                };
-
-                // 🐛 调试：打印每个字段的值 (UTF-8安全截断)
+                // 调试：打印每个字段的值 (UTF-8安全截断)
                 if field_names.len() > 4 {
-                    warn!(
-                        "🎯 DEBUG: 字段 '{}' -> '{}'",
+                    debug!(
+                        "字段 '{}' -> '{}'",
                         field_name,
                         if value.chars().count() > 50 {
                             format!("{}...", value.chars().take(50).collect::<String>())
@@ -743,7 +784,13 @@ pub async fn export_cards_to_apkg_with_full_template(
     }
 
     // 创建临时目录
-    let temp_dir = std::env::temp_dir().join(format!("anki_export_{}", Utc::now().timestamp()));
+    // 注意必须带随机后缀：仅用秒级时间戳时，同一秒内的并发导出会
+    // 共享同一 collection.anki2，第二次初始化报 "table col already exists"
+    let temp_dir = std::env::temp_dir().join(format!(
+        "anki_export_{}_{}",
+        Utc::now().timestamp(),
+        uuid::Uuid::new_v4().simple()
+    ));
     fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
 
     let db_path = temp_dir.join("collection.anki2");
@@ -902,8 +949,6 @@ pub async fn export_cards_to_apkg_with_full_template(
         for (idx, (fname, _path)) in media_entries.iter().enumerate() {
             media_map.insert(idx.to_string(), serde_json::Value::String(fname.to_string()));
         }
-        let db_content = fs::read(&db_path)
-            .map_err(|e| format!("读取数据库文件失败: {}", e))?;
         let media_json = serde_json::to_string(&media_map)
             .map_err(|e| format!("序列化媒体列表失败: {}", e))?;
 
@@ -913,7 +958,10 @@ pub async fn export_cards_to_apkg_with_full_template(
 
             zip.start_file("collection.anki2", FileOptions::default())
                 .map_err(|e| format!("创建zip文件条目失败: {}", e))?;
-            zip.write_all(&db_content)
+            // F14（round2）：流式写入数据库，避免整库读入内存
+            let mut db_file = fs::File::open(&db_path)
+                .map_err(|e| format!("打开数据库文件失败: {}", e))?;
+            std::io::copy(&mut db_file, &mut zip)
                 .map_err(|e| format!("写入数据库到zip失败: {}", e))?;
 
             zip.start_file("media", FileOptions::default())
@@ -923,11 +971,12 @@ pub async fn export_cards_to_apkg_with_full_template(
 
             // In Anki packages, media files are stored as numbered entries ("0", "1", ...).
             for (idx, (_fname, path)) in media_entries.iter().enumerate() {
-                let data = fs::read(path)
+                // F14（round2）：流式拷贝媒体文件，避免整文件读入内存
+                let mut media_file = fs::File::open(path)
                     .map_err(|e| format!("读取媒体文件失败 {}: {}", path, e))?;
                 zip.start_file(idx.to_string(), FileOptions::default())
                     .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
-                zip.write_all(&data)
+                std::io::copy(&mut media_file, &mut zip)
                     .map_err(|e| format!("写入媒体文件失败: {}", e))?;
             }
 
@@ -944,17 +993,17 @@ pub async fn export_cards_to_apkg_with_full_template(
             .persist(&output_path)
             .map_err(|e| format!("无法持久化临时输出文件: {}", e.error))?;
 
-        // 🔍 iPad诊断：检查临时APKG文件状态
+        // 检查导出文件状态（iPad 等移动端诊断）
         let temp_size = fs::metadata(&output_path)
             .map(|m| m.len())
             .unwrap_or(0);
-        println!("🔍 临时APKG文件创建完成: {} 字节", temp_size);
+        debug!("APKG文件创建完成: {} 字节", temp_size);
 
         if temp_size == 0 {
-            return Err(format!("❌ 临时APKG文件为空 (0字节)，路径: {:?}", output_path));
+            return Err(format!("APKG文件为空 (0字节)，路径: {:?}", output_path));
         }
 
-        println!("✅ 临时APKG文件验证通过: {:?} ({} 字节)", output_path, temp_size);
+        debug!("APKG文件验证通过: {:?} ({} 字节)", output_path, temp_size);
         Ok(())
     }.await;
 
@@ -990,7 +1039,12 @@ pub async fn export_multi_template_apkg(
         return Err("没有卡片可以导出".to_string());
     }
 
-    let temp_dir = std::env::temp_dir().join(format!("anki_export_{}", Utc::now().timestamp()));
+    // 同上：带随机后缀防止同一秒并发导出共用临时库
+    let temp_dir = std::env::temp_dir().join(format!(
+        "anki_export_{}_{}",
+        Utc::now().timestamp(),
+        uuid::Uuid::new_v4().simple()
+    ));
     fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
     let db_path = temp_dir.join("collection.anki2");
     if let Some(parent) = output_path.parent() {
@@ -1038,8 +1092,11 @@ pub async fn export_multi_template_apkg(
             CREATE TABLE graves (usn integer not null, oid integer not null, type integer not null);
             CREATE INDEX ix_cards_nid on cards (nid);
             CREATE INDEX ix_cards_sched on cards (did, queue, due);
+            CREATE INDEX ix_cards_usn on cards (usn);
             CREATE INDEX ix_notes_usn on notes (usn);
             CREATE INDEX ix_notes_csum on notes (csum);
+            CREATE INDEX ix_revlog_usn on revlog (usn);
+            CREATE INDEX ix_revlog_cid on revlog (cid);
         "#,
         ).map_err(|e| format!("创建表失败: {}", e))?;
 
@@ -1152,29 +1209,14 @@ pub async fn export_multi_template_apkg(
         // 插入 notes 和 cards
         let mut note_idx = 0i64;
         let insert_note = |conn: &Connection, card: &AnkiCard, mid: i64, field_names: &[String], note_idx: &mut i64| -> Result<(), String> {
-            let note_id = now * 1000 + *note_idx;
+            let note_id = next_apkg_note_id(); // F9（round2）：全局单调 id
             *note_idx += 1;
             let guid = uuid::Uuid::new_v4().to_string().replace("-", "");
 
             let mut field_values: Vec<String> = Vec::new();
             for field_name in field_names {
-                let value = match field_name.to_lowercase().as_str() {
-                    "front" => clean_template_placeholders(&card.front),
-                    "back" => clean_template_placeholders(&card.back),
-                    "text" => card.text.as_deref().unwrap_or("").to_string(),
-                    "extra" => card.extra_fields.get("extra")
-                        .or_else(|| card.extra_fields.get("Extra"))
-                        .cloned()
-                        .unwrap_or_else(|| clean_template_placeholders(&card.back)),
-                    "tags" => card.tags.join(", "),
-                    _ => {
-                        let key_lower = field_name.to_lowercase();
-                        card.extra_fields.get(&key_lower)
-                            .or_else(|| card.extra_fields.get(field_name))
-                            .cloned()
-                            .unwrap_or_default()
-                    }
-                };
+                // F11（round2）：与单模板路径统一字段解析（含 text 回退 extra_fields + ALIAS_MAP）
+                let value = resolve_card_field_value(card, field_name);
                 field_values.push(value);
             }
 
@@ -1223,37 +1265,43 @@ pub async fn export_multi_template_apkg(
         let mut temp_file = NamedTempFile::new_in(parent_dir)
             .map_err(|e| format!("创建临时输出文件失败: {}", e))?;
 
-        let mut media_map = serde_json::Map::new();
-        let mut media_entries: Vec<(String, String)> = Vec::new();
+        // 先读出可用的媒体文件，再统一编号：保证 media 清单与 zip 内条目一一对应，
+        // 避免读取失败的文件在清单中留下悬空引用（Anki 导入会报媒体缺失）。
+        let mut media_entries: Vec<(String, Vec<u8>)> = Vec::new(); // (fname, data)
         let mut seen_media_names: HashSet<String> = HashSet::new();
         for card in &cards_for_media {
             for image_path in &card.images {
                 if let Some(fname) = std::path::Path::new(image_path).file_name().and_then(|n| n.to_str()) {
                     if seen_media_names.insert(fname.to_string()) {
-                        media_entries.push((fname.to_string(), image_path.clone()));
+                        match fs::read(image_path) {
+                            Ok(data) => media_entries.push((fname.to_string(), data)),
+                            Err(e) => warn!("读取媒体文件失败，跳过 {}: {}", image_path, e),
+                        }
                     }
                 }
             }
         }
+        let mut media_map = serde_json::Map::new();
         for (idx, (fname, _)) in media_entries.iter().enumerate() {
             media_map.insert(idx.to_string(), serde_json::Value::String(fname.to_string()));
         }
 
-        let db_content = fs::read(&db_path).map_err(|e| format!("读取数据库失败: {}", e))?;
         let media_json = serde_json::to_string(&media_map).map_err(|e| format!("序列化媒体列表失败: {}", e))?;
 
         {
             let file_handle = temp_file.as_file_mut();
             let mut zip = ZipWriter::new(file_handle);
             zip.start_file("collection.anki2", FileOptions::default()).map_err(|e| format!("zip失败: {}", e))?;
-            zip.write_all(&db_content).map_err(|e| format!("写入db失败: {}", e))?;
+            // F14（round2）：流式写入数据库，避免整库读入内存
+            let mut db_file = fs::File::open(&db_path).map_err(|e| format!("打开数据库失败: {}", e))?;
+            std::io::copy(&mut db_file, &mut zip).map_err(|e| format!("写入db失败: {}", e))?;
             zip.start_file("media", FileOptions::default()).map_err(|e| format!("zip media失败: {}", e))?;
             zip.write_all(media_json.as_bytes()).map_err(|e| format!("写入media失败: {}", e))?;
-            for (idx, (_, path)) in media_entries.iter().enumerate() {
-                if let Ok(data) = fs::read(path) {
-                    let _ = zip.start_file(idx.to_string(), FileOptions::default());
-                    let _ = zip.write_all(&data);
-                }
+            for (idx, (_, data)) in media_entries.iter().enumerate() {
+                zip.start_file(idx.to_string(), FileOptions::default())
+                    .map_err(|e| format!("创建媒体文件条目失败: {}", e))?;
+                zip.write_all(data)
+                    .map_err(|e| format!("写入媒体文件失败: {}", e))?;
             }
             zip.finish().map_err(|e| format!("zip finish失败: {}", e))?;
         }

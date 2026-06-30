@@ -32,8 +32,16 @@ const hasConfiguredApiKey = (apiKey?: string | null): boolean => {
   return Boolean(trimmed);
 };
 
+/** 供应商是否已配置（有 apiKey，或 noApiKey 模式且有 baseUrl） */
+const isVendorConfigured = (vendor: VendorConfig): boolean => {
+  if (vendor.noApiKey) {
+    return !!(vendor.baseUrl?.trim());
+  }
+  return hasConfiguredApiKey(vendor.apiKey);
+};
+
 const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
-  if (hasConfiguredApiKey(vendor.apiKey)) {
+  if (isVendorConfigured(vendor)) {
     return {};
   }
   return {
@@ -43,7 +51,7 @@ const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
 };
 
 const getVendorIconTone = (vendor: VendorConfig): 'color' | 'muted' => (
-  hasConfiguredApiKey(vendor.apiKey) ? 'color' : 'muted'
+  isVendorConfigured(vendor) ? 'color' : 'muted'
 );
 
 const getVendorIconBadgeStyle = (vendor: VendorConfig): React.CSSProperties => {

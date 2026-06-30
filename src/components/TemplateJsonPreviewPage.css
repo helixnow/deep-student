@@ -51,7 +51,7 @@
   min-height: 0;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023.98px) {
   .template-json-preview-body {
     grid-template-columns: 1fr;
   }
@@ -172,7 +172,7 @@
   margin-top: 10px;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1023.98px) {
   .preview-grid {
     grid-template-columns: 1fr;
   }
@@ -222,7 +222,7 @@
 /* ============================================
    移动端响应式优化
    ============================================ */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .template-json-preview-page {
     padding-bottom: 80px; /* 为 BottomTabBar 留出空间 */
   }

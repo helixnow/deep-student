@@ -24,6 +24,14 @@ fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
         }
     }
 }
+
+/// SAVEPOINT 名称无法参数化,后缀来自外部传入的 exam_id;
+/// 按纵深防御原则只保留 `[A-Za-z0-9_]`,其余字符一律替换为 `_`。
+fn sanitize_savepoint_suffix(id: &str) -> String {
+    id.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
 use crate::vfs::ocr_utils::parse_ocr_pages_json;
 use crate::vfs::repos::folder_repo::VfsFolderRepo;
 use crate::vfs::repos::resource_repo::VfsResourceRepo;
@@ -82,8 +90,8 @@ impl VfsExamRepo {
 
         // 搜索过滤（在 exam_name 中搜索）
         if let Some(q) = search {
-            sql.push_str(&format!(" AND exam_name LIKE ?{}", param_idx));
-            let search_pattern = format!("%{}%", q);
+            sql.push_str(&format!(" AND exam_name LIKE ?{} ESCAPE '\\'", param_idx));
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             params_vec.push(Box::new(search_pattern));
             param_idx += 1;
         }
@@ -115,9 +123,9 @@ impl VfsExamRepo {
     /// 统计题目集数量（使用现有连接）
     pub fn count_exam_sheets_with_conn(conn: &Connection, search: Option<&str>) -> VfsResult<u32> {
         let count: i64 = if let Some(q) = search {
-            let pattern = format!("%{}%", q);
+            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             conn.query_row(
-                "SELECT COUNT(*) FROM exam_sheets WHERE deleted_at IS NULL AND exam_name LIKE ?1",
+                "SELECT COUNT(*) FROM exam_sheets WHERE deleted_at IS NULL AND exam_name LIKE ?1 ESCAPE '\\'",
                 params![pattern],
                 |row| row.get(0),
             )?
@@ -359,6 +367,170 @@ impl VfsExamRepo {
                 let _ = conn.execute("ROLLBACK TO create_exam", []);
                 // 释放 savepoint（即使回滚后也需要释放，否则 savepoint 会残留）
                 let _ = conn.execute("RELEASE create_exam", []);
+                Err(e)
+            }
+        }
+    }
+
+    /// 复制题目集（共享页图/题图 blob 并正确维护引用计数，含题目）
+    ///
+    /// ★ 2026-06-12（第二轮审阅）：取代 DSTU 层"仅复制 exam_sheets 行"的复制逻辑。
+    /// 旧实现的缺陷：
+    /// 1. 副本 preview_json 引用与原件相同的页图 blob 但不递增引用计数 →
+    ///    purge 任一份按页 -1，引用提前归零，另一份页图被物理清扫（变砖）；
+    /// 2. 不复制 questions → 副本题目集为空，复制语义残缺。
+    pub fn copy_exam_sheet(
+        db: &VfsDatabase,
+        src_exam_id: &str,
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsExamSheet> {
+        let conn = db.get_conn_safe()?;
+        Self::copy_exam_sheet_with_conn(&conn, src_exam_id, folder_id)
+    }
+
+    /// 复制题目集（使用现有连接）
+    pub fn copy_exam_sheet_with_conn(
+        conn: &Connection,
+        src_exam_id: &str,
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsExamSheet> {
+        let src = Self::get_exam_sheet_with_conn(conn, src_exam_id)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "ExamSheet".to_string(),
+                id: src_exam_id.to_string(),
+            }
+        })?;
+
+        // 收集需要共享引用的 blob（页图 + 题目图片，与 purge 的收集逻辑对称）
+        let shared_hashes = Self::collect_exam_blob_hashes(conn, src_exam_id)?;
+
+        conn.execute("SAVEPOINT copy_exam", [])?;
+
+        let result = (|| -> VfsResult<VfsExamSheet> {
+            for hash in &shared_hashes {
+                super::blob_repo::VfsBlobRepo::increment_ref_with_conn(conn, hash)?;
+            }
+
+            let new_temp_id = format!("copy_{}", nanoid::nanoid!(10));
+            // ★ 2026-06-12（第二轮审阅）：与文件复制语义一致，加"(副本)"后缀，
+            // 否则列表中出现两个同名试卷无法区分。
+            let new_exam = Self::create_exam_sheet_with_conn(
+                conn,
+                crate::vfs::types::VfsCreateExamSheetParams {
+                    exam_name: src.exam_name.clone().map(|n| format!("{} (副本)", n)),
+                    temp_id: new_temp_id,
+                    metadata_json: src.metadata_json.clone(),
+                    preview_json: src.preview_json.clone(),
+                    status: src.status.clone(),
+                    folder_id: folder_id.map(|s| s.to_string()),
+                },
+            )?;
+
+            // 复制题目（保留内容/答案/解析/图片引用，重置个人学习状态）
+            let now = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            let copied_questions = {
+                let mut stmt = conn.prepare(
+                    r#"SELECT id, card_id, question_label, content, options_json, answer, explanation,
+                              question_type, difficulty, tags, images_json
+                       FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL"#,
+                )?;
+                #[allow(clippy::type_complexity)]
+                let rows: Vec<(
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    String,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                )> = stmt
+                    .query_map(params![src_exam_id], |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                            row.get(5)?,
+                            row.get(6)?,
+                            row.get(7)?,
+                            row.get(8)?,
+                            row.get(9)?,
+                            row.get(10)?,
+                        ))
+                    })?
+                    .filter_map(|r| r.ok())
+                    .collect();
+
+                let count = rows.len();
+                for (
+                    _old_id,
+                    card_id,
+                    question_label,
+                    content,
+                    options_json,
+                    answer,
+                    explanation,
+                    question_type,
+                    difficulty,
+                    tags,
+                    images_json,
+                ) in rows
+                {
+                    conn.execute(
+                        r#"INSERT INTO questions (id, exam_id, card_id, question_label, content,
+                                                  options_json, answer, explanation, question_type,
+                                                  difficulty, tags, images_json, created_at, updated_at)
+                           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, COALESCE(?11, '[]'), COALESCE(?12, '[]'), ?13, ?13)"#,
+                        params![
+                            format!("q_{}", nanoid::nanoid!(10)),
+                            new_exam.id,
+                            card_id,
+                            question_label,
+                            content,
+                            options_json,
+                            answer,
+                            explanation,
+                            question_type,
+                            difficulty,
+                            tags,
+                            images_json,
+                            now,
+                        ],
+                    )?;
+                }
+                count
+            };
+
+            info!(
+                "[VFS::ExamRepo] Copied exam {} -> {} ({} questions, {} shared blobs ref+1)",
+                src_exam_id,
+                new_exam.id,
+                copied_questions,
+                shared_hashes.len()
+            );
+
+            Ok(new_exam)
+        })();
+
+        match result {
+            Ok(exam) => {
+                conn.execute("RELEASE copy_exam", [])?;
+                Ok(exam)
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO copy_exam", []);
+                let _ = conn.execute("RELEASE copy_exam", []);
+                log::error!(
+                    "[VFS::ExamRepo] Failed to copy exam {}: {}",
+                    src_exam_id, e
+                );
                 Err(e)
             }
         }
@@ -686,15 +858,88 @@ impl VfsExamRepo {
     /// ★ 2025-12-11: 统一语义，purge = 永久删除
     pub fn purge_exam_sheet(db: &VfsDatabase, exam_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_exam_sheet_with_conn(&conn, exam_id)
+        Self::purge_exam_sheet_with_conn(&conn, db.blobs_dir(), exam_id)?;
+        // ★ 2026-06-12（审阅问题 S4）：事务提交后清扫 ref_count=0 的 blob
+        if let Err(e) = super::blob_repo::VfsBlobRepo::cleanup_unreferenced_with_conn(
+            &conn,
+            db.blobs_dir(),
+        ) {
+            warn!(
+                "[VFS::ExamRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
+    }
+
+    /// 收集题目集关联的所有 blob 哈希（页图 + 题目图片）
+    ///
+    /// ★ 2026-06-12（审阅问题 S4）：purge 前收集，purge 后递减引用计数。
+    /// - 页图：`preview_json.pages[].blob_hash`（PageRasterizer 渲染时 store_blob +1）
+    /// - 题目图片：`questions.images_json[].hash`（题目导入时 store_blob +1）
+    fn collect_exam_blob_hashes(conn: &Connection, exam_id: &str) -> VfsResult<Vec<String>> {
+        let mut hashes: Vec<String> = Vec::new();
+
+        // 1. preview_json 中的页图
+        let preview_json: Option<String> = conn
+            .query_row(
+                "SELECT preview_json FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        if let Some(preview_str) = preview_json {
+            if let Ok(preview) = serde_json::from_str::<Value>(&preview_str) {
+                if let Some(pages) = preview.get("pages").and_then(|p| p.as_array()) {
+                    for page in pages {
+                        if let Some(hash) = page.get("blob_hash").and_then(|h| h.as_str()) {
+                            if !hash.is_empty() {
+                                hashes.push(hash.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. questions.images_json 中的题目图片（含软删除的题目，purge 是唯一物理出口）
+        let mut stmt = conn.prepare(
+            "SELECT images_json FROM questions WHERE exam_id = ?1 AND images_json IS NOT NULL AND images_json != '[]'",
+        )?;
+        let images_rows = stmt
+            .query_map(params![exam_id], |row| row.get::<_, String>(0))?
+            .filter_map(|r| r.ok());
+
+        for images_json in images_rows {
+            if let Ok(images) = serde_json::from_str::<Value>(&images_json) {
+                if let Some(arr) = images.as_array() {
+                    for img in arr {
+                        if let Some(hash) = img.get("hash").and_then(|h| h.as_str()) {
+                            if !hash.is_empty() {
+                                hashes.push(hash.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(hashes)
     }
 
     /// 永久删除题目集识别记录（使用现有连接）
     ///
     /// ★ P0 修复：同时清理 folder_items、questions、review 相关表和 resources
+    /// ★ 2026-06-12（审阅问题 S4）：递减页图与题目图片的 blob 引用计数，
+    ///   否则 purge 后这些 blob 永久泄漏（页图每页一个 JPEG，体积可观）。
     /// 注意：questions FK 对 exam_sheets 没有 ON DELETE CASCADE，必须手动删除
-    pub fn purge_exam_sheet_with_conn(conn: &Connection, exam_id: &str) -> VfsResult<()> {
-        let savepoint_name = format!("purge_exam_{}", exam_id.replace("-", "_"));
+    pub fn purge_exam_sheet_with_conn(
+        conn: &Connection,
+        blobs_dir: &std::path::Path,
+        exam_id: &str,
+    ) -> VfsResult<()> {
+        let savepoint_name = format!("purge_exam_{}", sanitize_savepoint_suffix(exam_id));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<()> {
@@ -707,6 +952,15 @@ impl VfsExamRepo {
                 )
                 .optional()?
                 .flatten();
+
+            // 1.5 收集页图与题目图片的 blob 哈希（删除行后无法再查）
+            let blob_hashes = Self::collect_exam_blob_hashes(conn, exam_id).unwrap_or_else(|e| {
+                warn!(
+                    "[VFS::ExamRepo] Failed to collect blob hashes for exam {} (blobs may leak): {}",
+                    exam_id, e
+                );
+                Vec::new()
+            });
 
             // 2. 删除 folder_items（防止孤儿记录）
             conn.execute(
@@ -726,11 +980,9 @@ impl VfsExamRepo {
                 params![exam_id],
             )?;
 
-            // 5. 删除关联的 exam_stats
-            conn.execute(
-                "DELETE FROM exam_stats WHERE exam_id = ?1",
-                params![exam_id],
-            )?;
+            // 5. ★ 2026-06-12（第二轮审阅）：删除幽灵表 exam_stats 的 DELETE。
+            // 该表不存在于任何迁移（全代码库仅此一处引用），全新安装的数据库上
+            // 这条语句必然抛 "no such table" → SAVEPOINT 回滚 → 题目集永远无法删除。
 
             // 6. 删除关联的同步记录
             conn.execute(
@@ -778,7 +1030,33 @@ impl VfsExamRepo {
                     |row| row.get(0),
                 )?;
                 if remaining_refs == 0 {
+                    // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量）
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+                }
+            }
+
+            // 11. 递减页图与题目图片的 blob 引用计数（两阶段删除：
+            //     此处只减计数，物理文件由事务提交后的 cleanup_unreferenced 清扫）
+            for hash in &blob_hashes {
+                match super::blob_repo::VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, hash)
+                {
+                    Ok(remaining) => {
+                        debug!(
+                            "[VFS::ExamRepo] Decremented exam blob {}: remaining={}",
+                            hash, remaining
+                        );
+                    }
+                    Err(VfsError::NotFound { .. }) => {
+                        // blob 记录已不存在（历史数据/已被清理），幂等容忍
+                        debug!("[VFS::ExamRepo] Exam blob {} already gone, skipping", hash);
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[VFS::ExamRepo] Failed to decrement exam blob {}: {}",
+                            hash, e
+                        );
+                    }
                 }
             }
 
@@ -836,7 +1114,7 @@ impl VfsExamRepo {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         // 使用 SAVEPOINT 以确保原子性
-        let savepoint_name = format!("restore_exam_{}", exam_id.replace("-", "_"));
+        let savepoint_name = format!("restore_exam_{}", sanitize_savepoint_suffix(exam_id));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<(usize, usize)> {
@@ -1234,7 +1512,7 @@ impl VfsExamRepo {
         let now_ms = chrono::Utc::now().timestamp_millis();
 
         // 使用 SAVEPOINT 以支持嵌套事务（在外部事务中调用时不会出错）
-        let savepoint_name = format!("delete_exam_{}", exam_id.replace("-", "_"));
+        let savepoint_name = format!("delete_exam_{}", sanitize_savepoint_suffix(exam_id));
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<usize> {
@@ -1632,5 +1910,211 @@ mod tests {
         let id = VfsExamSheet::generate_id();
         assert!(id.starts_with("exam_"));
         assert_eq!(id.len(), 15); // "exam_" + 10 chars
+    }
+
+    // ★ 2026-06-12（审阅问题 S4）回归测试：purge 必须回收页图与题目图片 blob
+
+    #[test]
+    fn test_purge_exam_sheet_dereferences_page_and_question_blobs() {
+        use crate::vfs::repos::blob_repo::VfsBlobRepo;
+
+        let (_tmp, db) = crate::vfs::database::setup_migrated_test_db();
+
+        // 1. 准备页图 blob 与题目图片 blob（store_blob 初始 ref_count=1）
+        let page_blob =
+            VfsBlobRepo::store_blob(&db, b"exam-page-image", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+        let question_blob =
+            VfsBlobRepo::store_blob(&db, b"question-image", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+
+        // 2. 创建题目集（preview_json 引用页图）
+        let exam = VfsExamRepo::create_exam_sheet(
+            &db,
+            crate::vfs::types::VfsCreateExamSheetParams {
+                exam_name: Some("回归测试卷".to_string()),
+                temp_id: "temp_regress_1".to_string(),
+                metadata_json: serde_json::json!({}),
+                preview_json: serde_json::json!({
+                    "pages": [{ "page_index": 0, "blob_hash": page_blob.hash }]
+                }),
+                status: "completed".to_string(),
+                folder_id: None,
+            },
+        )
+        .unwrap();
+
+        // 3. 插入引用图片的题目
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                r#"INSERT INTO questions (id, exam_id, content, images_json, created_at, updated_at)
+                   VALUES ('q_regress_1', ?1, 'test question', ?2, datetime('now'), datetime('now'))"#,
+                params![
+                    exam.id,
+                    serde_json::json!([{ "hash": question_blob.hash }]).to_string()
+                ],
+            )
+            .unwrap();
+        }
+
+        // 4. purge → 两个 blob 的引用计数必须归零并被清扫
+        VfsExamRepo::purge_exam_sheet(&db, &exam.id).unwrap();
+
+        let conn = db.get_conn_safe().unwrap();
+        for (label, hash) in [("page", &page_blob.hash), ("question", &question_blob.hash)] {
+            let rc: Option<i32> = conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    params![hash],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert!(
+                rc.is_none() || rc == Some(0),
+                "{} blob {} must be dereferenced after purge, got {:?}",
+                label,
+                hash,
+                rc
+            );
+        }
+
+        // 题目行也必须被删除
+        let q_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM questions WHERE exam_id = ?1",
+                params![exam.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(q_count, 0);
+    }
+
+    // ★ 2026-06-12（第二轮审阅）回归测试：copy_exam_sheet 必须共享 blob、复制题目，
+    // 且 purge 任一份不影响另一份。
+
+    #[test]
+    fn test_copy_exam_sheet_shares_blobs_and_copies_questions() {
+        use crate::vfs::repos::blob_repo::VfsBlobRepo;
+
+        let (_tmp, db) = crate::vfs::database::setup_migrated_test_db();
+
+        let page_blob =
+            VfsBlobRepo::store_blob(&db, b"copy-exam-page", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+        let question_blob =
+            VfsBlobRepo::store_blob(&db, b"copy-exam-question", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+
+        let exam = VfsExamRepo::create_exam_sheet(
+            &db,
+            crate::vfs::types::VfsCreateExamSheetParams {
+                exam_name: Some("复制回归卷".to_string()),
+                temp_id: "temp_copy_regress".to_string(),
+                metadata_json: serde_json::json!({"subject": "math"}),
+                preview_json: serde_json::json!({
+                    "pages": [{ "page_index": 0, "blob_hash": page_blob.hash }]
+                }),
+                status: "completed".to_string(),
+                folder_id: None,
+            },
+        )
+        .unwrap();
+
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                r#"INSERT INTO questions (id, exam_id, content, answer, images_json, created_at, updated_at)
+                   VALUES ('q_copy_1', ?1, 'question A', 'answer A', ?2, datetime('now'), datetime('now'))"#,
+                params![
+                    exam.id,
+                    serde_json::json!([{ "hash": question_blob.hash }]).to_string()
+                ],
+            )
+            .unwrap();
+            conn.execute(
+                r#"INSERT INTO questions (id, exam_id, content, created_at, updated_at)
+                   VALUES ('q_copy_2', ?1, 'question B', datetime('now'), datetime('now'))"#,
+                params![exam.id],
+            )
+            .unwrap();
+        }
+
+        // 复制 → blob 引用 +1，题目逐条复制
+        let copy = VfsExamRepo::copy_exam_sheet(&db, &exam.id, None).unwrap();
+        assert_ne!(copy.id, exam.id);
+        assert_eq!(copy.exam_name.as_deref(), Some("复制回归卷 (副本)"));
+
+        let conn = db.get_conn_safe().unwrap();
+        for (label, hash) in [("page", &page_blob.hash), ("question", &question_blob.hash)] {
+            let rc: i32 = conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    params![hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(rc, 2, "{} blob 复制后引用计数必须为 2", label);
+        }
+
+        let copied_q: Vec<(String, Option<String>)> = {
+            let mut stmt = conn
+                .prepare("SELECT content, answer FROM questions WHERE exam_id = ?1 ORDER BY content")
+                .unwrap();
+            stmt.query_map(params![copy.id], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+        assert_eq!(copied_q.len(), 2, "副本必须包含全部题目");
+        assert_eq!(copied_q[0].0, "question A");
+        assert_eq!(copied_q[0].1.as_deref(), Some("answer A"));
+        assert_eq!(copied_q[1].0, "question B");
+        drop(conn);
+
+        // purge 原卷 → 副本题目与 blob 不受影响
+        VfsExamRepo::purge_exam_sheet(&db, &exam.id).unwrap();
+
+        let conn = db.get_conn_safe().unwrap();
+        for (label, hash) in [("page", &page_blob.hash), ("question", &question_blob.hash)] {
+            let rc: i32 = conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    params![hash],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(rc, 1, "{} blob 在原卷 purge 后必须为 1（副本仍持有）", label);
+        }
+        let copy_q_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM questions WHERE exam_id = ?1 AND deleted_at IS NULL",
+                params![copy.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(copy_q_count, 2, "原卷 purge 不得影响副本题目");
+        drop(conn);
+
+        // purge 副本 → 全部归零
+        VfsExamRepo::purge_exam_sheet(&db, &copy.id).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        for (label, hash) in [("page", &page_blob.hash), ("question", &question_blob.hash)] {
+            let rc: Option<i32> = conn
+                .query_row(
+                    "SELECT ref_count FROM blobs WHERE hash = ?1",
+                    params![hash],
+                    |row| row.get(0),
+                )
+                .optional()
+                .unwrap();
+            assert!(
+                rc.is_none() || rc == Some(0),
+                "{} blob 副本 purge 后必须归零，got {:?}",
+                label,
+                rc
+            );
+        }
     }
 }

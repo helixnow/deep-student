@@ -12,20 +12,16 @@ import { CaretLeft, CaretRight, SidebarSimple, X } from '@phosphor-icons/react';
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   horizontalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
+import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import type { OpenTab, SplitViewState } from '../types/tabs';
@@ -185,7 +181,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           onClick={handleClose}
           className={cn(
             'shrink-0 ml-0.5 rounded-[4px] p-[3px] transition-all duration-100',
-            'opacity-0 group-hover/tab:opacity-100',
+            'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
           )}
         >
@@ -276,16 +272,7 @@ export const TabBar: React.FC<TabBarProps> = ({
   const scrollRef = useRef<HTMLDivElement>(null);
   const { canScrollLeft, canScrollRight, update } = useScrollOverflow(scrollRef);
   
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 5, // 拖动 5px 才激活，避免与点击冲突
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const sensors = useTouchFriendlyDndSensors({ mouseDistance: 5 });
 
   // 标签页变化后重新检查溢出
   useEffect(() => { update(); }, [tabs.length, update]);
@@ -330,6 +317,7 @@ export const TabBar: React.FC<TabBarProps> = ({
 
   return (
     <div className="flex-shrink-0 relative flex items-stretch h-[36px] bg-[var(--background)] z-10"
+         data-no-screen-swipe
          style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
       {/* 左滚动按钮 */}
       {canScrollLeft && (

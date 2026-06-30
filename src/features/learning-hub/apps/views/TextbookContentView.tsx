@@ -16,12 +16,13 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { WarningCircle, FileText, CircleNotch, ArrowClockwise } from '@phosphor-icons/react';
+import { WarningCircle, FileText, CircleNotch, ArrowClockwise, LinkSimple } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TextbookPdfViewer, type ReadingProgress, type Bookmark } from '@/features/pdf/components/TextbookPdfViewer';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { dstu } from '@/dstu';
 import { reportError } from '@/shared/result';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -37,6 +38,7 @@ import { PreviewProvider, usePreviewContext } from './PreviewContext';
 import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { resolveTextbookPreviewType } from './textbookPreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
+import { TextFilePreview } from './TextFilePreview';
 import { usePdfFocusListener } from './usePdfFocusListener';
 
 const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
@@ -130,6 +132,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       document.removeEventListener('pdf-page-refs:clear', handleClear);
       document.removeEventListener('pdf-page-refs:remove', handleRemove);
+      // ★ 卸载（关闭 tab）时广播空选择，避免聊天 chips 残留指向已关闭的 PDF
+      document.dispatchEvent(new CustomEvent('pdf-page-refs:update', {
+        detail: { sourceId: node.sourceId, sourceName: '', pages: [] },
+      }));
     };
   }, [node.sourceId]);
 
@@ -138,9 +144,15 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // 从 node.metadata.filePath 获取文件路径
   const filePath = node.metadata?.filePath as string | undefined;
-  const [filePathStat, setFilePathStat] = useState<{ available: boolean; size?: number } | null>(
-    filePath ? { available: true } : { available: false }
+  // ★ 2026-06-12（审阅问题 R1/R4）：filePathStat.path 记录实际可用的路径。
+  // original_path 失效时回退到 VFS blob 文件（导入时已复制），
+  // PDF 继续走 pdfstream:// 流式加载而非整文件 base64 过 IPC。
+  const [filePathStat, setFilePathStat] = useState<{ available: boolean; size?: number; path?: string } | null>(
+    filePath ? { available: true, path: filePath } : { available: false }
   );
+  // ★ 2026-06-12（审阅 UI/UX）：文件失联后的"重新关联"支持
+  const [relinkTick, setRelinkTick] = useState(0);
+  const [isRelinking, setIsRelinking] = useState(false);
   
   // 根据 previewType 确定渲染模式（优先使用数据库值，若为 none 则根据扩展名推断）
   const resolvedPreviewType = resolveTextbookPreviewType(node.previewType, node.name);
@@ -169,18 +181,68 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   }, [isDocx, isPptx, isText, isXlsx, resolvedPreviewType, setPreviewType]);
 
   // 校验 filePath 是否可访问（用于失效回退）
+  // #59: PDF 走 pdfstream:// 协议加载，探测必须使用与协议一致的白名单规则，
+  // 否则 get_file_size 成功但实际加载 403，且永远不会回退到数据库。
   useEffect(() => {
     let isActive = true;
-    if (!filePath) {
-      setFilePathStat({ available: false });
-      return;
-    }
+    const checkPdfStreamAccess = async (candidate: string) => {
+      try {
+        return await invoke<{ available: boolean; size?: number; reason?: string }>(
+          'pdfstream_check_access',
+          { path: candidate }
+        );
+      } catch {
+        return { available: false } as { available: boolean; size?: number; reason?: string };
+      }
+    };
 
     const checkFilePath = async () => {
       try {
+        if (isPdf) {
+          // 1. 优先尝试 original_path
+          if (filePath) {
+            const access = await checkPdfStreamAccess(filePath);
+            if (!isActive) return;
+            if (access.available) {
+              setFilePathStat({ available: true, size: access.size, path: filePath });
+              return;
+            }
+            console.warn(
+              '[TextbookContentView] filePath not streamable, trying VFS blob:',
+              filePath,
+              access.reason
+            );
+          }
+
+          // 2. ★ 回退到 VFS blob 文件（导入时复制的内容副本）
+          try {
+            const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
+            if (!isActive) return;
+            if (blobPath) {
+              const access = await checkPdfStreamAccess(blobPath);
+              if (!isActive) return;
+              if (access.available) {
+                setFilePathStat({ available: true, size: access.size, path: blobPath });
+                return;
+              }
+            }
+          } catch (blobErr: unknown) {
+            console.warn('[TextbookContentView] blob path lookup failed:', blobErr);
+          }
+
+          if (!isActive) return;
+          setFilePathStat({ available: false });
+          return;
+        }
+
+        if (!filePath) {
+          setFilePathStat({ available: false });
+          return;
+        }
+
         const size = await invoke<number>('get_file_size', { path: filePath });
         if (!isActive) return;
-        setFilePathStat({ available: true, size });
+        setFilePathStat({ available: true, size, path: filePath });
       } catch (err: unknown) {
         if (!isActive) return;
         console.warn('[TextbookContentView] filePath not accessible, fallback to DB:', filePath, err);
@@ -192,9 +254,9 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       isActive = false;
     };
-  }, [filePath]);
+  }, [filePath, isPdf, node.id, relinkTick]);
 
-  const effectiveFilePath = filePathStat?.available ? filePath : undefined;
+  const effectiveFilePath = filePathStat?.available ? (filePathStat.path ?? filePath) : undefined;
   const effectiveFileSize = filePathStat?.available ? filePathStat.size : undefined;
 
   // 使用统一的 PDF 加载 Hook（支持缓存、去重、大文件检测）
@@ -259,10 +321,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
               return;
             }
 
-            const bytes = await invoke<number[]>('read_file_bytes', { path: effectiveFilePath });
+            const buffer = await invoke<ArrayBuffer>('read_file_bytes', { path: effectiveFilePath });
             if (!isMounted) return;
             // 转换为 base64（分块，避免大数组字符串拼接造成卡顿）
-            base64Content = uint8ArrayToBase64(new Uint8Array(bytes));
+            base64Content = uint8ArrayToBase64(new Uint8Array(buffer));
           } catch (err: unknown) {
             console.warn('[TextbookContentView] Failed to read filePath, fallback to VFS:', err);
             if (!isMounted) return;
@@ -444,6 +506,47 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     setContentRetryCount((c) => c + 1);
   }, []);
 
+  // ★ 2026-06-12（审阅 UI/UX）：原文件失联时让用户挑选新位置重新关联。
+  // 后端 textbooks_relink 校验 SHA-256 一致后更新 original_path 并自愈 blob。
+  const handleRelink = useCallback(async () => {
+    setIsRelinking(true);
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const ext = node.name.includes('.') ? node.name.split('.').pop()?.toLowerCase() : undefined;
+      const selected = await open({
+        multiple: false,
+        title: t('textbook:relink.dialogTitle', '选择文件的新位置'),
+        filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
+      });
+      if (!selected || typeof selected !== 'string') return;
+
+      await invoke('textbooks_relink', { id: node.id, newPath: selected });
+      showGlobalNotification('success', t('textbook:relink.success', '文件已重新关联'));
+      setRelinkTick((c) => c + 1);
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err), t('textbook:relink.failed', '重新关联失败'));
+    } finally {
+      setIsRelinking(false);
+    }
+  }, [node.id, node.name, t]);
+
+  // 失联场景下的"重新关联"按钮（PDF/非 PDF 错误态共用）
+  const relinkButton = (
+    <NotionButton
+      variant="default"
+      size="sm"
+      disabled={isRelinking}
+      onClick={() => {
+        void handleRelink();
+      }}
+    >
+      {isRelinking
+        ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+        : <LinkSimple className="h-3.5 w-3.5 mr-1.5" />}
+      {t('textbook:relink.action', '重新关联文件')}
+    </NotionButton>
+  );
+
   // ★ PDF 初始态 spinner 超时检测（10 秒后显示提示 + 重试按钮，避免无限旋转）
   useEffect(() => {
     if (!isPdf || effectiveFilePath || pdfFile || pdfLoading || pdfError) {
@@ -478,14 +581,20 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         <div className="flex flex-col items-center justify-center h-full gap-4">
           <WarningCircle className="w-12 h-12 text-destructive" />
           <p className="text-destructive text-center">{pdfError}</p>
-          <NotionButton
-            variant="default"
-            size="sm"
-            onClick={retryPdfLoad}
-          >
-            <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
-            {t('common:retry', '重试')}
-          </NotionButton>
+          <div className="flex gap-2">
+            <NotionButton
+              variant="default"
+              size="sm"
+              onClick={retryPdfLoad}
+            >
+              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
+              {t('common:retry', '重试')}
+            </NotionButton>
+            {relinkButton}
+          </div>
+          <p className="text-xs text-muted-foreground max-w-md text-center">
+            {t('textbook:relink.hint', '若原文件已被移动或重命名，可点击"重新关联文件"选择它的新位置。')}
+          </p>
         </div>
       );
     }
@@ -498,14 +607,17 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             <p className="text-sm text-muted-foreground text-center">
               {t('textbook:loading.timeout', '加载时间较长，可能遇到问题')}
             </p>
-            <NotionButton
-              variant="default"
-              size="sm"
-              onClick={retryPdfLoad}
-            >
-              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
-              {t('common:retry', '重试')}
-            </NotionButton>
+            <div className="flex gap-2">
+              <NotionButton
+                variant="default"
+                size="sm"
+                onClick={retryPdfLoad}
+              >
+                <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
+                {t('common:retry', '重试')}
+              </NotionButton>
+              {relinkButton}
+            </div>
           </>
         )}
       </div>
@@ -525,14 +637,17 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <WarningCircle className="w-12 h-12 text-destructive" />
         <p className="text-destructive text-center">{contentError}</p>
-        <NotionButton
-          variant="default"
-          size="sm"
-          onClick={retryContentLoad}
-        >
-          <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
-          {t('common:retry', '重试')}
-        </NotionButton>
+        <div className="flex gap-2">
+          <NotionButton
+            variant="default"
+            size="sm"
+            onClick={retryContentLoad}
+          >
+            <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
+            {t('common:retry', '重试')}
+          </NotionButton>
+          {relinkButton}
+        </div>
       </div>
     );
   }
@@ -592,9 +707,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return (
       <div className="flex flex-col h-full bg-background overflow-hidden">
         <CustomScrollArea className="flex-1">
-          <pre className="whitespace-pre-wrap text-sm p-4 m-0 min-h-full font-mono">
-            {textContent}
-          </pre>
+          <TextFilePreview content={textContent} fileName={node.name} />
         </CustomScrollArea>
       </div>
     );

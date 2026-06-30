@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { Plus, SlidersHorizontal } from '@phosphor-icons/react';
+import { Plus } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -24,7 +24,6 @@ export interface UseChatPageLayoutDeps {
   finderJumpToBreadcrumb: (index: number) => void;
   setMobileResourcePanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
 }
 
@@ -33,7 +32,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
     viewMode, sessionSheetOpen, t, sessionCount, createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setViewMode,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
   } = deps;
 
   useEffect(() => {
@@ -76,36 +75,22 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
         </NotionButton>
       );
     }
+    // C-10 修复：移除"对话控制"幽灵按钮（其目标面板从未在抽屉中渲染）；
+    // 对话参数控制已由输入栏的对话控制面板承载。
     return (
-      <>
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => {
-            setViewMode('sidebar');
-            setShowChatControl(true);
-            setSessionSheetOpen(true);
-          }}
-          aria-label={t('common:chat_controls')}
-          title={t('common:chat_controls')}
-        >
-          <SlidersHorizontal size={20} />
-        </NotionButton>
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          onClick={() => createSession()}
-          disabled={isLoading || isEmptyNewChat}
-          aria-label={t('page.newSession')}
-          title={t('page.newSession')}
-        >
-          <Plus size={20} />
-        </NotionButton>
-      </>
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        onClick={() => createSession()}
+        disabled={isLoading || isEmptyNewChat}
+        aria-label={t('page.newSession')}
+        title={t('page.newSession')}
+      >
+        <Plus size={20} />
+      </NotionButton>
     );
-  }, [viewMode, createSession, isLoading, isEmptyNewChat, setSessionSheetOpen, setShowChatControl, setViewMode, t]);
+  }, [viewMode, createSession, isLoading, isEmptyNewChat, setViewMode, t]);
 
   // 📱 移动端资源库面包屑导航回调
   const handleFinderBreadcrumbNavigate = useCallback((index: number) => {
@@ -113,7 +98,6 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   }, [finderJumpToBreadcrumb]);
 
   useMobileHeader('chat-v2', mobileResourcePanelOpen ? {
-    // 📱 资源库打开时：顶栏显示面包屑导航
     titleNode: (
       <MobileBreadcrumb
         rootTitle={t('learningHub:title')}

@@ -154,85 +154,8 @@ export interface BreadcrumbItem {
   fullPath?: string;
 }
 
-/**
- * Toolbar 工具栏 Props
- */
-export interface LearningHubToolbarProps {
-  /** 工作模式 */
-  mode: WorkMode;
-  /** 当前视图模式 */
-  viewMode: ViewMode;
-  /** 当前数据视图 */
-  dataView: DataView;
-  /** 搜索关键词 */
-  searchQuery: string;
-  /** 搜索关键词变更回调 */
-  onSearchChange: (query: string) => void;
-  /** 视图模式切换回调 */
-  onViewModeChange: (mode: ViewMode) => void;
-  /** 数据视图切换回调 */
-  onDataViewChange: (view: DataView) => void;
-  /** 资源类型过滤（资源浏览视图） */
-  resourceTypeFilter?: ResourceType;
-  /** 资源类型过滤变更回调 */
-  onResourceTypeFilterChange?: (type: ResourceType) => void;
-  /** 排序字段 */
-  sortField?: SortField;
-  /** 排序方向 */
-  sortOrder?: SortOrder;
-  /** 排序变更回调 */
-  onSortChange?: (field: SortField, order: SortOrder) => void;
-  /** 刷新回调 */
-  onRefresh?: () => void;
-  /** 关闭回调（Canvas 模式） */
-  onClose?: () => void;
-  /** 教材导入回调 */
-  onImportTextbook?: () => void;
-  /** 是否正在导入教材 */
-  isImporting?: boolean;
-  /** 是否正在加载 */
-  isLoading?: boolean;
-  /** 自定义样式 */
-  className?: string;
-  
-  // ========== 面包屑导航（文件夹视图） ==========
-  /** 面包屑路径 */
-  breadcrumbPath?: BreadcrumbItem[];
-  /** 导航到文件夹回调 */
-  onNavigateToFolder?: (folderId: string | null) => void;
-  
-  // ========== 多选模式（2025-12-08 新增） ==========
-  /** 是否处于多选模式 */
-  isMultiSelectMode?: boolean;
-  /** 切换多选模式回调 */
-  onToggleMultiSelect?: () => void;
-  /** 是否显示回收站 */
-  showTrash?: boolean;
-  /** 切换回收站显示回调 */
-  onToggleTrash?: () => void;
-}
-
-/**
- * ActionBar 操作栏 Props
- */
-export interface LearningHubActionBarProps {
-  /** 选中的资源项 */
-  selectedItem: ResourceListItem | null;
-  /** 引用节点（如果选中的是引用节点） */
-  referenceNode?: ReferenceNode;
-  /** 资源总数（用于底部状态栏显示） */
-  itemCount?: number;
-  /** 是否可以引用到对话 */
-  canReferenceToChat: boolean;
-  /** 引用到对话回调 */
-  onReferenceToChat: () => void;
-  /** 预览回调 */
-  onPreview?: () => void;
-  /** 是否正在加载 */
-  isLoading?: boolean;
-  /** 自定义样式 */
-  className?: string;
-}
+// ★ 2026-06-12（审阅问题 FE-M6）：LearningHubToolbarProps / LearningHubActionBarProps
+// 随死代码组件（LearningHubToolbar/LearningHubActionBar）一并移除
 
 // ============================================================================
 // 状态类型
@@ -447,11 +370,15 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (!ext) return 'none';
 
   if (ext === 'pdf') return 'pdf';
-  if (ext === 'docx' || ext === 'doc') return 'docx';
-  if (['xlsx', 'xls', 'xlsb', 'ods'].includes(ext)) return 'xlsx';
-  if (ext === 'pptx' || ext === 'ppt') return 'pptx';
+  // ★ 2026-06-12（审阅问题 R3）：富文档渲染仅限 OOXML 格式。
+  // 老格式（doc/xls/xlsb/ods/ppt）前端渲染库（docx-preview/ExcelJS/pptx-preview）
+  // 一律解析失败：xls/xlsb/ods 降级为 text（后端可提取文本），
+  // doc/ppt 后端也无法解析 → none（提示下载打开）。
+  if (ext === 'docx') return 'docx';
+  if (ext === 'xlsx') return 'xlsx';
+  if (ext === 'pptx') return 'pptx';
 
-  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'epub'].includes(ext)) {
+  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'epub', 'xls', 'xlsb', 'ods'].includes(ext)) {
     return 'text';
   }
 

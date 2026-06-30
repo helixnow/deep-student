@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('chat v2 group sync contract', () => {
   it('emits a global group update event after group mutations', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/hooks/useGroupManagement.ts'), 'utf-8');
+    const source = readFileSync(resolve(process.cwd(), 'src/features/chat/hooks/useGroupManagement.ts'), 'utf-8');
 
     expect(source).toContain("new CustomEvent('chat-v2:groups-updated')");
   });

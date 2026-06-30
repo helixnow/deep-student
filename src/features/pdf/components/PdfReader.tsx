@@ -231,8 +231,13 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
 
         // 1) 如果事件直接给了数据，转为 blob URL
         if (data && data.byteLength) {
-          // 确保类型兼容：从 Uint8Array 转为 ArrayBuffer
-          const arrayBuffer = data.buffer as ArrayBuffer;
+          // ★ 2026-06-12（代理 3 审阅 H2）：按视图范围切片。
+          // 直接取 data.buffer 时，若 Uint8Array 是大 buffer 的子视图
+          // （byteOffset≠0 或长度小于 buffer），会把无关字节一并打进 Blob 导致 PDF 损坏。
+          const arrayBuffer = data.buffer.slice(
+            data.byteOffset,
+            data.byteOffset + data.byteLength
+          ) as ArrayBuffer;
           const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
           const f = new File([blob], safeName, { type: 'application/pdf' });
           setFile(f);

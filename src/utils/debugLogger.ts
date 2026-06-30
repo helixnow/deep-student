@@ -91,6 +91,9 @@ class DebugLogger {
   private droppedDuringCircuitBreaker = 0;
 
   constructor() {
+    if (import.meta.env.MODE === 'test') {
+      return;
+    }
     this.startAutoFlush();
     this.setupErrorHandlers();
     this.startMinuteResetTimer();
@@ -664,9 +667,16 @@ class DebugLogger {
   }
 
   private getCurrentSessionId(): string {
-    // 获取当前会话ID，可以从localStorage或其他地方获取
-    return localStorage.getItem('debug-session-id') || 
-           `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const fallback = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    try {
+      const storage =
+        typeof globalThis !== 'undefined'
+          ? (globalThis as typeof globalThis & { localStorage?: Storage }).localStorage
+          : undefined;
+      return storage?.getItem('debug-session-id') || fallback;
+    } catch {
+      return fallback;
+    }
   }
 
   /**

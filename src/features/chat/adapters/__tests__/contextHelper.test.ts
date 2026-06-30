@@ -36,9 +36,15 @@ vi.mock('../../resources', () => ({
   },
 }));
 
+vi.mock('../../context/vfsRefApiEnhancements', () => ({
+  batchGetResources: vi.fn(),
+}));
+
 // 获取 mock 的引用
 import { resourceStoreApi } from '../../resources';
+import { batchGetResources } from '../../context/vfsRefApiEnhancements';
 const mockGet = vi.mocked(resourceStoreApi.get);
+const mockBatchGetResources = vi.mocked(batchGetResources);
 
 // ============================================================================
 // 测试数据
@@ -73,9 +79,10 @@ const createTestContextRef = (
 // ============================================================================
 
 describe('contextHelper', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    // 确保注册表有预定义类型
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockBatchGetResources.mockResolvedValue({ ok: true, value: new Map() });
+      // 确保注册表有预定义类型
     if (contextTypeRegistry.size === 0) {
       // 注册测试用的类型定义
       contextTypeRegistry.register({
@@ -288,18 +295,29 @@ describe('contextHelper', () => {
     });
 
     it('应该正确构建 pathMap', async () => {
-      // 创建带有 _resolvedResources 的资源
-      const testResource = createTestResource('res_note_1', 'abc123', 'note', 'Test note content');
-      // 模拟 VFS 解析后的资源
-      (testResource as any)._resolvedResources = [{
-        sourceId: 'note_abc123',
-        resourceHash: 'abc123',
-        type: 'note',
-        name: 'Test Note',
-        path: '/高考复习/函数/note_abc123',
-        content: 'Test note content',
-        found: true,
-      }];
+      const testResource = createTestResource('res_note_1', 'abc123', 'note', JSON.stringify({
+        refs: [{
+          sourceId: 'note_abc123',
+          resourceHash: 'abc123',
+          type: 'note',
+          name: 'Test Note',
+        }],
+        totalCount: 1,
+        truncated: false,
+      }));
+      mockBatchGetResources.mockResolvedValue({
+        ok: true,
+        value: new Map([['note_abc123', {
+          sourceId: 'note_abc123',
+          resourceHash: 'abc123',
+          type: 'note',
+          name: 'Test Note',
+          path: '/高考复习/函数/note_abc123',
+          content: 'Test note content',
+          found: true,
+          multimodalBlocks: null,
+        }]]),
+      });
       mockGet.mockResolvedValue(testResource);
 
       const refs: ContextRef[] = [
@@ -314,17 +332,29 @@ describe('contextHelper', () => {
     });
 
     it('应该在资源未找到时不添加到 pathMap', async () => {
-      const testResource = createTestResource('res_note_2', 'def456', 'note', 'Test note');
-      // 模拟未找到的资源
-      (testResource as any)._resolvedResources = [{
-        sourceId: 'note_def456',
-        resourceHash: 'def456',
-        type: 'note',
-        name: 'Deleted Note',
-        path: '',
-        content: '',
-        found: false,
-      }];
+      const testResource = createTestResource('res_note_2', 'def456', 'note', JSON.stringify({
+        refs: [{
+          sourceId: 'note_def456',
+          resourceHash: 'def456',
+          type: 'note',
+          name: 'Deleted Note',
+        }],
+        totalCount: 1,
+        truncated: false,
+      }));
+      mockBatchGetResources.mockResolvedValue({
+        ok: true,
+        value: new Map([['note_def456', {
+          sourceId: 'note_def456',
+          resourceHash: 'def456',
+          type: 'note',
+          name: 'Deleted Note',
+          path: null,
+          content: null,
+          found: false,
+          multimodalBlocks: null,
+        }]]),
+      });
       mockGet.mockResolvedValue(testResource);
 
       const refs: ContextRef[] = [
@@ -338,11 +368,10 @@ describe('contextHelper', () => {
     });
 
     it('应该正确处理多个资源的路径', async () => {
-      // 设置 mock
-      mockGet.mockImplementation(async (resourceId: string) => {
-        const resource = createTestResource(resourceId, `hash_${resourceId}`, 'note', 'content');
+      const resourceTable = new Map(['res_1', 'res_2'].map((resourceId) => {
+        const resource = createTestResource(resourceId, `hash_${resourceId}`, 'card', 'content');
         (resource as any)._resolvedResources = [{
-          sourceId: `note_${resourceId}`,
+          sourceId: `card_${resourceId}`,
           resourceHash: `hash_${resourceId}`,
           type: 'note',
           name: 'Test Note',
@@ -350,12 +379,13 @@ describe('contextHelper', () => {
           content: 'content',
           found: true,
         }];
-        return resource;
-      });
+        return [resourceId, resource];
+      }));
+      mockGet.mockImplementation(async (resourceId: string) => resourceTable.get(resourceId) ?? null);
 
       const refs: ContextRef[] = [
-        createTestContextRef('res_1', 'hash_res_1', 'note'),
-        createTestContextRef('res_2', 'hash_res_2', 'note'),
+        createTestContextRef('res_1', 'hash_res_1', 'card'),
+        createTestContextRef('res_2', 'hash_res_2', 'card'),
       ];
 
       const result = await buildSendContextRefsWithPaths(refs);

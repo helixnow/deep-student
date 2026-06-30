@@ -9,9 +9,21 @@ import {
   Square,
   SquaresFour,
   List,
+  SortAscending,
+  SortDescending,
+  Check,
+  ListChecks,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import {
+  AppMenu,
+  AppMenuTrigger,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuSeparator,
+} from '@/components/ui/app-menu/AppMenu';
+import type { SortBy, SortOrder } from '../../stores/finderStore';
 
 interface FinderBatchToolbarProps {
   selectedCount: number;
@@ -27,11 +39,28 @@ interface FinderBatchToolbarProps {
   viewMode?: 'grid' | 'list';
   /** 视图模式切换回调 */
   onViewModeChange?: (mode: 'grid' | 'list') => void;
+  /** 当前排序字段 */
+  sortBy?: SortBy;
+  /** 当前排序顺序 */
+  sortOrder?: SortOrder;
+  /** 排序变更回调 */
+  onSortChange?: (sortBy: SortBy, sortOrder: SortOrder) => void;
   /** 是否有应用打开 */
   hasOpenApp?: boolean;
   /** 关闭应用回调 */
   onCloseApp?: () => void;
+  /** ★ 2026-06-12（审阅问题 FE-S3）：多选模式开关（触屏设备） */
+  multiSelectMode?: boolean;
+  /** 多选模式切换回调（传入时显示开关按钮） */
+  onToggleMultiSelectMode?: () => void;
 }
+
+const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
+  { value: 'name', labelKey: 'finder.sort.name' },
+  { value: 'updatedAt', labelKey: 'finder.sort.updatedAt' },
+  { value: 'createdAt', labelKey: 'finder.sort.createdAt' },
+  { value: 'type', labelKey: 'finder.sort.type' },
+];
 
 /**
  * FinderBatchToolbar 批量操作工具栏
@@ -49,8 +78,13 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   className,
   viewMode = 'grid',
   onViewModeChange,
+  sortBy = 'updatedAt',
+  sortOrder = 'desc',
+  onSortChange,
   hasOpenApp = false,
   onCloseApp,
+  multiSelectMode = false,
+  onToggleMultiSelectMode,
 }: FinderBatchToolbarProps) {
   const { t } = useTranslation('learningHub');
 
@@ -83,6 +117,68 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               <List size={14} />
             </NotionButton>
           </div>
+        )}
+
+        {/* ★ 多选模式开关（触屏设备，由父组件决定是否传入） */}
+        {onToggleMultiSelectMode && (
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onToggleMultiSelectMode}
+            className={cn(
+              '!h-6 !w-6 !p-1 shrink-0',
+              multiSelectMode
+                ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+            title={multiSelectMode ? t('finder.canvas.exitMultiSelect', '退出多选') : t('finder.canvas.multiSelect', '多选')}
+            aria-label="multi-select"
+          >
+            <ListChecks size={14} />
+          </NotionButton>
+        )}
+
+        {/* 排序菜单 - 在有选中项时隐藏 */}
+        {onSortChange && !hasSelection && (
+          <AppMenu>
+            <AppMenuTrigger asChild>
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="!h-6 !w-6 !p-1 text-muted-foreground hover:text-foreground shrink-0"
+                title={t('finder.sort.title', '排序方式')}
+                aria-label="sort"
+              >
+                {sortOrder === 'asc' ? <SortAscending size={14} /> : <SortDescending size={14} />}
+              </NotionButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="start" width={170}>
+              {SORT_OPTIONS.map((opt) => (
+                <AppMenuItem
+                  key={opt.value}
+                  onClick={() => onSortChange(opt.value, sortOrder)}
+                  icon={sortBy === opt.value ? <Check size={14} /> : <span className="w-3.5" />}
+                >
+                  {t(opt.labelKey)}
+                </AppMenuItem>
+              ))}
+              <AppMenuSeparator />
+              <AppMenuItem
+                onClick={() => onSortChange(sortBy, 'asc')}
+                icon={sortOrder === 'asc' ? <Check size={14} /> : <span className="w-3.5" />}
+              >
+                {t('finder.sort.asc', '升序')}
+              </AppMenuItem>
+              <AppMenuItem
+                onClick={() => onSortChange(sortBy, 'desc')}
+                icon={sortOrder === 'desc' ? <Check size={14} /> : <span className="w-3.5" />}
+              >
+                {t('finder.sort.desc', '降序')}
+              </AppMenuItem>
+            </AppMenuContent>
+          </AppMenu>
         )}
       </div>
 

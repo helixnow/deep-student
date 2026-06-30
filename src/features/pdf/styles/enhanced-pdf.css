@@ -765,11 +765,33 @@
   background: hsl(var(--card));
 }
 
+/* ===== 暗色阅读模式（invert 渲染，护眼） ===== */
+.ds-pdf__content.dark-reading {
+  background: hsl(220 13% 12%);
+}
+
+/* 仅反转 PDF 画布像素；保留色相旋转使彩图颜色基本正确 */
+.ds-pdf__content.dark-reading .react-pdf__Page__canvas {
+  filter: invert(0.93) hue-rotate(180deg);
+}
+
+.ds-pdf__content.dark-reading .ds-pdf__page-wrapper {
+  background: hsl(220 13% 16%);
+  box-shadow: 0 2px 8px hsl(0 0% 0% / 0.45);
+}
+
+/* 暗色阅读下占位骨架同步变暗，避免翻页白闪 */
+.ds-pdf__content.dark-reading .ds-pdf__page-placeholder {
+  background: hsl(220 13% 16%);
+}
+
 .ds-pdf__content-viewport {
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 16px;
+  /* 允许单指滚动，禁用浏览器原生双指缩放（由 JS 捏合手势接管为 PDF 缩放） */
+  touch-action: pan-x pan-y;
 }
 
 /* ============================================================================
@@ -995,7 +1017,7 @@
    ============================================================================ */
 
 /* 响应式：紧凑模式由 JS ResizeObserver 控制，无需 flex-wrap */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   /* 侧边栏默认隐藏 */
   .ds-pdf__sidebar {
     position: absolute;
@@ -1219,7 +1241,7 @@
 }
 
 /* 移动端响应式 */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .ds-pdf__bookmarks-panel {
     right: 8px;
     bottom: 50px;

@@ -3,6 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageManagerInfo {
@@ -296,14 +301,15 @@ pub async fn auto_install_package_manager(manager_type: &str) -> PackageInstallR
     // 执行安装命令
     log::info!("正在自动安装 {}: {}", manager_type, install_cmd);
 
-    let result = if cfg!(target_os = "windows") {
-        Command::new("powershell")
-            .arg("-Command")
-            .arg(&install_cmd)
-            .output()
-    } else {
-        Command::new("sh").arg("-c").arg(&install_cmd).output()
-    };
+    #[cfg(target_os = "windows")]
+    let result = Command::new("powershell")
+        .arg("-Command")
+        .arg(&install_cmd)
+        .creation_flags(CREATE_NO_WINDOW)
+        .output();
+
+    #[cfg(not(target_os = "windows"))]
+    let result = Command::new("sh").arg("-c").arg(&install_cmd).output();
 
     match result {
         Ok(output) if output.status.success() => {

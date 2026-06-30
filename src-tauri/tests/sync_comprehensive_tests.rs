@@ -222,10 +222,11 @@ mod tests {
                     title TEXT,
                     device_id TEXT,
                     local_version INTEGER DEFAULT 0,
+                    sync_version INTEGER DEFAULT 0,
                     updated_at TEXT DEFAULT (datetime('now')),
                     deleted_at TEXT
                 );
-                INSERT INTO resources (id, title, local_version) VALUES ('res_1', 'test', 5);
+                INSERT INTO resources (id, title, local_version, sync_version) VALUES ('res_1', 'test', 5, 2);
                 CREATE TABLE __change_log (
                     id INTEGER PRIMARY KEY,
                     table_name TEXT,
@@ -260,16 +261,17 @@ mod tests {
                 "reset_count should be > 0 after baseline reset"
             );
 
-            let new_version: i64 = conn
+            let (local_version, sync_version): (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM resources WHERE id = 'res_1'",
+                    "SELECT local_version, sync_version FROM resources WHERE id = 'res_1'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
+            assert_eq!(local_version, 5, "local_version should not be mutated");
             assert_eq!(
-                new_version, 6,
-                "local_version should be incremented from 5 to 6"
+                sync_version, 5,
+                "sync_version should align to local_version"
             );
         }
 
@@ -280,16 +282,18 @@ mod tests {
                 "CREATE TABLE notes (
                     id TEXT PRIMARY KEY, title TEXT,
                     device_id TEXT, local_version INTEGER DEFAULT 0,
+                    sync_version INTEGER DEFAULT 0,
                     updated_at TEXT DEFAULT (datetime('now')), deleted_at TEXT
                 );
-                INSERT INTO notes (id, title, local_version) VALUES ('n1', 'note1', 3);
-                INSERT INTO notes (id, title, local_version) VALUES ('n2', 'note2', 7);
+                INSERT INTO notes (id, title, local_version, sync_version) VALUES ('n1', 'note1', 3, 0);
+                INSERT INTO notes (id, title, local_version, sync_version) VALUES ('n2', 'note2', 7, 0);
                 CREATE TABLE questions (
                     id TEXT PRIMARY KEY, title TEXT,
                     device_id TEXT, local_version INTEGER DEFAULT 0,
+                    sync_version INTEGER DEFAULT 0,
                     updated_at TEXT DEFAULT (datetime('now')), deleted_at TEXT
                 );
-                INSERT INTO questions (id, title, local_version) VALUES ('q1', 'q1', 1);
+                INSERT INTO questions (id, title, local_version, sync_version) VALUES ('q1', 'q1', 1, 0);
                 CREATE TABLE __change_log (
                     id INTEGER PRIMARY KEY, table_name TEXT,
                     record_id TEXT, operation TEXT, changed_at TEXT,
@@ -313,30 +317,30 @@ mod tests {
             let (_truncated, reset_count) = result.unwrap();
             assert!(reset_count >= 3, "should touch all 3 rows across 2 tables");
 
-            let n1_version: i64 = conn
+            let n1_versions: (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM notes WHERE id = 'n1'",
+                    "SELECT local_version, sync_version FROM notes WHERE id = 'n1'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            let n2_version: i64 = conn
+            let n2_versions: (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM notes WHERE id = 'n2'",
+                    "SELECT local_version, sync_version FROM notes WHERE id = 'n2'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            let q1_version: i64 = conn
+            let q1_versions: (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM questions WHERE id = 'q1'",
+                    "SELECT local_version, sync_version FROM questions WHERE id = 'q1'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            assert_eq!(n1_version, 4);
-            assert_eq!(n2_version, 8);
-            assert_eq!(q1_version, 2);
+            assert_eq!(n1_versions, (3, 3));
+            assert_eq!(n2_versions, (7, 7));
+            assert_eq!(q1_versions, (1, 1));
         }
 
         #[test]
@@ -411,42 +415,42 @@ mod tests {
         use deep_student_lib::data_governance::sync::field_merge::merge_field;
         use serde_json::{json, Value};
 
-        // --- Counter merge (exercised via "resources"."ref_count") ---
+        // --- Derived counters fall back to row-level conflict/LWW ---
 
         #[test]
-        fn test_counter_merge_max() {
+        fn test_ref_count_falls_back_to_conflict() {
             let (result, merged, conflict) =
                 merge_field("resources", "ref_count", Some(&json!(5)), Some(&json!(3)));
-            assert_eq!(result, 5);
-            assert!(merged);
+            assert_eq!(result, json!(3));
+            assert!(!merged);
+            assert!(conflict);
+        }
+
+        #[test]
+        fn test_ref_count_equal_is_identity() {
+            let (result, merged, conflict) =
+                merge_field("resources", "ref_count", Some(&json!(7)), Some(&json!(7)));
+            assert_eq!(result, json!(7));
+            assert!(!merged);
             assert!(!conflict);
         }
 
         #[test]
-        fn test_counter_merge_equal() {
-            let (result, merged, _) =
-                merge_field("resources", "ref_count", Some(&json!(7)), Some(&json!(7)));
-            assert_eq!(result, 7);
-            assert!(!merged);
-        }
-
-        #[test]
-        fn test_counter_merge_zero() {
-            let (result, merged, _) =
+        fn test_ref_count_zero_identity() {
+            let (result, merged, conflict) =
                 merge_field("resources", "ref_count", Some(&json!(0)), Some(&json!(0)));
-            assert_eq!(result, 0);
+            assert_eq!(result, json!(0));
             assert!(!merged);
+            assert!(!conflict);
         }
 
         #[test]
-        fn test_counter_merge_blobs_ref_count() {
-            let (result, merged, _) =
+        fn test_blobs_ref_count_falls_back_to_conflict() {
+            let (result, merged, conflict) =
                 merge_field("blobs", "ref_count", Some(&json!(10)), Some(&json!(3)));
-            assert_eq!(result, 10);
-            assert!(
-                merged,
-                "Values differ (10 vs 3), should be reported as merged"
-            );
+            assert_eq!(result, json!(3));
+            assert!(!merged);
+            assert!(conflict);
         }
 
         // --- Set union (exercised via "notes"."tags") ---
@@ -525,30 +529,30 @@ mod tests {
             assert!(merged);
         }
 
-        // --- Sum value (exercised via "todo_items"."estimated_pomodoros") ---
+        // --- Max value for pomodoro counters ---
 
         #[test]
-        fn test_sum_value() {
+        fn test_pomodoro_uses_max_value() {
             let (result, merged, _) = merge_field(
                 "todo_items",
                 "estimated_pomodoros",
                 Some(&json!(3)),
                 Some(&json!(4)),
             );
-            assert_eq!(result, 7);
+            assert_eq!(result, json!(4));
             assert!(merged);
         }
 
         #[test]
-        fn test_sum_value_zero_remote() {
+        fn test_pomodoro_max_keeps_larger_local() {
             let (result, merged, _) = merge_field(
                 "todo_items",
                 "estimated_pomodoros",
                 Some(&json!(5)),
                 Some(&json!(0)),
             );
-            assert_eq!(result, 5);
-            assert!(!merged);
+            assert_eq!(result, json!(5));
+            assert!(merged);
         }
 
         // --- Boolean OR (exercised via "notes"."is_favorite") ---
@@ -577,83 +581,87 @@ mod tests {
             assert!(!merged);
         }
 
-        // --- String concat (exercised via "questions"."user_note") ---
+        // --- Free text falls back to row-level conflict/LWW ---
 
         #[test]
-        fn test_string_concat_basic() {
-            let (result, merged, _) = merge_field(
+        fn test_free_text_conflict_uses_remote_candidate() {
+            let (result, merged, conflict) = merge_field(
                 "questions",
                 "user_note",
                 Some(&json!("Hello")),
                 Some(&json!("World")),
             );
-            assert!(result.as_str().unwrap().contains("Hello"));
-            assert!(result.as_str().unwrap().contains("World"));
-            assert!(merged);
+            assert_eq!(result, json!("World"));
+            assert!(!merged);
+            assert!(conflict);
         }
 
         #[test]
-        fn test_string_concat_empty_local() {
-            let (result, merged, _) = merge_field(
+        fn test_free_text_empty_local_still_flags_conflict_when_values_differ() {
+            let (result, merged, conflict) = merge_field(
                 "questions",
                 "user_note",
                 Some(&json!("")),
                 Some(&json!("World")),
             );
-            assert_eq!(result, "World");
+            assert_eq!(result, json!("World"));
             assert!(!merged);
+            assert!(conflict);
         }
 
         #[test]
-        fn test_string_concat_contains_remote() {
-            let (result, merged, _) = merge_field(
+        fn test_free_text_does_not_auto_concatenate() {
+            let (result, merged, conflict) = merge_field(
                 "questions",
                 "user_note",
                 Some(&json!("Hello World")),
                 Some(&json!("Hello")),
             );
-            assert_eq!(result, "Hello World");
+            assert_eq!(result, json!("Hello"));
             assert!(!merged);
+            assert!(conflict);
         }
 
-        // --- JSON deep merge (exercised via "resources"."metadata_json") ---
+        // --- Deep JSON falls back to row-level conflict/LWW ---
 
         #[test]
-        fn test_json_deep_merge_nested() {
-            let (result, changed, _) = merge_field(
+        fn test_deep_json_conflict_uses_remote_candidate() {
+            let remote = json!({"b": {"y": 20}, "c": 30});
+            let (result, changed, conflict) = merge_field(
                 "resources",
                 "metadata_json",
                 Some(&json!({"a": 1, "b": {"x": 10}})),
-                Some(&json!({"b": {"y": 20}, "c": 30})),
+                Some(&remote),
             );
-            assert_eq!(result["a"], 1);
-            assert_eq!(result["b"]["x"], 10);
-            assert_eq!(result["b"]["y"], 20);
-            assert_eq!(result["c"], 30);
-            assert!(changed);
+            assert_eq!(result, remote);
+            assert!(!changed);
+            assert!(conflict);
         }
 
         #[test]
         fn test_json_deep_merge_no_change() {
-            let (_result, changed, _) = merge_field(
+            let (_result, changed, conflict) = merge_field(
                 "resources",
                 "metadata_json",
                 Some(&json!({"a": 1})),
                 Some(&json!({"a": 1})),
             );
             assert!(!changed);
+            assert!(!conflict);
         }
 
         #[test]
-        fn test_json_deep_merge_overwrite_primitive() {
-            let (result, changed, _) = merge_field(
+        fn test_deep_json_primitive_conflict_uses_remote_candidate() {
+            let remote = json!({"a": 2});
+            let (result, changed, conflict) = merge_field(
                 "resources",
                 "metadata_json",
                 Some(&json!({"a": 1})),
-                Some(&json!({"a": 2})),
+                Some(&remote),
             );
-            assert_eq!(result["a"], 2);
-            assert!(changed);
+            assert_eq!(result, remote);
+            assert!(!changed);
+            assert!(conflict);
         }
 
         // --- Identity and conflict cases ---
@@ -692,20 +700,16 @@ mod tests {
         }
 
         #[test]
-        fn test_merge_field_ease_factor_avg() {
-            let (result, merged, _) = merge_field(
+        fn test_merge_field_ease_factor_falls_back_to_conflict() {
+            let (result, merged, conflict) = merge_field(
                 "review_plans",
                 "ease_factor",
                 Some(&json!(2.5)),
                 Some(&json!(2.8)),
             );
-            let val = result.as_f64().unwrap();
-            assert!(
-                (val - 2.65).abs() < 0.01,
-                "ease_factor should be averaged: got {}",
-                val
-            );
-            assert!(merged);
+            assert_eq!(result, json!(2.8));
+            assert!(!merged);
+            assert!(conflict);
         }
 
         #[test]
@@ -721,16 +725,17 @@ mod tests {
         }
 
         #[test]
-        fn test_merge_field_default_skill_ids() {
-            let (result, merged, _) = merge_field(
+        fn test_merge_field_ordered_json_arrays_fall_back_to_conflict() {
+            let remote = json!(["skill_b", "skill_c"]);
+            let (result, merged, conflict) = merge_field(
                 "chat_v2_session_groups",
                 "default_skill_ids_json",
                 Some(&json!(["skill_a", "skill_b"])),
-                Some(&json!(["skill_b", "skill_c"])),
+                Some(&remote),
             );
-            let arr = result.as_array().unwrap();
-            assert_eq!(arr.len(), 3);
-            assert!(merged);
+            assert_eq!(result, remote);
+            assert!(!merged);
+            assert!(conflict);
         }
     }
 

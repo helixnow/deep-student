@@ -1,11 +1,16 @@
 /**
- * 统一断点配置
- * 与Tailwind配置和useBreakpoint hooks保持一致
+ * 统一断点配置（断点单一来源）
+ *
+ * 与 `tailwind.config.js` 的 `screens` 一一对应，并与 `useBreakpoint` hooks 共用同一组数值。
+ * 注意：`xs`(480) 仅作为 Tailwind 工具类断点（大屏手机双列布局临界点）使用，JS 侧没有对应
+ * 的 hook 判定——`isSmallScreen`/`useIsMobile` 以 `md`=768 为界切换移动壳。这里一并收录，
+ * 确保两处断点表保持一致，避免“注释声称一致、实则缺项”的偏差。
  */
 
 export const BREAKPOINTS = {
+  xs: 480,   // 大屏手机（双列布局临界点）——仅 Tailwind `xs:` 工具类消费，无 JS hook
   sm: 640,   // 手机横屏/小平板
-  md: 768,   // 平板竖屏
+  md: 768,   // 平板竖屏（<768 切换移动端布局壳）
   lg: 1024,  // 平板横屏/小笔记本
   xl: 1280,  // 笔记本
   '2xl': 1536, // 大屏幕

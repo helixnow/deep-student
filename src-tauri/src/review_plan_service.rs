@@ -199,8 +199,8 @@ impl ReviewPlanService {
             plan.interval_days,
         );
 
-        // 3. 计算下次复习日期
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        // 3. 计算下次复习日期（"今天"用本地时区，与 todo 模块一致）
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let next_review_date = calculate_next_review_date(new_interval);
 
         // 4. 判断是否通过

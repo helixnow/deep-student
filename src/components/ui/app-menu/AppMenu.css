@@ -492,7 +492,7 @@
 
 /* ============ 响应式 - 移动端适配 ============ */
 
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .app-menu-content {
     min-width: 160px;
     max-width: calc(100vw - 24px);

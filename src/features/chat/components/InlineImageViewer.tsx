@@ -26,6 +26,7 @@ import { fileManager } from '@/utils/fileManager';
 import { useViewStore } from '@/stores/viewStore';
 import { isAndroid } from '@/utils/platform';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 类型定义
@@ -173,6 +174,17 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     }
   }, [isOpen, currentView, onClose]);
 
+  // Android 系统返回键 = 关闭查看器（全屏浮层是非 Radix 自绘，协调器兜底覆盖不到）
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen]);
+
   // 打开时锁定页面滚动，避免背景跟随滚动
   useEffect(() => {
     if (!isOpen) return;
@@ -310,7 +322,7 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/42 via-black/14 to-transparent">
         <div
           className="pointer-events-none flex items-center justify-center px-3 pb-3 pt-10 sm:px-4 sm:pb-4 sm:pt-12"
-          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom-fallback, 0px))' }}
         >
           <div className="pointer-events-none flex w-full justify-center overflow-x-auto">
             <div

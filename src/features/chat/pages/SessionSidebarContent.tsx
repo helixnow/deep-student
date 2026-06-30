@@ -1,18 +1,16 @@
 import React from 'react';
 import {
-  Books,
+  Archive,
   CaretRight,
   ChatCenteredText,
-  CheckSquare,
   Folder,
-  GearSix,
   Plus,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
-import { MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import type { SessionDragState } from './SessionItemRenderer';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
@@ -24,9 +22,7 @@ export interface UseSessionSidebarContentDeps {
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setPendingDeleteSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  showChatControl: boolean;
   isInitialLoading: boolean;
   sessions: ChatSession[];
   visibleGroups: SessionGroup[];
@@ -49,8 +45,7 @@ export interface UseSessionSidebarContentDeps {
 export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const {
     searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
-    setShowChatControl, setPendingDeleteSessionId,
-    showChatControl,
+    setPendingDeleteSessionId,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
@@ -61,9 +56,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   } = deps;
   void searchQuery;
   void setSearchQuery;
-  void setShowChatControl;
   void setPendingDeleteSessionId;
-  void showChatControl;
   void totalSessionCount;
   void hasMoreSessions;
   void isLoadingMore;
@@ -107,11 +100,6 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       return changed ? next : current;
     });
   }, [currentSession?.groupId, visibleGroups]);
-
-  const navigateToView = React.useCallback((view: CurrentView) => {
-    window.dispatchEvent(new CustomEvent(MOBILE_APP_NAVIGATE_EVENT, { detail: { view } }));
-    setSessionSheetOpen(false);
-  }, [setSessionSheetOpen]);
 
   const handleCreateSession = React.useCallback(() => {
     setViewMode('sidebar');
@@ -266,18 +254,30 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         {(visibleGroups.length > 0 || ungroupedNonPinned.length > 0) && (
           <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
             <div className="px-3">
-              <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">最近</p>
+              <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{t('page.recentSessions', '最近')}</p>
             </div>
             <div className="space-y-0.5">
               {ungroupedNonPinned.length > 0 && renderFolderRow(
                 'ungrouped',
-                '未分类',
+                t('page.ungrouped', '未分组'),
                 ungroupedNonPinned,
                 activeGroupId === 'ungrouped'
               )}
             </div>
           </section>
         )}
+
+        {/* 归档会话入口：低调常驻（替代仅靠归档 toast 才能发现的隐藏路径） */}
+        <section className="space-y-0.5">
+          <button
+            type="button"
+            onClick={openArchivedSessionsSettings}
+            className="group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-[13px] font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none"
+          >
+            <Archive size={15} className="h-[15px] w-[15px] shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('page.archivedSessionsEntry', '已归档会话')}</span>
+          </button>
+        </section>
       </div>
     );
   };
@@ -288,25 +288,13 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     <div className="font-sidebar-study-ui flex h-full min-h-0 flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--sidebar-foreground)]">
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-1">
         <div className="space-y-3 pb-2 pt-1">
+          {/* 主导航统一由 MobileSlidingLayout 注入的 MobileSidebarNavigation 提供（A-7 修复）；此处仅保留聊天特有操作 */}
           <nav aria-label={t('page.primaryNavigation', '主入口')} className="space-y-0.5">
-            {renderPrimaryItem('new-chat', '新对话', ChatCenteredText, !currentSessionId, handleCreateSession)}
-            {renderPrimaryItem('learning-hub', '学习资源', Books, false, () => navigateToView('learning-hub'))}
-            {renderPrimaryItem('todo', '待办', CheckSquare, false, () => navigateToView('todo'))}
+            {renderPrimaryItem('new-chat', t('page.newChat', '新对话'), ChatCenteredText, !currentSessionId, handleCreateSession)}
           </nav>
           {renderStudySidebarContent()}
         </div>
       </CustomScrollArea>
-
-      <div aria-label={t('page.sidebarFooter', '侧边栏底部')} className="mt-auto px-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))] pt-1.5">
-        <button
-          type="button"
-          onClick={() => navigateToView('settings')}
-          className="group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit"
-        >
-          <GearSix size={18} className="h-[18px] w-[18px] shrink-0" />
-          <span className="min-w-0 flex-1 truncate">设置</span>
-        </button>
-      </div>
     </div>
     </ChatErrorBoundary>
   );

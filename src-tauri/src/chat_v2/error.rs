@@ -198,9 +198,13 @@ mod tests {
 
     #[test]
     fn test_error_to_string_conversion() {
+        // From<ChatV2Error> for String 产出结构化 JSON（code + message），
+        // 供前端按错误码分支处理
         let err = ChatV2Error::Database("connection failed".to_string());
         let s: String = err.into();
-        assert_eq!(s, "Database error: connection failed");
+        let parsed: serde_json::Value = serde_json::from_str(&s).expect("should be JSON");
+        assert_eq!(parsed["code"], "DATABASE_ERROR");
+        assert_eq!(parsed["message"], "Database error: connection failed");
     }
 
     #[test]

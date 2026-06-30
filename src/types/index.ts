@@ -161,9 +161,8 @@ export interface ChatMessage {
 /**
  * @deprecated 2026-01 清理：错题功能已废弃，保留以兼容旧数据。
  * ⚠️ 仍有以下文件引用（2026-02-08 确认）：
- *   - src/utils/tauriApi.ts（废弃函数 getMistakeDetails / updateMistake / runtimeAutosaveCommit 等）
+ *   - src/utils/testApi.ts（废弃函数 getMistakeDetails / updateMistake / runtimeAutosaveCommit，仅供 dev 面板）
  *   - src/utils/ankiSourceBuilder.ts（buildContentFromMistake）
- *   - src/app/services/saveRequestHandler.ts
  *   - src/stores/anki/types.ts（MistakeSummary 别名）
  * 待上述调用方迁移后再删除此类型。
  */
@@ -345,6 +344,8 @@ export interface VendorConfig {
   maxTokensLimit?: number;
   /** 供应商官网链接 */
   websiteUrl?: string;
+  /** 无需 API Key（适用于自搭建后端，如 Ollama、vLLM 等） */
+  noApiKey?: boolean;
 }
 
 export interface ModelProfile {

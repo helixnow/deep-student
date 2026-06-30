@@ -58,8 +58,11 @@ pub struct ApprovalResponse {
     pub approved: bool,
     /// 拒绝原因
     pub reason: Option<String>,
-    /// 是否记住选择
+    /// 是否记住选择（全局持久化）
     pub remember: bool,
+    /// 🆕 审批三档分级：是否仅在本会话内记住选择（工具级，内存态，不持久化）
+    #[serde(default)]
+    pub remember_session: bool,
 }
 
 impl ApprovalResponse {
@@ -72,6 +75,7 @@ impl ApprovalResponse {
             approved: true,
             reason: None,
             remember: false,
+            remember_session: false,
         }
     }
 
@@ -89,6 +93,7 @@ impl ApprovalResponse {
             approved: false,
             reason,
             remember: false,
+            remember_session: false,
         }
     }
 
@@ -101,6 +106,7 @@ impl ApprovalResponse {
             approved: false,
             reason: Some("审批超时".to_string()),
             remember: false,
+            remember_session: false,
         }
     }
 }
@@ -121,6 +127,9 @@ pub struct ApprovalManager {
     default_timeout: u32,
     /// 记住的审批选择 Map<scope_key, approved>
     remembered: Arc<Mutex<HashMap<String, bool>>>,
+    /// 🆕 会话级记住的审批选择 Map<"session_id\ntool_name", approved>
+    /// 工具级粒度（语义：本会话允许该工具），仅内存态，应用重启后失效
+    session_remembered: Arc<Mutex<HashMap<String, bool>>>,
 }
 
 impl ApprovalManager {
@@ -131,6 +140,7 @@ impl ApprovalManager {
             pending_scope_keys: Arc::new(Mutex::new(HashMap::new())),
             default_timeout: 60,
             remembered: Arc::new(Mutex::new(HashMap::new())),
+            session_remembered: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -152,6 +162,11 @@ impl ApprovalManager {
         // 🔧 R2-MED 修复：用换行符作分隔符而非 `:`，避免 session_id / tool_call_id
         // 里包含 `:` 造成的潜在碰撞（极罕见但理论可能）
         format!("{}\n{}", session_id, tool_call_id)
+    }
+
+    /// 会话级记住选择的 key（同样用换行符防碰撞）
+    fn make_session_remember_key(session_id: &str, tool_name: &str) -> String {
+        format!("{}\n{}", session_id, tool_name)
     }
 
     /// 无 session / 无参数版本的 register — **仅供单测使用**。
@@ -288,6 +303,23 @@ impl ApprovalManager {
             }
         }
 
+        // 🆕 审批三档分级：会话级记住（工具级粒度，不依赖 scope_key）
+        if response.remember_session && !response.session_id.is_empty() {
+            let session_key = Self::make_session_remember_key(&response.session_id, &response.tool_name);
+            log::info!(
+                "[ApprovalManager] Remembering approval for this session: '{}' approved={}",
+                session_key.replace('\n', " / "),
+                response.approved
+            );
+            self.session_remembered
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                    poisoned.into_inner()
+                })
+                .insert(session_key, response.approved);
+        }
+
         // 送达等待方
         tx.send(response).is_ok()
     }
@@ -375,6 +407,36 @@ impl ApprovalManager {
         map.get(&v1_key).copied()
     }
 
+    /// 🆕 检查工具在指定会话内是否已被记住（"本会话允许该工具"档）
+    ///
+    /// ## 返回
+    /// - `Some(true)`: 本会话内自动批准
+    /// - `Some(false)`: 本会话内自动拒绝
+    /// - `None`: 未记住
+    pub fn check_session_remembered(&self, session_id: &str, tool_name: &str) -> Option<bool> {
+        let key = Self::make_session_remember_key(session_id, tool_name);
+        self.session_remembered
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .get(&key)
+            .copied()
+    }
+
+    /// 🆕 清除指定会话的所有会话级记住选择（会话删除/重置时调用）
+    pub fn clear_session_remembered(&self, session_id: &str) {
+        let prefix = format!("{}\n", session_id);
+        self.session_remembered
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .retain(|key, _| !key.starts_with(&prefix));
+    }
+
     /// 清除记住的选择（按参数作用域）
     /// 两个键（v1 + v2）都尝试清理
     pub fn clear_remembered(&self, tool_name: &str, arguments: &Value) {
@@ -395,6 +457,13 @@ impl ApprovalManager {
     /// 清除所有记住的选择
     pub fn clear_all_remembered(&self) {
         self.remembered
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .clear();
+        self.session_remembered
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");

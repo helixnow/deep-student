@@ -179,10 +179,6 @@ pub struct UsageRecord {
 
     /// 创建时间
     pub created_at: DateTime<Utc>,
-
-    /// 工作区 ID（可选，用于多工作区隔离）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
 }
 
 impl UsageRecord {
@@ -221,7 +217,6 @@ impl UsageRecord {
             success: true,
             error_message: None,
             created_at: Utc::now(),
-            workspace_id: None,
         }
     }
 
@@ -264,12 +259,6 @@ impl UsageRecord {
     /// Builder 方法：设置请求耗时
     pub fn with_duration(mut self, duration_ms: u64) -> Self {
         self.duration_ms = Some(duration_ms);
-        self
-    }
-
-    /// Builder 方法：设置工作区 ID
-    pub fn with_workspace_id(mut self, workspace_id: String) -> Self {
-        self.workspace_id = Some(workspace_id);
         self
     }
 
@@ -477,6 +466,27 @@ impl UsageTrendPoint {
 // ============================================================================
 // 使用统计汇总
 // ============================================================================
+
+/// ★ 1.2 会话级用量汇总（按 caller_id 聚合）
+///
+/// 用于聊天界面常驻显示「本会话累计 token / 费用」。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUsageSummary {
+    /// 会话 ID（即 caller_id）
+    pub session_id: String,
+    /// 请求次数
+    pub request_count: u64,
+    /// 累计输入 Token
+    pub prompt_tokens: u64,
+    /// 累计输出 Token
+    pub completion_tokens: u64,
+    /// 累计总 Token
+    pub total_tokens: u64,
+    /// 累计估算成本（美元），无定价信息时为 None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_cost_usd: Option<f64>,
+}
 
 /// 使用统计汇总
 ///
@@ -711,10 +721,6 @@ pub struct UsageQueryParams {
     /// 仅成功记录
     #[serde(skip_serializing_if = "Option::is_none")]
     pub success_only: Option<bool>,
-
-    /// 工作区 ID 过滤
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
 
     /// 分页：偏移量
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -7,6 +7,7 @@
 
 import { useEffect, useCallback } from 'react';
 import { useMindMapStore } from '../store';
+import { useMindMapIsActive } from '../MindMapActiveContext';
 import { flattenVisibleNodes } from '../utils/node/traverse';
 import { findNodeById, findParentNode } from '../utils/node/find';
 
@@ -15,6 +16,9 @@ import { findNodeById, findParentNode } from '../utils/node/find';
 // ============================================================================
 
 export function useMindMapKeyboard(): void {
+  // ★ 标签页保活：非活跃实例不得响应全局按键（store 为单例，否则一次按键会被
+  // 每个保活实例各执行一次，如 Tab 连续加多个节点）
+  const isActive = useMindMapIsActive();
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
   const editingNodeId = useMindMapStore(s => s.editingNodeId);
   const editingNoteNodeId = useMindMapStore(s => s.editingNoteNodeId);
@@ -349,9 +353,10 @@ export function useMindMapKeyboard(): void {
   ]);
 
   useEffect(() => {
+    if (!isActive) return;
     // 注册在 document 上：handled() 中的 stopPropagation 可阻止事件到达 window 层的命令系统
     // 注：使用 window.document 避免与组件内 MindMapDocument 变量 shadowing
     window.document.addEventListener('keydown', handleKeyDown);
     return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+  }, [handleKeyDown, isActive]);
 }

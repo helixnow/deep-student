@@ -494,7 +494,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
 
   const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen: effectiveMobilePanelMode, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
-  const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, maskApiKey, apiConfigsForApisTab } = vendorState;
+  const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, triggerPostSaveAutoFlow, isSensitiveKey, maskApiKey, apiConfigsForApisTab } = vendorState;
 
   const voiceInputAssignedModel = useMemo(
     () =>
@@ -857,7 +857,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       return (
         <div
           data-slot="mobile-settings-sheet-real-content"
-          className="flex min-h-0 flex-1 flex-col bg-background text-foreground [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--muted-foreground:220_6%_44%] [--popover:0_0%_100%]"
+          className="flex min-h-0 flex-1 flex-col bg-background text-foreground"
         >
           <div className="flex gap-2 overflow-hidden border-b border-border px-5 py-3">
             {[1, 2, 3].map((i) => (
@@ -1017,6 +1017,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             handleBatchConfigsCreated={handleBatchConfigsCreated}
             onReorderVendors={handleReorderVendors}
             onAddVendorModels={handleAddVendorModels}
+            triggerPostSaveAutoFlow={triggerPostSaveAutoFlow}
             isSmallScreen={effectiveMobilePanelMode}
           />
         )}
@@ -1481,7 +1482,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     return (
       <div
         data-slot="mobile-settings-sheet-real-content"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--muted-foreground:220_6%_44%] [--popover:0_0%_100%]"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground"
       >
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
         {renderSettingsSheetTabRail()}

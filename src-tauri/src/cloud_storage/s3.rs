@@ -22,6 +22,7 @@ use crate::models::AppError;
 /// S3 兼容存储实现
 pub struct S3Storage {
     client: aws_sdk_s3::Client,
+    endpoint: String,
     bucket: String,
     root: String,
 }
@@ -48,6 +49,24 @@ impl S3Storage {
         let mut s3_config_builder = aws_sdk_s3::Config::builder()
             .credentials_provider(credentials)
             .endpoint_url(&config.endpoint)
+            .timeout_config(
+                // [P0-6/F10] 显式超时：避免 TCP 半开/对端无响应时整个同步流程无限挂起。
+                // connect 30s 建连上限；operation_attempt 120s 单次尝试上限（大对象走
+                // multipart，每个分块各自计时，不受单请求总时长限制）。
+                aws_sdk_s3::config::timeout::TimeoutConfig::builder()
+                    .connect_timeout(std::time::Duration::from_secs(30))
+                    .operation_attempt_timeout(std::time::Duration::from_secs(120))
+                    .build(),
+            )
+            // [#57] behavior_version_latest 默认对所有 PutObject 附加 CRC32 校验和头，
+            // 腾讯云 COS、阿里云 OSS、部分 MinIO 等 S3 兼容服务不支持，会直接报错或静默失败。
+            // WhenRequired = 仅在 API 强制要求时才计算（与旧版 SDK 行为一致），对 AWS 官方 S3 无副作用。
+            .request_checksum_calculation(
+                aws_sdk_s3::config::RequestChecksumCalculation::WhenRequired,
+            )
+            .response_checksum_validation(
+                aws_sdk_s3::config::ResponseChecksumValidation::WhenRequired,
+            )
             .behavior_version_latest();
 
         // 设置区域（如果指定）
@@ -69,6 +88,7 @@ impl S3Storage {
 
         Ok(Self {
             client,
+            endpoint: config.endpoint.trim().trim_end_matches('/').to_string(),
             bucket: config.bucket,
             root: root.trim_matches('/').to_string(),
         })
@@ -104,6 +124,13 @@ impl S3Storage {
 impl CloudStorage for S3Storage {
     fn provider_name(&self) -> &'static str {
         "S3"
+    }
+
+    fn instance_binding_hint(&self) -> String {
+        format!(
+            "s3|endpoint={}|bucket={}|root={}",
+            self.endpoint, self.bucket, self.root
+        )
     }
 
     async fn check_connection(&self) -> Result<()> {
@@ -457,7 +484,17 @@ impl CloudStorage for S3Storage {
 
             // 检查是否还有更多结果
             if output.is_truncated.unwrap_or(false) {
-                continuation_token = output.next_continuation_token;
+                match output.next_continuation_token {
+                    Some(token) => continuation_token = Some(token),
+                    None => {
+                        // is_truncated=true 却没有 continuation token：
+                        // 不带 token 重发只会拿到同一页（死循环），静默 break 则
+                        // 返回截断列表（上层可能据此误判删除/上传）。如实报错。
+                        return Err(AppError::network(
+                            "S3 列表被截断但未返回 continuation token，无法安全继续分页".to_string(),
+                        ));
+                    }
+                }
             } else {
                 break;
             }

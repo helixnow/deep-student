@@ -113,9 +113,9 @@ impl SyncProgress {
     /// 创建上传中状态的进度
     pub fn uploading(current: u64, total: u64) -> Self {
         let percent = if total > 0 {
-            10.0 + (current as f32 / total as f32) * 40.0 // 10% - 50%
+            60.0 + (current as f32 / total as f32) * 25.0 // 60% - 85%
         } else {
-            10.0
+            60.0
         };
 
         Self {
@@ -133,9 +133,9 @@ impl SyncProgress {
     /// 创建下载中状态的进度
     pub fn downloading(current: u64, total: u64) -> Self {
         let percent = if total > 0 {
-            50.0 + (current as f32 / total as f32) * 30.0 // 50% - 80%
+            10.0 + (current as f32 / total as f32) * 30.0 // 10% - 40%
         } else {
-            50.0
+            10.0
         };
 
         Self {
@@ -153,9 +153,9 @@ impl SyncProgress {
     /// 创建应用变更状态的进度
     pub fn applying(current: u64, total: u64) -> Self {
         let percent = if total > 0 {
-            80.0 + (current as f32 / total as f32) * 18.0 // 80% - 98%
+            40.0 + (current as f32 / total as f32) * 20.0 // 40% - 60%
         } else {
-            80.0
+            40.0
         };
 
         Self {
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(uploading.phase, SyncPhase::Uploading);
         assert_eq!(uploading.current, 50);
         assert_eq!(uploading.total, 100);
-        assert!(uploading.percent >= 10.0 && uploading.percent <= 50.0);
+        assert!(uploading.percent >= 60.0 && uploading.percent <= 85.0);
 
         let completed = SyncProgress::completed();
         assert_eq!(completed.phase, SyncPhase::Completed);

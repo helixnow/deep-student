@@ -5,19 +5,19 @@ import { resolve } from 'node:path';
 describe('app chat header title contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
   const sessionManagerSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/core/session/sessionManager.ts'),
+    resolve(process.cwd(), 'src/features/chat/core/session/sessionManager.ts'),
     'utf-8'
   );
   const sessionTypesSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/core/session/types.ts'),
+    resolve(process.cwd(), 'src/features/chat/core/session/types.ts'),
     'utf-8'
   );
   const groupManagementSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/hooks/useGroupManagement.ts'),
+    resolve(process.cwd(), 'src/features/chat/hooks/useGroupManagement.ts'),
     'utf-8'
   );
   const chatPageEventsSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/pages/useChatPageEvents.ts'),
+    resolve(process.cwd(), 'src/features/chat/pages/useChatPageEvents.ts'),
     'utf-8'
   );
 
@@ -35,7 +35,7 @@ describe('app chat header title contract', () => {
   });
 
   it('subscribes the chat header to current-session changes and active-session title updates', () => {
-    expect(appSource).toContain("import { getHiddenDraftSessionScope } from './chat-v2/pages/draftSession';");
+    expect(appSource).toContain("import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';");
     expect(appSource).toContain('const getChatHeaderTitleFromStoreState = useCallback((state?: ChatStore | null) => {');
     expect(appSource).toContain('if (getHiddenDraftSessionScope(state?.sessionMetadata)) {');
     expect(appSource).toContain("return '';");
@@ -54,13 +54,10 @@ describe('app chat header title contract', () => {
   });
 
   it('renders chat header title through an animated display label when a generated title arrives later', () => {
-    expect(appSource).toContain('const DESKTOP_CHAT_TITLE_TYPEWRITER_INTERVAL_MS = 26;');
-    expect(appSource).toContain('const [animatedDesktopShellViewLabel, setAnimatedDesktopShellViewLabel] = useState(desktopShellViewLabel);');
-    expect(appSource).toContain('const previousDesktopShellViewLabelRef = useRef(desktopShellViewLabel);');
-    expect(appSource).toContain("if (currentView !== 'chat-v2' || !desktopShellViewLabel || desktopShellViewLabel === previousLabel) {");
-    expect(appSource).toContain('setAnimatedDesktopShellViewLabel(desktopShellViewLabel);');
-    expect(appSource).toContain('setAnimatedDesktopShellViewLabel(desktopShellViewLabel.slice(0, nextLength));');
-    expect(appSource).toContain('<span className="block truncate">{animatedDesktopShellViewLabel}</span>');
+    expect(appSource).toContain("import { TextSwap } from '@/components/ui/TextSwap';");
+    expect(appSource).toContain('<TextSwap');
+    expect(appSource).toContain('text={desktopShellViewLabel}');
+    expect(appSource).toContain('className="block max-w-full truncate"');
   });
 
   it('keeps desktop header nav and title cells as explicit hotzones beyond the inner icon buttons', () => {
@@ -194,7 +191,7 @@ describe('app chat header title contract', () => {
   });
 
   it('labels desktop new-session affordances with the active chat group name when available', () => {
-    expect(appSource).toContain("import { groupCache } from './chat-v2/core/store/groupCache';");
+    expect(appSource).toContain("import { groupCache } from './features/chat/core/store/groupCache';");
     expect(appSource).toContain("const [currentChatHeaderGroupName, setCurrentChatHeaderGroupName] = useState('');");
     expect(appSource).toContain('const getChatHeaderGroupNameFromStoreState = useCallback((state?: ChatStore | null) => {');
     expect(appSource).toContain("return groupCache.get(state.groupId)?.name ?? '';");

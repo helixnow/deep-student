@@ -6,8 +6,8 @@
 //! 命名约定：W.NN = Weird #N
 
 use deep_student_lib::data_governance::sync::{
-    compare_hlc_strings, conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, Hlc,
-    HlcClock, HlcError, SyncChangeWithData, SyncManager,
+    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, Hlc, SyncChangeWithData,
+    SyncManager,
 };
 use rusqlite::{params, Connection};
 use serde_json::json;
@@ -78,6 +78,8 @@ fn mk_change(
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -634,29 +636,31 @@ fn w23_empty_updated_at() {
     // 允许或拒绝都可，只要不 panic
 }
 
-/// **W.24** 重复时间戳的大量同记录变更（HLC 必用 counter 区分）
+/// **W.24** legacy HLC counter 字符串在同一毫秒内保持排序
 #[test]
 fn w24_hlc_counter_saturation() {
-    let clock = HlcClock::new();
     let now = 1_700_000_000_000u64;
 
-    // 同一毫秒内 tick 10000 次，HLC 必须单调递增
     let mut last = Hlc::ZERO;
     for _ in 0..10000 {
-        let h = clock.tick_with_now(now).unwrap();
-        assert!(h > last, "HLC 必须严格单调：last={:?}, new={:?}", last, h);
+        let h = Hlc::new(now, last.counter.saturating_add(1));
+        assert!(
+            h > last,
+            "legacy HLC 必须严格排序：last={:?}, new={:?}",
+            last,
+            h
+        );
         last = h;
     }
 }
 
-/// **W.25** HLC counter 溢出后 wall 被推 +1
+/// **W.25** legacy HLC counter 最大值仍可解析并参与排序
 #[test]
 fn w25_hlc_counter_overflow_rolls_wall() {
-    let clock = HlcClock::from_last(Hlc::new(1000, u16::MAX));
-    // wall_now 保持 1000，counter 已溢出
-    let h = clock.tick_with_now(1000).unwrap();
-    assert_eq!(h.millis, 1001);
-    assert_eq!(h.counter, 0);
+    let saturated = Hlc::new(1000, u16::MAX);
+    let next_millis = Hlc::new(1001, 0);
+    assert!(next_millis > saturated);
+    assert_eq!(Hlc::parse(&saturated.to_string()), Some(saturated));
 }
 
 // ============================================================================
@@ -720,10 +724,14 @@ fn w28_data_is_json_null_value() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    // 应报错（data 不是 object）
-    assert!(r.is_err(), "data = null 必须报错: {:?}", r);
+    // data 不是 object，应隔离为单条 failure
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.29** payload 的 data 是数组而不是对象
@@ -739,9 +747,13 @@ fn w29_data_is_array() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    assert!(r.is_err());
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.30** data 是空对象 {}
@@ -750,7 +762,9 @@ fn w30_data_empty_object() {
     let conn = new_db();
     let c = mk_change("n1", ChangeOperation::Insert, json!({}), &now_ts());
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    assert!(r.is_err(), "空 object 应当拒绝");
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "空 object 应当隔离为 failure");
 }
 
 /// **W.31** data 里所有字段都是 null
@@ -768,8 +782,10 @@ fn w31_all_fields_null() {
         &now_ts(),
     );
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    // build_insert_parts 跳过 null 字段 → columns 全空 → 返回 Err
-    assert!(r.is_err());
+    // build_insert_parts 跳过 null 字段 → columns 全空 → 隔离为 failure
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.32** 字段值是对象而不是基础类型
@@ -888,6 +904,8 @@ fn w35_sql_reserved_words_as_data_keys() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
     let (s, f): (String, String) = conn
@@ -1024,7 +1042,7 @@ async fn w39_tombstone_for_nonexistent_blob() {
         }
     }
     let storage = NoopStorage;
-    let r = tombstone::apply_blob_tombstones(&storage, &m, tmp.path(), "blobs").await;
+    let r = tombstone::apply_blob_tombstones(&storage, &m, tmp.path(), "blobs", true).await;
     assert!(r.is_ok());
 }
 
@@ -1060,18 +1078,20 @@ fn w40_delete_rollback_preserves_record() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     ];
-    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-    assert!(r.is_err());
+    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(r.failure_count, 1);
 
-    // n1 没被删
+    // 非法变更被隔离，合法 DELETE 仍然生效
     let d: Option<String> = conn
         .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
             r.get::<_, Option<String>>(0)
         })
         .unwrap();
-    assert!(d.is_none(), "非法批次里的 DELETE 应被回滚");
+    assert!(d.is_some(), "非法批次不应回滚合法 DELETE");
 }
 
 // ============================================================================
@@ -1179,12 +1199,14 @@ fn w43_all_same_timestamp() {
         ));
     }
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
-    // LWW 门：相等不跳过，所以每次都会覆盖。最终 = v99
+    // LWW 门：时间戳完全平局时由内容 tiebreaker 决胜——收敛到内容序最大者
+    // （v99），与变更到达顺序无关。旧的"保留先到"语义依赖到达顺序，
+    // 两台设备以不同顺序收到同批变更会得出不同终态，违反收敛性。
     assert_eq!(get_title(&conn, "n1").as_deref(), Some("v99"));
     assert_eq!(get_counter(&conn, "n1"), Some(99));
 }
 
-/// **W.44** 极端：1000 条批次里夹着 1 条非法 —— 全部回滚且不 panic
+/// **W.44** 极端：1000 条批次里夹着 1 条非法 —— 单条隔离且不 panic
 #[test]
 fn w44_single_bad_in_1000_rolls_back_all() {
     let conn = new_db();
@@ -1216,15 +1238,17 @@ fn w44_single_bad_in_1000_rolls_back_all() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     );
 
-    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-    assert!(r.is_err());
+    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(r.failure_count, 1);
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0, "任何一条失败必须回滚所有");
+    assert_eq!(n, 1000, "非法变更应隔离，合法变更应落地");
 }
 
 /// **W.45** 同批里先 UPSERT 设 deleted_at=null，再 DELETE（复活然后立刻删）
@@ -1267,88 +1291,53 @@ fn w45_revive_then_delete_in_same_batch() {
 // W.46 - W.55: HLC 和时钟的荒谬场景
 // ============================================================================
 
-/// **W.46** HLC 的 counter 在接收时恰好已满
+/// **W.46** legacy HLC counter 最大值可解析
 #[test]
 fn w46_hlc_receive_when_saturated() {
-    let clock = HlcClock::from_last(Hlc::new(1_700_000_000_000, u16::MAX));
-    // 远端 HLC 与本地 last 相同 wall time，counter 也为 u16::MAX
     let remote = Hlc::new(1_700_000_000_000, u16::MAX);
-    let r = clock.receive_with_now(remote, 1_700_000_000_000);
-    // 三个相等 → max_counter + 1 = u16::MAX + 1 → 溢出
-    assert!(r.is_err());
-    assert!(matches!(r, Err(HlcError::CounterOverflow)));
+    assert_eq!(Hlc::parse(&remote.to_string()), Some(remote));
 }
 
-/// **W.47** HLC 多线程并发 tick
+/// **W.47** legacy HLC parser rejects malformed counters
 #[test]
 fn w47_hlc_concurrent_ticks() {
-    use std::sync::Arc;
-    use std::thread;
-
-    let clock = Arc::new(HlcClock::new());
-    let mut handles = vec![];
-    for _ in 0..20 {
-        let c = clock.clone();
-        handles.push(thread::spawn(move || {
-            let mut ts = vec![];
-            for _ in 0..100 {
-                ts.push(c.tick_with_now(1_700_000_000_000).unwrap());
-            }
-            ts
-        }));
-    }
-
-    let mut all: Vec<Hlc> = handles
-        .into_iter()
-        .flat_map(|h| h.join().unwrap())
-        .collect();
-    all.sort();
-    all.dedup();
-    // 20 × 100 = 2000 次 tick，在 Mutex 保护下应全部不同（Hlc 作为 Ord 值）
-    assert_eq!(all.len(), 2000, "并发 tick 不应产生重复 HLC");
+    assert!(Hlc::parse("001700000000000-not-a-counter").is_none());
+    assert!(Hlc::parse("not-a-millis-00001").is_none());
 }
 
-/// **W.48** 两个独立 HLC 实例通过交换 receive 相互推进
+/// **W.48** legacy HLC 字符串排序与结构排序一致
 #[test]
 fn w48_two_clocks_exchange_converge() {
-    let a = HlcClock::new();
-    let b = HlcClock::new();
-    for i in 0..100 {
-        let now = 1_700_000_000_000u64 + i;
-        let ev_a = a.tick_with_now(now).unwrap();
-        b.receive_with_now(ev_a, now + 1).unwrap();
-        let ev_b = b.tick_with_now(now + 2).unwrap();
-        a.receive_with_now(ev_b, now + 3).unwrap();
-    }
-    let peek_a = a.peek();
-    let peek_b = b.peek();
-    // 两端最后的 HLC 应该非常接近（差不超过 2）
-    let diff = if peek_a > peek_b {
-        peek_a.millis - peek_b.millis
-    } else {
-        peek_b.millis - peek_a.millis
-    };
-    assert!(diff <= 10);
+    let mut values = vec![
+        Hlc::new(1_700_000_000_001, 0),
+        Hlc::new(1_700_000_000_000, 9),
+        Hlc::new(1_700_000_000_000, 1),
+    ];
+    let mut strings: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+    values.sort();
+    strings.sort();
+    let parsed: Vec<Hlc> = strings.iter().filter_map(|s| Hlc::parse(s)).collect();
+    assert_eq!(parsed, values);
 }
 
-/// **W.49** 接受一个有未来漂移但还在窗口内的 HLC
+/// **W.49** legacy HLC parser accepts future-looking values; drift guard lives in canonical LWW.
 #[test]
 fn w49_hlc_receive_within_drift_window() {
-    let clock = HlcClock::new();
     let now = 1_700_000_000_000u64;
-    // 漂移 30 秒（在 60s 窗口内）
     let remote = Hlc::new(now + 30_000, 0);
-    let r = clock.receive_with_now(remote, now).unwrap();
-    assert!(r.millis >= remote.millis);
+    assert_eq!(Hlc::parse(&remote.to_string()), Some(remote));
 }
 
-/// **W.50** HLC 拒绝过时时间戳溢出检测
+/// **W.50** legacy HLC counter edge keeps lexical order.
 #[test]
 fn w50_hlc_compare_strings_edge() {
     // 两个 HLC 字符串，counter 差异极大
     let a = Hlc::new(1_700_000_000_000, 0).to_string();
     let b = Hlc::new(1_700_000_000_000, u16::MAX).to_string();
-    assert_eq!(compare_hlc_strings(&a, &b), Ordering::Less);
+    assert_eq!(
+        Hlc::parse(&a).unwrap().cmp(&Hlc::parse(&b).unwrap()),
+        Ordering::Less
+    );
     // 位数相同，字典序可靠
     assert!(a < b);
 }
@@ -1663,9 +1652,8 @@ async fn w57_many_blob_tombstones() {
             .await
             .unwrap();
     }
-    // [P0-2] download helper 现在要求一个 PayloadCodec；测试里用明文即可
-    // 因为 mgr 是 SyncManager::new（未启用加密），等价于 PlainCodec
-    let m = tombstone::download_blob_tombstones(&store, &tombstone::PlainCodec)
+    // mark_blob_deleted writes to this manager's per-device tombstone manifest.
+    let m = tombstone::download_blob_tombstones_for_device(&store, &mgr, "d1")
         .await
         .unwrap();
     assert_eq!(m.entries.len(), 100);
@@ -1791,10 +1779,14 @@ fn w60_llm_usage_daily_malformed_record_id() {
         change_log_id: None,
         database_name: Some("llm_usage".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    // 非法 record_id 应报错
-    assert!(r.is_err());
+    // 非法 record_id 应隔离为 failure
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.61** 两个设备对同一记录做完全相同的修改（idempotent edits）
@@ -1896,7 +1888,9 @@ fn w63_all_changes_without_suppress_flag() {
                 changed_at: now_ts(),
                 change_log_id: None,
                 database_name: Some("test".into()),
-                suppress_change_log: None, // 不抑制
+                suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None, // 不抑制
             }
         })
         .collect();

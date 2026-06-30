@@ -7,6 +7,14 @@
   "save_success": "Settings saved successfully",
   "save_failed": "Failed to save settings",
   "auto_saved": "All changes have been auto-saved",
+  "notes_editor": {
+    "initial_line_window": {
+      "title": "Initial line window",
+      "desc": "Larger notes start with a smaller window and extend as you scroll.",
+      "reset": "Reset initial line window",
+      "unit": "lines"
+    }
+  },
   "groups": {
     "core_models": "Core Models",
     "feature_models": "Feature Models",
@@ -103,7 +111,14 @@
       "insecure_context": "Runtime is not exposing a secure recording context",
       "missing_get_user_media": "Runtime does not expose getUserMedia",
       "unavailable": "Recording backend unavailable"
-    }
+    },
+    "description_short": "Shortcuts, dictionary, and dictation history",
+    "not_configured": "Not configured",
+    "trigger_mode_title": "Trigger Mode",
+    "trigger_mode_description": "Hold the shortcut to talk, or press once to toggle. Dictation results are inserted at the cursor only and never sent automatically.",
+    "diagnostics_title": "Diagnostics",
+    "hold_mode_short": "Hold",
+    "toggle_mode_short": "Toggle"
   },
   "api": {
     "title": "API Configuration",
@@ -139,6 +154,12 @@
     "modal": {
       "basic_info": "Basic Info",
       "advanced_settings": "Advanced Settings",
+      "test_connection": "Test Connection",
+      "test_connection_testing": "Testing…",
+      "test_connection_success": "Connected ({{latency}} ms)",
+      "test_connection_failed": "Connection failed. Check base URL, key and model name.",
+      "test_connection_failed_short": "Failed",
+      "test_connection_unavailable": "Connection test is unavailable in this environment",
       "tabs": {
         "general": "General",
         "capabilities": "Capabilities",
@@ -420,6 +441,7 @@
     "name_placeholder": "Enter provider name",
     "provider_label": "Provider Type",
     "protocol_label": "API Protocol",
+    "protocol_hint": "Pick one directly: OpenAI Chat uses /chat/completions, while OpenAI Responses uses /responses.",
     "protocols": {
       "openai_chat_completions": "OpenAI Chat Completions",
       "openai_responses": "OpenAI Responses",
@@ -614,6 +636,13 @@
     "switch_language": "Switch Language",
     "chinese": "中文",
     "english": "English"
+  },
+  "system_notification": {
+    "title": "System Notifications",
+    "desc": "Notification policy for pomodoro, todo reminders and card generation. \"Background only\" keeps quiet while the app is focused.",
+    "background": "Background only",
+    "always": "Always",
+    "never": "Never"
   },
   "debug": {
     "description": "For debugging global streaming sessions and events"
@@ -1239,12 +1268,13 @@
     "vendor_not_found": "Vendor not found"
   },
   "notifications": {
-    "config_save_success": "Configuration saved successfully!",
-    "config_save_success_browser": "Configuration saved successfully! (Browser Mode)",
+    "config_save_success": "Configuration saved successfully",
+    "config_save_success_browser": "Configuration saved successfully (Browser Mode)",
     "config_save_failed": "Failed to save configuration: {{error}}",
-    "api_test_success": "{{name}} ({{model}}) API connection test successful!",
+    "api_test_success": "{{name}} ({{model}}) API connection test successful",
+    "api_test_latency": "Took {{latency}} ms",
     "api_test_failed": "{{name}} ({{model}}) API connection test failed",
-    "api_test_success_mock": "{{name}} API connection test successful! (Mock)",
+    "api_test_success_mock": "{{name}} API connection test successful (Mock)",
     "api_test_error": "{{name}} connection test failed: {{error}}",
     "delete_failed": "Delete failed: {{error}}",
     "preset_name_required": "Please enter preset name",

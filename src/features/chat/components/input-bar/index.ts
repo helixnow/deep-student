@@ -24,8 +24,6 @@
 // V2 组件
 export { InputBarV2 } from './InputBarV2';
 export { InputBarUI } from './InputBarUI';
-export { MobileBottomSheet } from './MobileBottomSheet';
-export type { MobileBottomSheetProps } from './MobileBottomSheet';
 
 // V2 Hook
 export { useInputBarV2, useTogglePanelExclusive } from './useInputBarV2';

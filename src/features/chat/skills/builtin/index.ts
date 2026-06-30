@@ -204,7 +204,7 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           maxCards: {
             type: 'integer',
-            description: '必需：要生成的卡片数量。根据内容长度和用户需求决定：短文本 3~10 张，中等 10~30 张，长文本 30~80 张。用户明确指定数量时直接用用户的数字。',
+            description: '必需：卡片数量上限（"至多 N 张"，不是精确数量；系统硬上限 100，超过会被截断到 100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户明确指定数量时直接用用户的数字。',
           },
           debug: { type: 'boolean', description: '可选：输出更多调试信息（路由决策/分块统计等）' },
         },
@@ -238,7 +238,7 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           maxCards: {
             type: 'integer',
-            description: '必需：要生成的卡片数量。根据内容长度和用户需求决定：短文本 3~10 张，中等 10~30 张，长文本 30~80 张。用户明确指定数量时直接用用户的数字。',
+            description: '必需：卡片数量上限（"至多 N 张"，不是精确数量；系统硬上限 100，超过会被截断到 100）。根据内容长度决定：短文本 3~10，中等 10~30，长文本 30~80。词汇表/术语清单类内容应设为"条目数+少量余量"。用户明确指定数量时直接用用户的数字。',
           },
           debug: { type: 'boolean', description: '可选：输出更多调试信息' },
         },
@@ -282,7 +282,7 @@ export const chatAnkiSkill: SkillDefinition = {
     },
     {
       name: 'builtin-chatanki_control',
-      description: '控制后台制卡任务：暂停/恢复/重试/取消。',
+      description: '控制后台制卡任务：暂停/恢复/重试/取消。cancel 仅停止生成，已生成的卡片会保留。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -412,17 +412,20 @@ export const chatAnkiSkill: SkillDefinition = {
 ## 卡片数量（必须遵守）
 
 - \`maxCards\` 是**必传参数**，每次调用 \`chatanki_run\` / \`chatanki_start\` 都必须传入。
+- \`maxCards\` 的语义是**上限（至多 N 张）**，不是精确数量；实际张数由内容知识点密度决定。系统硬上限 100，传入更大的值会被截断到 100。
 - \`templateMode\` 是**必传参数**：
   - \`single\`：必须传 \`templateId\`；
   - \`multiple\`：必须传 \`templateIds\`（非空数组）；
   - \`all\`：使用全部已启用模板（无需 templateId/templateIds）。
 - 如果用户明确说了数量（如"帮我做 5 张"）：直接用用户的数字。
-- 如果用户没说数量：你必须根据内容长度自行判断合理数量：
+- 如果用户没说数量：你必须根据内容长度自行判断合理上限：
   - 一两句话 → 3~5 张
   - 一段话（100~500字）→ 5~15 张
   - 长文本（500~2000字）→ 15~30 张
   - 超长文档（>2000字）→ 30~80 张
+- **词汇表/术语清单**（逐条条目型内容）：每条条目对应 1 张卡，\`maxCards\` 应设为"条目数 + 少量余量"（如 95 条 → 100），避免内容被截断。
 - **绝不允许**不传 \`maxCards\`。
+- 任务结束后若结果中 \`limitReached=true\`：说明生成已达 \`maxCards\` 上限提前收尾，这是**正常完成**而非取消/失败；如实告知用户"已按上限生成 N 张"，若用户想要更多可建议提高 maxCards 重新生成。
 `,
 };
 

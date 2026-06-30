@@ -39,7 +39,7 @@
 //!
 //! 冲突表保留在每个业务数据库内，跟随数据库一起备份/恢复。
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -111,21 +111,11 @@ impl ConflictAwareApplyResult {
 /// 冲突解决器
 pub struct ConflictResolver {
     policy: ConflictPolicy,
-    /// 允许一个灰区容差：本地和云端时间戳相差在此值内视为同时刻（走 policy 的 tie-break）
-    clock_skew_tolerance_secs: i64,
 }
 
 impl ConflictResolver {
     pub fn new(policy: ConflictPolicy) -> Self {
-        Self {
-            policy,
-            clock_skew_tolerance_secs: 2,
-        }
-    }
-
-    pub fn with_tolerance(mut self, secs: i64) -> Self {
-        self.clock_skew_tolerance_secs = secs.max(0);
-        self
+        Self { policy }
     }
 
     /// 在一个数据库连接上初始化冲突表（幂等）
@@ -237,7 +227,8 @@ impl ConflictResolver {
     ///
     /// 云端 payload 经常只包含被写入者关心的字段（例如只改 title 的用户只发 title）。
     /// 为避免"云端缺字段就被判为不等"的误冲突，我们**只比较云端 payload 里出现的字段**。
-    /// 这与 apply_single_record 的 COALESCE 语义一致：没出现的字段保留本地，不参与业务等值判断。
+    /// 这与 apply_single_record 的写入语义一致：payload 未出现的列不进入 UPSERT 列集、保留本地，
+    /// 因而不参与业务等值判断（apply 端用 `SET col = excluded.col`，仅覆盖 payload 中出现的列）。
     fn differs_semantically(local: &serde_json::Value, cloud: &serde_json::Value) -> bool {
         let cloud_keys: std::collections::HashSet<String> = match cloud {
             serde_json::Value::Object(obj) => obj.keys().cloned().collect(),
@@ -263,9 +254,10 @@ impl ConflictResolver {
     }
 
     /// 提取记录的 updated_at 时间戳（用于 KeepLatest 策略的仲裁）
-    fn extract_updated_at(value: &serde_json::Value) -> Option<chrono::DateTime<chrono::Utc>> {
-        let s = value.get("updated_at").and_then(|v| v.as_str())?;
-        crate::data_governance::sync::parse_flexible_timestamp_public(s)
+    fn extract_updated_at(value: &serde_json::Value) -> Option<String> {
+        value
+            .get("updated_at")
+            .and_then(SyncManager::timestamp_value_to_lww_string)
     }
 
     /// 判定一条下载变更是否需要走冲突保护逻辑
@@ -303,20 +295,28 @@ impl ConflictResolver {
                 ConflictPolicy::KeepCloud => (ConflictSide::Cloud, ConflictSide::Local),
                 ConflictPolicy::KeepLocal => (ConflictSide::Local, ConflictSide::Cloud),
                 ConflictPolicy::KeepLatest => {
-                    // 删除没有 updated_at 语义，用 change.changed_at 代替；同时刻时偏向保留本地（安全优先）
-                    let cloud_ts = crate::data_governance::sync::parse_flexible_timestamp_public(
-                        &change.changed_at,
-                    );
                     let local_ts = Self::extract_updated_at(&local_data);
-                    match (local_ts, cloud_ts) {
-                        (Some(l), Some(c)) => {
-                            let diff = (c - l).num_seconds();
-                            if diff > self.clock_skew_tolerance_secs {
-                                (ConflictSide::Cloud, ConflictSide::Local)
-                            } else {
-                                (ConflictSide::Local, ConflictSide::Cloud)
-                            }
+                    match local_ts {
+                        Some(local_ts)
+                            if {
+                                let (local_dev, cloud_dev) = SyncManager::lww_device_pair(
+                                    &local_data,
+                                    None,
+                                    change.source_device_id.as_deref(),
+                                );
+                                SyncManager::compare_lww_timestamps(
+                                    &local_ts,
+                                    local_dev,
+                                    &local_data.to_string(),
+                                    &change.changed_at,
+                                    cloud_dev,
+                                    "",
+                                ) == std::cmp::Ordering::Less
+                            } =>
+                        {
+                            (ConflictSide::Cloud, ConflictSide::Local)
                         }
+                        Some(_) => (ConflictSide::Local, ConflictSide::Cloud),
                         _ => (ConflictSide::Local, ConflictSide::Cloud),
                     }
                 }
@@ -373,18 +373,24 @@ impl ConflictResolver {
             ConflictPolicy::KeepLocal => (ConflictSide::Local, ConflictSide::Cloud),
             ConflictPolicy::KeepLatest => {
                 let local_ts = Self::extract_updated_at(&local_data);
-                let cloud_ts = Self::extract_updated_at(&cloud_data).or_else(|| {
-                    crate::data_governance::sync::parse_flexible_timestamp_public(
-                        &change.changed_at,
-                    )
-                });
+                let cloud_ts = Self::extract_updated_at(&cloud_data)
+                    .or_else(|| Some(change.changed_at.clone()));
                 match (local_ts, cloud_ts) {
                     (Some(l), Some(c)) => {
-                        let diff_secs = (c - l).num_seconds();
-                        if diff_secs.abs() <= self.clock_skew_tolerance_secs {
-                            // 近似同时刻：偏向保留本地（"已在用"）
-                            (ConflictSide::Local, ConflictSide::Cloud)
-                        } else if diff_secs > 0 {
+                        let (local_dev, cloud_dev) = SyncManager::lww_device_pair(
+                            &local_data,
+                            Some(&cloud_data),
+                            change.source_device_id.as_deref(),
+                        );
+                        if SyncManager::compare_lww_timestamps(
+                            &l,
+                            local_dev,
+                            &local_data.to_string(),
+                            &c,
+                            cloud_dev,
+                            &cloud_data.to_string(),
+                        ) == std::cmp::Ordering::Less
+                        {
                             (ConflictSide::Cloud, ConflictSide::Local)
                         } else {
                             (ConflictSide::Local, ConflictSide::Cloud)
@@ -425,12 +431,13 @@ impl ConflictResolver {
     pub fn save_conflict_record(
         conn: &Connection,
         rec: ConflictRecordToSave<'_>,
-    ) -> Result<(), SyncError> {
+    ) -> Result<bool, SyncError> {
         Self::ensure_conflict_table(conn)?;
         let data_str = serde_json::to_string(rec.data)
             .map_err(|e| SyncError::Database(format!("序列化冲突数据失败: {}", e)))?;
         let data_hash = Self::compute_data_hash(rec.data);
-        conn.execute(
+        let inserted = conn
+            .execute(
             "INSERT INTO __sync_conflicts
              (table_name, record_id, side, data_json, data_hash, winning_device_id, losing_device_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -448,9 +455,9 @@ impl ConflictResolver {
                 rec.winning_device_id,
                 rec.losing_device_id,
             ],
-        )
-        .map_err(|e| SyncError::Database(format!("写入冲突表失败: {}", e)))?;
-        Ok(())
+            )
+            .map_err(|e| SyncError::Database(format!("写入冲突表失败: {}", e)))?;
+        Ok(inserted > 0)
     }
 }
 

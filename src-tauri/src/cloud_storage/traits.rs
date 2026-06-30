@@ -42,6 +42,28 @@ pub struct FileInfo {
     pub etag: Option<String>,
 }
 
+/// Result of listing a storage prefix.
+///
+/// `files` must contain every object below `prefix` recursively unless
+/// `truncated` is true. Sync download paths treat truncation as a hard error so
+/// missing objects cannot be mistaken for deletion.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListOutcome {
+    pub files: Vec<FileInfo>,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+impl ListOutcome {
+    pub fn complete(files: Vec<FileInfo>) -> Self {
+        Self {
+            files,
+            truncated: false,
+        }
+    }
+}
+
 /// 统一的云存储访问 trait
 ///
 /// 支持 WebDAV 和 S3 兼容存储（如 AWS S3、Cloudflare R2、阿里云 OSS、MinIO）
@@ -49,6 +71,12 @@ pub struct FileInfo {
 pub trait CloudStorage: Send + Sync {
     /// 获取存储后端名称（用于日志和调试）
     fn provider_name(&self) -> &'static str;
+
+    /// 返回不含密码/密钥的实例绑定指纹，用于检测同一远端 instance 是否被错误地
+    /// 通过不同 provider/root/account 复用。
+    fn instance_binding_hint(&self) -> String {
+        self.provider_name().to_string()
+    }
 
     /// 检查连接是否可用
     async fn check_connection(&self) -> Result<()>;
@@ -71,7 +99,13 @@ pub trait CloudStorage: Send + Sync {
     /// * `Err(e)` - 其他错误
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
 
-    /// 列出指定前缀的文件
+    /// 列出指定前缀下的所有文件。
+    ///
+    /// Contract:
+    /// - Results are recursive for every object below `prefix`.
+    /// - Results are sorted by `last_modified` descending.
+    /// - Implementations that cannot prove completeness must expose that via
+    ///   `list_outcome` instead of silently returning a partial list.
     ///
     /// # Arguments
     /// * `prefix` - 路径前缀（如 "backups/"）
@@ -79,6 +113,14 @@ pub trait CloudStorage: Send + Sync {
     /// # Returns
     /// 文件信息列表，按 last_modified 降序排列
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>>;
+
+    /// 列出指定前缀并 report whether the result may be truncated.
+    ///
+    /// Existing implementations/tests can keep implementing `list`; production
+    /// backends override this when a backend-specific truncation signal exists.
+    async fn list_outcome(&self, prefix: &str) -> Result<ListOutcome> {
+        self.list(prefix).await.map(ListOutcome::complete)
+    }
 
     /// 删除文件
     ///
@@ -121,66 +163,24 @@ pub trait CloudStorage: Send + Sync {
         progress: Option<UploadProgressCallback>,
     ) -> Result<String> {
         use sha2::{Digest, Sha256};
-        use std::io::Read;
 
-        let metadata = std::fs::metadata(local_path)
-            .map_err(|e| AppError::file_system(format!("读取文件元信息失败: {e}")))?;
-        let file_size = metadata.len();
+        // 默认实现：整体读入内存后 `put`。`put` trait 方法本身就是整体缓冲语义，
+        // 默认实现无法做真正的流式/分块上传。**GB 级大文件请由具体后端覆盖本方法**
+        // （S3 multipart / FTP 流式 STOR / WebDAV 流式 PUT，均已在各后端实现），
+        // 避免在内存中驻留整个文件。
+        let data = std::fs::read(local_path)
+            .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
+        let file_size = data.len() as u64;
 
-        // 计算 SHA256 并读取文件
-        let mut file = std::fs::File::open(local_path)
-            .map_err(|e| AppError::file_system(format!("打开文件失败: {e}")))?;
-
-        let mut hasher = Sha256::new();
-        let mut buffer = Vec::with_capacity(file_size.min(CHUNK_SIZE as u64) as usize);
-
-        // 对于小文件，直接读取并上传
-        if file_size < MIN_MULTIPART_SIZE {
-            file.read_to_end(&mut buffer)
-                .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
-            hasher.update(&buffer);
-
-            if let Some(ref cb) = progress {
-                cb(0, file_size);
-            }
-
-            self.put(key, &buffer).await?;
-
-            if let Some(ref cb) = progress {
-                cb(file_size, file_size);
-            }
-
-            let checksum = format!("{:x}", hasher.finalize());
-            return Ok(checksum);
+        if let Some(ref cb) = progress {
+            cb(0, file_size);
         }
 
-        // 大文件：分块读取，边读边计算哈希
-        // 默认实现仍然一次性上传（子类可覆盖实现真正的分块上传）
-        tracing::info!(
-            "大文件上传 ({:.2} MB)，使用默认策略",
-            file_size as f64 / 1024.0 / 1024.0
-        );
-
-        let mut data = Vec::with_capacity(file_size as usize);
-        let mut uploaded = 0u64;
-        let chunk_size = CHUNK_SIZE;
-        buffer.resize(chunk_size, 0);
-
-        loop {
-            let bytes_read = file
-                .read(&mut buffer)
-                .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
-            if bytes_read == 0 {
-                break;
-            }
-            hasher.update(&buffer[..bytes_read]);
-            data.extend_from_slice(&buffer[..bytes_read]);
-            uploaded += bytes_read as u64;
-
-            if let Some(ref cb) = progress {
-                cb(uploaded / 2, file_size); // 读取进度占 50%
-            }
-        }
+        let checksum = {
+            let mut hasher = Sha256::new();
+            hasher.update(&data);
+            format!("{:x}", hasher.finalize())
+        };
 
         self.put(key, &data).await?;
 
@@ -188,7 +188,6 @@ pub trait CloudStorage: Send + Sync {
             cb(file_size, file_size);
         }
 
-        let checksum = format!("{:x}", hasher.finalize());
         Ok(checksum)
     }
 

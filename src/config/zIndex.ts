@@ -46,6 +46,9 @@ export const Z_INDEX = {
   /** 桌面端标题栏 */
   desktopTitlebar: 1100,
 
+  /** 输入栏组合面板（附件/模型等，需覆盖移动顶栏，低于抽屉遮罩） */
+  composerPanel: 1150,
+
   /** 侧边栏/抽屉遮罩 */
   overlay: 2000,
 
@@ -55,7 +58,7 @@ export const Z_INDEX = {
   /** 模态对话框 */
   modal: 3000,
 
-  /** 底部 Sheet（MobileBottomSheet） */
+  /** 底部 Sheet（Radix Sheet / 移动端设置抽屉等） */
   sheet: 4000,
 
   /** 通知 Toast */

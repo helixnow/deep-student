@@ -20,12 +20,16 @@ import {
   MagnifyingGlass,
   Trash,
   X,
+  PencilSimple,
+  SquaresFour,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
+import { TodoTrashDialog } from './TodoTrashDialog';
 import type { TodoList, TodoViewFilter } from '../types';
 
 interface SmartView {
@@ -38,6 +42,7 @@ const SMART_VIEWS: SmartView[] = [
   { id: 'all', icon: Tray, labelKey: 'todo:views.inbox' },
   { id: 'today', icon: Calendar, labelKey: 'todo:views.today' },
   { id: 'upcoming', icon: Clock, labelKey: 'todo:views.upcoming' },
+  { id: 'matrix', icon: SquaresFour, labelKey: 'todo:views.matrix' },
   { id: 'overdue', icon: Warning, labelKey: 'todo:views.overdue' },
   { id: 'completed', icon: CheckSquare, labelKey: 'todo:views.completed' },
 ];
@@ -108,9 +113,11 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
     lists,
     activeListId,
     filter,
+    overdueCount,
     setActiveList,
     setViewFilter,
     createList,
+    updateList,
     deleteList,
     toggleListFavorite,
   } = useTodoStore();
@@ -118,6 +125,13 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
   const [isCreating, setIsCreating] = useState(false);
   const [newListTitle, setNewListTitle] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  // 行内重命名状态
+  const [renamingListId, setRenamingListId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  // 删除确认
+  const [pendingDeleteList, setPendingDeleteList] = useState<TodoList | null>(null);
+  // 回收站
+  const [trashOpen, setTrashOpen] = useState(false);
 
   // ===== 回调 =====
   const handleCreateList = useCallback(async () => {
@@ -174,6 +188,29 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
       onItemSelect?.();
     },
     [filter.view, setActiveList, setViewFilter, onItemSelect],
+  );
+
+  const startRename = useCallback((list: TodoList) => {
+    setRenamingListId(list.id);
+    setRenameValue(list.title);
+  }, []);
+
+  const commitRename = useCallback(async () => {
+    const id = renamingListId;
+    const trimmed = renameValue.trim();
+    setRenamingListId(null);
+    if (!id) return;
+    const original = lists.find((l) => l.id === id);
+    if (!trimmed || !original || trimmed === original.title) return;
+    await updateList(id, trimmed);
+  }, [renamingListId, renameValue, lists, updateList]);
+
+  const handleRenameKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') void commitRename();
+      if (e.key === 'Escape') setRenamingListId(null);
+    },
+    [commitRename],
   );
 
   const filteredLists = useMemo(() => {
@@ -236,12 +273,23 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           {SMART_VIEWS.map(({ id, icon: Icon, labelKey }) => {
             const isActive =
               filter.view === id && (id !== 'all' || activeListId === null);
+            const showOverdueBadge = id === 'overdue' && overdueCount > 0;
             return (
               <NavRow
                 key={id}
                 isActive={isActive}
                 onClick={() => handleSmartViewClick(id)}
                 leftSlot={<Icon size={18} weight="bold" />}
+                rightSlot={
+                  showOverdueBadge ? (
+                    <span
+                      aria-label={t('todo:overdue.badgeAria', { count: overdueCount })}
+                      className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-1 text-[10px] font-semibold leading-none text-white"
+                    >
+                      {overdueCount > 99 ? '99+' : overdueCount}
+                    </span>
+                  ) : undefined
+                }
               >
                 {t(labelKey)}
               </NavRow>
@@ -299,11 +347,38 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           <div className="space-y-0.5">
             {filteredLists.map((list) => {
               const isActive = activeListId === list.id && filter.view === 'all';
+
+              // 行内重命名态
+              if (renamingListId === list.id) {
+                return (
+                  <div key={list.id} className="px-0.5 py-0.5">
+                    <Input
+                      autoFocus
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={handleRenameKeyDown}
+                      onBlur={() => void commitRename()}
+                      aria-label={t('todo:actions.renameList')}
+                      className={cn(
+                        'h-8 w-full rounded-[var(--radius-shell-control)] border',
+                        'border-[color:var(--shell-navigation-border)]',
+                        'bg-[color:var(--interactive-hover)] px-2.5 text-[13px]',
+                        'text-[color:var(--shell-navigation-foreground)]',
+                        'outline-none',
+                      )}
+                    />
+                  </div>
+                );
+              }
+
               return (
                 <div key={list.id} className="group/list-item relative">
                   <NavRow
                     isActive={isActive}
                     onClick={() => handleListClick(list)}
+                    onDoubleClick={() => {
+                      if (!list.isDefault) startRename(list);
+                    }}
                     leftSlot={
                       list.isDefault ? (
                         <Tray size={18} weight="bold" />
@@ -358,18 +433,32 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                             />
                           </button>
                           {!list.isDefault && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteList(list.id);
-                              }}
-                              aria-label={t('common:actions.delete')}
-                              title={t('common:actions.delete')}
-                              className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:hsl(var(--destructive))]"
-                            >
-                              <Trash size={12} />
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  startRename(list);
+                                }}
+                                aria-label={t('todo:actions.renameList')}
+                                title={t('todo:actions.renameList')}
+                                className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+                              >
+                                <PencilSimple size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPendingDeleteList(list);
+                                }}
+                                aria-label={t('common:actions.delete')}
+                                title={t('common:actions.delete')}
+                                className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:hsl(var(--destructive))]"
+                              >
+                                <Trash size={12} />
+                              </button>
+                            </>
                           )}
                         </span>
                       </>
@@ -391,6 +480,38 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           </div>
         </div>
       </div>
+
+      {/* 底部：回收站入口 */}
+      <div className="shrink-0 border-t border-[color:var(--shell-navigation-border)] px-2 py-1.5">
+        <NavRow
+          isActive={false}
+          onClick={() => setTrashOpen(true)}
+          leftSlot={<Trash size={18} weight="bold" />}
+        >
+          {t('todo:trash.title')}
+        </NavRow>
+      </div>
+
+      {/* 回收站对话框 */}
+      <TodoTrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
+
+      {/* 删除清单确认 */}
+      <NotionAlertDialog
+        open={pendingDeleteList !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteList(null);
+        }}
+        title={t('todo:dialogs.deleteList.title')}
+        description={t('todo:dialogs.deleteList.description', {
+          title: pendingDeleteList?.title ?? '',
+        })}
+        confirmText={t('common:actions.delete')}
+        cancelText={t('common:actions.cancel')}
+        onConfirm={() => {
+          if (pendingDeleteList) void deleteList(pendingDeleteList.id);
+          setPendingDeleteList(null);
+        }}
+      />
     </aside>
   );
 };

@@ -764,12 +764,12 @@ impl VfsQuestionRepo {
         start_time: std::time::Instant,
     ) -> VfsResult<QuestionSearchListResult> {
         let offset = (page.saturating_sub(1)) * page_size;
-        let like_pattern = format!("%{}%", keyword);
+        let like_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(keyword));
 
         // 构建 WHERE 子句
         let mut conditions = vec![
             "deleted_at IS NULL".to_string(),
-            "(content LIKE ?1 OR answer LIKE ?1 OR explanation LIKE ?1 OR tags LIKE ?1)"
+            r"(content LIKE ?1 ESCAPE '\' OR answer LIKE ?1 ESCAPE '\' OR explanation LIKE ?1 ESCAPE '\' OR tags LIKE ?1 ESCAPE '\')"
                 .to_string(),
         ];
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(like_pattern.clone())];
@@ -1016,10 +1016,13 @@ impl VfsQuestionRepo {
                 } else {
                     // 回退到 LIKE 搜索（搜索 content, answer, explanation, tags）
                     conditions.push(format!(
-                        "(content LIKE ?{} OR answer LIKE ?{} OR explanation LIKE ?{} OR tags LIKE ?{})",
+                        r"(content LIKE ?{} ESCAPE '\' OR answer LIKE ?{} ESCAPE '\' OR explanation LIKE ?{} ESCAPE '\' OR tags LIKE ?{} ESCAPE '\')",
                         param_idx, param_idx, param_idx, param_idx
                     ));
-                    params_vec.push(Box::new(format!("%{}%", search)));
+                    params_vec.push(Box::new(format!(
+                        "%{}%",
+                        crate::vfs::repos::escape_like_pattern(search)
+                    )));
                     param_idx += 1;
                 }
             }
@@ -1680,7 +1683,9 @@ impl VfsQuestionRepo {
             });
         }
 
-        // 内容/元数据更新后立即重算 hash，避免同步冲突判断使用过期值
+        // 内容/元数据更新后标记本地修改并立即重算 hash，避免同步冲突判断使用过期值
+        // （与 submit_answer_with_conn 的 S-030 口径一致；否则本地编辑在同步时会被远程静默覆盖）
+        QuestionSyncService::mark_as_modified_with_conn(conn, question_id)?;
         QuestionSyncService::update_content_hash_with_conn(conn, question_id)?;
 
         debug!("[VFS::QuestionRepo] Updated question id={}", question_id);

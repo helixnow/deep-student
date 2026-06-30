@@ -361,9 +361,20 @@ export async function create(path: string, options: DstuCreateOptions): Promise<
 /**
  * 更新资源内容
  */
-export async function update(path: string, content: string, resourceType: string): Promise<Result<DstuNode>> {
+export async function update(
+  path: string,
+  content: string,
+  resourceType: string,
+  options?: { expectedUpdatedAtMs?: number },
+): Promise<Result<DstuNode>> {
   try {
-    const result = await invoke<DstuNode>('dstu_update', { path, content, resourceType });
+    // ★ R3：携带乐观锁基线（毫秒时间戳），后端据此拒绝覆盖更新的版本
+    const result = await invoke<DstuNode>('dstu_update', {
+      path,
+      content,
+      resourceType,
+      expectedUpdatedAtMs: options?.expectedUpdatedAtMs ?? null,
+    });
     console.log(LOG_PREFIX, 'update() 返回新的 resourceHash:', {
       path,
       sourceId: result.id,
@@ -771,8 +782,13 @@ export async function restoreMany(paths: string[]): Promise<Result<number>> {
 export async function moveMany(paths: string[], destFolder: string): Promise<Result<number>> {
   try {
     // 1. 执行批量移动（先操作后端）
-    // 使用 dest_folder 参数名以匹配后端 snake_case 命名
-    const result = await invoke<number>('dstu_move_many', { paths, dest_folder: destFolder });
+    // ★ F1 修复：Tauri v2 默认按 camelCase 匹配参数，仅传 snake_case 会导致
+    // "缺少必填参数"错误。与 settingsApi 等处一致，snake + camel 双传兼容。
+    const result = await invoke<number>('dstu_move_many', {
+      paths,
+      dest_folder: destFolder,
+      destFolder,
+    });
 
     // 2. [FIX-D002] Invalidate cache after operation succeeds
     // Collect node IDs, use path as fallback if get fails
@@ -798,9 +814,11 @@ export async function searchInFolder(
   options?: DstuListOptions
 ): Promise<Result<DstuNode[]>> {
   try {
-    // 使用 folder_id 参数名以匹配后端 snake_case 命名
+    // ★ F1 修复：Tauri v2 默认按 camelCase 匹配参数，仅传 snake_case 时
+    // folder_id 会被静默解析为 None → "文件夹内搜索"退化为全库搜索。双传兼容。
     const result = await invoke<DstuNode[]>('dstu_search_in_folder', {
       folder_id: folderId,
+      folderId,
       query,
       options,
     });

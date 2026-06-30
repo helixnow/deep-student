@@ -1,8 +1,8 @@
 {
   "app": {
-    "name": "Deep Learning Assistant",
-    "title": "AI Mistake Management System",
-    "description": "Intelligent Mistake Analysis and Learning Management System",
+    "name": "Deep Student",
+    "title": "Deep Student",
+    "description": "AI-powered intelligent learning assistant",
     "version": "Version"
   },
   "contextMenu": {
@@ -307,8 +307,8 @@
       "exported": "Exported successfully",
       "export": "Exported successfully",
       "imported": "Imported successfully",
-      "mistake_saved_to_library": "Problem saved to mistake library!",
-      "mistake_updated": "Mistake updated successfully!",
+      "mistake_saved_to_library": "Problem saved to mistake library",
+      "mistake_updated": "Mistake updated successfully",
       "analysis_completed": "Analysis completed",
       "ocr_completed": "OCR analysis completed",
       "streaming_completed": "Streaming process completed",
@@ -353,7 +353,7 @@
       "chat_failed_with_details": "Chat failed: {{error}}",
       "save_failed_with_details": "Save failed: {{error}}",
       "summary_save_failed": "Summary save failed: {{error}}\nProblem saved, you can generate summary manually later.",
-      "mistake_updated": "Mistake updated successfully!",
+      "mistake_updated": "Mistake updated successfully",
       "update_failed_with_details": "Update failed: {{error}}",
       "load_failed": "Load failed",
       "no_selection": "Please select an item first",
@@ -727,7 +727,16 @@
     "forward_tooltip": "Go forward to next page ({{shortcut}})",
     "no_back_history": "No back history available",
     "no_forward_history": "No forward history available",
-    "restoreFailed": "Page state could not be restored"
+    "restoreFailed": "Page state could not be restored",
+    "dashboard": "Dashboard",
+    "data_management": "Data Management",
+    "template_json_preview": "Template Preview",
+    "pdf_reader": "PDF Reader",
+    "sandbox_workbench": "Sandbox Workbench",
+    "todo": "Todo",
+    "tree_test": "Tree Test",
+    "crepe_demo": "Crepe Demo",
+    "chat_v2_test": "Chat V2 Test"
   },
   "time": {
     "now": "Just now",
@@ -2830,7 +2839,7 @@
     "config_created_success": "Successfully created SiliconFlow configuration! Model: {{model}}",
     "config_create_failed": "Failed to create SiliconFlow configuration: {{error}}",
     "api_key_saved": "Saved",
-    "api_key_auto_save": "Enter your SiliconFlow API key (will be saved automatically)",
+    "api_key_auto_save": "Enter your SiliconFlow API key",
     "clear_api_key_title": "Clear API Key",
     "getting_models": "Loading...",
     "get_model_list": "Get Model List",
@@ -2852,7 +2861,7 @@
     "yes": "Yes",
     "no": "No",
     "usage_instructions": "Usage Instructions:",
-    "instruction_1": "1. Enter API key (saved locally, no need to re-enter)",
+    "instruction_1": "1. Paste or enter your API key, then click Save",
     "instruction_2": "2. Click \"Get Model List\" button to fetch available models",
     "instruction_3": "3. Select desired model from dropdown (supports chat, embedding, reranker)",
     "instruction_4": "4. Click \"Create API Configuration\" to complete setup",
@@ -2889,7 +2898,7 @@
     "show": "Show",
     "hide_api_key": "Hide API Key",
     "show_api_key": "Show API Key",
-    "api_key_placeholder_local": "Enter your SiliconFlow API key (saved locally)",
+    "api_key_placeholder_local": "Enter your SiliconFlow API key",
     "new_api_config_name": "New API Configuration",
     "one_click_success": "One-click assignment successful",
     "one_click_failed": "One-click assignment failed",
@@ -3373,6 +3382,7 @@
   "mobile_header": {
     "back": "Back",
     "open_menu": "Open menu",
+    "open_sidebar": "Open sidebar",
     "menu": "Menu"
   },
   "sidebar": {
@@ -3735,7 +3745,6 @@
     "navigation_description": "Switched to chat page (target session: {{id}})"
   },
   "command_palette_label": "Command Palette",
-  "ann_indexing": "ANN index building... ({{count}} items)",
   "error_boundary": {
     "title": "Application encountered a critical error",
     "description": "An unrecoverable error occurred. Please try refreshing the page. Contact support if the issue persists.",

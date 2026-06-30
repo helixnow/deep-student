@@ -34,6 +34,8 @@ vi.mock('react-i18next', async () => {
           'data:governance.archive_untitled': '未命名会话',
           'data:governance.archive_ungrouped_title': '未分组',
           'data:governance.archive_empty_group_hint': '该分组下暂无归档会话',
+          'data:governance.archive_restore_group': '恢复课题',
+          'data:governance.archive_restore_success': '恢复成功',
           'common:actions.refresh': '刷新',
         };
 
@@ -109,4 +111,5 @@ describe('ChatSessionArchiveTab group visibility', () => {
       });
     });
   });
+
 });

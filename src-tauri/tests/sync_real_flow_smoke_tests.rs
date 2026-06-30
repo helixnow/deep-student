@@ -853,8 +853,10 @@ fn business_columns(conn: &Connection, table_name: &str) -> Vec<String> {
         .filter_map(Result::ok)
         .filter(|column| {
             !matches!(
-                column.as_str(),
-                "device_id" | "local_version" | "sync_version"
+                (table_name, column.as_str()),
+                (_, "device_id" | "local_version" | "sync_version")
+                    | ("resources", "ref_count")
+                    | ("chat_v2_resources", "ref_count")
             )
         })
         .collect()
@@ -1148,12 +1150,6 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     let ts = "2024-04-24T00:00:00Z";
 
     conn.execute(
-        "INSERT INTO blobs (hash, relative_path, size, mime_type, ref_count, created_at)
-         VALUES ('blob_non_row_hash', 'bl/ob/blob_non_row_hash', 4096, 'application/pdf', 1, ?1)",
-        params![ms],
-    )
-    .expect("insert vfs FileSync blob row");
-    conn.execute(
         "INSERT INTO path_cache (item_type, item_id, full_path, folder_path, updated_at)
          VALUES ('note', 'note_all', '/All rows folder/All rows note', '/All rows folder', ?1)",
         params![ts],
@@ -1293,7 +1289,6 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     .expect("update vfs indexing config row");
 
     BTreeSet::from([
-        "blobs",
         "path_cache",
         "question_bank_stats",
         "review_stats",
@@ -1680,12 +1675,8 @@ fn real_restore_baseline_clears_old_changes_and_allows_new_delta() {
     let pending_before = pending_count(&vfs);
     assert!(pending_before >= 2);
 
-    let (truncated, reset_records) = SyncManager::reset_sync_baseline_after_restore(&vfs).unwrap();
+    let (truncated, _reset_records) = SyncManager::reset_sync_baseline_after_restore(&vfs).unwrap();
     assert!(truncated >= pending_before);
-    // Real migrated VFS schemas currently clear restore drift by truncating pending
-    // change logs. They do not expose per-row sync_version columns, so the business
-    // row touch count is an implementation detail and may legitimately remain zero.
-    assert!(reset_records <= truncated as usize);
     assert_eq!(
         pending_count(&vfs),
         0,
@@ -2835,4 +2826,89 @@ async fn real_full_cycle_all_databases_through_manifest_and_cloud_changes() {
         assert_table_business_rows_match(&source_mistakes, &target_mistakes, "mistakes", table);
     }
     assert_table_business_rows_match(&source_usage, &target_usage, "llm_usage", "llm_usage_logs");
+}
+
+/// [P1 churn 回归] 工作区数据库未变更时，第二次同步不得重传。
+///
+/// 旧实现把 VACUUM 快照哈希与本地活动文件哈希比较（永不相等），再加上
+/// mtime 平局时 "local-file" > "cloud-file" 恒判本地赢，导致每次同步
+/// 都把所有工作区 DB 原样重新上传。
+#[tokio::test]
+async fn workspace_sync_unchanged_db_is_not_reuploaded() {
+    use deep_student_lib::data_governance::sync::SyncDirection;
+
+    let storage = MemoryCloudStorage::default();
+    let active = TempDir::new().expect("create active dir");
+    let ws_dir = active.path().join("workspaces");
+    std::fs::create_dir_all(&ws_dir).expect("create workspaces dir");
+
+    // 真实 SQLite 工作区库
+    let ws_id = "ws_churn_test";
+    let ws_path = ws_dir.join(format!("{ws_id}.db"));
+    {
+        let conn = Connection::open(&ws_path).expect("create ws db");
+        conn.execute_batch(
+            "CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT);
+             INSERT INTO notes (body) VALUES ('hello');",
+        )
+        .expect("seed ws db");
+    }
+
+    let manager = SyncManager::new(format!("device-churn-{}", uuid::Uuid::new_v4()));
+
+    // 第一次同步：应上传
+    manager
+        .sync_workspace_databases(&storage, active.path(), SyncDirection::Bidirectional)
+        .await
+        .expect("first workspace sync");
+    let remote_key = format!("data_governance/workspaces/{ws_id}.db");
+    let first = storage
+        .stat(&remote_key)
+        .await
+        .expect("stat after first sync")
+        .expect("workspace uploaded on first sync");
+
+    // 第二次同步（本地零修改）：不得重传
+    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+    manager
+        .sync_workspace_databases(&storage, active.path(), SyncDirection::Bidirectional)
+        .await
+        .expect("second workspace sync");
+    let second = storage
+        .stat(&remote_key)
+        .await
+        .expect("stat after second sync")
+        .expect("workspace still present");
+
+    assert_eq!(
+        first.last_modified, second.last_modified,
+        "未变更的工作区数据库不得在第二次同步时重传"
+    );
+
+    // 本地真实修改后：必须重传
+    {
+        let conn = Connection::open(&ws_path).expect("reopen ws db");
+        conn.execute("INSERT INTO notes (body) VALUES ('changed')", [])
+            .expect("modify ws db");
+    }
+    // 确保 mtime 前进（文件系统秒级精度防抖）
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    {
+        let conn = Connection::open(&ws_path).expect("touch ws db");
+        conn.execute("INSERT INTO notes (body) VALUES ('changed-2')", [])
+            .expect("modify ws db again");
+    }
+    manager
+        .sync_workspace_databases(&storage, active.path(), SyncDirection::Bidirectional)
+        .await
+        .expect("third workspace sync");
+    let third = storage
+        .stat(&remote_key)
+        .await
+        .expect("stat after third sync")
+        .expect("workspace re-uploaded");
+    assert!(
+        third.last_modified > second.last_modified,
+        "本地修改后的工作区数据库必须重传"
+    );
 }

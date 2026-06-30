@@ -71,7 +71,6 @@ export interface GradingStreamState {
 interface GradingStreamEvent {
   type: 'data' | 'complete' | 'error' | 'cancelled';
   chunk?: string;
-  accumulated?: string;
   char_count?: number;
   round_id?: string;
   grading_result?: string;
@@ -231,9 +230,10 @@ export function useEssayGradingStream() {
             if (payload.type === 'data') {
               // ★ 二轮修复：添加活跃状态检查，防止超时后收到延迟事件导致状态闪烁
               if (!isActiveRef.current || settledRef.current) return;
+              // A6-11: 后端只回传增量 chunk，前端自行累加（startGrading 已把 gradingResult 重置为空）
               setState((prev) => ({
                 ...prev,
-                gradingResult: payload.accumulated || prev.gradingResult,
+                gradingResult: prev.gradingResult + (payload.chunk ?? ''),
                 charCount: payload.char_count ?? prev.charCount,
               }));
               return;

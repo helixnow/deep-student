@@ -93,7 +93,10 @@ impl RequestAdapter for MoonshotAdapter {
         if is_k25 {
             // ========== K2.5 专用处理 ==========
             // K2.5 使用 thinking 参数格式: {"type": "enabled"} 或 {"type": "disabled"}
-            let thinking_enabled = enable_thinking.unwrap_or(true); // K2.5 默认启用 thinking
+            // 🔧 一致性修复：尊重配置中的 enable_thinking（之前直接 unwrap_or(true)，
+            // 用户在模型配置里关闭思考也会被忽略）。优先级与其他适配器一致：
+            // 外部覆盖 > 配置 enable_thinking > K2.5 默认启用
+            let thinking_enabled = enable_thinking.or(config.enable_thinking).unwrap_or(true);
             let thinking_type = if thinking_enabled {
                 "enabled"
             } else {

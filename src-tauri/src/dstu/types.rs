@@ -909,7 +909,10 @@ mod tests {
         let node = DstuNode::folder("folder_1", "/高考复习", "高考复习");
         let json = serde_json::to_string(&node).unwrap();
 
-        assert!(json.contains("\"nodeType\"")); // 字段名应该是 nodeType，但 serde 用 type
+        // node_type 通过 #[serde(rename = "type")] 序列化为 "type"，与前端
+        // src/dstu/types.ts 的 DstuNode.type 对齐
+        assert!(json.contains("\"type\""));
+        assert!(!json.contains("\"nodeType\""));
         assert!(json.contains("\"createdAt\""));
         assert!(json.contains("\"updatedAt\""));
         assert!(!json.contains("\"created_at\""));

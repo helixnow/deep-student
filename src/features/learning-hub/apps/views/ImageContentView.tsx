@@ -10,17 +10,22 @@
  * - 添加加载进度指示
  */
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, ArrowsOut, Warning } from '@phosphor-icons/react';
+import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, ArrowsOut, Warning, Download, CircleNotch, ImageBroken } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { invoke } from '@tauri-apps/api/core';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
-import { LARGE_FILE_THRESHOLD } from '@/utils/base64FileUtils';
+import { base64ToBlob, base64ToUint8Array } from '@/utils/base64FileUtils';
+import { fileManager } from '@/utils/fileManager';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { formatFileSize } from './previewUtils';
+
+/** 图片大文件确认阈值（后端图片上限 50MB；超过 20MB 先提示再加载） */
+const IMAGE_LARGE_FILE_THRESHOLD = 20 * 1024 * 1024;
 
 /** 附件元数据类型 */
 interface VfsAttachment {
@@ -46,9 +51,12 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   // 状态
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
-  const [imageData, setImageData] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loadingStage, setLoadingStage] = useState<LoadingStage>('idle');
   const [error, setError] = useState<string | null>(null);
+  // ★ 2026-06-12（审阅问题 M2）：渲染失败状态（解码失败/系统不支持的格式如 HEIC）
+  const [renderFailed, setRenderFailed] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [fileSize, setFileSize] = useState<number>(0);
   const [loadStartTime, setLoadStartTime] = useState<number>(0);
   
@@ -66,6 +74,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   // 从 node 的 metadata 获取图片信息
   const metadata = node.metadata as Record<string, unknown> | undefined;
   const mimeType = (metadata?.mimeType as string) || 'image/png';
+  const isLikelyUnsupportedFormat = /heic|heif/i.test(mimeType) || /\.(heic|heif)$/i.test(node.name);
 
   // 清理 ObjectURL
   useEffect(() => {
@@ -78,10 +87,14 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   }, []);
 
   // 加载图片内容的核心函数
+  // ★ 2026-06-12（审阅问题 M2/M10）：base64 → Blob → ObjectURL。
+  // 旧实现直接拼 data: URL，base64 字符串与解码位图双份驻留内存，
+  // 且 objectUrlRef 清理逻辑形同虚设（从未赋值）。
   const loadImageContent = useCallback(async () => {
     setLoadingStage('loading');
     setLoadStartTime(Date.now());
     setError(null);
+    setRenderFailed(false);
     
     try {
       // 调用后端获取附件内容
@@ -90,7 +103,18 @@ const ImageContentView: React.FC<ContentViewProps> = ({
       });
       
       if (result.found && result.content) {
-        setImageData(result.content);
+        const blob = base64ToBlob(result.content, mimeType);
+        if (!blob) {
+          setError(t('learningHub:error.imageDecodeFailed', '图片解码失败'));
+          setLoadingStage('idle');
+          return;
+        }
+        const objectUrl = URL.createObjectURL(blob);
+        if (objectUrlRef.current) {
+          URL.revokeObjectURL(objectUrlRef.current);
+        }
+        objectUrlRef.current = objectUrl;
+        setImageUrl(objectUrl);
         setLoadingStage('done');
       } else {
         setError(t('learningHub:error.imageNotFound', '图片未找到'));
@@ -100,7 +124,45 @@ const ImageContentView: React.FC<ContentViewProps> = ({
       setError(getErrorMessage(err));
       setLoadingStage('idle');
     }
-  }, [node.id, t]);
+  }, [node.id, mimeType, t]);
+
+  // ★ 保存到本地（渲染失败/大文件场景的逃生通道）
+  const handleSaveToDevice = useCallback(async () => {
+    setIsSaving(true);
+    try {
+      const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
+        attachmentId: node.id,
+      });
+      if (!result?.found || !result?.content) {
+        showGlobalNotification('error', t('learningHub:error.imageNotFound', '图片未找到'));
+        return;
+      }
+      const bytes = base64ToUint8Array(result.content);
+      if (!bytes) {
+        showGlobalNotification('error', t('learningHub:error.imageDecodeFailed', '图片解码失败'));
+        return;
+      }
+      const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
+      const saveResult = await fileManager.saveBinaryFile({
+        data: bytes,
+        defaultFileName: node.name,
+        filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
+      });
+      if (!saveResult.canceled && saveResult.path) {
+        showGlobalNotification('success', t('learningHub:file.savedSuccessfully', '文件已保存'));
+        try {
+          const { openPath } = await import('@tauri-apps/plugin-opener');
+          await openPath(saveResult.path);
+        } catch {
+          // 打开失败不阻塞，文件已保存
+        }
+      }
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err));
+    } finally {
+      setIsSaving(false);
+    }
+  }, [node.id, node.name, t]);
 
   // 初始化：先检查文件大小
   useEffect(() => {
@@ -123,7 +185,10 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         setFileSize(attachment.size);
         
         // 检查文件大小
-        if (attachment.size >= LARGE_FILE_THRESHOLD) {
+        // ★ 2026-06-12（审阅问题 M8）：阈值改为图片专用 20MB。
+        // 旧代码用通用 LARGE_FILE_THRESHOLD(100MB)，而图片上传上限远低于此，
+        // 警告分支永远不可达。
+        if (attachment.size >= IMAGE_LARGE_FILE_THRESHOLD) {
           // 大文件：显示警告，让用户决定是否加载
           setLoadingStage('large_file_warning');
         } else {
@@ -164,16 +229,6 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     const delta = e.deltaY > 0 ? -25 : 25;
     setZoom((prev) => Math.max(25, Math.min(400, prev + delta)));
   }, []);
-
-  // 图片 URL
-  const imageUrl = useMemo(() => {
-    if (!imageData) return null;
-    // 确保有正确的 data URL 前缀
-    if (imageData.startsWith('data:')) {
-      return imageData;
-    }
-    return `data:${mimeType};base64,${imageData}`;
-  }, [imageData, mimeType]);
 
   // 检查文件大小中
   if (loadingStage === 'checking') {
@@ -267,6 +322,48 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     );
   }
 
+  // ★ 2026-06-12（审阅问题 M2）：图片解码/渲染失败（典型如 WebView 不支持 HEIC）。
+  // 旧实现没有 onError 处理，失败时只显示一个永远加载不出来的空白裂图。
+  if (renderFailed) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
+        <ImageBroken size={40} className="text-muted-foreground" />
+        <div className="space-y-1">
+          <p className="text-sm font-medium">
+            {t('learningHub:image.renderFailed', '图片无法显示')}
+          </p>
+          <p className="text-xs text-muted-foreground max-w-md">
+            {isLikelyUnsupportedFormat
+              ? t('learningHub:image.unsupportedFormatHint', '当前系统的内置浏览器不支持该格式（如 HEIC/HEIF）。可保存到本地后用系统图片查看器打开。')
+              : t('learningHub:image.renderFailedHint', '图片数据可能已损坏或格式不受支持。可尝试保存到本地查看。')}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <NotionButton
+            variant="default"
+            size="sm"
+            onClick={() => {
+              void loadImageContent();
+            }}
+          >
+            {t('common:retry', '重试')}
+          </NotionButton>
+          <NotionButton
+            variant="primary"
+            size="sm"
+            disabled={isSaving}
+            onClick={() => {
+              void handleSaveToDevice();
+            }}
+          >
+            {isSaving ? <CircleNotch size={14} className="animate-spin" /> : <Download size={14} />}
+            <span className="ml-1">{t('learningHub:image.saveToDevice', '保存到本地')}</span>
+          </NotionButton>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-background">
       {/* 工具栏 */}
@@ -330,6 +427,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             transform: rotation ? `rotate(${rotation}deg)` : undefined,
           }}
           draggable={false}
+          onError={() => setRenderFailed(true)}
         />
       </CustomScrollArea>
     </div>

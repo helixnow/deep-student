@@ -7,12 +7,15 @@
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
 
 use deep_student_lib::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, S3Config, StorageProvider,
-    WebDavConfig,
+    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, FtpConfig, S3Config,
+    StorageProvider, WebDavConfig,
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
-use deep_student_lib::data_governance::sync::{MergeStrategy, SyncChangeWithData, SyncManager};
+use deep_student_lib::data_governance::sync::{
+    MergeStrategy, SyncChangeWithData, SyncDirection, SyncManager, SyncManifest,
+    SyncTransactionStatus,
+};
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
@@ -767,33 +770,23 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
         wrong_password_device_id,
         Some("wrong-data-governance-password".to_string()),
     );
-    let wrong_password_download = wrong_password_manager
+    let wrong_password_error = wrong_password_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("wrong password should report decode failures without failing the batch");
+        .expect_err("wrong password should stop at the encrypted change file");
     assert!(
-        wrong_password_download.changes.is_empty(),
-        "wrong password must not return decrypted changes"
-    );
-    assert_eq!(
-        wrong_password_download.decode_failures,
-        vec![change_key.clone()],
-        "wrong password should identify the encrypted change file"
+        wrong_password_error.to_string().contains(&change_key),
+        "wrong password error should identify the encrypted change file: {wrong_password_error}"
     );
 
     let plaintext_manager = SyncManager::new(plaintext_device_id);
-    let plaintext_download = plaintext_manager
+    let plaintext_error = plaintext_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("missing password should report decode failures without failing the batch");
+        .expect_err("missing password should stop at the encrypted change file");
     assert!(
-        plaintext_download.changes.is_empty(),
-        "missing password must not return encrypted changes as plaintext"
-    );
-    assert_eq!(
-        plaintext_download.decode_failures,
-        vec![change_key],
-        "missing password should identify the encrypted change file"
+        plaintext_error.to_string().contains(&change_key),
+        "missing password error should identify the encrypted change file: {plaintext_error}"
     );
 }
 
@@ -813,7 +806,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     clear_change_log(&encrypted_vfs);
     clear_change_log(&target_vfs);
 
-    let (plain_res_id, plain_note_id, _plain_hash, plain_title) =
+    let (_plain_res_id, plain_note_id, _plain_hash, plain_title) =
         insert_vfs_note_bundle(&plaintext_vfs, "mixed_plaintext");
     let (_encrypted_res_id, encrypted_note_id, encrypted_hash, encrypted_title) =
         insert_vfs_note_bundle(&encrypted_vfs, "mixed_encrypted");
@@ -916,26 +909,13 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     );
 
     let unauthenticated_manager = SyncManager::new(unauthenticated_device_id);
-    let unauthenticated_download = unauthenticated_manager
+    let unauthenticated_error = unauthenticated_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("download mixed changes without password");
-    assert_eq!(
-        unauthenticated_download.decode_failures,
-        vec![encrypted_key],
-        "clients without the new password should report only encrypted change files"
-    );
-    assert_eq!(
-        unauthenticated_download.changes.len(),
-        plain_changes.len(),
-        "clients without a password should still read legacy plaintext changes"
-    );
+        .expect_err("clients without the new password should stop at encrypted change files");
     assert!(
-        unauthenticated_download
-            .changes
-            .iter()
-            .all(|change| change.record_id == plain_note_id || change.record_id == plain_res_id),
-        "unauthenticated download must not expose encrypted records"
+        unauthenticated_error.to_string().contains(&encrypted_key),
+        "clients without the new password should identify the encrypted change file: {unauthenticated_error}"
     );
 }
 
@@ -1053,20 +1033,14 @@ async fn run_corrupt_change_file_contract(storage: Box<dyn CloudStorage>) {
         .await
         .expect("upload corrupt change file");
 
-    let downloaded = target_manager
+    let corrupt_error = target_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("download changes with corrupt neighbor");
+        .expect_err("corrupt change neighbor should stop the download at a safe point");
     assert!(
-        downloaded.changes.len() >= changes.len(),
-        "valid changes should survive corrupt neighbor"
+        corrupt_error.to_string().contains(&corrupt_key),
+        "corrupt file should be reported, not silently ignored: {corrupt_error}"
     );
-    assert_eq!(
-        downloaded.decode_failures.len(),
-        1,
-        "corrupt file should be reported, not silently ignored"
-    );
-    assert_eq!(downloaded.decode_failures[0], corrupt_key);
 }
 
 async fn run_corrupt_manifest_contract(storage: Box<dyn CloudStorage>) {
@@ -1108,49 +1082,116 @@ async fn run_prune_old_changes_contract(storage: Box<dyn CloudStorage>) {
         .await
         .expect("provider connection should work");
 
-    let manager = SyncManager::new("device-prune".to_string());
+    let manager = SyncManager::new(format!("device-prune-{}", Uuid::new_v4()));
+    let peer_device = format!("device-peer-{}", Uuid::new_v4());
+    let now_iso = chrono::Utc::now().to_rfc3339();
     let now = chrono::Utc::now().timestamp() as u64;
-    let old = now - 5 * 86400;
-    let recent = now;
-    let old_own = format!(
-        "data_governance/changes/device-prune/{}-{}.json.zst",
-        old,
+    let covered_own = format!(
+        "data_governance/changes/{}/{:012}-{}-{}.json.zst",
+        manager.device_id(),
+        1,
+        now - 5 * 86400,
         Uuid::new_v4()
     );
-    let old_other = format!(
-        "data_governance/changes/device-retired/{}-{}.json.zst",
-        old,
+    let covered_by_snapshot_but_not_peer = format!(
+        "data_governance/changes/{}/{:012}-{}-{}.json.zst",
+        manager.device_id(),
+        2,
+        now - 5 * 86400,
         Uuid::new_v4()
     );
-    let recent_own = format!(
-        "data_governance/changes/device-prune/{}-{}.json.zst",
-        recent,
+    let other_device = format!(
+        "data_governance/changes/{}/{:012}-{}-{}.json.zst",
+        peer_device,
+        1,
+        now - 5 * 86400,
         Uuid::new_v4()
     );
 
-    for key in [&old_own, &old_other, &recent_own] {
+    for key in [
+        &covered_own,
+        &covered_by_snapshot_but_not_peer,
+        &other_device,
+    ] {
         storage
             .put(key, b"placeholder")
             .await
             .expect("seed change file");
     }
 
+    let mut cursors = HashMap::new();
+    cursors.insert(manager.device_id().to_string(), 1);
+    let peer_manifest = SyncManifest {
+        sync_transaction_id: "peer".to_string(),
+        databases: HashMap::new(),
+        status: SyncTransactionStatus::Complete,
+        created_at: now_iso.clone(),
+        device_id: peer_device.clone(),
+        format_version: 3,
+        published_max_seq: 0,
+        cursors,
+        superseded_by: None,
+        snapshot_seen: HashMap::new(),
+    };
+    let manifest_json = serde_json::to_vec(&peer_manifest).expect("serialize peer manifest");
+    storage
+        .put(
+            &format!("data_governance/manifests/{peer_device}.json"),
+            &manifest_json,
+        )
+        .await
+        .expect("seed peer manifest");
+
+    let mut covered_cursors = serde_json::Map::new();
+    covered_cursors.insert(manager.device_id().to_string(), serde_json::json!(2));
+    let snapshot = serde_json::json!({
+        "format_version": 1,
+        "database_name": "vfs",
+        "device_id": peer_device,
+        "created_at": now_iso,
+        "schema_version": 1,
+        "data_version": 1,
+        "checksum": "snapshot",
+        "covered_cursors": covered_cursors,
+        "rows": {}
+    });
+    let snapshot_json = serde_json::to_vec(&snapshot).expect("serialize snapshot");
+    let snapshot_payload = zstd::stream::encode_all(std::io::Cursor::new(snapshot_json), 0)
+        .expect("compress snapshot");
+    let snapshot_key = format!(
+        "data_governance/snapshots/vfs/{}-{}-{}.json.zst",
+        chrono::Utc::now().timestamp_millis(),
+        manager.device_id(),
+        Uuid::new_v4()
+    );
+    storage
+        .put(&snapshot_key, &snapshot_payload)
+        .await
+        .expect("seed snapshot");
+
     let deleted = manager
         .prune_old_changes(storage.as_ref(), 1)
         .await
         .expect("prune old provider changes");
-    assert_eq!(deleted, 2);
-    assert!(storage.get(&old_own).await.expect("read old own").is_none());
     assert!(storage
-        .get(&old_other)
+        .get(&covered_own)
         .await
-        .expect("read old other")
+        .expect("read covered own")
         .is_none());
     assert!(storage
-        .get(&recent_own)
+        .get(&covered_by_snapshot_but_not_peer)
         .await
-        .expect("read recent own")
+        .expect("read cursor-limited own")
         .is_some());
+    assert!(storage
+        .get(&other_device)
+        .await
+        .expect("read other device")
+        .is_some());
+    assert_eq!(
+        deleted, 1,
+        "only own v3 changes covered by snapshot and all active peer cursors may be pruned"
+    );
 }
 
 async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage>) {
@@ -1174,13 +1215,21 @@ async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage
     let target_manager = SyncManager::new(format!("device-ws-dst-{}", Uuid::new_v4()));
 
     source_manager
-        .sync_workspace_databases(storage.as_ref(), source_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            source_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source workspace database");
     assert_remote_file_present(storage.as_ref(), &remote_key).await;
 
     target_manager
-        .sync_workspace_databases(storage.as_ref(), target_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            target_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("download workspace database to target directory");
     assert!(
@@ -1214,7 +1263,11 @@ async fn run_workspace_remote_same_size_corruption_rejected_contract(
     let source_manager = SyncManager::new(format!("device-ws-src-{}", Uuid::new_v4()));
     let target_manager = SyncManager::new(format!("device-ws-dst-{}", Uuid::new_v4()));
     source_manager
-        .sync_workspace_databases(storage.as_ref(), source_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            source_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source workspace database");
 
@@ -1225,7 +1278,11 @@ async fn run_workspace_remote_same_size_corruption_rejected_contract(
         .expect("overwrite remote workspace database with same-size corrupted bytes");
 
     target_manager
-        .sync_workspace_databases(storage.as_ref(), target_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            target_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("workspace sync should skip corrupted download without failing whole pass");
     let target_db = target_active
@@ -1263,7 +1320,11 @@ async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudSto
     let target_manager = SyncManager::new(format!("device-blob-dst-{}", Uuid::new_v4()));
 
     let upload = source_manager
-        .sync_vfs_blobs(storage.as_ref(), source_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            source_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source blob");
     assert_eq!(upload.uploaded, 1);
@@ -1271,7 +1332,11 @@ async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudSto
     assert_remote_file_present(storage.as_ref(), &remote_key).await;
 
     let download = target_manager
-        .sync_vfs_blobs(storage.as_ref(), target_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            target_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("download blob to target directory");
     assert_eq!(download.downloaded, 1);
@@ -1293,7 +1358,11 @@ async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudSto
         .expect("upload blob tombstone");
 
     let tombstone_sync = target_manager
-        .sync_vfs_blobs_with_tombstones(storage.as_ref(), target_blobs.path())
+        .sync_vfs_blobs_with_tombstones(
+            storage.as_ref(),
+            target_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("apply blob tombstone on target");
     assert!(
@@ -1333,7 +1402,11 @@ async fn run_vfs_blob_remote_same_size_corruption_rejected_contract(
     let target_manager = SyncManager::new(format!("device-blob-dst-{}", Uuid::new_v4()));
 
     let upload = source_manager
-        .sync_vfs_blobs(storage.as_ref(), source_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            source_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source blob");
     assert_eq!(upload.uploaded, 1);
@@ -1351,7 +1424,11 @@ async fn run_vfs_blob_remote_same_size_corruption_rejected_contract(
         .expect("overwrite remote blob with same-size corrupted payload");
 
     let download = target_manager
-        .sync_vfs_blobs(storage.as_ref(), target_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            target_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("sync should report per-file blob failure instead of failing whole pass");
     assert_eq!(download.downloaded, 0);
@@ -1407,6 +1484,7 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
             storage.as_ref(),
             source_active.path(),
             source_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("upload source asset directories");
@@ -1420,6 +1498,7 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
             storage.as_ref(),
             target_active.path(),
             target_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("download assets to target directories");
@@ -1447,6 +1526,7 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
             storage.as_ref(),
             target_active.path(),
             target_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("apply asset tombstone on target");
@@ -1490,6 +1570,7 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
             storage.as_ref(),
             source_active.path(),
             source_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("upload source asset");
@@ -1512,6 +1593,7 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
             storage.as_ref(),
             target_active.path(),
             target_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("asset sync should report per-file failure");
@@ -1609,6 +1691,51 @@ async fn s3_storage_with_secret(secret: &str) -> Box<dyn CloudStorage> {
     })
     .await
     .expect("create S3 storage")
+}
+
+async fn ftp_storage() -> Box<dyn CloudStorage> {
+    create_storage(&CloudStorageConfig {
+        provider: StorageProvider::Ftp,
+        ftp: Some(FtpConfig {
+            host: std::env::var("DS_SYNC_FTP_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            port: std::env::var("DS_SYNC_FTP_PORT")
+                .unwrap_or_else(|_| "2121".to_string())
+                .parse()
+                .unwrap_or(2121),
+            username: std::env::var("DS_SYNC_FTP_USERNAME")
+                .unwrap_or_else(|_| "ftpuser".to_string()),
+            password: std::env::var("DS_SYNC_FTP_PASSWORD")
+                .unwrap_or_else(|_| "ftpuser123".to_string()),
+            use_tls: false,
+        }),
+        root: Some(unique_root("ftp")),
+        ..Default::default()
+    })
+    .await
+    .expect("create FTP storage")
+}
+
+async fn ftp_storage_with_password(password: &str) -> Box<dyn CloudStorage> {
+    create_storage(&CloudStorageConfig {
+        provider: StorageProvider::Ftp,
+        ftp: Some(FtpConfig {
+            host: std::env::var("DS_SYNC_FTP_HOST")
+                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            port: std::env::var("DS_SYNC_FTP_PORT")
+                .unwrap_or_else(|_| "2121".to_string())
+                .parse()
+                .unwrap_or(2121),
+            username: std::env::var("DS_SYNC_FTP_USERNAME")
+                .unwrap_or_else(|_| "ftpuser".to_string()),
+            password: password.to_string(),
+            use_tls: false,
+        }),
+        root: Some(unique_root("ftp-bad-auth")),
+        ..Default::default()
+    })
+    .await
+    .expect("create FTP storage")
 }
 
 #[cfg(feature = "cloud_storage_s3")]
@@ -1995,4 +2122,141 @@ async fn s3_list_pagination_contract() {
 async fn s3_multipart_file_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_s3_multipart_file_contract(s3_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_basic_object_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_basic_object_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_object_semantics_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_object_semantics_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_file_checksum_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_file_checksum_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_encrypted_backup_payload_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_encrypted_backup_payload_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_file_checksum_mismatch_preserves_local_target_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_file_checksum_mismatch_preserves_local_target_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_sync_manager_roundtrip_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_sync_manager_roundtrip_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_encrypted_data_governance_payload_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_encrypted_data_governance_payload_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_mixed_plaintext_and_encrypted_change_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_mixed_plaintext_and_encrypted_change_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_duplicate_enriched_change_files_are_idempotent_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_duplicate_enriched_change_files_are_idempotent_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_corrupt_change_file_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_corrupt_change_file_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_corrupt_manifest_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_corrupt_manifest_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_prune_old_changes_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_prune_old_changes_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_workspace_database_file_sync_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_workspace_database_file_sync_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_workspace_remote_same_size_corruption_rejected_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_workspace_remote_same_size_corruption_rejected_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_vfs_blob_file_sync_and_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_vfs_blob_file_sync_and_tombstone_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_vfs_blob_remote_same_size_corruption_rejected_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_vfs_blob_remote_same_size_corruption_rejected_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_asset_directories_file_sync_and_tombstone_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_directories_file_sync_and_tombstone_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_asset_remote_same_size_corruption_rejected_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_asset_remote_same_size_corruption_rejected_contract(ftp_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn ftp_bad_credentials_rejected() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    let storage = ftp_storage_with_password("definitely-wrong-password").await;
+    assert!(
+        storage.check_connection().await.is_err(),
+        "FTP bad credentials must fail check_connection"
+    );
 }

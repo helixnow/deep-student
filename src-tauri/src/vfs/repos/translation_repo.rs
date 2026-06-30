@@ -80,10 +80,10 @@ impl VfsTranslationRepo {
         // 搜索过滤（在 resources.data 中搜索）
         if let Some(q) = search {
             sql.push_str(&format!(
-                " AND EXISTS (SELECT 1 FROM resources r WHERE r.id = t.resource_id AND r.data LIKE ?{})",
+                " AND EXISTS (SELECT 1 FROM resources r WHERE r.id = t.resource_id AND r.data LIKE ?{} ESCAPE '\\')",
                 param_idx
             ));
-            let search_pattern = format!("%{}%", q);
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             params_vec.push(Box::new(search_pattern));
             param_idx += 1;
         }
@@ -271,18 +271,24 @@ impl VfsTranslationRepo {
             })?;
 
         let result = (|| -> VfsResult<VfsTranslation> {
-            // 2. 创建或复用资源
-            let resource_result = VfsResourceRepo::create_or_reuse_with_conn(
+            // 2. 创建资源
+            // ★ 2026-06-12（审阅问题 S1）：使用 translation_id 作为盐值，与笔记一致。
+            // 旧实现使用无盐内容哈希，两条内容相同的翻译会共享同一 resource 行，
+            // 而编辑/purge 路径都按"独占资源"处理 → 编辑互相污染、purge 误删共享内容。
+            let translation_id = VfsTranslation::generate_id();
+            let salted_hash =
+                VfsResourceRepo::compute_hash_with_salt(&content_str, &translation_id);
+            let resource_result = VfsResourceRepo::create_or_reuse_with_conn_and_hash(
                 conn,
                 VfsResourceType::Translation,
                 &content_str,
-                None,
+                &salted_hash,
+                Some(&translation_id),
                 Some("translations"),
                 None,
             )?;
 
             // 3. 创建翻译记录
-            let translation_id = VfsTranslation::generate_id();
             let now = chrono::Utc::now()
                 .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                 .to_string();
@@ -306,12 +312,7 @@ impl VfsTranslationRepo {
                 ],
             )?;
 
-            // 4. 更新资源的 source_id
-            conn.execute(
-                "UPDATE resources SET source_id = ?1 WHERE id = ?2",
-                params![translation_id, resource_result.resource_id],
-            )?;
-
+            // 4. source_id 已在创建资源时写入（translation_id 作盐，资源独占）
             info!(
                 "[VFS::TranslationRepo] Created translation: {} (resource: {}), title: {:?}",
                 translation_id, resource_result.resource_id, params.title
@@ -545,6 +546,8 @@ impl VfsTranslationRepo {
     /// 永久删除翻译记录（使用现有连接）
     ///
     /// ★ P0 修复：同时清理 folder_items 和 resources 记录
+    /// ★ 2026-06-12（审阅问题 S1）：删除 resource 前检查是否仍被其他翻译引用。
+    /// 历史数据中无盐哈希的资源可能被多条翻译共享，直接删除会导致其他翻译内容丢失。
     pub fn purge_translation_with_conn(conn: &Connection, translation_id: &str) -> VfsResult<()> {
         // 1. 获取 resource_id（purge 后无法再查）
         let resource_id: Option<String> = conn
@@ -575,9 +578,23 @@ impl VfsTranslationRepo {
             });
         }
 
-        // 4. ★ P0 修复：清理关联的 resource（如果存在）
+        // 4. 清理关联的 resource（仅在没有其他翻译引用时删除）
         if let Some(rid) = resource_id {
-            conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+            let remaining: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM translations WHERE resource_id = ?1",
+                params![rid],
+                |row| row.get(0),
+            )?;
+            if remaining == 0 {
+                // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量）
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
+                conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
+            } else {
+                info!(
+                    "[VFS::TranslationRepo] Resource {} still referenced by {} translations, kept",
+                    rid, remaining
+                );
+            }
         }
 
         info!(
@@ -585,6 +602,125 @@ impl VfsTranslationRepo {
             translation_id
         );
         Ok(())
+    }
+
+    // ========================================================================
+    // 更新翻译内容
+    // ========================================================================
+
+    /// 更新翻译内容（源文本与译文）
+    ///
+    /// ★ 2026-06-12（审阅问题 S1）：取代 DSTU 层直接 `UPDATE resources SET data` 的
+    /// 旧实现。旧实现的三个缺陷：
+    /// 1. 不更新 hash → 哈希与内容不一致，破坏内容寻址与去重；
+    /// 2. 不重置 index_state → 向量索引仍是旧内容；
+    /// 3. 历史共享资源（无盐哈希时代）被就地改写 → 其他翻译内容被污染。
+    ///
+    /// 本实现：
+    /// - 独占资源：就地更新 data + 加盐 hash + updated_at + index_state='pending'
+    /// - 共享资源：创建新的加盐资源并切换指针（不触碰共享内容）
+    pub fn update_translation_content(
+        db: &VfsDatabase,
+        translation_id: &str,
+        source: &str,
+        translated: &str,
+    ) -> VfsResult<()> {
+        let conn = db.get_conn_safe()?;
+        Self::update_translation_content_with_conn(&conn, translation_id, source, translated)
+    }
+
+    /// 更新翻译内容（使用现有连接）
+    pub fn update_translation_content_with_conn(
+        conn: &Connection,
+        translation_id: &str,
+        source: &str,
+        translated: &str,
+    ) -> VfsResult<()> {
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM translations WHERE id = ?1 AND deleted_at IS NULL",
+                params![translation_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+
+        let resource_id = resource_id.ok_or_else(|| VfsError::NotFound {
+            resource_type: "Translation".to_string(),
+            id: translation_id.to_string(),
+        })?;
+
+        let content = serde_json::json!({
+            "source": source,
+            "translated": translated
+        });
+        let content_str =
+            serde_json::to_string(&content).map_err(|e| VfsError::Serialization(e.to_string()))?;
+        let salted_hash = VfsResourceRepo::compute_hash_with_salt(&content_str, translation_id);
+
+        // 检查资源是否被其他翻译共享（历史无盐数据可能共享）
+        let sharers: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM translations WHERE resource_id = ?1 AND id != ?2",
+            params![resource_id, translation_id],
+            |row| row.get(0),
+        )?;
+
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
+        conn.execute("SAVEPOINT update_translation_content", [])?;
+
+        let result = (|| -> VfsResult<()> {
+            if sharers > 0 {
+                // 共享资源：创建新的加盐资源并切换指针，保持共享内容不变
+                let new_resource = VfsResourceRepo::create_or_reuse_with_conn_and_hash(
+                    conn,
+                    VfsResourceType::Translation,
+                    &content_str,
+                    &salted_hash,
+                    Some(translation_id),
+                    Some("translations"),
+                    None,
+                )?;
+                conn.execute(
+                    "UPDATE translations SET resource_id = ?1, updated_at = ?2 WHERE id = ?3",
+                    params![new_resource.resource_id, now, translation_id],
+                )?;
+                info!(
+                    "[VFS::TranslationRepo] Detached shared resource for translation {}: {} -> {}",
+                    translation_id, resource_id, new_resource.resource_id
+                );
+            } else {
+                // 独占资源：就地更新内容 + 哈希 + 索引状态
+                conn.execute(
+                    "UPDATE resources SET data = ?1, hash = ?2, updated_at = ?3, index_state = 'pending' WHERE id = ?4",
+                    params![content_str, salted_hash, now_ms, resource_id],
+                )?;
+                conn.execute(
+                    "UPDATE translations SET updated_at = ?1 WHERE id = ?2",
+                    params![now, translation_id],
+                )?;
+                debug!(
+                    "[VFS::TranslationRepo] Updated translation content in place: {} (resource: {})",
+                    translation_id, resource_id
+                );
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                conn.execute("RELEASE update_translation_content", [])?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = conn.execute("ROLLBACK TO update_translation_content", []);
+                let _ = conn.execute("RELEASE update_translation_content", []);
+                Err(e)
+            }
+        }
     }
 
     // ========================================================================
@@ -970,5 +1106,160 @@ mod tests {
         let id = VfsTranslation::generate_id();
         assert!(id.starts_with("tr_"));
         assert_eq!(id.len(), 13); // "tr_" + 10 chars
+    }
+
+    // ★ 2026-06-12（审阅问题 S1）回归测试
+
+    fn setup_test_db() -> (tempfile::TempDir, crate::vfs::database::VfsDatabase) {
+        crate::vfs::database::setup_migrated_test_db()
+    }
+
+    fn make_params(source: &str, translated: &str) -> crate::vfs::types::VfsCreateTranslationParams {
+        crate::vfs::types::VfsCreateTranslationParams {
+            title: None,
+            source: source.to_string(),
+            translated: translated.to_string(),
+            src_lang: "en".to_string(),
+            tgt_lang: "zh".to_string(),
+            engine: None,
+            model: None,
+        }
+    }
+
+    fn resource_row(
+        conn: &rusqlite::Connection,
+        resource_id: &str,
+    ) -> Option<(String, String, String)> {
+        conn.query_row(
+            "SELECT data, hash, index_state FROM resources WHERE id = ?1",
+            params![resource_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .unwrap()
+    }
+
+    /// 内容相同的两条翻译必须各自独占资源（加盐哈希）
+    #[test]
+    fn test_identical_content_translations_get_distinct_resources() {
+        let (_tmp, db) = setup_test_db();
+
+        let t1 = VfsTranslationRepo::create_translation(&db, make_params("hello", "你好")).unwrap();
+        let t2 = VfsTranslationRepo::create_translation(&db, make_params("hello", "你好")).unwrap();
+
+        assert_ne!(
+            t1.resource_id, t2.resource_id,
+            "identical content must not share resources"
+        );
+    }
+
+    /// 更新独占资源：就地更新且 hash / index_state 同步刷新
+    #[test]
+    fn test_update_translation_content_in_place_refreshes_hash_and_index_state() {
+        let (_tmp, db) = setup_test_db();
+        let t = VfsTranslationRepo::create_translation(&db, make_params("hello", "你好")).unwrap();
+        let rid = t.resource_id.clone();
+
+        {
+            let conn = db.get_conn_safe().unwrap();
+            // 先伪造 index_state = 'indexed'，验证更新后重置为 pending
+            conn.execute(
+                "UPDATE resources SET index_state = 'indexed' WHERE id = ?1",
+                params![rid],
+            )
+            .unwrap();
+        }
+
+        let (_, old_hash, _) = {
+            let conn = db.get_conn_safe().unwrap();
+            resource_row(&conn, &rid).unwrap()
+        };
+
+        VfsTranslationRepo::update_translation_content(&db, &t.id, "hello world", "你好世界")
+            .unwrap();
+
+        let conn = db.get_conn_safe().unwrap();
+        let (data, new_hash, index_state) = resource_row(&conn, &rid).unwrap();
+        assert!(data.contains("hello world"), "data should be updated in place");
+        assert_ne!(old_hash, new_hash, "hash must be recomputed");
+        assert_eq!(index_state, "pending", "index_state must reset to pending");
+    }
+
+    /// 历史共享资源（无盐时代）：更新一条翻译不得污染另一条（写时复制）
+    #[test]
+    fn test_update_shared_resource_uses_copy_on_write() {
+        let (_tmp, db) = setup_test_db();
+        let t1 = VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
+        let t2 = VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
+        let r1 = t1.resource_id.clone();
+        let r2 = t2.resource_id.clone();
+
+        // 模拟历史脏数据：两条翻译指向同一资源
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE translations SET resource_id = ?1 WHERE id = ?2",
+                params![r1, t2.id],
+            )
+            .unwrap();
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2]).unwrap();
+        }
+
+        VfsTranslationRepo::update_translation_content(&db, &t2.id, "edited", "已编辑").unwrap();
+
+        let conn = db.get_conn_safe().unwrap();
+        // t1 原资源内容不变
+        let (data1, _, _) = resource_row(&conn, &r1).unwrap();
+        assert!(data1.contains("shared"), "shared resource must stay intact");
+        // t2 切换到了新资源
+        let new_rid: String = conn
+            .query_row(
+                "SELECT resource_id FROM translations WHERE id = ?1",
+                params![t2.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_ne!(new_rid, r1, "t2 must detach from shared resource");
+        let (data2, _, _) = resource_row(&conn, &new_rid).unwrap();
+        assert!(data2.contains("edited"));
+    }
+
+    /// purge 共享资源：仅最后一个引用者删除资源
+    #[test]
+    fn test_purge_translation_keeps_shared_resource_until_last_reference() {
+        let (_tmp, db) = setup_test_db();
+        let t1 = VfsTranslationRepo::create_translation(&db, make_params("a", "甲")).unwrap();
+        let t2 = VfsTranslationRepo::create_translation(&db, make_params("a", "甲")).unwrap();
+        let r1 = t1.resource_id.clone();
+        let r2 = t2.resource_id.clone();
+
+        // 模拟历史共享
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE translations SET resource_id = ?1 WHERE id = ?2",
+                params![r1, t2.id],
+            )
+            .unwrap();
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2]).unwrap();
+        }
+
+        VfsTranslationRepo::purge_translation(&db, &t1.id).unwrap();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            assert!(
+                resource_row(&conn, &r1).is_some(),
+                "resource still referenced by t2, must survive"
+            );
+        }
+
+        VfsTranslationRepo::purge_translation(&db, &t2.id).unwrap();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            assert!(
+                resource_row(&conn, &r1).is_none(),
+                "last reference purged, resource must be deleted"
+            );
+        }
     }
 }

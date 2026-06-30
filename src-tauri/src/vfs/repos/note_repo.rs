@@ -318,6 +318,28 @@ impl VfsNoteRepo {
                 });
             }
 
+            // ★ 2026-06-12 修复（审阅问题 S5）：resource_id 切换成功后，清理旧资源。
+            // 笔记没有版本表，旧资源切换后即无人引用；不清理会在每次内容编辑时
+            // 泄漏一行 resources（含完整笔记内容）+ 残留向量索引单元。
+            // 仅当确实无其他笔记引用时删除（防御历史无盐共享数据）。
+            if new_resource_id.is_some() && current_note.resource_id != *final_resource_id {
+                let old_rid = &current_note.resource_id;
+                let note_refs: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM notes WHERE resource_id = ?1",
+                    params![old_rid],
+                    |row| row.get(0),
+                )?;
+                if note_refs == 0 {
+                    // ★ 2026-06-12（第二轮审阅）：经统一入口清理索引产物（含 Lance 向量入列）
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, old_rid)?;
+                    conn.execute("DELETE FROM resources WHERE id = ?1", params![old_rid])?;
+                    debug!(
+                        "[VFS::NoteRepo] Deleted superseded resource {} for note {}",
+                        old_rid, note_id
+                    );
+                }
+            }
+
             info!("[VFS::NoteRepo] Updated note: {}", note_id);
 
             // 4. 返回更新后的笔记
@@ -922,14 +944,14 @@ impl VfsNoteRepo {
         // 保存主 resource_id
         let main_resource_id = note.resource_id.clone();
 
-        // ★ 使用事务包装所有删除操作，确保原子性
-        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
-            tracing::error!(
-                "[VFS::NoteRepo] Failed to begin transaction for purge: {}",
-                e
-            );
-            VfsError::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        // ★ 使用 SAVEPOINT 包装所有删除操作，确保原子性
+        // ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+        // 支持在外层事务（如文件夹树 purge）内嵌套调用。
+        conn.execute("SAVEPOINT vfs_note_purge_tx", [])
+            .map_err(|e| {
+                tracing::error!("[VFS::NoteRepo] Failed to begin savepoint for purge: {}", e);
+                VfsError::Database(format!("Failed to begin savepoint: {}", e))
+            })?;
 
         // 定义回滚宏
         macro_rules! rollback_on_error {
@@ -938,7 +960,9 @@ impl VfsNoteRepo {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::error!("[VFS::NoteRepo] {}: {}", $msg, e);
-                        let _ = conn.execute("ROLLBACK", []);
+                        let _ = conn.execute_batch(
+                            "ROLLBACK TO SAVEPOINT vfs_note_purge_tx; RELEASE SAVEPOINT vfs_note_purge_tx;",
+                        );
                         return Err(VfsError::Database(format!("{}: {}", $msg, e)));
                     }
                 }
@@ -970,7 +994,9 @@ impl VfsNoteRepo {
                 "[VFS::NoteRepo] CRITICAL: Note record disappeared during deletion: {}",
                 note_id
             );
-            let _ = conn.execute("ROLLBACK", []);
+            let _ = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_note_purge_tx; RELEASE SAVEPOINT vfs_note_purge_tx;",
+            );
             return Err(VfsError::Other(format!(
                 "Note record disappeared during deletion: {}. This may indicate a race condition.",
                 note_id
@@ -983,8 +1009,25 @@ impl VfsNoteRepo {
         );
 
         // ★ 删除资源前检查是否仍被其他笔记引用，避免误删共享资源
+        // ★ 2026-06-12 修复（审阅问题 S5）：除当前 resource_id 外，一并收集
+        // 该笔记历史编辑遗留的旧版本资源（source_id = note_id），防止泄漏。
         let mut resource_ids: HashSet<String> = HashSet::new();
         resource_ids.insert(main_resource_id.clone());
+        {
+            let mut stmt = rollback_on_error!(
+                conn.prepare(
+                    "SELECT id FROM resources WHERE source_id = ?1 AND source_table = 'notes'"
+                ),
+                "Failed to prepare superseded resources query"
+            );
+            let rows = rollback_on_error!(
+                stmt.query_map(params![note_id], |row| row.get::<_, String>(0)),
+                "Failed to query superseded resources"
+            );
+            for row in rows.flatten() {
+                resource_ids.insert(row);
+            }
+        }
 
         let mut deleted_resources = 0usize;
         for resource_id in resource_ids {
@@ -1004,6 +1047,11 @@ impl VfsNoteRepo {
                 continue;
             }
 
+            // ★ 2026-06-12（审阅问题 S5 / 第二轮）：统一入口清理索引产物（含 Lance 向量入列）
+            rollback_on_error!(
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &resource_id),
+                "Failed to delete index artifacts"
+            );
             let res_deleted = rollback_on_error!(
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&resource_id]),
                 "Failed to delete resource"
@@ -1019,12 +1067,15 @@ impl VfsNoteRepo {
             deleted_resources, note_id
         );
 
-        // ★ 提交事务
-        conn.execute("COMMIT", []).map_err(|e| {
-            tracing::error!("[VFS::NoteRepo] Failed to commit purge transaction: {}", e);
-            let _ = conn.execute("ROLLBACK", []);
-            VfsError::Database(format!("Failed to commit transaction: {}", e))
-        })?;
+        // ★ 提交（释放保存点；若存在外层事务则随外层一起提交）
+        conn.execute_batch("RELEASE SAVEPOINT vfs_note_purge_tx")
+            .map_err(|e| {
+                tracing::error!("[VFS::NoteRepo] Failed to release purge savepoint: {}", e);
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_note_purge_tx; RELEASE SAVEPOINT vfs_note_purge_tx;",
+                );
+                VfsError::Database(format!("Failed to release savepoint: {}", e))
+            })?;
 
         info!(
             "[VFS::NoteRepo] Successfully completed note deletion: {}",
@@ -1433,9 +1484,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create database");
-        (temp_dir, db)
+        crate::vfs::database::setup_migrated_test_db()
     }
 
     #[test]
@@ -1629,5 +1678,89 @@ mod tests {
         // 查询所有笔记
         let all_notes = VfsNoteRepo::list_all_notes(&db, None, 10, 0).expect("List should succeed");
         assert_eq!(all_notes.len(), 2);
+    }
+
+    // ★ 2026-06-12（审阅问题 S5）回归测试：更新/删除不得泄漏历史资源
+
+    fn count_note_resources(db: &VfsDatabase) -> i64 {
+        let conn = db.get_conn_safe().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM resources WHERE type = 'note'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    /// 内容多次更新后，旧版本资源必须被即时回收（不堆积）
+    #[test]
+    fn test_update_note_reclaims_old_resources() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let note = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "演进笔记".to_string(),
+                content: "v1".to_string(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
+
+        for v in ["v2", "v3", "v4", "v5"] {
+            VfsNoteRepo::update_note(
+                &db,
+                &note.id,
+                VfsUpdateNoteParams {
+                    content: Some(v.to_string()),
+                    title: None,
+                    tags: None,
+                    expected_updated_at: None,
+                },
+            )
+            .unwrap();
+        }
+
+        assert_eq!(
+            count_note_resources(&db),
+            1,
+            "old note resources must be reclaimed on each content switch"
+        );
+    }
+
+    /// purge 笔记后，包括历史版本在内的所有专属资源必须清空
+    #[test]
+    fn test_purge_note_removes_all_owned_resources() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let note = VfsNoteRepo::create_note(
+            &db,
+            VfsCreateNoteParams {
+                title: "购物清单".to_string(),
+                content: "牛奶".to_string(),
+                tags: vec![],
+            },
+        )
+        .unwrap();
+
+        VfsNoteRepo::update_note(
+            &db,
+            &note.id,
+            VfsUpdateNoteParams {
+                content: Some("牛奶+面包".to_string()),
+                title: None,
+                tags: None,
+                expected_updated_at: None,
+            },
+        )
+        .unwrap();
+
+        VfsNoteRepo::purge_note(&db, &note.id).unwrap();
+
+        assert_eq!(
+            count_note_resources(&db),
+            0,
+            "purge must remove main and historical note resources"
+        );
     }
 }

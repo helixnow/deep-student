@@ -333,6 +333,10 @@ impl MigrationScriptChecker {
     /// - `DELETE FROM ... WHERE col NOT IN (SELECT ...)`
     /// - `DELETE FROM ... WHERE NOT EXISTS (...)`
     /// - 或者有明确的注释说明
+    ///
+    /// 例外：**全新表**（非 `xxx_new` 重建表）的内联外键不需要孤儿清理——
+    /// 表刚创建时没有任何数据，不存在孤儿。该规则只对表重建
+    /// （给已有数据补加外键约束）场景有意义。
     fn check_fk_orphan_cleanup(
         &self,
         script_name: &str,
@@ -340,8 +344,45 @@ impl MigrationScriptChecker {
         original: &str,
         result: &mut CheckResult,
     ) {
+        // 收集所有 CREATE TABLE 语句的（列定义体起止位置, 表名），
+        // 用于把每个 FOREIGN KEY 归属到**包含它的** CREATE TABLE 体内。
+        // 注意 RE_ALL_CREATES 不匹配 IF NOT EXISTS 形式，需两个正则合并。
+        // 仅按"最近的前一个 CREATE"归属是不够的：FK 文本可能出现在表体
+        // 之外（如后续 ALTER/触发器/独立语句），那种情况不应被当作
+        // 全新表内联 FK 而误豁免孤儿清理检查。
+        let mut creates: Vec<(usize, usize, String)> = RE_ALL_CREATES
+            .captures_iter(normalized)
+            .chain(RE_SAFE_CREATES.captures_iter(normalized))
+            .filter_map(|cap| {
+                let m = cap.get(0)?;
+                let name = cap.get(1)?.as_str().to_string();
+                // 定位表体起始的左括号（RE_SAFE_CREATES 不含括号，需向后找）
+                let open = normalized[m.start()..].find('(')? + m.start();
+                let body_end = Self::find_matching_paren(normalized, open)
+                    .unwrap_or(normalized.len());
+                Some((open, body_end, name))
+            })
+            .collect();
+        creates.sort_by_key(|(open, _, _)| *open);
+
         // 使用预编译正则表达式查找外键定义
         for cap in RE_FOREIGN_KEY.captures_iter(normalized) {
+            // 找到表体真正包含该 FK 的 CREATE TABLE（取最内层/最近者）
+            let fk_pos = cap.get(0).map(|m| m.start()).unwrap_or(0);
+            let owner_table = creates
+                .iter()
+                .filter(|(open, end, _)| fk_pos > *open && fk_pos < *end)
+                .last()
+                .map(|(_, _, name)| name.as_str());
+
+            // 全新表（非 _NEW 重建表）的内联 FK：无孤儿数据风险，跳过。
+            // 未归属到任何表体的 FK 不豁免，继续走清理检查（fail-close）。
+            if let Some(owner) = owner_table {
+                if !owner.ends_with("_NEW") {
+                    continue;
+                }
+            }
+
             let child_col = cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let parent_table = cap.get(2).map(|m| m.as_str()).unwrap_or("");
             let child_col_lower = child_col.to_lowercase();
@@ -391,6 +432,29 @@ impl MigrationScriptChecker {
                 });
             }
         }
+    }
+
+    /// 从 `open` 处的 `(` 起做括号配平，返回匹配的 `)` 位置。
+    /// 用于界定 CREATE TABLE 列定义体的范围（normalized 已去除注释）。
+    fn find_matching_paren(text: &str, open: usize) -> Option<usize> {
+        let bytes = text.as_bytes();
+        if bytes.get(open) != Some(&b'(') {
+            return None;
+        }
+        let mut depth = 0usize;
+        for (i, &b) in bytes.iter().enumerate().skip(open) {
+            match b {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     /// 规则 4: DROP TABLE 应使用 IF EXISTS
@@ -623,6 +687,75 @@ mod tests {
 
         let result = check_migration_script("test.sql", sql);
         assert!(result.passed, "有孤儿数据清理应该通过: {:?}", result.errors);
+    }
+
+    #[test]
+    fn test_check_fk_in_brand_new_table_passes() {
+        // 全新表（非 _new 重建表）的内联外键：表内尚无数据，不存在孤儿，
+        // 不应要求孤儿清理
+        let sql = r#"
+            CREATE TABLE IF NOT EXISTS todo_items (
+                id TEXT PRIMARY KEY,
+                todo_list_id TEXT NOT NULL,
+                parent_id TEXT,
+                FOREIGN KEY (todo_list_id) REFERENCES todo_lists(id) ON DELETE CASCADE,
+                FOREIGN KEY (parent_id) REFERENCES todo_items(id) ON DELETE SET NULL
+            );
+        "#;
+
+        let result = check_migration_script("V20260308__add_todo_tables.sql", sql);
+        assert!(
+            result.passed,
+            "全新表的内联外键不应要求孤儿清理: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn test_check_fk_outside_table_body_not_exempted() {
+        // FK 文本位于全新表列定义体**之外**（独立语句区域）：
+        // 旧实现按"最近的前一个 CREATE"归属，会把它算作 settings 表的
+        // 内联 FK 而误豁免；边界感知后应 fail-close，照常要求孤儿清理
+        let sql = r#"
+            DROP TABLE IF EXISTS child_new;
+            CREATE TABLE IF NOT EXISTS settings (
+                k TEXT PRIMARY KEY,
+                v TEXT
+            );
+
+            INSERT INTO schema_notes(txt)
+            VALUES ('FOREIGN KEY (parent_id) REFERENCES parent(id)');
+        "#;
+
+        let result = check_migration_script("test.sql", sql);
+        assert!(
+            result.errors.iter().any(|e| e.rule == "fk_orphan_cleanup"),
+            "表体之外的 FK 不应被归属到前面的全新表而误豁免: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn test_check_fk_rebuild_after_brand_new_table_still_checked() {
+        // 全新表之后的 _new 重建表：FK 必须正确归属到 _new 表并要求清理
+        let sql = r#"
+            CREATE TABLE IF NOT EXISTS settings (
+                k TEXT PRIMARY KEY
+            );
+
+            CREATE TABLE legacy_new (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT NOT NULL,
+                FOREIGN KEY (parent_id) REFERENCES parent(id)
+            );
+        "#;
+
+        let result = check_migration_script("test.sql", sql);
+        assert!(
+            result.errors.iter().any(|e| e.rule == "fk_orphan_cleanup"),
+            "重建表 FK 不应因前面存在全新表而被误豁免: {:?}",
+            result.errors
+        );
     }
 
     #[test]

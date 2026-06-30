@@ -40,25 +40,6 @@
  * });
  * ```
  *
- * ### React Hook 用法
- *
- * ```typescript
- * import { useCardForge } from '@/components/anki/cardforge';
- *
- * function MyComponent() {
- *   const { generateCards, pauseTask, state } = useCardForge();
- *
- *   const handleGenerate = async () => {
- *     await generateCards({
- *       content: '学习材料...',
- *       options: { deckName: 'My Deck' }
- *     });
- *   };
- *
- *   return <div>Progress: {state.progress}%</div>;
- * }
- * ```
- *
  * ### 与 Chat V2 集成
  *
  * ```typescript
@@ -105,7 +86,6 @@ import {
   TaskController,
   createTaskController,
   SegmentEngine,
-  CardEngine,
 } from './engines';
 
 export {
@@ -122,27 +102,12 @@ export {
 export { SegmentEngine };
 export type { SegmentOptions } from './engines';
 
-// CardEngine - 并行制卡引擎
-export { CardEngine };
-export type { CardGenerationOptions } from './engines';
-
 // TaskController - 任务控制器
 export {
   TaskController,
   createTaskController,
   taskController,
 };
-
-// ============================================================================
-// React Hooks 导出
-// ============================================================================
-
-export { useCardForge } from './hooks';
-export type {
-  CardForgeState,
-  UseCardForgeReturn,
-  UseCardForgeOptions,
-} from './hooks';
 
 // ============================================================================
 // PromptKit 导出

@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { PencilSimple, Check, X, CircleNotch, PushPin, Archive } from '@phosphor-icons/react';
+import { PencilSimple, Check, X, CircleNotch, PushPin, Archive, DotsThree } from '@phosphor-icons/react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
 import {
   AppMenu,
@@ -81,13 +82,31 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     return map;
   }, [groups]);
 
+  // C-7: 触屏设备无右键/hover，提供常显"…"按钮打开会话操作菜单
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  const openSessionMenuFromButton = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const button = e.currentTarget as HTMLElement;
+    const rect = button.getBoundingClientRect();
+    const clientX = e.clientX || rect.left + rect.width / 2;
+    const clientY = e.clientY || rect.top + rect.height / 2;
+    // 合成 contextmenu 事件交给 AppMenuTrigger（mode="context"）打开菜单
+    button.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true,
+      cancelable: true,
+      clientX,
+      clientY,
+    }));
+  }, []);
+
   // 渲染单个会话项 - Notion 风格
   const renderSessionItem = (session: ChatSession, drag?: SessionDragState) => {
     const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
     const pinned = !!session.metadata?.pinned;
     const groupLabel = session.groupId
-      ? (groupNameById.get(session.groupId) ?? '未分类')
-      : '未分类';
+      ? (groupNameById.get(session.groupId) ?? t('page.ungrouped', '未分组'))
+      : t('page.ungrouped', '未分组');
 
     return (
       <AppMenu mode="context">
@@ -207,11 +226,25 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           )
         )}
       </div>
-      {editingSessionId !== session.id && !pinned && (
+      {editingSessionId !== session.id && (!pinned || isTouchPrimary) && (
         <div className="ml-2 flex min-h-6 shrink-0 items-center justify-end gap-1 transition-opacity duration-150 opacity-100">
-          <span className="text-[13px] tabular-nums text-muted-foreground/80">
-            {formatTime(session.updatedAt)}
-          </span>
+          {!pinned && (
+            <span className="text-[13px] tabular-nums text-muted-foreground/80">
+              {formatTime(session.updatedAt)}
+            </span>
+          )}
+          {isTouchPrimary && (
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="!h-9 !w-9 !p-1.5"
+              onClick={openSessionMenuFromButton}
+              aria-label={t('page.sessionActions', '会话操作')}
+            >
+              <DotsThree size={18} className="text-muted-foreground/70" />
+            </NotionButton>
+          )}
         </div>
       )}
           </div>

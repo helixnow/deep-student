@@ -459,6 +459,7 @@
   "uploader": {
     "session_name_default": "整卷识别",
     "drop_or_click": "点击或拖放文件到这里",
+    "take_photo": "拍照导入",
     "supported_formats_all": "图片 (PNG/JPG/WebP/HEIC) 或 文档 (DOCX/XLSX/XLS/PDF/TXT/MD)",
     "selected_images": "已选择 {{count}} 张图片",
     "clear": "清空",
@@ -508,6 +509,7 @@
     "ocr_image_progress": "正在识别图片 {{current}}/{{total}}...",
     "ocr_phase_done": "{{total}} 张图片识别完成，开始解析题目...",
     "import_done": "导入完成！共 {{count}} 道题目",
+    "import_done_partial": "导入完成（VLM 中途中断，可能缺题）：已保存 {{count}} 道题目",
     "import_interrupted": "导入中断，已保存 {{count}} 道题目",
     "resume_import": "继续导入",
     "resuming": "恢复中...",

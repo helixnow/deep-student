@@ -88,7 +88,7 @@ describe('TaskController', () => {
   it('retry should call backend and return tasks', async () => {
     vi.mocked(invoke).mockImplementation(async (command, payload) => {
       if (command === 'trigger_task_processing') {
-        expect(payload).toEqual({ task_id: 'task-2' });
+        expect(payload).toEqual({ taskId: 'task-2' });
         return undefined;
       }
       if (command === 'get_document_tasks') {
@@ -99,18 +99,18 @@ describe('TaskController', () => {
 
     const result = await controller.retry('doc-1', ' task-2 ');
 
-    expect(invoke).toHaveBeenCalledWith('trigger_task_processing', { task_id: 'task-2' });
+    expect(invoke).toHaveBeenCalledWith('trigger_task_processing', { taskId: 'task-2' });
     expect(result.ok).toBe(true);
     expect(result.tasks).toEqual(expectedTasks);
   });
 
-  it('cancel should call backend and clear tasks', async () => {
+  it('cancel should stop generation without deleting the session', async () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
 
     const result = await controller.cancel(' doc-1 ');
 
-    expect(invoke).toHaveBeenCalledWith('delete_document_session', { documentId: 'doc-1' });
+    expect(invoke).toHaveBeenCalledWith('cancel_document_processing', { documentId: 'doc-1' });
+    expect(invoke).not.toHaveBeenCalledWith('delete_document_session', expect.anything());
     expect(result.ok).toBe(true);
-    expect(result.tasks).toEqual([]);
   });
 });

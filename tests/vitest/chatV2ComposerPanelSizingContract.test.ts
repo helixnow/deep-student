@@ -4,19 +4,23 @@ import { describe, expect, it } from 'vitest';
 
 describe('chat v2 composer panel sizing contract', () => {
   const overlaySource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanelOverlay.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanelOverlay.tsx'),
     'utf-8'
   );
   const inputBarSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
   const skillSelectorSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/skills/components/SkillSelector.tsx'),
+    resolve(process.cwd(), 'src/features/chat/skills/components/SkillSelector.tsx'),
     'utf-8'
   );
   const mcpPanelSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/plugins/chat/McpPanel.tsx'),
+    resolve(process.cwd(), 'src/features/chat/plugins/chat/McpPanel.tsx'),
+    'utf-8'
+  );
+  const composerPanelSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
     'utf-8'
   );
 
@@ -30,7 +34,9 @@ describe('chat v2 composer panel sizing contract', () => {
   it('lets skill and MCP panels fill the available tray height with internal scroll regions', () => {
     expect(skillSelectorSource).toContain('flex min-h-0 flex-1 gap-3 overflow-hidden');
     expect(skillSelectorSource).not.toContain('h-[240px]');
-    expect(mcpPanelSource).toContain('flex h-full min-h-0 flex-col gap-2 overflow-hidden');
+    expect(composerPanelSource).toContain("'flex min-h-0 flex-col gap-3'");
+    expect(composerPanelSource).toContain("fillHeight && 'h-full'");
+    expect(mcpPanelSource).toContain('<ComposerPanel.Root fillHeight className="overflow-hidden">');
     expect(mcpPanelSource).toContain('className="flex-1 min-h-0"');
   });
 });

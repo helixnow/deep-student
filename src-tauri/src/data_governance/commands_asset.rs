@@ -203,6 +203,13 @@ pub async fn data_governance_restore_with_assets(
     }
 
     // 执行恢复到非活跃插槽（不需要维护模式，不涉及活跃文件）
+    //
+    // F5 说明（已知差异，刻意保持）：本路径**不恢复加密密钥**（.master_key/.secure）。
+    // 密钥是全局的（位于 app_data_dir，非插槽内）——在此处恢复会立即作用于**活跃**插槽的
+    // 解密，且需要主恢复路径（commands_restore.rs）同款的 .pre_restore 快照 + 回滚保护
+    // （见 F2），否则跨设备恢复一旦失败/放弃会让旧密文永久无法解密。因此跨设备恢复请走
+    // 主恢复路径（data_governance_restore）。本命令前端当前未使用；补齐密钥恢复的方案见
+    // docs/6.13/status/agent-7-status.md F5 条目。
     let result = manager.restore_with_assets_to_dir(manifest, restore_assets, &inactive_dir);
     let duration_ms = start.elapsed().as_millis() as u64;
 

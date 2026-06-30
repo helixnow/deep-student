@@ -66,6 +66,11 @@
     "showAnswer": "显示答案"
   },
 
+  "keyboard": {
+    "space": "空格",
+    "ratingHint": "按 1-4 快速评分"
+  },
+
   "rating": {
     "prompt": "你对这道题的掌握程度如何？",
     "again": "重来",

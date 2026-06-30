@@ -1206,7 +1206,11 @@ impl BackupJobManager {
 
         // Phase 3: 标记超时任务为失败
         for job_id in &to_timeout {
-            warn!("[BackupJob] 任务执行超时，标记为失败: {}", job_id);
+            warn!("[BackupJob] 任务执行超时，请求取消并标记为失败: {}", job_id);
+            // 先置取消标志：让协作式取消的执行体在下一个 check_continue() 尽快中止，
+            // 否则被判超时后底层操作仍会在后台继续消耗资源直至自然结束
+            //（其后续 complete()/cancelled() 因状态机已处于终态会被安全忽略）。
+            self.request_cancel(job_id);
             self.mark_failure(job_id, "任务执行超时".to_string());
         }
 

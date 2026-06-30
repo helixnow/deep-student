@@ -2295,20 +2295,17 @@ mod tests {
         // 验证第一个是用户消息
         assert_eq!(contents[0].get("role").unwrap(), "user");
 
-        // 验证第二个是助手的函数调用
+        // 验证第二个是助手的工具调用。没有真实 thoughtSignature 的合成调用会被降级为文本，
+        // 避免 Gemini 3+ 拒绝请求。
         assert_eq!(contents[1].get("role").unwrap(), "model");
         let parts1 = contents[1].get("parts").unwrap().as_array().unwrap();
-        assert!(parts1[0].get("functionCall").is_some());
+        assert!(parts1[0].get("text").is_some());
 
-        // 验证第三个是工具响应，角色应该是"user"而不是"model"
+        // 验证第三个是工具响应，角色应该是"user"而不是"model"，同样降级为文本
         assert_eq!(contents[2].get("role").unwrap(), "user");
         let parts2 = contents[2].get("parts").unwrap().as_array().unwrap();
-        assert!(parts2[0].get("functionResponse").is_some());
-
-        // 验证functionResponse的内容
-        let function_response = parts2[0].get("functionResponse").unwrap();
-        assert_eq!(function_response.get("name").unwrap(), "get_weather");
-        assert!(function_response.get("response").is_some());
+        let response_text = parts2[0].get("text").and_then(|v| v.as_str()).unwrap();
+        assert!(response_text.contains("get_weather"));
     }
 
     #[test]

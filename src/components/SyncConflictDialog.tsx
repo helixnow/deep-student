@@ -1,6 +1,6 @@
 /**
  * 同步冲突解决对话框
- * 
+ *
  * 提供 Notion 风格的冲突解决 UI，支持：
  * - 冲突列表展示
  * - 本地/远程版本对比
@@ -8,19 +8,36 @@
  * - 批量操作
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { Badge } from '@/components/ui/shad/Badge';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Label } from '@/components/ui/shad/Label';
-import { Separator } from '@/components/ui/shad/Separator';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
-import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
-import { Checkbox } from '@/components/ui/shad/Checkbox';
-import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import React, { useState, useCallback, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  NotionDialog,
+  NotionDialogHeader,
+  NotionDialogTitle,
+  NotionDialogDescription,
+  NotionDialogBody,
+  NotionDialogFooter,
+} from "@/components/ui/NotionDialog";
+import { NotionButton } from "@/components/ui/NotionButton";
+import { Badge } from "@/components/ui/shad/Badge";
+import { CustomScrollArea } from "@/components/custom-scroll-area";
+import { Label } from "@/components/ui/shad/Label";
+import { Separator } from "@/components/ui/shad/Separator";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/shad/Card";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/shad/Tabs";
+import { Alert, AlertDescription } from "@/components/ui/shad/Alert";
+import { Checkbox } from "@/components/ui/shad/Checkbox";
+import { CommonTooltip } from "@/components/shared/CommonTooltip";
 import {
   WarningCircle,
   GitBranch,
@@ -35,14 +52,15 @@ import {
   FileText,
   Tag,
   Star,
-} from '@phosphor-icons/react';
-import { useShallow } from 'zustand/react/shallow';
+} from "@phosphor-icons/react";
+import { useShallow } from "zustand/react/shallow";
 import {
   SyncConflict,
   QuestionConflictStrategy,
   QuestionVersion,
   useQuestionBankStore,
-} from '@/stores/questionBankStore';
+} from "@/stores/questionBankStore";
+import { unifiedAlert } from "@/utils/unifiedDialogs";
 
 // ============================================================================
 // Props 类型定义
@@ -61,15 +79,17 @@ interface SyncConflictDialogProps {
 // ============================================================================
 
 /** 获取冲突类型的显示标签和颜色 */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getConflictTypeInfo(type: string, t: (...args: any[]) => any): { label: string; color: string } {
+function getConflictTypeInfo(
+  type: string,
+  t: (...args: any[]) => any,
+): { label: string; color: string } {
   const colorMap: Record<string, string> = {
-    modify_modify: 'bg-amber-500',
-    modify_delete: 'bg-red-500',
-    delete_modify: 'bg-orange-500',
-    add_add: 'bg-blue-500',
+    modify_modify: "bg-amber-500",
+    modify_delete: "bg-red-500",
+    delete_modify: "bg-orange-500",
+    add_add: "bg-blue-500",
   };
-  const color = colorMap[type] ?? 'bg-gray-500';
+  const color = colorMap[type] ?? "bg-gray-500";
   const label = t(`conflictTypes.${type}`, type);
   return { label, color };
 }
@@ -79,11 +99,11 @@ function formatTime(dateStr: string): string {
   try {
     const date = new Date(dateStr);
     return date.toLocaleString(undefined, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   } catch {
     return dateStr;
@@ -91,16 +111,23 @@ function formatTime(dateStr: string): string {
 }
 
 /** 比较两个时间，返回较新的一方 */
-function compareTime(time1: string, time2: string): 'local' | 'remote' | 'equal' {
+function compareTime(
+  time1: string,
+  time2: string,
+): "local" | "remote" | "equal" {
   try {
     const d1 = new Date(time1).getTime();
     const d2 = new Date(time2).getTime();
-    if (d1 > d2) return 'local';
-    if (d1 < d2) return 'remote';
-    return 'equal';
+    if (d1 > d2) return "local";
+    if (d1 < d2) return "remote";
+    return "equal";
   } catch {
-    return 'equal';
+    return "equal";
   }
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 // ============================================================================
@@ -113,34 +140,45 @@ interface VersionCompareProps {
 }
 
 function VersionCompare({ local, remote }: VersionCompareProps) {
-  const { t } = useTranslation('sync');
+  const { t } = useTranslation("sync");
   const newerSide = compareTime(local.updated_at, remote.updated_at);
 
   return (
     <div className="grid grid-cols-2 gap-4">
       {/* 本地版本 */}
-      <Card className={`border-2 ${newerSide === 'local' ? 'border-green-500' : 'border-muted'}`}>
+      <Card
+        className={`border-2 ${newerSide === "local" ? "border-green-500" : "border-muted"}`}
+      >
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <GitBranch size={16} />
-              {t('localVersion', '本地版本')}
+              {t("localVersion", "本地版本")}
             </span>
-            {newerSide === 'local' && (
-              <Badge variant="secondary" className="bg-green-100 text-green-800">
-                {t('newer', '较新')}
+            {newerSide === "local" && (
+              <Badge
+                variant="secondary"
+                className="bg-green-100 text-green-800"
+              >
+                {t("newer", "较新")}
               </Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
-            <Label className="text-xs text-muted-foreground">{t('content', '题干')}</Label>
-            <p className="mt-1 whitespace-pre-wrap line-clamp-3">{local.content}</p>
+            <Label className="text-xs text-muted-foreground">
+              {t("content", "题干")}
+            </Label>
+            <p className="mt-1 whitespace-pre-wrap line-clamp-3">
+              {local.content}
+            </p>
           </div>
           {local.answer && (
             <div>
-              <Label className="text-xs text-muted-foreground">{t('answer', '答案')}</Label>
+              <Label className="text-xs text-muted-foreground">
+                {t("answer", "答案")}
+              </Label>
               <p className="mt-1">{local.answer}</p>
             </div>
           )}
@@ -149,7 +187,9 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
             {formatTime(local.updated_at)}
           </div>
           <div className="flex items-center gap-2">
-            {local.is_favorite && <Star size={12} className="text-yellow-500 fill-yellow-500" />}
+            {local.is_favorite && (
+              <Star size={12} className="text-yellow-500 fill-yellow-500" />
+            )}
             {local.tags.length > 0 && (
               <div className="flex items-center gap-1">
                 <Tag size={12} />
@@ -161,28 +201,39 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
       </Card>
 
       {/* 远程版本 */}
-      <Card className={`border-2 ${newerSide === 'remote' ? 'border-green-500' : 'border-muted'}`}>
+      <Card
+        className={`border-2 ${newerSide === "remote" ? "border-green-500" : "border-muted"}`}
+      >
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <GitMerge size={16} />
-              {t('remoteVersion', '远程版本')}
+              {t("remoteVersion", "远程版本")}
             </span>
-            {newerSide === 'remote' && (
-              <Badge variant="secondary" className="bg-green-100 text-green-800">
-                {t('newer', '较新')}
+            {newerSide === "remote" && (
+              <Badge
+                variant="secondary"
+                className="bg-green-100 text-green-800"
+              >
+                {t("newer", "较新")}
               </Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <div>
-            <Label className="text-xs text-muted-foreground">{t('content', '题干')}</Label>
-            <p className="mt-1 whitespace-pre-wrap line-clamp-3">{remote.content}</p>
+            <Label className="text-xs text-muted-foreground">
+              {t("content", "题干")}
+            </Label>
+            <p className="mt-1 whitespace-pre-wrap line-clamp-3">
+              {remote.content}
+            </p>
           </div>
           {remote.answer && (
             <div>
-              <Label className="text-xs text-muted-foreground">{t('answer', '答案')}</Label>
+              <Label className="text-xs text-muted-foreground">
+                {t("answer", "答案")}
+              </Label>
               <p className="mt-1">{remote.answer}</p>
             </div>
           )}
@@ -191,7 +242,9 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
             {formatTime(remote.updated_at)}
           </div>
           <div className="flex items-center gap-2">
-            {remote.is_favorite && <Star size={12} className="text-yellow-500 fill-yellow-500" />}
+            {remote.is_favorite && (
+              <Star size={12} className="text-yellow-500 fill-yellow-500" />
+            )}
             {remote.tags.length > 0 && (
               <div className="flex items-center gap-1">
                 <Tag size={12} />
@@ -228,13 +281,13 @@ function ConflictItem({
   onResolve,
   isResolving,
 }: ConflictItemProps) {
-  const { t } = useTranslation('sync');
+  const { t } = useTranslation("sync");
   const typeInfo = getConflictTypeInfo(conflict.conflict_type, t);
 
   return (
     <div className="border rounded-lg overflow-hidden">
       {/* 冲突头部 */}
-      <div 
+      <div
         className="flex items-center gap-3 p-3 bg-muted/50 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
@@ -242,14 +295,14 @@ function ConflictItem({
           checked={isSelected}
           onCheckedChange={() => onToggleSelect()}
           onClick={(e) => e.stopPropagation()}
-/>
-        
+        />
+
         {isExpanded ? (
           <CaretDown size={16} className="text-muted-foreground" />
         ) : (
           <CaretRight size={16} className="text-muted-foreground" />
         )}
-        
+
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <WarningCircle size={16} className="text-amber-500" />
@@ -258,7 +311,10 @@ function ConflictItem({
             </span>
           </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-            <Badge variant="outline" className={`${typeInfo.color} text-white text-xs`}>
+            <Badge
+              variant="outline"
+              className={`${typeInfo.color} text-white text-xs`}
+            >
               {typeInfo.label}
             </Badge>
             <span>{formatTime(conflict.created_at)}</span>
@@ -266,34 +322,40 @@ function ConflictItem({
         </div>
 
         {/* 快捷操作按钮 */}
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <CommonTooltip content={t('keepLocal', '保留本地')}>
+        <div
+          className="flex items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <CommonTooltip content={t("keepLocal", "保留本地")}>
             <NotionButton
               variant="ghost"
               size="icon"
- className="w-8 h-8"               onClick={() => onResolve('keep_local')}
+              className="w-8 h-8"
+              onClick={() => onResolve("keep_local")}
               disabled={isResolving}
             >
               <GitBranch size={16} />
             </NotionButton>
           </CommonTooltip>
 
-          <CommonTooltip content={t('keepRemote', '保留远程')}>
+          <CommonTooltip content={t("keepRemote", "保留远程")}>
             <NotionButton
               variant="ghost"
               size="icon"
- className="w-8 h-8"               onClick={() => onResolve('keep_remote')}
+              className="w-8 h-8"
+              onClick={() => onResolve("keep_remote")}
               disabled={isResolving}
             >
               <GitMerge size={16} />
             </NotionButton>
           </CommonTooltip>
 
-          <CommonTooltip content={t('keepNewer', '保留较新')}>
+          <CommonTooltip content={t("keepNewer", "保留较新")}>
             <NotionButton
               variant="ghost"
               size="icon"
- className="w-8 h-8"               onClick={() => onResolve('keep_newer')}
+              className="w-8 h-8"
+              onClick={() => onResolve("keep_newer")}
               disabled={isResolving}
             >
               <Clock size={16} />
@@ -308,7 +370,7 @@ function ConflictItem({
           <VersionCompare
             local={conflict.local_version}
             remote={conflict.remote_version}
-/>
+          />
         </div>
       )}
     </div>
@@ -326,19 +388,21 @@ export function SyncConflictDialog({
   conflicts,
   onResolved,
 }: SyncConflictDialogProps) {
-  const { t } = useTranslation('sync');
+  const { t } = useTranslation("sync");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [batchStrategy, setBatchStrategy] = useState<QuestionConflictStrategy>('keep_newer');
+  const [batchStrategy, setBatchStrategy] =
+    useState<QuestionConflictStrategy>("keep_newer");
   const [resolvingIds, setResolvingIds] = useState<Set<string>>(new Set());
 
-  const { resolveSyncConflict, batchResolveSyncConflicts, isSyncing } = useQuestionBankStore(
-    useShallow((state) => ({
-      resolveSyncConflict: state.resolveSyncConflict,
-      batchResolveSyncConflicts: state.batchResolveSyncConflicts,
-      isSyncing: state.isSyncing,
-    }))
-  );
+  const { resolveSyncConflict, batchResolveSyncConflicts, isSyncing } =
+    useQuestionBankStore(
+      useShallow((state) => ({
+        resolveSyncConflict: state.resolveSyncConflict,
+        batchResolveSyncConflicts: state.batchResolveSyncConflicts,
+        isSyncing: state.isSyncing,
+      })),
+    );
 
   // 切换选择
   const toggleSelect = useCallback((id: string) => {
@@ -386,8 +450,14 @@ export function SyncConflictDialog({
           next.delete(conflictId);
           return next;
         });
+        onResolved?.();
       } catch (err: unknown) {
-        console.error('Failed to resolve conflict:', err);
+        const message = getErrorMessage(err);
+        console.error("Failed to resolve conflict:", err);
+        unifiedAlert(
+          t("notifications.conflictResolveFailed", { error: message }),
+          "error",
+        );
       } finally {
         setResolvingIds((prev) => {
           const next = new Set(prev);
@@ -396,7 +466,7 @@ export function SyncConflictDialog({
         });
       }
     },
-    [resolveSyncConflict]
+    [resolveSyncConflict, onResolved, t],
   );
 
   // 批量解决
@@ -406,7 +476,17 @@ export function SyncConflictDialog({
     try {
       // 如果选择了全部，使用批量 API
       if (selectedIds.size === conflicts.length) {
-        await batchResolveSyncConflicts(examId, batchStrategy);
+        const result = await batchResolveSyncConflicts(examId, batchStrategy);
+        // ★ #20(round2): 显式提示部分失败（此前仅后端 warn，前端无感知）
+        if (result.failed.length > 0) {
+          unifiedAlert(
+            t("notifications.conflictBatchResolvePartial", {
+              resolved: result.resolved.length,
+              failed: result.failed.length,
+            }),
+            "warning",
+          );
+        }
       } else {
         // 否则逐个解决
         for (const id of selectedIds) {
@@ -416,7 +496,12 @@ export function SyncConflictDialog({
       setSelectedIds(new Set());
       onResolved?.();
     } catch (err: unknown) {
-      console.error('Failed to batch resolve conflicts:', err);
+      const message = getErrorMessage(err);
+      console.error("Failed to batch resolve conflicts:", err);
+      unifiedAlert(
+        t("notifications.conflictBatchResolveFailed", { error: message }),
+        "error",
+      );
     }
   }, [
     selectedIds,
@@ -426,33 +511,36 @@ export function SyncConflictDialog({
     batchResolveSyncConflicts,
     resolveSyncConflict,
     onResolved,
+    t,
   ]);
 
   // 待处理的冲突
   const pendingConflicts = useMemo(
-    () => conflicts.filter((c) => c.status === 'pending'),
-    [conflicts]
+    () => conflicts.filter((c) => c.status === "pending"),
+    [conflicts],
   );
 
   return (
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-4xl">
-        <NotionDialogHeader>
-          <NotionDialogTitle className="flex items-center gap-2">
-            <WarningCircle size={20} className="text-amber-500" />
-            {t('syncConflicts', '同步冲突')}
-            <Badge variant="secondary">{pendingConflicts.length}</Badge>
-          </NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('conflictDescription', '以下题目在本地和远程存在冲突，请选择解决策略。')}
-          </NotionDialogDescription>
-        </NotionDialogHeader>
-        <NotionDialogBody>
-
+      <NotionDialogHeader>
+        <NotionDialogTitle className="flex items-center gap-2">
+          <WarningCircle size={20} className="text-amber-500" />
+          {t("syncConflicts", "同步冲突")}
+          <Badge variant="secondary">{pendingConflicts.length}</Badge>
+        </NotionDialogTitle>
+        <NotionDialogDescription>
+          {t(
+            "conflictDescription",
+            "以下题目在本地和远程存在冲突，请选择解决策略。",
+          )}
+        </NotionDialogDescription>
+      </NotionDialogHeader>
+      <NotionDialogBody>
         {pendingConflicts.length === 0 ? (
           <Alert>
             <Check size={16} />
             <AlertDescription>
-              {t('noConflicts', '没有待解决的冲突。')}
+              {t("noConflicts", "没有待解决的冲突。")}
             </AlertDescription>
           </Alert>
         ) : (
@@ -461,27 +549,42 @@ export function SyncConflictDialog({
             <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
               <div className="flex items-center gap-3">
                 <Checkbox
-                  checked={selectedIds.size === pendingConflicts.length && pendingConflicts.length > 0}
+                  checked={
+                    selectedIds.size === pendingConflicts.length &&
+                    pendingConflicts.length > 0
+                  }
                   onCheckedChange={toggleSelectAll}
-/>
+                />
                 <span className="text-sm text-muted-foreground">
                   {selectedIds.size > 0
-                    ? t('selectedCount', '已选择 {{count}} 项', { count: selectedIds.size })
-                    : t('selectAll', '全选')}
+                    ? t("selectedCount", "已选择 {{count}} 项", {
+                        count: selectedIds.size,
+                      })
+                    : t("selectAll", "全选")}
                 </span>
               </div>
 
               {selectedIds.size > 0 && (
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-4">
-                    {(['keep_local', 'keep_remote', 'keep_newer', 'merge'] as const).map((strategy) => (
-                      <label key={strategy} className="flex items-center gap-1.5 cursor-pointer">
+                    {(
+                      [
+                        "keep_local",
+                        "keep_remote",
+                        "keep_newer",
+                        "merge",
+                      ] as const
+                    ).map((strategy) => (
+                      <label
+                        key={strategy}
+                        className="flex items-center gap-1.5 cursor-pointer"
+                      >
                         <Card
                           key={strategy}
                           className={`cursor-pointer transition-all bg-transparent ${
                             batchStrategy === strategy
-                              ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                              : 'hover:border-border/60 hover:bg-[var(--interactive-hover)] border-muted'
+                              ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                              : "hover:border-border/60 hover:bg-[var(--interactive-hover)] border-muted"
                           }`}
                         >
                           <input
@@ -490,13 +593,17 @@ export function SyncConflictDialog({
                             value={strategy}
                             checked={batchStrategy === strategy}
                             onChange={() => setBatchStrategy(strategy)}
-                            size={16} className="accent-primary"
-/>
+                            size={16}
+                            className="accent-primary"
+                          />
                           <span className="text-sm">
-                            {strategy === 'keep_local' ? t('keepLocal', '保留本地')
-                              : strategy === 'keep_remote' ? t('keepRemote', '保留远程')
-                              : strategy === 'keep_newer' ? t('keepNewer', '保留较新')
-                              : t('merge', '智能合并')}
+                            {strategy === "keep_local"
+                              ? t("keepLocal", "保留本地")
+                              : strategy === "keep_remote"
+                                ? t("keepRemote", "保留远程")
+                                : strategy === "keep_newer"
+                                  ? t("keepNewer", "保留较新")
+                                  : t("merge", "智能合并")}
                           </span>
                         </Card>
                       </label>
@@ -514,7 +621,7 @@ export function SyncConflictDialog({
                     ) : (
                       <Check size={16} className="mr-2" />
                     )}
-                    {t('batchResolve', '批量解决')}
+                    {t("batchResolve", "批量解决")}
                   </NotionButton>
                 </div>
               )}
@@ -531,21 +638,26 @@ export function SyncConflictDialog({
                     isExpanded={expandedIds.has(conflict.id)}
                     onToggleSelect={() => toggleSelect(conflict.id)}
                     onToggleExpand={() => toggleExpand(conflict.id)}
-                    onResolve={(strategy) => handleResolve(conflict.id, strategy)}
+                    onResolve={(strategy) =>
+                      handleResolve(conflict.id, strategy)
+                    }
                     isResolving={resolvingIds.has(conflict.id)}
-/>
+                  />
                 ))}
               </div>
             </CustomScrollArea>
           </>
         )}
-
-        </NotionDialogBody>
-        <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            {t('close', '关闭')}
-          </NotionButton>
-        </NotionDialogFooter>
+      </NotionDialogBody>
+      <NotionDialogFooter>
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => onOpenChange(false)}
+        >
+          {t("close", "关闭")}
+        </NotionButton>
+      </NotionDialogFooter>
     </NotionDialog>
   );
 }

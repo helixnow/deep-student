@@ -88,6 +88,14 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
     return removeScoreTag(strippedContent);
   }, [strippedContent, contentHasScore, contentHasInlineMarkers]);
 
+  // A6-30: 模型输出了 <score> 标签但解析失败（畸形标签）时，总分区静默缺失。
+  // 仅在「确有 score 标签、非批注视图、流已结束却解析不出分数」时给降级提示，
+  // 避免对本就没有评分的作文误报。
+  const scoreParseFailed = useMemo(
+    () => !isStreaming && contentHasScore && !contentHasInlineMarkers && !parseResult.score,
+    [isStreaming, contentHasScore, contentHasInlineMarkers, parseResult.score]
+  );
+
   const hasPolish = useMemo(() => parseResult.polishItems.length > 0, [parseResult.polishItems]);
   const hasModelEssay = useMemo(() => !!parseResult.modelEssay, [parseResult.modelEssay]);
   const hasDetails = useMemo(() => parseResult.markers.some(m => m.type !== 'text' && m.type !== 'pending' && m.type !== 'good'), [parseResult.markers]);
@@ -220,6 +228,11 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
               <>
                 {scoreOnly && (!isStreaming || scoreOnly.isComplete) && (
                   <ScoreCard score={scoreOnly} className="mb-6" />
+                )}
+                {scoreParseFailed && (
+                  <div className="mb-6 px-4 py-3 rounded-lg border border-border/30 bg-muted/20 text-sm text-muted-foreground">
+                    {t('essay_grading:score.parse_failed')}
+                  </div>
                 )}
                 <StreamingMarkdownRenderer
                   content={markdownContent}

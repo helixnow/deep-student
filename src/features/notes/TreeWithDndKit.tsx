@@ -3,10 +3,6 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   DragOverlay,
   DragStartEvent,
   DragEndEvent,
@@ -15,9 +11,9 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { CaretRight, CaretDown, Folder, FolderOpen, FileText } from '@phosphor-icons/react';
@@ -157,16 +153,7 @@ export function TreeWithDndKit({
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = useState<'before' | 'after' | 'inside'>('inside');
   
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const sensors = useTouchFriendlyDndSensors();
 
   // 获取所有展开的节点ID（用于 SortableContext）
   const getAllVisibleIds = (): string[] => {

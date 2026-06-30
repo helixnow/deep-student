@@ -4,7 +4,7 @@ Manual visual regression testing for CSS migration.
 
 ## Usage
 
-1. Start dev server: `pnpm dev`
+1. Start dev server: `npm run dev`
 2. Capture baseline: `npx playwright test -c tests/visual/playwright.config.ts`
 3. Make CSS changes
 4. Re-capture: `npx playwright test -c tests/visual/playwright.config.ts`

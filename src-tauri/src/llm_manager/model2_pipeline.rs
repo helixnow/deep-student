@@ -11,6 +11,7 @@ use crate::reasoning_policy::{
 use crate::utils::chat_timing;
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
+use rand::Rng;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::{Emitter, Window};
@@ -22,6 +23,15 @@ use super::{
     should_use_openai_responses_for_config, ApiConfig, ImagePayload, LLMManager, MergedChatMessage,
     Result,
 };
+
+/// 流式请求的单请求超时上限（秒）
+///
+/// 🔧 F2 修复：reqwest 0.11 的 `ClientBuilder::timeout(300s)` 覆盖「连接 + 整个响应体下载」，
+/// 流式响应总时长超过 300s 会被 reqwest 在半途强制掐断（早于 Pipeline 层的任何超时）。
+/// 流式请求改为按请求覆盖到 2 小时（与 chat_v2 Pipeline 的绝对上限对齐），
+/// 真正的「挂起」防护由 Pipeline 层空闲超时（600s 无数据）负责。
+/// 非流式调用不受影响，仍走客户端默认 300s。
+const STREAMING_REQUEST_TIMEOUT_SECS: u64 = 7_200;
 
 #[inline]
 fn is_qwen_config(config: &ApiConfig) -> bool {
@@ -186,6 +196,34 @@ pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde
     sanitized
 }
 
+/// 🔒 URL 脱敏：Gemini 等供应商把 API key 放在 query 参数（?key=AIza...），
+/// 审计日志/调试落盘/前端事件/错误消息里的 URL 必须先脱敏，否则每次请求都泄漏密钥。
+pub(crate) fn sanitize_url_for_log(url: &str) -> String {
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_string();
+    };
+    let sanitized_query = query
+        .split('&')
+        .map(|pair| match pair.split_once('=') {
+            Some((k, _)) => {
+                let kl = k.to_ascii_lowercase();
+                let is_sensitive = matches!(
+                    kl.as_str(),
+                    "key" | "api_key" | "apikey" | "api-key" | "token" | "access_token" | "secret"
+                );
+                if is_sensitive {
+                    format!("{}=[REDACTED]", k)
+                } else {
+                    pair.to_string()
+                }
+            }
+            None => pair.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("&");
+    format!("{}?{}", base, sanitized_query)
+}
+
 fn redact_user_profile_blocks_in_value(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::String(s) => {
@@ -301,6 +339,27 @@ mod tests {
         let redacted = redact_user_profile_blocks_in_text(input);
         assert!(redacted.contains("<user_profile>[REDACTED]</user_profile>"));
         assert!(!redacted.contains("secret"));
+    }
+
+    #[test]
+    fn test_sanitize_url_for_log_redacts_query_keys() {
+        // Gemini 风格：key 在 query
+        let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:streamGenerateContent?alt=sse&key=AIzaSySECRET123";
+        let sanitized = sanitize_url_for_log(url);
+        assert!(!sanitized.contains("AIzaSySECRET123"));
+        assert!(sanitized.contains("key=[REDACTED]"));
+        assert!(sanitized.contains("alt=sse"));
+
+        // 无 query 的 URL 原样返回
+        let plain = "https://api.openai.com/v1/chat/completions";
+        assert_eq!(sanitize_url_for_log(plain), plain);
+
+        // 大小写与变体参数名
+        let mixed = "https://x.example/api?API_KEY=abc&access_token=tok&foo=bar";
+        let s = sanitize_url_for_log(mixed);
+        assert!(!s.contains("abc"));
+        assert!(!s.contains("tok"));
+        assert!(s.contains("foo=bar"));
     }
 
     #[test]
@@ -498,10 +557,16 @@ mod tests {
             ..Default::default()
         };
 
-        apply_runtime_reasoning_overrides(&mut config, Some("max".to_string()), Some(32768));
+        apply_runtime_reasoning_overrides(
+            &mut config,
+            Some(true),
+            Some("max".to_string()),
+            Some(32768),
+        );
 
         assert_eq!(config.reasoning_effort.as_deref(), Some("max"));
         assert_eq!(config.thinking_budget, Some(32768));
+        assert_eq!(config.enable_thinking, Some(true));
     }
 
     #[test]
@@ -589,9 +654,13 @@ mod tests {
 
 fn apply_runtime_reasoning_overrides(
     config: &mut ApiConfig,
+    enable_thinking_override: Option<bool>,
     reasoning_effort_override: Option<String>,
     thinking_budget_override: Option<i32>,
 ) {
+    if let Some(enable) = enable_thinking_override {
+        config.enable_thinking = Some(enable);
+    }
     if let Some(effort) = reasoning_effort_override {
         config.reasoning_effort = Some(effort);
     }
@@ -609,6 +678,8 @@ pub(crate) fn log_llm_request_audit(
     persist_config: Option<&DebugPersistConfig>,
 ) {
     let sanitized = sanitize_request_body_for_audit(body);
+    // 🔒 URL 含 query 密钥（如 Gemini ?key=...）时脱敏后再进日志/落盘
+    let url = sanitize_url_for_log(url);
     match serde_json::to_string_pretty(&sanitized) {
         Ok(pretty) => info!(
             "[LLM_AUDIT:{}] model={} url={}\n{}",
@@ -622,7 +693,7 @@ pub(crate) fn log_llm_request_audit(
 
     if let Some(c) = persist_config {
         crate::debug_log_service::write_debug_log_entry(
-            &c.log_dir, tag, model, url, "", &sanitized,
+            &c.log_dir, tag, model, &url, "", &sanitized,
         );
     }
 }
@@ -650,6 +721,8 @@ pub(crate) fn log_and_emit_llm_request(
     persist_config: Option<&DebugPersistConfig>,
 ) {
     let sanitized = sanitize_request_body_for_audit(body);
+    // 🔒 URL 含 query 密钥（如 Gemini ?key=...）时脱敏后再进日志/落盘/前端事件
+    let url = sanitize_url_for_log(url);
 
     // 1. 审计日志（始终 standard 级别，避免泄漏 base64）
     match serde_json::to_string_pretty(&sanitized) {
@@ -670,7 +743,7 @@ pub(crate) fn log_and_emit_llm_request(
                 &c.log_dir,
                 tag,
                 model,
-                url,
+                &url,
                 stream_event,
                 &sanitized,
             )
@@ -731,6 +804,58 @@ impl LLMManager {
         })
     }
 
+    /// 向前端发送内层 HTTP 重试进度（model2_pipeline 级别的重试）
+    ///
+    /// 内层重试原来完全静默，前端在等待期间看不到任何状态变化。
+    /// 这里复用 `stream_reconnect` 事件通道让前端显示 "reconnect...(N/max)"。
+    fn emit_inner_retry_progress(
+        window: &Window,
+        stream_event: &str,
+        message_id: Option<&str>,
+        retry_attempt: u32,
+        retry_max: u32,
+    ) {
+        let Some(mid) = message_id else {
+            return;
+        };
+
+        let Some(raw_session_scope) = stream_event.strip_prefix("chat_v2_event_") else {
+            return;
+        };
+
+        // 多变体流的 stream_event 形如 `chat_v2_event_{session_id}_{variant_id}`。
+        // reconnect 是会话级事件，前端监听的是 `chat_v2_session_{session_id}`，
+        // 因此这里需要剥掉尾部的 `_var_xxx` 变体后缀。
+        let session_id = raw_session_scope
+            .rsplit_once("_var_")
+            .map(|(sid, _)| sid)
+            .unwrap_or(raw_session_scope);
+
+        let session_channel = format!("chat_v2_session_{}", session_id);
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let _ = window.emit(
+            &session_channel,
+            &json!({
+                "sessionId": session_id,
+                "eventType": "stream_reconnect",
+                "messageId": mid,
+                "retryAttempt": retry_attempt,
+                "retryMax": retry_max,
+                "timestamp": now_ms,
+            }),
+        );
+    }
+
+    fn compute_retry_delay(min_delay_ms: u64, max_delay_ms: u64) -> u64 {
+        if max_delay_ms <= min_delay_ms {
+            return min_delay_ms;
+        }
+        rand::thread_rng().gen_range(min_delay_ms..=max_delay_ms)
+    }
+
     // 统一AI接口层 - 模型二（核心解析/对话）- 流式版本
     pub async fn call_unified_model_2_stream(
         &self,
@@ -786,6 +911,7 @@ impl LLMManager {
             .await?;
         apply_runtime_reasoning_overrides(
             &mut config,
+            Some(enable_thinking),
             reasoning_effort_override,
             thinking_budget_override,
         );
@@ -1633,15 +1759,17 @@ impl LLMManager {
         }
 
         // ERR-01 修复：HTTP 错误码区分处理与指数退避重试
-        const MAX_RETRIES: u32 = 3;
-        const INITIAL_BACKOFF_MS: u64 = 1000;
+        const MAX_RETRIES: u32 = 5;
+        const MIN_RETRY_DELAY_MS: u64 = 4000;
+        const MAX_RETRY_DELAY_MS: u64 = 5000;
         let mut retry_count = 0u32;
-        let mut backoff_ms = INITIAL_BACKOFF_MS;
 
         let response = loop {
             // 每次重试都需要重新构建 request_builder（因为 send() 会消耗它）
             let mut request_builder = self.client
                 .post(&preq.url)
+                // 🔧 F2 修复：流式请求覆盖客户端默认 300s 总超时（见 STREAMING_REQUEST_TIMEOUT_SECS 注释）
+                .timeout(std::time::Duration::from_secs(STREAMING_REQUEST_TIMEOUT_SECS))
                 .header("Accept", "text/event-stream, application/json, text/plain, */*")
                 .header("Accept-Encoding", "identity")  // 禁用压缩，避免二进制响应
                 .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
@@ -1674,7 +1802,8 @@ impl LLMManager {
                 .json(&preq.body)
                 .send()
                 .await
-                .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e)))?;
+                // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key），脱敏后再进错误消息
+                .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
 
             if resp.status().is_success() {
                 break resp;
@@ -1693,7 +1822,14 @@ impl LLMManager {
                         .and_then(|v| v.to_str().ok())
                         .and_then(|s| s.parse::<u64>().ok());
 
-                    let wait_ms = retry_after.map(|s| s * 1000).unwrap_or(backoff_ms);
+                    let base_wait_ms = retry_after.map(|s| s * 1000).unwrap_or_else(|| {
+                        Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS)
+                    });
+                    let wait_ms = if retry_after.is_some() {
+                        base_wait_ms
+                    } else {
+                        base_wait_ms
+                    };
 
                     if retry_count < MAX_RETRIES {
                         retry_count += 1;
@@ -1701,8 +1837,14 @@ impl LLMManager {
                             "[模型二API] 遇到速率限制(429)，等待 {}ms 后重试 ({}/{})",
                             wait_ms, retry_count, MAX_RETRIES
                         );
+                        Self::emit_inner_retry_progress(
+                            &window,
+                            stream_event,
+                            message_id,
+                            retry_count,
+                            MAX_RETRIES,
+                        );
                         tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
-                        backoff_ms = (backoff_ms * 2).min(30000); // 指数退避，最大30秒
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
@@ -1728,12 +1870,20 @@ impl LLMManager {
                 500..=599 => {
                     if retry_count < MAX_RETRIES {
                         retry_count += 1;
+                        let wait_ms =
+                            Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS);
                         warn!(
                             "[模型二API] 服务端错误({})，等待 {}ms 后重试 ({}/{})",
-                            status_code, backoff_ms, retry_count, MAX_RETRIES
+                            status_code, wait_ms, retry_count, MAX_RETRIES
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
-                        backoff_ms = (backoff_ms * 2).min(30000);
+                        Self::emit_inner_retry_progress(
+                            &window,
+                            stream_event,
+                            message_id,
+                            retry_count,
+                            MAX_RETRIES,
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
@@ -2098,11 +2248,25 @@ impl LLMManager {
                                         error!("发送安全阻断事件失败: {}", e);
                                     }
                                     // 同时发送通用错误事件
-                                    let error_event = json!({
-                                        "type": "safety_error",
-                                        "message": "Request blocked due to safety policies",
-                                        "details": safety_info
-                                    });
+                                    // 🔧 区分供应商错误（provider_error）与安全阻断，避免
+                                    // 把配额不足/参数错误等误报为"安全策略阻断"
+                                    let is_provider_error = safety_info
+                                        .get("type")
+                                        .and_then(|v| v.as_str())
+                                        == Some("provider_error");
+                                    let error_event = if is_provider_error {
+                                        json!({
+                                            "type": "provider_error",
+                                            "message": "LLM provider reported a stream failure",
+                                            "details": safety_info
+                                        })
+                                    } else {
+                                        json!({
+                                            "type": "safety_error",
+                                            "message": "Request blocked due to safety policies",
+                                            "details": safety_info
+                                        })
+                                    };
                                     if let Err(e) = window
                                         .emit(&format!("{}_error", stream_event), &error_event)
                                     {
@@ -2180,6 +2344,8 @@ impl LLMManager {
                     }
                 }
                 Err(e) => {
+                    // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key）
+                    let e = e.without_url();
                     error!(
                         "{}流读取错误: {}",
                         chat_timing::format_elapsed_prefix(stream_event),
@@ -2199,6 +2365,21 @@ impl LLMManager {
                             "{}部分内容已接收，标记为部分成功",
                             chat_timing::format_elapsed_prefix(stream_event)
                         );
+                        // F15：流中途出错但已有部分内容时，过去静默按“部分成功”截断。
+                        // 这里额外发出截断警示事件，供前端标记“回复被截断”（前端展示由代理6实现）。
+                        let truncated_event = format!("{}_truncated", stream_event);
+                        let truncated_payload = json!({
+                            "reason": "stream_read_error",
+                            "error": e.to_string(),
+                            "content_len": full_content.len(),
+                            "reasoning_len": reasoning_content.len(),
+                            "chunk_count": chunk_counter,
+                            "stream_event": stream_event,
+                            "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                        });
+                        if let Err(emit_err) = window.emit(&truncated_event, &truncated_payload) {
+                            warn!("发送截断警示事件失败: {}", emit_err);
+                        }
                         break;
                     } else {
                         error!(
@@ -2569,1060 +2750,29 @@ impl LLMManager {
                 )
                 .await;
 
-            crate::llm_usage::record_llm_usage(
-                crate::llm_usage::CallerType::ChatV2,
-                &config.model,
-                actual_prompt_tokens,
-                actual_completion_tokens,
-                reasoning_tokens,
-                cached_tokens,
-                Some(stream_event.to_string()),
-                Some(dur as u64),
-                !was_cancelled,
-                if was_cancelled {
-                    Some("cancelled".to_string())
-                } else {
-                    None
-                },
-            );
-        }
-
-        Ok(StandardModel2Output {
-            assistant_message: if was_cancelled {
-                String::new()
-            } else {
-                full_content
-            },
-            raw_response: Some("stream_response".to_string()),
-            chain_of_thought_details,
-            cancelled: was_cancelled,
-        })
-    }
-    // 🎯 新增：通用流式接口，支持自定义模型配置（用于总结请求等特殊场景）
-    pub async fn call_unified_model_stream_with_config(
-        &self,
-        config: &ApiConfig,
-        context: &HashMap<String, Value>,
-        chat_history: &[ChatMessage],
-        subject: &str,
-        enable_chain_of_thought: bool,
-        image_paths: Option<Vec<String>>,
-        task_context: Option<&str>,
-        window: Window,
-        stream_event: &str,
-        _max_input_tokens_override: Option<usize>,
-    ) -> Result<StandardModel2Output> {
-        info!(
-            "调用通用流式接口: 模型={}, 科目={}, 思维链={}, 图片数量={}",
-            config.model,
-            subject,
-            enable_chain_of_thought,
-            image_paths.as_ref().map(|p| p.len()).unwrap_or(0)
-        );
-
-        // 已移除 Google/Gemini 特殊适配器路由，统一走标准流式实现
-
-        // 图片改为消息级来源
-        let images_used_source = "per_message".to_string();
-        let images_base64: Option<Vec<String>> = None;
-
-        // 移除上下文预算裁剪：按照用户建议，完整保留历史，由前端展示token估算并由用户决定
-        let chat_history = chat_history.to_vec();
-
-        debug!(
-            "[model2_stream_with_config] model={} provider={} adapter={} multi={} reasoning={} temp={} cot={} images={{source:{},count:{}}}",
-            config.model, config.name, config.model_adapter, config.is_multimodal, config.is_reasoning, config.temperature,
-            enable_chain_of_thought, images_used_source, images_base64.as_ref().map(|v| v.len()).unwrap_or(0)
-        );
-
-        let mut messages = vec![];
-
-        // 文档31清理：科目配置系统已废弃，使用通用提示词
-        let subject_prompt = format!("请基于{}科目的特点进行分析。\n\n", subject);
-
-        // 构建系统提示词（使用与call_unified_model_2_stream相同的逻辑）
-        if !context.is_empty() {
-            let mut system_content = subject_prompt.clone();
-
-            if let Some(task_ctx) = task_context {
-                system_content.push_str(&format!("【任务背景】\n{}\n\n", task_ctx));
-            }
-
-            for (key, value) in context {
-                match key.as_str() {
-                    "ocr_text" => system_content.push_str(&format!(
-                        "【题目内容】\n{}\n\n",
-                        value.as_str().unwrap_or("")
-                    )),
-                    "user_question" => system_content.push_str(&format!(
-                        "【学生问题】\n{}\n\n",
-                        value.as_str().unwrap_or("")
-                    )),
-                    "tags" => {
-                        if let Some(tags_array) = value.as_array() {
-                            let tags: Vec<String> = tags_array
-                                .iter()
-                                .filter_map(|v| v.as_str())
-                                .map(|s| s.to_string())
-                                .collect();
-                            if !tags.is_empty() {
-                                system_content
-                                    .push_str(&format!("【相关标签】\n{}\n\n", tags.join(", ")));
-                            }
-                        }
-                    }
-                    "mistake_type" => system_content.push_str(&format!(
-                        "【题目类型】\n{}\n\n",
-                        value.as_str().unwrap_or("")
-                    )),
-                    _ => {}
-                }
-            }
-
-            if !config.is_reasoning {
-                messages.push(json!({
-                    "role": "system",
-                    "content": system_content
-                }));
-            }
-
-            // 如果是多模态模型且提供了图片，添加图片到第一条用户消息
-            if config.is_multimodal && images_base64.is_some() && chat_history.is_empty() {
-                let mut content = vec![json!({
-                    "type": "text",
-                    "text": "请基于上述信息和图片，提供详细的解答。"
-                })];
-
-                if let Some(images) = &images_base64 {
-                    for image_base64 in images {
-                        let image_format = Self::detect_image_format_from_base64(image_base64);
-                        debug!("检测到图像格式: {}", image_format);
-                        content.push(json!({
-                            "type": "image_url",
-                            "image_url": {
-                                "url": format!("data:image/{};base64,{}", image_format, image_base64)
-                            }
-                        }));
-                    }
-                }
-
-                messages.push(json!({
-                    "role": "user",
-                    "content": content
-                }));
-            } else if chat_history.is_empty() {
-                // 纯文本模型或没有提供图片
-                messages.push(json!({
-                    "role": "user",
-                    "content": "请基于上述信息，提供详细的解答。"
-                }));
-            }
-        }
-
-        // 添加聊天历史（包含工具调用消息的标准化）
-        for (index, msg) in chat_history.iter().enumerate() {
-            // 处理用户消息
-            if msg.role == "user" {
-                let mut message_content = msg.content.clone();
-                if config.is_reasoning && index == 0 {
-                    // 推理模型：首条用户消息合并科目提示（简化处理）
-                    message_content = format!("{}\n\n{}", subject_prompt, message_content);
-                }
-
-                // 如果有文档附件，将其内容添加到消息中
-                if let Some(doc_attachments) = &msg.doc_attachments {
-                    if !doc_attachments.is_empty() {
-                        message_content.push_str("\n\n--- 附件内容 ---");
-                        for doc in doc_attachments {
-                            message_content.push_str(&format!("\n\n【文档: {}】", doc.name));
-                            if let Some(text_content) = &doc.text_content {
-                                message_content.push_str(&format!("\n{}", text_content));
-                            }
-                        }
-                    }
-                }
-
-                // 🎯 改造：如果是多模态模型且该条消息有图片，为该条消息附图
-                if config.is_multimodal
-                    && msg
-                        .image_base64
-                        .as_ref()
-                        .map(|v| !v.is_empty())
-                        .unwrap_or(false)
-                {
-                    let mut content = vec![json!({
-                        "type": "text",
-                        "text": message_content
-                    })];
-
-                    if let Some(images) = &msg.image_base64 {
-                        for image_base64 in images {
-                            let image_format = Self::detect_image_format_from_base64(image_base64);
-                            content.push(json!({
-                                "type": "image_url",
-                                "image_url": { "url": format!("data:image/{};base64,{}", image_format, image_base64) }
-                            }));
-                        }
-                    }
-
-                    messages.push(json!({
-                        "role": msg.role,
-                        "content": content
-                    }));
-                } else {
-                    messages.push(json!({
-                        "role": msg.role,
-                        "content": message_content
-                    }));
-                }
-            } else if msg.role == "assistant" {
-                // 如果assistant消息中存在工具调用，则以tool_calls标准结构发出
-                if let Some(tc) = &msg.tool_call {
-                    let tool_call_obj = json!({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.tool_name,
-                            "arguments": tc.args_json.to_string()
-                        }
-                    });
-                    messages.push(json!({
-                        "role": "assistant",
-                        "content": msg.content,
-                        "tool_calls": [tool_call_obj]
-                    }));
-                } else {
-                    messages.push(json!({
-                        "role": "assistant",
-                        "content": msg.content
-                    }));
-                }
-            } else if msg.role == "tool" {
-                // 工具结果消息必须包含 tool_call_id
-                if let Some(tr) = &msg.tool_result {
-                    messages.push(json!({
-                        "role": "tool",
-                        "tool_call_id": tr.call_id,
-                        "content": msg.content
-                    }));
-                } else {
-                    // 降级兜底，避免产生不被API接受的tool消息
-                    messages.push(json!({
-                        "role": "assistant",
-                        "content": msg.content
-                    }));
-                }
-            }
-        }
-
-        // 🔧 防御性合并：连续 assistant tool_calls（极端情况下可能出现）
-        // 注意：history.rs 输出的是交叉模式 assistant→tool→assistant→tool，
-        // 所以此函数在正常流程中是 no-op，仅作为防御性保护。
-        Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        if !chat_history
-            .iter()
-            .any(crate::chat_v2::pipeline::is_transient_skill_message)
-        {
-            // 🔧 防御性合并：连续 user 消息合并
-            Self::merge_consecutive_user_messages(&mut messages);
-        }
-
-        let mut request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "stream": true
-        });
-
-        Self::apply_reasoning_config(&mut request_body, &config, None);
-
-        // 检查是否启用工具（全局 + 模型能力）
-        let tools_enabled = self
-            .db
-            .get_setting("tools.enabled")
-            .ok()
-            .flatten()
-            .map(|v| v.to_lowercase())
-            .map(|v| v != "0" && v != "false")
-            .unwrap_or(true); // 默认启用
-
-        if tools_enabled && config.supports_tools {
-            // 构建工具列表，包含本地工具和 MCP 工具
-            let tools = self.build_tools_with_mcp(&window).await;
-
-            // 只有在工具列表非空时才设置 tools 和 tool_choice
-            if tools.as_array().map(|arr| !arr.is_empty()).unwrap_or(false) {
-                request_body["tools"] = tools;
-                request_body["tool_choice"] = json!("auto");
-            } else {
-                warn!("[LLM] 工具列表为空，跳过 tool_choice 设置");
-            }
-        } else {
-            if !config.supports_tools {
-                debug!("跳过工具注入：模型不支持函数调用 (supports_tools=false)");
-                // 为不支持工具的模型主动调用RAG/智能记忆工具并注入上下文
-                let inject_texts: Vec<String> = Vec::new();
-
-                if let Some(_last_user_msg) =
-                    chat_history.iter().filter(|m| m.role == "user").last()
-                {
-                    let memory_enabled_effective = context
-                        .get("memory_enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-                    if memory_enabled_effective {
-                        let _ = window.emit(
-                            &format!("{}_memory_sources", stream_event),
-                            &serde_json::json!({"stage":"disabled"}),
-                        );
-                    }
-
-                    let rag_enabled = context
-                        .get("rag_enabled")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(true);
-                    let _rag_library_ids: Option<Vec<String>> = context
-                        .get("rag_library_ids")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect::<Vec<String>>()
-                        })
-                        .filter(|v| !v.is_empty());
-                    let _rag_note_subjects: Option<Vec<String>> = context
-                        .get("rag_note_subjects")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                .collect::<Vec<String>>()
-                        })
-                        .filter(|v| !v.is_empty());
-                    if rag_enabled {
-                        // Legacy RAG removed; VFS RAG is used via builtin:rag_search tool
-                        debug!("[Fallback] Legacy RAG removed, skipping knowledge base injection");
-                    } else {
-                        debug!("[Fallback] RAG 已关闭，跳过知识库注入");
-                    }
-                }
-
-                // 如果有注入文本，添加到系统提示（统一长度门控）
-                if !inject_texts.is_empty() {
-                    // 单项与总量限额
-                    let per_item_max = 1600usize; // 每段最多1600字符
-                    let total_max = 20000usize; // 总注入最多20000字符
-                    let mut acc = String::new();
-                    for mut s in inject_texts {
-                        if s.chars().count() > per_item_max {
-                            s = s.chars().take(per_item_max).collect();
-                        }
-                        if acc.chars().count() + s.chars().count() > total_max {
-                            break;
-                        }
-                        acc.push_str(&s);
-                    }
-                    let inject_content = acc;
-                    // 将注入文本安全地合并到"模型实际可见"的消息：
-                    // - 非推理模型：系统消息可见 → 追加到 system
-                    // - 推理模型：系统消息最终合并到首条 user → 直接在首条 user 前面拼接
-                    if !config.is_reasoning {
-                        // 追加/创建 system
-                        if let Some(first_msg) = messages.get_mut(0) {
-                            if first_msg["role"] == "system" {
-                                let current_content = first_msg["content"].as_str().unwrap_or("");
-                                first_msg["content"] =
-                                    json!(format!("{}\n\n{}", current_content, inject_content));
-                            } else {
-                                messages.insert(
-                                    0,
-                                    json!({ "role": "system", "content": inject_content }),
-                                );
-                            }
-                        } else {
-                            messages.push(json!({ "role": "system", "content": inject_content }));
-                        }
-                    } else {
-                        // 推理模型：合并到首条用户消息开头
-                        if let Some(first_msg) = messages.get_mut(0) {
-                            if first_msg["role"] == "user" {
-                                let cur = first_msg["content"].as_str().unwrap_or("");
-                                first_msg["content"] =
-                                    json!(format!("{}\n\n{}", inject_content, cur));
-                            } else {
-                                // 若首条不是 user，则创建一条新的 user 消息承载
-                                messages.insert(
-                                    0,
-                                    json!({ "role": "user", "content": format!("{}", inject_content) })
-                                );
-                            }
-                        } else {
-                            messages.push(
-                                json!({ "role": "user", "content": format!("{}", inject_content) }),
-                            );
-                        }
-                    }
-                }
-            }
-        }
-
-        // 降级注入可能调整 messages，确保请求体使用最新消息集合
-        request_body["messages"] = serde_json::Value::Array(messages.clone());
-
-        apply_generation_params(&mut request_body, &config);
-
-        // 记录请求体大小与起始时间
-        let request_json_str = serde_json::to_string(&request_body).unwrap_or_default();
-        let request_bytes = request_json_str.len();
-        let start_instant = std::time::Instant::now();
-
-        // 输出脱敏请求体用于调试
-        let debug_body = sanitize_request_body_for_audit(&request_body);
-        debug!("[LLM_CONTINUE_DEBUG] ==> 脱敏请求体开始 <==");
-        debug!(
-            "{}",
-            serde_json::to_string_pretty(&debug_body).unwrap_or_default()
-        );
-        debug!("[LLM_CONTINUE_DEBUG] ==> 脱敏请求体结束 <==");
-
-        debug!("发送请求到: {}", config.base_url);
-        // 使用 ProviderAdapter 统一构建请求（避免覆盖分支硬编码/chat/completions）
-        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let preq = adapter
-            .build_request(
-                &config.base_url,
-                &config.api_key,
-                &config.model,
-                &request_body,
-            )
-            .map_err(|e| Self::provider_error("续写请求构建失败", e))?;
-
-        // ★ 同主路径：使用适配器转换后的实际请求体
-        let debug_persist = self.build_debug_persist_config();
-        log_and_emit_llm_request(
-            "CONTINUE_STREAM",
-            &window,
-            stream_event,
-            None,
-            &config.model,
-            &preq.url,
-            &preq.body,
-            debug_persist.as_ref(),
-        );
-
-        let mut request_builder = self.client
-            .post(&preq.url)
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
-            .header("Accept-Encoding", "identity")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        for (k, v) in preq.headers {
-            request_builder = request_builder.header(k, v);
-        }
-
-        if let Ok(parsed_url) = Url::parse(&config.base_url) {
-            // config is a parameter here
-            if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
-                && parsed_url.host_str().is_some()
-            {
-                let origin_val = format!(
-                    "{}://{}",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                let referer_val = format!(
-                    "{}://{}/",
-                    parsed_url.scheme(),
-                    parsed_url.host_str().unwrap_or_default()
-                );
-                request_builder = request_builder
-                    .header("Origin", origin_val)
-                    .header("Referer", referer_val);
-            }
-        }
-
-        // 进入前先清空一次可能残留的取消标志，避免新请求被立即终止
-        let _ = self.consume_pending_cancel(stream_event).await;
-
-        // 注册取消通道（通知式中断）
-        let cancel_rx = self.register_cancel_channel(stream_event).await;
-
-        // 发出开始事件
-        let request_id = Uuid::new_v4().to_string();
-        if let Err(e) = window.emit(
-            &format!("{}_start", stream_event),
-            &json!({
-                "id": request_id,
-                "model": config.model,
-                "request_bytes": request_bytes
-            }),
-        ) {
-            warn!("发送开始事件失败: {}", e);
-        }
-
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let status_code = status.as_u16();
-            let status_text = status.canonical_reason().unwrap_or("Unknown");
-            let error_text = response.text().await.unwrap_or_default();
-            let error_msg = format!(
-                "通用流式接口请求失败: HTTP {} {} - {}",
-                status_code, status_text, error_text
-            );
-
-            error!("{}", error_msg);
-
-            let error_payload = json!({
-                "type": "http_error",
-                "error": error_msg,
-                "status": status_code,
-                "stream_event": stream_event,
-                "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
-            });
-
-            if let Err(e) = window.emit(&format!("{}_error", stream_event), &error_payload) {
-                warn!("发送HTTP错误事件失败: {}", e);
-            }
-
-            let duration_ms = start_instant.elapsed().as_millis();
-            if let Err(e) = window.emit(
-                &format!("{}_end", stream_event),
-                &json!({
-                    "reason": "error",
-                    "stats": {
-                        "chunk_count": 0,
-                        "request_bytes": request_bytes,
-                        "response_bytes": error_text.len(),
-                        "duration_ms": duration_ms,
-                        "approx_tokens_in": 0,
-                        "approx_tokens_out": 0,
-                        "retry_count": 0
-                    }
-                }),
-            ) {
-                warn!("发送错误结束事件失败: {}", e);
-            }
-
-            self.clear_cancel_channel(stream_event).await;
-            return Err(AppError::llm(error_msg));
-        }
-
-        // 流式处理响应（使用与call_unified_model_2_stream相同的逻辑）
-        let mut stream = response.bytes_stream();
-        let mut full_content = String::new();
-        let mut reasoning_content = String::new();
-        let mut chunk_counter = 0;
-        let mut response_bytes: usize = 0;
-        let mut was_cancelled = false;
-        let mut captured_tool_calls: Vec<crate::models::ToolCall> = Vec::new();
-        // 捕获 API 返回的 usage 信息（用于准确记录 token 使用量）
-        let mut captured_usage: Option<serde_json::Value> = None;
-
-        // 工具调用聚合状态 - 用于处理流式分块的工具调用
-        let mut pending_tool_calls: std::collections::HashMap<i32, (String, String, String)> =
-            std::collections::HashMap::new(); // index -> (id, name, accumulated_args)
-        let mut stream_ended = false;
-        // 初始化SSE行缓冲器
-        let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
-
-        while let Some(chunk_result) = stream.next().await {
-            // 先主动清理一次注册表中的取消标志，再检查通道中的通知
-            let registry_cancelled = self.consume_pending_cancel(stream_event).await;
-            if *cancel_rx.borrow() || registry_cancelled {
-                info!(
-                    "[Cancel] Breaking stream loop for {} (custom config)",
-                    stream_event
-                );
-                // P1修复：生命周期对齐 - 发送cancelled事件
-                if let Err(e) = window.emit(
-                    &format!("{}_cancelled", stream_event),
-                    &json!({
-                        "id": request_id,
-                        "reason": "user_cancelled",
-                        "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
-                    }),
-                ) {
-                    warn!("发送取消事件失败: {}", e);
-                }
-                was_cancelled = true;
-                break;
-            }
-            match chunk_result {
-                Ok(chunk) => {
-                    response_bytes += chunk.len();
-                    let chunk_str = String::from_utf8_lossy(&chunk);
-
-                    // 使用SSE缓冲器处理chunk，获取完整的行
-                    let complete_lines = sse_buffer.process_chunk(&chunk_str);
-                    for line in complete_lines {
-                        // 使用适配器解析流事件（包括[DONE]标记）
-                        let events = adapter.parse_stream(&line);
-
-                        // 检查是否是结束标记（保留为后备机制）
-                        if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
-                            debug!("检测到SSE结束标记: [DONE]");
-                            if events.is_empty() {
-                                // 如果适配器没有生成Done事件，我们手动添加一个
-                                debug!("适配器未生成Done事件，手动添加");
-                                stream_ended = true;
-                                break;
-                            }
-                        }
-                        for event in events {
-                            match event {
-                                crate::providers::StreamEvent::ContentChunk(content) => {
-                                    full_content.push_str(&content);
-                                    chunk_counter += 1;
-
-                                    let stream_chunk = StreamChunk {
-                                        content: content.clone(),
-                                        is_complete: false,
-                                        chunk_id: format!("{}_chunk_{}", request_id, chunk_counter),
-                                    };
-
-                                    if let Err(e) = window.emit(stream_event, &stream_chunk) {
-                                        error!("发送内容块失败: {}", e);
-                                    }
-                                }
-                                crate::providers::StreamEvent::ReasoningChunk(reasoning) => {
-                                    reasoning_content.push_str(&reasoning);
-
-                                    let reasoning_chunk = StreamChunk {
-                                        content: reasoning.clone(),
-                                        is_complete: false,
-                                        chunk_id: format!(
-                                            "{}_reasoning_chunk_{}",
-                                            request_id, chunk_counter
-                                        ),
-                                    };
-
-                                    if let Err(e) = window.emit(
-                                        &format!("{}_reasoning", stream_event),
-                                        &reasoning_chunk,
-                                    ) {
-                                        warn!("发送思维链块失败: {}", e);
-                                    }
-                                }
-                                crate::providers::StreamEvent::ThoughtSignature(_signature) => {
-                                    // Gemini 3 思维签名（此函数不使用 hook，直接忽略）
-                                    // 签名在工具调用场景下需要缓存，但此函数用于 v2 pipeline
-                                }
-                                crate::providers::StreamEvent::ToolCall(tool_call_value) => {
-                                    // 聚合分块的工具调用（不再发送原始分块事件）
-                                    if let Some(index) = tool_call_value
-                                        .get("index")
-                                        .and_then(|v| v.as_i64())
-                                        .map(|v| v as i32)
-                                    {
-                                        let maybe_id = tool_call_value
-                                            .get("id")
-                                            .and_then(|v| v.as_str())
-                                            .map(|v| v.trim())
-                                            .filter(|v| !v.is_empty());
-                                        let maybe_name = tool_call_value
-                                            .get("function")
-                                            .and_then(|f| f.get("name"))
-                                            .and_then(|n| n.as_str())
-                                            .map(|v| v.trim())
-                                            .filter(|v| !v.is_empty());
-                                        if let Some(id) = maybe_id {
-                                            // 这是一个新的工具调用的开始（有完整的id）
-                                            let name = maybe_name.unwrap_or("unknown");
-                                            // 🔧 修复：某些 OpenAI 兼容 API 返回 arguments 为 JSON 对象而非字符串
-                                            let args = tool_call_value
-                                                .get("function")
-                                                .and_then(|f| f.get("arguments"))
-                                                .map(|a| {
-                                                    if let Some(s) = a.as_str() {
-                                                        s.to_string()
-                                                    } else if a.is_null() {
-                                                        String::new()
-                                                    } else {
-                                                        warn!("[llm_manager] 工具调用 arguments 不是字符串而是 JSON 值 (tool={}), 自动序列化", name);
-                                                        serde_json::to_string(a).unwrap_or_default()
-                                                    }
-                                                })
-                                                .unwrap_or_default();
-
-                                            pending_tool_calls.insert(
-                                                index,
-                                                (id.to_string(), name.to_string(), args),
-                                            );
-                                            // 简化日志：工具调用开始时输出一次
-                                            print!("🔧");
-                                            use std::io::Write;
-                                            let _ = std::io::stdout().flush();
-                                        } else if let Some((id, mut name, mut accumulated_args)) =
-                                            pending_tool_calls.get(&index).cloned()
-                                        {
-                                            // 这是工具调用的后续块（没有id，只有arguments片段）
-                                            // 🔧 修复：同样处理 arguments 为 JSON 对象的情况
-                                            let args_fragment_opt = tool_call_value
-                                                .get("function")
-                                                .and_then(|f| f.get("arguments"))
-                                                .and_then(|a| {
-                                                    if let Some(s) = a.as_str() {
-                                                        Some(s.to_string())
-                                                    } else if a.is_null() {
-                                                        None
-                                                    } else {
-                                                        Some(
-                                                            serde_json::to_string(a)
-                                                                .unwrap_or_default(),
-                                                        )
-                                                    }
-                                                });
-                                            if let Some(args_fragment) = args_fragment_opt {
-                                                if name == "unknown" {
-                                                    if let Some(better_name) = maybe_name {
-                                                        name = better_name.to_string();
-                                                    }
-                                                }
-                                                accumulated_args.push_str(&args_fragment);
-                                                pending_tool_calls.insert(
-                                                    index,
-                                                    (id, name, accumulated_args.clone()),
-                                                );
-                                                // 简化日志：每 200 字符输出一个 / 代表累积
-                                                if accumulated_args.len() % 200
-                                                    < args_fragment.len()
-                                                {
-                                                    print!("/");
-                                                    use std::io::Write;
-                                                    let _ = std::io::stdout().flush();
-                                                }
-                                            }
-                                        } else if let Some(name) = maybe_name {
-                                            let args = tool_call_value
-                                                .get("function")
-                                                .and_then(|f| f.get("arguments"))
-                                                .map(|a| {
-                                                    if let Some(s) = a.as_str() {
-                                                        s.to_string()
-                                                    } else if a.is_null() {
-                                                        String::new()
-                                                    } else {
-                                                        serde_json::to_string(a).unwrap_or_default()
-                                                    }
-                                                })
-                                                .unwrap_or_default();
-                                            let synthetic_id = format!("stream_call_{}", index);
-                                            pending_tool_calls.insert(
-                                                index,
-                                                (synthetic_id, name.to_string(), args),
-                                            );
-                                        }
-                                    }
-                                }
-                                crate::providers::StreamEvent::Usage(usage_value) => {
-                                    // 存储 usage 数据
-                                    captured_usage = Some(usage_value.clone());
-                                    if let Err(e) = window
-                                        .emit(&format!("{}_usage", stream_event), &usage_value)
-                                    {
-                                        error!("发送用量事件失败: {}", e);
-                                    }
-                                }
-                                crate::providers::StreamEvent::SafetyBlocked(safety_info) => {
-                                    // emit safety_blocked 事件
-                                    if let Err(e) = window.emit(
-                                        &format!("{}_safety_blocked", stream_event),
-                                        &safety_info,
-                                    ) {
-                                        error!("发送安全阻断事件失败: {}", e);
-                                    }
-                                    // 同时发送通用错误事件
-                                    let error_event = json!({
-                                        "type": "safety_error",
-                                        "message": "Request blocked due to safety policies",
-                                        "details": safety_info
-                                    });
-                                    if let Err(e) = window
-                                        .emit(&format!("{}_error", stream_event), &error_event)
-                                    {
-                                        error!("发送安全错误事件失败: {}", e);
-                                    }
-                                }
-                                crate::providers::StreamEvent::Done => {
-                                    stream_ended = true;
-
-                                    // 完成待聚合的工具调用（只在有工具调用时输出简洁日志）
-                                    if !pending_tool_calls.is_empty() {
-                                        debug!("工具调用序列结束");
-                                    }
-                                    for (_index, (id, name, accumulated_args)) in
-                                        pending_tool_calls.iter()
-                                    {
-                                        if name.trim().is_empty() || name == "unknown" {
-                                            warn!(
-                                                "[llm_manager] 跳过 malformed tool call finalize: id='{}', name='{}', args_len={}",
-                                                id,
-                                                name,
-                                                accumulated_args.len()
-                                            );
-                                            continue;
-                                        }
-                                        let complete_tool_call = serde_json::json!({
-                                            "id": id,
-                                            "type": "function",
-                                            "function": {
-                                                "name": name,
-                                                "arguments": accumulated_args
-                                            }
-                                        });
-
-                                        match Self::convert_openai_tool_call(&complete_tool_call) {
-                                            Ok(tc) => {
-                                                captured_tool_calls.push(tc);
-                                            }
-                                            Err(e) => {
-                                                warn!("[llm_manager] 工具调用解析失败: {}, args_len={}", e, accumulated_args.len());
-                                                // 构造带截断错误标记的 ToolCall，让 pipeline 层反馈给 LLM 重试
-                                                captured_tool_calls.push(crate::models::ToolCall {
-                                                    id: id.clone(),
-                                                    tool_name: name.clone(),
-                                                    args_json: json!({
-                                                        "_truncation_error": true,
-                                                        "_error_message": format!(
-                                                            "工具调用参数 JSON 被截断（已生成 {} 字符但未完成）。原因：模型输出 token 达到上限。",
-                                                            accumulated_args.len()
-                                                        ),
-                                                        "_args_len": accumulated_args.len(),
-                                                    }),
-                                                });
-                                            }
-                                        }
-                                    }
-                                    // 输出一条简洁的工具调用总结
-                                    if !captured_tool_calls.is_empty() {
-                                        let names: Vec<_> = captured_tool_calls
-                                            .iter()
-                                            .map(|tc| tc.tool_name.as_str())
-                                            .collect();
-                                        debug!("工具调用聚合完成: {:?}", names);
-                                    }
-                                    pending_tool_calls.clear();
-
-                                    break;
-                                }
-                            }
-                        }
-
-                        if stream_ended {
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    error!("流式响应错误: {}", e);
-                    break;
-                }
-            }
-        }
-
-        // 处理SSE缓冲器中剩余的不完整行（P1修复：STREAM-3）
-        if let Some(remaining_line) = sse_buffer.flush() {
-            if !remaining_line.trim().is_empty() {
-                debug!("处理SSE缓冲器中的剩余数据: {} 字符", remaining_line.len());
-                // 使用适配器解析剩余的行
-                let events = adapter.parse_stream(&remaining_line);
-                for event in events {
-                    match event {
-                        crate::providers::StreamEvent::ContentChunk(content) => {
-                            full_content.push_str(&content);
-                            chunk_counter += 1;
-
-                            let stream_chunk = StreamChunk {
-                                content: content.clone(),
-                                is_complete: false,
-                                chunk_id: format!("{}_chunk_{}", request_id, chunk_counter),
-                            };
-
-                            if let Err(e) = window.emit(stream_event, &stream_chunk) {
-                                error!("发送剩余内容块失败: {}", e);
-                            }
-                        }
-                        crate::providers::StreamEvent::ReasoningChunk(reasoning) => {
-                            reasoning_content.push_str(&reasoning);
-
-                            let reasoning_chunk = StreamChunk {
-                                content: reasoning.clone(),
-                                is_complete: false,
-                                chunk_id: format!(
-                                    "{}_reasoning_chunk_{}",
-                                    request_id, chunk_counter
-                                ),
-                            };
-
-                            if let Err(e) = window
-                                .emit(&format!("{}_reasoning", stream_event), &reasoning_chunk)
-                            {
-                                warn!("发送剩余思维链块失败: {}", e);
-                            }
-                        }
-                        _ => { /* 忽略其他事件类型（Done/ToolCall/Usage等已在主循环处理） */
-                        }
-                    }
-                }
-            }
-        }
-
-        // 清理取消通道
-        self.clear_cancel_channel(stream_event).await;
-
-        // 🔧 [REFACTOR] 旧的工具调用执行逻辑已移除
-        // 工具调用现在由 Chat V2 Pipeline 统一处理（src-tauri/src/chat_v2/pipeline.rs）
-        // 此函数只负责流式响应的收集，工具调用通过 LLMStreamHooks 回调给上层
-
-        if was_cancelled {
-            // P1修复：生命周期对齐 - 发送专门的cancelled事件，同时保持end事件
-            if let Err(e) = window.emit(
-                &format!("{}_cancelled", stream_event),
-                &json!({
-                    "id": request_id,
-                    "reason": "user_cancelled",
-                    "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
-                }),
-            ) {
-                warn!("发送取消事件失败: {}", e);
-            }
-
-            // 取消：仍发送 end 事件用于兼容性
-            let duration_ms = start_instant.elapsed().as_millis();
-            if let Err(e) = window.emit(
-                &format!("{}_end", stream_event),
-                &json!({
-                    "reason": "cancelled",
-                    "stats": {
-                        "chunk_count": chunk_counter,
-                        "request_bytes": request_bytes,
-                        "response_bytes": response_bytes,
-                        "duration_ms": duration_ms,
-                        "approx_tokens_in": 0,
-                        "approx_tokens_out": 0,
-                        "retry_count": 0
-                    }
-                }),
-            ) {
-                warn!("发送结束事件失败: {}", e);
-            }
-        } else {
-            // 成功：发送完成块与 end(success)
-            let final_chunk = StreamChunk {
-                content: full_content.clone(),
-                is_complete: true,
-                chunk_id: format!("final_chunk_{}", chunk_counter),
-            };
-            if let Err(e) = window.emit(stream_event, &final_chunk) {
-                error!("发送最终完成信号失败: {}", e);
-            }
-            // 如果有思维链内容，也发送思维链完成信号
-            if enable_chain_of_thought && !reasoning_content.is_empty() {
-                let reasoning_final_chunk = StreamChunk {
-                    content: reasoning_content.clone(),
-                    is_complete: true,
-                    chunk_id: format!("reasoning_final_chunk_{}", chunk_counter + 1),
-                };
-                if let Err(e) = window.emit(
-                    &format!("{}_reasoning", stream_event),
-                    &reasoning_final_chunk,
-                ) {
-                    error!("发送思维链完成信号失败: {}", e);
-                }
-            }
-            // end(success) 事件在统一统计段发送
-        }
-
-        // 结束事件（附带统计信息）
-        let duration_ms = start_instant.elapsed().as_millis();
-        let approx_tokens_out = crate::utils::token_budget::estimate_tokens(&full_content);
-        if let Err(e) = window.emit(
-            &format!("{}_end", stream_event),
-            &json!({
-                "reason": "success",
-                "stats": {
-                    "chunk_count": chunk_counter,
-                    "request_bytes": request_bytes,
-                    "response_bytes": response_bytes,
-                    "duration_ms": duration_ms,
-                    "approx_tokens_in": 0,
-                    "approx_tokens_out": approx_tokens_out,
-                    "retry_count": 0
-                }
-            }),
-        ) {
-            warn!("发送结束事件失败: {}", e);
-        }
-
-        // 用量日志：结束（脱敏写入，使用 FileManager）
-        {
-            let approx_tokens_out = crate::utils::token_budget::estimate_tokens(&full_content);
-            let dur = start_instant.elapsed().as_millis();
-            let dir = self.file_manager.get_app_data_dir().to_path_buf();
-            let logger = crate::debug_logger::DebugLogger::new(dir);
-
-            // 从 API 返回的 usage 数据中提取实际 token 数量
-            let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
-                Self::extract_usage_tokens(
-                    &captured_usage,
-                    approx_tokens_out,
-                    (request_bytes / 4).max(1),
-                );
-
-            let _ = logger
-                .log_llm_usage(
-                    "end",
-                    &config.name,
+            // 🔧 修复 Token 双重计费：单变体 Chat V2（task_context="chat_v2"）的用量
+            // 由 chat_v2/pipeline/tool_loop.rs 在每轮结束后统一记录到 llm_usage_logs
+            // （带真实 session_id、模型显示名和失败记录），此处不再重复写入。
+            // 多变体（"chat_v2_variant"）没有 pipeline 层记录，仍依赖此处。
+            if task_context != Some("chat_v2") {
+                crate::llm_usage::record_llm_usage(
+                    crate::llm_usage::CallerType::ChatV2,
                     &config.model,
-                    &config.model_adapter,
-                    request_bytes,
-                    response_bytes,
-                    actual_prompt_tokens as usize,
-                    actual_completion_tokens as usize,
-                    Some(dur),
-                    None,
-                )
-                .await;
-
-            crate::llm_usage::record_llm_usage(
-                crate::llm_usage::CallerType::ChatV2,
-                &config.model,
-                actual_prompt_tokens,
-                actual_completion_tokens,
-                reasoning_tokens,
-                cached_tokens,
-                Some(stream_event.to_string()),
-                Some(dur as u64),
-                !was_cancelled,
-                if was_cancelled {
-                    Some("cancelled".to_string())
-                } else {
-                    None
-                },
-            );
-        }
-
-        // 构建思维链详情
-        let chain_of_thought_details = if enable_chain_of_thought {
-            if config.is_reasoning {
-                Some(json!({
-                    "full_response": full_content,
-                    "reasoning_content": if reasoning_content.is_empty() { Value::Null } else { json!(reasoning_content) },
-                    "enabled": true,
-                    "is_reasoning_model": true,
-                    "model_adapter": config.model_adapter
-                }))
-            } else {
-                None
+                    actual_prompt_tokens,
+                    actual_completion_tokens,
+                    reasoning_tokens,
+                    cached_tokens,
+                    Some(stream_event.to_string()),
+                    Some(dur as u64),
+                    !was_cancelled,
+                    if was_cancelled {
+                        Some("cancelled".to_string())
+                    } else {
+                        None
+                    },
+                );
             }
-        } else {
-            None
-        };
+        }
 
         Ok(StandardModel2Output {
             assistant_message: if was_cancelled {
@@ -3885,7 +3035,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -4048,7 +3198,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("聊天元数据生成请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("聊天元数据生成请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -4431,9 +3581,11 @@ impl LLMManager {
                         }
                     } else if status == 400 {
                         // 400错误可能是模型不支持，尝试下一个
+                        // 🔒 URL 可能含 query 密钥（Gemini ?key=...），日志与用户可见错误均需脱敏
+                        let safe_url = sanitize_url_for_log(&preq.url);
                         let error_text = response.text().await.unwrap_or_default();
                         warn!("模型 {} 不支持，错误: {}", model, error_text);
-                        debug!("请求URL: {}", preq.url);
+                        debug!("请求URL: {}", safe_url);
                         debug!(
                             "请求体: {}",
                             serde_json::to_string_pretty(&preq.body).unwrap_or_default()
@@ -4442,25 +3594,27 @@ impl LLMManager {
                         if model_name.is_some() {
                             return Err(AppError::validation(format!(
                                 "API请求失败 (状态码: 400):\n请求URL: {}\n错误响应: {}\n可能原因: 模型不支持或参数错误",
-                                preq.url, error_text
+                                safe_url, error_text
                             )));
                         }
                         continue;
                     } else if status == 401 {
                         // 401是认证错误，不需要尝试其他模型
+                        let safe_url = sanitize_url_for_log(&preq.url);
                         let error_text = response.text().await.unwrap_or_default();
                         error!("API密钥认证失败: {}", status);
-                        debug!("请求URL: {}", preq.url);
+                        debug!("请求URL: {}", safe_url);
                         debug!("认证错误详情: {}", error_text);
                         return Err(AppError::validation(format!(
                             "API认证失败 (状态码: 401):\n请求URL: {}\n错误响应: {}\n请检查API密钥是否正确",
-                            preq.url, error_text
+                            safe_url, error_text
                         )));
                     } else {
                         // 其他错误
+                        let safe_url = sanitize_url_for_log(&preq.url);
                         let error_text = response.text().await.unwrap_or_default();
                         error!("API请求失败: {} - {}", status, error_text);
-                        debug!("请求URL: {}", preq.url);
+                        debug!("请求URL: {}", safe_url);
                         debug!(
                             "请求体: {}",
                             serde_json::to_string_pretty(&preq.body).unwrap_or_default()
@@ -4469,16 +3623,19 @@ impl LLMManager {
                         if model_name.is_some() {
                             return Err(AppError::validation(format!(
                                 "API请求失败 (状态码: {}):\n请求URL: {}\n错误响应: {}",
-                                status, preq.url, error_text
+                                status, safe_url, error_text
                             )));
                         }
                         continue;
                     }
                 }
                 Ok(Err(e)) => {
+                    // 🔒 without_url：错误 Display 可能含带 key 的 URL（Gemini）
+                    let cause = e.to_string();
+                    let e = e.without_url();
                     error!("API连接测试请求错误 (模型: {}): {}", model, e);
                     // 如果是连接错误，不需要尝试其他模型
-                    if e.to_string().contains("handshake") || e.to_string().contains("connect") {
+                    if cause.contains("handshake") || cause.contains("connect") {
                         return Err(AppError::network(format!("连接失败: {}", e)));
                     }
                     // 如果是用户指定的模型，直接返回失败
@@ -4562,8 +3719,13 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_memory_decision_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::Memory)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            None,
+            crate::llm_usage::CallerType::Memory,
+        )
+        .await
     }
 
     /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
@@ -4572,8 +3734,13 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::ChatV2)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            None,
+            crate::llm_usage::CallerType::ChatV2,
+        )
+        .await
     }
 
     /// 内部方法：使用显式传入的 ApiConfig 执行 raw prompt 调用
@@ -4737,7 +3904,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("RAW_PROMPT API请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())))?;
 
         // 6. 检查响应状态
         if !response.status().is_success() {
@@ -4750,25 +3917,22 @@ impl LLMManager {
         }
 
         // 7. 解析响应
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
-                crate::llm_usage::record_llm_usage(
-                    caller_type.clone(),
-                    &config.model,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                    Some(err_msg.clone()),
-                );
-                AppError::llm(err_msg)
-            })?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
+            crate::llm_usage::record_llm_usage(
+                caller_type.clone(),
+                &config.model,
+                0,
+                0,
+                None,
+                None,
+                None,
+                None,
+                false,
+                Some(err_msg.clone()),
+            );
+            AppError::llm(err_msg)
+        })?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
         let openai_like_json = if config.model_adapter == "google" {
@@ -4807,7 +3971,10 @@ impl LLMManager {
                 }
             }
         } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            match crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model) {
+            match crate::providers::convert_anthropic_response_to_openai(
+                &response_json,
+                &config.model,
+            ) {
                 Some(v) => v,
                 None => {
                     let err_msg = "解析Anthropic响应失败".to_string();
@@ -5008,7 +4175,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("OCR_MODEL API请求失败: {}", e)))?;
+            .map_err(|e| AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url())))?;
 
         // 6. 检查响应状态
         if !response.status().is_success() {
@@ -5122,7 +4289,7 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::llm(format!("OCR请求失败: {}", e)))?;
+            .map_err(|e| AppError::llm(format!("OCR请求失败: {}", e.without_url())))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -5224,8 +4391,17 @@ impl LLMManager {
                 .get("cached_tokens")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
-            let cached_tokens = if anthropic_cache_hit > 0 || openai_cached > 0 || deepseek_cached > 0 || gemini_cached > 0 {
-                Some(anthropic_cache_hit.max(openai_cached).max(deepseek_cached).max(gemini_cached))
+            let cached_tokens = if anthropic_cache_hit > 0
+                || openai_cached > 0
+                || deepseek_cached > 0
+                || gemini_cached > 0
+            {
+                Some(
+                    anthropic_cache_hit
+                        .max(openai_cached)
+                        .max(deepseek_cached)
+                        .max(gemini_cached),
+                )
             } else {
                 None
             };
@@ -5235,7 +4411,12 @@ impl LLMManager {
                 prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens
             );
 
-            (prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens)
+            (
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cached_tokens,
+            )
         } else {
             // 没有 API usage 数据，使用估算值
             let estimated_prompt = fallback_prompt_tokens as u32;
@@ -5243,7 +4424,12 @@ impl LLMManager {
                 "[LLM Usage] API 未返回 usage，使用估算值: prompt={}, completion={}",
                 estimated_prompt, fallback_completion_tokens
             );
-            (estimated_prompt, fallback_completion_tokens as u32, None, None)
+            (
+                estimated_prompt,
+                fallback_completion_tokens as u32,
+                None,
+                None,
+            )
         }
     }
 }
@@ -5387,9 +4573,11 @@ impl LLMManager {
         }
 
         let response = request_builder.json(&preq.body).send().await.map_err(|e| {
-            let error_msg = if e.to_string().contains("timed out") {
+            let cause = e.to_string();
+            let e = e.without_url();
+            let error_msg = if cause.contains("timed out") {
                 format!("Anki制卡API请求超时: {}", e)
-            } else if e.to_string().contains("connect") {
+            } else if cause.contains("connect") {
                 format!("无法连接到 Anki 制卡 API 服务器: {}", e)
             } else {
                 format!("Anki制卡API请求失败: {}", e)

@@ -13,13 +13,14 @@ use async_trait::async_trait;
 use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
 use deep_student_lib::data_governance::sync::{
-    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, SyncChangeWithData, SyncManager,
+    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, SyncChangeWithData,
+    SyncDirection, SyncManager,
 };
 use deep_student_lib::models::AppError;
 use rusqlite::{params, Connection};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Mutex;
 use tempfile::TempDir;
@@ -295,6 +296,8 @@ fn build_insert_change(id: &str, title: &str, updated_at: &str) -> SyncChangeWit
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -317,6 +320,8 @@ fn build_update_change(id: &str, title: &str, updated_at: &str) -> SyncChangeWit
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -330,6 +335,8 @@ fn build_delete_change(id: &str, changed_at: &str) -> SyncChangeWithData {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -383,7 +390,7 @@ fn scenario_04_delete_idempotent() {
 }
 
 #[test]
-fn scenario_05_upsert_coalesces_null_fields() {
+fn scenario_05_explicit_null_on_not_null_column_is_quarantined() {
     let conn = new_test_db();
     insert_note(
         &conn,
@@ -393,19 +400,31 @@ fn scenario_05_upsert_coalesces_null_fields() {
         "2026-05-01T09:00:00Z",
     );
     mark_all_synced(&conn);
-    // 云端数据中 content 字段是 null，应使用 COALESCE 保留本地
+    // 2026-06 语义更新（与 regression_m5 一致）：无本地 pending 变更时按云端
+    // 精确应用，显式 null 直接传播为 SQL NULL——不再 COALESCE 保留本地。
+    // notes.content 为 NOT NULL，约束违规属非瞬态错误 → 整条变更进入隔离区，
+    // 本地数据保持原样，批次返回 Ok。
     let mut change = build_update_change("n1", "cloud_title", "2026-05-01T10:00:00Z");
     if let Some(serde_json::Value::Object(ref mut obj)) = change.data {
         obj.insert("content".into(), serde_json::Value::Null);
     }
-    SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1, "NOT NULL 违规应记为 failure 并隔离");
     let content: String = conn
         .query_row("SELECT content FROM notes WHERE id = 'n1'", [], |r| {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(content, "local_content", "NULL 云端值应保留本地值");
-    assert_eq!(get_title(&conn, "n1").as_deref(), Some("cloud_title"));
+    assert_eq!(content, "local_content", "被隔离的变更不得部分落地");
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("local_title"));
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id='n1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(quarantined, 1);
 }
 
 #[test]
@@ -468,14 +487,23 @@ fn scenario_07_transaction_rollback_on_fk_violation() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
 
-    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(result.is_err(), "外键违规应该报错");
+    // 2026-06 语义更新：FK 违规属非瞬态错误，单条回滚到 SAVEPOINT 并进入
+    // 隔离区，批次整体返回 Ok（与 lib 内 regression_m10 一致）。
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None)
+        .expect("FK 违规应被隔离而非整批失败");
+    assert_eq!(result.failure_count, 1);
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM children", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0, "事务应当回滚");
+    assert_eq!(n, 0, "违规变更不得落地");
+    let quarantined: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(quarantined, 1, "违规变更应进入隔离区");
 }
 
 #[test]
@@ -490,9 +518,13 @@ fn scenario_08_reject_writes_to_internal_tables() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err(), "禁止向内部元数据表写入");
+    // 2026-06 语义更新：内部表写入被拒并隔离，批次返回 Ok
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1, "禁止向内部元数据表写入，应隔离");
+    assert_eq!(r.success_count, 0);
 }
 
 #[test]
@@ -507,9 +539,13 @@ fn scenario_09_reject_writes_to_sqlite_system_tables() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：系统表写入被拒并隔离，批次返回 Ok 且 schema 不受影响
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
 }
 
 #[test]
@@ -524,9 +560,13 @@ fn scenario_10_unknown_table_returns_error() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：未知表写入被拒并隔离（与 lib 内 regression_m20 一致）
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
 }
 
 // ============================================================================
@@ -721,6 +761,8 @@ fn scenario_17_identical_data_no_conflict() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
@@ -735,12 +777,13 @@ fn scenario_17_identical_data_no_conflict() {
 }
 
 #[test]
-fn scenario_18_clock_skew_tolerance_prefers_local() {
+fn scenario_18_keeplatest_cloud_newer_with_small_skew_wins() {
     let conn = new_test_db();
     insert_note(&conn, "n1", "base", "x", "2026-05-01T09:00:00Z");
     mark_all_synced(&conn);
     update_note(&conn, "n1", "local", "2026-05-01T10:00:00Z");
-    // 云端只差 1 秒（小于默认 2s 容差）
+    // 2026-06 语义更新：KeepLatest 使用规范化 LWW key 精确裁决。
+    // 云端 updated_at 晚 1 秒且内容不同，应由云端胜出；完全相等的 tie 才保留本地。
     let change = build_update_change("n1", "cloud", "2026-05-01T10:00:01Z");
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
@@ -751,8 +794,9 @@ fn scenario_18_clock_skew_tolerance_prefers_local() {
         None,
     )
     .unwrap();
-    assert_eq!(get_title(&conn, "n1").as_deref(), Some("local"));
-    assert_eq!(conflict.rejected, 1);
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("cloud"));
+    assert_eq!(conflict.rejected, 0);
+    assert_eq!(conflict.applied, 1);
 }
 
 #[test]
@@ -911,59 +955,62 @@ fn scenario_27_large_batch_transactional() {
 
 #[test]
 fn scenario_28_large_batch_partial_failure_rolls_back_all() {
-    let conn = Connection::open_in_memory().unwrap();
-    conn.execute_batch(
-        r#"
-        CREATE TABLE parents (id TEXT PRIMARY KEY);
-        CREATE TABLE children (
-            id TEXT PRIMARY KEY,
-            parent_id TEXT NOT NULL,
-            FOREIGN KEY (parent_id) REFERENCES parents(id)
-        );
-        CREATE TABLE __change_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            table_name TEXT NOT NULL,
-            record_id TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            changed_at TEXT NOT NULL DEFAULT (datetime('now')),
-            sync_version INTEGER DEFAULT 0
-        );
-        INSERT INTO parents (id) VALUES ('p1');
-        "#,
-    )
-    .unwrap();
-    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    let conn = new_test_db();
 
     let mut changes = Vec::new();
     for i in 0..10 {
+        let id = format!("c{}", i);
         changes.push(SyncChangeWithData {
-            table_name: "children".into(),
-            record_id: format!("c{}", i),
+            table_name: "notes".into(),
+            record_id: id.clone(),
             operation: ChangeOperation::Insert,
-            data: Some(json!({ "id": format!("c{}", i), "parent_id": "p1" })),
+            data: Some(json!({
+                "id": id,
+                "title": format!("note {}", i),
+                "content": "ok",
+                "tags": "[]",
+                "is_favorite": 0,
+                "created_at": "2026-05-01T09:00:00Z",
+                "updated_at": "2026-05-01T10:00:00Z",
+                "deleted_at": serde_json::Value::Null,
+            })),
             changed_at: "2026-05-01T10:00:00Z".into(),
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
-    // 插入一条违规的到中间
+    // 插入一条违规的到中间：未知表会被隔离，不应阻塞前面的合法 notes。
     changes.push(SyncChangeWithData {
-        table_name: "children".into(),
+        table_name: "unknown_table".into(),
         record_id: "bad".into(),
         operation: ChangeOperation::Insert,
-        data: Some(json!({ "id": "bad", "parent_id": "nonexistent" })),
+        data: Some(json!({ "id": "bad" })),
         changed_at: "2026-05-01T10:00:00Z".into(),
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     });
-    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：违规单条隔离、其余正常应用（不再整批回滚）
+    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(r.success_count, 10, "合法变更应全部应用");
+    assert_eq!(r.failure_count, 1, "违规变更应被隔离");
     let n: i64 = conn
-        .query_row("SELECT COUNT(*) FROM children", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0, "批中有一条违规就应全部回滚");
+    assert_eq!(n, 10, "仅违规一条不落地");
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id='bad'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(quarantined, 1);
 }
 
 #[test]
@@ -1115,10 +1162,15 @@ async fn scenario_35_apply_blob_tombstones_removes_local_file() {
         },
     );
 
-    let affected =
-        tombstone::apply_blob_tombstones(&storage, &tombstones, blobs_dir, "data_governance/blobs")
-            .await
-            .unwrap();
+    let affected = tombstone::apply_blob_tombstones(
+        &storage,
+        &tombstones,
+        blobs_dir,
+        "data_governance/blobs",
+        true,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(affected.len(), 1);
     assert!(!blob_path.exists(), "本地 blob 应被删除");
@@ -1174,7 +1226,10 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
     let blob = write_content_addressed_blob(blobs_dir, b"content1");
 
     // 先走一次普通 sync，云端会有 blob
-    let _ = mgr_a.sync_vfs_blobs(&storage, blobs_dir).await.unwrap();
+    let _ = mgr_a
+        .sync_vfs_blobs(&storage, blobs_dir, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     assert!(
         storage
             .get(&format!("data_governance/blobs/{}", blob.1))
@@ -1195,7 +1250,7 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
     let blobs_dir_b = tmp_b.path();
     let mgr_b = SyncManager::new("device_b".into());
     let outcome = mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, blobs_dir_b)
+        .sync_vfs_blobs_with_tombstones(&storage, blobs_dir_b, SyncDirection::Bidirectional)
         .await
         .unwrap();
 
@@ -1247,7 +1302,10 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     let first = write_content_addressed_blob(tmp_a.path(), b"blob-one");
     let second = write_content_addressed_blob(tmp_a.path(), b"blob-two");
     let third = write_content_addressed_blob(tmp_a.path(), b"blob-three");
-    let _ = mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    let _ = mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     // 云端应有 3 个
     assert_eq!(
         storage.list("data_governance/blobs/").await.unwrap().len(),
@@ -1255,7 +1313,10 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     );
 
     // B 拉
-    let out_b = mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
+    let out_b = mgr_b
+        .sync_vfs_blobs(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     assert_eq!(out_b.downloaded, 3);
     assert!(tmp_b.path().join(&first.1).exists());
 
@@ -1268,7 +1329,7 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
 
     // B 再同步
     let out_b2 = mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(
@@ -1307,6 +1368,8 @@ fn scenario_41_deep_nested_json_in_text_column() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     let content: String = conn
@@ -1341,9 +1404,13 @@ fn scenario_43_reject_injection_via_table_name() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：注入表名被拒并隔离，批次返回 Ok；schema 不受损
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
     // 确认 notes 表仍存在
     let n = count_notes(&conn);
     assert_eq!(n, 0);
@@ -1369,6 +1436,8 @@ fn scenario_44_reject_injection_via_column_name() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 应该报错（不存在的列），且 notes 表不被破坏
     let _ = SyncManager::apply_downloaded_changes(&conn, &[change], None);
@@ -1399,6 +1468,8 @@ fn scenario_45_unicode_content_preserved() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     assert_eq!(get_title(&conn, "n1").as_deref(), Some(content));
@@ -1549,6 +1620,8 @@ fn scenario_49_very_long_field_value() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     assert_eq!(get_title(&conn, "n1").as_deref(), Some(huge.as_str()));
@@ -1783,10 +1856,16 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 
     // A 上传
     let blob = write_content_addressed_blob(tmp_a.path(), b"x");
-    mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // B 下载
-    mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
+    mgr_b
+        .sync_vfs_blobs(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     assert!(tmp_b.path().join(&blob.1).exists());
 
     // A 删除并 tombstone
@@ -1798,7 +1877,7 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 
     // B 再 sync — 本地还有副本，如果不消费 tombstone 会被上传回云端
     mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(
@@ -1816,8 +1895,10 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 }
 
 #[tokio::test]
-async fn scenario_58_three_device_conflict_cascade() {
-    // A、B、C 三端对同一 blob 的增删节奏
+async fn scenario_58_shared_state_consumes_tombstone_once() {
+    // 一个进程内的多个 SyncManager 共享同一 SyncStateStore；它们模拟的是同一
+    // app instance 的多次操作，而不是独立设备。B 消费 tombstone 后推进水位，
+    // C 在同一 state store 下不应重复消费同一条 tombstone。
     let storage = MockCloudStorage::new();
     let mgr_a = SyncManager::new("dev_a".into());
     let mgr_b = SyncManager::new("dev_b".into());
@@ -1826,13 +1907,22 @@ async fn scenario_58_three_device_conflict_cascade() {
     // A 上传 blob
     let tmp_a = TempDir::new().unwrap();
     let blob = write_content_addressed_blob(tmp_a.path(), b"v1");
-    mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // B、C 都拿到
     let tmp_b = TempDir::new().unwrap();
     let tmp_c = TempDir::new().unwrap();
-    mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
-    mgr_c.sync_vfs_blobs(&storage, tmp_c.path()).await.unwrap();
+    mgr_b
+        .sync_vfs_blobs(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+    mgr_c
+        .sync_vfs_blobs(&storage, tmp_c.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // A 删除
     std::fs::remove_file(tmp_a.path().join(&blob.1)).unwrap();
@@ -1843,17 +1933,20 @@ async fn scenario_58_three_device_conflict_cascade() {
 
     // B 先同步：删除应传播
     mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(!tmp_b.path().join(&blob.1).exists());
 
-    // C 后同步：同样应传播
+    // C 后同步：同一 app instance 的 tombstone 水位已由 B 推进，不重复应用。
     mgr_c
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
-    assert!(!tmp_c.path().join(&blob.1).exists());
+    assert!(
+        tmp_c.path().join(&blob.1).exists(),
+        "同一 SyncStateStore 下 tombstone 只消费一次；真实多设备需独立 app data"
+    );
 }
 
 #[tokio::test]
@@ -1866,7 +1959,10 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
 
     let blob = write_content_addressed_blob(tmp_a.path(), b"content");
     let blob_path = tmp_a.path().join(&blob.1);
-    mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // 删除（tombstone）
     std::fs::remove_file(&blob_path).unwrap();
@@ -1877,7 +1973,7 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
 
     // 走一次同步清理云端
     mgr_a
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(storage
@@ -1889,35 +1985,27 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
     // 现在又重新创建内容相同的 blob
     write_content_addressed_blob(tmp_a.path(), b"content");
 
-    // 问题：sync_vfs_blobs_with_tombstones 里会先应用 tombstone，
-    // 但 tombstone 还没被删除（我们没自动 prune），所以这个 blob 会被误删。
-    // 这个场景暴露了 tombstone 管理策略的权衡：
-    // - 若 tombstone 永不过期，用户恢复同名 blob 会被自动删
-    // - 若 tombstone 过期（当前 90 天），恢复需要等过期
-    //
-    // 当前实现的策略是：tombstone 持续生效直到过期，这是多端删除传播的一致性成本。
-    // 记录这个行为：该场景下 blob 会被删除。
+    // 已消费过的 tombstone 有水位记录；同内容 blob 的重新创建发生在 deleted_at 之后。
+    // 因此它应被视为一次新的本地创建，而不是再次被旧 tombstone 删除。
     mgr_a
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
 
-    // 验证行为：内容相同的 blob 被 tombstone 机制删除
-    // 这是已知的一致性权衡 —— 用户若要"复活"同 hash blob，需要手动清除 tombstone 或等 90 天
+    // 验证行为：内容相同的 blob 可在 tombstone 消费后重新生效
     let blob_still_there = blob_path.exists();
     let cloud_still_there = storage
         .get(&format!("data_governance/blobs/{}", blob.1))
         .await
         .unwrap()
         .is_some();
-    // Tombstone 机制应删除重新创建的同 hash blob（已知行为）
     assert!(
-        !blob_still_there,
-        "recreated same-hash blob should be deleted by tombstone"
+        blob_still_there,
+        "recreated same-hash blob should survive consumed tombstone"
     );
     assert!(
-        !cloud_still_there,
-        "recreated same-hash blob should not exist in cloud"
+        cloud_still_there,
+        "recreated same-hash blob should be uploaded again"
     );
 }
 
@@ -1942,22 +2030,570 @@ fn scenario_60_conflict_guard_preserves_atomicity_on_failure() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     ];
 
-    let r = SyncManager::apply_downloaded_changes_with_conflict_guard(
+    let (apply, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
         &changes,
         None,
         ConflictPolicy::KeepLatest,
         Some("cloud"),
         Some("local"),
-    );
-    assert!(r.is_err(), "整体应失败");
+    )
+    .unwrap();
+    assert_eq!(apply.failure_count, 1, "非法变更应单条隔离");
+    assert_eq!(conflict.rejected, 1, "合法冲突仍应按本地胜出处理");
 
-    // 冲突表不应留下任何记录（事务回滚）
+    // 冲突表保留合法冲突的两端快照；非法变更进入隔离区，不再整批回滚。
     let c = conflict_count(&conn);
-    assert_eq!(c, 0, "事务回滚后冲突表应为空");
+    assert_eq!(c, 2, "合法冲突应留下 cloud/local 两份快照");
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id='b'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(quarantined, 1);
     // notes 表里 a 的 title 仍然是本地值
     assert_eq!(get_title(&conn, "a").as_deref(), Some("local_a"));
+}
+
+#[tokio::test]
+async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
+    let storage = MockCloudStorage::new();
+    let suffix = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let manager = SyncManager::new(format!("dev_snapshot_target_{suffix}"));
+    let source_device = format!("dev_snapshot_source_{suffix}");
+    let now = Utc::now();
+    let now_iso = now.to_rfc3339();
+
+    let mut covered_cursors = serde_json::Map::new();
+    covered_cursors.insert(source_device.clone(), json!(7));
+    covered_cursors.insert(manager.device_id().to_string(), json!(2));
+
+    let snapshot = json!({
+        "format_version": 1,
+        "database_name": "vfs",
+        "device_id": source_device,
+        "created_at": now_iso,
+        "schema_version": 1,
+        "data_version": 7,
+        "checksum": "snapshot-checksum",
+        "covered_cursors": covered_cursors,
+        "rows": {
+            "notes": [
+                {
+                    "id": "snap-note",
+                    "title": "from snapshot",
+                    "content": "bootstrapped",
+                    "tags": "[]",
+                    "is_favorite": 0,
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                    "deleted_at": null
+                }
+            ]
+        }
+    });
+    let snapshot_json = serde_json::to_vec(&snapshot).unwrap();
+    let snapshot_payload = zstd::stream::encode_all(std::io::Cursor::new(snapshot_json), 0)
+        .expect("compress snapshot");
+    let snapshot_key = format!(
+        "data_governance/snapshots/vfs/{}-{}-snapshot.json.zst",
+        now.timestamp_millis(),
+        manager.device_id()
+    );
+    storage.put(&snapshot_key, &snapshot_payload).await.unwrap();
+    for database_name in ["chat_v2", "llm_usage", "mistakes"] {
+        let snapshot = json!({
+            "format_version": 1,
+            "database_name": database_name,
+            "device_id": source_device,
+            "created_at": now_iso,
+            "schema_version": 1,
+            "data_version": 7,
+            "checksum": format!("{database_name}-snapshot-checksum"),
+            "covered_cursors": covered_cursors,
+            "rows": {}
+        });
+        let snapshot_json = serde_json::to_vec(&snapshot).unwrap();
+        let snapshot_payload = zstd::stream::encode_all(std::io::Cursor::new(snapshot_json), 0)
+            .expect("compress snapshot");
+        let snapshot_key = format!(
+            "data_governance/snapshots/{}/{}-{}-snapshot.json.zst",
+            database_name,
+            now.timestamp_millis(),
+            manager.device_id()
+        );
+        storage.put(&snapshot_key, &snapshot_payload).await.unwrap();
+    }
+
+    let bootstrap = manager
+        .download_snapshot_bootstrap_changes(&storage)
+        .await
+        .unwrap();
+    assert_eq!(bootstrap.cursor_advancements.get(&source_device), Some(&7));
+    assert_eq!(
+        bootstrap.cursor_advancements.get(manager.device_id()),
+        Some(&2)
+    );
+    assert_eq!(bootstrap.changes.len(), 1);
+    let change = &bootstrap.changes[0];
+    assert_eq!(change.database_name.as_deref(), Some("vfs"));
+    assert_eq!(change.table_name, "notes");
+    assert_eq!(change.record_id, "snap-note");
+    let expected_source = format!("snapshot:{source_device}");
+    assert_eq!(
+        change.source_device_id.as_deref(),
+        Some(expected_source.as_str())
+    );
+    assert_eq!(change.suppress_change_log, Some(true));
+
+    let own_seq1 = format!(
+        "data_governance/changes/{}/{:012}-{}-a.json.zst",
+        manager.device_id(),
+        1,
+        now.timestamp()
+    );
+    let own_seq2 = format!(
+        "data_governance/changes/{}/{:012}-{}-b.json.zst",
+        manager.device_id(),
+        2,
+        now.timestamp()
+    );
+    let own_seq3 = format!(
+        "data_governance/changes/{}/{:012}-{}-c.json.zst",
+        manager.device_id(),
+        3,
+        now.timestamp()
+    );
+    let other_seq1 = format!(
+        "data_governance/changes/{}/{:012}-{}-d.json.zst",
+        source_device,
+        1,
+        now.timestamp()
+    );
+    for key in [&own_seq1, &own_seq2, &own_seq3, &other_seq1] {
+        storage.put(key, b"payload").await.unwrap();
+    }
+
+    let deleted = manager.prune_old_changes(&storage, 30).await.unwrap();
+    assert_eq!(
+        deleted, 2,
+        "only own seqs covered by the snapshot may be pruned"
+    );
+    assert!(storage.get(&own_seq1).await.unwrap().is_none());
+    assert!(storage.get(&own_seq2).await.unwrap().is_none());
+    assert!(storage.get(&own_seq3).await.unwrap().is_some());
+    assert!(storage.get(&other_seq1).await.unwrap().is_some());
+}
+
+// ============================================================================
+// P1 回归：blob tombstone × 内容寻址去重竞态（本地引用防线）
+// ============================================================================
+
+/// 构造生产布局：`active/vfs_blobs` + `active/databases/vfs.db`（含 blobs 表）。
+/// 返回 (active_dir_guard, blobs_dir)。
+fn setup_active_layout_with_vfs_db() -> (TempDir, std::path::PathBuf) {
+    let active = TempDir::new().unwrap();
+    let blobs_dir = active.path().join("vfs_blobs");
+    std::fs::create_dir_all(&blobs_dir).unwrap();
+    let db_dir = active.path().join("databases");
+    std::fs::create_dir_all(&db_dir).unwrap();
+    let conn = Connection::open(db_dir.join("vfs.db")).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE blobs (
+            hash TEXT PRIMARY KEY,
+            relative_path TEXT NOT NULL,
+            size INTEGER NOT NULL DEFAULT 0,
+            mime_type TEXT,
+            ref_count INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL DEFAULT 0
+         );",
+    )
+    .unwrap();
+    (active, blobs_dir)
+}
+
+fn set_blob_ref_count(active_dir: &Path, hash: &str, relative_path: &str, ref_count: i64) {
+    let conn = Connection::open(active_dir.join("databases").join("vfs.db")).unwrap();
+    conn.execute(
+        "INSERT INTO blobs (hash, relative_path, size, ref_count, created_at)
+         VALUES (?1, ?2, 0, ?3, 0)
+         ON CONFLICT(hash) DO UPDATE SET ref_count = excluded.ref_count",
+        params![hash, relative_path, ref_count],
+    )
+    .unwrap();
+}
+
+/// 竞态场景：设备 A 删除 blob 并发布 tombstone；设备 B 在消费 tombstone 前
+/// 重新引用了相同内容（内容寻址去重不更新文件 mtime）。
+/// 修复前：B 的本地文件 + 云端文件都被删除，引用悬空，内容永久丢失。
+/// 修复后：本地 ref_count>0 → 拒绝消费 tombstone，文件保留并重新上传（复活）。
+#[tokio::test]
+async fn blob_tombstone_rejected_when_locally_referenced_and_blob_revived() {
+    let storage = MockCloudStorage::new();
+    let mgr_a = SyncManager::new(format!("dev_a_{}", uuid::Uuid::new_v4()));
+    let mgr_b = SyncManager::new(format!("dev_b_{}", uuid::Uuid::new_v4()));
+
+    // 设备 B：生产布局 + blob 文件 + vfs.db 中 ref_count=2（仍被引用）
+    let (active_b, blobs_dir_b) = setup_active_layout_with_vfs_db();
+    let blob = write_content_addressed_blob(&blobs_dir_b, b"shared-content");
+    set_blob_ref_count(active_b.path(), &blob.0, &blob.1, 2);
+
+    // 让文件 mtime 早于 tombstone 的 deleted_at（内容寻址去重不更新 mtime）
+    let old_mtime = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let f = std::fs::File::options()
+        .append(true)
+        .open(blobs_dir_b.join(&blob.1))
+        .unwrap();
+    f.set_modified(old_mtime).unwrap();
+    drop(f);
+
+    // B 先上传，云端有 blob + manifest 条目
+    let _ = mgr_b
+        .sync_vfs_blobs(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+    let cloud_key = format!("data_governance/blobs/{}", blob.1);
+    assert!(storage.get(&cloud_key).await.unwrap().is_some());
+
+    // 设备 A 发布该 blob 的 tombstone（A 端引用已归零）
+    mgr_a
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(14))
+        .await
+        .unwrap();
+
+    // B 消费 tombstone：本地仍有引用 → 必须拒绝删除
+    let _ = mgr_b
+        .sync_vfs_blobs_with_tombstones(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+
+    assert!(
+        blobs_dir_b.join(&blob.1).exists(),
+        "本地仍有 ref_count>0 引用的 blob 不得被 tombstone 删除"
+    );
+    assert!(
+        storage.get(&cloud_key).await.unwrap().is_some(),
+        "被本地引用否决的 tombstone 不得删除云端文件（或必须复活重传）"
+    );
+
+    // manifest 条目必须存在（保留或复活），其他设备仍可下载
+    let tmp_c = TempDir::new().unwrap();
+    let mgr_c = SyncManager::new(format!("dev_c_{}", uuid::Uuid::new_v4()));
+    let out_c = mgr_c
+        .sync_vfs_blobs(&storage, tmp_c.path(), SyncDirection::Download)
+        .await
+        .unwrap();
+    assert_eq!(out_c.downloaded, 1, "复活后的 blob 应可被其他设备下载");
+    assert!(tmp_c.path().join(&blob.1).exists());
+}
+
+/// 对照场景：本地 ref_count=0（引用确已归零）时，tombstone 必须正常生效。
+#[tokio::test]
+async fn blob_tombstone_applies_when_ref_count_zero() {
+    let storage = MockCloudStorage::new();
+    let mgr_a = SyncManager::new(format!("dev_a_{}", uuid::Uuid::new_v4()));
+    let mgr_b = SyncManager::new(format!("dev_b_{}", uuid::Uuid::new_v4()));
+
+    let (active_b, blobs_dir_b) = setup_active_layout_with_vfs_db();
+    let blob = write_content_addressed_blob(&blobs_dir_b, b"orphaned-content");
+    set_blob_ref_count(active_b.path(), &blob.0, &blob.1, 0);
+
+    let old_mtime = std::time::SystemTime::now() - std::time::Duration::from_secs(3600);
+    let f = std::fs::File::options()
+        .append(true)
+        .open(blobs_dir_b.join(&blob.1))
+        .unwrap();
+    f.set_modified(old_mtime).unwrap();
+    drop(f);
+
+    let _ = mgr_b
+        .sync_vfs_blobs(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+
+    mgr_a
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(15))
+        .await
+        .unwrap();
+
+    let _ = mgr_b
+        .sync_vfs_blobs_with_tombstones(&storage, &blobs_dir_b, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+
+    assert!(
+        !blobs_dir_b.join(&blob.1).exists(),
+        "ref_count=0 的 blob tombstone 必须正常生效"
+    );
+    let cloud_key = format!("data_governance/blobs/{}", blob.1);
+    assert!(
+        storage.get(&cloud_key).await.unwrap().is_none(),
+        "云端文件应随 tombstone 删除"
+    );
+}
+
+// ============================================================================
+// P2 回归：ref_count 重算只更新实际变化的行（避免 __change_log churn）
+// ============================================================================
+
+#[test]
+fn recompute_ref_counts_skips_unchanged_rows() {
+    let conn = new_test_db();
+    conn.execute_batch(
+        r#"
+        CREATE TABLE resources (
+            id TEXT PRIMARY KEY,
+            ref_count INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE files (
+            id TEXT PRIMARY KEY,
+            resource_id TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            deleted_at TEXT
+        );
+        CREATE TRIGGER trg_resources_upd
+        AFTER UPDATE ON resources
+        BEGIN
+            INSERT INTO __change_log (table_name, record_id, operation)
+            VALUES ('resources', NEW.id, 'UPDATE');
+        END;
+        "#,
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO resources (id, ref_count) VALUES ('r1', 1), ('r2', 0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO files (id, resource_id) VALUES ('f-1', 'r1')",
+        [],
+    )
+    .unwrap();
+
+    // 应用一条与 ref_count 完全无关的变更（notes 表无 resource_id/blob_hash 列）：
+    // 整个重算应被跳过，不得点火任何 resources 触发器
+    let change = build_insert_change("n-rc", "x", "2026-05-01T10:00:00Z");
+    SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+
+    let resource_log: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __change_log WHERE table_name = 'resources'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        resource_log, 0,
+        "与引用无关的变更批次不得触发 resources 重算/触发器（churn 防线）"
+    );
+
+    // 相关表（files 带 resource_id，注册为 RowSync）变更必须触发重算：
+    // 失真的 r2 被修正归零，新增引用使 r1 重算为 2，且未变化行不点火触发器
+    conn.execute("UPDATE resources SET ref_count = 9 WHERE id = 'r2'", [])
+        .unwrap();
+    conn.execute("DELETE FROM __change_log WHERE table_name = 'resources'", [])
+        .unwrap();
+    let change2 = SyncChangeWithData {
+        table_name: "files".into(),
+        record_id: "f-2".into(),
+        operation: ChangeOperation::Insert,
+        data: Some(json!({
+            "id": "f-2",
+            "resource_id": "r1",
+            "updated_at": "2026-05-01T11:00:00Z",
+            "deleted_at": null,
+        })),
+        changed_at: "2026-05-01T11:00:00Z".into(),
+        change_log_id: None,
+        database_name: Some("vfs".into()),
+        suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
+    };
+    let apply2 = SyncManager::apply_downloaded_changes(&conn, &[change2], None).unwrap();
+    assert_eq!(
+        apply2.success_count, 1,
+        "files insert 应成功: skipped={} failures={:?}",
+        apply2.skipped_count, apply2.failures
+    );
+
+    let rc2: i64 = conn
+        .query_row(
+            "SELECT ref_count FROM resources WHERE id = 'r2'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rc2, 0, "失真的 ref_count 必须在相关变更批次中被重算修正");
+    let rc1: i64 = conn
+        .query_row(
+            "SELECT ref_count FROM resources WHERE id = 'r1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rc1, 2, "新增引用后 ref_count 必须重算为实际引用数");
+}
+
+// ============================================================================
+// P2 回归：设备清单解密失败必须 fail-close（与变更文件路径口径一致）
+// ============================================================================
+
+#[tokio::test]
+async fn manifest_decrypt_failure_fails_closed() {
+    let storage = MockCloudStorage::new();
+
+    // 设备 A 用密码 pw-a 上传加密清单
+    let mgr_a =
+        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let manifest_a = mgr_a.create_manifest(HashMap::new());
+    mgr_a.upload_manifest(&storage, &manifest_a).await.unwrap();
+
+    // 设备 B 用错误密码：必须报错而非把云端当成空实例
+    let mgr_b =
+        SyncManager::with_encryption(format!("dev_b_{}", uuid::Uuid::new_v4()), Some("pw-wrong".into()));
+    let err = mgr_b.download_manifest(&storage).await;
+    assert!(
+        err.is_err(),
+        "错误密码下 download_manifest 必须 fail-close，而非静默跳过设备清单"
+    );
+
+    // 设备 B 未配密码：同样必须报错（云端是加密数据）
+    let mgr_b_plain = SyncManager::new(format!("dev_b2_{}", uuid::Uuid::new_v4()));
+    let err2 = mgr_b_plain.download_manifest(&storage).await;
+    assert!(
+        err2.is_err(),
+        "未配置密码遇到加密清单必须 fail-close"
+    );
+
+    // 正确密码可正常读取
+    let mgr_c =
+        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let ok = mgr_c.download_manifest(&storage).await;
+    assert!(ok.is_ok(), "正确密码必须能读取清单: {:?}", ok.err());
+}
+
+/// tombstone 清单解密失败必须 fail-close：
+/// - 消费路径不得把"解不开"当"无 tombstone"（删除会静默不传播）；
+/// - mark_* 写入路径不得拿空清单覆盖云端（丢失该设备全部历史 tombstone）。
+#[tokio::test]
+async fn tombstone_decrypt_failure_fails_closed() {
+    let storage = MockCloudStorage::new();
+
+    // 设备 A（密码 pw-a）发布一条 blob tombstone（加密）
+    let mgr_a =
+        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    mgr_a
+        .mark_blob_deleted(&storage, "hash_enc_1", Some("ha/hash_enc_1.pdf".into()), None)
+        .await
+        .unwrap();
+
+    // 设备 B（错误密码）：消费 tombstone 必须报错，而非静默当作无删除
+    let tmp_b = TempDir::new().unwrap();
+    let mgr_b = SyncManager::with_encryption(
+        format!("dev_b_{}", uuid::Uuid::new_v4()),
+        Some("pw-wrong".into()),
+    );
+    let r = mgr_b
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await;
+    assert!(
+        r.is_err(),
+        "错误密码下消费 tombstone 必须 fail-close，而非把删除静默丢弃"
+    );
+
+    // 设备 A 改了密码后再 mark：读自己旧清单失败必须报错，
+    // 而非用空清单覆盖（丢失 hash_enc_1 这条历史 tombstone）
+    let mgr_a_newpw = SyncManager::with_encryption(
+        mgr_a.device_id().to_string(),
+        Some("pw-changed".into()),
+    );
+    let r2 = mgr_a_newpw
+        .mark_blob_deleted(&storage, "hash_enc_2", Some("hb/hash_enc_2.pdf".into()), None)
+        .await;
+    assert!(
+        r2.is_err(),
+        "密码不符时 mark_blob_deleted 必须报错，防止空清单覆盖丢失历史 tombstone"
+    );
+
+    // 正确密码端不受影响，且历史 tombstone 完整保留
+    let tombstones = tombstone::download_blob_tombstones(&storage, &mgr_a)
+        .await
+        .unwrap();
+    assert!(
+        tombstones.entries.contains_key("hash_enc_1"),
+        "历史 tombstone 不得被错误密码端覆盖丢失"
+    );
+}
+
+/// 资产清单解密失败必须 fail-close：
+/// 否则密码配错的设备会把云端当成空清单，用错误密码全量重传并覆盖资产清单。
+#[tokio::test]
+async fn assets_manifest_decrypt_failure_fails_closed() {
+    let storage = MockCloudStorage::new();
+
+    // 设备 A（密码 pw-a）上传一个资产文件 + 加密清单
+    let active_a = TempDir::new().unwrap();
+    let app_data_a = TempDir::new().unwrap();
+    let asset_dir = active_a.path().join("images");
+    std::fs::create_dir_all(&asset_dir).unwrap();
+    std::fs::write(asset_dir.join("report.png"), b"asset-payload").unwrap();
+
+    let mgr_a =
+        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let out_a = mgr_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_data_a.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+    assert_eq!(out_a.uploaded, 1);
+
+    // 设备 B（错误密码）：必须报错，而非把云端视为空清单开始覆盖
+    let active_b = TempDir::new().unwrap();
+    let app_data_b = TempDir::new().unwrap();
+    let mgr_b = SyncManager::with_encryption(
+        format!("dev_b_{}", uuid::Uuid::new_v4()),
+        Some("pw-wrong".into()),
+    );
+    let r = mgr_b
+        .sync_asset_directories(
+            &storage,
+            active_b.path(),
+            app_data_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await;
+    assert!(
+        r.is_err(),
+        "错误密码下资产同步必须 fail-close，防止错误密码覆盖云端清单与文件"
+    );
+
+    // 正确密码端可继续同步下载
+    let active_c = TempDir::new().unwrap();
+    let app_data_c = TempDir::new().unwrap();
+    let mgr_c =
+        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let out_c = mgr_c
+        .sync_asset_directories(
+            &storage,
+            active_c.path(),
+            app_data_c.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .unwrap();
+    assert_eq!(out_c.downloaded, 1, "正确密码端必须能正常下载资产");
 }

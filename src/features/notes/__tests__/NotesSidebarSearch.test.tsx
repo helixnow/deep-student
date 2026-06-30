@@ -7,7 +7,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { NotesSidebarSearch } from '../components/NotesSidebarSearch';
 import * as NotesContextModule from '../NotesContext';
-import * as NotesAPIModule from '../../../utils/notesApi';
+import * as NotesAPIModule from '@/utils/notesApi';
 
 // Mock useNotes
 vi.mock('../NotesContext', () => ({
@@ -19,7 +19,7 @@ vi.mock('../NotesContext', () => ({
 }));
 
 // Mock NotesAPI
-vi.mock('../../../utils/notesApi', () => ({
+vi.mock('@/utils/notesApi', () => ({
     NotesAPI: {
         listTags: vi.fn(),
     },
@@ -41,6 +41,7 @@ interface MockInputProps {
     value?: string;
     onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
     placeholder?: string;
+    [key: string]: unknown;
 }
 
 interface MockButtonProps {
@@ -58,13 +59,14 @@ interface MockPopoverProps {
 interface MockBadgeProps {
     children?: React.ReactNode;
     className?: string;
+    onClick?: () => void;
 }
 
 // Mock UI components
 vi.mock('@/components/ui/shad/Input', () => ({
-    Input: ({ value, onChange, placeholder }: MockInputProps) => (
-        <input data-testid="search-input" value={value} onChange={onChange} placeholder={placeholder} />
-    ),
+    Input: React.forwardRef<HTMLInputElement, MockInputProps>(({ value, onChange, placeholder, ...props }, ref) => (
+        <input ref={ref} data-testid="search-input" value={value} onChange={onChange} placeholder={placeholder} {...props} />
+    )),
 }));
 
 vi.mock('@/components/ui/NotionButton', () => ({
@@ -86,8 +88,8 @@ vi.mock('@/components/ui/shad/Popover', () => ({
 }));
 
 vi.mock('@/components/ui/shad/Badge', () => ({
-    Badge: ({ children, className }: MockBadgeProps) => (
-        <div data-testid="badge" className={className}>{children}</div>
+    Badge: ({ children, className, onClick }: MockBadgeProps) => (
+        <div data-testid="badge" className={className} onClick={onClick}>{children}</div>
     ),
 }));
 
@@ -108,6 +110,7 @@ describe('NotesSidebarSearch', () => {
             setSearchQuery: mockSetSearchQuery,
             searchQuery: '',
         } as ReturnType<typeof NotesContextModule.useNotes>);
+        vi.mocked(NotesAPIModule.NotesAPI.listTags).mockResolvedValue([]);
     });
 
     it('应该正确渲染搜索输入框', () => {
@@ -156,7 +159,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 点击过滤器按钮
-        const filterButtons = screen.getAllByTestId('button');
+        const filterButtons = screen.getAllByTestId('notion-button');
         const filterButton = filterButtons.find(btn => btn.querySelector('svg'));
         if (filterButton) {
             fireEvent.click(filterButton);
@@ -165,6 +168,7 @@ describe('NotesSidebarSearch', () => {
         // 等待标签加载
         await waitFor(() => {
             expect(NotesAPIModule.NotesAPI.listTags).toHaveBeenCalled();
+            expect(screen.getByText('tag1')).toBeInTheDocument();
         });
     });
 
@@ -181,6 +185,7 @@ describe('NotesSidebarSearch', () => {
         // 等待弹窗内容渲染
         await waitFor(() => {
             expect(screen.getByTestId('popover-content')).toBeInTheDocument();
+            expect(screen.getByText('tag1')).toBeInTheDocument();
         });
 
         // 点击标签
@@ -206,16 +211,26 @@ describe('NotesSidebarSearch', () => {
         const filterButton = filterButtons[0];
         fireEvent.click(filterButton);
 
-        // 选择多个标签
         await waitFor(() => {
-            const badges = screen.getAllByTestId('badge');
-            badges.forEach(badge => {
-                const text = badge.textContent || '';
-                if (text.includes('tag1') || text.includes('tag2')) {
-                    fireEvent.click(badge);
-                }
-            });
+            expect(screen.getByText('tag1')).toBeInTheDocument();
+            expect(screen.getByText('tag2')).toBeInTheDocument();
         });
+
+        const tag1Badge = screen.getAllByTestId('badge').find(b => b.textContent?.includes('tag1'));
+        if (!tag1Badge) {
+            throw new Error('tag1 badge not found');
+        }
+        fireEvent.click(tag1Badge);
+
+        await waitFor(() => {
+            expect(mockPerformSearch).toHaveBeenCalledWith('', ['tag1']);
+        });
+
+        const tag2Badge = screen.getAllByTestId('badge').find(b => b.textContent?.includes('tag2'));
+        if (!tag2Badge) {
+            throw new Error('tag2 badge not found');
+        }
+        fireEvent.click(tag2Badge);
 
         // 验证组合搜索被调用
         await waitFor(() => {
@@ -229,7 +244,7 @@ describe('NotesSidebarSearch', () => {
         render(<NotesSidebarSearch />);
 
         // 打开过滤器并选择标签
-        const filterButtons = screen.getAllByTestId('button');
+        const filterButtons = screen.getAllByTestId('notion-button');
         const filterButton = filterButtons[0];
         fireEvent.click(filterButton);
 
@@ -242,7 +257,7 @@ describe('NotesSidebarSearch', () => {
 
         // 验证已选择的标签显示
         await waitFor(() => {
-            expect(screen.getByText('tag1')).toBeInTheDocument();
+            expect(screen.getAllByText('tag1').length).toBeGreaterThan(0);
         });
     });
 });

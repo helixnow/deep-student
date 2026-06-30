@@ -23,6 +23,7 @@ import { CustomScrollArea } from './custom-scroll-area';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { NotionAlertDialog } from './ui/NotionDialog';
 
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { calculateEssayTextStats } from '@/essay-grading/textStats';
 
@@ -60,9 +61,11 @@ interface EssayGradingWorkbenchProps {
   onBack?: () => void;
   /** DSTU 模式配置（必需），由 Learning Hub 管理会话 */
   dstuMode: EssayDstuModeConfig;
+  /** ★ A6-29 标签页：当前是否为活跃标签页；非活跃实例不响应全局快捷键 */
+  isActive?: boolean;
 }
 
-export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ onBack, dstuMode }) => {
+export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ onBack, dstuMode, isActive }) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
   // 流式批改管线
@@ -559,7 +562,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
 
     const safeInputText = inputText ?? '';
-    if (!safeInputText.trim()) {
+    // A6-13: 允许纯图作文提交（有作文原图时即使文本为空也放行，由多模态模型读图批改）
+    if (!safeInputText.trim() && uploadedImages.length === 0) {
       showGlobalNotification('warning', t('essay_grading:errors.empty_text'));
       return;
     }
@@ -697,20 +701,39 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
     }
   }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, gradingStream, loadSessionRounds, dstuMode, uploadedImages, topicImages, topicText]);
 
+  // A6-29: Ctrl/Cmd+Enter 提交批改快捷键（对齐翻译工作台）
+  // ★ 标签页保活：非活跃实例不注册，避免多个作文标签页同时响应同一按键
+  const handleGradeShortcut = useCallback((e: Event) => {
+    const ke = e as KeyboardEvent;
+    if ((ke.ctrlKey || ke.metaKey) && ke.key === 'Enter') {
+      ke.preventDefault();
+      ke.stopPropagation();
+      if (!isGrading) {
+        handleGrade();
+      }
+    }
+  }, [isGrading, handleGrade]);
+
+  useEventRegistry(
+    isActive === false
+      ? []
+      : [{ target: 'document', type: 'keydown', listener: handleGradeShortcut }],
+    [isActive, handleGradeShortcut],
+  );
+
   // P1-19: 监听命令面板 LEARNING_GRADE_ESSAY 事件
-  // 'LEARNING_GRADE_ESSAY' — dispatched by CommandPalette to trigger essay grading.
-  // TODO: Migrate to a centralised event hook/registry (e.g. useAppEvent or EventBus).
-  useEffect(() => {
-    const handleGradeEvent = (evt: Event) => {
-      const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
-      if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) return;
-      handleGrade();
-    };
-    window.addEventListener('LEARNING_GRADE_ESSAY', handleGradeEvent);
-    return () => {
-      window.removeEventListener('LEARNING_GRADE_ESSAY', handleGradeEvent);
-    };
+  const handleGradeEvent = useCallback((evt: Event) => {
+    const detail = (evt as CustomEvent<{ targetResourceId?: string }>).detail;
+    if (detail?.targetResourceId && dstuMode.resourceId && detail.targetResourceId !== dstuMode.resourceId) {
+      return;
+    }
+    handleGrade();
   }, [handleGrade, dstuMode.resourceId]);
+
+  useEventRegistry(
+    [{ target: 'window', type: 'LEARNING_GRADE_ESSAY', listener: handleGradeEvent }],
+    [handleGradeEvent],
+  );
 
   // P1-19: 监听命令面板 LEARNING_ESSAY_SUGGESTIONS 事件
   // 当用户请求改进建议时，如果已有批改结果则显示提示，否则触发批改

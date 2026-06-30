@@ -72,6 +72,28 @@ pub async fn pause_document_processing(
     Ok(true)
 }
 
+/// 取消文档处理（仅停止生成，保留已生成的任务与卡片）
+#[tauri::command]
+#[allow(non_snake_case)] // Tauri 前端传入 camelCase 参数名
+pub async fn cancel_document_processing(
+    documentId: String,
+    window: Window,
+    state: State<'_, AppState>,
+) -> Result<bool> {
+    println!("取消文档处理: {}", documentId);
+    if documentId.is_empty() {
+        return Err(AppError::validation("文档ID不能为空"));
+    }
+    let enhanced_service = crate::enhanced_anki_service::EnhancedAnkiService::new(
+        state.anki_database.clone(),
+        state.llm_manager.clone(),
+    );
+    enhanced_service
+        .cancel_document_processing(documentId, window)
+        .await?;
+    Ok(true)
+}
+
 /// 恢复文档处理
 #[tauri::command]
 #[allow(non_snake_case)] // Tauri 前端传入 camelCase 参数名

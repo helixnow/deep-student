@@ -2,7 +2,7 @@
 name = "deep-student"
 version = "0.9.40"
 description = "Deep Student - AI驱动的智能学习助手"
-authors = ["you"]
+authors = ["helixnow"]
 edition = "2021"
 default-run = "deep-student"
 license = "AGPL-3.0-or-later"
@@ -28,6 +28,7 @@ tauri-plugin-dialog = "2.6"
 tauri-plugin-http = "2.5.7"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2.8"
+tauri-plugin-notification = "2"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
 uuid = { version = "1.7.0", features = ["v4", "serde"] }
@@ -69,7 +70,7 @@ sha1 = "0.10"
 html2text = "0.16.7"
 
 # 所有平台统一依赖配置
-tauri = { version = "2", features = ["protocol-asset"] }
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
 reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls", "stream", "blocking", "multipart"] }
 # 高性能缓存库
 moka = { version = "0.12", features = ["future"] }
@@ -126,6 +127,10 @@ urlencoding = "2.1.3"
 roxmltree = "0.20"
 argon2 = "0.5"
 zeroize = { version = "1", features = ["derive"] }
+# FTP/FTPS 支持
+suppaftp = { version = "6", default-features = false, features = ["async", "async-native-tls"] }
+# suppaftp v6 的 async Read/Write traits 依赖 async-std
+async-std = { version = "1", default-features = false, features = ["std"] }
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
 aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
@@ -189,6 +194,9 @@ windows = { version = "0.58", features = [
     "Storage_Streams",
     "Globalization",
     "Foundation",
+    # ★ A3-C2：迭代 OcrResult.Lines()（IVectorView<OcrLine>）需要此 feature，
+    # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
+    "Foundation_Collections",
 ] }
 
 [profile.release]

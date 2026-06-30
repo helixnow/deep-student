@@ -223,6 +223,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 text: heading.text,
                 normalizedText: heading.searchText,
                 level: heading.level,
+                // ★ Y2 修复：携带 noteId，编辑器侧按当前笔记过滤
+                noteId: effectiveActive?.id,
             },
         }));
     };
@@ -331,7 +333,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 >
                                     {tag}
                                     <X
-                                        className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 cursor-pointer hover:text-destructive transition-opacity"
+                                        className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 cursor-pointer hover:text-destructive transition-opacity"
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             handleRemoveTag(tag);

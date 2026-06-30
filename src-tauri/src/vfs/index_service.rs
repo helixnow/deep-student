@@ -149,12 +149,19 @@ impl VfsIndexService {
 
         let sync_result = index_unit_repo::sync_units(conn, &input.resource_id, output.units)?;
 
+        // ★ F5 修复：孤立向量入队（与本次同步同一连接/事务），
+        // 由后台索引循环 drain_lance_orphan_queue 真正删除 LanceDB 向量
         if !sync_result.orphaned_lance_row_ids.is_empty() {
-            log::warn!(
-                "[VfsIndexService] sync_resource_units: {} orphaned LanceDB vectors for resource {} (lance_row_ids: {:?}). These should be cleaned up by the next full index or manual cleanup.",
+            for row_id in &sync_result.orphaned_lance_row_ids {
+                conn.execute(
+                    "INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id) VALUES (?1, ?2)",
+                    rusqlite::params![row_id, input.resource_id],
+                )?;
+            }
+            log::info!(
+                "[VfsIndexService] sync_resource_units: enqueued {} orphaned LanceDB vectors for resource {} into __lance_orphan_queue",
                 sync_result.orphaned_lance_row_ids.len(),
-                input.resource_id,
-                sync_result.orphaned_lance_row_ids
+                input.resource_id
             );
         }
 
@@ -308,8 +315,12 @@ impl VfsIndexService {
         let row_id_count = lance_row_ids.len();
         let unit_count = units.len();
 
-        // 删除 Units（Segments 会级联删除）
-        index_unit_repo::delete_by_resource(&conn, resource_id)?;
+        // 删除 Units（Segments 会级联删除）。
+        // ★ 2026-06-12（本轮审阅）：改用 purge_index_artifacts_by_resource，
+        // 它会先把 lance_row_id 写入 __lance_orphan_queue（与删除同连接）。
+        // 调用方的 Lance 直删仍是快路径；若直删失败或进程中途崩溃，
+        // 后台 drain_lance_orphan_queue 会兜底清理（按 row id 删除幂等）。
+        index_unit_repo::purge_index_artifacts_by_resource(&conn, resource_id)?;
 
         // 同步刷新维度计数，避免 record_count 漂移
         embedding_dim_repo::refresh_counts_from_segments(&conn)?;

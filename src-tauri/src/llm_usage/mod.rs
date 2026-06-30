@@ -186,7 +186,6 @@ mod tests {
                 success: true,
                 error_message: None,
                 created_at: chrono::Utc::now(),
-                workspace_id: None,
             });
         }
 

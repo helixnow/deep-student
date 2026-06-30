@@ -6,11 +6,11 @@ export type Breakpoint = 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'wide';
 /**
  * 响应式断点Hook
  * 提供统一的屏幕尺寸检测能力
- * 
+ *
  * @example
- * const { isMobile, isTablet, currentBreakpoint } = useBreakpoint();
- * 
- * if (isMobile) {
+ * const { isSmallScreen, isTablet, currentBreakpoint } = useBreakpoint();
+ *
+ * if (isSmallScreen) {
  *   return <MobileLayout />;
  * }
  */
@@ -40,7 +40,8 @@ export function useBreakpoint() {
       is2Xl,
       
       // 语义化别名
-      isMobile: !isSm,          // < 640px
+      // A-6 修复：移除曾经的 isMobile（<640）别名——与 useIsMobile()（<768）同名异义易误用。
+      // 判断「是否切移动端布局」请用 isSmallScreen（<768，与 App shell 一致）
       isTablet: isSm && !isLg,  // 640px ~ 1024px
       isLaptop: isLg && !is2Xl, // 1024px ~ 1536px
       isDesktop: isXl,          // >= 1280px
@@ -70,19 +71,23 @@ export function useBreakpoint() {
 }
 
 /**
- * 简化版：只检测是否为移动端
+ * 简化版：只检测是否为移动端（<768px，与 isSmallScreen / App shell 同源）
+ *
+ * 实现为 isSmallScreen 同款查询的精确取反（!min-width:768），
+ * 而非 max-width:767——后者在缩放产生的小数视口宽度（如 767.5px）下
+ * 会与 isSmallScreen 判定不一致，导致布局分支错位。
  */
 export function useIsMobile(): boolean {
-  return useMediaQuery(`(max-width: ${BREAKPOINTS.md - 1}px)`);
+  return !useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`);
 }
 
 /**
- * 简化版：只检测是否为平板
+ * 简化版：只检测是否为平板（768px ≤ 宽度 < 1280px，边界与 useBreakpoint 精确互补）
  */
 export function useIsTablet(): boolean {
   const isAboveMobile = useMediaQuery(`(min-width: ${BREAKPOINTS.md}px)`);
-  const isBelowDesktop = useMediaQuery(`(max-width: ${BREAKPOINTS.xl - 1}px)`);
-  return isAboveMobile && isBelowDesktop;
+  const isDesktopUp = useMediaQuery(`(min-width: ${BREAKPOINTS.xl}px)`);
+  return isAboveMobile && !isDesktopUp;
 }
 
 export default useBreakpoint;

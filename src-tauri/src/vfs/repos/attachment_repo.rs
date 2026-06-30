@@ -134,14 +134,18 @@ fn normalize_extension(name: &str) -> Option<String> {
 const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 
 /// 附件上传大小上限
-const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
-const MAX_FILE_BYTES: usize = 50 * 1024 * 1024;
+/// #62: 文件上限从 50MB 提升至 200MB（与 document_parser::MAX_DOCUMENT_SIZE 对齐；
+/// 超过 1MB 即走 external blob 存储，不会膨胀 resources 表）
+/// ★ 2026-06-12（审阅问题 M8）：图片上限 10MB→50MB。现代手机原图/HEIC 转
+/// JPEG 普遍超过 10MB，旧限制导致常见照片无法导入。
+const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
+const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
 /// 允许的扩展名（用于服务端类型校验）
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "heic", "heif", // images
     "pdf", "docx", "xlsx", "xls", "xlsb", "ods", "pptx", // office
-    "txt", "md", "csv", "json", "xml", "html", "htm", // text
+    "txt", "md", "markdown", "csv", "json", "xml", "html", "htm", // text
     "epub", "rtf", // ebook/rtf
     "mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", // audio
     "mp4", "webm", "mov", "avi", "mkv", "m4v", "wmv", "flv", // video
@@ -1650,7 +1654,15 @@ impl VfsAttachmentRepo {
     /// - `id`: 附件 ID
     pub fn purge_attachment(db: &VfsDatabase, id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_attachment_with_conn(&conn, db.blobs_dir(), id)
+        Self::purge_attachment_with_conn(&conn, db.blobs_dir(), id)?;
+        // ★ 2026-06-10（审阅问题 A2）：事务提交后清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::AttachmentRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
     }
 
     /// 永久删除附件（使用现有连接）
@@ -1701,14 +1713,17 @@ impl VfsAttachmentRepo {
         // 保存 resource_id 以便稍后删除
         let resource_id_to_delete = attachment.resource_id.clone();
 
-        // ★ 使用事务包装所有删除操作，确保原子性
-        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
-            error!(
-                "[VFS::AttachmentRepo] Failed to begin transaction for purge: {}",
-                e
-            );
-            VfsError::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        // ★ 使用 SAVEPOINT 包装所有删除操作，确保原子性
+        // ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+        // 支持在外层事务内嵌套调用（BEGIN 嵌套会直接报错）。
+        conn.execute_batch("SAVEPOINT vfs_attachment_purge_tx")
+            .map_err(|e| {
+                error!(
+                    "[VFS::AttachmentRepo] Failed to begin savepoint for purge: {}",
+                    e
+                );
+                VfsError::Database(format!("Failed to begin savepoint: {}", e))
+            })?;
 
         // 定义回滚宏（将rusqlite::Error转换为VfsError）
         macro_rules! rollback_on_error {
@@ -1717,7 +1732,9 @@ impl VfsAttachmentRepo {
                     Ok(v) => v,
                     Err(e) => {
                         error!("[VFS::AttachmentRepo] {}: {}", $msg, e);
-                        let _ = conn.execute("ROLLBACK", []);
+                        let _ = conn.execute_batch(
+                            "ROLLBACK TO SAVEPOINT vfs_attachment_purge_tx; RELEASE SAVEPOINT vfs_attachment_purge_tx;",
+                        );
                         return Err(VfsError::Database(format!("{}: {}", $msg, e)));
                     }
                 }
@@ -1800,7 +1817,9 @@ impl VfsAttachmentRepo {
                 "[VFS::AttachmentRepo] CRITICAL: Attachment record disappeared during deletion: {}",
                 id
             );
-            let _ = conn.execute("ROLLBACK", []);
+            let _ = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_attachment_purge_tx; RELEASE SAVEPOINT vfs_attachment_purge_tx;",
+            );
             return Err(VfsError::Other(format!(
                 "Attachment record disappeared during deletion: {}. This may indicate a race condition.",
                 id
@@ -1818,6 +1837,11 @@ impl VfsAttachmentRepo {
                 "[VFS::AttachmentRepo] Deleting associated resource: {}",
                 resource_id
             );
+            // ★ 2026-06-12（第二轮审阅）：清理索引产物（units/segments/Lance 向量入列）
+            rollback_on_error!(
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &resource_id),
+                "Failed to delete index artifacts"
+            );
             let res_deleted = rollback_on_error!(
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&resource_id]),
                 "Failed to delete resource"
@@ -1828,22 +1852,26 @@ impl VfsAttachmentRepo {
             );
         }
 
-        // ★ 提交事务
-        conn.execute("COMMIT", []).map_err(|e| {
-            error!(
-                "[VFS::AttachmentRepo] Failed to commit purge transaction: {}",
-                e
-            );
-            let _ = conn.execute("ROLLBACK", []);
-            VfsError::Database(format!("Failed to commit transaction: {}", e))
-        })?;
+        // ★ 提交（释放保存点；若存在外层事务则随外层一起提交）
+        conn.execute_batch("RELEASE SAVEPOINT vfs_attachment_purge_tx")
+            .map_err(|e| {
+                error!(
+                    "[VFS::AttachmentRepo] Failed to release purge savepoint: {}",
+                    e
+                );
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_attachment_purge_tx; RELEASE SAVEPOINT vfs_attachment_purge_tx;",
+                );
+                VfsError::Database(format!("Failed to release savepoint: {}", e))
+            })?;
 
         info!(
             "[VFS::AttachmentRepo] Successfully completed attachment deletion: {}",
             id
         );
 
-        // ★ P0修复：blob 引用计数已在上方处理，decrement_ref_with_conn 会在引用计数为 0 时自动清理文件
+        // ★ 2026-06-10（审阅问题 A2）：blob 引用计数在事务内只递减不删文件，
+        // ref_count=0 的物理文件由调用方在事务提交后通过 cleanup_unreferenced 清扫。
 
         Ok(())
     }
@@ -1895,9 +1923,11 @@ impl VfsAttachmentRepo {
     ///
     /// 与前端 src/components/shared/UnifiedDragDropZone.tsx 的 EXTENSION_TO_MIME 保持一致
     fn infer_extension(mime_type: &str, name: &str) -> Option<String> {
-        // 首先尝试从文件名获取
-        if let Some(ext) = name.rsplit('.').next() {
-            if !ext.is_empty() && ext.len() < 10 {
+        // 首先尝试从文件名获取。
+        // 注意必须用 rsplit_once：无扩展名的文件名（如 "photo"）经 rsplit('.')
+        // 会把整个文件名当作"扩展名"返回，导致 MIME 推断永远不生效。
+        if let Some((stem, ext)) = name.rsplit_once('.') {
+            if !stem.is_empty() && !ext.is_empty() && ext.len() < 10 {
                 return Some(ext.to_lowercase());
             }
         }
@@ -2191,6 +2221,15 @@ impl VfsAttachmentRepo {
         }
 
         info!("[VFS::AttachmentRepo] Purged {} deleted attachments", count);
+
+        // ★ 2026-06-10（审阅问题 A2）：批量 purge 完成后统一清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, blobs_dir) {
+            warn!(
+                "[VFS::AttachmentRepo] Post-batch-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+
         Ok(count)
     }
 

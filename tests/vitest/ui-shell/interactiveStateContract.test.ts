@@ -3,10 +3,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('ui shell interaction state contract', () => {
-  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const windowControlsSource = readFileSync(resolve(process.cwd(), 'src/components/WindowControls.tsx'), 'utf-8');
   const mobileHeaderSource = readFileSync(resolve(process.cwd(), 'src/components/layout/UnifiedMobileHeader.tsx'), 'utf-8');
-  const tabBarSource = readFileSync(resolve(process.cwd(), 'src/components/layout/BottomTabBar.tsx'), 'utf-8');
   const unifiedSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx'), 'utf-8');
 
   it('keeps explicit desktop shell interaction hooks for window controls and selected sidebar rows', () => {
@@ -23,12 +22,9 @@ describe('ui shell interaction state contract', () => {
     expect(sidebarSelectedBlock).not.toContain('box-shadow');
   });
 
-  it('keeps mobile shell components on accessible header and tab semantics', () => {
+  it('keeps mobile shell components on accessible header semantics', () => {
     expect(mobileHeaderSource).toContain('data-mobile-shell="header"');
     expect(mobileHeaderSource).toContain("aria-label={t('common:mobile_header.back')}");
-    expect(tabBarSource).toContain('data-mobile-shell="tabbar"');
-    expect(tabBarSource).toContain('role="tablist"');
-    expect(tabBarSource).toContain('aria-selected={isActive}');
   });
 
   it('keeps unified sidebar search, nav, and utility actions on shared shell primitives', () => {

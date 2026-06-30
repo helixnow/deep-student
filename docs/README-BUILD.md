@@ -17,13 +17,16 @@ bash ./scripts/build_ios.sh
 bash ./scripts/build_android.sh
 ```
 
+### Linux（deb / rpm / bin）
+```bash
+bash ./scripts/build_linux_all.sh
+```
+
 ---
 
 ## 详细文档
 
-- 📖 [全平台构建指南](./docs/BUILD-ALL-PLATFORMS.md) - 完整的跨平台构建文档
-- 🍎 [iOS 构建指南](./docs/ios-build-guide.md) - iOS 详细说明
-- 🤖 [Android 构建指南](./docs/android-build-guide.md) - Android 详细说明
+- 📖 [构建配置指南](./BUILD-CONFIG.md) - 各平台签名、证书、环境变量完整说明
 
 ---
 
@@ -35,6 +38,8 @@ bash ./scripts/build_android.sh
 | iOS | `./scripts/build_ios.sh` | ✅ | |
 | Android | `./scripts/build_android.sh` | ✅ | |
 | Windows (交叉编译) | `./scripts/build_windows.sh` | ✅ | 从 macOS 构建 |
+| Linux | `./scripts/build_linux_all.sh` | ✅ | deb/rpm/bin |
+| 全平台 | `./scripts/build_all.sh` | ✅ | 顺序调用各平台脚本 |
 
 ---
 
@@ -46,6 +51,7 @@ bash ./scripts/build_android.sh
 | iOS | `build-ios/` | `.ipa`, `.zip` (dSYM) |
 | Android | `build-android/` | `.apk`, `.aab` |
 | Windows | `build-windows/` | `.exe` (NSIS) |
+| Linux | `build-linux/` | `.deb`, `.rpm`, 可执行文件 |
 
 ---
 

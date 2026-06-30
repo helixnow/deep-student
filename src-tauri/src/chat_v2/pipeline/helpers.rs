@@ -189,14 +189,6 @@ pub(crate) fn filter_retrieval_results(
     filtered
 }
 
-/// Encode tool names for LLM API compatibility.
-///
-/// Invalid OpenAI function names are serialized through the canonical reversible codec
-/// so execution can recover the exact original MCP bridge name later.
-pub(crate) fn sanitize_tool_name_for_api(name: &str) -> String {
-    encode_tool_name_for_api(name).unwrap_or_default()
-}
-
 /// Normalize tool names for LLM APIs and reject blank names early.
 pub(crate) fn normalize_tool_name_for_api(name: &str) -> Option<String> {
     encode_tool_name_for_api(name)
@@ -257,6 +249,7 @@ pub(crate) fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> 
 /// - `Rejected`：用户明确拒绝
 /// - `Timeout`：等待审批超时
 /// - `ChannelClosed`：审批通道异常关闭
+/// - `Cancelled`：流被取消（用户停止生成），无需继续等待
 pub(crate) enum ApprovalOutcome {
     /// 用户同意执行
     Approved,
@@ -266,6 +259,59 @@ pub(crate) enum ApprovalOutcome {
     Timeout,
     /// 审批通道异常关闭
     ChannelClosed,
+    /// 流被取消（用户停止生成）
+    Cancelled,
+}
+
+/// LLM 流式等待结果（🔧 F2 修复）
+pub(crate) enum LlmStreamWaitOutcome<T> {
+    /// LLM 调用完成（成功或失败由内层 Result 表达）
+    Completed(T),
+    /// 空闲超时：连续 idle_secs 秒未收到任何流式数据
+    IdleTimeout { idle_secs: u64 },
+    /// 绝对时长超限：总时长达到上限（防御病态慢滴流）
+    TotalTimeout { total_secs: u64 },
+}
+
+/// 以「空闲超时 + 绝对上限」语义等待 LLM 流式调用完成（🔧 F2 修复）
+///
+/// 旧实现 `timeout(LLM_STREAM_TIMEOUT_SECS, llm_future)` 把 600s 当作整个流的
+/// 总时长上限：长 agentic 生成（>10min）即使流式健康也会被强制掐断。
+/// 新语义：
+/// - 每 10s 醒来检查一次 `idle_elapsed()`（由 adapter 在每次收到 chunk 时刷新）；
+/// - 连续 `idle_limit` 无任何数据 → `IdleTimeout`（真正的挂起）；
+/// - 总时长达到 `total_limit` → `TotalTimeout`（防御性绝对上限）。
+pub(crate) async fn wait_llm_stream_with_idle_timeout<F>(
+    fut: F,
+    idle_limit: std::time::Duration,
+    total_limit: std::time::Duration,
+    idle_elapsed: impl Fn() -> std::time::Duration,
+) -> LlmStreamWaitOutcome<F::Output>
+where
+    F: std::future::Future,
+{
+    const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+    let started = std::time::Instant::now();
+    tokio::pin!(fut);
+    loop {
+        match tokio::time::timeout(CHECK_INTERVAL, &mut fut).await {
+            Ok(output) => return LlmStreamWaitOutcome::Completed(output),
+            Err(_) => {
+                let idle = idle_elapsed();
+                if idle >= idle_limit {
+                    return LlmStreamWaitOutcome::IdleTimeout {
+                        idle_secs: idle.as_secs(),
+                    };
+                }
+                let total = started.elapsed();
+                if total >= total_limit {
+                    return LlmStreamWaitOutcome::TotalTimeout {
+                        total_secs: total.as_secs(),
+                    };
+                }
+            }
+        }
+    }
 }
 
 /// 验证工具调用链完整性（改进 5）

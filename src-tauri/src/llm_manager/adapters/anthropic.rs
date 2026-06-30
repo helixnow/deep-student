@@ -258,7 +258,7 @@ impl RequestAdapter for AnthropicAdapter {
 
     fn get_passback_policy(&self, config: &ApiConfig) -> PassbackPolicy {
         // Anthropic 使用 DeepSeek 风格的思维链回传
-        if config.thinking_enabled {
+        if resolve_enable_thinking(config, None) {
             PassbackPolicy::DeepSeekStyle
         } else {
             PassbackPolicy::NoPassback
@@ -310,7 +310,7 @@ impl RequestAdapter for AnthropicAdapter {
     fn requires_thinking_in_history(&self, config: &ApiConfig) -> bool {
         // Anthropic 最佳实践：使用 thinking + tool calling 时
         // 必须在发送工具结果时保留之前的 thinking_blocks
-        config.thinking_enabled
+        resolve_enable_thinking(config, None)
     }
 }
 
@@ -551,6 +551,23 @@ mod tests {
         // max_tokens <= 1 时无法满足约束，使用最小可用值
         let validated = AnthropicAdapter::validate_budget_tokens(Some(5000), Some(1));
         assert_eq!(validated, 1);
+    }
+
+    #[test]
+    fn test_enable_thinking_override_controls_history_and_passback() {
+        let adapter = AnthropicAdapter;
+        let config = ApiConfig {
+            thinking_enabled: false,
+            enable_thinking: Some(true),
+            model: "claude-sonnet-4-5".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            adapter.get_passback_policy(&config),
+            PassbackPolicy::DeepSeekStyle
+        );
+        assert!(adapter.requires_thinking_in_history(&config));
     }
 
     // ========== 非 Extended Thinking 模式测试 ==========

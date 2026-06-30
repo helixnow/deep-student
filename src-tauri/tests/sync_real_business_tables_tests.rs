@@ -2,7 +2,7 @@
 //!
 //! 之前的测试都用 `items` 通用 schema，但项目里的实际表各有特殊约束：
 //!
-//! - `resources` (VFS): `updated_at INTEGER` 毫秒时间戳，有 `ref_count` 并发热点
+//! - `resources` (VFS): `updated_at INTEGER` 毫秒时间戳，`ref_count` 由引用方重算
 //! - `notes` (VFS): `tags JSON 数组`，`updated_at TEXT ISO`
 //! - `chat_v2_sessions`: 本身有 `updated_at TEXT ISO`
 //! - `chat_v2_messages`: 原本无 `updated_at`，V20260201 迁移补上；还有 `timestamp INTEGER`
@@ -296,6 +296,8 @@ fn b01_resources_integer_millis_updated_at_lww() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -314,9 +316,9 @@ fn b01_resources_integer_millis_updated_at_lww() {
     );
 }
 
-/// B02：resources.ref_count 并发递增 —— delta 合并应累加两端增量
+/// B02：resources.ref_count 不再做 delta 合并；下载后由引用方重算
 #[test]
-fn b02_resources_refcount_race_merges_increment() {
+fn b02_resources_refcount_is_recomputed_not_delta_merged() {
     let conn = new_vfs_resources_db();
 
     // 初始 ref_count=1
@@ -354,16 +356,21 @@ fn b02_resources_refcount_race_merges_increment() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
-    // 预期：ref_count 应该是 3（两端各 +1）
+    // 没有任何引用 resources.id 的业务表时，派生计数应重算为 0。
     let ref_count: i64 = conn
         .query_row("SELECT ref_count FROM resources WHERE id='res'", [], |r| {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(ref_count, 3);
+    assert_eq!(
+        ref_count, 0,
+        "ref_count 应由真实引用重算，不能信任远端 payload/delta"
+    );
 }
 
 /// B03：resources 软删除（deleted_at 是 INTEGER ms）的 tombstone 传播
@@ -387,6 +394,8 @@ fn b03_resources_integer_deleted_at_tombstone() {
         data: None,
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -434,6 +443,8 @@ fn b04_resources_large_inline_data() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -442,7 +453,10 @@ fn b04_resources_large_inline_data() {
             r.get(0)
         })
         .unwrap();
+    // 云端 updated_at(2000) 严格新于本地(1000)，LWW 下云端 5MB 数据获胜；
+    // 大字段 inline 数据应完整落库不被截断
     assert_eq!(data.len(), 5 * 1024 * 1024);
+    assert!(data.starts_with('y'));
 }
 
 /// B05：resources.hash UNIQUE 约束冲突 —— 两端不同 id 但相同 hash
@@ -473,6 +487,8 @@ fn b05_resources_hash_unique_conflict() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     // 当前实现会通过 business unique key 回落把相同 hash 的记录合并到既有行。
     let result = SyncManager::apply_downloaded_changes(&conn, &[change], None);
@@ -525,6 +541,8 @@ fn b06_notes_tags_merge_loses_orthogonal_tags() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -571,6 +589,8 @@ fn b07_notes_favorite_and_title_lww() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -615,6 +635,8 @@ fn b08_notes_soft_delete_revive_with_text_deleted_at() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -652,6 +674,8 @@ fn b09_notes_unicode_title() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -697,6 +721,8 @@ fn b10_messages_dual_timestamp_lww_uses_updated_at() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -741,6 +767,8 @@ fn b11_messages_block_ids_json_ordering() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -751,7 +779,7 @@ fn b11_messages_block_ids_json_ordering() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(b, r#"["blk1","blk2","blk3"]"#);
+    assert_eq!(b, r#"["blk2","blk1","blk3"]"#);
 }
 
 /// B12：chat_v2_messages.parent_id 链（编辑/重试分支）—— DAG 结构的同步
@@ -785,6 +813,8 @@ fn b12_messages_parent_id_branch_chain() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -824,6 +854,8 @@ fn b13_messages_burst_same_session_same_second() {
             })),
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         });
     }
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -861,6 +893,8 @@ fn b14_blocks_large_content() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -910,6 +944,8 @@ fn b15_blocks_streaming_updates() {
             })),
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         };
         SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
         last_content = content.to_string();
@@ -954,6 +990,8 @@ fn b16_blocks_concurrent_streaming_on_both_devices() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -1074,6 +1112,8 @@ fn b20_mistakes_multi_field_upsert() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -1115,6 +1155,8 @@ fn b21_mistakes_revive_from_soft_delete() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -1188,6 +1230,8 @@ fn b23_resources_then_notes_ordered_insert() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     let result = SyncManager::apply_downloaded_changes(&conn, &[note_change], None).unwrap();

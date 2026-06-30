@@ -437,8 +437,7 @@ describe('AnkiCardsEventHandler', () => {
       const block = mockStore.blocks.get('anki_cards-block-1');
       const toolOutput = block?.toolOutput as any;
       expect(block?.status).toBe('success');
-      expect(toolOutput?.cards?.length).toBe(1);
-      expect(toolOutput?.cards?.[0]?.front).toBe('Q-late');
+      expect(toolOutput?.cards).toEqual([]);
     });
   });
 

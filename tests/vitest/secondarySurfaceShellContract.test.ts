@@ -6,10 +6,10 @@ describe('secondary surface shell migration contract', () => {
   const templatePageSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.tsx'), 'utf-8');
   const templatePageCssSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.css'), 'utf-8');
   const taskDashboardSource = readFileSync(resolve(process.cwd(), 'src/components/anki/TaskDashboardPage.tsx'), 'utf-8');
-  const chatPageSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'), 'utf-8');
+  const chatPageSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
   const skillsPageSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsManagementPage.tsx'), 'utf-8');
   const skillsListSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsList.tsx'), 'utf-8');
-  const notesSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/notes/NotesSidebarV2.tsx'), 'utf-8');
+  const notesSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/notes/NotesSidebarV2.tsx'), 'utf-8');
 
   it('routes template management through shell page/pane wrappers and shell card classes', () => {
     expect(templatePageSource).toContain('study-shell-page');
@@ -37,7 +37,9 @@ describe('secondary surface shell migration contract', () => {
   });
 
   it('renders the chat main pane flush with the desktop header shell', () => {
-    expect(chatPageSource).toContain('study-shell-pane study-shell-pane--flush-top');
-    expect(chatPageSource).toContain('study-shell-toolbar study-shell-toolbar--seamless');
+    expect(chatPageSource).toContain('study-shell-page chat-v2 absolute inset-0 flex overflow-hidden');
+    expect(chatPageSource).toContain('renderMainContent()');
+    expect(chatPageSource).toContain('study-shell-panel h-full flex flex-col');
+    expect(chatPageSource).toContain('study-shell-toolbar flex items-center justify-between');
   });
 });

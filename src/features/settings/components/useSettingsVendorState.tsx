@@ -130,6 +130,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
 
     setTestingApi(api.id);
+    const testStartedAt = performance.now();
 
     try {
       if (invoke) {
@@ -152,7 +153,12 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         });
         
         if (result) {
-          showGlobalNotification('success', t('settings:notifications.api_test_success', { name: api.name, model: api.model }));
+          const latencyMs = Math.round(performance.now() - testStartedAt);
+          showGlobalNotification(
+            'success',
+            t('settings:notifications.api_test_success', { name: api.name, model: api.model }),
+            t('settings:notifications.api_test_latency', { latency: latencyMs, defaultValue: '耗时 {{latency}} ms' })
+          );
         } else {
           showGlobalNotification('error', t('settings:notifications.api_test_failed', { name: api.name, model: api.model }));
         }
@@ -316,6 +322,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       setVendorFormData({});
       setSelectedVendorId(saved.id);
       showGlobalNotification('success', t('common:config_saved'));
+      // noApiKey 供应商：编辑保存后自动获取模型列表
+      if (saved.noApiKey) {
+        triggerPostSaveAutoFlow(saved);
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.vendor_save_failed', { error: errorMessage }));
@@ -336,6 +346,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         closeRightPanel();
       }
       showGlobalNotification('success', t('common:config_saved'));
+      // noApiKey 供应商：创建后自动获取模型列表
+      if (saved.noApiKey) {
+        triggerPostSaveAutoFlow(saved);
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.vendor_save_failed', { error: errorMessage }));
@@ -358,6 +372,18 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey };
       await upsertVendor(updated);
+      // 保存 Key 后：该供应商所有模型 → 启用滑块
+      const vendorProfiles = modelProfiles.filter(p => p.vendorId === vendorId);
+      if (vendorProfiles.length > 0) {
+        const nextProfiles = modelProfiles.map(p =>
+          p.vendorId === vendorId && !p.enabled
+            ? { ...p, enabled: true, status: 'enabled' as const }
+            : p
+        );
+        await persistModelProfiles(nextProfiles);
+      }
+      // 保存成功后触发自动获取模型 + 自动分配（fire-and-forget）
+      triggerPostSaveAutoFlow(updated);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -387,6 +413,53 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       }
       const updated = { ...vendor, apiKey: '' };
       await upsertVendor(updated);
+
+      // 清空 Key 后：禁用该供应商所有模型 + 清除模型分配 + 重新分配
+      const vendorProfileIds = new Set(
+        modelProfiles.filter(p => p.vendorId === vendorId).map(p => p.id)
+      );
+      if (vendorProfileIds.size > 0) {
+        // 禁用模型
+        const updatedProfiles = modelProfiles.map(p =>
+          vendorProfileIds.has(p.id)
+            ? { ...p, enabled: false, status: 'disabled' as const }
+            : p
+        );
+        await persistModelProfiles(updatedProfiles);
+
+        // 清除涉及该供应商模型的分配
+        const clearedAssignments: ModelAssignments = { ...modelAssignments };
+        let assignmentChanged = false;
+        for (const key of Object.keys(clearedAssignments) as Array<keyof ModelAssignments>) {
+          const val = clearedAssignments[key];
+          if (typeof val === 'string' && vendorProfileIds.has(val)) {
+            clearedAssignments[key] = null;
+            assignmentChanged = true;
+          }
+        }
+        if (assignmentChanged) {
+          await persistAssignments(clearedAssignments);
+        }
+      }
+
+      // 尝试自动重新分配：用其他供应商的可用模型填补空槽位
+      try {
+        const { autoAssignAllModels } = await import(
+          '@/features/chat/readiness/autoAssignModel'
+        );
+        const result = await autoAssignAllModels();
+        if (result.assigned) {
+          console.log(
+            `[clearKey] Auto-reassigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`
+          );
+        } else {
+          console.log(
+            `[clearKey] Auto-reassign skipped: ${result.reason ?? 'no available models'}`
+          );
+        }
+      } catch (err) {
+        console.error('[clearKey] Auto-reassign failed:', err);
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       throw new Error(errorMessage);
@@ -666,10 +739,18 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     let changed = false;
     for (const { modelId, label } of models) {
       const normalizedModel = modelId.trim().toLowerCase();
-      const existing = nextProfiles.find(
+      const existingIdx = nextProfiles.findIndex(
         p => p.vendorId === vendor.id && p.model.trim().toLowerCase() === normalizedModel
       );
-      if (existing) continue; // 已存在，跳过
+      if (existingIdx >= 0) {
+        // 已存在但被禁用 → 重新启用
+        const existingProfile = nextProfiles[existingIdx];
+        if (!existingProfile.enabled) {
+          nextProfiles[existingIdx] = { ...existingProfile, enabled: true, status: 'enabled' };
+          changed = true;
+        }
+        continue;
+      }
 
       const caps = inferCapabilities({ id: modelId, providerScope: vendor.providerType, name: label });
       const extCaps = inferApiCapabilities({ id: modelId, name: label, providerScope: vendor.providerType });
@@ -738,6 +819,27 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       await persistModelProfiles(nextProfiles);
     }
   }, [modelProfiles, persistModelProfiles]);
+
+  // ===== 自动流程编排（保存 Key → 获取模型 → 自动分配） =====
+
+  /** 保存 API Key 后的自动流程：获取模型 → 添加模型 → 自动分配槽位 */
+  const triggerPostSaveAutoFlow = useCallback(
+    async (vendor: VendorConfig) => {
+      try {
+        const existingModelIds = modelProfiles
+          .filter(p => p.vendorId === vendor.id)
+          .map(p => p.model);
+        const { autoPostSaveFlow } = await import('./vendorModelService');
+        await autoPostSaveFlow(vendor, {
+          existingModelIds,
+          onAddModels: handleAddVendorModels,
+        });
+      } catch (error) {
+        console.error('[useSettingsVendorState] Post-save auto-flow failed:', error);
+      }
+    },
+    [modelProfiles, handleAddVendorModels]
+  );
 
   // 获取所有启用的对话模型，支持包含当前已分配但被禁用的模型
   const getAllEnabledApis = (currentValue?: string) => {
@@ -956,5 +1058,5 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     return sensitivePatterns.some(pattern => key.includes(pattern));
   };
 
-  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, maskApiKey, apiConfigsForApisTab };
+  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, triggerPostSaveAutoFlow, isSensitiveKey, maskApiKey, apiConfigsForApisTab };
 }

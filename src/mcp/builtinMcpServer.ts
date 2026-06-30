@@ -3,7 +3,7 @@
  *
  * ⚠️ **已废弃**：此模块中的 BUILTIN_TOOLS 数组已被 Skills 渐进披露系统完全替代。
  *
- * 新的工具定义位于：`src/chat-v2/skills/builtin-tools/`
+ * 新的工具定义位于：`src/features/chat/skills/builtin-tools/`
  * - knowledge-retrieval.ts: 检索工具
  * - canvas-note.ts: Canvas 笔记工具
  * - vfs-memory.ts: VFS 记忆工具

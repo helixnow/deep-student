@@ -560,18 +560,21 @@ impl PromptBuilder {
         }
 
         // 1.8 用户画像（始终注入，不依赖检索 query）
+        // 必须 XML 转义：画像内容来自记忆系统（可被用户输入污染），
+        // 不转义会让 <tag> 形式的内容伪造提示词结构（注入攻击面）
         if let Some(profile) = self.user_profile {
             parts.push(format!(
                 "<user_profile>\n以下是关于当前用户的已知信息，请在回答中自然地运用这些背景：\n{}\n</user_profile>",
-                profile
+                escape_xml_content(&profile)
             ));
         }
 
         // 1.9 活跃待办事项（始终注入，帮助 LLM 了解用户当前任务）
+        // 同上，todo 标题为用户自由输入，必须转义
         if let Some(todos) = self.active_todos {
             parts.push(format!(
                 "<active_todos>\n以下是用户当前的待办事项，请在相关时自然提及或协助管理：\n{}\n</active_todos>",
-                todos
+                escape_xml_content(&todos)
             ));
         }
 

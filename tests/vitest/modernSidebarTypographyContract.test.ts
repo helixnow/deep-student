@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('modern sidebar typography contract', () => {
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
-  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const typographyCssSource = readFileSync(resolve(process.cwd(), 'src/styles/typography.css'), 'utf-8');
   const themeColorsSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
   const shadcnVariablesSource = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8');

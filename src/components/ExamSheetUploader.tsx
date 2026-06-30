@@ -26,6 +26,7 @@ import {
   CheckSquare,
   Square,
   Funnel,
+  Camera,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -114,6 +115,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const { t } = useTranslation(['exam_sheet', 'common', 'settings']);
   const resolvedSessionName = sessionName ?? t('exam_sheet:uploader.session_name_default');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   // ★ 标签页：ref 持有 sessionId，供 question_import_progress 空 deps 监听器过滤事件
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
@@ -214,6 +216,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         total_parsed?: number;
         questions_in_chunk?: number;
         total_questions?: number;
+        partial?: boolean;
         total_images?: number;
         total_chars?: number;
         image_index?: number;
@@ -360,9 +363,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             }));
             break;
           case 'Completed':
+            // ★ #6(round2): VLM 中途失败但已存部分题时 partial=true，显式提示"可能缺题"（非阻塞，不触发失败态）
             setLlmProgress({
               percent: 100,
-              message: t('exam_sheet:uploader.import_done', { count: payload.total_questions }),
+              message: payload.partial
+                ? t('exam_sheet:uploader.import_done_partial', { count: payload.total_questions })
+                : t('exam_sheet:uploader.import_done', { count: payload.total_questions }),
               parsedCount: payload.total_questions || 0,
             });
             break;
@@ -833,7 +839,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div
                   onClick={!isProcessing ? handleClick : undefined}
                   className={cn(
-                    'relative rounded-2xl border-2 border-dashed p-8 transition-all',
+                    'relative rounded-2xl border-2 border-dashed p-5 sm:p-8 transition-all',
                     !isProcessing && 'cursor-pointer hover:border-primary/50 hover:bg-primary/5',
                     'border-border/60 bg-card/30'
                   )}
@@ -843,6 +849,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     type="file"
                     multiple={currentCategory !== 'document'}
                     accept="image/*,.docx,.xlsx,.xls,.txt,.md,.pdf,.heic,.heif"
+                    onChange={handleInputChange}
+                    className="hidden"
+                    disabled={isProcessing}
+/>
+                  {/* 移动端拍照上传（capture 调起后置相机） */}
+                  <input
+                    ref={cameraInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple={false}
                     onChange={handleInputChange}
                     className="hidden"
                     disabled={isProcessing}
@@ -867,6 +884,21 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         {t('exam_sheet:uploader.supported_formats_all')}
                       </p>
                     </div>
+
+                    {/* 移动端：拍照导入入口 */}
+                    <NotionButton
+                      variant="secondary"
+                      size="sm"
+                      className="sm:hidden gap-1.5"
+                      disabled={isProcessing}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cameraInputRef.current?.click();
+                      }}
+                    >
+                      <Camera size={16} />
+                      {t('exam_sheet:uploader.take_photo', '拍照导入')}
+                    </NotionButton>
                   </div>
                 </div>
               </UnifiedDragDropZone>
@@ -882,7 +914,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       {t('exam_sheet:uploader.clear')}
                     </NotionButton>
                   </div>
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                     {selectedFiles.map((fileInfo, index) => (
                       <div
                         key={`${fileInfo.file.name}-${index}`}
@@ -893,7 +925,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover"
 />
-                        <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100" aria-label="remove">
+                        <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label="remove">
                           <X size={12} />
                         </NotionButton>
                       </div>

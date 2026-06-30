@@ -2,10 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   DragOverlay,
   DragStartEvent,
   DragEndEvent,
@@ -15,10 +11,10 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
+import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import { CSS } from '@dnd-kit/utilities';
 import { TreeItem, TreeItemIndex, DraggingPosition } from 'react-complex-tree';
 
@@ -72,16 +68,7 @@ export function DndKitTreeAdapter({
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const sensors = useTouchFriendlyDndSensors();
 
   // 获取所有项的 ID 列表（扁平化）
   const getAllItemIds = (): string[] => {

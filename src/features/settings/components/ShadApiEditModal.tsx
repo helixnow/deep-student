@@ -138,6 +138,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   embeddedMode = false,
 }) => {
   const { t } = useTranslation(['common', 'settings']);
+  const [connectionTest, setConnectionTest] = useState<
+    | { state: 'idle' }
+    | { state: 'testing' }
+    | { state: 'success'; latencyMs: number }
+    | { state: 'failed' }
+  >({ state: 'idle' });
   const normalizedAdapter = normalizeAdapter(api.modelAdapter);
   const initialMinP = normalizedAdapter === 'general' ? (api as any).minP ?? GENERAL_DEFAULT_MIN_P : (api as any).minP ?? undefined;
   const initialTopK = normalizedAdapter === 'general' ? (api as any).topK ?? GENERAL_DEFAULT_TOP_K : (api as any).topK ?? undefined;
@@ -685,6 +691,51 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       }
     }
     onSave(sanitized);
+  };
+
+  // 测试连接：用当前表单数据实测（保存前即可验证，借鉴 Cherry 供应商连接检查）
+  const handleTestConnection = async () => {
+    if (!invoke) {
+      showGlobalNotification('info', t('settings:api.modal.test_connection_unavailable', '当前环境不支持连接测试'));
+      return;
+    }
+    if (!formData.model.trim()) {
+      showGlobalNotification('warning', t('common:model_name_required'));
+      return;
+    }
+    setConnectionTest({ state: 'testing' });
+    const startedAt = performance.now();
+    try {
+      const vendorId = (formData as any).vendorId;
+      const result = await invoke('test_api_connection', {
+        api_key: formData.apiKey,
+        apiKey: formData.apiKey,
+        api_base: formData.baseUrl,
+        apiBase: formData.baseUrl,
+        api_protocol: formData.apiProtocol,
+        apiProtocol: formData.apiProtocol,
+        supports_openai_responses: (formData as any).supportsOpenAIResponses,
+        supportsOpenAIResponses: (formData as any).supportsOpenAIResponses,
+        model: formData.model,
+        vendor_id: vendorId,
+        vendorId,
+      });
+      const latencyMs = Math.round(performance.now() - startedAt);
+      if (result) {
+        setConnectionTest({ state: 'success', latencyMs });
+        showGlobalNotification(
+          'success',
+          t('settings:api.modal.test_connection_success', { latency: latencyMs, defaultValue: '连接成功（{{latency}} ms）' })
+        );
+      } else {
+        setConnectionTest({ state: 'failed' });
+        showGlobalNotification('error', t('settings:api.modal.test_connection_failed', '连接失败，请检查地址、密钥与模型名'));
+      }
+    } catch (error: unknown) {
+      setConnectionTest({ state: 'failed' });
+      const message = error instanceof Error ? error.message : String(error);
+      showGlobalNotification('error', t('settings:api.modal.test_connection_failed', '连接失败，请检查地址、密钥与模型名'), message);
+    }
   };
 
   // 在用户交互过程中保证互斥：
@@ -1788,7 +1839,32 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           </Tabs>
 
           {/* Footer - Fixed & Minimal */}
-          <div className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center justify-end gap-2">
+          <div className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center gap-2">
+            <NotionButton
+              type="button"
+              variant="ghost"
+              onClick={() => void handleTestConnection()}
+              disabled={connectionTest.state === 'testing'}
+              className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            >
+              {connectionTest.state === 'testing' ? (
+                <Lightning className="h-4 w-4 animate-pulse" />
+              ) : (
+                <Lightning className="h-4 w-4" />
+              )}
+              <span>
+                {connectionTest.state === 'testing'
+                  ? t('settings:api.modal.test_connection_testing', '测试中…')
+                  : t('settings:api.modal.test_connection', '测试连接')}
+              </span>
+              {connectionTest.state === 'success' && (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400">{connectionTest.latencyMs} ms</span>
+              )}
+              {connectionTest.state === 'failed' && (
+                <span className="text-xs text-destructive">{t('settings:api.modal.test_connection_failed_short', '失败')}</span>
+              )}
+            </NotionButton>
+            <div className="flex-1" />
             <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
               {t('common:actions.cancel')}
             </NotionButton>
