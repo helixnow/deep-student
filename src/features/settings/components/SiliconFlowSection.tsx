@@ -260,45 +260,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
   }, [showGlobalNotification, siliconFlowVendorKey, siliconFlowLegacyKey, t]);
 
-  const clearStatusTimer = useCallback(() => {
-    if (statusTimerRef.current) {
-      clearTimeout(statusTimerRef.current);
-      statusTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleStatusReset = useCallback((nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
-    clearStatusTimer();
-    setSaveStatus(nextStatus);
-    statusTimerRef.current = setTimeout(() => {
-      setSaveStatus('idle');
-      statusTimerRef.current = null;
-    }, timeoutMs);
-  }, [clearStatusTimer]);
-
-  const handleSaveApiKey = useCallback(async () => {
-    const trimmed = apiKey.trim();
-    if (!trimmed || trimmed === lastSavedKeyRef.current) {
-      return;
-    }
-
-    try {
-      setSaving(true);
-      clearStatusTimer();
-      setSaveStatus('saving');
-      await persistApiKey(trimmed);
-      lastSavedKeyRef.current = trimmed;
-      scheduleStatusReset('saved');
-      showGlobalNotification('success', t('settings:vendor_panel.api_key_saved'));
-    } catch (error: unknown) {
-      console.error('保存API密钥失败:', error);
-      scheduleStatusReset('error', 3200);
-      showGlobalNotification('error', t('settings:vendor_panel.api_key_save_failed'));
-    } finally {
-      setSaving(false);
-    }
-  }, [apiKey, persistApiKey, clearStatusTimer, scheduleStatusReset, showGlobalNotification, t]);
-
   // 组件加载时从持久化存储恢复API密钥
   React.useEffect(() => {
     let mounted = true;
