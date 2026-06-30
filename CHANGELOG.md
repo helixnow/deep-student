@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.41](https://github.com/helixnow/deep-student/compare/v0.9.40...v0.9.41) (2026-06-30)
+
+
+### Features
+
+* add save botton to siliconflow section ([#87](https://github.com/helixnow/deep-student/issues/87)) ([3bab9cf](https://github.com/helixnow/deep-student/commit/3bab9cf725066a67352902a074503f8a41a9434b))
+
+
+### Bug Fixes
+
+* add RECORD_AUDIO permission for Android manifest ([#89](https://github.com/helixnow/deep-student/issues/89)) ([d2f4424](https://github.com/helixnow/deep-student/commit/d2f442488d8a292e0b7d80be4ca2c2b91c723f2b))
+
+## [0.9.40](https://github.com/helixnow/deep-student/compare/v0.9.39...v0.9.40) (2026-05-27)
+
+
+### Features
+
+* sync latest nightly into main for 0.9.40 ([#84](https://github.com/helixnow/deep-student/issues/84)) ([53add86](https://github.com/helixnow/deep-student/commit/53add861020ad6f1c8ae8d6941036fd8f835f0e5))
+
+## [0.9.39](https://github.com/helixnow/deep-student/compare/v0.9.38...v0.9.39) (2026-05-25)
+
+
+### Bug Fixes
+
+* **ci:** split sync regression targets across jobs ([#80](https://github.com/helixnow/deep-student/issues/80)) ([ed7efb2](https://github.com/helixnow/deep-student/commit/ed7efb25c5cf18728693fd88535ea4d5d23064a2))
+
 ## [0.9.38](https://github.com/helixnow/deep-student/compare/v0.9.37...v0.9.38) (2026-05-24)
 
 

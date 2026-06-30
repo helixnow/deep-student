@@ -170,6 +170,18 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
+      - name: Inject Android permissions
+        run: |
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          PERM='<uses-permission android:name="android.permission.RECORD_AUDIO" />'
+          if grep -qF "$PERM" "$MANIFEST"; then
+            echo "RECORD_AUDIO permission already present"
+          else
+            echo "Injecting RECORD_AUDIO permission..."
+            sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
+            echo "RECORD_AUDIO permission injected"
+          fi
+
       - name: Copy custom Android icons
         run: |
           ICONS_SRC="src-tauri/icons/android"
@@ -231,13 +243,13 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
           set +e
-          echo "Starting Android build with 70 minute timeout"
-          timeout --signal=TERM --kill-after=60s 70m npx tauri android build --target aarch64
+          echo "Starting Android build with 120 minute timeout"
+          timeout --signal=TERM --kill-after=60s 120m npx tauri android build --target aarch64
           status=$?
           set -e
 
           if [ "$status" -eq 124 ]; then
-            echo "::error::Android build timed out after 70 minutes"
+            echo "::error::Android build timed out after 120 minutes"
           elif [ "$status" -ne 0 ]; then
             echo "::error::Android build failed with exit code ${status}"
           fi

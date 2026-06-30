@@ -3,7 +3,7 @@
  * 硅基流动快速配置组件
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain, Check, Clock, Cpu, DownloadSimple, FloppyDisk, GearSix, Image, Lightning, LinkSimple, Minus, Plus, Spinner, Stack, Trash, WarningCircle } from '@phosphor-icons/react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'; // 使用Tauri v2 http插件
@@ -291,6 +291,12 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       mounted = false;
     };
   }, [persistApiKey, siliconFlowVendorKey, siliconFlowLegacyKey]);
+
+  React.useEffect(() => {
+    return () => {
+      clearStatusTimer();
+    };
+  }, [clearStatusTimer]);
 
   // 监听其他实例的API Key变化（修复多实例状态不同步问题）
   React.useEffect(() => {

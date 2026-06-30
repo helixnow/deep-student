@@ -129,6 +129,7 @@ setup_dev_package() {
         fi
         npx @tauri-apps/cli android init || die "Android 项目初始化失败"
         info "✓ Android 项目已重新初始化"
+        inject_android_permissions
     fi
 }
 
@@ -163,6 +164,26 @@ ensure_android_project() {
         npx @tauri-apps/cli android init || die "Android 项目初始化失败"
         info "✓ Android 项目初始化完成"
     fi
+}
+
+inject_android_permissions() {
+    local MANIFEST="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$MANIFEST" ]]; then
+        warn "未找到 AndroidManifest.xml，跳过权限注入"
+        return
+    fi
+    local PERM="<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />"
+    if grep -qF "$PERM" "$MANIFEST" 2>/dev/null; then
+        return
+    fi
+    say "向 AndroidManifest.xml 注入 RECORD_AUDIO 权限..."
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' "/<manifest/a\\
+    $PERM" "$MANIFEST"
+    else
+        sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
+    fi
+    info "✓ 已注入 RECORD_AUDIO 权限"
 }
 
 apply_android_version_code() {
@@ -486,6 +507,7 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     # 打包 pdfium 动态库到 Android APK
     say "打包 pdfium 动态库..."
     ensure_android_project
+    inject_android_permissions
     JNILIBS_DIR="$REPO_ROOT/src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     PDFIUM_ANDROID_SO="$REPO_ROOT/src-tauri/resources/pdfium/libpdfium_android_arm64.so"

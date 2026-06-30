@@ -215,16 +215,6 @@ impl WebDavStorage {
         )))
     }
 
-    async fn request(
-        &self,
-        method: Method,
-        key: &str,
-        body: Option<Vec<u8>>,
-    ) -> Result<reqwest::Response> {
-        self.request_with_path(method, &self.remote_path(key), body)
-            .await
-    }
-
     /// 发送 PROPFIND 请求（带 120s 响应头超时、60s 响应体超时、网络错误重试）。
     ///
     /// 返回 `Ok(None)` 表示目标不存在（404）；非 2xx/404 状态码立即报错不重试
@@ -306,6 +296,16 @@ impl WebDavStorage {
             max_retries,
             last_error.unwrap_or_default()
         )))
+    }
+
+    async fn request(
+        &self,
+        method: Method,
+        key: &str,
+        body: Option<Vec<u8>>,
+    ) -> Result<reqwest::Response> {
+        self.request_with_path(method, &self.remote_path(key), body)
+            .await
     }
 
     /// 确保目录存在（递归创建）
