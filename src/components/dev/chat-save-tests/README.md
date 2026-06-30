@@ -27,6 +27,7 @@ Ctrl/Cmd + Shift + T
 chat-save-tests/
 ├── index.ts                    # 统一导出
 ├── types.ts                    # TypeScript类型定义
+├── config.ts                   # 测试配置
 ├── testUtils.ts                # 共用工具函数
 ├── scenarioConfigs.tsx         # 场景配置
 ├── setupTestListener.ts        # 事件监听器
@@ -147,23 +148,14 @@ runPreflightCheck(ctx)               // 测试前置条件检查
 
 ---
 
-## 📚 相关文档
+## 📚 相关代码
 
-- **完整架构文档**：`/docs/chat-test-system-v3.md`
-- **测试覆盖清单**：`/docs/test-coverage-checklist.md`
-- **功能模块索引**：`/note/功能模块索引.md`
-- **testid映射表**：`/docs/testid-mapping.md`
+- 主面板入口：`src/components/dev/ChatSaveTestPanel.tsx`
+- 块渲染参考：`src/features/chat/BLOCK_RENDERING_GUIDE.md`
 
 ---
 
-## 🎉 总结
+## 总结
 
-该测试体系已达到 **SOTA级别**，具备：
-- ✅ 100% 场景覆盖
-- ✅ 模块化架构
-- ✅ 完整的链路追踪
-- ✅ 结构化报告导出
-- ✅ 生产级代码质量
-
-可以放心用于日常开发调试和发布前验证！
+该测试体系具备模块化架构、完整链路追踪与结构化报告导出，可用于日常开发调试和发布前验证。
 

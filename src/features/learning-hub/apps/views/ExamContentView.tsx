@@ -16,6 +16,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
+import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import SyncConflictDialog from '@/components/SyncConflictDialog';
@@ -32,12 +33,32 @@ const QuestionBankStatsView = lazy(() => import('@/components/QuestionBankStatsV
 const QuestionFavoritesView = lazy(() => import('@/components/QuestionFavoritesView'));
 const QuestionHistoryView = lazy(() => import('@/components/QuestionHistoryView'));
 const ReviewQuestionsView = lazy(() => import('@/components/ReviewQuestionsView'));
+// ★ I1 修复：接入 SM-2 间隔复习系统（复习计划 + 复习会话）
+const ReviewPlanView = lazy(() => import('@/components/ReviewPlanView'));
+const ReviewSession = lazy(() => import('@/components/ReviewSession'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
 const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
 const CsvImportDialog = lazy(() => import('@/components/CsvImportDialog'));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
-type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'tags' | 'launcher';
+type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher';
+
+/**
+ * ★ I1 修复：SM-2 间隔复习面板
+ *
+ * 有活跃复习会话时渲染 ReviewSession（答题打分），否则渲染 ReviewPlanView
+ * （今日到期/复习队列/开始复习）。会话由 reviewPlanStore 全局管理。
+ */
+const Sm2ReviewPanel: React.FC<{ examId: string }> = ({ examId }) => {
+  const isSessionActive = useReviewPlanStore((s) => s.session.isActive);
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <Suspense fallback={null}>
+        {isSessionActive ? <ReviewSession /> : <ReviewPlanView examId={examId} />}
+      </Suspense>
+    </div>
+  );
+};
 
 interface ManageFilters {
   search?: string;
@@ -145,21 +166,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const mockExamTimeoutHandledRef = useRef<string | null>(null);
   const timedTimeoutHandledRef = useRef<string | null>(null);
   
-  // 计时器逻辑
-  // ★ 标签页：isActive === false 时暂停计时器，避免后台计时不精确
-  useEffect(() => {
-    if (viewMode === 'practice' && isTimerRunning && isActive !== false) {
-      timerRef.current = setInterval(() => {
-        setElapsedTime(prev => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-  }, [viewMode, isTimerRunning, isActive]);
-  
   // 进入做题模式时自动开始计时
   useEffect(() => {
     if (viewMode === 'practice') {
@@ -201,6 +207,32 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (practiceMode === 'mock_exam') return activeMockExamSession?.started_at || null;
     return null;
   }, [practiceMode, activeTimedSession, activeMockExamSession]);
+
+  // 计时器逻辑
+  // ★ 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
+  //   限时/模拟考（advanced runtime）必须按墙钟走：后台切换、休眠恢复都不能"暂停"考试，
+  //   否则与后端 time_spent（ended_at - started_at）和启动页的绝对时间倒计时不一致。
+  useEffect(() => {
+    const advancedRuntime = activeAdvancedTimerDuration != null;
+    if (viewMode === 'practice' && isTimerRunning && (isActive !== false || advancedRuntime)) {
+      timerRef.current = setInterval(() => {
+        if (advancedRuntime && activeAdvancedStartedAt) {
+          const startedMs = Date.parse(activeAdvancedStartedAt);
+          if (Number.isFinite(startedMs)) {
+            // 墙钟推算，免疫 setInterval 漂移与系统休眠
+            setElapsedTime(Math.max(0, Math.floor((Date.now() - startedMs) / 1000)));
+            return;
+          }
+        }
+        setElapsedTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt]);
 
   const isAdvancedRuntimeTimer = activeAdvancedTimerDuration != null;
   const advancedTimerRemaining = useMemo(() => {
@@ -831,8 +863,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       {/* Tab 栏 */}
       <div className="flex-shrink-0 px-3 sm:px-4 py-2.5 border-b border-border/40">
         <div className="flex items-center justify-between gap-2">
-          {/* 左侧 Tab - 允许横向滚动 */}
-          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none">
+          {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多 */}
+          <div className="flex items-center gap-1 min-w-0 overflow-x-auto scrollbar-none max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]">
             <NotionButton
               variant="ghost"
               size="sm"
@@ -882,6 +914,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   "text-xs opacity-80",
                   stats.review === 0 && viewMode !== 'review' && "text-muted-foreground"
                 )}>{stats.review}</span>
+              </NotionButton>
+            )}
+            {hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode('sm2')}
+                className={cn(
+                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
+                  viewMode === 'sm2'
+                    ? 'bg-foreground text-background font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
+                )}
+              >
+                {t('review:title', '复习计划')}
               </NotionButton>
             )}
             {hasQuestions && (
@@ -1089,6 +1136,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 setViewMode('practice');
               }}
             />
+          ) : viewMode === 'sm2' && hasQuestions ? (
+            /* ★ I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
+            <Sm2ReviewPanel examId={sessionId} />
           ) : viewMode === 'review' && hasQuestions ? (
             /* 错题本视图 */
             <ReviewQuestionsView

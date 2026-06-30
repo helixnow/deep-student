@@ -65,7 +65,7 @@ pub struct CreateResourceInput {
 fn get_max_size_bytes(resource_type: &ResourceType) -> usize {
     match resource_type {
         ResourceType::Image => 10 * 1024 * 1024,       // 10MB
-        ResourceType::File => 50 * 1024 * 1024,        // 50MB
+        ResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
         ResourceType::Note => 50 * 1024 * 1024,        // 50MB（笔记可能很长）
         ResourceType::Card => 10 * 1024 * 1024,        // 10MB
         ResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
@@ -593,15 +593,16 @@ mod tests {
         let medium_data = "x".repeat(20 * 1024 * 1024); // 20MB
         assert!(validate_file_size(&ResourceType::File, &medium_data).is_ok());
 
-        // 但 File 也有上限
-        let very_large_data = "x".repeat(51 * 1024 * 1024); // 51MB
+        // 但 File 也有上限（随常量走，避免上限调整时测试失真）
+        let very_large_data = "x".repeat(get_max_size_bytes(&ResourceType::File) + 1);
         assert!(validate_file_size(&ResourceType::File, &very_large_data).is_err());
     }
 
     #[test]
     fn test_max_size_bytes() {
         assert_eq!(get_max_size_bytes(&ResourceType::Image), 10 * 1024 * 1024);
-        assert_eq!(get_max_size_bytes(&ResourceType::File), 50 * 1024 * 1024);
+        // #62: File 上限 50MB→200MB
+        assert_eq!(get_max_size_bytes(&ResourceType::File), 200 * 1024 * 1024);
         assert_eq!(get_max_size_bytes(&ResourceType::Note), 50 * 1024 * 1024);
         assert_eq!(get_max_size_bytes(&ResourceType::Card), 10 * 1024 * 1024);
         assert_eq!(

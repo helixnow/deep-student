@@ -26,6 +26,7 @@ import { CustomScrollArea } from './custom-scroll-area';
 import './MinimalTemplateEditor.css';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { useDebounce } from '@/hooks/useDebounce';
 
 // 编辑器 Tab 类型导出
 export type EditorTabType = 'basic' | 'templates' | 'styles' | 'data' | 'rules' | 'advanced';
@@ -218,6 +219,27 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     }
   };
 
+  // 预览渲染防抖：避免每次按键都同步跑 Mustache 管线并整页重载预览 iframe（srcDoc 变化即重新导航）
+  const debouncedFormData = useDebounce(formData, 300);
+  const debouncedPreviewJson = useDebounce(previewDataJson, 300);
+  const parsedPreviewData = useMemo(() => {
+    try {
+      return JSON.parse(debouncedPreviewJson);
+    } catch (e: unknown) {
+      return {};
+    }
+  }, [debouncedPreviewJson]);
+  const previewHtml = useMemo(
+    () =>
+      renderCardPreview(
+        previewMode === 'front' ? debouncedFormData.front_template : debouncedFormData.back_template,
+        debouncedFormData as any,
+        parsedPreviewData,
+        previewMode === 'back'
+      ),
+    [previewMode, debouncedFormData, parsedPreviewData]
+  );
+
   // 验证表单
   const validateForm = (): ValidationError[] => {
     const errors: ValidationError[] = [];
@@ -351,13 +373,6 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     setIsSubmitting(true);
     
     try {
-      let parsedPreviewData;
-      try {
-        parsedPreviewData = JSON.parse(previewDataJson);
-      } catch (e: unknown) {
-        parsedPreviewData = {};
-      }
-      
       const templateData: CreateTemplateRequest = {
         ...formData,
         preview_data_json: previewDataJson,
@@ -611,13 +626,8 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       </div>
                       <div className="border border-border/40 rounded-lg overflow-hidden">
                         <IframePreview
-                          htmlContent={renderCardPreview(
-                            previewMode === 'front' ? formData.front_template : formData.back_template,
-                            formData as any,
-                            validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {},
-                            previewMode === 'back'
-                          )}
-                          cssContent={formData.css_style}
+                          htmlContent={previewHtml}
+                          cssContent={debouncedFormData.css_style}
 />
                       </div>
                       {codeSubTab !== 'css' && (
@@ -722,13 +732,8 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           </div>
                           <div className="border border-border/40 rounded-lg overflow-hidden">
                             <IframePreview
-                              htmlContent={renderCardPreview(
-                                previewMode === 'front' ? formData.front_template : formData.back_template,
-                                formData as any,
-                                validateJson(previewDataJson) ? JSON.parse(previewDataJson) : {},
-                                previewMode === 'back'
-                              )}
-                              cssContent={formData.css_style}
+                              htmlContent={previewHtml}
+                              cssContent={debouncedFormData.css_style}
 />
                           </div>
                         </div>

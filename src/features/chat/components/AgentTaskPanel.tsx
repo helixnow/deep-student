@@ -3,10 +3,17 @@
  *
  * 附着在 chat 输入栏上方，非阻塞式。展开即见全部 steps。
  * 设计语义对齐 composer shell，颜色随主题 palette 联动。
+ *
+ * 结构化四区（对标 Codex 任务侧栏）：
+ * 1. 计划 — todo steps 列表
+ * 2. 来源 — 检索/搜索引用（复用 sourceAdapter，可点击溯源）
+ * 3. 产物 — 笔记/文件 chip（点击在面板中打开）
+ * 4. 摘要 — 全部完成后的总结语
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStore } from 'zustand';
+import { useTranslation } from 'react-i18next';
 import {
   ListChecks,
   Check,
@@ -15,10 +22,25 @@ import {
   SkipForward,
   CaretDown,
   CaretUp,
+  Notebook,
+  FileDoc,
+  FileXls,
+  FilePpt,
+  FilePdf,
+  File as FileIcon,
+  Globe,
+  Brain,
+  BookOpen,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
+import { openUrl } from '@/utils/urlOpener';
+import { openResource } from '@/dstu/openResource';
+import { blocksToSourceBundle } from './panels/sourceAdapter';
+import type { Block } from '../core/types/block';
 
 // ============================================================================
 // Inline types & helpers
@@ -71,6 +93,123 @@ function extractSteps(blocks: { toolOutput?: unknown; toolName?: string }[]) {
 }
 
 // ============================================================================
+// 来源 & 产物提取
+// ============================================================================
+
+interface SourceItem {
+  id: string;
+  title: string;
+  url?: string;
+  resourceId?: string;
+  origin: string;
+}
+
+interface ArtifactItem {
+  id: string;
+  kind: 'note' | 'file';
+  label: string;
+  toolName: string;
+}
+
+const ORIGIN_ICONS: Record<string, Icon> = {
+  web_search: Globe,
+  memory: Brain,
+  rag: BookOpen,
+  multimodal: BookOpen,
+  tool: MagnifyingGlass,
+};
+
+/** 笔记写入类工具（产生/修改笔记，视为产物） */
+const NOTE_WRITE_TOOLS = new Set([
+  'note_create', 'note_append', 'note_replace', 'note_set',
+  'builtin-note_create', 'builtin-note_append', 'builtin-note_replace', 'builtin-note_set',
+]);
+
+/** 文件生成类工具名后缀（docx/xlsx/pptx 创建编辑 + 论文保存） */
+function isFileProducingTool(toolName: string): boolean {
+  const short = toolName.replace('builtin-', '');
+  return (
+    short.startsWith('docx_') ||
+    short.startsWith('xlsx_') ||
+    short.startsWith('pptx_') ||
+    short === 'paper_save'
+  );
+}
+
+function fileArtifactIcon(toolName: string): Icon {
+  const short = toolName.replace('builtin-', '');
+  if (short.startsWith('docx_')) return FileDoc;
+  if (short.startsWith('xlsx_')) return FileXls;
+  if (short.startsWith('pptx_')) return FilePpt;
+  if (short === 'paper_save') return FilePdf;
+  return FileIcon;
+}
+
+/** 从成功的工具块中提取产物（笔记 + 生成文件） */
+function extractArtifacts(blocks: Block[]): ArtifactItem[] {
+  const artifacts = new Map<string, ArtifactItem>();
+
+  for (const block of blocks) {
+    if (block.status !== 'success' || !block.toolName) continue;
+    const out = (block.toolOutput ?? {}) as Record<string, unknown>;
+    // 兼容 { result: {...} } 包装
+    const d = (typeof out.result === 'object' && out.result !== null
+      ? out.result
+      : out) as Record<string, unknown>;
+
+    if (NOTE_WRITE_TOOLS.has(block.toolName)) {
+      const noteId = (d.note_id || d.noteId || d.id ||
+        block.toolInput?.noteId || block.toolInput?.note_id) as string | undefined;
+      if (!noteId) continue;
+      const label = (d.title || block.toolInput?.title || d.noteTitle) as string | undefined;
+      artifacts.set(noteId, {
+        id: noteId,
+        kind: 'note',
+        label: label || noteId,
+        toolName: block.toolName,
+      });
+    } else if (isFileProducingTool(block.toolName)) {
+      const fileId = (d.file_id || d.new_file_id) as string | undefined;
+      if (!fileId) continue;
+      const label = (d.file_name || d.title) as string | undefined;
+      artifacts.set(fileId, {
+        id: fileId,
+        kind: 'file',
+        label: label || fileId,
+        toolName: block.toolName,
+      });
+    }
+  }
+
+  return [...artifacts.values()];
+}
+
+/** 从成功块中提取来源（复用 sourceAdapter 的解析逻辑），按 title+url 去重 */
+function extractSources(blocks: Block[]): SourceItem[] {
+  const successBlocks = blocks.filter((b) => b.status === 'success');
+  const bundle = blocksToSourceBundle(successBlocks);
+  if (!bundle) return [];
+
+  const seen = new Set<string>();
+  const items: SourceItem[] = [];
+  for (const group of bundle.groups) {
+    for (const item of group.items) {
+      const dedupeKey = `${item.title}::${item.link ?? ''}`;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      items.push({
+        id: item.id,
+        title: item.title,
+        url: item.link,
+        resourceId: item.resourceId || item.sourceId,
+        origin: item.origin,
+      });
+    }
+  }
+  return items;
+}
+
+// ============================================================================
 // StatusDot
 // ============================================================================
 
@@ -108,6 +247,16 @@ const StatusDot: React.FC<{ status: StepStatus; index: number }> = ({ status, in
 };
 
 // ============================================================================
+// Section label
+// ============================================================================
+
+const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-[color:var(--text-muted)] select-none">
+    {children}
+  </div>
+);
+
+// ============================================================================
 // AgentTaskPanel
 // ============================================================================
 
@@ -117,6 +266,7 @@ interface Props {
 }
 
 export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
+  const { t } = useTranslation('chatV2');
   const [expanded, setExpanded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -128,11 +278,41 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     return extractSteps(out);
   }, [blocksMap]);
 
+  // 来源 + 产物（仅在面板展开且存在计划时才提取：折叠态不展示这两个区，
+  // 流式期间 blocksMap 每帧变化，无谓的全量重算会被跳过）
+  const { sources, artifacts } = useMemo(() => {
+    if (!expanded || !steps.length || !blocksMap) return { sources: [], artifacts: [] };
+    const all: Block[] = [];
+    blocksMap.forEach((b) => all.push(b));
+    return {
+      sources: extractSources(all),
+      artifacts: extractArtifacts(all),
+    };
+  }, [blocksMap, steps.length, expanded]);
+
   const done = steps.filter((s) => s.status === 'completed').length;
   const total = steps.length;
   const running = steps.find((s) => s.status === 'running');
   const has = steps.length > 0;
   const streaming = useStore(store, (s: any) => s.activeBlockIds?.size > 0) ?? false;
+
+  const openSource = useCallback((item: SourceItem) => {
+    if (item.url && (item.url.startsWith('http://') || item.url.startsWith('https://'))) {
+      void openUrl(item.url);
+    } else if (item.resourceId) {
+      void openResource(`/${item.resourceId}`, { handlerNamespace: 'chat-v2' });
+    }
+  }, []);
+
+  const openArtifact = useCallback((item: ArtifactItem) => {
+    if (item.kind === 'note') {
+      window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
+        detail: { noteId: item.id, source: 'agent_task_panel' },
+      }));
+    } else {
+      void openResource(`/${item.id}`, { handlerNamespace: 'chat-v2' });
+    }
+  }, []);
 
   // Auto-expand when new running steps appear
   useEffect(() => {
@@ -142,6 +322,10 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   }, [has, streaming, expanded, steps]);
 
   if (!has) return null;
+
+  const showSources = sources.length > 0;
+  const showArtifacts = artifacts.length > 0;
+  const showSections = showSources || showArtifacts;
 
   return (
     <div ref={ref} className={cn('w-full px-4 md:px-8 flex-shrink-0 pb-0', className)}>
@@ -179,7 +363,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
         )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            Expanded steps list (drops below the header bar)
+            Expanded panel: plan / sources / artifacts / summary
             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <AnimatePresence>
           {expanded && (
@@ -216,7 +400,12 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                 </NotionButton>
               </div>
               <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
-              <div className="py-1 max-h-[300px] overflow-y-auto">
+
+              {/* ── 区 1：计划 ── */}
+              {showSections && (
+                <SectionLabel>{t('agentPanel.plan', '计划')}</SectionLabel>
+              )}
+              <div className="py-1 max-h-[260px] overflow-y-auto">
                 {steps.map((step, idx) => (
                   <div
                     key={step.id || idx}
@@ -252,6 +441,78 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   </div>
                 ))}
               </div>
+
+              {/* ── 区 2：来源 ── */}
+              {showSources && (
+                <>
+                  <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
+                  <SectionLabel>
+                    {t('agentPanel.sources', '来源')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal">{sources.length}</span>
+                  </SectionLabel>
+                  {/* 容器本身可滚动，渲染全部来源，保证与计数一致 */}
+                  <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
+                    {sources.map((item) => {
+                      const OriginIcon = ORIGIN_ICONS[item.origin] ?? MagnifyingGlass;
+                      const clickable = !!(item.url || item.resourceId);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => clickable && openSource(item)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 h-6 px-2 max-w-[220px]',
+                            'rounded-full border border-[color:var(--border-soft)]',
+                            'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
+                            clickable
+                              ? 'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer'
+                              : 'cursor-default opacity-70',
+                          )}
+                          title={item.title}
+                        >
+                          <OriginIcon size={11} className="flex-shrink-0 text-[color:var(--text-muted)]" />
+                          <span className="truncate">{item.title}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* ── 区 3：产物 ── */}
+              {showArtifacts && (
+                <>
+                  <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
+                  <SectionLabel>
+                    {t('agentPanel.artifacts', '产物')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal">{artifacts.length}</span>
+                  </SectionLabel>
+                  <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
+                    {artifacts.map((item) => {
+                      const ArtifactIcon = item.kind === 'note' ? Notebook : fileArtifactIcon(item.toolName);
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => openArtifact(item)}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 h-6 px-2 max-w-[220px]',
+                            'rounded-full border border-[color:var(--border-soft)]',
+                            'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
+                            'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
+                          )}
+                          title={item.label}
+                        >
+                          <ArtifactIcon size={11} className="flex-shrink-0 text-[color:hsl(var(--primary))]" />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* ── 区 4：摘要 ── */}
               {isAllDone && message && (
                 <div className="flex-shrink-0 px-4 py-2 border-t border-[color:var(--composer-panel-border)] opacity-60">
                   <span className="text-[11px] text-[color:hsl(var(--success))] font-medium">{message}</span>

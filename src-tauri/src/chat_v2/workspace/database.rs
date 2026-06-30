@@ -349,6 +349,7 @@ impl WorkspaceDatabase {
 
     pub fn delete_database(workspaces_dir: &Path, workspace_id: &str) -> Result<(), String> {
         let db_path = workspaces_dir.join(format!("ws_{}.db", workspace_id));
+        let deleted_size = std::fs::metadata(&db_path).ok().map(|m| m.len());
         if db_path.exists() {
             std::fs::remove_file(&db_path)
                 .map_err(|e| format!("Failed to delete workspace database: {}", e))?;
@@ -361,7 +362,47 @@ impl WorkspaceDatabase {
         if shm_path.exists() {
             let _ = std::fs::remove_file(&shm_path);
         }
+        Self::enqueue_workspace_deletion_best_effort(workspaces_dir, workspace_id, deleted_size);
         Ok(())
+    }
+
+    fn enqueue_workspace_deletion_best_effort(
+        workspaces_dir: &Path,
+        workspace_id: &str,
+        size: Option<u64>,
+    ) {
+        let Some(active_dir) = workspaces_dir.parent() else {
+            return;
+        };
+        let chat_db = active_dir.join("chat_v2.db");
+        if !chat_db.exists() {
+            return;
+        }
+
+        match Connection::open(&chat_db) {
+            Ok(conn) => {
+                let _ = conn.busy_timeout(std::time::Duration::from_secs(5));
+                if let Err(err) =
+                    crate::data_governance::file_deletion_queue::enqueue_workspace_deletion(
+                        &conn,
+                        workspace_id,
+                        size,
+                    )
+                {
+                    log::warn!(
+                        "[WorkspaceDatabase] 写入工作区删除队列失败（不阻塞删除）: workspace_id={}, err={}",
+                        workspace_id,
+                        err
+                    );
+                }
+            }
+            Err(err) => {
+                log::warn!(
+                    "[WorkspaceDatabase] 打开 chat_v2.db 写工作区删除队列失败（不阻塞删除）: {}",
+                    err
+                );
+            }
+        }
     }
 }
 

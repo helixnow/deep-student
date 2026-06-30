@@ -73,6 +73,7 @@ import { useFinderStore, type QuickAccessType } from './stores/finderStore';
 import { useRecentStore } from './stores/recentStore';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
   FinderToolbar,
   FinderQuickAccess,
@@ -145,6 +146,8 @@ export function LearningHubSidebar({
     history,
     historyIndex,
     viewMode,
+    sortBy,
+    sortOrder,
     selectedIds,
     searchQuery,
     isSearching,
@@ -157,6 +160,7 @@ export function LearningHubSidebar({
     goForward,
     jumpToBreadcrumb,
     setViewMode,
+    setSorting,
     select,
     selectAll,
     clearSelection,
@@ -228,6 +232,12 @@ export function LearningHubSidebar({
   // ★ Canvas 模式多选模式状态
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
 
+  // ★ 2026-06-12（审阅问题 FE-S3）：触屏设备检测。
+  // 触屏上没有 Cmd/Ctrl 修饰键，普通（非 canvas）视图也需要多选模式开关。
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  // 多选模式生效条件：canvas 模式（原有逻辑）或触屏普通模式
+  const multiSelectActive = isMultiSelectMode && (mode === 'canvas' || isTouchPrimary);
+
   // New folder/note dialog state
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createDialogType, setCreateDialogType] = useState<'folder' | 'note' | 'exam' | 'textbook' | 'translation' | 'essay' | 'mindmap'>('folder');
@@ -253,6 +263,8 @@ export function LearningHubSidebar({
   // Batch operation state
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  // ★ 2026-06-12（审阅问题 FE-M4）：右键"移动到…"的目标集合；null 表示使用当前多选集合
+  const [moveTargetIds, setMoveTargetIds] = useState<Set<string> | null>(null);
   
   // ★ 教材导入进度状态
   const [importProgress, setImportProgress] = useState<ImportProgressState>({
@@ -261,6 +273,9 @@ export function LearningHubSidebar({
     stage: 'hashing',
     progress: 0,
   });
+
+  // ★ 2026-06-12（审阅问题 FE-M5）：附件批量导入进度（非模态横幅）
+  const [attachImportProgress, setAttachImportProgress] = useState<{ done: number; total: number } | null>(null);
   
   // Inline editing state (from store)
   const {
@@ -393,6 +408,13 @@ export function LearningHubSidebar({
     await finderRefresh();
   }, [finderRefresh]);
 
+  // ★ 2026-06-12（审阅问题 FE-S1）：文件变更事件触发的后台刷新使用静默模式，
+  // 保留当前列表展示直至新数据到达（stale-while-revalidate），不打断浏览。
+  const handleSilentRefresh = useCallback(async () => {
+    if (!isMountedRef.current) return;
+    await finderRefresh({ silent: true });
+  }, [finderRefresh]);
+
   // ★ 监听 DSTU 资源变化，自动刷新列表（带防抖，避免批量操作时频繁刷新）
   const watchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -416,7 +438,7 @@ export function LearningHubSidebar({
         }
         watchDebounceRef.current = setTimeout(() => {
           watchDebounceRef.current = null;
-          handleRefresh();
+          handleSilentRefresh();
         }, 300);
       }
     });
@@ -428,7 +450,7 @@ export function LearningHubSidebar({
         watchDebounceRef.current = null;
       }
     };
-  }, [currentPath.viewKind, handleRefresh]);
+  }, [currentPath.viewKind, handleSilentRefresh]);
 
   // Open create dialog
   const ensureCreatableView = useCallback(() => {
@@ -1031,6 +1053,11 @@ export function LearningHubSidebar({
         const { convertFileSrc } = await import('@tauri-apps/api/core');
         const limit = pLimit(3);
 
+        // ★ 2026-06-12（审阅问题 FE-M5）：批量导入显示进度横幅
+        if (attachmentPaths.length > 1) {
+          setAttachImportProgress({ done: 0, total: attachmentPaths.length });
+        }
+
         const attachResults = await Promise.all(
           attachmentPaths.map((filePath) =>
             limit(async () => {
@@ -1057,12 +1084,17 @@ export function LearningHubSidebar({
               } catch (e) {
                 debugLog.error('[LearningHub] 附件导入失败:', name, e);
                 return { ok: false as const, name };
+              } finally {
+                if (isMountedRef.current) {
+                  setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
+                }
               }
             })
           )
         );
 
         if (!isMountedRef.current) return;
+        setAttachImportProgress(null);
 
         for (const r of attachResults) {
           if (r.ok) totalSuccess++;
@@ -1103,6 +1135,7 @@ export function LearningHubSidebar({
       if (unlisten) unlisten();
       debugLog.error('[LearningHub] 拖拽导入异常:', error);
       setImportProgress(prev => ({ ...prev, isImporting: false }));
+      setAttachImportProgress(null);
       showGlobalNotification('error', t('finder.dragDrop.importFailed', '文件导入失败'));
     }
   }, [currentCreatableFolderId, currentPath, currentQuickAccessType, importMarkdownPathNotes, importProgress.isImporting, openImportedMarkdownNote, t, handleRefresh, onOpenApp]);
@@ -1144,6 +1177,11 @@ export function LearningHubSidebar({
       firstImportedNode = markdownResult.importedNodes[0] ?? null;
     }
 
+    // ★ 2026-06-12（审阅问题 FE-M5）：批量导入显示进度横幅
+    if (attachmentFiles.length > 1) {
+      setAttachImportProgress({ done: 0, total: attachmentFiles.length });
+    }
+
     const results = await Promise.all(
       attachmentFiles.map((file) =>
         limit(async () => {
@@ -1151,19 +1189,27 @@ export function LearningHubSidebar({
           const isImage = IMAGE_EXTENSIONS.has(ext);
 
           try {
+            // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，
+            // 修复浏览器拖入的附件总是落到根目录的问题（Tauri paths 链路本就正确）。
             const result = await attachmentDstuAdapter.create(
               file,
               isImage ? 'image' : 'file',
+              currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
             );
             return result.ok;
           } catch {
             return false;
+          } finally {
+            if (isMountedRef.current) {
+              setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
+            }
           }
         })
       )
     );
 
     if (!isMountedRef.current) return;
+    setAttachImportProgress(null);
 
     for (const ok of results) {
       if (ok) totalSuccess++;
@@ -2033,17 +2079,40 @@ export function LearningHubSidebar({
   // 批量移动（打开移动对话框）
   const handleBatchMove = useCallback(() => {
     if (selectedIds.size === 0) return;
+    setMoveTargetIds(null);
+    setMoveDialogOpen(true);
+  }, [selectedIds]);
+
+  // ★ 2026-06-12（审阅问题 FE-M4）：右键菜单"移动到…"
+  // 若右键项属于多选集合则移动整个集合（Finder 行为），否则只移动该项
+  const handleMoveTo = useCallback((target: ContextMenuTarget) => {
+    let targetId: string | null = null;
+    if (target.type === 'folder') {
+      targetId = target.folder.folder.id;
+    } else if (target.type === 'resource') {
+      targetId = target.resource.id;
+    } else if (target.type === 'folderItem') {
+      targetId = target.item.itemId;
+    }
+    if (!targetId) return;
+
+    if (selectedIds.size > 1 && selectedIds.has(targetId)) {
+      setMoveTargetIds(null);
+    } else {
+      setMoveTargetIds(new Set([targetId]));
+    }
     setMoveDialogOpen(true);
   }, [selectedIds]);
 
   // 批量移动确认
   const handleBatchMoveConfirm = useCallback(async (targetFolderId: string | null) => {
-    if (selectedIds.size === 0) return;
+    const effectiveIds = moveTargetIds ?? selectedIds;
+    if (effectiveIds.size === 0) return;
 
     setIsBatchProcessing(true);
 
     try {
-      const idsArray = Array.from(selectedIds);
+      const idsArray = Array.from(effectiveIds);
       // ★ 并发控制：限制同时执行的移动操作为 3 个，避免文件系统操作冲突
       const limit = pLimit(3);
 
@@ -2109,9 +2178,11 @@ export function LearningHubSidebar({
       const failedIds = failedResults.map(r => r.id);
 
       if (failed === 0) {
-        // 全部成功
+        // 全部成功（右键移动非选中项时不影响当前多选状态）
         showGlobalNotification('success', t('finder.batch.moveSuccess'));
-        clearSelection();
+        if (moveTargetIds === null) {
+          clearSelection();
+        }
       } else if (succeeded > 0) {
         // 部分成功 - 保留失败项的选择状态
         showGlobalNotification('warning',
@@ -2138,9 +2209,10 @@ export function LearningHubSidebar({
       // ★ 使用 finally 确保状态恢复，即使操作失败
       if (isMountedRef.current) {
         setIsBatchProcessing(false);
+        setMoveTargetIds(null);
       }
     }
-  }, [selectedIds, items, t, clearSelection, setSelectedIds, handleRefresh]);
+  }, [moveTargetIds, selectedIds, items, t, clearSelection, setSelectedIds, handleRefresh]);
 
   // 键盘快捷键
   useEffect(() => {
@@ -2207,7 +2279,7 @@ export function LearningHubSidebar({
   ) : null;
 
   return (
-    <div ref={containerRef} className={cn("study-shell-sidebar-frame flex h-full", className)} tabIndex={-1}>
+    <div ref={containerRef} className={cn("study-shell-sidebar-frame relative flex h-full", className)} tabIndex={-1}>
       {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
       {quickAccessPortalTarget && quickAccessNode
         ? createPortal(quickAccessNode, quickAccessPortalTarget)
@@ -2239,45 +2311,45 @@ export function LearningHubSidebar({
                   placeholder={t('finder.search.placeholder', '搜索...')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 text-sm flex-1"
+                  className="h-9 text-sm flex-1"
                   autoFocus
                   disabled={!canSearchInCurrentView}
                 />
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0"
+                  className="h-10 w-10 p-0"
                   onClick={() => {
                     setMobileSearchExpanded(false);
                     setSearchQuery('');
                   }}
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </NotionButton>
               </div>
             ) : (
-              // 工具栏按钮
+              // 工具栏按钮（N-5: 移动端触控目标 ≥40px）
               <>
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0"
+                  className="h-10 w-10 p-0"
                   onClick={() => setMobileSearchExpanded(true)}
                   title={t('finder.search.title', '搜索')}
                   disabled={!canSearchInCurrentView}
                 >
-                  <MagnifyingGlass className="w-4 h-4" />
+                  <MagnifyingGlass className="w-5 h-5" />
                 </NotionButton>
                 <AppMenu>
                   <AppMenuTrigger asChild>
                     <NotionButton
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
+                      className="h-10 w-10 p-0"
                       title={t('finder.toolbar.new', '新建')}
                       disabled={!canCreateInCurrentView}
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-5 h-5" />
                     </NotionButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" className="min-w-[180px]">
@@ -2338,11 +2410,11 @@ export function LearningHubSidebar({
                   <NotionButton
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                    className="h-10 w-10 p-0 text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
                     title={t('finder.actions.emptyTrash', '清空回收站')}
                   >
-                    <Trash className="w-4 h-4" />
+                    <Trash className="w-5 h-5" />
                   </NotionButton>
                 )}
                 <div className="flex-1" />
@@ -2358,31 +2430,31 @@ export function LearningHubSidebar({
 {/* ★ Canvas 模式导航栏：返回/前进 + 面包屑 */}
         {mode === 'canvas' && !hideToolbarAndNav && (
           <div className="study-shell-toolbar flex items-center gap-1 px-1.5 py-1 border-b shrink-0 min-w-0">
-            {/* 返回/前进按钮 */}
+            {/* 返回/前进按钮（N-5: 小屏放大触控目标） */}
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 shrink-0"
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back', '返回')}
             >
-              <CaretLeft className="w-3.5 h-3.5" />
+              <CaretLeft className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
             </NotionButton>
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 shrink-0"
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward', '前进')}
             >
-              <CaretRight className="w-3.5 h-3.5" />
+              <CaretRight className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
             </NotionButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className="shrink-0 !h-4 !w-4 !p-0" title={t('learningHub:title', '资源库')} aria-label="home">
-                <House className="w-3 h-3" />
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title', '资源库')} aria-label="home">
+                <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </NotionButton>
               {currentPath.breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
@@ -2452,7 +2524,8 @@ export function LearningHubSidebar({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-7 w-7 p-0",
+                  'p-0',
+                  isSmallScreen ? 'h-9 w-9' : 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={() => {
@@ -2465,18 +2538,18 @@ export function LearningHubSidebar({
                 }}
                 title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect', '退出多选') : t('finder.canvas.multiSelect', '多选')}
               >
-                <ListChecks className="w-4 h-4" />
+                <ListChecks className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
               </NotionButton>
               {/* 关闭资源库按钮 */}
               {onClose && (
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0"
+                  className={cn('p-0', isSmallScreen ? 'h-9 w-9' : 'h-7 w-7')}
                   onClick={onClose}
                   title={t('common:close', '关闭')}
                 >
-                  <X className="w-4 h-4" />
+                  <X className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
                 </NotionButton>
               )}
             </div>
@@ -2595,24 +2668,22 @@ export function LearningHubSidebar({
             viewMode={isCollapsed || mode === 'canvas' ? 'list' : viewMode}
             selectedIds={selectedIds}
             onSelect={
-              mode === 'canvas' && !isMultiSelectMode
-                ? (id, _mode) => {
-                    // 非多选模式下，单击直接打开文件/文件夹
-                    const item = items.find(i => i.id === id);
-                    if (item) handleOpen(item);
+              multiSelectActive
+                ? (id, selectMode) => {
+                    // ★ 多选模式下，普通单击改为 toggle 模式，允许累加/取消选择
+                    select(id, selectMode === 'single' ? 'toggle' : selectMode);
                   }
-                : mode === 'canvas' && isMultiSelectMode
-                  ? (id, selectMode) => {
-                      // ★ 多选模式下，普通单击改为 toggle 模式，允许累加/取消选择
-                      select(id, selectMode === 'single' ? 'toggle' : selectMode);
+                : mode === 'canvas'
+                  ? (id, _mode) => {
+                      // canvas 非多选模式下，单击直接打开文件/文件夹
+                      const item = items.find(i => i.id === id);
+                      if (item) handleOpen(item);
                     }
                   : select
             }
             onOpen={
-              mode === 'canvas'
-                ? isMultiSelectMode
-                  ? (item) => { if (item.type === 'folder') handleOpen(item); }
-                  : handleOpen
+              multiSelectActive
+                ? (item) => { if (item.type === 'folder') handleOpen(item); }
                 : handleOpen
             }
             onContextMenu={mode === 'canvas' ? undefined : handleContextMenu}
@@ -2632,6 +2703,11 @@ export function LearningHubSidebar({
             onSelectionChange={setSelectedIds}
             onRetry={handleRefresh}
             highlightedIds={highlightedIds}
+            onRequestRename={
+              mode === 'canvas' || isTrashView
+                ? undefined
+                : (item) => startInlineEdit(item.id, item.type === 'folder' ? 'folder' : 'resource', item.name)
+            }
           />
           )}
           </>
@@ -2650,6 +2726,22 @@ export function LearningHubSidebar({
             isProcessing={isBatchProcessing || isInjecting}
             viewMode={isCollapsed ? 'list' : viewMode}
             onViewModeChange={isCollapsed ? undefined : setViewMode}
+            multiSelectMode={isMultiSelectMode}
+            onToggleMultiSelectMode={
+              isTouchPrimary
+                ? () => {
+                    if (isMultiSelectMode) {
+                      setIsMultiSelectMode(false);
+                      handleClearSelection();
+                    } else {
+                      setIsMultiSelectMode(true);
+                    }
+                  }
+                : undefined
+            }
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={setSorting}
             hasOpenApp={!isSmallScreen && hasOpenApp}
             onCloseApp={onCloseApp}
           />
@@ -2717,6 +2809,7 @@ export function LearningHubSidebar({
           }
         }}
         onToggleFavorite={handleToggleFavorite}
+        onMoveTo={handleMoveTo}
         onExportResource={handleExportResource}
         onRestoreItem={handleRestoreItem}
         onPermanentDeleteItem={handlePermanentDeleteItem}
@@ -2760,8 +2853,11 @@ export function LearningHubSidebar({
       {/* Folder Picker Dialog for Batch Move */}
       <FolderPickerDialog
         open={moveDialogOpen}
-        onOpenChange={setMoveDialogOpen}
-        excludeFolderIds={Array.from(selectedIds).filter(id =>
+        onOpenChange={(open) => {
+          setMoveDialogOpen(open);
+          if (!open) setMoveTargetIds(null);
+        }}
+        excludeFolderIds={Array.from(moveTargetIds ?? selectedIds).filter(id =>
           items.find(i => i.id === id)?.type === 'folder'
         )}
         onConfirm={handleBatchMoveConfirm}
@@ -2798,6 +2894,25 @@ export function LearningHubSidebar({
         state={importProgress}
         onClose={() => setImportProgress(prev => ({ ...prev, isImporting: false }))}
       />
+
+      {/* ★ 2026-06-12（审阅问题 FE-M5）：附件批量导入进度横幅（非模态，不阻塞操作） */}
+      {attachImportProgress && (
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background/95 backdrop-blur-lg border shadow-notion-lg">
+          <CircleNotch className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
+          <span className="text-xs whitespace-nowrap">
+            {t('finder.dragDrop.importing', '正在导入 {{done}} / {{total}}', {
+              done: attachImportProgress.done,
+              total: attachImportProgress.total,
+            })}
+          </span>
+          <div className="w-24 h-1 rounded-full bg-muted overflow-hidden shrink-0">
+            <div
+              className="h-full bg-primary transition-[width] duration-200"
+              style={{ width: `${Math.round((attachImportProgress.done / Math.max(1, attachImportProgress.total)) * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

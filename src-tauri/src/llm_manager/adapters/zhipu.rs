@@ -161,8 +161,7 @@ mod tests {
 
         adapter.apply_reasoning_config(&mut body, &config, None);
 
-        let thinking = body.get("thinking").unwrap();
-        assert_eq!(thinking.get("type"), Some(&json!("disabled")));
+        assert!(body.get("thinking").is_none());
     }
 
     #[test]

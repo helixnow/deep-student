@@ -66,8 +66,12 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const handleAddChild = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     const newId = addNode(data.nodeId, 0);
-    if (newId) setFocusedNodeId(newId);
-  }, [data.nodeId, addNode, setFocusedNodeId]);
+    if (newId) {
+      setFocusedNodeId(newId);
+      // 与 Tab/Enter 快捷键行为一致：新节点直接进入编辑，省一次双击
+      setEditingNodeId(newId);
+    }
+  }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
 
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器

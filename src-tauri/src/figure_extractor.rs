@@ -5,7 +5,6 @@
 //!
 //! 页面图片按 blob_hash 从 VFS 按需读取，避免长期持有大量内存。
 
-use image::GenericImageView;
 use tracing::{debug, info, warn};
 
 use crate::cross_page_merger::MergedQuestion;
@@ -56,27 +55,28 @@ pub fn extract_figures(
                 }
             };
 
-            let page_bytes = match page_image_cache.get(page_idx) {
-                Some(bytes) => bytes.clone(),
-                None => match page_rasterizer::load_page_image_bytes(vfs_db, &page.blob_hash) {
-                    Ok(bytes) => {
-                        page_image_cache.insert(*page_idx, bytes.clone());
-                        bytes
+            // ★ 2026-06-12（代理 3 审阅 F1）：用 entry API 借用缓存中的页面字节，
+            // 旧实现每处理一张配图都 clone 整页 PNG（数 MB），多图页面浪费明显。
+            let page_bytes: &[u8] = match page_image_cache.entry(*page_idx) {
+                std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+                std::collections::hash_map::Entry::Vacant(slot) => {
+                    match page_rasterizer::load_page_image_bytes(vfs_db, &page.blob_hash) {
+                        Ok(bytes) => slot.insert(bytes),
+                        Err(e) => {
+                            warn!(
+                                "[FigureExtractor] 加载页面 {} 图片失败: {}",
+                                page_idx + 1,
+                                e
+                            );
+                            total_skipped += 1;
+                            continue;
+                        }
                     }
-                    Err(e) => {
-                        warn!(
-                            "[FigureExtractor] 加载页面 {} 图片失败: {}",
-                            page_idx + 1,
-                            e
-                        );
-                        total_skipped += 1;
-                        continue;
-                    }
-                },
+                }
             };
 
             let cropped_bytes =
-                match VlmGroundingService::crop_figure_from_page(&page_bytes, &figure.bbox) {
+                match VlmGroundingService::crop_figure_from_page(page_bytes, &figure.bbox) {
                     Ok(b) => b,
                     Err(e) => {
                         debug!(
@@ -90,8 +90,12 @@ pub fn extract_figures(
                     }
                 };
 
-            if let Ok(img) = image::load_from_memory(&cropped_bytes) {
-                let (w, h) = img.dimensions();
+            // ★ F1：仅读图片头获取尺寸（旧实现完整解码一遍裁切结果）
+            let dims = image::io::Reader::new(std::io::Cursor::new(&cropped_bytes))
+                .with_guessed_format()
+                .ok()
+                .and_then(|reader| reader.into_dimensions().ok());
+            if let Some((w, h)) = dims {
                 if w < MIN_FIGURE_SIZE || h < MIN_FIGURE_SIZE {
                     debug!(
                         "[FigureExtractor] 配图太小 ({}x{})，跳过: '{}'",

@@ -5,6 +5,14 @@ import { InputBarUI } from '../InputBarUI';
 import { createDefaultPanelStates } from '../../../core/types/common';
 import type { AttachmentMeta } from '../../../core/types/common';
 
+const { showGlobalNotificationMock } = vi.hoisted(() => ({
+  showGlobalNotificationMock: vi.fn(),
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: showGlobalNotificationMock,
+}));
+
 vi.mock('@/hooks/usePdfProcessingProgress', () => ({
   usePdfProcessingProgress: vi.fn(),
 }));
@@ -60,6 +68,17 @@ function renderInputBar({
 }
 
 describe('InputBarUI attachment preview chips', () => {
+  it('shows a global warning toast when Enter is pressed with no sendable content', () => {
+    renderInputBar({ attachments: [] });
+
+    fireEvent.keyDown(screen.getByTestId('input-bar-v2-textarea'), {
+      key: 'Enter',
+      code: 'Enter',
+    });
+
+    expect(showGlobalNotificationMock).toHaveBeenCalledWith('warning', 'common:messages.error.empty_input');
+  });
+
   it('opens a compact attachment launcher from the plus button', () => {
     renderInputBar({ attachments: [] });
 
@@ -133,10 +152,10 @@ describe('InputBarUI attachment preview chips', () => {
 
     expect(screen.getByTestId('attachment-chip-icon-att_psd')).toHaveClass('h-5', 'w-5');
     expect(screen.getByTitle('1AI_图像 (1).psd')).not.toHaveClass('pr-8');
-    expect(screen.getByTitle('1AI_图像 (1).psd')).toHaveClass('pr-7');
+    expect(screen.getByTitle('1AI_图像 (1).psd')).toHaveClass('pr-3');
     expect(screen.getByRole('button', { name: '移除附件 1AI_图像 (1).psd' })).toHaveClass(
       'absolute',
-      'right-1.5',
+      'inset-0',
       'opacity-0',
       'group-hover/attachment-chip:opacity-100',
       'focus-visible:opacity-100'

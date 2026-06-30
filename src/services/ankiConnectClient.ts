@@ -4,6 +4,15 @@ import type { AnkiCard } from '../types';
 
 export type MediaMode = 'skip' | 'inline_base64' | 'upload_media';
 
+/** add_cards_to_anki_connect 返回的同步明细报告（后端 serde camelCase） */
+export interface AnkiSyncReport {
+  noteIds: Array<number | null>;
+  added: number;
+  duplicates: number;
+  failed: number;
+  createdModels: string[];
+}
+
 export interface AnkiConnectSettings {
   anki_connect_enabled: boolean;
   anki_connect_auto_import_enabled: boolean;
@@ -44,7 +53,7 @@ export const ankiConnectClient = {
   async importPackage(apkgPath: string): Promise<boolean> {
     return await invoke<boolean>('import_anki_package', { path: apkgPath });
   },
-  async addCards(params: { cards: AnkiCard[]; deckName: string; noteType: string }): Promise<(number | null)[]> {
+  async addCards(params: { cards: AnkiCard[]; deckName: string; noteType: string }): Promise<AnkiSyncReport> {
     const { cards, deckName, noteType } = params;
     if (!Array.isArray(cards) || cards.length === 0) {
       throw new Error(i18next.t('anki:connect.no_cards_provided'));
@@ -56,7 +65,7 @@ export const ankiConnectClient = {
       throw new Error(i18next.t('anki:connect.note_type_required'));
     }
     // Tauri v2 默认期望 camelCase JS 参数，自动映射到 snake_case Rust 参数
-    return await invoke<(number | null)[]>('add_cards_to_anki_connect', {
+    return await invoke<AnkiSyncReport>('add_cards_to_anki_connect', {
       selectedCards: cards,
       deckName,
       noteType,

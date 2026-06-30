@@ -122,6 +122,8 @@ fn r01_hlc_same_millis_counter_tie_break_in_apply() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
@@ -155,6 +157,8 @@ fn r02_hlc_local_newer_counter_wins_lww() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
@@ -188,6 +192,8 @@ fn r03_hlc_drift_over_60s_future_rejected() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
@@ -220,6 +226,8 @@ fn r04_hlc_local_vs_iso_cloud_mixed_formats() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     // 不应 panic；应用结果不强求（混合格式时 LWW 行为降级）
@@ -365,7 +373,11 @@ fn r09_reset_baseline_is_idempotent() {
         (3, 3),
         "reset 应把 sync_version 对齐到 local_version，而不是制造新的本地漂移"
     );
-    assert_eq!(first, (1, 1), "首次 reset 应清空旧 change_log 并对齐 1 条业务记录");
+    assert_eq!(
+        first,
+        (1, 1),
+        "首次 reset 应清空旧 change_log 并对齐 1 条业务记录"
+    );
     assert_eq!(second, (0, 0), "再次 reset 不应继续产生任何变化");
     let cnt: i64 = conn
         .query_row("SELECT COUNT(*) FROM __change_log", [], |r| r.get(0))
@@ -624,6 +636,8 @@ fn r18_apply_3000_records_crosses_batch_boundary() {
             })),
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         });
     }
 
@@ -699,30 +713,49 @@ fn r21_mixed_format_cmp_is_deterministic() {
     assert!(result.success);
 }
 
-/// R22：两端 HLC 完全相同 —— 视为 Equal（tie，保留本地）
+/// R22：两端 HLC 完全相同 —— 平局必须由内容 tiebreaker 决定且全设备同判。
+///
+/// 旧实现用 "local-unknown" > "cloud-unknown" 评估方常量，平局时每台设备
+/// 都判"本地"赢，两台设备得出相反结论、永不收敛（P0）。新实现：写入者
+/// 未知时设备分量中性化，平局交给内容比较——内容随数据传播，双方一致。
 #[test]
-fn r22_identical_hlc_treated_as_equal() {
+fn r22_identical_hlc_tie_resolved_by_content_convergently() {
     use deep_student_lib::data_governance::sync::ConflictRecord;
     use deep_student_lib::data_governance::sync::MergeStrategy;
 
     let hlc = Hlc::new(1_700_000_000_000, 42).to_string();
 
-    let conflicts = vec![ConflictRecord {
+    let make_conflict = |local: serde_json::Value, cloud: serde_json::Value| ConflictRecord {
         database_name: "test".to_string(),
         table_name: "items".to_string(),
         record_id: "n1".to_string(),
         local_version: 1,
         cloud_version: 1,
         local_updated_at: hlc.clone(),
-        cloud_updated_at: hlc,
-        local_data: json!({"x": 1}),
-        cloud_data: json!({"x": 2}),
-    }];
+        cloud_updated_at: hlc.clone(),
+        local_data: local,
+        cloud_data: cloud,
+    };
 
-    let result = SyncManager::apply_merge_strategy(MergeStrategy::KeepLatest, &conflicts).unwrap();
-    // 相等时 KeepLatest 的实现选本地（记录当前行为）
-    assert!(result.success);
-    assert_eq!(result.kept_local, 1);
+    // 设备 A 视角：local={"x":1}, cloud={"x":2} → 内容 "2" > "1" → 用云端
+    let result_a = SyncManager::apply_merge_strategy(
+        MergeStrategy::KeepLatest,
+        &[make_conflict(json!({"x": 1}), json!({"x": 2}))],
+    )
+    .unwrap();
+    assert!(result_a.success);
+    assert_eq!(result_a.used_cloud, 1);
+
+    // 设备 B 视角（同一对数据反向）：local={"x":2}, cloud={"x":1} → 保留本地
+    let result_b = SyncManager::apply_merge_strategy(
+        MergeStrategy::KeepLatest,
+        &[make_conflict(json!({"x": 2}), json!({"x": 1}))],
+    )
+    .unwrap();
+    assert!(result_b.success);
+    assert_eq!(result_b.kept_local, 1);
+
+    // 两台设备都收敛到 {"x":2}：A 采纳云端，B 保留本地，结论一致。
 }
 
 /// R23：时钟偏差容差 vs HLC 精确——HLC 格式时 counter 差哪怕 1 也决胜，
@@ -800,6 +833,8 @@ fn r24_conflict_falls_into_table() {
         })),
         database_name: Some("test".to_string()),
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     let (_apply, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
@@ -852,6 +887,8 @@ fn r25_conflict_guard_idempotent_on_replay() {
         })),
         database_name: Some("test".to_string()),
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     // 第一次应用
@@ -934,6 +971,8 @@ fn r25b_resolved_does_not_block_new_identical_conflict() {
         })),
         database_name: Some("test".to_string()),
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     // 第一次：产生冲突
@@ -991,4 +1030,134 @@ fn r25b_resolved_does_not_block_new_identical_conflict() {
         "用户 resolve 之后同内容冲突应能重新记录，当前未解决数 = {}",
         unresolved_after
     );
+}
+
+// ============================================================================
+// R26-R27: 时钟漂移变更必须进隔离区（可见、可重放），不许静默丢弃
+// ============================================================================
+
+/// R26：UPSERT 漂移 >60s → 进 __sync_quarantine；时钟追上后自动重放成功
+#[test]
+fn r26_clock_drift_upsert_quarantined_then_replayable() {
+    let conn = new_db();
+    insert_item(&conn, "n1", "local", "2026-05-01T12:00:00Z");
+    mark_all_synced(&conn);
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let future_iso = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms + 300_000)
+        .unwrap()
+        .to_rfc3339();
+
+    let change = SyncChangeWithData {
+        change_log_id: None,
+        table_name: "items".to_string(),
+        record_id: "n1".to_string(),
+        operation: ChangeOperation::Update,
+        changed_at: future_iso.clone(),
+        data: Some(json!({
+            "id": "n1",
+            "title": "from-future",
+            "counter": 0,
+            "updated_at": future_iso,
+        })),
+        database_name: None,
+        suppress_change_log: None,
+        source_device_id: Some("device-fast-clock".to_string()),
+        source_seq: Some(7),
+    };
+
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+
+    // 1. 不应用（本地保留），但必须如实计为失败而非静默跳过
+    assert_eq!(get_title(&conn, "n1"), Some("local".to_string()));
+    assert_eq!(result.failure_count, 1, "漂移变更必须计入失败");
+
+    // 2. 必须落入隔离区且错误标明时钟漂移
+    let (q_count, q_error): (i64, String) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(MAX(error), '') FROM __sync_quarantine",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(q_count, 1, "漂移变更必须进入隔离区");
+    assert!(
+        q_error.contains("Clock drift"),
+        "隔离原因应标明时钟漂移: {}",
+        q_error
+    );
+
+    // 3. 模拟时钟追上：把隔离 payload 的时间戳改写为过去，自动重放应成功
+    let payload: String = conn
+        .query_row("SELECT payload_json FROM __sync_quarantine", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    let mut change_json: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    let past_iso = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms - 1_000)
+        .unwrap()
+        .to_rfc3339();
+    change_json["changed_at"] = json!(past_iso);
+    change_json["data"]["updated_at"] = json!(past_iso);
+    conn.execute(
+        "UPDATE __sync_quarantine SET payload_json = ?1",
+        params![serde_json::to_string(&change_json).unwrap()],
+    )
+    .unwrap();
+
+    let replayed = SyncManager::replay_quarantined_changes(
+        &conn,
+        None,
+        SyncManager::QUARANTINE_AUTO_REPLAY_MAX_ATTEMPTS,
+    )
+    .unwrap();
+    assert_eq!(replayed, 1, "时钟恢复后隔离项必须可自动重放");
+    assert_eq!(get_title(&conn, "n1"), Some("from-future".to_string()));
+
+    let remaining: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(remaining, 0, "重放成功后隔离项必须清除");
+}
+
+/// R27：DELETE 漂移 >60s → 同样进隔离区，本地记录保留
+#[test]
+fn r27_clock_drift_delete_quarantined() {
+    let conn = new_db();
+    insert_item(&conn, "n1", "keep-me", "2026-05-01T12:00:00Z");
+    mark_all_synced(&conn);
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let future_iso = chrono::DateTime::<chrono::Utc>::from_timestamp_millis(now_ms + 300_000)
+        .unwrap()
+        .to_rfc3339();
+
+    let change = SyncChangeWithData {
+        change_log_id: None,
+        table_name: "items".to_string(),
+        record_id: "n1".to_string(),
+        operation: ChangeOperation::Delete,
+        changed_at: future_iso,
+        data: None,
+        database_name: None,
+        suppress_change_log: None,
+        source_device_id: Some("device-fast-clock".to_string()),
+        source_seq: Some(8),
+    };
+
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(result.failure_count, 1, "漂移 DELETE 必须计入失败");
+
+    // 本地未被删（deleted_at 仍为 NULL）
+    let deleted_at: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert!(deleted_at.is_none(), "漂移 DELETE 不得生效");
+
+    let q_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(q_count, 1, "漂移 DELETE 必须进入隔离区");
 }

@@ -18,11 +18,13 @@ const messageListSource = readFileSync(
 );
 
 describe('MessageItem desktop actions source', () => {
-  it('keeps the latest assistant footer fully visible and reveals historical assistant footers on hover', () => {
+  it('keeps the latest assistant footer fully visible only after streaming completes and reveals historical assistant footers on hover', () => {
     expect(messageListSource).toContain('isLatest={messageIndex === messageOrder.length - 1}');
     expect(messageItemSource).toContain('isLatest?: boolean;');
-    expect(messageItemSource).toContain('const showAssistantFooterAlways = !isUser && isLatest;');
+    expect(messageItemSource).toContain('const shouldHideLatestAssistantFooter');
+    expect(messageItemSource).toContain('const showAssistantFooterAlways = !isUser && isLatest && !shouldHideLatestAssistantFooter;');
     expect(messageItemSource).toContain("const assistantFooterClassName = showAssistantFooterAlways");
+    expect(messageItemSource).toContain('!shouldHideLatestAssistantFooter && (');
     expect(messageActionsSource).toContain('alwaysExpanded?: boolean;');
     expect(messageActionsSource).toContain('const showDesktopSecondaryActions = compactMobile || alwaysExpanded;');
     expect(messageActionsSource).toContain('const hasSecondaryActions = Boolean(');

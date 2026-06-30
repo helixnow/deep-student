@@ -620,7 +620,7 @@ export async function cancelSleep(
 // ============================================================
 // 导出统一 API 对象
 // ============================================================
-// 注意：Skill API 已移除，技能系统由前端 src/chat-v2/skills/ 管理
+// 注意：Skill API 已移除，技能系统由前端 src/features/chat/skills/ 管理
 
 export const workspaceApi = {
   createWorkspace,

@@ -55,10 +55,6 @@
     "batchResolved": "已批量解决 {{count}} 个冲突"
   },
   "resource": {
-    "sync_note_failed": "同步笔记失败: {{error}}",
-    "sync_exam_failed": "同步题目集失败: {{error}}",
-    "sync_textbook_pages_failed": "同步教材页面失败: {{error}}",
-    "check_sync_needed_failed": "检查同步状态失败: {{error}}",
     "create_resource_failed": "创建资源失败: {{error}}"
   },
   "conflict_type": {
@@ -89,5 +85,10 @@
     "data_version": "数据版本:",
     "update_time": "更新时间:",
     "checksum": "Checksum:"
+  },
+  "notifications": {
+    "conflictResolveFailed": "解决冲突失败: {{error}}",
+    "conflictBatchResolvePartial": "部分冲突解决失败：成功 {{resolved}} 个，失败 {{failed}} 个",
+    "conflictBatchResolveFailed": "批量解决冲突失败: {{error}}"
   }
 }

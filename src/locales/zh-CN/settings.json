@@ -7,6 +7,14 @@
   "save_success": "设置保存成功",
   "save_failed": "设置保存失败",
   "auto_saved": "所有更改已自动保存",
+  "notes_editor": {
+    "initial_line_window": {
+      "title": "初始加载行数",
+      "desc": "较大的笔记会先加载较小窗口，并在滚动时继续扩展。",
+      "reset": "重置初始加载行数",
+      "unit": "行"
+    }
+  },
   "groups": {
     "core_models": "基础核心模型",
     "feature_models": "功能增强模型",
@@ -146,6 +154,12 @@
     "modal": {
       "basic_info": "基础信息",
       "advanced_settings": "高级参数",
+      "test_connection": "测试连接",
+      "test_connection_testing": "测试中…",
+      "test_connection_success": "连接成功（{{latency}} ms）",
+      "test_connection_failed": "连接失败，请检查地址、密钥与模型名",
+      "test_connection_failed_short": "失败",
+      "test_connection_unavailable": "当前环境不支持连接测试",
       "tabs": {
         "general": "常规",
         "capabilities": "能力",
@@ -427,6 +441,7 @@
     "name_placeholder": "请输入供应商名称",
     "provider_label": "供应商类型",
     "protocol_label": "API 协议",
+    "protocol_hint": "这里直接二选一：OpenAI Chat 使用 /chat/completions，OpenAI Responses 使用 /responses。",
     "protocols": {
       "openai_chat_completions": "OpenAI Chat Completions",
       "openai_responses": "OpenAI Responses",
@@ -621,6 +636,13 @@
     "switch_language": "切换语言",
     "chinese": "中文",
     "english": "English"
+  },
+  "system_notification": {
+    "title": "系统通知",
+    "desc": "番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。",
+    "background": "仅后台",
+    "always": "总是",
+    "never": "从不"
   },
   "debug": {
     "description": "用于调试全局流式会话与事件"
@@ -1246,12 +1268,13 @@
     "vendor_not_found": "未找到供应商"
   },
   "notifications": {
-    "config_save_success": "配置保存成功！",
-    "config_save_success_browser": "配置保存成功！（浏览器模式）",
+    "config_save_success": "配置保存成功",
+    "config_save_success_browser": "配置保存成功（浏览器模式）",
     "config_save_failed": "配置保存失败: {{error}}",
-    "api_test_success": "{{name}} ({{model}}) API连接测试成功！",
+    "api_test_success": "{{name}} ({{model}}) API连接测试成功",
+    "api_test_latency": "耗时 {{latency}} ms",
     "api_test_failed": "{{name}} ({{model}}) API连接测试失败",
-    "api_test_success_mock": "{{name}} API连接测试成功！（模拟）",
+    "api_test_success_mock": "{{name}} API连接测试成功（模拟）",
     "api_test_error": "{{name}} 连接测试失败: {{error}}",
     "delete_failed": "删除失败: {{error}}",
     "preset_name_required": "请填写预设名称",

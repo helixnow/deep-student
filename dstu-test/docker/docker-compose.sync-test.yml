@@ -1,0 +1,74 @@
+# 本地 WebDAV + S3 (MinIO) + FTP 同步测试环境
+# 启动: docker compose -f dstu-test/docker/docker-compose.sync-test.yml up -d
+# 停止: docker compose -f dstu-test/docker/docker-compose.sync-test.yml down -v
+# 注意: scripts/dev/docker-compose.sync-test.yml 是本文件的副本（src-tauri 契约测试引用），修改时需同步两份
+
+services:
+  # ============== MinIO (S3 兼容) ==============
+  minio:
+    image: minio/minio:latest
+    container_name: ds-minio
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # MinIO Console (Web UI)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 自动创建 bucket
+  minio-init:
+    image: minio/mc:latest
+    container_name: ds-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin123;
+      mc mb local/deep-student --ignore-existing;
+      mc anonymous set none local/deep-student;
+      echo '✅ Bucket deep-student created';
+      "
+
+  # ============== WebDAV ==============
+  webdav:
+    image: bytemark/webdav:latest
+    container_name: ds-webdav
+    ports:
+      - "127.0.0.1:8080:80"
+    environment:
+      AUTH_TYPE: Basic
+      USERNAME: webdav
+      PASSWORD: webdav123
+    volumes:
+      - webdav_data:/var/lib/dav
+
+  # ============== FTP ==============
+  ftp:
+    image: stilliard/pure-ftpd:latest
+    container_name: ds-ftp
+    ports:
+      - "127.0.0.1:2121:21"     # FTP 控制端口
+      - "127.0.0.1:30000-30009:30000-30009"  # 被动模式数据端口
+    environment:
+      FTP_USER_NAME: ftpuser
+      FTP_USER_PASS: ftpuser123
+      FTP_USER_HOME: /home/ftpuser
+      PUBLICHOST: localhost
+      FTP_MAX_CLIENTS: 50
+      FTP_PASSIVE_PORTS: "30000:30009"
+    volumes:
+      - ftp_data:/home/ftpuser/data
+
+volumes:
+  minio_data:
+  webdav_data:
+  ftp_data:

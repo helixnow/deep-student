@@ -69,6 +69,10 @@ function clearSeenSessionIfNeeded(
 }
 
 function getInitialBlockingSessionIds(): string[] {
+  if (typeof sessionManager.getAllSessionIds !== 'function') {
+    return [];
+  }
+
   return sessionManager.getAllSessionIds().filter((sessionId) => {
     const store = sessionManager.get(sessionId);
     return store?.getState().pendingBlockingInteraction != null;

@@ -25,6 +25,7 @@ import type { SessionEventPayload } from '@/features/chat/adapters/types';
 import { skillRegistry } from '@/features/chat/skills/registry';
 import { clearSessionSkills, syncLoadedSkillsFromBackend } from '@/features/chat/skills/progressiveDisclosure';
 import type { SkillDefinition } from '@/features/chat/skills/types';
+import { groupCache } from '@/features/chat/core/store/groupCache';
 
 // ============================================================================
 // Mock Store
@@ -176,6 +177,7 @@ describe('ChatV2TauriAdapter', () => {
     await adapter.cleanup();
     clearSessionSkills('test-session-id');
     clearModelsCache();
+    groupCache.clear();
     delete (window as any).__TAURI_INTERNALS__;
     delete (window as any).__TAURI_IPC__;
   });
@@ -469,6 +471,28 @@ describe('ChatV2TauriAdapter', () => {
       const options = (adapter as any).buildSendOptions();
 
       expect(options.contextLimit).toBe(41_904);
+    });
+
+    it('should include current group scope in send options', async () => {
+      await adapter.setup();
+
+      (mockStore as any).groupId = 'group-math';
+      groupCache.set('group-math', {
+        id: 'group-math',
+        name: 'Math',
+        defaultSkillIds: [],
+        pinnedResourceIds: ['fld_math', 'res_formula_sheet'],
+        sortOrder: 0,
+        persistStatus: 'active',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      });
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options.groupId).toBe('group-math');
+      expect(options.groupName).toBe('Math');
+      expect(options.groupPinnedResourceIds).toEqual(['fld_math', 'res_formula_sheet']);
     });
 
     it('should use the current dialog model override for multimodal context handling', async () => {

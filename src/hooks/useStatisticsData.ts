@@ -38,6 +38,14 @@ export function useStatisticsData<T>(
   const [isRefreshing, setIsRefreshing] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout>();
 
+  // ★ R2: 保持 fetcher/onError 最新引用。具体 hook（如 useEnhancedStatistics）每次渲染传入新的
+  // 箭头函数，若直接进 fetchData 依赖会导致 fetchData 及其 effect 每次渲染重建——自动刷新 interval
+  // 被反复清除重建而永不触发、初始加载 effect 反复调度。用 ref 解耦即可稳定。
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   // 从缓存获取数据
   const getFromCache = useCallback(() => {
     const cached = globalCache.get(cacheKey) as CacheEntry<T> | undefined;
@@ -76,7 +84,7 @@ export function useStatisticsData<T>(
       // 从API获取（同 key 并发去重）
       let request = inflightRequests.get(cacheKey) as Promise<T> | undefined;
       if (!request) {
-        request = fetcher();
+        request = fetcherRef.current();
         inflightRequests.set(cacheKey, request as Promise<unknown>);
       }
       const result = await request;
@@ -86,14 +94,14 @@ export function useStatisticsData<T>(
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error('Unknown error');
       setError(error);
-      onError?.(error);
+      onErrorRef.current?.(error);
       throw error;
     } finally {
       inflightRequests.delete(cacheKey);
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [cacheKey, fetcher, getFromCache, saveToCache, onError]);
+  }, [cacheKey, getFromCache, saveToCache]);
 
   // 手动刷新
   const refresh = useCallback(() => fetchData(true), [fetchData]);

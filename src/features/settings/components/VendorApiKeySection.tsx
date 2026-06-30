@@ -15,6 +15,8 @@ interface VendorApiKeySectionProps {
   onSave: (apiKey: string) => Promise<void> | void;
   onClear: () => Promise<void> | void;
   showMessage?: (type: 'success' | 'error' | 'info', message: string) => void;
+  /** 保存成功后触发（用于自动获取模型 + 自动分配） */
+  onApiKeySaved?: (apiKey: string) => void;
 }
 
 type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -24,6 +26,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   onSave,
   onClear,
   showMessage,
+  onApiKeySaved,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
   const [apiKey, setApiKey] = useState('');
@@ -35,6 +38,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
 
   const lastSavedKeyRef = useRef('');
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastVendorIdRef = useRef(vendor.id);
 
   const clearStatusTimer = () => {
@@ -99,6 +103,9 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   useEffect(() => {
     return () => {
       clearStatusTimer();
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
     };
   }, []);
 
@@ -116,6 +123,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       lastSavedKeyRef.current = trimmed;
       setMaskedConfigured(false);
       scheduleStatusReset('saved');
+      onApiKeySaved?.(trimmed);
       if (showMessage) {
         showMessage('success', t('settings:vendor_panel.api_key_saved'));
       }
@@ -143,7 +151,30 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       setMaskedConfigured(false);
     }
 
-    setSaveStatus(trimmed && trimmed !== lastSavedKeyRef.current ? 'dirty' : 'idle');
+    const isDirty = trimmed && trimmed !== lastSavedKeyRef.current;
+    setSaveStatus(isDirty ? 'dirty' : 'idle');
+
+    // 防抖自动保存：输入停止 800ms 后自动保存
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+    if (isDirty) {
+      autoSaveTimerRef.current = setTimeout(() => {
+        void handleSaveApiKey();
+      }, 800);
+    }
+  };
+
+  const handleApiKeyBlur = () => {
+    // 失焦时取消防抖 timer 并立即保存（如果内容已变更）
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    const trimmed = apiKey.trim();
+    if (trimmed && trimmed !== lastSavedKeyRef.current) {
+      void handleSaveApiKey();
+    }
   };
 
   const handleClearApiKey = async () => {
@@ -204,6 +235,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
+        onBlur={handleApiKeyBlur}
         onKeyDown={e => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
             e.preventDefault();

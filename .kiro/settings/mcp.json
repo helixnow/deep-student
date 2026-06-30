@@ -26,6 +26,22 @@
       "args": ["-y", "@modelcontextprotocol/server-memory"],
       "disabled": false,
       "autoApprove": []
+    },
+    "mcp-feedback-enhanced": {
+      "command": "/Volumes/cipan/deep-student/mcp-feedback-enhanced/.venv/bin/mcp-feedback-enhanced",
+      "args": [],
+      "env": {
+        "MCP_DEBUG": "false",
+        "MCP_WEB_HOST": "127.0.0.1"
+      },
+      "disabled": false,
+      "autoApprove": [
+        "feed-register",
+        "feed-poll",
+        "feed-task-update",
+        "interactive_feedback",
+        "get_system_info"
+      ]
     }
   }
 }

@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -11,6 +10,7 @@ import {
 } from '../progressiveDisclosure';
 import { skillRegistry } from '../registry';
 import { validateSkillMetadata } from '../types';
+import { SPSS_PROJECT_SKILL_FIXTURES } from './spssProjectSkillFixtures';
 
 const PROJECT_ROOT = path.resolve(process.cwd());
 const SESSION_ID = 'session-spss-project-skills';
@@ -106,10 +106,11 @@ const canvasNoteSkill = {
 };
 
 function readProjectSkill(skillId: string): string {
-  return readFileSync(
-    path.join(PROJECT_ROOT, '.skills', skillId, 'SKILL.md'),
-    'utf8'
-  );
+  const content = SPSS_PROJECT_SKILL_FIXTURES[skillId];
+  if (!content) {
+    throw new Error(`Missing SPSS project skill fixture: ${skillId}`);
+  }
+  return content;
 }
 
 function parseProjectSkill(skillId: string) {

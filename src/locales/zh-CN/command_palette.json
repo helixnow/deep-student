@@ -48,6 +48,8 @@
   "import_failed": "导入失败",
   "total_commands": "共 {{count}} 个命令",
   "search_tip": "输入 > 可按分类筛选",
+  "resource_files": "文件",
+  "resource_sessions": "会话",
 
   "categories": {
     "navigation": "导航",

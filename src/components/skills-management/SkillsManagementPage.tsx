@@ -662,16 +662,17 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   useMobileHeader('skills-management', {
     title: headerTitle,
     subtitle: headerSubtitle,
-    showMenu: !isEditorView,
-    showBackArrow: isEditorView,
-    suppressGlobalBackButton: !isEditorView,
+    showBackArrow: true,
+    suppressGlobalBackButton: true,
     onMenuClick: isEditorView
       ? () => {
           setEditorOpen(false);
           setRightPanelOpen(false);
           setScreenPosition('center');
         }
-      : undefined,
+      : () => {
+          window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'chat-v2' } }));
+        },
     rightActions: !isEditorView ? (
       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
         <Plus size={20} />

@@ -1288,7 +1288,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
    响应式设计 - Responsive Design
    ============================================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .chat-v2 .chat-container {
     border-radius: 0;
     /* 移动端：由父容器（absolute inset-0）控制尺寸，此处 100% 填满 */
@@ -1327,9 +1327,17 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   .chat-v2 .chat-input input[type="text"] {
     font-size: 16px; /* 防止iOS缩放 */
   }
+
+  /* F1: 窄屏下长块级公式可横向滚动，避免溢出视口或被裁剪
+     （桌面端保持 overflow visible 的既有行为，防止上下标被裁） */
+  .chat-v2 .chat-container .message-content .katex-display {
+    overflow: auto hidden;
+    max-width: 100%;
+    padding-bottom: 2px;
+  }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 479.98px) {
   .chat-v2 .message-content {
     max-width: 95%;
     padding: 0;

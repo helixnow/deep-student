@@ -64,6 +64,7 @@ pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
 pub mod sleep_executor;
 pub mod subagent_executor;
 pub mod template_executor; // 🆕 模板设计师工具执行器
+pub mod tool_pack_executor; // ToolPack parallel executor
 pub mod todo_executor;
 pub mod types;
 pub mod user_todo_executor;
@@ -112,6 +113,7 @@ pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExecutor};
 pub use subagent_executor::{get_subagent_tool_schema, SubagentExecutor, SUBAGENT_TOOL_NAME};
 pub use template_executor::TemplateDesignerExecutor; // 🆕 模板设计师工具执行器
+pub use tool_pack_executor::ToolPackExecutor; // ToolPack parallel executor
 pub use todo_executor::TodoListExecutor;
 pub use user_todo_executor::UserTodoExecutor;
 pub use workspace_executor::{get_workspace_tool_schemas, WorkspaceToolExecutor};

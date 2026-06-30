@@ -17,7 +17,7 @@ use crate::backup_job_manager::{
 use super::commands::try_save_audit_log;
 use super::commands_backup::{
     acquire_backup_global_permit, ensure_existing_path_within_backup_dir, get_app_data_dir,
-    get_backup_dir, validate_backup_id, BackupJobStartResponse,
+    get_backup_dir, open_sync_connection, validate_backup_id, BackupJobStartResponse,
 };
 
 /// 异步后台恢复（带进度事件）
@@ -281,7 +281,7 @@ async fn execute_restore_with_progress(
 
         // 对 .db 文件执行 PRAGMA integrity_check（与原 verify_internal 一致）
         if backup_file.path.ends_with(".db") {
-            match rusqlite::Connection::open(&file_path) {
+            match open_sync_connection(&file_path) {
                 Ok(conn) => {
                     match conn
                         .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
@@ -666,7 +666,7 @@ async fn execute_restore_with_progress(
         if !db_path.exists() {
             continue;
         }
-        match rusqlite::Connection::open(&db_path) {
+        match open_sync_connection(&db_path) {
             Ok(conn) => {
                 let tx_res = (|| -> Result<(usize, usize), String> {
                     conn.execute("BEGIN IMMEDIATE", [])
@@ -710,6 +710,30 @@ async fn execute_restore_with_progress(
                     e
                 );
             }
+        }
+    }
+
+    match crate::cloud_storage::rotate_device_id_after_restore() {
+        Ok((old_device_id, new_device_id)) => {
+            if let Err(e) = super::sync::state::SyncStateStore::open_default().and_then(|store| {
+                store.record_device_rotation(&old_device_id, &new_device_id, "backup_restore")
+            }) {
+                warn!(
+                    "[data_governance] 设备轮换历史记录失败（非致命）: old={}, new={}, err={}",
+                    old_device_id, new_device_id, e
+                );
+            } else {
+                info!(
+                    "[data_governance] 恢复后已轮换同步设备 ID: old={}, new={}",
+                    old_device_id, new_device_id
+                );
+            }
+        }
+        Err(e) => {
+            warn!(
+                "[data_governance] 恢复后轮换设备 ID 失败（下次同步可能无法找回旧身份变更）: {}",
+                e
+            );
         }
     }
 

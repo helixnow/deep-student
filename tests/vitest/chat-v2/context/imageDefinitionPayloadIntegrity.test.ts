@@ -61,6 +61,6 @@ describe('imageDefinition payload integrity', () => {
 
     expect(blocks).toHaveLength(1);
     expect(isTextContentBlock(blocks[0])).toBe(true);
-    expect((blocks[0] as any).text).toContain('[图片内容无效]');
+    expect((blocks[0] as any).text).toContain('[Invalid image content]');
   });
 });

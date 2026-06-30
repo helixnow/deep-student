@@ -706,14 +706,6 @@ impl SlotIntegrityReport {
     }
 }
 
-/// 空间大小信息
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SlotSizeInfo {
-    pub slot: String,
-    pub size_bytes: u64,
-    pub size_mb: f64,
-}
-
 #[tauri::command]
 pub fn get_data_space_info() -> Result<DataSpaceInfo, AppError> {
     let mgr = get_data_space_manager()
@@ -752,6 +744,30 @@ pub fn mark_data_space_pending_switch_to_inactive() -> Result<String, AppError> 
     mgr.mark_pending_switch(target)
         .map_err(|e| AppError::file_system(format!("标记切换失败: {}", e)))?;
     Ok(format!("已标记下次重启切换到 {}", target.name()))
+}
+
+/// ★ F13：清空全部数据（桌面）。
+///
+/// 不在进程内删库——Windows 下活动数据库文件被占用，无法可靠删除；改为写入“下次启动
+/// 清理”标记，前端随后触发 `restart_app`。重启后 `lib.rs` setup 在**打开任何数据库之前**
+/// 调用 `purge_active_data_dir` 完成物理删除并清除标记（删除失败会保留标记下次重试）。
+/// 保留 `backups`/`temp_restore`/`migration_core_backups`，备份是数据恢复路径。
+#[tauri::command]
+pub fn purge_all_database_files() -> Result<String, AppError> {
+    let mgr = get_data_space_manager()
+        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
+    crate::startup_cleanup::write_purge_marker(mgr.base_dir())?;
+    Ok("已标记：下次启动将清空所有数据（备份保留），即将重启应用以完成清空。".to_string())
+}
+
+/// ★ F13：立即清空活动数据目录（移动端用——移动端经 WebView reload 生效，无独立进程重启）。
+/// 返回删除报告。保留 `backups`/`temp_restore`/`migration_core_backups`。
+#[tauri::command]
+pub fn purge_active_data_dir_now() -> Result<String, AppError> {
+    let mgr = get_data_space_manager()
+        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
+    let report = crate::startup_cleanup::purge_active_data_dir(&mgr.active_dir())?;
+    Ok(report.details)
 }
 
 // ============================================================================
@@ -822,84 +838,11 @@ pub fn get_slot_directory(slot_name: String) -> Result<String, AppError> {
 }
 
 // ============================================================================
-// 空间大小与完整性检查命令
+// 完整性检查（SlotManager 方法保留，供测试与潜在内部调用；
+// get_slot_size / verify_slot_integrity / verify_all_slots_integrity /
+// check_switch_disk_space 四个 #[tauri::command] 已于 2026-06-13 删除——
+// 它们未在 generate_handler! 注册且前端零调用，属僵尸命令）
 // ============================================================================
-
-/// 获取指定插槽的占用空间大小
-#[tauri::command]
-pub fn get_slot_size(slot_name: String) -> Result<SlotSizeInfo, AppError> {
-    let mgr = get_data_space_manager()
-        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
-
-    let slot = Slot::from_name(&slot_name)
-        .ok_or_else(|| AppError::validation(format!("无效的插槽名称: {}", slot_name)))?;
-
-    let size_bytes = mgr
-        .slot_size(slot)
-        .map_err(|e| AppError::file_system(format!("计算插槽大小失败: {}", e)))?;
-
-    Ok(SlotSizeInfo {
-        slot: slot.name().to_string(),
-        size_bytes,
-        size_mb: size_bytes as f64 / 1024.0 / 1024.0,
-    })
-}
-
-/// 验证指定插槽的完整性
-#[tauri::command]
-pub fn verify_slot_integrity(slot_name: String) -> Result<SlotIntegrityReport, AppError> {
-    let mgr = get_data_space_manager()
-        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
-
-    let slot = Slot::from_name(&slot_name)
-        .ok_or_else(|| AppError::validation(format!("无效的插槽名称: {}", slot_name)))?;
-
-    let report = mgr.verify_slot_integrity(slot);
-    info!("[DataSpace] 完整性检查: {}", report.summary());
-    Ok(report)
-}
-
-/// 验证所有生产插槽的完整性
-#[tauri::command]
-pub fn verify_all_slots_integrity() -> Result<Vec<SlotIntegrityReport>, AppError> {
-    let mgr = get_data_space_manager()
-        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
-
-    let reports = vec![
-        mgr.verify_slot_integrity(Slot::A),
-        mgr.verify_slot_integrity(Slot::B),
-    ];
-
-    for report in &reports {
-        info!("[DataSpace] 完整性检查: {}", report.summary());
-    }
-
-    Ok(reports)
-}
-
-/// 检查是否有足够磁盘空间进行插槽切换
-#[tauri::command]
-pub fn check_switch_disk_space() -> Result<String, AppError> {
-    let mgr = get_data_space_manager()
-        .ok_or_else(|| AppError::internal("数据空间管理器未初始化".to_string()))?;
-
-    let active = mgr.active_slot();
-    let inactive = mgr.inactive_slot();
-    let inactive_dir = mgr.slot_dir(inactive);
-
-    mgr.check_space_for_switch(active, &inactive_dir)
-        .map_err(|e| AppError::file_system(format!("磁盘空间检查失败: {}", e)))?;
-
-    let active_size = mgr
-        .slot_size(active)
-        .map_err(|e| AppError::file_system(format!("计算活跃插槽大小失败: {}", e)))?;
-
-    Ok(format!(
-        "磁盘空间充足，活跃插槽 {} 大小为 {:.2} MB",
-        active.name(),
-        active_size as f64 / 1024.0 / 1024.0
-    ))
-}
 
 // ============================================================================
 // 单元 / 集成测试

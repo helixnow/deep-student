@@ -108,6 +108,5 @@ cargo xtask verify-schema
 
 ## 参考文档
 
-- [数据治理系统重构方案](../../docs/数据治理系统重构方案.md)
 - [Refinery 文档](https://docs.rs/refinery/)
 - [SQLite Backup API](https://www.sqlite.org/backup.html)

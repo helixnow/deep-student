@@ -80,29 +80,6 @@ pub struct NoteItem {
     pub is_favorite: bool,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct NoteOutgoingLink {
-    pub target: String,
-    pub target_note_id: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct NoteBacklinkHit {
-    pub id: String,
-    pub title: String,
-    pub snippet: Option<String>,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct NoteLinksResult {
-    pub outgoing: Vec<NoteOutgoingLink>,
-    pub external: Vec<String>,
-    pub backlinks: Vec<NoteBacklinkHit>,
-    pub outgoing_truncated: bool,
-    pub external_truncated: bool,
-    pub backlinks_truncated: bool,
-}
-
 // 新增：将 ListOptions 移到模块级并公开
 #[derive(Debug, Clone)]
 pub struct ListOptions {
@@ -369,10 +346,6 @@ impl NotesManager {
         })
     }
 
-    fn normalize_link_target(input: &str) -> String {
-        input.trim().to_lowercase()
-    }
-
     fn extract_note_links(content: &str) -> (Vec<String>, Vec<String>) {
         let mut internal: HashSet<String> = HashSet::new();
         let mut external: HashSet<String> = HashSet::new();
@@ -528,149 +501,6 @@ impl NotesManager {
         Ok(())
     }
 
-    fn build_simple_snippet(content: &str, needle: &str) -> Option<String> {
-        let trimmed = content.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        let lower = trimmed.to_lowercase();
-        let target = needle.trim().to_lowercase();
-        if target.is_empty() {
-            return None;
-        }
-        if let Some(idx) = lower.find(&target) {
-            let chars: Vec<char> = trimmed.chars().collect();
-            let start = idx.saturating_sub(60);
-            let end = ((idx + target.len() + 60).min(chars.len())).max(start);
-            let mut snippet: String = chars[start..end].iter().collect();
-            if start > 0 {
-                snippet.insert(0, '…');
-            }
-            if end < chars.len() {
-                snippet.push('…');
-            }
-            return Some(snippet);
-        }
-        None
-    }
-
-    pub fn get_note_links(&self, note_id: &str) -> Result<NoteLinksResult> {
-        let conn = self
-            .db
-            .get_conn_safe()
-            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
-        const LIMIT: i64 = 200;
-
-        let title: Option<String> = conn
-            .query_row(
-                "SELECT title FROM notes WHERE id=?1 AND deleted_at IS NULL",
-                params![note_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| AppError::database(format!("读取笔记标题失败: {}", e)))?;
-        let note_title = title.ok_or_else(|| AppError::not_found("Note not found"))?;
-        let normalized = Self::normalize_link_target(&note_title);
-
-        let mut outgoing: Vec<NoteOutgoingLink> = Vec::new();
-        let mut outgoing_truncated = false;
-        {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT target, target_note_id FROM note_links
-                     WHERE from_id = ?1 AND kind = 'internal'
-                     ORDER BY target ASC
-                     LIMIT ?2",
-                )
-                .map_err(|e| AppError::database(format!("查询出链失败: {}", e)))?;
-            let rows = stmt
-                .query_map(params![note_id, LIMIT + 1], |row| {
-                    let target: String = row.get(0)?;
-                    let target_note_id: Option<String> = row.get(1)?;
-                    Ok(NoteOutgoingLink {
-                        target,
-                        target_note_id,
-                    })
-                })
-                .map_err(|e| AppError::database(format!("读取出链失败: {}", e)))?;
-            for (idx, r) in rows.enumerate() {
-                if (idx as i64) >= LIMIT {
-                    outgoing_truncated = true;
-                    break;
-                }
-                outgoing.push(r.map_err(|e| AppError::database(e.to_string()))?);
-            }
-        }
-
-        let mut external: Vec<String> = Vec::new();
-        let mut external_truncated = false;
-        {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT target FROM note_links
-                     WHERE from_id = ?1 AND kind = 'external'
-                     ORDER BY target ASC
-                     LIMIT ?2",
-                )
-                .map_err(|e| AppError::database(format!("查询外链失败: {}", e)))?;
-            let rows = stmt
-                .query_map(params![note_id, LIMIT + 1], |row| row.get::<_, String>(0))
-                .map_err(|e| AppError::database(format!("读取外链失败: {}", e)))?;
-            for (idx, r) in rows.enumerate() {
-                if (idx as i64) >= LIMIT {
-                    external_truncated = true;
-                    break;
-                }
-                external.push(r.map_err(|e| AppError::database(e.to_string()))?);
-            }
-        }
-
-        let mut backlinks: Vec<NoteBacklinkHit> = Vec::new();
-        let mut backlinks_truncated = false;
-        {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT nl.from_id, n.title, n.content_md
-                     FROM note_links nl
-                     JOIN notes n ON nl.from_id = n.id
-                     WHERE nl.kind = 'internal'
-                       AND n.deleted_at IS NULL
-                       AND (nl.target_note_id = ?1 OR (nl.target_note_id IS NULL AND lower(trim(nl.target)) = ?2))
-                     ORDER BY datetime(n.updated_at) DESC
-                     LIMIT ?3",
-                )
-                .map_err(|e| AppError::database(format!("查询反向链接失败: {}", e)))?;
-            let rows = stmt
-                .query_map(params![note_id, normalized.clone(), LIMIT + 1], |row| {
-                    let id: String = row.get(0)?;
-                    let title: String = row.get(1)?;
-                    let content_md: String = row.get(2)?;
-                    Ok((id, title, content_md))
-                })
-                .map_err(|e| AppError::database(format!("读取反向链接失败: {}", e)))?;
-            for (idx, r) in rows.enumerate() {
-                if (idx as i64) >= LIMIT {
-                    backlinks_truncated = true;
-                    break;
-                }
-                let (id, title, content_md) =
-                    r.map_err(|e| AppError::database(format!("解析反向链接失败: {}", e)))?;
-                let snippet = Self::build_simple_snippet(&content_md, &note_title)
-                    .or_else(|| Self::build_simple_snippet(&content_md, &normalized));
-                backlinks.push(NoteBacklinkHit { id, title, snippet });
-            }
-        }
-
-        Ok(NoteLinksResult {
-            outgoing,
-            external,
-            backlinks,
-            outgoing_truncated,
-            external_truncated,
-            backlinks_truncated,
-        })
-    }
-
     #[cfg(feature = "lance")]
     fn tokenize_keyword(input: &str) -> Vec<String> {
         let mut tokens: Vec<String> = Vec::new();
@@ -759,6 +589,12 @@ impl NotesManager {
         if trimmed.is_empty() {
             return Ok(vec![]);
         }
+        // ★ A6-22：VFS 模式下 lance notes_search 表与旧 notes 表都不再被写入
+        // （sync_note_to_lance 仅旧 SQLite 路径调用），继续查询只会拿到陈旧/空结果。
+        // 直接走 VFS 检索（标题+正文 LIKE），保证 canvas AI 笔记搜索工具拿到新鲜数据。
+        if self.vfs_db.is_some() {
+            return self.search_notes_vfs(trimmed, limit);
+        }
         let table = self.lance_notes_table()?;
         let limit = limit.max(1);
         let tokens = Self::tokenize_keyword(trimmed);
@@ -839,6 +675,32 @@ impl NotesManager {
         }
         if out.is_empty() {
             return self.search_notes_sqlite(trimmed, limit, &tokens_lower);
+        }
+        Ok(out)
+    }
+
+    /// ★ A6-22：VFS 模式下的笔记搜索（供 canvas AI 工具使用）
+    #[cfg(feature = "lance")]
+    fn search_notes_vfs(
+        &self,
+        keyword: &str,
+        limit: usize,
+    ) -> Result<Vec<(String, String, Option<String>)>> {
+        let vfs_db = self
+            .vfs_db
+            .as_ref()
+            .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
+        let tokens = Self::tokenize_keyword(keyword);
+        let tokens_lower: Vec<String> = tokens.iter().map(|t| t.to_lowercase()).collect();
+        let notes = VfsNoteRepo::list_notes(vfs_db, Some(keyword), limit.max(1) as u32, 0)
+            .map_err(|e| AppError::database(format!("VFS 搜索笔记失败: {}", e)))?;
+        let mut out = Vec::with_capacity(notes.len());
+        for note in notes {
+            let snippet = VfsNoteRepo::get_note_content(vfs_db, &note.id)
+                .ok()
+                .flatten()
+                .and_then(|content| self.build_note_snippet(&content, &tokens_lower));
+            out.push((note.id, note.title, snippet));
         }
         Ok(out)
     }
@@ -1942,8 +1804,12 @@ impl NotesManager {
             expected_updated_at: expected_updated_at.map(|s| s.to_string()),
         };
 
-        let vfs_note = VfsNoteRepo::update_note(vfs_db, note_id, params)
-            .map_err(|e| AppError::database(format!("VFS update_note failed: {}", e)))?;
+        // ★ A6-20：乐观锁冲突必须保留 conflict 错误码（含 "notes.conflict" 标识），
+        // 与旧 SQLite 路径(update_note)一致；一律包装成 database 会让前端无法识别冲突
+        let vfs_note = VfsNoteRepo::update_note(vfs_db, note_id, params).map_err(|e| match &e {
+            crate::vfs::error::VfsError::Conflict { .. } => AppError::conflict(e.to_string()),
+            _ => AppError::database(format!("VFS update_note failed: {}", e)),
+        })?;
 
         // 获取更新后的内容
         let content = VfsNoteRepo::get_note_content(vfs_db, note_id)

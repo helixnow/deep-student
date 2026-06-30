@@ -90,6 +90,121 @@ function createMockStore(): ChatStore {
   } as unknown as ChatStore;
 }
 
+function createStatefulToolCallStore(): ChatStore {
+  const store = createMockStore();
+
+  store.messageMap.set('msg-1', {
+    id: 'msg-1',
+    role: 'assistant',
+    blockIds: [],
+  } as any);
+
+  let nextBlock = 0;
+
+  const createBlockWithId = (messageId: string, type: string, blockId: string) => {
+    store.blocks.set(blockId, {
+      id: blockId,
+      messageId,
+      type,
+      content: '',
+      status: 'pending',
+    } as any);
+
+    const message = store.messageMap.get(messageId) as { blockIds?: string[] } | undefined;
+    if (message && !message.blockIds?.includes(blockId)) {
+      message.blockIds = [...(message.blockIds ?? []), blockId];
+    }
+
+    store.activeBlockIds.add(blockId);
+    return blockId;
+  };
+
+  store.createBlockWithId = vi.fn(createBlockWithId) as any;
+  store.createBlock = vi.fn((messageId: string, type: string) => {
+    return createBlockWithId(messageId, type, `stateful-block-${++nextBlock}`);
+  }) as any;
+  store.updateBlock = vi.fn((blockId: string, patch: Record<string, unknown>) => {
+    const block = store.blocks.get(blockId);
+    if (block) {
+      store.blocks.set(blockId, { ...block, ...patch } as any);
+    }
+  }) as any;
+  store.updateBlockStatus = vi.fn((blockId: string, status: string) => {
+    const block = store.blocks.get(blockId);
+    if (block) {
+      store.blocks.set(blockId, { ...block, status } as any);
+    }
+  }) as any;
+  store.setBlockResult = vi.fn((blockId: string, result: unknown) => {
+    const block = store.blocks.get(blockId);
+    if (!block) return;
+
+    const toolOutput = result && typeof result === 'object' && 'result' in result
+      ? (result as { result: unknown }).result
+      : result;
+
+    store.blocks.set(blockId, {
+      ...block,
+      toolOutput,
+      status: 'success',
+    } as any);
+    store.activeBlockIds.delete(blockId);
+  }) as any;
+  store.setBlockError = vi.fn((blockId: string, error: string) => {
+    const block = store.blocks.get(blockId);
+    if (!block) return;
+
+    store.blocks.set(blockId, {
+      ...block,
+      error,
+      status: 'error',
+    } as any);
+    store.activeBlockIds.delete(blockId);
+  }) as any;
+  store.replaceBlockId = vi.fn((oldBlockId: string, newBlockId: string) => {
+    const block = store.blocks.get(oldBlockId);
+    if (!block) return;
+
+    store.blocks.delete(oldBlockId);
+    store.blocks.set(newBlockId, { ...block, id: newBlockId } as any);
+
+    const message = store.messageMap.get((block as any).messageId) as
+      | { blockIds?: string[] }
+      | undefined;
+    if (message) {
+      message.blockIds = (message.blockIds ?? []).map((id) =>
+        id === oldBlockId ? newBlockId : id
+      );
+    }
+
+    if (store.activeBlockIds.has(oldBlockId)) {
+      store.activeBlockIds.delete(oldBlockId);
+      store.activeBlockIds.add(newBlockId);
+    }
+  }) as any;
+  store.deleteBlock = vi.fn((blockId: string) => {
+    const block = store.blocks.get(blockId);
+    if (!block) return;
+
+    store.blocks.delete(blockId);
+    const message = store.messageMap.get((block as any).messageId) as
+      | { blockIds?: string[] }
+      | undefined;
+    if (message) {
+      message.blockIds = (message.blockIds ?? []).filter((id) => id !== blockId);
+    }
+    store.activeBlockIds.delete(blockId);
+  }) as any;
+  store.clearPreparingToolCall = vi.fn((messageId: string) => {
+    const message = store.messageMap.get(messageId) as { _meta?: Record<string, unknown> } | undefined;
+    if (message?._meta) {
+      delete message._meta.preparingToolCall;
+    }
+  }) as any;
+
+  return store;
+}
+
 // ============================================================================
 // tool_call 事件处理器测试
 // ============================================================================
@@ -207,6 +322,154 @@ describe('ToolCallEventHandler', () => {
 // ============================================================================
 // image_gen 事件处理器测试
 // ============================================================================
+
+describe('tool_pack interleaving', () => {
+  let mockStore: ChatStore;
+
+  const resultA = { result: { valid: true, source: 'a' }, durationMs: 11 };
+  const resultB = { result: { success: true, source: 'b' }, durationMs: 7 };
+
+  beforeEach(() => {
+    mockStore = createStatefulToolCallStore();
+    vi.clearAllMocks();
+  });
+
+  it('tool_pack interleaving keeps out-of-order results on their backend block ids', () => {
+    const handler = eventRegistry.get('tool_call');
+    expect(handler).toBeDefined();
+
+    handler!.onStart!(
+      mockStore,
+      'msg-1',
+      {
+        toolName: 'builtin-template_validate',
+        toolInput: { template: { name: 'A' } },
+        toolCallId: 'parent-tp-0',
+      },
+      'parent-tool_pack-0'
+    );
+    handler!.onStart!(
+      mockStore,
+      'msg-1',
+      {
+        toolName: 'builtin-user_todo_create_item',
+        toolInput: { title: 'B' },
+        toolCallId: 'parent-tp-1',
+      },
+      'parent-tool_pack-1'
+    );
+
+    handler!.onEnd!(mockStore, 'parent-tool_pack-1', resultB);
+    handler!.onEnd!(mockStore, 'parent-tool_pack-0', resultA);
+
+    expect(mockStore.setBlockResult).toHaveBeenNthCalledWith(1, 'parent-tool_pack-1', resultB);
+    expect(mockStore.setBlockResult).toHaveBeenNthCalledWith(2, 'parent-tool_pack-0', resultA);
+    expect(mockStore.blocks.get('parent-tool_pack-1')).toMatchObject({
+      toolOutput: { success: true, source: 'b' },
+      status: 'success',
+    });
+    expect(mockStore.blocks.get('parent-tool_pack-0')).toMatchObject({
+      toolOutput: { valid: true, source: 'a' },
+      status: 'success',
+    });
+  });
+
+  it('tool_pack preparing replacement preserves message block order', () => {
+    mockStore.createBlockWithId('msg-1', 'mcp_tool', 'prep-a');
+    mockStore.createBlockWithId('msg-1', 'mcp_tool', 'prep-b');
+    mockStore.updateBlock('prep-a', {
+      toolName: 'builtin-template_validate',
+      toolCallId: 'parent-tp-0',
+      isPreparing: true,
+    } as any);
+    mockStore.updateBlock('prep-b', {
+      toolName: 'builtin-user_todo_create_item',
+      toolCallId: 'parent-tp-1',
+      isPreparing: true,
+    } as any);
+
+    const handler = eventRegistry.get('tool_call');
+
+    handler!.onStart!(
+      mockStore,
+      'msg-1',
+      {
+        toolName: 'builtin-template_validate',
+        toolInput: { template: { name: 'A' } },
+        toolCallId: 'parent-tp-0',
+      },
+      'parent-tool_pack-0'
+    );
+    handler!.onStart!(
+      mockStore,
+      'msg-1',
+      {
+        toolName: 'builtin-user_todo_create_item',
+        toolInput: { title: 'B' },
+        toolCallId: 'parent-tp-1',
+      },
+      'parent-tool_pack-1'
+    );
+
+    expect(mockStore.replaceBlockId).toHaveBeenNthCalledWith(
+      1,
+      'prep-a',
+      'parent-tool_pack-0'
+    );
+    expect(mockStore.replaceBlockId).toHaveBeenNthCalledWith(
+      2,
+      'prep-b',
+      'parent-tool_pack-1'
+    );
+    expect(mockStore.messageMap.get('msg-1')?.blockIds).toEqual([
+      'parent-tool_pack-0',
+      'parent-tool_pack-1',
+    ]);
+  });
+
+  it('tool_pack interleaving keeps error on the explicit failed block id', () => {
+    const handler = eventRegistry.get('tool_call');
+
+    handler!.onStart!(
+      mockStore,
+      'msg-1',
+      {
+        toolName: 'builtin-template_validate',
+        toolInput: { template: { name: 'A' } },
+        toolCallId: 'parent-tp-0',
+      },
+      'parent-tool_pack-0'
+    );
+    handler!.onStart!(
+      mockStore,
+      'msg-1',
+      {
+        toolName: 'builtin-user_todo_create_item',
+        toolInput: { title: 'B' },
+        toolCallId: 'parent-tp-1',
+      },
+      'parent-tool_pack-1'
+    );
+
+    handler!.onEnd!(mockStore, 'parent-tool_pack-0', resultA);
+    handler!.onError!(mockStore, 'parent-tool_pack-1', 'phase 3 failure');
+
+    expect(mockStore.setBlockResult).toHaveBeenCalledWith('parent-tool_pack-0', resultA);
+    expect(mockStore.setBlockError).toHaveBeenCalledWith(
+      'parent-tool_pack-1',
+      'phase 3 failure'
+    );
+    expect(mockStore.blocks.get('parent-tool_pack-0')).toMatchObject({
+      toolOutput: { valid: true, source: 'a' },
+      status: 'success',
+    });
+    expect(mockStore.blocks.get('parent-tool_pack-1')).toMatchObject({
+      error: 'phase 3 failure',
+      status: 'error',
+    });
+    expect(mockStore.blocks.get('parent-tool_pack-0')).not.toHaveProperty('error');
+  });
+});
 
 describe('ImageGenEventHandler', () => {
   let mockStore: ChatStore;

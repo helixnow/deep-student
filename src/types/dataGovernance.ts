@@ -678,38 +678,18 @@ export function formatDuration(ms: number): string {
 
 // ==================== 云存储同步类型 ====================
 
-/** 云存储提供商类型（与后端 `StorageProvider` 对齐） */
-export type CloudStorageProvider = 'webdav' | 's3';
+// 云存储类型统一从 cloudStorageApi 导入，避免重复定义导致类型不一致
+// 新增 provider（如 ftp）时只需修改 cloudStorageApi.ts 一处即可
+import type {
+  StorageProvider,
+  WebDavConfig,
+  S3Config,
+  FtpConfig,
+  CloudStorageConfig,
+} from '@/utils/cloudStorageApi';
 
-/** WebDAV 配置（与后端 `WebDavConfig` 对齐，camelCase） */
-export interface WebDavConfig {
-  endpoint: string;
-  username: string;
-  /** 密码或应用专用密码（可为空：某些 WebDAV 支持匿名） */
-  password: string;
-}
-
-/** S3 兼容存储配置（与后端 `S3Config` 对齐，camelCase） */
-export interface S3Config {
-  endpoint: string;
-  bucket: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  region?: string;
-  /** 是否使用 path-style 地址（MinIO 等需要） */
-  pathStyle?: boolean;
-}
-
-/** 云存储配置（与后端 `CloudStorageConfig` 对齐，camelCase） */
-export interface CloudStorageConfig {
-  provider: CloudStorageProvider;
-  webdav?: WebDavConfig;
-  s3?: S3Config;
-  /** 根目录路径（所有操作都在此目录下） */
-  root?: string;
-  /** 端到端加密密码（可选）。非空时备份上传前会用 AES-256-GCM + Argon2id 加密。 */
-  encryptionPassword?: string;
-}
+export type CloudStorageProvider = StorageProvider;
+export type { WebDavConfig, S3Config, FtpConfig, CloudStorageConfig };
 
 /** 同步执行响应 */
 export interface SyncExecutionResponse {

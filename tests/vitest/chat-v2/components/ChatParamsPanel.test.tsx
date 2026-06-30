@@ -38,6 +38,27 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('@/components/shared/UnifiedModelSelector', () => ({
+  UnifiedModelSelector: ({ models, value, onChange }: any) => {
+    if (!models?.length) {
+      return <div>No models available</div>;
+    }
+    return (
+      <select
+        aria-label="Model"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {models.map((model: any) => (
+          <option key={model.id} value={model.id}>
+            {model.provider ? `${model.name} ${model.provider}` : model.name}
+          </option>
+        ))}
+      </select>
+    );
+  },
+}));
+
 // 导入组件
 import { ChatParamsPanel, type ModelConfig } from '@/features/chat/components/ChatParamsPanel';
 

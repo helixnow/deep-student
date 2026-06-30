@@ -5,17 +5,21 @@
 // 声明所有子模块，以便在 crate 内可见
 pub mod adapters;
 pub mod anki_connect_service;
+#[allow(dead_code)]
 pub mod apkg_exporter_service;
+#[allow(dead_code)]
 pub mod backup_job_manager;
 pub mod batch_operations;
 pub mod canonical_tools;
 pub mod cmd;
+#[allow(dead_code)]
 pub mod commands;
 pub mod config_recovery;
 pub mod crash_logger;
+#[allow(dead_code)]
 pub mod crypto;
+#[allow(dead_code)]
 pub mod database;
-pub mod database_optimizations;
 pub mod debug_commands;
 pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
 pub mod debug_logger;
@@ -24,11 +28,14 @@ pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
 pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
+#[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
+#[allow(dead_code)]
 pub mod cloud_storage;
 pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
+#[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
 pub mod dstu;
@@ -36,22 +43,28 @@ pub mod enhanced_anki_service;
 pub mod error_details;
 pub mod error_recovery;
 pub mod essay_grading;
+#[allow(dead_code)]
 pub mod exam_sheet_service;
 pub mod feature_flags;
 pub mod figure_extractor;
 pub mod file_manager;
 pub mod injection_budget;
 pub mod json_validator;
+#[allow(dead_code)]
 pub mod lance_vector_store;
+#[allow(dead_code)]
 pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 #[cfg(feature = "mcp")]
 pub mod mcp;
+#[allow(dead_code)]
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub mod metrics_server;
 pub mod models;
+#[allow(dead_code, deprecated)]
 pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+#[allow(dead_code)]
 pub mod notes_exporter;
 pub mod notes_manager;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
@@ -61,30 +74,36 @@ pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
-pub mod persistent_message_queue;
 pub mod providers;
 pub mod qbank_grading;
+#[allow(dead_code)]
 pub mod question_bank_service;
 pub mod question_export_service;
+#[allow(dead_code)]
 pub mod question_import_service;
 pub mod question_sync_service;
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub mod secure_store;
 pub mod services;
-pub mod session_manager;
 pub mod spaced_repetition;
 pub mod startup_cleanup;
+#[allow(dead_code)]
 pub mod streaming_anki_service;
+#[allow(dead_code)]
 pub mod test_utils;
 pub mod textbooks_db;
+#[allow(dead_code)]
 pub mod tools;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
+#[allow(dead_code)]
 pub mod unified_file_manager;
+#[allow(dead_code)]
 pub mod utils;
 pub mod vector_store;
 pub mod vendors;
+#[allow(dead_code, deprecated)]
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
 pub mod voice_input;
@@ -92,6 +111,7 @@ pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
+#[allow(dead_code)]
 pub mod data_governance;
 
 // macOS 原生菜单栏（Phase D2 of native-feel migration, 2026-05-14）
@@ -165,6 +185,7 @@ fn prepare_linux_appimage_runtime_env() {
 ///
 /// 目前仅做最小实现，后续可补充 `invoke_handler!` 以注册命令。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(deprecated)]
 pub fn run() {
     #[cfg(target_os = "linux")]
     prepare_linux_appimage_runtime_env();
@@ -193,7 +214,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init());
 
     // 桌面端专用：自动更新 + 进程管理（仅 macOS/Windows/Linux）
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -371,23 +393,8 @@ pub fn run() {
                 }
             }
 
-            let queue_db_path = active_app_data_dir.join("message_queue.db");
-
             // 初始化全局调试日志记录器
             crate::debug_logger::init_global_logger(base_app_data_dir.clone());
-
-            // 初始化持久化消息队列（失败不致命，记录错误并继续启动）
-            match crate::persistent_message_queue::init_persistent_message_queue(queue_db_path) {
-                Ok(_) => {
-                    info!("持久化消息队列初始化成功");
-                }
-                Err(e) => {
-                    warn!(
-                        "持久化消息队列初始化失败（将以降级模式继续运行）: {}",
-                        e
-                    );
-                }
-            }
 
             // 启动内置 Prometheus 指标服务
             crate::metrics_server::ensure_metrics_server(&app_handle);
@@ -766,29 +773,6 @@ pub fn run() {
                 });
             }
 
-            let database_for_queue = database.clone();
-
-            let llm_for_queue = app_state.inner().llm_manager.clone();
-            let app_handle_for_handlers = app_handle.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = crate::persistent_message_queue::start_message_processor().await {
-                    error!("❌ 启动持久化消息队列处理器失败: {}", e);
-                    return;
-                }
-
-                // 为注册处理器与恢复任务分别克隆数据库引用，避免 move 后再使用
-                let db_for_handlers = database_for_queue.clone();
-                if let Err(e) = crate::persistent_message_queue::register_message_handlers(
-                    db_for_handlers,
-                    llm_for_queue,
-                    Some(app_handle_for_handlers),
-                )
-                .await
-                {
-                    error!("❌ 注册消息队列处理器失败: {}", e);
-                }
-            });
-
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
             {
@@ -799,36 +783,79 @@ pub fn run() {
 
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
-                    // 设置 macOS 特定的窗口属性
-                    #[allow(unused_unsafe)]
-                    #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
-                    unsafe {
-                        use cocoa::base::{id, YES, NO};
-                        use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
-                        use objc::{msg_send, sel, sel_impl};
+                    info!("[setup] 主窗口已创建，准备显示并聚焦");
+                    if let Err(e) = window.show() {
+                        warn!("[setup] 显示主窗口失败: {}", e);
+                    }
+                    if let Err(e) = window.set_focus() {
+                        warn!("[setup] 聚焦主窗口失败: {}", e);
+                    }
 
-                        if let Ok(ns_window_raw) = window.ns_window() {
-                            let ns_window = ns_window_raw as id;
+                    let standard_window_for_e2e = std::env::var("DSTU_E2E_STANDARD_WINDOW")
+                        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+                        .unwrap_or(false);
 
-                            // 使用虚拟标题栏：全尺寸内容视图，隐藏原生标题栏但保留红绿灯按钮
-                            let _: () = msg_send![ns_window, setStyleMask:
-                                NSWindowStyleMask::NSTitledWindowMask
-                                | NSWindowStyleMask::NSClosableWindowMask
-                                | NSWindowStyleMask::NSMiniaturizableWindowMask
-                                | NSWindowStyleMask::NSResizableWindowMask
-                                | NSWindowStyleMask::NSFullSizeContentViewWindowMask
-                            ];
+                    if standard_window_for_e2e {
+                        info!("[setup] DSTU_E2E_STANDARD_WINDOW 已启用，跳过自定义 macOS 标题栏样式以便 UI 自动化访问");
+                        #[allow(unused_unsafe)]
+                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
+                        unsafe {
+                            use cocoa::base::{id, nil, YES};
+                            use cocoa::foundation::NSString;
+                            use objc::{msg_send, sel, sel_impl};
 
-                            // 使用透明标题栏
-                            let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
-                            let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
+                            if let Ok(ns_window_raw) = window.ns_window() {
+                                let ns_window = ns_window_raw as id;
+                                let ax_window = NSString::alloc(nil).init_str("AXWindow");
+                                let ax_standard_window =
+                                    NSString::alloc(nil).init_str("AXStandardWindow");
+                                let ax_title = NSString::alloc(nil).init_str("Deep Student");
 
-                            // 仅允许标注的区域拖拽：关闭整窗背景拖拽，避免任意区域拖动窗口
-                            let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
-                        } else {
-                            warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
+                                let _: () = msg_send![ns_window, setAccessibilityElement: YES];
+                                let _: () = msg_send![ns_window, setAccessibilityRole: ax_window];
+                                let _: () =
+                                    msg_send![ns_window, setAccessibilitySubrole: ax_standard_window];
+                                let _: () = msg_send![ns_window, setAccessibilityTitle: ax_title];
+                                let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+                                let _: () = msg_send![ns_window, orderFrontRegardless];
+                            } else {
+                                warn!("获取 macOS NSWindow 失败，跳过 E2E 可访问性窗口设置");
+                            }
+                        }
+                    } else {
+                        // 设置 macOS 特定的窗口属性
+                        #[allow(unused_unsafe)]
+                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
+                        unsafe {
+                            use cocoa::base::{id, YES, NO};
+                            use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
+                            use objc::{msg_send, sel, sel_impl};
+
+                            if let Ok(ns_window_raw) = window.ns_window() {
+                                let ns_window = ns_window_raw as id;
+
+                                // 使用虚拟标题栏：全尺寸内容视图，隐藏原生标题栏但保留红绿灯按钮
+                                let _: () = msg_send![ns_window, setStyleMask:
+                                    NSWindowStyleMask::NSTitledWindowMask
+                                    | NSWindowStyleMask::NSClosableWindowMask
+                                    | NSWindowStyleMask::NSMiniaturizableWindowMask
+                                    | NSWindowStyleMask::NSResizableWindowMask
+                                    | NSWindowStyleMask::NSFullSizeContentViewWindowMask
+                                ];
+
+                                // 使用透明标题栏
+                                let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+                                let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
+
+                                // 仅允许标注的区域拖拽：关闭整窗背景拖拽，避免任意区域拖动窗口
+                                let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
+                            } else {
+                                warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
+                            }
                         }
                     }
+                } else {
+                    warn!("[setup] 未找到 label=main 的主窗口");
                 }
             }
 
@@ -936,9 +963,6 @@ pub fn run() {
             crate::commands::remove_ocr_engine,
             // Lance 向量表优化命令
             crate::commands::optimize_chat_embeddings_table,
-            crate::commands::create_performance_indexes,
-            crate::commands::analyze_query_performance,
-
             crate::commands::clear_message_embeddings,
             crate::commands::generate_anki_cards_from_document,
             crate::commands::generate_anki_cards_from_document_file,
@@ -959,6 +983,7 @@ pub fn run() {
             crate::commands::save_json_file,
             crate::commands::start_enhanced_document_processing,
             crate::commands::pause_document_processing,
+            crate::commands::cancel_document_processing,
             crate::commands::resume_document_processing,
             crate::commands::get_document_processing_state,
             crate::commands::get_document_task_counts,
@@ -976,6 +1001,9 @@ pub fn run() {
             crate::cmd::enhanced_anki::recover_stuck_document_tasks,
             crate::cmd::enhanced_anki::list_document_sessions,
             crate::cmd::enhanced_anki::get_anki_stats,
+            // ★ 4.2 防休眠（制卡等长任务）
+            crate::cmd::power::set_prevent_sleep,
+            crate::cmd::power::get_prevent_sleep,
             // 状态恢复相关命令
             crate::commands::get_recent_document_tasks,
             crate::commands::get_all_recent_cards,
@@ -1020,6 +1048,7 @@ pub fn run() {
             crate::tts::tts_stop,
             crate::commands::read_file_text,
             crate::commands::get_file_size,
+            crate::commands::pdfstream_check_access,
             crate::commands::hash_file,
             crate::commands::read_file_bytes,
             crate::commands::copy_file,
@@ -1084,6 +1113,7 @@ pub fn run() {
             // debug_commands.rs - 调试专用直接数据库访问
             crate::debug_commands::debug_get_database_stats,
             crate::debug_commands::log_debug_message,
+            crate::debug_commands::tauri_lab_frontend_log,
             crate::debug_commands::debug_vfs_migration_status,
             crate::debug_commands::debug_vfs_textbook_pages,
             // =================================================
@@ -1106,6 +1136,8 @@ pub fn run() {
             crate::commands::get_mcp_config,
             crate::commands::import_mcp_config,
             crate::commands::export_mcp_config,
+            // 2026-06-12 补注册：设置页 MCP 编辑器与 mcpService 启动预热已在调用
+            crate::commands::preheat_mcp_tools,
             crate::commands::test_all_search_engines
 
             // =============== Notes (isolated) ===============
@@ -1152,6 +1184,8 @@ pub fn run() {
             // DataSpace (A/B) commands
             ,crate::data_space::get_data_space_info
             ,crate::data_space::mark_data_space_pending_switch_to_inactive
+            ,crate::data_space::purge_all_database_files
+            ,crate::data_space::purge_active_data_dir_now
             // Test Slot (C/D) commands - 用于前端全自动备份测试
             ,crate::data_space::get_test_slot_info
             ,crate::data_space::clear_test_slots
@@ -1199,6 +1233,8 @@ pub fn run() {
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_agent_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_count_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_session_message_count
+            // 全局消息统计摘要（统计面板真实数据源）
+            ,crate::chat_v2::handlers::manage_session::chat_v2_get_message_summary
             ,crate::chat_v2::handlers::manage_session::chat_v2_delete_session
             // P1-3: 清空回收站（一次性删除所有已删除会话）
             ,crate::chat_v2::handlers::manage_session::chat_v2_empty_deleted_sessions
@@ -1210,6 +1246,8 @@ pub fn run() {
             // 会话分组命令
             ,crate::chat_v2::handlers::group_handlers::chat_v2_create_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_update_group
+            ,crate::chat_v2::handlers::group_handlers::chat_v2_archive_group
+            ,crate::chat_v2::handlers::group_handlers::chat_v2_restore_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_delete_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_get_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_list_groups
@@ -1230,12 +1268,14 @@ pub fn run() {
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）
             ,crate::chat_v2::handlers::canvas_handlers::chat_v2_canvas_edit_result
+            ,crate::chat_v2::handlers::canvas_handlers::chat_v2_canvas_edit_ack
             // 数据迁移命令（旧版 chat_messages 迁移到 Chat V2）
             ,crate::chat_v2::handlers::migration::chat_v2_check_migration_status
             ,crate::chat_v2::handlers::migration::chat_v2_migrate_legacy_chat
             ,crate::chat_v2::handlers::migration::chat_v2_rollback_migration
             // 内容搜索 + 标签管理命令
             ,crate::chat_v2::handlers::search_handlers::chat_v2_search_content
+            ,crate::chat_v2::handlers::search_handlers::rebuild_chat_fts
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_session_tags
             ,crate::chat_v2::handlers::search_handlers::chat_v2_get_tags_batch
             ,crate::chat_v2::handlers::search_handlers::chat_v2_add_tag
@@ -1355,6 +1395,14 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_set_indexing_config
             ,crate::vfs::handlers::vfs_get_indexing_config
             ,crate::vfs::handlers::vfs_get_all_index_status
+            // VFS 统一索引 Unit 级命令（2026-06-12 补注册：前端 vfsUnifiedIndexApi/unifiedIndexStore 已在调用）
+            ,crate::vfs::index_handlers::vfs_unified_index_status
+            ,crate::vfs::index_handlers::vfs_get_resource_units
+            ,crate::vfs::index_handlers::vfs_reindex_unit
+            ,crate::vfs::index_handlers::vfs_unified_batch_index
+            ,crate::vfs::index_handlers::vfs_sync_resource_units
+            ,crate::vfs::index_handlers::vfs_delete_resource_index
+            ,crate::vfs::index_handlers::vfs_list_embedding_dims
             // VFS 数据透视命令（OCR 查看/清除、文本块查看）
             ,crate::vfs::handlers::vfs_get_resource_ocr_info
             ,crate::vfs::handlers::vfs_clear_resource_ocr
@@ -1398,15 +1446,28 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_today
             ,crate::vfs::todo_handlers::todo_list_overdue
             ,crate::vfs::todo_handlers::todo_list_upcoming
+            ,crate::vfs::todo_handlers::todo_list_reminders
+            ,crate::vfs::todo_handlers::todo_list_all_pending
             ,crate::vfs::todo_handlers::todo_list_completed
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
+            ,crate::vfs::todo_handlers::todo_ai_breakdown
+            // 待办回收站命令
+            ,crate::vfs::todo_handlers::todo_list_deleted_lists
+            ,crate::vfs::todo_handlers::todo_restore_list
+            ,crate::vfs::todo_handlers::todo_purge_list
+            ,crate::vfs::todo_handlers::todo_purge_deleted_lists
+            ,crate::vfs::todo_handlers::todo_restore_item
+            ,crate::vfs::todo_handlers::todo_list_deleted_items
+            ,crate::vfs::todo_handlers::todo_purge_item
+            ,crate::vfs::todo_handlers::todo_purge_deleted_items
             // 番茄钟命令
             ,crate::vfs::todo_handlers::pomodoro_create_record
             ,crate::vfs::todo_handlers::pomodoro_get_record
             ,crate::vfs::todo_handlers::pomodoro_list_by_todo
             ,crate::vfs::todo_handlers::pomodoro_today_stats
             ,crate::vfs::todo_handlers::pomodoro_list_today
+            ,crate::vfs::todo_handlers::pomodoro_daily_stats
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending
@@ -1420,6 +1481,7 @@ pub fn run() {
             ,crate::llm_usage::handlers::llm_usage_by_model
             ,crate::llm_usage::handlers::llm_usage_by_caller
             ,crate::llm_usage::handlers::llm_usage_summary
+            ,crate::llm_usage::handlers::llm_usage_session_summary
             ,crate::llm_usage::handlers::llm_usage_recent
             ,crate::llm_usage::handlers::llm_usage_daily
             ,crate::llm_usage::handlers::llm_usage_cleanup
@@ -1511,6 +1573,8 @@ pub fn run() {
             // =================================================
             ,crate::cmd::textbooks::textbooks_add
             ,crate::cmd::textbooks::textbooks_update_bookmarks
+            ,crate::cmd::textbooks::textbooks_relink
+            ,crate::cmd::textbooks::vfs_get_file_blob_path
             // =================================================
             // 智能题目集命令（Question Bank V2）
             // =================================================
@@ -1651,6 +1715,12 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_run_sync_with_progress
             ,crate::data_governance::commands_sync::data_governance_export_sync_data
             ,crate::data_governance::commands_sync::data_governance_import_sync_data
+            // 同步检疫管理
+            ,crate::data_governance::commands_sync::data_governance_list_quarantine
+            ,crate::data_governance::commands_sync::data_governance_retry_quarantine
+            ,crate::data_governance::commands_sync::data_governance_discard_quarantine
+            ,crate::data_governance::commands_sync::data_governance_retry_all_quarantine
+            ,crate::data_governance::commands_sync::data_governance_discard_all_quarantine
             // Tombstone 删除传播
             ,crate::data_governance::commands_sync::data_governance_mark_blob_deleted
             ,crate::data_governance::commands_sync::data_governance_mark_asset_deleted
@@ -1665,6 +1735,8 @@ pub fn run() {
             ,crate::data_governance::commands_backup::data_governance_resume_backup_job
             ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs
             ,crate::data_governance::commands_backup::data_governance_cleanup_persisted_jobs
+            // 清空数据命令
+            ,crate::data_governance::commands_backup::data_governance_purge_all_data
             // 资产管理命令
             ,crate::data_governance::commands_asset::data_governance_scan_assets
             ,crate::data_governance::commands_asset::data_governance_get_asset_types
@@ -1772,9 +1844,19 @@ fn build_app_state(
         llm_manager.clone(),
     ));
 
+    // ★ F7：.master_key 损坏/不可读时给出可操作的诊断，而非裸 expect。
+    // 注意：此处**不**自动重置密钥——若密钥只是被临时占用/瞬时读失败而非真损坏，
+    // 静默重置会永久销毁既有加密数据（云凭据等）的可解密性。宁可明确失败、引导用户
+    // 从备份恢复或显式重置，也不冒数据不可逆丢失的风险。
     let crypto_service = Arc::new(
-        crate::crypto::CryptoService::new(&app_data_dir)
-            .expect("Failed to initialise CryptoService"),
+        crate::crypto::CryptoService::new(&app_data_dir).unwrap_or_else(|e| {
+            log::error!(
+                "[AppState] CryptoService 初始化失败：{e}。\
+                 通常是主密钥文件(.master_key)损坏或不可读。请从备份恢复该文件；\
+                 若确认要放弃既有加密数据，可手动删除 app_data 下的 .master_key 后重启（云凭据等需重新录入）。"
+            );
+            panic!("Failed to initialise CryptoService: {e}");
+        }),
     );
 
     let temp_sessions = Arc::new(Mutex::new(HashMap::new()));
@@ -1821,11 +1903,17 @@ fn build_app_state(
         app_handle.manage(pps.clone());
 
         match pps.recover_stuck_tasks() {
-            Ok(count) if count > 0 => {
+            Ok(recovered) if !recovered.is_empty() => {
                 tracing::info!(
-                    "[AppSetup] Recovered {} stuck media processing tasks",
-                    count
+                    "[AppSetup] Recovered {} stuck media processing tasks, scheduling auto-resume",
+                    recovered.len()
                 );
+                // ★ G1 修复：恢复出的 pending 任务自动续跑（带并发上限），
+                // 否则被重启打断的 OCR/压缩/向量索引永久停摆且无 UI 入口恢复。
+                let pps_resume = pps.clone();
+                tauri::async_runtime::spawn(async move {
+                    pps_resume.resume_recovered_tasks(recovered).await;
+                });
             }
             Ok(_) => {}
             Err(e) => {
@@ -1845,7 +1933,92 @@ fn build_app_state(
         }
     }
 
-    // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务
+    // ★ 2026-06-10（审阅问题 A2）：启动时清扫 ref_count=0 的 blob。
+    // 引用计数递减在事务内只改计数不删文件（两阶段删除），
+    // 若上次会话在"提交后、清扫前"崩溃，残留的 0 引用 blob 在此回收。
+    {
+        let vfs_db_sweep = vfs_db.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            match crate::vfs::repos::VfsBlobRepo::cleanup_unreferenced(&vfs_db_sweep) {
+                Ok(count) if count > 0 => {
+                    tracing::info!("[AppSetup] Swept {} unreferenced blobs", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("[AppSetup] Unreferenced blob sweep failed: {}", e);
+                }
+            }
+
+            // ★ 2026-06-12（审阅问题 S2）：清扫长期无引用的检索资源行。
+            // 引用计数本身对称（消息保存 +1 / 消息·会话删除 -1），但归零后的
+            // retrieval 行没有任何删除路径，会在 resources 表无限累积。
+            // 24h 宽限期防止误删"已创建、消息尚未保存"窗口中的资源。
+            const RETRIEVAL_SWEEP_GRACE_MS: i64 = 24 * 60 * 60 * 1000;
+            match vfs_db_sweep.get_conn_safe() {
+                Ok(conn) => {
+                    match crate::vfs::repos::VfsResourceRepo::cleanup_unreferenced_retrievals(
+                        &conn,
+                        RETRIEVAL_SWEEP_GRACE_MS,
+                    ) {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(
+                                "[AppSetup] Swept {} unreferenced retrieval resources",
+                                count
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("[AppSetup] Retrieval resource sweep failed: {}", e);
+                        }
+                    }
+
+                    // ★ 2026-06-12（审阅问题 S5）：回收历史泄漏的孤儿笔记/导图资源。
+                    // 旧代码在笔记内容编辑、导图 purge 时遗留无人引用的资源行。
+                    match crate::vfs::repos::VfsResourceRepo::cleanup_orphan_note_mindmap_resources(
+                        &conn,
+                        RETRIEVAL_SWEEP_GRACE_MS,
+                    ) {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(
+                                "[AppSetup] Swept {} orphan note/mindmap resources",
+                                count
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("[AppSetup] Orphan note/mindmap sweep failed: {}", e);
+                        }
+                    }
+
+                    // ★ 2026-06-12（第二轮审阅）：回收孤儿索引单元。
+                    // essay/translation/textbook/exam 的旧 purge 路径不清理
+                    // vfs_index_units，残留的 units/segments/Lance 向量会让
+                    // 语义检索命中已删除内容。Lance 行先入列孤儿队列再删。
+                    match crate::vfs::repos::index_unit_repo::sweep_orphan_index_units(&conn) {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(
+                                "[AppSetup] Swept {} orphan index units (lance rows enqueued)",
+                                count
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(e) => {
+                            tracing::warn!("[AppSetup] Orphan index unit sweep failed: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[AppSetup] Retrieval sweep skipped (no connection): {}",
+                        e
+                    );
+                }
+            }
+        });
+    }
+
+    // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务。
+    // 保留时间阈值，避免多实例/后台任务场景下把刚更新过的任务误标为 Failed。
     match anki_database.recover_stuck_document_tasks() {
         Ok(count) if count > 0 => {
             tracing::info!("[AppSetup] Recovered {} stuck Anki document tasks", count);

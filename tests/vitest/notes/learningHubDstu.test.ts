@@ -90,6 +90,21 @@ describe('Learning Hub - DSTU 调用模式', () => {
       path: '/note_123',
       content: '# 更新后的内容',
       resourceType: 'note',
+      // ★ R3 乐观锁：未提供基线时显式传 null
+      expectedUpdatedAtMs: null,
+    });
+  });
+
+  it('dstu.update: 携带乐观锁基线', async () => {
+    const result = await dstu.update('/note_123', '# 内容', 'note', {
+      expectedUpdatedAtMs: 1765500000000,
+    });
+    expect(result.ok).toBe(true);
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('dstu_update', {
+      path: '/note_123',
+      content: '# 内容',
+      resourceType: 'note',
+      expectedUpdatedAtMs: 1765500000000,
     });
   });
 

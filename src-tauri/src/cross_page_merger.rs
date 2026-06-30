@@ -33,7 +33,26 @@ pub fn merge_pages(page_analyses: &[Option<VlmPageAnalysis>]) -> Vec<MergedQuest
         };
 
         for question in &analysis.questions {
-            if question.continues_from_previous && !result.is_empty() {
+            // ★ 2026-06-12（代理 3 审阅 F2）：续接必须落在相邻页面上。
+            // 旧实现只要 result 非空就并入最后一题——若中间页 VLM 分析失败（None）
+            // 或上一页没有解析出任何题目，会把续接文本错误地拼到隔页的无关题目上。
+            // 允许 last_page == page_idx（同页被 VLM 拆成多个续接块）或上一页。
+            let can_merge = question.continues_from_previous
+                && result
+                    .last()
+                    .and_then(|q| q.page_indices.last().copied())
+                    .map(|last_page| page_idx - last_page <= 1)
+                    .unwrap_or(false);
+
+            if question.continues_from_previous && !can_merge {
+                debug!(
+                    "[CrossPageMerger] 页面 {} 题目 '{}' 标记续接但上一题不在相邻页，按独立题目处理",
+                    page_idx + 1,
+                    question.label
+                );
+            }
+
+            if can_merge {
                 let last = result.last_mut().unwrap();
 
                 debug!(
@@ -48,7 +67,10 @@ pub fn merge_pages(page_analyses: &[Option<VlmPageAnalysis>]) -> Vec<MergedQuest
                     last.question.raw_text.push_str(&question.raw_text);
                 }
 
-                last.page_indices.push(page_idx);
+                // 同页多个续接块时避免重复记录页面索引
+                if last.page_indices.last() != Some(&page_idx) {
+                    last.page_indices.push(page_idx);
+                }
 
                 for fig in &question.figures {
                     last.figures_with_page.push((page_idx, fig.clone()));

@@ -741,7 +741,7 @@
 }
 
 .chat-v2 .chain-header:hover {
-  background: hsl(var(--muted) / 0.35);
+  background: var(--chat-block-surface-muted);
 }
 
 .chat-v2 .chain-icon {
@@ -775,7 +775,7 @@
   margin: var(--chat-md-block-gap) 0;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  background: hsl(var(--muted));
+  background: var(--chat-block-surface-muted);
   overflow: hidden;
 }
 
@@ -788,7 +788,7 @@
   font-size: 13px;
   font-weight: 500;
   color: var(--brand-primary);
-  background: hsl(var(--muted));
+  background: var(--chat-block-surface-muted);
   border-bottom: 1px solid hsl(var(--border));
   transition: background-color 0.2s;
   user-select: none;
@@ -845,7 +845,7 @@
 .chat-v2 .rag-source-score {
   font-size: 11px;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted));
+  background: var(--chat-block-surface-muted);
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 500;
@@ -856,7 +856,7 @@
   color: hsl(var(--foreground));
   line-height: var(--chat-md-compact-line-height);
   font-style: normal;
-  background: hsl(var(--muted));
+  background: var(--chat-block-surface-muted);
   padding: var(--chat-md-compact-gap);
   border-radius: 4px;
   border: 1px solid hsl(var(--border));
@@ -866,7 +866,7 @@
    响应式设计 - Responsive Design
    ============================================================================ */
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .chat-v2 .markdown-content {
     font-size: 1.0rem;
   }
@@ -914,7 +914,7 @@
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 479.98px) {
   .chat-v2 .markdown-content {
     font-size: 0.95rem;
   }

@@ -31,7 +31,6 @@ export interface UseSessionEditDeps {
   setGroupEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setEditingGroup: React.Dispatch<React.SetStateAction<SessionGroup | null>>;
   setGroupEditorAutoFocusField: React.Dispatch<React.SetStateAction<'name' | null>>;
-  setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPendingArchiveGroup: React.Dispatch<React.SetStateAction<SessionGroup | null>>;
@@ -57,7 +56,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   const {
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
-    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowChatControl,
+    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField,
     setViewMode, setSessionSheetOpen, setPendingArchiveGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
@@ -185,7 +184,6 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingGroup(null);
     setGroupEditorAutoFocusField('name');
     setGroupEditorOpen(true);
-    setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
   }, [setGroupEditorAutoFocusField]);
@@ -194,7 +192,6 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingGroup(group);
     setGroupEditorAutoFocusField(null);
     setGroupEditorOpen(true);
-    setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
   }, [setGroupEditorAutoFocusField]);
@@ -203,7 +200,6 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingGroup(group);
     setGroupEditorAutoFocusField('name');
     setGroupEditorOpen(true);
-    setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
   }, [setGroupEditorAutoFocusField]);

@@ -12,6 +12,7 @@ pub mod helpers;
 pub mod mcp;
 pub mod notes;
 pub mod ocr;
+pub mod power;
 pub mod textbooks;
 pub mod translation;
 pub mod web_search; // OCR 引擎配置命令

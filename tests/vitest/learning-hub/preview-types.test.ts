@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DstuNode, DstuPreviewType } from '@/dstu/types';
-import type { ResourceListItem } from '@/components/learning-hub/types';
+import type { ResourceListItem } from '@/features/learning-hub/types';
 import {
   dstuNodeToResourceListItem,
   inferFilePreviewTypeFromName,
   nodeTypeToFolderItemType,
-} from '@/components/learning-hub/types';
+} from '@/features/learning-hub/types';
 
 describe('learning hub preview type contracts', () => {
   it('supports audio/video in DSTU and resource preview type unions', () => {

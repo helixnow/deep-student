@@ -19,9 +19,9 @@ We take security issues seriously. If you discover a security vulnerability, ple
    
    **不要**为安全漏洞创建公开的 GitHub Issue。
 
-2. Send an email to: **security@deepstudent.app** (or use GitHub Security Advisories if available)
+2. Send an email to: **support@deepstudent.cn** (or use GitHub Security Advisories if available)
    
-   请发送邮件至：**security@deepstudent.app**（或使用 GitHub Security Advisories，如可用）
+   请发送邮件至：**support@deepstudent.cn**（或使用 GitHub Security Advisories，如可用）
 
 3. Include the following information:
    - Description of the vulnerability
@@ -117,17 +117,13 @@ DeepStudent 实现了以下安全措施：
 
 ### Known Limitations | 已知限制
 
-- **CSP (Content Security Policy)**: The current CSP configuration is permissive (`unsafe-eval`, `unsafe-inline`, wildcard `*` sources) to support MCP tool integrations and dynamic content. This is an area for future hardening.
+- **CSP (Content Security Policy)**: The CSP has been hardened (`script-src 'self'`, no `unsafe-eval`, explicit `connect-src` allowlist, `withGlobalTauri` disabled). Remaining relaxations: `style-src 'unsafe-inline'` (required by the styling pipeline) and `img-src https:` (user-provided remote images).
   
-  **CSP（内容安全策略）**：当前 CSP 配置较为宽松（`unsafe-eval`、`unsafe-inline`、通配符 `*` 来源），以支持 MCP 工具集成和动态内容。这是未来需要加固的领域。
+  **CSP（内容安全策略）**：CSP 已加固（`script-src 'self'`、无 `unsafe-eval`、`connect-src` 为显式域名白名单、`withGlobalTauri` 已禁用）。仍保留的放宽项：`style-src 'unsafe-inline'`（样式管线所需）与 `img-src https:`（用户引用的远程图片）。
 
 - **File system permissions**: The application requests broad file system access (user directories) for resource management. Users should be aware of this when granting permissions.
   
   **文件系统权限**：应用请求较广泛的文件系统访问权限（用户目录），用于资源管理。用户在授权时应注意这一点。
-
-- **withGlobalTauri**: Enabled for frontend-backend communication. This exposes Tauri APIs to the WebView context.
-  
-  **withGlobalTauri**：已启用以支持前后端通信，这会将 Tauri API 暴露给 WebView 上下文。
 
 ---
 

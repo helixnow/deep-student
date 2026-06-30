@@ -6,7 +6,7 @@ import {
   getDraftSessionScope,
   getDraftSessionStorageKey,
   isHiddenDraftSessionMetadata,
-} from '../../../src/chat-v2/pages/draftSession';
+} from '../../../src/features/chat/pages/draftSession';
 
 describe('draft session metadata', () => {
   it('marks a session as a hidden draft while preserving existing metadata', () => {

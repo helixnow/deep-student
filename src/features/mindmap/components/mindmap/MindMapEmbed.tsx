@@ -66,6 +66,10 @@ interface LoadState {
 // 节点数阈值：超过此数量时使用 2 倍高度
 const LARGE_MAP_NODE_THRESHOLD = 10;
 
+// 触屏（粗指针）设备：嵌入卡片放行单指滑动给聊天滚动
+const isCoarsePointer =
+  typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+
 /**
  * 递归统计导图节点总数
  */
@@ -237,10 +241,15 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
+        // ★ 嵌入聊天流中：滚轮不缩放、不拦截，穿透给聊天容器滚动，
+        // 避免"滚到导图上页面卡住开始缩放"。缩放走按钮/触控板捏合。
+        // 触屏上单指滑动同样放行给聊天滚动（panOnDrag 关闭），
+        // 画布平移用两指捏合附带的平移；桌面鼠标拖拽平移保留。
         panOnScroll={false}
-        zoomOnScroll={true}
+        zoomOnScroll={false}
+        preventScrolling={false}
         zoomOnDoubleClick={false}
-        panOnDrag={true}
+        panOnDrag={!isCoarsePointer}
         // 隐藏交互元素
         proOptions={{ hideAttribution: true }}
         // 禁用节点点击
@@ -259,7 +268,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
             'transition-all duration-150',
             'cursor-pointer'
           )}
-          title={isBothLayout ? '切换为单侧布局' : '切换为两翼布局'}
+          title={isBothLayout ? t('embed.layoutSingle') : t('embed.layoutBoth')}
         >
           <GitFork className={cn('w-3.5 h-3.5', isBothLayout && 'text-primary')} />
         </NotionButton>
@@ -548,7 +557,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           </span>
           {nodeCount > 0 && (
             <span className="ml-1.5 text-xs text-muted-foreground/60">
-              {nodeCount} 节点
+              {t('embed.nodeCount', { count: nodeCount })}
             </span>
           )}
         </div>

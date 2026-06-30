@@ -21,12 +21,20 @@ use uuid::Uuid;
 
 const RETRY_ASSIGNMENT_MARK: &str = "[RETRY_ASSIGNED]";
 
+// F3（round2）：将原先散落的控制流魔法字符串集中为常量，降低笔误与“字符串即协议”的脆弱性。
+// 注：这是低风险硬化，未改为类型化错误枚举（那属跨层中风险重构，已登记待评估）。
+/// 用户主动取消的内部哨兵消息：流式取消路径以 `AppError::validation` 携带，
+/// 调度层据此判定“用户取消”而非真正错误。
+const CANCELLED_BY_USER_MSG: &str = "CANCELLED_BY_USER";
+/// `handle_task_error` 据错误消息判定 `Truncated` 的关键词（上游 LLM 截断/超时提示）。
+const ERR_KEYWORD_TIMEOUT: &str = "超时";
+const ERR_KEYWORD_TRUNCATED: &str = "截断";
+
 #[derive(Clone)]
 pub struct StreamingAnkiService {
     db: Arc<Database>,
     llm_manager: Arc<LLMManager>,
     client: Client,
-    pause_senders: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
 }
 
 struct PromptPayload {
@@ -176,13 +184,11 @@ impl StreamingAnkiService {
             .timeout(Duration::from_secs(600)) // 10分钟超时，适合流式处理
             .build()
             .expect("创建HTTP客户端失败");
-        let pause_senders = Arc::new(Mutex::new(HashMap::new()));
 
         Self {
             db,
             llm_manager,
             client,
-            pause_senders,
         }
     }
 
@@ -191,6 +197,9 @@ impl StreamingAnkiService {
         &self,
         task: DocumentTask,
         window: Window,
+        // F5（round2）：调度层在 spawn 前传入就绪信号；本任务注册取消通道后立即回执，
+        // 调度层据此确定性等待（替代固定 sleep(20ms)）。None 表示调用方不关心就绪时机。
+        ready_signal: Option<tokio::sync::oneshot::Sender<()>>,
     ) -> Result<(), AppError> {
         let task_id = task.id.clone();
 
@@ -289,16 +298,16 @@ impl StreamingAnkiService {
             &window,
         )
         .await?;
-        // 设置暂停与取消通道
-        let (pause_tx, pause_rx) = watch::channel(false);
+        // 设置取消通道（暂停走文档级硬取消，见 EnhancedAnkiService::pause_document_processing）
         let (cancel_tx, cancel_rx) = watch::channel(false);
-        {
-            let mut senders = self.pause_senders.lock().await;
-            senders.insert(task_id.clone(), pause_tx);
-        }
         {
             let mut senders = CANCEL_SENDERS.lock().await;
             senders.insert(task_id.clone(), cancel_tx);
+        }
+        // F5（round2）：取消通道已注册，确定性通知调度层（替代非确定性的 sleep(20ms)）。
+        // 任一提前返回路径都会 drop 掉 ready_signal，使调度层的 await 立即返回，不会死等。
+        if let Some(ready_tx) = ready_signal {
+            let _ = ready_tx.send(());
         }
         let result = self
             .stream_cards_from_ai(
@@ -310,7 +319,6 @@ impl StreamingAnkiService {
                 &task.document_id,
                 &window,
                 &options,
-                pause_rx,
                 cancel_rx,
             )
             .await;
@@ -321,7 +329,7 @@ impl StreamingAnkiService {
                     .await?;
             }
             Err(e) => {
-                if e.message == "CANCELLED_BY_USER" {
+                if e.message == CANCELLED_BY_USER_MSG {
                     // 由上层 EnhancedAnkiService 负责将任务状态置为 Paused 并派发事件，避免重复事件
                     info!("🛑 任务被用户取消，保持暂停态由调度层处理: {}", task_id);
                 } else {
@@ -336,8 +344,7 @@ impl StreamingAnkiService {
                 }
             }
         }
-        // 清理暂停/取消通道
-        self.pause_senders.lock().await.remove(&task_id);
+        // 清理取消通道
         CANCEL_SENDERS.lock().await.remove(&task_id);
 
         Ok(())
@@ -568,18 +575,16 @@ impl StreamingAnkiService {
 
         // 已在系统段开头处理自定义要求
 
-        // 构建卡片数量要求
+        // 构建卡片数量要求（E4 修复：上限语义是"至多 N 张"，不是"恰好 N 张"，
+        // 避免模型为凑数生成低质量填充卡）
         let card_count_instruction = if options.max_cards_per_mistake > 0 {
             format!(
-                "🚨 卡片数量硬性限制 🚨\n\
-                你必须严格生成**恰好 {} 张**卡片，不多不少。\n\
-                - 生成到第 {} 张后立即停止，不要再输出任何卡片\n\
-                - 确保每张卡片都是高质量的，覆盖内容中最重要的知识点\n\
-                - 如果内容不够生成 {} 张，则生成尽可能多但不超过 {} 张\n\n",
-                options.max_cards_per_mistake,
-                options.max_cards_per_mistake,
-                options.max_cards_per_mistake,
-                options.max_cards_per_mistake
+                "🚨 卡片数量上限 🚨\n\
+                本次最多生成 {} 张卡片，超过上限的输出会被丢弃。\n\
+                - 数量由内容的知识点密度决定：知识点少就少生成，不要为凑数而拆分或编造\n\
+                - 优先覆盖内容中最重要的知识点，确保每张卡片高质量\n\
+                - 生成到第 {} 张后必须立即停止，不要再输出任何卡片\n\n",
+                options.max_cards_per_mistake, options.max_cards_per_mistake
             )
         } else {
             "根据内容的信息密度生成适量的高质量卡片，充分覆盖所有知识点。\n\n".to_string()
@@ -590,10 +595,11 @@ impl StreamingAnkiService {
             "{}\
             重要指令：\n\
             1. 请逐个生成卡片，每个卡片必须是完整的JSON格式\n\
-            2. 每生成一个完整的卡片JSON后，立即输出分隔符：<<<ANKI_CARD_JSON_END>>>\n\
+            2. 每生成一个完整的卡片JSON后，立即输出分隔符：<<<ANKI_CARD_JSON_END>>>（包括最后一张卡片之后也必须输出分隔符）\n\
             3. JSON格式必须包含以下字段：{}\n\
             4. 不要使用Markdown代码块，直接输出JSON\n\
-            5. 示例输出格式：\n\
+            5. 输出完所有卡片和最后一个分隔符后立即停止，不要输出任何总结或结束语\n\
+            6. 示例输出格式：\n\
             {}\n\
             <<<ANKI_CARD_JSON_END>>>",
             card_count_instruction, fields_requirement, example_json
@@ -628,7 +634,6 @@ impl StreamingAnkiService {
         document_id: &str,
         window: &Window,
         options: &AnkiGenerationOptions,
-        pause_rx: watch::Receiver<bool>,
         mut cancel_rx: watch::Receiver<bool>,
     ) -> Result<u32, AppError> {
         let mut messages = vec![];
@@ -765,7 +770,7 @@ impl StreamingAnkiService {
             let next_item = tokio::select! {
                 _ = cancel_rx.changed() => {
                     info!("🛑 检测到取消信号，终止流式制卡");
-                    return Err(AppError::validation("CANCELLED_BY_USER".to_string()));
+                    return Err(AppError::validation(CANCELLED_BY_USER_MSG.to_string()));
                 },
                 res = timeout(IDLE_TIMEOUT, stream.next()) => {
                     res.map_err(|_| AppError::network("AI响应超时"))?
@@ -802,12 +807,8 @@ impl StreamingAnkiService {
                                 );
                             }
                             buffer.push_str(&content);
-                            // 暂停时只累积 buffer，不生成卡片
                             if *cancel_rx.borrow() {
-                                return Err(AppError::validation("CANCELLED_BY_USER".to_string()));
-                            }
-                            if *pause_rx.borrow() {
-                                continue;
+                                return Err(AppError::validation(CANCELLED_BY_USER_MSG.to_string()));
                             }
 
                             // 检查是否有完整的卡片
@@ -951,10 +952,52 @@ impl StreamingAnkiService {
                 }
             }
 
-            // 处理剩余缓冲区内容
-            if !buffer.trim().is_empty() {
-                if let Ok(error_card) = self.create_error_card(&buffer, task_id).await {
-                    self.emit_error_card(error_card, document_id, window).await;
+            // 处理剩余缓冲区内容（E1 修复）：
+            // 模型经常遗漏最后一张卡之后的分隔符，残留内容大概率是一张合法卡片；
+            // 先尝试正常解析入库，失败且不像 JSON（纯收尾客套话）则丢弃，
+            // 只有"像卡片但解析失败"才降级为错误卡。
+            let residual = buffer.trim().to_string();
+            if !residual.is_empty() {
+                let within_limit = options.max_cards_per_mistake <= 0
+                    || (card_count as i32) < options.max_cards_per_mistake;
+                let looks_like_card = residual.contains('{');
+
+                let mut handled = false;
+                if within_limit && looks_like_card {
+                    match self.parse_and_save_card(&residual, task_id, options).await {
+                        Ok(Some(card)) => {
+                            card_count += 1;
+                            info!(
+                                "[ANKI_CARD_DEBUG] 流收尾残留缓冲解析为正常卡片（第{}张）",
+                                card_count
+                            );
+                            self.emit_new_card(card, document_id, window).await;
+                            handled = true;
+                        }
+                        Ok(None) => {
+                            // 重复卡片被去重跳过，视为已处理
+                            debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析成功但被去重跳过");
+                            handled = true;
+                        }
+                        Err(e) => {
+                            debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析失败: {}", e);
+                        }
+                    }
+                }
+
+                if !handled {
+                    if looks_like_card {
+                        // 像卡片但解析失败：保留为错误卡供用户检查
+                        if let Ok(error_card) = self.create_error_card(&residual, task_id).await {
+                            self.emit_error_card(error_card, document_id, window).await;
+                        }
+                    } else {
+                        // 纯自然语言收尾（如"以上就是全部卡片"）：丢弃，不生成错误卡
+                        info!(
+                            "[ANKI_CARD_DEBUG] 丢弃流收尾的非卡片残留内容（{} 字符）",
+                            residual.chars().count()
+                        );
+                    }
                 }
             }
         }
@@ -2117,7 +2160,9 @@ impl StreamingAnkiService {
         document_id: Option<&str>,
     ) -> Result<(), AppError> {
         let error_message = error.message.clone();
-        let final_status = if error_message.contains("超时") || error_message.contains("截断") {
+        let final_status = if error_message.contains(ERR_KEYWORD_TIMEOUT)
+            || error_message.contains(ERR_KEYWORD_TRUNCATED)
+        {
             TaskStatus::Truncated
         } else {
             TaskStatus::Failed
@@ -2146,28 +2191,6 @@ impl StreamingAnkiService {
         }
 
         Ok(())
-    }
-
-    /// 暂停流式制卡
-    pub async fn pause_streaming(&self, task_id: String) -> Result<(), String> {
-        let senders = self.pause_senders.lock().await;
-        if let Some(tx) = senders.get(&task_id) {
-            let _ = tx.send(true);
-            Ok(())
-        } else {
-            Err(format!("任务 {} 未在运行状态", task_id))
-        }
-    }
-
-    /// 继续流式制卡
-    pub async fn resume_streaming(&self, task_id: String) -> Result<(), String> {
-        let senders = self.pause_senders.lock().await;
-        if let Some(tx) = senders.get(&task_id) {
-            let _ = tx.send(false);
-            Ok(())
-        } else {
-            Err(format!("任务 {} 未在运行状态", task_id))
-        }
     }
 
     /// 取消当前流式制卡（用于硬暂停）

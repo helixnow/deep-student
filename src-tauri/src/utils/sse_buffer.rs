@@ -92,8 +92,11 @@ impl SseLineBuffer {
     }
 
     /// 检查是否遇到结束标记
+    ///
+    /// 🔧 兼容 "data:[DONE]"（无空格变体，SSE 规范允许，部分中转站使用）
     pub fn check_done_marker(line: &str) -> bool {
-        line.trim() == "data: [DONE]"
+        let trimmed = line.trim();
+        matches!(trimmed, "data: [DONE]" | "data:[DONE]")
     }
 
     /// 清空缓冲区

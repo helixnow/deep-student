@@ -11,15 +11,6 @@ export { useMindMapStore } from './mindmapStore';
 export { useMindMapStore as useDocumentStore } from './mindmapStore';
 export { useMindMapStore as useUIStore } from './mindmapStore';
 
-// 历史 Store（独立）
-export {
-  useHistoryStore,
-  type HistoryItem,
-  type HistoryState,
-  type HistoryActions,
-  type HistoryStore,
-} from './historyStore';
-
 // Selectors
 export {
   selectVisibleNodes,

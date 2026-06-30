@@ -16,6 +16,7 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   X,
@@ -166,6 +167,8 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
   const { t } = useTranslation('chatV2');
   const config = SIZE_CONFIG[size];
   const IconComponent = getResourceIconComponent(attachment.name, attachment.mimeType);
+  // 触屏无 hover:删除按钮必须常显,否则附件无法在发送前移除
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   // 是否显示图片预览 (仅当有 previewUrl 且是图片类型时)
   // 如果是小尺寸，且有预览图，优先显示预览图
@@ -272,8 +275,10 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
             'absolute top-0.5 right-0.5 z-20 !rounded-full !p-0.5',
             'bg-black/40 hover:bg-destructive text-white',
             'backdrop-blur-sm',
-            'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all duration-200',
-            'transform scale-90 group-hover:scale-100',
+            'transition-all duration-200',
+            isTouchPrimary
+              ? 'opacity-100 scale-100'
+              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transform scale-90 group-hover:scale-100',
             config.closeBtnPadding
           )}
           aria-label={t('attachmentPreview.remove')}

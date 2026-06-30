@@ -12,7 +12,8 @@
   },
   "placeholder": {
     "root": "Central Topic",
-    "node": "Type something..."
+    "node": "Type something...",
+    "note": "Add a note..."
   },
   "toolbar": {
     "outline": "Outline",
@@ -71,7 +72,9 @@
     "failedTitle": "Import Failed",
     "importedMap": "Imported Mind Map",
     "emptyMap": "Empty Mind Map",
-    "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?"
+    "unsavedWarning": "The current mind map has unsaved changes. Importing will overwrite them. Continue?",
+    "unsavedTitle": "Import will overwrite unsaved changes",
+    "unsavedConfirm": "Continue import"
   },
   "errors": {
     "notFound": "Mind map not found"
@@ -91,7 +94,20 @@
     "redo": "Redo",
     "save": "Save",
     "search": "Search",
-    "deleteNode": "Delete node"
+    "deleteNode": "Delete node",
+    "groupGeneral": "General",
+    "groupCanvas": "Mind Map View",
+    "groupOutline": "Outline View",
+    "navigate": "Navigate between nodes",
+    "editNode": "Edit node",
+    "editNote": "Edit note",
+    "moveNode": "Move node up / down",
+    "collapseExpand": "Collapse / expand node",
+    "bold": "Bold",
+    "fitView": "Fit view",
+    "clipboard": "Copy / cut / paste",
+    "indentOutdent": "Indent / outdent",
+    "escape": "Exit editing / deselect"
   },
   "embed": {
     "zoomIn": "Zoom in",
@@ -102,7 +118,11 @@
     "emptyContent": "Mind map content is empty",
     "loadFailed": "Loading failed",
     "loading": "Loading mind map...",
-    "newMindMap": "New Mind Map"
+    "newMindMap": "New Mind Map",
+    "versionSource": "Version source: {{source}}",
+    "layoutSingle": "Switch to single-side layout",
+    "layoutBoth": "Switch to two-sided layout",
+    "nodeCount": "{{count}} nodes"
   },
   "structure": {
     "mindmap": "Mind Map",
@@ -159,10 +179,15 @@
     "updateConflict": "Content has been updated elsewhere. Auto-refreshing to the latest version…",
     "conflictResolved": "Successfully refreshed to the latest version.",
     "conflictReloadFailed": "Auto-refresh failed. Please manually refresh the page to get the latest content.",
+    "conflictSnapshotKept": "Content was updated elsewhere; switched to the latest version. Your unsaved edits were preserved — click \"Restore my edits\".",
+    "conflictBannerTitle": "Your unsaved edits were preserved",
+    "conflictRestoreMine": "Restore my edits",
+    "conflictDismiss": "Use server version",
     "depthExceeded": "Mind map depth exceeds the maximum limit and cannot be saved.",
     "nodeCountExceeded": "Mind map node count exceeds the maximum limit and cannot be saved.",
     "invalidContent": "Mind map content is abnormal and cannot be saved. Please try again later.",
-    "draftSaveFailed": "Local storage is full, draft save failed. Please save your work and ensure network connectivity."
+    "draftSaveFailed": "Local storage is full, draft save failed. Please save your work and ensure network connectivity.",
+    "externalUpdatedDirty": "Mind map was updated elsewhere; you have unsaved changes, conflicts will be handled on save"
   },
   "style": {
     "bold": "Bold",

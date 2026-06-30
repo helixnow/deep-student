@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
+import { cn } from '@/utils/cn';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -325,6 +327,8 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
   disabled,
 }) => {
   const { t } = useTranslation('anki');
+  // 触屏无 hover:模板渲染态的编辑按钮需常显(点卡片本体是翻面,不会进入编辑)
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   // 多模板解析：优先从 templateMap 中按卡片的 template_id 查找
   const resolvedTemplate = useMemo(() => {
     if (templateMap && card.template_id) {
@@ -512,10 +516,22 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         <div className="absolute top-2 left-2 z-10 w-5 h-5 rounded-full bg-background/80 backdrop-blur flex items-center justify-center text-[10px] font-medium text-muted-foreground border">
           {index + 1}
         </div>
-        {/* 编辑按钮 */}
+        {/* 编辑按钮(触屏常显:卡片本体点击是翻面,编辑只能走此按钮) */}
         {!disabled && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }} className="absolute top-2 right-2 z-10 !w-6 !h-6 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border hover:bg-[var(--interactive-hover)]" aria-label="edit">
-            <Pencil size={12} className="text-muted-foreground" />
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }}
+            className={cn(
+              'absolute top-2 right-2 z-10 bg-background/80 backdrop-blur border hover:bg-[var(--interactive-hover)]',
+              isTouchPrimary
+                ? '!w-8 !h-8 opacity-100'
+                : '!w-6 !h-6 opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
+            )}
+            aria-label="edit"
+          >
+            <Pencil size={isTouchPrimary ? 14 : 12} className="text-muted-foreground" />
           </NotionButton>
         )}
         {/* 模板渲染预览 */}
@@ -734,6 +750,15 @@ const ActionButtons: React.FC<{
           t('blocks.ankiCards.action.syncPartialDetail', {
             added: result.warning.details.added,
             failed: result.warning.details.failed,
+          })
+        );
+      } else if (result.warning?.code === 'anki_sync_all_duplicates') {
+        // 全部已存在：幂等成功，提示而非报错
+        showGlobalNotification(
+          'info',
+          t('blocks.ankiCards.action.syncAllDuplicatesTitle'),
+          t('blocks.ankiCards.action.syncAllDuplicatesDetail', {
+            count: result.warning.details.duplicates,
           })
         );
       } else {
@@ -1123,6 +1148,33 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [block.id, t]
   );
 
+  // E2 修复：块内编辑/删除同时回写 anki_cards 表（消灭双数据源）。
+  // AI 的 chatanki_export / chatanki_sync 读取的是 DB，
+  // 不回写会导致"用户在块里删过/改过的卡在 AI 导出时复活"。
+  const syncCardUpdateToDb = useCallback((card: AnkiCard) => {
+    if (!card.id) return;
+    // 空 text 归一化为 null，避免把 DB 中的 NULL 覆盖为空字符串
+    const payload = { ...card, text: card.text?.trim() ? card.text : null };
+    invoke('update_anki_card', { card: payload }).catch((err) => {
+      console.warn('[AnkiCardsBlock] Failed to sync card edit to anki DB:', err);
+      showGlobalNotification(
+        'warning',
+        t('blocks.ankiCards.action.dbSyncFailed'),
+      );
+    });
+  }, [t]);
+
+  const syncCardDeleteToDb = useCallback((card: AnkiCard | undefined) => {
+    if (!card?.id) return;
+    invoke('delete_anki_card', { cardId: card.id }).catch((err) => {
+      console.warn('[AnkiCardsBlock] Failed to sync card delete to anki DB:', err);
+      showGlobalNotification(
+        'warning',
+        t('blocks.ankiCards.action.dbSyncFailed'),
+      );
+    });
+  }, [t]);
+
   // 保存卡片编辑
   const handleSaveCard = useCallback(
     (index: number, updated: AnkiCard) => {
@@ -1132,10 +1184,11 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       const newData = { ...data, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       persistToolOutput(newData);
+      syncCardUpdateToDb(updated);
       setEditingIndex(-1);
       logChatAnkiEvent('chat_anki_card_edited', { index, blockId: block.id });
     },
-    [cards, data, store, block.id, persistToolOutput]
+    [cards, data, store, block.id, persistToolOutput, syncCardUpdateToDb]
   );
 
   // 删除卡片
@@ -1143,10 +1196,12 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   const handleDeleteCard = useCallback(
     (index: number) => {
       if (!data || !store) return;
+      const removed = cards[index];
       const newCards = cards.filter((_, i) => i !== index);
       const newData = { ...data, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       persistToolOutput(newData);
+      syncCardDeleteToDb(removed);
       setEditingIndex((prev) => {
         if (prev === index) return -1;
         if (prev > index) return prev - 1;
@@ -1154,7 +1209,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       });
       logChatAnkiEvent('chat_anki_card_deleted', { index, blockId: block.id });
     },
-    [cards, data, store, block.id, persistToolOutput]
+    [cards, data, store, block.id, persistToolOutput, syncCardDeleteToDb]
   );
 
   // 计算预览状态

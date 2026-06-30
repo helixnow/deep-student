@@ -38,6 +38,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { QuickAccessType } from '../../learningHubContracts';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { IndexStatusMiniBar } from './IndexStatusMiniBar';
 
 interface FinderQuickAccessProps {
   collapsed: boolean;
@@ -501,6 +502,12 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             ))}
           </div>
         </CustomScrollArea>
+
+        {/* 索引状态常驻小条：索引中/待索引/失败时可见，点击直达索引状态页 */}
+        <IndexStatusMiniBar
+          collapsed={collapsed && !fillContainer}
+          onOpenIndexStatus={() => onNavigate('indexStatus')}
+        />
 
         {onToggleCollapse && (
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">

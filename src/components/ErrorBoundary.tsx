@@ -7,7 +7,7 @@ const SHOW_DEV_ERROR_DETAILS = import.meta.env.DEV;
 
 type ErrorBoundaryProps = {
   name?: string;
-  fallback?: React.ReactNode | ((error: any, componentStack?: string) => React.ReactNode);
+  fallback?: React.ReactNode | ((error: any, componentStack?: string, reset?: () => void) => React.ReactNode);
   onError?: (error: any, info: any) => void;
   children: React.ReactNode;
 };
@@ -49,6 +49,10 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       .join('');
   }
 
+  private resetError = () => {
+    this.setState({ hasError: false, error: undefined, componentStack: undefined, copied: false });
+  };
+
   private handleCopyError = async () => {
     try {
       await copyTextToClipboard(this.buildErrorLog());
@@ -82,7 +86,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     if (this.state.hasError) {
       if (typeof this.props.fallback === 'function') {
-        return this.props.fallback(this.state.error, this.state.componentStack);
+        return this.props.fallback(this.state.error, this.state.componentStack, this.resetError);
       }
 
       const errorName =

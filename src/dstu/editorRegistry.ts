@@ -81,7 +81,7 @@ const EXAM_CAPABILITIES: ResourceCapabilities = {
 /**
  * 懒加载笔记编辑器
  *
- * 实际组件路径：src/features/notes/components/NoteEditorView.tsx
+ * 实际组件：src/dstu/editors/NoteEditorWrapper.tsx（NoteEditorView 已于 round2 移除）
  * 需要包装以符合 EditorProps 接口
  */
 const lazyNoteEditor = (): Promise<{ default: EditorComponent }> =>

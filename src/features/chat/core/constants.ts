@@ -157,10 +157,11 @@ export const MAX_SCAN_LENGTH = 1000;
 // ==================== 附件上传配置 ====================
 
 /** 
- * 单个附件最大大小 (50MB) 
- * ★ 与后端 VFS get_max_size_bytes() 保持一致
+ * 单个附件最大大小 (200MB) 
+ * ★ #62: 从 50MB 提升至 200MB，与学习资源导入入口及后端
+ *   document_parser::MAX_DOCUMENT_SIZE (200MB)、attachment_repo::MAX_FILE_BYTES 对齐
  */
-export const ATTACHMENT_MAX_SIZE = 50 * 1024 * 1024;
+export const ATTACHMENT_MAX_SIZE = 200 * 1024 * 1024;
 
 /** 单次会话最大附件数量 */
 export const ATTACHMENT_MAX_COUNT = 20;

@@ -31,6 +31,7 @@ vi.mock('react-i18next', () => ({
     },
     i18n: { language: 'zh-CN', changeLanguage: vi.fn() },
   }),
+  initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
 
 // Mock getBackupConfig / setBackupConfig used internally by BackupTab

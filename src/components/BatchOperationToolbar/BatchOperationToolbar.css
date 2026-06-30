@@ -321,7 +321,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 1024px) {
+@media (max-width: 1023.98px) {
   .batch-operation-toolbar {
     flex-direction: column;
     gap: 12px;
@@ -337,7 +337,7 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .search-input {
     width: 100%;
   }

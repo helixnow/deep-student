@@ -120,6 +120,24 @@ function getDefaultVariables(t: (key: string) => string): PromptVariable[] {
 }
 
 // ============================================================================
+// 人格预设（借鉴 Codex /personality：语气可换、能力不变）
+// ============================================================================
+
+interface PersonaPreset {
+  id: string;
+  label: string;
+  content: string;
+}
+
+function getPersonaPresets(t: (key: string) => string): PersonaPreset[] {
+  return ['coach', 'companion', 'socratic', 'concise'].map((id) => ({
+    id,
+    label: t(`systemPrompt.personas.${id}.label`),
+    content: t(`systemPrompt.personas.${id}.content`),
+  }));
+}
+
+// ============================================================================
 // 子组件：模板选择器
 // ============================================================================
 
@@ -396,6 +414,32 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
     textareaRef.current?.focus();
   }, [onChange]);
 
+  // 人格预设 chips：点击插入语气段落，再次点击移除（toggle）
+  const personaPresets = useMemo(() => getPersonaPresets(t), [t]);
+  const handleTogglePersona = useCallback(
+    (preset: PersonaPreset) => {
+      if (value.includes(preset.content)) {
+        // 移除该人格段落（连同其前导空行）
+        const next = value
+          .replace(`\n\n${preset.content}`, '')
+          .replace(preset.content, '')
+          .trim();
+        onChange(next);
+        return;
+      }
+      // 同时只保留一个人格：先移除其他已插入的人格段落
+      let base = value;
+      for (const other of personaPresets) {
+        if (other.id !== preset.id && base.includes(other.content)) {
+          base = base.replace(`\n\n${other.content}`, '').replace(other.content, '');
+        }
+      }
+      base = base.trim();
+      onChange(base ? `${base}\n\n${preset.content}` : preset.content);
+    },
+    [value, onChange, personaPresets]
+  );
+
   return (
     <div
       className={cn(
@@ -441,6 +485,32 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
             <ArrowCounterClockwise size={16} />
           </NotionButton>
         </div>
+      </div>
+
+      {/* 人格预设 chips */}
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 border-b border-border/50">
+        <span className="text-xs text-muted-foreground mr-0.5">{t('systemPrompt.personas.title')}</span>
+        {personaPresets.map((preset) => {
+          const active = value.includes(preset.content);
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              disabled={disabled}
+              onClick={() => handleTogglePersona(preset)}
+              aria-pressed={active}
+              className={cn(
+                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                active
+                  ? 'border-primary/50 bg-primary/10 text-primary'
+                  : 'border-border/60 bg-transparent text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
+              )}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* 编辑区域 */}

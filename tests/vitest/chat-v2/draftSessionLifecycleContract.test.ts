@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 describe('hidden draft session lifecycle contract', () => {
   const lifecycleSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/pages/useSessionLifecycle.ts'),
+    resolve(process.cwd(), 'src/features/chat/pages/useSessionLifecycle.ts'),
     'utf-8'
   );
   const chatPageSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'),
+    resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'),
     'utf-8'
   );
   const repoSource = readFileSync(
@@ -16,15 +16,15 @@ describe('hidden draft session lifecycle contract', () => {
     'utf-8'
   );
   const sessionActionsSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/core/store/sessionActions.ts'),
+    resolve(process.cwd(), 'src/features/chat/core/store/sessionActions.ts'),
     'utf-8'
   );
   const tauriAdapterSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/adapters/TauriAdapter.ts'),
+    resolve(process.cwd(), 'src/features/chat/adapters/TauriAdapter.ts'),
     'utf-8'
   );
   const restoreActionsSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/core/store/restoreActions.ts'),
+    resolve(process.cwd(), 'src/features/chat/core/store/restoreActions.ts'),
     'utf-8'
   );
 

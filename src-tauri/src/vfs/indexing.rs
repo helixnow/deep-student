@@ -385,6 +385,14 @@ impl VfsChunker {
     }
 }
 
+fn should_disable_index_for_missing_note(resource: &VfsResource) -> bool {
+    !resource
+        .data
+        .as_deref()
+        .map(|data| !data.trim().is_empty())
+        .unwrap_or(false)
+}
+
 pub struct VfsContentExtractor;
 
 impl VfsContentExtractor {
@@ -1658,8 +1666,11 @@ impl VfsIndexingService {
                 None,
                 None,
             )?;
-            // 使用新架构：删除旧 units（segments 级联删除）
-            index_unit_repo::delete_by_resource(&conn, resource_id)?;
+            // 使用新架构：删除旧 units（segments 级联删除）。
+            // ★ 2026-06-12（本轮审阅）：改用 purge 变体，把旧 segments 的
+            // lance_row_id 先写入 __lance_orphan_queue——若资源曾被新服务
+            // 索引过（存在真实向量），不至于因走到本废弃方法而孤儿化。
+            index_unit_repo::purge_index_artifacts_by_resource(&conn, resource_id)?;
             embedding_dim_repo::register(&conn, embedding_dim, MODALITY_TEXT)?;
 
             let now = chrono::Utc::now().timestamp_millis();
@@ -2084,18 +2095,25 @@ impl VfsFullIndexingService {
                     }
                     Some(_) => {}
                     None => {
-                        // ★ C-3 修复：使用统一的删除方法，确保所有 modality 的向量都被删除
-                        self.delete_resource_index(resource_id).await?;
-                        VfsIndexStateRepo::mark_disabled_with_reason(
-                            &self.db,
-                            resource_id,
-                            "note missing",
-                        )?;
-                        info!(
-                            "[VfsFullIndexingService] Skip missing note {} (resource {})",
+                        if should_disable_index_for_missing_note(&resource) {
+                            // ★ C-3 修复：使用统一的删除方法，确保所有 modality 的向量都被删除
+                            self.delete_resource_index(resource_id).await?;
+                            VfsIndexStateRepo::mark_disabled_with_reason(
+                                &self.db,
+                                resource_id,
+                                "note missing",
+                            )?;
+                            info!(
+                                "[VfsFullIndexingService] Skip missing note {} (resource {})",
+                                note_id, resource_id
+                            );
+                            return Ok((0, 0));
+                        }
+
+                        warn!(
+                            "[VfsFullIndexingService] Note {} missing for resource {}, indexing inline resource.data fallback",
                             note_id, resource_id
                         );
-                        return Ok((0, 0));
                     }
                 }
 
@@ -2461,12 +2479,19 @@ impl VfsFullIndexingService {
                 // FileBuilder 可能创建了多个 text units（如 native + ocr），
                 // 上面的流程只处理了 resolve_indexable_content 返回的主文本（写入 unit_index=0），
                 // 这里处理剩余的 pending text units
-                self.index_additional_pending_text_units(
-                    resource_id,
-                    &resource.resource_type.to_string(),
-                    resolved_folder_id.as_deref(),
-                )
-                .await?;
+                // ★ 2026-06-12（本轮审阅）：此处失败必须 mark_failed 再返回，
+                // 否则资源停留在 indexing 状态，要等到下次启动 recover_stuck_indexing 才被捞回。
+                if let Err(e) = self
+                    .index_additional_pending_text_units(
+                        resource_id,
+                        &resource.resource_type.to_string(),
+                        resolved_folder_id.as_deref(),
+                    )
+                    .await
+                {
+                    VfsIndexStateRepo::mark_failed(&self.db, resource_id, &e.to_string())?;
+                    return Err(e);
+                }
 
                 // 9. 更新索引状态
                 VfsIndexStateRepo::mark_indexed(&self.db, resource_id, &resource.hash)?;
@@ -3147,8 +3172,9 @@ impl VfsFullIndexingService {
                 if !progress.ready_modes.contains(&"ocr".to_string()) {
                     progress.ready_modes.push("ocr".to_string());
                     if let Ok(new_json) = serde_json::to_string(&progress) {
+                        // ★ G2 修复：处理状态写入不触碰业务 updated_at
                         if let Err(e) = conn.execute(
-                            "UPDATE files SET processing_progress = ?1, updated_at = datetime('now') WHERE id = ?2",
+                            "UPDATE files SET processing_progress = ?1 WHERE id = ?2",
                             rusqlite::params![new_json, file_id],
                         ) {
                             log::warn!("[VfsIndexing] Failed to update processing_progress for file {}: {}", file_id, e);
@@ -3598,11 +3624,11 @@ impl VfsFullIndexingService {
     /// 确保软删除后的资源不会在 RAG 检索中被错误返回。
     /// ★ 审计修复：复用 self.lance_store，删除后刷新 record_count
     pub async fn delete_resource_index(&self, resource_id: &str) -> VfsResult<()> {
-        // 1. 删除 text modality 的 Lance 向量（通过 pipeline）
-        self.pipeline.delete_resource_index(resource_id).await?;
-
-        // 2. 删除 multimodal modality 的 Lance 向量
-        // ★ 审计修复：复用 self.lance_store 而非每次创建新实例
+        // 1. 先删除 multimodal modality 的 Lance 向量。
+        // ★ 2026-06-13（第二轮审阅 F13 配套）：mm 向量没有 SQLite 段登记
+        // （按 resource_id 过滤删除），孤儿队列无法兜底，必须放在 SQLite
+        // 元数据清理**之前**：失败时整个删除中止、所有状态保持原样可重试。
+        // （delete_by_resource 现在会如实上报删除失败，不再静默吞错。）
         self.lance_store
             .delete_by_resource(MODALITY_MULTIMODAL, resource_id)
             .await
@@ -3612,6 +3638,10 @@ impl VfsFullIndexingService {
                     resource_id, e
                 ))
             })?;
+
+        // 2. 删除 text modality 的 Lance 向量（通过 pipeline，含 SQLite 段
+        //    的孤儿队列入列，崩溃/失败均可由后台 drain 兜底）
+        self.pipeline.delete_resource_index(resource_id).await?;
 
         // 3. 删除 SQLite 中的元数据（新架构：Units + Segments 级联删除）
         let conn = self.db.get_conn()?;
@@ -3647,6 +3677,14 @@ impl VfsFullIndexingService {
     /// ## 并行策略
     /// 使用 `max_concurrent` 配置控制并行度（默认 2）
     pub async fn process_pending_batch(&self, batch_size: u32) -> VfsResult<(usize, usize)> {
+        // ★ F5 修复：每轮先排空 Lance 孤立向量队列，防止已删内容仍被 RAG 命中
+        if let Err(e) = self.drain_lance_orphan_queue(200).await {
+            warn!(
+                "[VfsFullIndexingService] drain_lance_orphan_queue failed: {}",
+                e
+            );
+        }
+
         let config = VfsIndexingService::new(self.db.clone()).get_indexing_config()?;
         let pending =
             VfsIndexStateRepo::claim_pending_resources(&self.db, batch_size, config.max_retries)?;
@@ -3703,6 +3741,84 @@ impl VfsFullIndexingService {
         );
 
         Ok((success, fail))
+    }
+
+    /// ★ F5 修复：排空 Lance 孤立向量队列
+    ///
+    /// `sync_resource_units` 增量同步删除 Units 时，孤立的 lance_row_id 会被写入
+    /// `__lance_orphan_queue`（与业务变更同事务）。本方法批量取出队列条目，
+    /// 调用 `delete_by_embedding_ids` 从 text/multimodal 两个 modality 中删除向量：
+    /// - 成功：从队列中移除；
+    /// - 失败：递增 retry_count，超过 10 次后放弃并告警（避免队列无限膨胀）。
+    pub async fn drain_lance_orphan_queue(&self, limit: u32) -> VfsResult<usize> {
+        const MAX_RETRY: i32 = 10;
+
+        let entries: Vec<(String, i32)> = {
+            let conn = self.db.get_conn()?;
+            let mut stmt = conn.prepare(
+                "SELECT lance_row_id, retry_count FROM __lance_orphan_queue
+                 WHERE retry_count < ?1 ORDER BY enqueued_at LIMIT ?2",
+            )?;
+            let rows = stmt
+                .query_map(rusqlite::params![MAX_RETRY, limit], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        let ids: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
+        let text_result = self
+            .lance_store
+            .delete_by_embedding_ids(MODALITY_TEXT, &ids)
+            .await;
+        let mm_result = self
+            .lance_store
+            .delete_by_embedding_ids(MODALITY_MULTIMODAL, &ids)
+            .await;
+
+        let conn = self.db.get_conn()?;
+        let cleaned = if text_result.is_ok() && mm_result.is_ok() {
+            // 全部成功：从队列移除
+            for id in &ids {
+                conn.execute(
+                    "DELETE FROM __lance_orphan_queue WHERE lance_row_id = ?1",
+                    rusqlite::params![id],
+                )?;
+            }
+            info!(
+                "[VfsFullIndexingService] drain_lance_orphan_queue: cleaned {} orphaned vectors",
+                ids.len()
+            );
+            ids.len()
+        } else {
+            // 失败：递增 retry，超限后放弃
+            for id in &ids {
+                conn.execute(
+                    "UPDATE __lance_orphan_queue SET retry_count = retry_count + 1 WHERE lance_row_id = ?1",
+                    rusqlite::params![id],
+                )?;
+            }
+            let abandoned: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE retry_count >= ?1",
+                rusqlite::params![MAX_RETRY],
+                |row| row.get(0),
+            )?;
+            warn!(
+                "[VfsFullIndexingService] drain_lance_orphan_queue: lance delete failed (text: {:?}, mm: {:?}); retry deferred, {} entries abandoned (retry>={})",
+                text_result.err(),
+                mm_result.err(),
+                abandoned,
+                MAX_RETRY
+            );
+            0
+        };
+
+        Ok(cleaned)
     }
 
     /// 检查资源是否需要重新索引
@@ -4575,6 +4691,7 @@ impl VfsFullSearchService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vfs::{StorageMode, VfsResourceMetadata};
 
     #[test]
     fn test_chunk_fixed_size() {
@@ -4628,5 +4745,53 @@ mod tests {
         let text = text.unwrap();
         assert!(text.contains("Hello"));
         assert!(text.contains("你好"));
+    }
+
+    #[test]
+    fn test_missing_note_with_inline_data_keeps_indexable_fallback() {
+        let resource = VfsResource {
+            id: "res_note_inline".to_string(),
+            hash: "hash_inline".to_string(),
+            resource_type: VfsResourceType::Note,
+            source_id: Some("note_missing".to_string()),
+            source_table: Some("notes".to_string()),
+            storage_mode: StorageMode::Inline,
+            data: Some("# Inline fallback\n\nkeep me indexed".to_string()),
+            external_hash: None,
+            metadata: Some(VfsResourceMetadata {
+                title: Some("Inline Note".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+                ..Default::default()
+            }),
+            ref_count: 1,
+            created_at: 1,
+            updated_at: 1,
+        };
+
+        assert!(!should_disable_index_for_missing_note(&resource));
+    }
+
+    #[test]
+    fn test_missing_note_without_inline_data_disables_index() {
+        let resource = VfsResource {
+            id: "res_note_missing".to_string(),
+            hash: "hash_missing".to_string(),
+            resource_type: VfsResourceType::Note,
+            source_id: Some("note_missing".to_string()),
+            source_table: Some("notes".to_string()),
+            storage_mode: StorageMode::Inline,
+            data: None,
+            external_hash: None,
+            metadata: Some(VfsResourceMetadata {
+                title: Some("Missing Note".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+                ..Default::default()
+            }),
+            ref_count: 1,
+            created_at: 1,
+            updated_at: 1,
+        };
+
+        assert!(should_disable_index_for_missing_note(&resource));
     }
 }

@@ -6,6 +6,7 @@
  * - 评分按钮：Again(0)/Hard(2)/Good(3)/Easy(5)
  * - 复习进度指示器
  * - 复习完成统计（本次复习数、通过率）
+ * - 键盘流：空格/回车翻面，1-4 评分，→ 跳过（高频操作免鼠标）
  *
  * 🆕 2026-01 新增
  */
@@ -71,6 +72,8 @@ interface RatingButtonProps {
   color: string;
   onClick: () => void;
   disabled?: boolean;
+  /** 键盘快捷键角标（如 "1"） */
+  shortcutKey?: string;
 }
 
 // ============================================================================
@@ -85,19 +88,25 @@ const RatingButton: React.FC<RatingButtonProps> = ({
   color,
   onClick,
   disabled,
+  shortcutKey,
 }) => (
   <NotionButton
     variant="ghost" size="sm"
     onClick={onClick}
     disabled={disabled}
     className={cn(
-      '!p-3 !h-auto !rounded-xl flex-col !items-center !gap-1.5',
+      'relative !p-3 !h-auto !rounded-xl flex-col !items-center !gap-1.5',
       'border-2',
       'hover:scale-105 active:scale-95',
       'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100',
       color
     )}
   >
+    {shortcutKey && (
+      <kbd className="absolute top-1.5 right-1.5 hidden sm:inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded border border-current/30 text-[10px] font-mono leading-none opacity-50">
+        {shortcutKey}
+      </kbd>
+    )}
     <div className="text-current">{icon}</div>
     <span className="text-sm font-semibold">{label}</span>
     <span className="text-[10px] opacity-70">{sublabel}</span>
@@ -304,6 +313,46 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     skipCurrentQuestion();
   }, [skipCurrentQuestion]);
 
+  // 键盘流：空格/回车翻面，1-4 评分，→ 跳过
+  useEffect(() => {
+    if (!session.isActive || !currentItem) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 输入控件聚焦或带修饰键时不拦截
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (!showAnswer) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault();
+          setShowAnswer(true);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          handleSkip();
+        }
+        return;
+      }
+
+      // 答案已显示：1-4 评分（映射 Again/Hard/Good/Easy）
+      const qualityByKey: Record<string, ReviewQuality> = { '1': 0, '2': 2, '3': 3, '4': 5 };
+      if (e.key in qualityByKey) {
+        e.preventDefault();
+        void handleRate(qualityByKey[e.key]);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [session.isActive, currentItem, showAnswer, handleRate, handleSkip]);
+
   // 处理关闭
   const handleClose = useCallback(() => {
     endSession();
@@ -491,6 +540,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             >
               <Eye size={20} />
               {t('review:action.showAnswer')}
+              <kbd className="hidden sm:inline-flex items-center justify-center h-4 px-1.5 rounded border border-current/30 text-[10px] font-mono leading-none opacity-60">
+                {t('review:keyboard.space')}
+              </kbd>
             </NotionButton>
           </div>
         ) : (
@@ -498,6 +550,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           <div className="max-w-lg mx-auto">
             <p className="text-xs text-center text-muted-foreground mb-3">
               {t('review:rating.prompt')}
+              <span className="hidden sm:inline text-muted-foreground/60 ml-2">
+                {t('review:keyboard.ratingHint')}
+              </span>
             </p>
             <div className="grid grid-cols-4 gap-2">
               <RatingButton
@@ -508,6 +563,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 color="border-red-500/50 bg-red-500/5 text-red-600 hover:bg-red-500/10 hover:border-red-500"
                 onClick={() => handleRate(0)}
                 disabled={isProcessing}
+                shortcutKey="1"
 />
               <RatingButton
                 quality={2}
@@ -517,6 +573,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 color="border-amber-500/50 bg-amber-500/5 text-amber-600 hover:bg-amber-500/10 hover:border-amber-500"
                 onClick={() => handleRate(2)}
                 disabled={isProcessing}
+                shortcutKey="2"
 />
               <RatingButton
                 quality={3}
@@ -526,6 +583,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 color="border-emerald-500/50 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500"
                 onClick={() => handleRate(3)}
                 disabled={isProcessing}
+                shortcutKey="3"
 />
               <RatingButton
                 quality={5}
@@ -535,6 +593,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 color="border-sky-500/50 bg-sky-500/5 text-sky-600 hover:bg-sky-500/10 hover:border-sky-500"
                 onClick={() => handleRate(5)}
                 disabled={isProcessing}
+                shortcutKey="4"
 />
             </div>
           </div>

@@ -19,8 +19,6 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "data_governance")]
-
 /// 审计日志条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditLog {

@@ -172,8 +172,8 @@ describe('session sidebar typography alignment', () => {
     expect(selectedItemRow).toHaveClass('text-foreground');
     expect(selectedItemRow).not.toHaveClass('bg-accent');
     expect(selectedItem).toHaveClass('font-normal');
-    expect(selectedItem).toHaveClass('hover:font-normal');
-    expect(selectedItem).toHaveClass('text-[13px]');
+    expect(selectedItem).toHaveClass('text-[16px]');
+    expect(selectedItem).toHaveClass('leading-5');
     expect(selectedItem).not.toHaveClass('font-medium');
     expect(screen.queryByLabelText('page.pinSession')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('page.archiveSession')).not.toBeInTheDocument();
@@ -185,8 +185,8 @@ describe('session sidebar typography alignment', () => {
     expect(regularItemRow).toHaveClass('hover:text-foreground');
     expect(regularItemRow).toHaveClass('hover:bg-[var(--sidebar-study-hover)]');
     expect(regularItem).toHaveClass('font-normal');
-    expect(regularItem).toHaveClass('hover:font-normal');
-    expect(regularItem).toHaveClass('text-[13px]');
+    expect(regularItem).toHaveClass('text-[16px]');
+    expect(regularItem).toHaveClass('leading-5');
     expect(regularItem).not.toHaveClass('font-semibold');
   });
 });

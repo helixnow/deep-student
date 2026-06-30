@@ -14,6 +14,7 @@ import type { BlockingInteraction } from '../../core/types/store';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
 import type { ContextWindowUsage } from './contextWindowUsage';
+import type { SessionUsageSummary } from '@/api/llmUsageApi';
 
 // ============================================================================
 // 模型 @mention 自动完成状态
@@ -153,6 +154,9 @@ export interface InputBarUIProps {
 
   /** 最近一次完成回复后的上下文窗口占用 */
   contextWindowUsage?: ContextWindowUsage | null;
+
+  /** ★ 1.2 本会话累计用量（token / 费用），显示在上下文水位 tooltip 中 */
+  sessionUsage?: SessionUsageSummary | null;
 
   /** 附件列表 */
   attachments: AttachmentMeta[];

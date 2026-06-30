@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deep Student Tauri Lab"
+  short_description: "Manage parallel Deep Student Tauri instances, fixtures, logs, and evidence."
+  default_prompt: "Use this skill when you need to create, start, lease, inspect, snapshot, assert, or clean up Deep Student Tauri test instances and local fixtures with tauri-lab."

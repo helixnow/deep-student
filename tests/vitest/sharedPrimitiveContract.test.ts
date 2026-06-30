@@ -3,11 +3,14 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('shared primitive migration contract', () => {
+  const buttonPrimitiveSource = readFileSync(resolve(process.cwd(), 'src/components/ui/buttonPrimitiveContract.ts'), 'utf-8');
   const notionButtonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/NotionButton.tsx'), 'utf-8');
   const notionDialogSource = readFileSync(resolve(process.cwd(), 'src/components/ui/NotionDialog.tsx'), 'utf-8');
   const buttonSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Button.tsx'), 'utf-8');
   const inputSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Input.tsx'), 'utf-8');
+  const inputShellSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/inputShell.ts'), 'utf-8');
   const switchSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Switch.tsx'), 'utf-8');
+  const switchCssSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Switch.css'), 'utf-8');
   const sheetSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Sheet.tsx'), 'utf-8');
   const tabsSource = readFileSync(resolve(process.cwd(), 'src/components/ui/shad/Tabs.tsx'), 'utf-8');
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx'), 'utf-8');
@@ -15,16 +18,21 @@ describe('shared primitive migration contract', () => {
   const sidebarDrawerSource = readFileSync(resolve(process.cwd(), 'src/components/ui/unified-sidebar/SidebarDrawer.tsx'), 'utf-8');
 
   it('adds explicit shell button roles beyond the legacy notion variants', () => {
-    expect(notionButtonSource).toContain("'utility'");
-    expect(notionButtonSource).toContain("'nav'");
-    expect(notionButtonSource).toContain('var(--button-utility-hover)');
+    expect(buttonPrimitiveSource).toContain("'utility'");
+    expect(buttonPrimitiveSource).toContain("'nav'");
+    expect(buttonPrimitiveSource).toContain('var(--button-tonal-hover-bg)');
+    expect(notionButtonSource).toContain('type ButtonPrimitiveVariant');
+    expect(notionButtonSource).toContain('buttonToneClassNames[variant]');
   });
 
   it('routes dialog, input, and sheet surfaces through shell tokens', () => {
     expect(notionDialogSource).toContain('var(--dialog-shell-surface)');
-    expect(buttonSource).toContain('var(--button-primary-surface)');
-    expect(inputSource).toContain('var(--input-shell-surface)');
-    expect(switchSource).toContain('var(--button-primary-foreground)');
+    expect(buttonSource).toContain('buttonToneClassNames.primary');
+    expect(buttonPrimitiveSource).toContain('var(--button-prominent-bg)');
+    expect(inputSource).toContain('inputShellClass');
+    expect(inputShellSource).toContain('var(--input-shell-surface)');
+    expect(switchSource).toContain('./Switch.css');
+    expect(switchCssSource).toContain('hsl(var(--primary))');
     expect(sheetSource).toContain('var(--dialog-shell-surface)');
     expect(tabsSource).toContain('var(--surface-panel-strong)');
   });

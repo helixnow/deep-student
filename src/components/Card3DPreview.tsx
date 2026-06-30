@@ -486,6 +486,10 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
         <div className="card-3d-track">
           {cards.map((card, index) => {
             const cardTemplate = resolveTemplate(card);
+            // 窗口化渲染：与 getCardTransform 的可见窗口(±4)一致。
+            // 远处卡片本就 visibility:hidden，跳过其沙箱 iframe 挂载与模板渲染，
+            // 避免 N 张卡片产生 2N 个 iframe 的内存/CPU 开销。
+            const isNearViewport = Math.abs(index - currentIndex) <= 4;
             return (
             <div
               key={card.id}
@@ -497,20 +501,24 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
               <div className="card-3d-inner">
                 <div className="card-3d-face card-3d-front">
                   <div className="card-3d-content-wrapper">
-                    <ShadowDomPreview
-                      htmlContent={renderCardFront(card)}
-                      cssContent={(cardTemplate as any)?.css_style || ''}
-                      fidelity="anki"
-                    />
+                    {isNearViewport && (
+                      <ShadowDomPreview
+                        htmlContent={renderCardFront(card)}
+                        cssContent={(cardTemplate as any)?.css_style || ''}
+                        fidelity="anki"
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="card-3d-face card-3d-back">
                   <div className="card-3d-content-wrapper">
-                    <ShadowDomPreview
-                      htmlContent={renderCardBack(card)}
-                      cssContent={(cardTemplate as any)?.css_style || ''}
-                      fidelity="anki"
-                    />
+                    {isNearViewport && (
+                      <ShadowDomPreview
+                        htmlContent={renderCardBack(card)}
+                        cssContent={(cardTemplate as any)?.css_style || ''}
+                        fidelity="anki"
+                      />
+                    )}
                   </div>
                 </div>
               </div>

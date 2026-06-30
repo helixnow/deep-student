@@ -36,6 +36,15 @@ export interface PomodoroTodayStats {
   interruptedCount: number;
 }
 
+/** 单日聚合统计（本地日期分桶，趋势/热力图数据源） */
+export interface PomodoroDailyStat {
+  /** 本地日期 YYYY-MM-DD */
+  date: string;
+  completedCount: number;
+  focusSeconds: number;
+  interruptedCount: number;
+}
+
 // ============================================================================
 // Pomodoro API
 // ============================================================================
@@ -58,4 +67,9 @@ export async function getPomodoroTodayStats(): Promise<PomodoroTodayStats> {
 
 export async function listTodayPomodoros(): Promise<PomodoroRecord[]> {
   return invoke('pomodoro_list_today');
+}
+
+/** 近 N 天按本地日期聚合的番茄统计（完整日期序列，无记录天补零） */
+export async function getPomodoroDailyStats(days: number): Promise<PomodoroDailyStat[]> {
+  return invoke('pomodoro_daily_stats', { days });
 }

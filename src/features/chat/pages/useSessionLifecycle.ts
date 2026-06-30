@@ -45,7 +45,6 @@ export interface UseSessionLifecycleDeps {
   setHasMoreSessions: React.Dispatch<React.SetStateAction<boolean>>;
   setIsInitialLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setIsLoadingMore: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   isLoadingMore: boolean;
   hasMoreSessions: boolean;
   sessionsRef: React.MutableRefObject<ChatSession[]>;
@@ -59,7 +58,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
-    setIsLoadingMore, setShowChatControl,
+    setIsLoadingMore,
     isLoadingMore, hasMoreSessions, sessionsRef,
     t, PAGE_SIZE, LAST_SESSION_KEY,
   } = deps;
@@ -368,11 +367,6 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     [getOrCreateHiddenDraftSession, loadUngroupedCount, t] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
   );
 
-  // 🆕 打开/关闭对话控制侧栏
-  const toggleChatControl = useCallback(() => {
-    setShowChatControl((prev) => !prev);
-  }, []);
-
   // 🆕 2026-01-20: 点击 Worker Agent 查看输出 - 切换到对应会话
   const handleViewAgentSession = useCallback((agentSessionId: string) => {
     console.log('[ChatV2Page] Switching to agent session:', agentSessionId);
@@ -387,7 +381,6 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     loadMoreSessions,
     deleteSession,
     getOrCreateHiddenDraftSession,
-    toggleChatControl,
     handleViewAgentSession,
   };
 }

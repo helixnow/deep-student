@@ -1,9 +1,9 @@
 @echo off
-title Deep Student - AI错题管理系统 开发环境
+title Deep Student 开发环境
 echo.
 echo ================================================
-echo     Deep Student - AI错题管理系统
-echo     AI Mistake Management System
+echo     Deep Student - AI驱动的智能学习助手
+echo     AI-powered intelligent learning assistant
 echo ================================================
 echo.
 echo 正在启动开发环境...

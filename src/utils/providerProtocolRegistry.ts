@@ -31,10 +31,9 @@ export const getProviderProtocolRecord = (providerType?: string | null): Provide
   return providers.find((record) => record.provider_type === normalized);
 };
 
-const resolvesToOfficialOpenAi = (providerType?: string | null, baseUrl?: string | null) => {
-  const normalizedProvider = normalize(providerType);
+const resolvesToOfficialOpenAi = (baseUrl?: string | null) => {
   const normalizedBaseUrl = normalizeBaseUrlForProtocolRegistry(baseUrl);
-  return normalizedProvider === 'openai' || normalizedBaseUrl.includes('api.openai.com');
+  return normalizedBaseUrl.includes('api.openai.com');
 };
 
 export const providerSupportsOpenAiResponses = (args: {
@@ -43,7 +42,8 @@ export const providerSupportsOpenAiResponses = (args: {
   supportsOpenAIResponses?: boolean | null;
 }): boolean => {
   if (args.supportsOpenAIResponses === true) return true;
-  if (resolvesToOfficialOpenAi(args.providerType, args.baseUrl)) return true;
+  if (resolvesToOfficialOpenAi(args.baseUrl)) return true;
+  if (normalize(args.providerType) === 'openai') return false;
   return getProviderProtocolRecord(args.providerType)?.supports_openai_responses === true;
 };
 
@@ -65,6 +65,14 @@ export const resolvePreferredProtocol = (args: {
   const allowed = getAllowedProtocolsForProviderType(args.providerType);
   if (providerSupportsOpenAiResponses(args) && allowed.includes('openai_responses')) {
     return 'openai_responses';
+  }
+
+  if (
+    normalize(args.providerType) === 'openai'
+    && !resolvesToOfficialOpenAi(args.baseUrl)
+    && allowed.includes('openai_chat_completions')
+  ) {
+    return 'openai_chat_completions';
   }
 
   const record = getProviderProtocolRecord(args.providerType);

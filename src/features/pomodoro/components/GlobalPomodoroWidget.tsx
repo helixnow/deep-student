@@ -1,8 +1,19 @@
 import React, { useEffect } from 'react';
-import { Pause, Play, Square, Coffee, Brain, ArrowsOut } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
+import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture } from '@phosphor-icons/react';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { cn } from '@/lib/utils';
 import { ImmersiveFocusMode } from './ImmersiveFocusMode';
+import {
+  openPomodoroMiniWindow,
+  closePomodoroMiniWindow,
+  broadcastPomodoroState,
+  EVT_MINI_COMMAND,
+  EVT_MINI_READY,
+  type PomodoroMiniCommand,
+} from '../miniWindow';
 
 /**
  * GlobalPomodoroWidget
@@ -15,10 +26,21 @@ import { ImmersiveFocusMode } from './ImmersiveFocusMode';
  * 空闲态不显示任何浮动 UI——番茄钟主入口在 Todo 页面内的 PomodoroPanel。
  */
 export const GlobalPomodoroWidget: React.FC = () => {
-  const { mode, status, timeLeft, currentTaskTitle, pause, resume, stop, tick, isImmersive, setImmersive } = usePomodoroStore();
+  const { t } = useTranslation('todo');
+  const { mode, status, timeLeft, currentTaskTitle, settings, pause, resume, stop, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
+  // P-1/P-2: 触屏上抬高药丸避开底部停靠的输入栏，并放大控制按钮触控目标
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
-  // 全局唯一 tick 驱动
+  // 启动时墙钟矫正：恢复持久化的进行中会话（重启期间计时照常流逝，
+  // 已超时的阶段会被立即按完成处理）
+  useEffect(() => {
+    syncWallClock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 全局唯一 tick 驱动（tick 内部以 phaseEndsAt 墙钟为准，
+  // 定时器被后台节流也不会让计时变慢——恢复前台后一次 tick 即矫正）
   useEffect(() => {
     let intervalId: number;
     if (status === 'running') {
@@ -26,6 +48,70 @@ export const GlobalPomodoroWidget: React.FC = () => {
     }
     return () => { if (intervalId) window.clearInterval(intervalId); };
   }, [status, tick]);
+
+  // 窗口重新可见 / 聚焦 / 系统唤醒后立即矫正剩余时间
+  useEffect(() => {
+    const handleSync = () => syncWallClock();
+    document.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+    return () => {
+      document.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+    };
+  }, [syncWallClock]);
+
+  // ★ 3.2 置顶小窗：状态广播（每次 tick / 状态变化时同步给小窗）
+  useEffect(() => {
+    broadcastPomodoroState({
+      mode,
+      status,
+      timeLeft,
+      taskTitle: currentTaskTitle,
+      strictMode: settings.strictMode,
+    });
+  }, [mode, status, timeLeft, currentTaskTitle, settings.strictMode]);
+
+  // ★ 3.2 置顶小窗：监听小窗命令 + ready 请求；停止时收回小窗
+  useEffect(() => {
+    if (typeof window === 'undefined' || !(window as any).__TAURI_INTERNALS__) return;
+
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+
+    import('@tauri-apps/api/event').then(({ listen }) => {
+      listen<PomodoroMiniCommand>(EVT_MINI_COMMAND, (event) => {
+        const { pause: doPause, resume: doResume, stop: doStop } = usePomodoroStore.getState();
+        switch (event.payload.action) {
+          case 'pause': doPause(); break;
+          case 'resume': doResume(); break;
+          case 'stop': doStop(true); break;
+        }
+      }).then((fn) => { disposed ? fn() : unlisteners.push(fn); });
+
+      listen(EVT_MINI_READY, () => {
+        const s = usePomodoroStore.getState();
+        broadcastPomodoroState({
+          mode: s.mode,
+          status: s.status,
+          timeLeft: s.timeLeft,
+          taskTitle: s.currentTaskTitle,
+          strictMode: s.settings.strictMode,
+        });
+      }).then((fn) => { disposed ? fn() : unlisteners.push(fn); });
+    });
+
+    return () => {
+      disposed = true;
+      unlisteners.forEach((fn) => fn());
+    };
+  }, []);
+
+  // 番茄停止后小窗失去意义，主动收回
+  useEffect(() => {
+    if (mode === 'idle') {
+      void closePomodoroMiniWindow();
+    }
+  }, [mode]);
 
   // 沉浸式专注模式
   if (isImmersive) {
@@ -58,9 +144,24 @@ export const GlobalPomodoroWidget: React.FC = () => {
   };
 
   // 悬浮药丸：仅在有活跃会话 + 不在 Todo 页面时显示
+  const controlButtonClass = isTouchPrimary
+    ? 'flex h-10 w-10 items-center justify-center rounded-full transition-colors'
+    : 'p-1.5 rounded-full transition-colors';
+  const controlIconSize = isTouchPrimary ? 16 : 14;
+
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 bg-background border border-border shadow-xl rounded-full h-12 flex items-center gap-3 px-4 pr-2 cursor-default animate-in fade-in slide-in-from-bottom-4 duration-300"
+      className={cn(
+        'fixed right-6 z-50 bg-background border border-border shadow-xl rounded-full flex items-center gap-3 px-4 pr-2 cursor-default animate-in fade-in slide-in-from-bottom-4 duration-300',
+        isTouchPrimary ? 'h-14' : 'h-12'
+      )}
+      style={{
+        // 触屏上避开底部停靠的聊天输入栏（约 88px）+ 安全区
+        // （Android env() 不可靠，统一走 --android-safe-area-bottom 兜底，SA-1 注入真实值）
+        bottom: isTouchPrimary
+          ? 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 96px)'
+          : '1.5rem',
+      }}
     >
       {getModeIcon()}
       <span className="font-mono font-medium tracking-wider text-sm text-foreground">
@@ -72,27 +173,44 @@ export const GlobalPomodoroWidget: React.FC = () => {
         </span>
       )}
       <div className="flex items-center gap-1 ml-1">
-        <button
-          onClick={handleTogglePlay}
-          className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors"
-          title={status === 'running' ? '暂停' : '继续'}
-        >
-          {status === 'running' ? <Pause size={14} /> : <Play size={14} />}
-        </button>
+        {/* 严格模式专注中不显示暂停（store 同样拦截） */}
+        {!(settings.strictMode && mode === 'work' && status === 'running') && (
+          <button
+            onClick={handleTogglePlay}
+            className={cn(controlButtonClass, 'hover:bg-[var(--interactive-hover)]')}
+            title={status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
+            aria-label={status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
+          >
+            {status === 'running' ? <Pause size={controlIconSize} /> : <Play size={controlIconSize} />}
+          </button>
+        )}
         <button
           onClick={(e) => { e.stopPropagation(); stop(true); }}
-          className="p-1.5 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-          title="停止"
+          className={cn(controlButtonClass, 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive')}
+          title={t('pomodoro.controls.stop')}
+          aria-label={t('pomodoro.controls.stop')}
         >
-          <Square size={14} />
+          <Square size={controlIconSize} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setImmersive(true); }}
-          className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-colors"
-          title="沉浸模式"
+          className={cn(controlButtonClass, 'hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground')}
+          title={t('pomodoro.controls.immersive')}
+          aria-label={t('pomodoro.controls.immersive')}
         >
-          <ArrowsOut size={14} />
+          <ArrowsOut size={controlIconSize} />
         </button>
+        {/* ★ 3.2 弹出置顶小窗（仅桌面端） */}
+        {!isTouchPrimary && (window as any).__TAURI_INTERNALS__ && (
+          <button
+            onClick={(e) => { e.stopPropagation(); void openPomodoroMiniWindow(); }}
+            className={cn(controlButtonClass, 'hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground')}
+            title={t('pomodoro.controls.popOut')}
+            aria-label={t('pomodoro.controls.popOut')}
+          >
+            <PictureInPicture size={controlIconSize} />
+          </button>
+        )}
       </div>
     </div>
   );

@@ -112,11 +112,23 @@ pub struct CanvasAIEditResult {
 // ============================================================================
 
 type EditResultSender = oneshot::Sender<CanvasAIEditResult>;
+type EditAckSender = oneshot::Sender<()>;
 
 use std::sync::LazyLock;
 
 /// 等待前端响应的回调映射
 static PENDING_CALLBACKS: LazyLock<Arc<Mutex<HashMap<String, EditResultSender>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
+
+/// ★ R2 修复：等待前端"认领"（ACK）的回调映射。
+///
+/// 之前所有打开的编辑器实例都监听 `canvas:ai-edit-request`，noteId 不匹配的
+/// 实例会立即回复"笔记未打开"失败，抢先消费 oneshot 回调；目标实例随后的
+/// 真实结果（diff 确认）因回调已被移除而丢失，AI 误以为编辑失败。
+///
+/// 现在非目标实例静默忽略请求，目标实例先通过 `chat_v2_canvas_edit_ack`
+/// 认领；后端在 ACK 超时内未收到认领则判定"笔记未打开"快速失败。
+static PENDING_ACKS: LazyLock<Arc<Mutex<HashMap<String, EditAckSender>>>> =
     LazyLock::new(|| Arc::new(Mutex::new(HashMap::new())));
 
 /// 注册等待回调
@@ -127,6 +139,35 @@ fn register_callback(request_id: &str, sender: EditResultSender) {
         poisoned.into_inner()
     });
     callbacks.insert(request_id.to_string(), sender);
+}
+
+/// 注册等待 ACK 回调
+fn register_ack(request_id: &str, sender: EditAckSender) {
+    let mut acks = PENDING_ACKS.lock().unwrap_or_else(|poisoned| {
+        log::error!("[CanvasToolExecutor] PENDING_ACKS mutex poisoned! Attempting recovery");
+        poisoned.into_inner()
+    });
+    acks.insert(request_id.to_string(), sender);
+}
+
+/// 清理指定请求的全部待决回调（结果 + ACK）
+fn remove_pending(request_id: &str) {
+    {
+        let mut callbacks = PENDING_CALLBACKS.lock().unwrap_or_else(|poisoned| {
+            log::error!(
+                "[CanvasToolExecutor] PENDING_CALLBACKS mutex poisoned! Attempting recovery"
+            );
+            poisoned.into_inner()
+        });
+        callbacks.remove(request_id);
+    }
+    {
+        let mut acks = PENDING_ACKS.lock().unwrap_or_else(|poisoned| {
+            log::error!("[CanvasToolExecutor] PENDING_ACKS mutex poisoned! Attempting recovery");
+            poisoned.into_inner()
+        });
+        acks.remove(request_id);
+    }
 }
 
 /// 处理前端返回的编辑结果（由 Tauri 命令调用）
@@ -146,8 +187,36 @@ pub fn handle_edit_result(result: CanvasAIEditResult) {
     }
 }
 
+/// 处理前端的编辑请求认领（由 Tauri 命令调用）
+///
+/// 多个同笔记实例可能都发送 ACK，第一个消费通道，后续为无害的 no-op。
+pub fn handle_edit_ack(request_id: &str) {
+    let sender = {
+        let mut acks = PENDING_ACKS.lock().unwrap_or_else(|poisoned| {
+            log::error!("[CanvasToolExecutor] PENDING_ACKS mutex poisoned! Attempting recovery");
+            poisoned.into_inner()
+        });
+        acks.remove(request_id)
+    };
+    match sender {
+        Some(s) => {
+            let _ = s.send(());
+        }
+        None => {
+            log::debug!(
+                "[CanvasToolExecutor] Duplicate or late ack for request_id: {}",
+                request_id
+            );
+        }
+    }
+}
+
 /// 前端编辑超时时间（毫秒）
 const FRONTEND_EDIT_TIMEOUT_MS: u64 = 30000;
+
+/// 前端认领（ACK）超时时间（毫秒）。
+/// 超时未认领说明目标笔记未在任何编辑器中打开，快速失败。
+const FRONTEND_ACK_TIMEOUT_MS: u64 = 2000;
 
 /// 安全截断字符串（按字符数而非字节数），避免多字节 UTF-8 字符导致 panic
 fn safe_truncate(s: &str, max_chars: usize) -> String {
@@ -687,9 +756,11 @@ impl CanvasToolExecutor {
             }
         }
 
-        // 3. 创建响应通道
+        // 3. 创建响应通道（结果 + ACK）
         let (tx, rx) = oneshot::channel();
         register_callback(&request_id, tx);
+        let (ack_tx, ack_rx) = oneshot::channel();
+        register_ack(&request_id, ack_tx);
 
         // 4. 发送编辑请求到前端
         log::debug!(
@@ -698,11 +769,41 @@ impl CanvasToolExecutor {
             request.operation
         );
 
-        ctx.window
-            .emit("canvas:ai-edit-request", &request)
-            .map_err(|e| format!("发送编辑请求失败: {}", e))?;
+        if let Err(e) = ctx.window.emit("canvas:ai-edit-request", &request) {
+            remove_pending(&request_id);
+            return Err(format!("发送编辑请求失败: {}", e));
+        }
 
-        // 5. 等待前端响应（带超时）
+        // 5. ★ R2：等待目标编辑器认领请求（非目标实例静默忽略）。
+        // 超时未认领 = 笔记未在任何编辑器中打开，快速失败。
+        let ack = tokio::time::timeout(
+            std::time::Duration::from_millis(FRONTEND_ACK_TIMEOUT_MS),
+            ack_rx,
+        )
+        .await;
+        match ack {
+            Ok(Ok(())) => {
+                log::debug!(
+                    "[CanvasToolExecutor] Edit request claimed by frontend: request_id={}",
+                    request_id
+                );
+            }
+            Ok(Err(_)) | Err(_) => {
+                remove_pending(&request_id);
+                log::warn!(
+                    "[CanvasToolExecutor] Edit request not claimed within {}ms: request_id={}, note_id={}",
+                    FRONTEND_ACK_TIMEOUT_MS,
+                    request_id,
+                    note_id
+                );
+                return Err(format!(
+                    "笔记 {} 未在任何编辑器中打开，请先打开该笔记后重试",
+                    note_id
+                ));
+            }
+        }
+
+        // 6. 等待前端响应（带超时）
         let timeout = tokio::time::timeout(
             std::time::Duration::from_millis(FRONTEND_EDIT_TIMEOUT_MS),
             rx,
@@ -751,18 +852,10 @@ impl CanvasToolExecutor {
                     request_id,
                     FRONTEND_EDIT_TIMEOUT_MS
                 );
-                // 清理未完成的回调（使用 unwrap_or_else 处理锁污染）
-                {
-                    let mut callbacks = PENDING_CALLBACKS
-                        .lock()
-                        .unwrap_or_else(|poisoned| {
-                            log::error!("[CanvasToolExecutor] PENDING_CALLBACKS mutex poisoned! Attempting recovery");
-                            poisoned.into_inner()
-                        });
-                    callbacks.remove(&request_id);
-                }
+                // 清理未完成的回调
+                remove_pending(&request_id);
                 Err(format!(
-                    "编辑超时（{}秒），请确保笔记已打开",
+                    "编辑等待超时（{}秒）。笔记已打开但未在时限内确认修改，请在编辑器中处理 AI 修改建议后重试",
                     FRONTEND_EDIT_TIMEOUT_MS / 1000
                 ))
             }

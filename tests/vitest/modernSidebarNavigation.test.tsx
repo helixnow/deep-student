@@ -15,6 +15,10 @@ const { getCurrentSessionIdMock } = vi.hoisted(() => ({
   getCurrentSessionIdMock: vi.fn(),
 }));
 
+const { getAllSessionIdsMock } = vi.hoisted(() => ({
+  getAllSessionIdsMock: vi.fn(() => []),
+}));
+
 const { getSessionStoreMock } = vi.hoisted(() => ({
   getSessionStoreMock: vi.fn(),
 }));
@@ -74,6 +78,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 vi.mock('@/features/chat/core/session/sessionManager', () => ({
   sessionManager: {
     getCurrentSessionId: getCurrentSessionIdMock,
+    getAllSessionIds: getAllSessionIdsMock,
     get: getSessionStoreMock,
   },
 }));
@@ -89,6 +94,7 @@ vi.mock('@/hooks/useEventRegistry', () => ({
 describe('ModernSidebar shell navigation', () => {
   beforeEach(() => {
     getCurrentSessionIdMock.mockReturnValue(null);
+    getAllSessionIdsMock.mockReturnValue([]);
     getSessionStoreMock.mockReturnValue(undefined);
     showGlobalNotificationMock.mockReset();
     invokeMock.mockImplementation((command: string) => {
@@ -1032,6 +1038,94 @@ describe('ModernSidebar shell navigation', () => {
         borderTone: 'neutral',
       }
     );
+  });
+
+  it('navigates to the next visible session after archiving the active recent session', async () => {
+    const user = userEvent.setup();
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
+
+    getCurrentSessionIdMock.mockReturnValue('session-2');
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-2', title: '当前会话', updatedAt: '2026-04-10T00:10:00Z', createdAt: '2026-04-10T00:10:00Z', mode: 'chat' },
+          { id: 'session-1', title: '下一个会话', updatedAt: '2026-04-10T00:00:00Z', createdAt: '2026-04-10T00:00:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([]);
+      }
+      if (command === 'chat_v2_archive_session') {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const activeSessionButton = await screen.findByRole('button', { name: '当前会话' });
+    await user.hover(activeSessionButton);
+    fireEvent.click(screen.getByRole('button', { name: '归档会话' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认归档会话' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-2' });
+    });
+
+    expect(dispatchEventSpy.mock.calls.some(([event]) => (
+      event instanceof CustomEvent
+      && event.type === 'navigate-to-session'
+      && event.detail?.sessionId === 'session-1'
+    ))).toBe(true);
+  });
+
+  it('creates a blank session after archiving the last visible recent session', async () => {
+    const user = userEvent.setup();
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
+
+    getCurrentSessionIdMock.mockReturnValue('session-1');
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '最后一个会话', updatedAt: '2026-04-10T00:10:00Z', createdAt: '2026-04-10T00:10:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([]);
+      }
+      if (command === 'chat_v2_archive_session') {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const onlySessionButton = await screen.findByRole('button', { name: '最后一个会话' });
+    await user.hover(onlySessionButton);
+    fireEvent.click(screen.getByRole('button', { name: '归档会话' }));
+    fireEvent.click(screen.getByRole('button', { name: '确认归档会话' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-1' });
+    });
+
+    expect(dispatchEventSpy.mock.calls.some(([event]) => (
+      event instanceof CustomEvent
+      && event.type === 'modern-sidebar:group-action'
+      && event.detail?.action === 'create-session'
+      && event.detail?.groupId === null
+    ))).toBe(true);
   });
 
   it('uses context-mode app menus for recent session rows so left click does not open the menu', () => {

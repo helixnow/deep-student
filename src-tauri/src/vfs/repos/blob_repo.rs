@@ -77,7 +77,26 @@ impl VfsBlobRepo {
         debug!("[VFS::BlobRepo] Computed hash: {}", hash);
 
         // 2. 构建存储路径
-        let (relative_path, absolute_path) = Self::build_blob_path(blobs_dir, &hash, extension)?;
+        // ★ 2026-06-12（审阅问题 M1）：同 hash 已有记录时必须复用已登记的
+        // relative_path。旧实现总是按本次调用方传入的 extension 重新拼路径，
+        // 当两次导入扩展名不同（如 a.pdf 与 a.PDF→pdf / a.bin）时会在磁盘上
+        // 写出第二个物理文件，而 DB 记录仍指向旧路径——新文件成为永远不被
+        // 清理的孤儿。
+        let existing_relative_path: Option<String> = conn
+            .query_row(
+                "SELECT relative_path FROM blobs WHERE hash = ?1",
+                params![hash],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let (relative_path, absolute_path) = match existing_relative_path {
+            Some(rel) => {
+                let abs = blobs_dir.join(&rel);
+                (rel, abs)
+            }
+            None => Self::build_blob_path(blobs_dir, &hash, extension)?,
+        };
 
         // 3. 确保目录存在
         if let Some(parent) = absolute_path.parent() {
@@ -97,7 +116,11 @@ impl VfsBlobRepo {
         if should_write {
             // Atomic write: write to temp file first, then rename to avoid
             // corrupted blobs if the process is killed mid-write.
-            let temp_path = absolute_path.with_extension("tmp");
+            // ★ 2026-06-12（审阅问题 M 类）：tmp 文件名加入随机后缀。
+            // 旧实现使用固定的 `<hash>.tmp`，并发写入同一 blob 时两个写者共用
+            // 一个临时文件：后来者 truncate 前者的数据、先完成者 rename 后
+            // 另一方 rename 失败，产生虚假错误。唯一命名让每个写者独立。
+            let temp_path = absolute_path.with_extension(format!("{}.tmp", nanoid::nanoid!(8)));
 
             let write_result = (|| -> VfsResult<()> {
                 let mut file = fs::File::create(&temp_path).map_err(|e| {
@@ -161,6 +184,13 @@ impl VfsBlobRepo {
             params![hash, relative_path, size, mime_type, now],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+
+        // 重新导入同一内容表示本机撤销了此前的物理删除意图；清掉本地待传播队列，
+        // 避免下一轮云同步又把刚恢复的 blob tombstone 发布出去。
+        let _ = conn.execute(
+            "DELETE FROM __blob_deletion_queue WHERE hash = ?1",
+            params![&hash],
+        );
 
         let is_new = final_ref_count == 1;
         if is_new {
@@ -288,14 +318,22 @@ impl VfsBlobRepo {
 
     /// 减少引用计数（使用现有连接）
     ///
-    /// 使用 RETURNING 子句确保更新和读取的原子性
-    /// 如果引用计数降为 0，可以选择删除文件和记录（可配置）
+    /// 使用 RETURNING 子句确保更新和读取的原子性。
+    ///
+    /// ★ 2026-06-10 修复（审阅问题 A2）：引用计数降为 0 时**不再在本函数内删除物理文件**。
+    /// 旧行为在调用方事务（BEGIN/SAVEPOINT）内执行 `fs::remove_file`，
+    /// 一旦后续 SQL 失败回滚，DB 记录复活但文件已永久丢失。
+    /// 现在 ref_count=0 的行保留在 blobs 表中，由调用方在事务提交后调用
+    /// `cleanup_unreferenced` / `cleanup_blob_with_conn` 统一清理（两阶段删除）。
+    /// 即使应用在提交后、清理前崩溃，残留的 ref_count=0 行也会被下次清扫回收，
+    /// 不会造成数据丢失。
     pub fn decrement_ref_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
         hash: &str,
     ) -> VfsResult<i32> {
-        // 使用 RETURNING 子句原子地更新并返回新值
+        let _ = blobs_dir; // 保留签名兼容；物理删除已移交事务提交后的清扫阶段
+                           // 使用 RETURNING 子句原子地更新并返回新值
         let new_count: i32 = conn.query_row(
             "UPDATE blobs SET ref_count = MAX(0, ref_count - 1) WHERE hash = ?1 RETURNING ref_count",
             params![hash],
@@ -316,12 +354,11 @@ impl VfsBlobRepo {
             hash, new_count
         );
 
-        // 可选：清理无引用的 Blob
         if new_count == 0 {
-            // 启用blob清理逻辑
-            if let Err(e) = Self::cleanup_blob_with_conn(conn, blobs_dir, hash) {
-                warn!("[VFS::BlobRepo] Failed to cleanup blob {}: {}", hash, e);
-            }
+            debug!(
+                "[VFS::BlobRepo] Blob {} reached ref_count=0, deferred cleanup after commit",
+                hash
+            );
         }
 
         Ok(new_count)
@@ -371,10 +408,11 @@ impl VfsBlobRepo {
 
         // 入删除传播队列（尽力，失败不阻塞 blob 清理）
         // `__blob_deletion_queue` 在 V20260312 迁移中创建。老数据库没有此表时忽略错误。
+        let deleted_at = chrono::Utc::now().to_rfc3339();
         if let Err(e) = conn.execute(
             "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
-             VALUES (?1, ?2, ?3, datetime('now'), 0)",
-            params![hash, relative_path, file_size],
+             VALUES (?1, ?2, ?3, ?4, 0)",
+            params![hash, relative_path, file_size, deleted_at],
         ) {
             warn!(
                 "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
@@ -407,24 +445,40 @@ impl VfsBlobRepo {
         let mut cleaned = 0u32;
 
         for (hash, relative_path) in blobs {
-            // 删除文件
+            // ★ 2026-06-13（审阅 R2-2）：先做带 `ref_count = 0` 守卫的原子删行，再删文件，
+            // 与单 blob 版 `cleanup_blob_with_conn` 一致。上面的 SELECT 与此处删除之间，
+            // 可能有并发 `store_blob_with_conn` 复活该 blob（INSERT ON CONFLICT ref_count+1）；
+            // 旧实现无条件删行+删文件，会误删已被重新引用的 blob → 悬挂引用/数据丢失。
+            // 守卫删行受影响行数为 0 即说明已被复活，跳过物理删除。
+            let deleted = conn.execute(
+                "DELETE FROM blobs WHERE hash = ?1 AND ref_count = 0",
+                params![hash],
+            )?;
+            if deleted == 0 {
+                debug!(
+                    "[VFS::BlobRepo] Blob {} re-referenced during sweep; skip physical delete",
+                    hash
+                );
+                continue;
+            }
+
+            // 行已确认 ref_count=0 并删除，再删物理文件。
+            // 注意：此时若物理删除失败，行已删除 → 残留孤儿文件（磁盘泄漏，远轻于数据丢失，
+            // 且极罕见）；不再因文件删除失败而保留行（保留会与已删行语义不一致）。
             let file_path = blobs_dir.join(&relative_path);
             let file_size = fs::metadata(&file_path).ok().map(|m| m.len() as i64);
             if file_path.exists() {
                 if let Err(e) = fs::remove_file(&file_path) {
                     error!("[VFS::BlobRepo] Failed to delete blob file {}: {}", hash, e);
-                    continue;
                 }
             }
 
-            // 删除记录
-            conn.execute("DELETE FROM blobs WHERE hash = ?1", params![hash])?;
-
             // 入删除队列（老 schema 下失败不阻塞）
+            let deleted_at = chrono::Utc::now().to_rfc3339();
             if let Err(e) = conn.execute(
                 "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
-                 VALUES (?1, ?2, ?3, datetime('now'), 0)",
-                params![hash, relative_path, file_size],
+                 VALUES (?1, ?2, ?3, ?4, 0)",
+                params![hash, relative_path, file_size, deleted_at],
             ) {
                 warn!(
                     "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
@@ -435,8 +489,58 @@ impl VfsBlobRepo {
             cleaned += 1;
         }
 
+        // ★ 2026-06-12（审阅问题 M 类）：清理进程崩溃残留的临时写入文件。
+        // 只删除 mtime 超过 24h 的 *.tmp，避免误删并发写入中的活跃临时文件。
+        Self::sweep_stale_temp_files(blobs_dir);
+
         info!("[VFS::BlobRepo] Cleaned up {} unreferenced blobs", cleaned);
         Ok(cleaned)
+    }
+
+    /// 清理 blobs 目录中残留的过期临时文件（崩溃恢复）
+    fn sweep_stale_temp_files(blobs_dir: &Path) {
+        const STALE_TMP_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+        let now = std::time::SystemTime::now();
+
+        let Ok(prefix_dirs) = fs::read_dir(blobs_dir) else {
+            return;
+        };
+        let mut removed = 0u32;
+        for prefix_entry in prefix_dirs.flatten() {
+            let prefix_path = prefix_entry.path();
+            if !prefix_path.is_dir() {
+                continue;
+            }
+            let Ok(files) = fs::read_dir(&prefix_path) else {
+                continue;
+            };
+            for file_entry in files.flatten() {
+                let path = file_entry.path();
+                let is_tmp = path
+                    .extension()
+                    .map(|ext| ext == "tmp")
+                    .unwrap_or(false);
+                if !is_tmp {
+                    continue;
+                }
+                let is_stale = file_entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|mtime| now.duration_since(mtime).ok())
+                    .map(|age| age > STALE_TMP_AGE)
+                    .unwrap_or(false);
+                if is_stale && fs::remove_file(&path).is_ok() {
+                    removed += 1;
+                }
+            }
+        }
+        if removed > 0 {
+            info!(
+                "[VFS::BlobRepo] Removed {} stale temp files from blobs dir",
+                removed
+            );
+        }
     }
 
     // ========================================================================
@@ -492,9 +596,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create database");
-        (temp_dir, db)
+        crate::vfs::database::setup_migrated_test_db()
     }
 
     #[test]
@@ -536,6 +638,41 @@ mod tests {
 
         assert_eq!(blob1.hash, blob2.hash, "Should have same hash");
         assert_eq!(blob2.ref_count, 2, "ref_count should be incremented");
+    }
+
+    #[test]
+    fn test_blob_dedup_different_extension_no_orphan() {
+        // ★ 审阅问题 M1：同内容不同扩展名重复导入不应产生孤儿文件
+        let (temp_dir, db) = setup_test_db();
+
+        let data = b"Same content, different extension";
+        let blob1 = VfsBlobRepo::store_blob(&db, data, None, Some("pdf"))
+            .expect("First store should succeed");
+        let blob2 = VfsBlobRepo::store_blob(&db, data, None, Some("bin"))
+            .expect("Second store should succeed");
+
+        assert_eq!(blob1.hash, blob2.hash);
+        assert_eq!(
+            blob1.relative_path, blob2.relative_path,
+            "Second store must reuse the registered relative_path"
+        );
+        assert_eq!(blob2.ref_count, 2);
+
+        // 磁盘上只应有一个该 hash 的文件
+        let prefix_dir = temp_dir
+            .path()
+            .join("vfs_blobs")
+            .join(&blob1.hash[..2]);
+        let count = fs::read_dir(&prefix_dir)
+            .expect("prefix dir should exist")
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(&blob1.hash)
+            })
+            .count();
+        assert_eq!(count, 1, "Only one physical file should exist for the hash");
     }
 
     #[test]

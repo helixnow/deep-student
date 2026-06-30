@@ -53,7 +53,7 @@ export function setUpdateFrequency(freq: UpdateFrequency) {
     if (freq !== 'never') {
       localStorage.removeItem(UPDATE_NO_REMIND_KEY);
     }
-  } catch {}
+  } catch { /* localStorage 不可用时静默忽略 */ }
 }
 
 export function getUpdateFrequencyDays(): number {
@@ -64,7 +64,7 @@ export function getUpdateFrequencyDays(): number {
 }
 
 export function setUpdateFrequencyDays(days: number) {
-  try { localStorage.setItem(UPDATE_FREQUENCY_DAYS_KEY, String(Math.max(1, Math.round(days)))); } catch {}
+  try { localStorage.setItem(UPDATE_FREQUENCY_DAYS_KEY, String(Math.max(1, Math.round(days)))); } catch { /* localStorage 不可用时静默忽略 */ }
 }
 
 export function getSkippedVersion(): string {
@@ -72,7 +72,7 @@ export function getSkippedVersion(): string {
 }
 
 export function setSkippedVersion(version: string) {
-  try { localStorage.setItem(UPDATE_SKIPPED_VERSION_KEY, version); } catch {}
+  try { localStorage.setItem(UPDATE_SKIPPED_VERSION_KEY, version); } catch { /* localStorage 不可用时静默忽略 */ }
 }
 
 export function getNoRemind(): boolean {
@@ -86,7 +86,7 @@ export function setNoRemind(value: boolean) {
     } else {
       localStorage.removeItem(UPDATE_NO_REMIND_KEY);
     }
-  } catch {}
+  } catch { /* localStorage 不可用时静默忽略 */ }
 }
 
 function getLastCheckTime(): number {
@@ -97,7 +97,7 @@ function getLastCheckTime(): number {
 }
 
 function setLastCheckTime() {
-  try { localStorage.setItem(UPDATE_LAST_CHECK_KEY, String(Date.now())); } catch {}
+  try { localStorage.setItem(UPDATE_LAST_CHECK_KEY, String(Date.now())); } catch { /* localStorage 不可用时静默忽略 */ }
 }
 
 /** Determine if a startup auto-check should run based on user preferences */
@@ -121,7 +121,7 @@ export function getUpdateChannel(): UpdateChannel {
 }
 
 export function setUpdateChannel(channel: UpdateChannel) {
-  try { localStorage.setItem(UPDATE_CHANNEL_KEY, channel); } catch {}
+  try { localStorage.setItem(UPDATE_CHANNEL_KEY, channel); } catch { /* localStorage 不可用时静默忽略 */ }
 }
 
 const R2_LATEST_URL = 'https://download.deepstudent.cn/releases/latest.json';
@@ -321,7 +321,7 @@ export function useAppUpdater(): AppUpdaterController {
                 const ghLatestData = await ghLatestResp.json();
                 releaseChannel = ghLatestData.channel ?? 'stable';
               }
-            } catch {}
+            } catch { /* 渠道探测失败时按 stable 处理 */ }
           }
         }
 
@@ -330,14 +330,14 @@ export function useAppUpdater(): AppUpdaterController {
         // 稳定版用户遇到实验版 → 视为已是最新
         if (getUpdateChannel() === 'stable' && releaseChannel === 'experimental') {
           setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent }));
-          return;
+          return true;
         }
 
         if (latestVersion && isNewerVersion(latestVersion, currentVersion)) {
           // Startup check: skip if user chose to skip this specific version
           if (startup && getSkippedVersion() === latestVersion) {
             setState(prev => ({ ...prev, checking: false, available: false, upToDate: false }));
-            return;
+            return true;
           }
           setState(prev => ({
             ...prev,
@@ -379,7 +379,7 @@ export function useAppUpdater(): AppUpdaterController {
           const resp = await fetch(R2_LATEST_URL, { signal: ctrl.signal }).finally(() => clearTimeout(t));
           if (resp.ok && (await resp.json()).channel === 'experimental') {
             setState(prev => ({ ...prev, checking: false, available: false, upToDate: !silent }));
-            return;
+            return true;
           }
         } catch { /* R2 不可用，继续正常流程 */ }
       }

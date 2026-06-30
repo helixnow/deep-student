@@ -8,8 +8,8 @@ vi.mock('react-i18next', async (importOriginal) => {
   };
 });
 
-import * as chatV2 from '../../../../src/chat-v2';
-import * as skills from '../../../../src/chat-v2/skills';
+import * as chatV2 from '../../../../src/features/chat';
+import * as skills from '../../../../src/features/chat/skills';
 
 describe('skill legacy exports cleanup', () => {
   it('does not expose resource helper shims from chat-v2 root export', () => {

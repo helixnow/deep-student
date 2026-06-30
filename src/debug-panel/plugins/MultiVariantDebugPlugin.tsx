@@ -5,7 +5,7 @@
  * 用于诊断多变体模式不触发的问题
  * 
  * 🔧 已集成到 Chat V2 统一调试系统
- * @see src/chat-v2/debug/chatV2Logger.ts
+ * @see src/features/chat/debug/chatV2Logger.ts
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';

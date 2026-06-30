@@ -70,6 +70,10 @@ export function useQbankAiGrading() {
   const isStartingRef = useRef(false);
   const unlistenRef = useRef<UnlistenFn | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ★ R2-2: 持有当前进行中 Promise 的 settle/fail，使超时/取消/重置等
+  // executor 外的路径也能结束 Promise，避免 startGrading 的 await 永久挂起。
+  const settleRef = useRef<((result: 'completed' | 'cancelled') => void) | null>(null);
+  const failRef = useRef<((error: Error) => void) | null>(null);
   const lastRequestRef = useRef<{
     questionId: string;
     submissionId: string;
@@ -112,6 +116,8 @@ export function useQbankAiGrading() {
         });
       }
       isActiveRef.current = false;
+      // ★ R2-2: 结束进行中的 Promise（reject），与 error 事件路径一致，避免调用方挂起
+      failRef.current?.(new Error('AI 评判超时，请重试'));
     }, TIMEOUT_MS);
   }, [cleanup]);
 
@@ -129,6 +135,9 @@ export function useQbankAiGrading() {
       modelConfigId?: string,
       onComplete?: (verdict?: QbankVerdict, score?: number, feedback?: string) => void,
     ): Promise<'completed' | 'cancelled'> => {
+      // async executor 在此安全：主体被 try/catch 包裹、早退为同步 reject，错误不会被吞；
+      // 且 R2-2 已让超时/取消/重置/卸载路径都能结束本 Promise（settleRef/failRef）。
+      // eslint-disable-next-line no-async-promise-executor
       return new Promise(async (resolve, reject) => {
         // 防重入
         if (isStartingRef.current || isActiveRef.current) {
@@ -161,6 +170,8 @@ export function useQbankAiGrading() {
           if (settledRef.current) return;
           settledRef.current = true;
           settled = true;
+          settleRef.current = null;
+          failRef.current = null;
           resolve(result);
         };
 
@@ -168,8 +179,14 @@ export function useQbankAiGrading() {
           if (settledRef.current) return;
           settledRef.current = true;
           settled = true;
+          settleRef.current = null;
+          failRef.current = null;
           reject(error);
         };
+
+        // ★ R2-2: 暴露给 executor 外的超时/取消/重置路径，以便它们也能结束本 Promise
+        settleRef.current = settle;
+        failRef.current = fail;
 
         try {
           // 注册事件监听
@@ -284,6 +301,8 @@ export function useQbankAiGrading() {
     }));
 
     isActiveRef.current = false;
+    // ★ R2-2: 结束进行中的 Promise 为 cancelled，避免调用方挂起
+    settleRef.current?.('cancelled');
 
     await invoke('qbank_cancel_grading', {
       streamEventName: `qbank_grading_stream_${currentStreamSessionId}`,
@@ -316,6 +335,8 @@ export function useQbankAiGrading() {
     isActiveRef.current = false;
     isStartingRef.current = false;
     lastRequestRef.current = null;
+    // ★ R2-2: 结束进行中的 Promise 为 cancelled
+    settleRef.current?.('cancelled');
   }, [cleanup]);
 
   // 组件卸载清理（E-3）
@@ -329,6 +350,8 @@ export function useQbankAiGrading() {
           });
         }
       }
+      // ★ R2-2: 卸载时结束悬挂 Promise，避免 await 泄漏
+      settleRef.current?.('cancelled');
       cleanup();
     };
   }, [cleanup]);

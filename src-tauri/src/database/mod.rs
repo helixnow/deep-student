@@ -5527,15 +5527,30 @@ impl Database {
     }
 
     /// 🔧 Phase 1: 恢复卡住的制卡任务
-    /// 将 Processing/Streaming 状态超过 1 小时的任务重置为 Pending
+    /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Failed（中断），
+    /// 用户可通过"重试失败任务"续跑。
+    ///
+    /// 注意：updated_at 存储为 RFC3339（带 'T'/'Z'），直接与 datetime('now',...) 的
+    /// 空格分隔格式做字符串比较在同一天内恒为假，必须先用 datetime() 规范化两侧。
     pub fn recover_stuck_document_tasks(&self) -> Result<u32> {
+        self.recover_stuck_document_tasks_older_than_minutes(10)
+    }
+
+    /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Failed。
+    /// `minutes = 0` 表示无条件回收。注意：应用未启用单实例约束，启动路径
+    /// 必须走带阈值的 `recover_stuck_document_tasks()`（10 分钟），不要传 0，
+    /// 否则并行实例正在跑的任务会被误标为 Failed。
+    pub fn recover_stuck_document_tasks_older_than_minutes(&self, minutes: u32) -> Result<u32> {
         let conn = self.get_conn_safe()?;
         let count = conn.execute(
             r#"UPDATE document_tasks
-               SET status = 'Pending', error_message = 'Recovered after app restart', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               SET status = 'Failed',
+                   error_message = '任务被中断（应用重启或长时间无响应），可点击"重试失败任务"继续',
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                WHERE status IN ('Processing', 'Streaming')
-               AND updated_at < datetime('now', '-1 hour')"#,
-            [],
+               AND (?1 = 0 OR datetime(updated_at) < datetime('now', '-' || ?1 || ' minutes')
+                    OR datetime(updated_at) IS NULL)"#,
+            rusqlite::params![minutes],
         )?;
         Ok(count as u32)
     }
@@ -5678,8 +5693,16 @@ impl Database {
         }
 
         if let Some(search_value) = search.map(|s| s.trim()).filter(|value| !value.is_empty()) {
-            clauses.push("(ac.front LIKE ? OR ac.back LIKE ? OR ac.text LIKE ?)".to_string());
-            let pattern = format!("%{}%", search_value);
+            // ★ 2026-06-12（审阅问题 F1 同类）：转义用户输入中的 LIKE 通配符，
+            // 避免搜索 "%"/"_" 时变成全表匹配/单字符通配。
+            clauses.push(
+                "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\')"
+                    .to_string(),
+            );
+            let pattern = format!(
+                "%{}%",
+                crate::vfs::repos::escape_like_pattern(search_value)
+            );
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern));
@@ -5789,19 +5812,34 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    /// 创建已应用全部 Mistakes 迁移的测试数据库
+    ///
+    /// `Database::new` 本身不建表（schema 由 MigrationCoordinator 在应用
+    /// 启动时统一管理），需先走迁移路径。
+    fn setup_migrated_db(app_data_dir: &std::path::Path) -> anyhow::Result<Database> {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let mut coordinator =
+            MigrationCoordinator::new(app_data_dir.to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .map_err(|e| anyhow::anyhow!("mistakes migrations failed: {}", e))?;
+        Ok(Database::new(&app_data_dir.join("mistakes.db"))?)
+    }
+
     #[test]
     fn append_preserves_turn_metadata_and_scoped_deletion() -> anyhow::Result<()> {
         let dir = tempdir()?;
-        let db_path = dir.path().join("chat_test.db");
-        let db = Database::new(&db_path)?;
+        let db = setup_migrated_db(dir.path())?;
 
         let now = Utc::now().to_rfc3339();
         {
             let conn = db.get_conn_safe()?;
             conn.execute(
-                "INSERT INTO mistakes (id, subject, created_at, question_images, analysis_images, user_question, ocr_text, tags, mistake_type, status, chat_category, updated_at, last_accessed_at)
-                 VALUES (?1, ?2, ?3, '[]', '[]', ?4, ?5, '[]', 'analysis', 'completed', 'analysis', ?3, ?3)",
-                params!["mistake-1", "math", now, "示例问题", ""],
+                "INSERT INTO mistakes (id, created_at, question_images, analysis_images, user_question, ocr_text, tags, mistake_type, status, chat_category, updated_at, last_accessed_at)
+                 VALUES (?1, ?2, '[]', '[]', ?3, ?4, '[]', 'analysis', 'completed', 'analysis', ?2, ?2)",
+                params!["mistake-1", now, "示例问题", ""],
             )?;
         }
 
@@ -5954,8 +5992,7 @@ mod tests {
     fn save_document_task_with_cards_atomic_rolls_back_when_all_cards_ignored() -> anyhow::Result<()>
     {
         let dir = tempdir()?;
-        let db_path = dir.path().join("atomic_cards_test.db");
-        let db = Database::new(&db_path)?;
+        let db = setup_migrated_db(dir.path())?;
         let now = Utc::now().to_rfc3339();
 
         let task_1 = DocumentTask {

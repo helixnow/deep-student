@@ -84,8 +84,8 @@ describe('folderDefinition', () => {
       expect(folderDefinition.xmlTag).toBe('folder_content');
     });
 
-    it('label 应该是中文 "文件夹"', () => {
-      expect(folderDefinition.label).toBe('文件夹');
+    it('label 应该使用当前语言', () => {
+      expect(folderDefinition.label).toBe('Folder');
     });
 
     it('labelEn 应该是 "Folder"', () => {
@@ -127,7 +127,7 @@ describe('folderDefinition', () => {
       expect(text).toContain('count="0"');
       expect(text).toContain('not-found="0"');
       expect(text).not.toContain('path=');
-      expect(text).toContain('<!-- 空文件夹 -->');
+      expect(text).toContain('<!-- Empty folder -->');
       expect(text).toContain('</folder_content>');
     });
 

@@ -616,11 +616,22 @@ impl MultimodalEmbeddingService {
                 all_chunks.len()
             );
 
+            let total_chunks = all_chunks.len();
             let all_embeddings = self
                 .llm_manager
                 .call_embedding_api(all_chunks, &config.id)
                 .await
                 .map_err(|e| AppError::internal(format!("文本嵌入失败: {}", e)))?;
+
+            // ★ 2026-06-12（代理 3 审阅 G2）：先校验数量再按索引聚合，
+            // 否则 API 部分返回时 all_embeddings[emb_idx] 直接越界 panic
+            if all_embeddings.len() != total_chunks {
+                return Err(AppError::internal(format!(
+                    "嵌入 API 返回数量不匹配: 期望 {} 块, 实际 {}",
+                    total_chunks,
+                    all_embeddings.len()
+                )));
+            }
 
             // 聚合
             let mut result = Vec::with_capacity(texts.len());
@@ -746,6 +757,14 @@ impl MultimodalEmbeddingService {
                     .call_embedding_api(all_chunks, &config.id)
                     .await
                 {
+                    Ok(all_embeddings) if all_embeddings.len() != total_chunks => {
+                        // ★ G2：数量不匹配时报错而非越界 panic
+                        return Err(AppError::internal(format!(
+                            "嵌入 API 返回数量不匹配: 期望 {} 块, 实际 {}",
+                            total_chunks,
+                            all_embeddings.len()
+                        )));
+                    }
                     Ok(all_embeddings) => {
                         // 按原始文本索引聚合嵌入向量
                         let mut result = Vec::with_capacity(texts.len());
@@ -874,21 +893,21 @@ impl MultimodalEmbeddingService {
         let actual_mode = if self.is_mode_available(mode).await {
             mode
         } else {
-            // 尝试回退到另一个模式
-            let fallback = match mode {
-                MultimodalIndexingMode::VLEmbedding => {
-                    MultimodalIndexingMode::VLSummaryThenTextEmbed
+            // ★ A3-X5：VLSummaryThenTextEmbed 已永久弃用（is_mode_available 恒 false，
+            // 第一模型已移除）。此前 VLEmbedding 不可用时回退到它必然再次失败，用户只看到
+            // 笼统的“未配置任何多模态嵌入模型”。改为直接尝试唯一存活的 VLEmbedding，
+            // 仍不可用时给出针对性提示（不再误导用户去配置已弃用的“VL 摘要+文本嵌入”链路）。
+            if self
+                .is_mode_available(MultimodalIndexingMode::VLEmbedding)
+                .await
+            {
+                if mode != MultimodalIndexingMode::VLEmbedding {
+                    log::warn!("⚠️ 请求的模式 {:?} 不可用（或已弃用），回退到 VLEmbedding", mode);
                 }
-                MultimodalIndexingMode::VLSummaryThenTextEmbed => {
-                    MultimodalIndexingMode::VLEmbedding
-                }
-            };
-            if self.is_mode_available(fallback).await {
-                log::warn!("⚠️ 请求的模式 {:?} 不可用，回退到 {:?}", mode, fallback);
-                fallback
+                MultimodalIndexingMode::VLEmbedding
             } else {
                 return Err(AppError::configuration(
-                    "未配置任何多模态嵌入模型。请在设置中配置 VL-Embedding 模型或 VL 聊天模型 + 文本嵌入模型。"
+                    "未配置 VL-Embedding 多模态嵌入模型。请在设置 → 维度管理中配置 VL-Embedding 模型。（注：旧的“VL 摘要 + 文本嵌入”方案已弃用。）"
                 ));
             }
         };
@@ -1008,18 +1027,7 @@ mod tests {
         let valid_base64 = "a".repeat(200);
         let input = MultimodalInput::text_and_image("test text", &valid_base64, "image/png");
 
-        let inputs = vec![input];
-        let llm_manager = create_mock_llm_manager();
-        let service = MultimodalEmbeddingService::new(Arc::new(llm_manager));
-
-        // 由于 LLMManager 需要真实环境，这里只测试输入准备逻辑
-        // 实际的 API 调用测试需要集成测试环境
-    }
-
-    // 辅助函数：创建模拟的 LLMManager（仅用于测试编译）
-    fn create_mock_llm_manager() -> LLMManager {
-        // 注意：这需要真实的 Database 和 FileManager
-        // 在单元测试中，我们只验证逻辑，不调用实际 API
-        panic!("此函数仅用于类型检查，不应在测试中实际调用")
+        assert_eq!(input.text.as_deref(), Some("test text"));
+        assert!(input.image.is_some());
     }
 }

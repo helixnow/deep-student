@@ -9,7 +9,6 @@ import { NotesCrepeEditor } from "./NotesCrepeEditor";
 import { NotesLibraryDialog } from "./dialogs/NotesLibraryDialog";
 import { TrashDialog } from "./dialogs/TrashDialog";
 import "./styles/notes-home.css";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useCommandEvents, COMMAND_EVENTS } from "@/command-palette";
 import { useMobileHeader, MobileSlidingLayout } from "@/components/layout";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
@@ -17,8 +16,9 @@ import { useBreakpoint } from "../../hooks/useBreakpoint";
 export default function NotesHome() {
   const { t } = useTranslation(['notes', 'common']);
   const { active } = useNotes();
-  const isMobile = useMediaQuery("(max-width: 768px)");
+  // N-1: 统一使用 useBreakpoint().isSmallScreen（<768），消除 ≤768 off-by-one
   const { isSmallScreen } = useBreakpoint();
+  const isMobile = isSmallScreen;
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const sidebarRef = useRef<ImperativePanelHandle>(null);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);

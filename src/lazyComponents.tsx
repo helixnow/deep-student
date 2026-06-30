@@ -44,11 +44,7 @@ export const LazySettings = React.lazy(() =>
 );
 
 // ★ 2026-02：批量分析已废弃（旧错题系统已移除）
-
-// 仪表盘
-export const LazyDashboard = React.lazy(() =>
-  import('./components/Dashboard').then(m => ({ default: m.Dashboard }))
-);
+// ★ 2026-06-13：移除 LazyDashboard（components/Dashboard.tsx 旧仪表盘已被 SOTADashboardLite 取代且无人引用；后端 get_statistics 命令已移除，统计走 get_enhanced_statistics）
 
 // SOTA 仪表盘
 export const LazySOTADashboard = React.lazy(() =>
@@ -94,8 +90,10 @@ export const LazyTemplateJsonPreviewPage = React.lazy(() =>
 // LazyIrecGraphFlow, LazyIrecGraphPage, LazyIrecGraphFlowDemo
 
 // 学习中心
+// ★ 2026-06-12：必须深路径导入。App.tsx 静态导入了 features/learning-hub barrel,
+//   若此处动态导入同一 barrel,Rollup 会把 LearningHubPage 并入首屏 chunk,懒加载失效。
 export const LazyLearningHubPage = React.lazy(() =>
-  import('./features/learning-hub').then(m => ({ default: m.LearningHubPage }))
+  import('./features/learning-hub/LearningHubPage').then(m => ({ default: m.LearningHubPage }))
 );
 
 // Sandbox 工作台

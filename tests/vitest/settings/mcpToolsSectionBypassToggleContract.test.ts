@@ -9,7 +9,7 @@ describe('McpToolsSection global bypass toggle contract', () => {
   );
 
   it('uses the shared Switch control instead of an oversized icon button for global bypass', () => {
-    expect(source).toContain("import { Switch } from '../ui/shad/Switch';");
+    expect(source).toContain("import { Switch } from '@/components/ui/shad/Switch';");
     expect(source).toContain('<Switch');
     expect(source).toContain('checked={globalBypass}');
     expect(source).toContain('onCheckedChange={handleToggleGlobalBypass}');

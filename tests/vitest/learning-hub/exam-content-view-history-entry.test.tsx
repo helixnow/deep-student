@@ -150,7 +150,7 @@ describe('ExamContentView history entry wiring', () => {
   });
 
   it('opens the shared history view from the manage entry', async () => {
-    const { default: ExamContentView } = await import('@/components/learning-hub/apps/views/ExamContentView');
+    const { default: ExamContentView } = await import('@/features/learning-hub/apps/views/ExamContentView');
 
     render(
       <ExamContentView

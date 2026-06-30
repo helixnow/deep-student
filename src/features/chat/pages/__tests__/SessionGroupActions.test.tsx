@@ -59,7 +59,7 @@ function renderHarness() {
 
 describe('SessionGroupActions', () => {
   it('keeps the ellipsis menu hidden until the group row is hovered/focused, while keeping the new-session icon visible', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionGroupActions.tsx'), 'utf-8');
+    const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const quickAction = source.match(/const quickAction = \([\s\S]*?\n\s*\);/m)?.[0] ?? '';
 
     // Container itself should no longer be hidden.
@@ -72,12 +72,12 @@ describe('SessionGroupActions', () => {
   });
 
   it('uses the study compose icon for grouped new session quick actions', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionGroupActions.tsx'), 'utf-8');
+    const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionGroupActions.tsx'), 'utf-8');
     const newSessionButton = source.match(
       /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/NotionButton>/
     )?.[0] ?? '';
     const sortableGroupItemSource = readFileSync(
-      resolve(process.cwd(), 'src/chat-v2/components/SortableGroupItem.tsx'),
+      resolve(process.cwd(), 'src/features/chat/components/SortableGroupItem.tsx'),
       'utf-8'
     );
 

@@ -195,7 +195,7 @@ describe('ExamContentView secondary entry points', () => {
   });
 
   it('exposes management entry and opens CSV import/export dialogs from the manage view', async () => {
-    const { default: ExamContentView } = await import('@/components/learning-hub/apps/views/ExamContentView');
+    const { default: ExamContentView } = await import('@/features/learning-hub/apps/views/ExamContentView');
 
     render(
       <ExamContentView

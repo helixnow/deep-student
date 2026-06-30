@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { listen } from '@tauri-apps/api/event';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
@@ -34,6 +35,18 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // AI 工具（chat_v2 user_todo）写库后发出 todo://changed，前端实时刷新
+  useEffect(() => {
+    const unlisten = listen('todo://changed', () => {
+      const store = useTodoStore.getState();
+      void store.loadLists();
+      void store.reloadCurrentView();
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
 
   useEffect(() => {
     if (todoListId && todoListId !== activeListId) {

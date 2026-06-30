@@ -263,9 +263,10 @@ export interface CreateResourceResult {
 export const IMAGE_SIZE_LIMIT = 10 * 1024 * 1024;
 
 /**
- * 文件大小限制（50MB）
+ * 文件大小限制（200MB）
+ * #62: 与 ATTACHMENT_MAX_SIZE 及后端 File 资源上限对齐
  */
-export const FILE_SIZE_LIMIT = 50 * 1024 * 1024;
+export const FILE_SIZE_LIMIT = 200 * 1024 * 1024;
 
 // ============================================================================
 // 资源库 API 接口

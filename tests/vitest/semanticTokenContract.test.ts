@@ -5,11 +5,11 @@ import { resolve } from 'node:path';
 describe('semantic token migration contract', () => {
   const shadcnVarsSource = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8');
   const themeSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
-  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
-  const thinkingScrollbarSource = readFileSync(resolve(process.cwd(), 'src/styles/thinking-scrollbar.css'), 'utf-8');
-  const analysisCssSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/styles/analysis.css'), 'utf-8');
-  const markdownCssSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/styles/markdown.css'), 'utf-8');
+  const thinkingScrollbarSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/deep-student.css'), 'utf-8');
+  const analysisCssSource = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/analysis.css'), 'utf-8');
+  const markdownCssSource = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/markdown.css'), 'utf-8');
   const modernButtonsSource = readFileSync(resolve(process.cwd(), 'src/styles/modern-buttons.css'), 'utf-8');
   const styleLabScannerSource = readFileSync(resolve(process.cwd(), 'scripts/scan-component-usage.mjs'), 'utf-8');
 
@@ -54,8 +54,8 @@ describe('semantic token migration contract', () => {
     const consumers = {
       'src/App.tsx': appSource,
       'src/styles/thinking-scrollbar.css': thinkingScrollbarSource,
-      'src/chat-v2/styles/analysis.css': analysisCssSource,
-      'src/chat-v2/styles/markdown.css': markdownCssSource,
+      'src/features/chat/styles/analysis.css': analysisCssSource,
+      'src/features/chat/styles/markdown.css': markdownCssSource,
     };
 
     for (const [file, source] of Object.entries(consumers)) {

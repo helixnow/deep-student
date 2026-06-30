@@ -36,6 +36,7 @@ import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
 import { Z_INDEX } from '@/config/zIndex';
 import { useViewStore } from '@/stores/viewStore';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import type { SelectionRect } from '../hooks/useTextSelection';
 import type { AlignedSegment, TranslationDisplayMode } from './translationTypes';
@@ -577,6 +578,17 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isVisible, onClose]);
+
+  // Android 系统返回键 = 关闭浮层（自绘 popover，协调器 Radix 兜底覆盖不到）
+  const backCloseRef = useRef(onClose);
+  backCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isVisible) return;
+    return registerBackHandler(() => {
+      backCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isVisible]);
 
   // 完整原文文本（aligned 模式优先用拼接的分段以与译文对齐；否则回退到 sourceText）
   const fullSource = useMemo(() => {

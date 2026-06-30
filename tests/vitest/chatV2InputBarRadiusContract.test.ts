@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('chat v2 input bar radius contract', () => {
   const inputBarSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
   const shadcnVariablesSource = readFileSync(

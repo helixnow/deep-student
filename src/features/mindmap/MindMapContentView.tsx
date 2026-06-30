@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 // 初始化思维导图模块（注册布局、样式、预设）
 import './init';
 import { useMindMapStore } from './store';
+import { MindMapActiveContext } from './MindMapActiveContext';
 import { MindMapErrorBoundary } from './MindMapErrorBoundary';
+import { dstu } from '@/dstu';
 import { StyleRegistry } from './registry';
 import { exportToOpml, exportToMarkdown, exportToJson, exportToImage } from './utils/exporters';
 import { importMindMap } from './utils/importers';
@@ -10,6 +12,7 @@ import { fileManager } from '@/utils/fileManager';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import {
   FileText,
   GitBranch,
@@ -88,6 +91,11 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const clearSearch = useMindMapStore(state => state.clearSearch);
   const setDocument = useMindMapStore(state => state.setDocument);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
+
+  // A6-24: 保存冲突时暂存的本地编辑快照 + 恢复/忽略
+  const conflictSnapshot = useMindMapStore(state => state.conflictSnapshot);
+  const restoreConflictSnapshot = useMindMapStore(state => state.restoreConflictSnapshot);
+  const dismissConflictSnapshot = useMindMapStore(state => state.dismissConflictSnapshot);
   
   // 获取当前主题（用于导出时设置背景色）
   const styleId = useMindMapStore(state => state.styleId);
@@ -107,6 +115,8 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
+  // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
 
   // ★ 标签页保活：isActive 变化时 saveDraft / loadMindMap
   const prevIsActiveRef = useRef(isActive);
@@ -152,6 +162,49 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   useEffect(() => {
     void tryLoadMindMap();
   }, [tryLoadMindMap]);
+
+  // ★ 监听 DSTU watch 事件：chat_v2 工具（mindmap_update/edit_nodes 等）或其他入口
+  // 修改导图后，已打开的编辑器自动刷新（参照 NoteContentView 的 R3 实现）。
+  // 无未保存修改时静默重载；有未保存修改时不强刷（交给保存时的 OCC 冲突流程），仅提示。
+  useEffect(() => {
+    if (!resourceId) return;
+    const unwatch = dstu.watch('*', (event) => {
+      if (event.type !== 'updated' || !event.node) return;
+      if (event.node.id !== resourceId) return;
+
+      const state = useMindMapStore.getState();
+      if (state.mindmapId !== resourceId) return;
+      // 自身保存进行中触发的事件由 save() 完成基线同步，跳过
+      if (state.isSaving) return;
+
+      const known = Date.parse(state.metadata?.updatedAt || '') || 0;
+      const incoming = event.node.updatedAt ?? 0;
+      // 等于/早于已知基线的事件来自自身保存回声或重复派发，忽略
+      if (incoming <= known) return;
+
+      if (state.isDirty) {
+        showGlobalNotification('info', t('mindmap:store.externalUpdatedDirty'));
+        return;
+      }
+
+      // 静默重载，保留用户当前视图与焦点位置
+      const prevView = state.currentView;
+      const prevFocusedNodeId = state.focusedNodeId;
+      void state
+        .loadMindMap(resourceId)
+        .then(() => {
+          if (useMindMapStore.getState().mindmapId !== resourceId) return;
+          useMindMapStore.setState({
+            currentView: prevView,
+            focusedNodeId: prevFocusedNodeId,
+          });
+        })
+        .catch((err) => {
+          console.error('[MindMapContentView] watch-triggered reload failed:', err);
+        });
+    });
+    return unwatch;
+  }, [resourceId, t]);
 
   // 同步标题变更到外部
   // ★ 标签页：仅活跃标签页同步标题，防止其他 MindMap 标签页加载时覆盖当前标题
@@ -248,15 +301,9 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     }
   }, [mindmapDocument, currentView, t, currentTheme]);
 
-  const handleImport = useCallback(async () => {
+  // 实际执行导入（已确认或无未保存修改时调用）
+  const doImport = useCallback(async () => {
     try {
-      // M-073: 导入前检查是否有未保存的修改
-      const currentState = useMindMapStore.getState();
-      if (currentState.isDirty) {
-        const confirmed = window.confirm(t('mindmap:import.unsavedWarning'));
-        if (!confirmed) return;
-      }
-
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
@@ -276,6 +323,20 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       showGlobalNotification('error', message, t('mindmap:import.failedTitle'));
     }
   }, [setDocument, setFocusedNodeId, t]);
+
+  // M-073 / A6-16: 导入前检查未保存修改；有修改则弹声明式确认框，否则直接导入
+  const handleImport = useCallback(() => {
+    if (useMindMapStore.getState().isDirty) {
+      setShowImportConfirm(true);
+      return;
+    }
+    void doImport();
+  }, [doImport]);
+
+  const handleConfirmImport = useCallback(() => {
+    setShowImportConfirm(false);
+    void doImport();
+  }, [doImport]);
 
   const handleSave = useCallback(() => {
     save();
@@ -372,8 +433,15 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     void tryLoadMindMap();
   }, [tryLoadMindMap]);
 
+  const activeContextValue = useMemo(
+    () => ({ isActive: isActive !== false, resourceId: resourceId || null }),
+    [isActive, resourceId]
+  );
+
   return (
     <MindMapErrorBoundary onReset={handleErrorReset} fallbackMessage={t('mindmap:errorBoundary')}>
+    {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
+    <MindMapActiveContext.Provider value={activeContextValue}>
     <div ref={containerRef} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
       {/* Notion-style Topbar */}
       <div className="notion-topbar">
@@ -559,6 +627,9 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                 {t('mindmap:toolbar.style')}
               </AppMenuItem>
               <AppMenuSeparator />
+              <AppMenuItem icon={<BookOpen size={16} />} onClick={() => setReciteMode(!reciteMode)}>
+                {reciteMode ? t('mindmap:recite.exit', '退出背诵') : t('mindmap:recite.title')}
+              </AppMenuItem>
               <AppMenuItem icon={<MagnifyingGlass size={16} />} onClick={() => setShowSearch(!showSearch)}>
                 {t('mindmap:toolbar.search')}
               </AppMenuItem>
@@ -586,6 +657,29 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           </AppMenu>
         </div>
       </div>
+
+      {/* A6-24: 保存冲突后，本地未保存编辑已暂存，提供"恢复我的修改"入口 */}
+      {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 animate-in slide-in-from-top-1 duration-200">
+          <WarningCircle size={16} className="shrink-0" />
+          <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15"
+            onClick={() => restoreConflictSnapshot()}
+          >
+            <ArrowCounterClockwise size={14} />
+            <span className="text-xs">{t('mindmap:store.conflictRestoreMine')}</span>
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            className="notion-btn shrink-0 text-[var(--mm-text-muted)]"
+            onClick={() => dismissConflictSnapshot()}
+          >
+            <span className="text-xs">{t('mindmap:store.conflictDismiss')}</span>
+          </NotionButton>
+        </div>
+      )}
 
       {showSearch && (
         <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] animate-in slide-in-from-top-1 duration-200">
@@ -675,10 +769,28 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           <MindMapView />
         )}
 
-        {showShortcutHelp && (
+        {showShortcutHelp && (() => {
+          const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+            <kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs whitespace-nowrap">{children}</kbd>
+          );
+          const Row: React.FC<{ keys: string[]; label: string }> = ({ keys, label }) => (
+            <div className="flex items-center justify-between gap-3 py-1">
+              <span>{label}</span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                {keys.map((k, i) => <Kbd key={i}>{k}</Kbd>)}
+              </span>
+            </div>
+          );
+          const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+            <div>
+              <div className="text-xs font-medium text-[var(--mm-text-muted)] uppercase tracking-wide mb-1">{title}</div>
+              {children}
+            </div>
+          );
+          return (
           <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/35" onClick={() => setShowShortcutHelp(false)} />
-            <div className="relative w-full max-w-lg rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-lg">
+            <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-lg">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--mm-border)]">
                 <h3 className="text-sm font-medium">{t('mindmap:shortcuts.title')}</h3>
                 <NotionButton variant="ghost"
@@ -689,18 +801,40 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                   <X className="w-4 h-4" />
                 </NotionButton>
               </div>
-              <div className="p-4 text-sm text-[var(--mm-text-secondary)] space-y-2">
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Tab</kbd> {t('mindmap:shortcuts.addChild')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Enter</kbd> {t('mindmap:shortcuts.addSiblingOrEdit')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + Z</kbd> {t('mindmap:shortcuts.undo')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + Shift + Z</kbd> / <kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + Y</kbd> {t('mindmap:shortcuts.redo')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + S</kbd> {t('mindmap:shortcuts.save')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + F</kbd> {t('mindmap:shortcuts.search')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Del</kbd> {t('mindmap:shortcuts.deleteNode')}</p>
+              <div className="p-4 text-sm text-[var(--mm-text-secondary)] space-y-4 overflow-y-auto">
+                <Group title={t('mindmap:shortcuts.groupGeneral')}>
+                  <Row keys={['⌘/Ctrl + Z']} label={t('mindmap:shortcuts.undo')} />
+                  <Row keys={['⌘/Ctrl + ⇧ + Z', '⌘/Ctrl + Y']} label={t('mindmap:shortcuts.redo')} />
+                  <Row keys={['⌘/Ctrl + S']} label={t('mindmap:shortcuts.save')} />
+                  <Row keys={['⌘/Ctrl + F']} label={t('mindmap:shortcuts.search')} />
+                  <Row keys={['Esc']} label={t('mindmap:shortcuts.escape')} />
+                </Group>
+                <Group title={t('mindmap:shortcuts.groupCanvas')}>
+                  <Row keys={['Tab', '⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
+                  <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
+                  <Row keys={['F2', 'Space']} label={t('mindmap:shortcuts.editNode')} />
+                  <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                  <Row keys={['↑ ↓ ← →']} label={t('mindmap:shortcuts.navigate')} />
+                  <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
+                  <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row keys={['⌘/Ctrl + B']} label={t('mindmap:shortcuts.bold')} />
+                  <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
+                  <Row keys={['Del / ⌫']} label={t('mindmap:shortcuts.deleteNode')} />
+                  <Row keys={['⌘/Ctrl + 0']} label={t('mindmap:shortcuts.fitView')} />
+                </Group>
+                <Group title={t('mindmap:shortcuts.groupOutline')}>
+                  <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
+                  <Row keys={['Tab / ⇧ + Tab']} label={t('mindmap:shortcuts.indentOutdent')} />
+                  <Row keys={['↑ ↓']} label={t('mindmap:shortcuts.navigate')} />
+                  <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
+                  <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                </Group>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
         
         {/* Mobile: Structure Panel Overlay */}
         {showMobileStructure && (
@@ -768,7 +902,20 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* A6-16: 导入未保存确认（替换 window.confirm） */}
+      <NotionAlertDialog
+        open={showImportConfirm}
+        onOpenChange={setShowImportConfirm}
+        title={t('mindmap:import.unsavedTitle')}
+        description={t('mindmap:import.unsavedWarning')}
+        confirmText={t('mindmap:import.unsavedConfirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={handleConfirmImport}
+      />
     </div>
+    </MindMapActiveContext.Provider>
     </MindMapErrorBoundary>
   );
 };

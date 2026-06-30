@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 describe('chat session delete contract', () => {
   it('deletes sessions permanently instead of moving them to a hidden trash state', () => {
     const lifecycleSource = readFileSync(
-      resolve(process.cwd(), 'src/chat-v2/pages/useSessionLifecycle.ts'),
+      resolve(process.cwd(), 'src/features/chat/pages/useSessionLifecycle.ts'),
       'utf8'
     );
     const managementSource = readFileSync(
-      resolve(process.cwd(), 'src/chat-v2/hooks/useSessionManagement.ts'),
+      resolve(process.cwd(), 'src/features/chat/hooks/useSessionManagement.ts'),
       'utf8'
     );
 
@@ -21,21 +21,21 @@ describe('chat session delete contract', () => {
 
   it('does not expose the obsolete trash management hook', () => {
     const hooksIndexSource = readFileSync(
-      resolve(process.cwd(), 'src/chat-v2/hooks/index.ts'),
+      resolve(process.cwd(), 'src/features/chat/hooks/index.ts'),
       'utf8'
     );
 
     expect(hooksIndexSource).not.toContain('useTrashManagement');
-    expect(existsSync(resolve(process.cwd(), 'src/chat-v2/hooks/useTrashManagement.ts'))).toBe(false);
+    expect(existsSync(resolve(process.cwd(), 'src/features/chat/hooks/useTrashManagement.ts'))).toBe(false);
   });
 
   it('uses permanent delete for debug cleanup helpers', () => {
     const cleanupFiles = [
-      'src/chat-v2/debug/multiVariantTestPlugin.ts',
-      'src/chat-v2/debug/chatInteractionTestPlugin.ts',
-      'src/chat-v2/debug/attachmentPipelineTestPlugin.ts',
-      'src/chat-v2/debug/citationTestPlugin.ts',
-      'src/chat-v2/debug/chatAnkiIntegrationTestPlugin.ts',
+      'src/features/chat/debug/multiVariantTestPlugin.ts',
+      'src/features/chat/debug/chatInteractionTestPlugin.ts',
+      'src/features/chat/debug/attachmentPipelineTestPlugin.ts',
+      'src/features/chat/debug/citationTestPlugin.ts',
+      'src/features/chat/debug/chatAnkiIntegrationTestPlugin.ts',
     ];
 
     for (const file of cleanupFiles) {

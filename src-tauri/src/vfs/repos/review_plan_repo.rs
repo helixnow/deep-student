@@ -239,7 +239,8 @@ impl VfsReviewPlanRepo {
 
         let id = format!("rp_{}", nanoid::nanoid!(10));
         let now = chrono::Utc::now().to_rfc3339();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        // "今天"用本地时区（与 todo 模块一致）；时间戳仍用 UTC
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let ease_factor = params
             .initial_ease_factor
             .unwrap_or(crate::spaced_repetition::DEFAULT_EASE_FACTOR);
@@ -349,7 +350,7 @@ impl VfsReviewPlanRepo {
         conn: &Connection,
         filter: &DueReviewsFilter,
     ) -> VfsResult<DueReviewsResult> {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let until_date = filter.until_date.as_deref().unwrap_or(&today);
         let limit = filter.limit.unwrap_or(50);
         let offset = filter.offset.unwrap_or(0);
@@ -596,7 +597,7 @@ impl VfsReviewPlanRepo {
     /// 恢复复习计划（使用现有连接）
     pub fn resume_plan_with_conn(conn: &Connection, plan_id: &str) -> VfsResult<ReviewPlan> {
         let now = chrono::Utc::now().to_rfc3339();
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         // 获取当前状态以确定恢复后的状态
         let plan = Self::get_plan_with_conn(conn, plan_id)?.ok_or_else(|| VfsError::NotFound {
@@ -816,7 +817,7 @@ impl VfsReviewPlanRepo {
 
     /// 获取复习统计（使用现有连接）
     pub fn get_stats_with_conn(conn: &Connection, exam_id: Option<&str>) -> VfsResult<ReviewStats> {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let now = chrono::Utc::now().to_rfc3339();
 
         let (where_clause, exam_id_param): (String, Option<String>) = if let Some(eid) = exam_id {

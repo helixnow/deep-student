@@ -22,17 +22,21 @@ describe('settings quiet hover contract', () => {
   });
 
   it('keeps settings navigation rows quiet without hover text changes', () => {
-    const sources = [
-      readSource('src/features/settings/components/ApisTab.tsx'),
+    const navigationSources = [
+      readSource('src/features/settings/components/VendorSidebar.tsx'),
       readSource('src/features/settings/components/EngineSettingsSection.tsx'),
+    ].join('\n');
+    const sources = [
+      navigationSources,
+      readSource('src/features/settings/components/VendorDetailPanel.tsx'),
     ].join('\n');
 
     expect(sources).toContain('settingsQuietInteractiveRowClassName');
     expect(sources).toContain('settingsQuietIdleRowClassName');
     expect(sources).toContain('settingsQuietSelectedRowClassName');
     expect(sources).toContain('settingsQuietButtonIdleRowClassName');
-    expect(sources).not.toContain('hover:bg-muted/50 hover:text-foreground');
-    expect(sources).not.toContain('hover:bg-muted/30');
+    expect(navigationSources).not.toContain('hover:bg-muted/50 hover:text-foreground');
+    expect(navigationSources).not.toContain('hover:bg-muted/30');
   });
 
   it('uses tokenized quiet hover for the mobile settings sheet close control', () => {

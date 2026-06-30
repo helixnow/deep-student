@@ -643,9 +643,19 @@
     "preview_title": "模板配置: {{name}}",
     "label": "制卡模板"
   },
+  "completionNotify": {
+    "title": "制卡完成",
+    "titleWithFailed": "制卡完成（{{failed}} 个任务失败）",
+    "body": "「{{name}}」已生成 {{count}} 张卡片",
+    "bodyFallback": "批量制卡任务已完成"
+  },
   "taskDashboard": {
     "title": "制卡任务",
     "loading": "加载中...",
+    "preventSleep": "防休眠",
+    "preventSleepOn": "防休眠已开启：制卡期间系统不会进入睡眠",
+    "preventSleepOff": "开启后制卡期间系统不会进入睡眠（任务结束自动解除）",
+    "preventSleepUnsupported": "当前平台暂不支持防休眠",
     "empty": "暂无制卡任务",
     "emptyHint": "在聊天中发起制卡即可在此查看任务进度",
     "sectionActive": "进行中",

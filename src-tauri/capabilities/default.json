@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Capability for the main window. NOTE(F16): the http allow list intentionally includes https://*/* and http://*/* wildcards. This is load-bearing: users can configure arbitrary custom OpenAI-compatible LLM endpoints (incl. LAN/self-hosted) and arbitrary MCP server URLs, which plugin-http must reach. The explicit first-party domains below are kept as documentation of known endpoints. Previously this wildcard lived in a misleadingly-named test.json that silently applied to ALL builds; it has been consolidated here so the config honestly reflects runtime capability.",
   "windows": ["main"],
   "platforms": ["linux", "macOS", "windows"],
   "permissions": [
     "core:default",
     "core:event:default",
+    "core:webview:allow-create-webview-window",
     "core:window:allow-minimize",
     "core:window:allow-maximize",
     "core:window:allow-unmaximize",
@@ -51,6 +52,7 @@
     "fs:allow-temp-write-recursive",
     "updater:default",
     "process:default",
+    "notification:default",
     "opener:default",
     "opener:allow-open-url",
     "opener:allow-default-urls",
@@ -111,7 +113,9 @@
         { "url": "https://mcp.api-inference.modelscope.net/*" },
         { "url": "https://modelscope.cn/*" },
         { "url": "http://127.0.0.1:*/*" },
-        { "url": "http://localhost:*/*" }
+        { "url": "http://localhost:*/*" },
+        { "url": "https://*/*" },
+        { "url": "http://*/*" }
       ]
     }
   ]

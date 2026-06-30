@@ -5,7 +5,6 @@
  * @see src/dstu/adapters/essayDstuAdapter.ts
  * 
  * 迁移指南：
- * - listSessions() → essayDstuAdapter.listEssays()
  * - getSession() → essayDstuAdapter.getEssay()
  * - deleteSession() → essayDstuAdapter.deleteEssay()
  */
@@ -119,29 +118,6 @@ export async function deleteSession(sessionId: string): Promise<number> {
     return await invoke<number>('essay_grading_delete_session', { sessionId });
   } catch (error: unknown) {
     throw new Error(i18n.t('essay_grading:api_errors.delete_session_failed', { error: getErrorMessage(error) }));
-  }
-}
-
-/**
- * 获取会话列表
- */
-export async function listSessions(options?: {
-  offset?: number;
-  limit?: number;
-  query?: string;
-}): Promise<{ items: GradingSessionListItem[]; total: number }> {
-  try {
-    const [items, total] = await invoke<[GradingSessionListItem[], number]>(
-      'essay_grading_list_sessions',
-      {
-        offset: options?.offset || null,
-        limit: options?.limit || null,
-        query: options?.query || null,
-      }
-    );
-    return { items, total };
-  } catch (error: unknown) {
-    throw new Error(i18n.t('essay_grading:api_errors.list_sessions_failed', { error: getErrorMessage(error) }));
   }
 }
 
@@ -437,7 +413,6 @@ export const EssayGradingAPI = {
   getSession,
   updateSession,
   deleteSession,
-  listSessions,
   toggleFavorite,
   getRounds,
   getRound,

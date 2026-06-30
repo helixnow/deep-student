@@ -39,7 +39,11 @@
     "workspace_primary_entry": "Primary workspace entry",
     "pinned_sessions": "Pinned sessions",
     "topic_sessions": "Topics",
-    "conversation_sessions": "Conversations"
+    "conversation_sessions": "Conversations",
+    "pin_session": "Pin session",
+    "unpin_session": "Unpin session",
+    "archive_session": "Archive session",
+    "confirm_archive_session": "Confirm archive"
   },
   "actions": {
     "collapse_all_topics": "Collapse all topics",
@@ -47,7 +51,12 @@
     "create_topic": "New topic",
     "create_conversation": "New conversation",
     "expand_group_sessions": "Show more",
-    "collapse_group_sessions": "Show less"
+    "collapse_group_sessions": "Show less",
+    "rename_session": "Rename session"
+  },
+  "rename": {
+    "title": "Rename conversation",
+    "label": "Conversation name"
   },
   "expand": "Expand sidebar",
   "collapse": "Collapse sidebar",

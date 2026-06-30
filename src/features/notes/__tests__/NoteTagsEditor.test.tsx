@@ -8,7 +8,7 @@ import React from 'react';
 import { NoteTagsEditor } from '../components/NoteTagsEditor';
 
 // Mock NotesAPI
-vi.mock('../../../utils/notesApi', () => ({
+vi.mock('@/utils/notesApi', () => ({
     NotesAPI: {
         listTags: vi.fn(),
     },
@@ -44,6 +44,7 @@ interface MockInputProps {
 interface MockBadgeProps {
     children?: React.ReactNode;
     className?: string;
+    onClick?: () => void;
 }
 
 // Mock UI components
@@ -70,8 +71,8 @@ vi.mock('@/components/ui/shad/Input', () => ({
 }));
 
 vi.mock('@/components/ui/shad/Badge', () => ({
-    Badge: ({ children, className }: MockBadgeProps) => (
-        <div data-testid="badge" className={className}>{children}</div>
+    Badge: ({ children, className, onClick }: MockBadgeProps) => (
+        <div data-testid="badge" className={className} onClick={onClick}>{children}</div>
     ),
 }));
 
@@ -97,8 +98,8 @@ describe('NoteTagsEditor', () => {
         );
 
         // 验证标签显示
-        expect(screen.getByText('tag1')).toBeInTheDocument();
-        expect(screen.getByText('tag2')).toBeInTheDocument();
+        expect(screen.getAllByText('tag1').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('tag2').length).toBeGreaterThan(0);
     });
 
     it('应该能添加新标签', async () => {
@@ -140,7 +141,7 @@ describe('NoteTagsEditor', () => {
         const badges = screen.getAllByTestId('badge');
         const tag1Badge = badges.find(b => b.textContent?.includes('tag1'));
         if (tag1Badge) {
-            const deleteBtn = tag1Badge.querySelector('button');
+            const deleteBtn = tag1Badge.querySelectorAll('button')[1];
             if (deleteBtn) {
                 fireEvent.click(deleteBtn);
             }
@@ -176,13 +177,15 @@ describe('NoteTagsEditor', () => {
 
         // 输入新名称
         await waitFor(() => {
-            expect(screen.getByTestId('input')).toBeInTheDocument();
+            expect(
+                screen.getAllByTestId('input').some((el) => (el as HTMLInputElement).value === 'old-name')
+            ).toBe(true);
         });
-        const input = screen.getByTestId('input');
+        const input = screen.getAllByTestId('input').find((el) => (el as HTMLInputElement).value === 'old-name') as HTMLInputElement;
         fireEvent.change(input, { target: { value: 'new-name' } });
 
         // 点击确认按钮
-        const confirmBtn = screen.getByTestId('popover-content').querySelectorAll('button')[0];
+        const confirmBtn = screen.getByRole('button', { name: 'confirm' });
         if (confirmBtn) {
             fireEvent.click(confirmBtn);
         }

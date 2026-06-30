@@ -18,11 +18,15 @@ import '@/features/chat/plugins/events/approval';
 function createMockStore(): ChatStore {
   const store = {
     pendingApprovalRequest: null,
+    pendingBlockingInteraction: null,
     setPendingApproval: vi.fn((request) => {
+      const interaction = request ? { kind: 'tool_approval', ...request } : null;
       store.pendingApprovalRequest = request;
+      store.pendingBlockingInteraction = interaction;
     }),
     clearPendingApproval: vi.fn(() => {
       store.pendingApprovalRequest = null;
+      store.pendingBlockingInteraction = null;
     }),
   } as unknown as ChatStore;
 
@@ -60,14 +64,14 @@ describe('ApprovalEventHandler', () => {
     });
 
     expect(store.setPendingApproval).toHaveBeenCalledTimes(1);
-    expect(store.pendingApprovalRequest?.toolCallId).toBe('call-1');
+    expect(store.pendingBlockingInteraction?.toolCallId).toBe('call-1');
 
     handler!.onEnd!(store, 'approval_call-1', { toolCallId: 'call-1', approved: true });
-    expect(store.pendingApprovalRequest?.resolvedStatus).toBe('approved');
+    expect(store.pendingBlockingInteraction?.resolvedStatus).toBe('approved');
 
     vi.advanceTimersByTime(1000);
     expect(store.clearPendingApproval).toHaveBeenCalled();
-    expect(store.pendingApprovalRequest?.toolCallId).toBe('call-2');
+    expect(store.pendingBlockingInteraction?.toolCallId).toBe('call-2');
   });
 
   it('marks timeout on end and notifies user', () => {
@@ -89,7 +93,7 @@ describe('ApprovalEventHandler', () => {
       reason: 'timeout',
     });
 
-    expect(store.pendingApprovalRequest?.resolvedStatus).toBe('timeout');
+    expect(store.pendingBlockingInteraction?.resolvedStatus).toBe('timeout');
     expect(showGlobalNotification).toHaveBeenCalledWith(
       'warning',
       'chatV2:approval.notification.timeoutTitle',
@@ -113,7 +117,7 @@ describe('ApprovalEventHandler', () => {
     });
 
     handler!.onError!(store, 'approval_call-error', 'timeout while waiting');
-    expect(store.pendingApprovalRequest?.resolvedStatus).toBe('timeout');
+    expect(store.pendingBlockingInteraction?.resolvedStatus).toBe('timeout');
     expect(showGlobalNotification).toHaveBeenCalledWith(
       'warning',
       'chatV2:approval.notification.timeoutTitle',

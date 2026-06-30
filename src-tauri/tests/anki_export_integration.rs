@@ -9,36 +9,69 @@ use tempfile::tempdir;
 async fn test_export_all_templates() -> Result<()> {
     // 打开主数据库
     let conn = Connection::open("../deep-student.db")?;
-    // 查询所有自定义模板
-    let mut stmt = conn.prepare("SELECT id, name, note_type, fields_json, front_template, back_template, css_style FROM custom_anki_templates WHERE is_active=1")?;
-    let templates_iter = stmt.query_map([], |row| {
-        let fields_json: String = row.get(3)?;
-        let fields: Vec<String> = serde_json::from_str(&fields_json).unwrap_or_default();
-        Ok(CustomAnkiTemplate {
-            id: row.get(0)?,
-            name: row.get(1)?,
+    let has_templates_table: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='custom_anki_templates')",
+        [],
+        |row| row.get(0),
+    )?;
+    let mut templates = Vec::new();
+    if !has_templates_table {
+        templates.push(CustomAnkiTemplate {
+            id: "test-basic-template".to_string(),
+            name: "Test Basic".to_string(),
             description: String::new(),
             author: None,
-            version: String::new(),
-            preview_front: String::new(),
-            preview_back: String::new(),
-            note_type: row.get(2)?,
-            fields,
+            version: "1.0.0".to_string(),
+            preview_front: "Front".to_string(),
+            preview_back: "Back".to_string(),
+            note_type: "Basic".to_string(),
+            fields: vec!["Front".to_string(), "Back".to_string()],
             generation_prompt: String::new(),
-            front_template: row.get(4)?,
-            back_template: row.get(5)?,
-            css_style: row.get(6)?,
+            front_template: "{{Front}}".to_string(),
+            back_template: "{{Back}}".to_string(),
+            css_style: String::new(),
             field_extraction_rules: HashMap::new(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
             is_active: true,
-            is_built_in: false,
+            is_built_in: true,
             preview_data_json: None,
-        })
-    })?;
+        });
+    }
+    // 查询所有自定义模板
+    if has_templates_table {
+        let mut stmt = conn.prepare("SELECT id, name, note_type, fields_json, front_template, back_template, css_style FROM custom_anki_templates WHERE is_active=1")?;
+        let templates_iter = stmt.query_map([], |row| {
+            let fields_json: String = row.get(3)?;
+            let fields: Vec<String> = serde_json::from_str(&fields_json).unwrap_or_default();
+            Ok(CustomAnkiTemplate {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                description: String::new(),
+                author: None,
+                version: String::new(),
+                preview_front: String::new(),
+                preview_back: String::new(),
+                note_type: row.get(2)?,
+                fields,
+                generation_prompt: String::new(),
+                front_template: row.get(4)?,
+                back_template: row.get(5)?,
+                css_style: row.get(6)?,
+                field_extraction_rules: HashMap::new(),
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+                is_active: true,
+                is_built_in: false,
+                preview_data_json: None,
+            })
+        })?;
+        for tmpl in templates_iter {
+            templates.push(tmpl?);
+        }
+    }
 
-    for tmpl in templates_iter {
-        let tmpl = tmpl?;
+    for tmpl in templates {
         // 构造示例卡片
         let card = AnkiCard {
             front: if tmpl.preview_front.trim().is_empty() {

@@ -429,7 +429,7 @@
 /* ============================================
    响应式调整（CSS 媒体查询备用）
    ============================================ */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .template-shell-card-header {
     padding: 12px;
     flex-wrap: wrap;

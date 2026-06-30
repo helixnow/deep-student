@@ -388,6 +388,18 @@ export interface SyncConflict {
   created_at: string;
 }
 
+/** 单条冲突解决失败详情（#20 round2） */
+export interface ConflictResolveFailure {
+  conflict_id: string;
+  error: string;
+}
+
+/** 批量解决冲突结果（#20 round2：区分成功解决与失败，前端可提示部分失败） */
+export interface BatchResolveConflictsResult {
+  resolved: Question[];
+  failed: ConflictResolveFailure[];
+}
+
 /** 同步配置 */
 export interface SyncConfig {
   default_strategy: QuestionConflictStrategy;
@@ -667,7 +679,7 @@ interface QuestionBankState {
   checkSyncStatus: (examId: string) => Promise<SyncStatusResult>;
   getSyncConflicts: (examId: string) => Promise<SyncConflict[]>;
   resolveSyncConflict: (conflictId: string, strategy: QuestionConflictStrategy) => Promise<Question>;
-  batchResolveSyncConflicts: (examId: string, strategy: QuestionConflictStrategy) => Promise<Question[]>;
+  batchResolveSyncConflicts: (examId: string, strategy: QuestionConflictStrategy) => Promise<BatchResolveConflictsResult>;
   setSyncEnabled: (examId: string, enabled: boolean) => Promise<void>;
   updateSyncConfig: (examId: string, config: SyncConfig) => Promise<void>;
   
@@ -1489,7 +1501,8 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         set({ isSyncing: true, error: null });
         
         try {
-          const questions = await invoke<Question[]>('qbank_batch_resolve_conflicts', {
+          // ★ #20(round2): 后端返回 {resolved, failed}，前端可感知部分失败
+          const result = await invoke<BatchResolveConflictsResult>('qbank_batch_resolve_conflicts', {
             examId,
             strategy,
           });
@@ -1497,14 +1510,14 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             examId,
           });
           
-          // 更新本地题目缓存
+          // 更新本地题目缓存（仅成功解决的题目）
           set((state) => {
             const newMap = new Map(state.questions);
-            questions.forEach(q => newMap.set(q.id, q));
+            result.resolved.forEach(q => newMap.set(q.id, q));
             return { questions: newMap, syncConflicts: refreshedConflicts, isSyncing: false };
           });
           
-          return questions;
+          return result;
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] batchResolveSyncConflicts failed:', err);
           set({ error: String(err), isSyncing: false });

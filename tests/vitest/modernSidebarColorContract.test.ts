@@ -12,15 +12,15 @@ import { resolve } from 'node:path';
  * shadcn-variables.css 的基础灰度即可全局联动。
  */
 describe('modern sidebar color contract', () => {
-  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const typographySource = readFileSync(resolve(process.cwd(), 'src/styles/typography.css'), 'utf-8');
   const themeSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
   const shadcnSource = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8');
 
   it('aligns desktop navigation row states with the shared interaction tokens', () => {
-    expect(appCssSource).toMatch(/\.desktop-shell-nav-row:hover,[\s\S]*background:\s*var\(--interactive-hover\) !important;/);
+    expect(appCssSource).toMatch(/\.desktop-shell-nav-row:hover:not\(\.desktop-shell-nav-row--active\),[\s\S]*background:\s*var\(--interactive-hover\) !important;/);
     expect(appCssSource).toMatch(/\.desktop-shell-nav-row--active\s*\{[\s\S]*background:\s*var\(--interactive-selected\) !important;/);
-    expect(appCssSource).toMatch(/\.desktop-shell-thread-row:hover,[\s\S]*background:\s*var\(--interactive-hover\) !important;/);
+    expect(appCssSource).toMatch(/\.desktop-shell-thread-row:hover:not\(\.desktop-shell-thread-row--active\),[\s\S]*background:\s*var\(--interactive-hover\) !important;/);
     expect(appCssSource).toMatch(/\.desktop-shell-thread-row--active\s*\{[\s\S]*background:\s*var\(--interactive-selected\) !important;/);
   });
 
@@ -60,7 +60,8 @@ describe('modern sidebar color contract', () => {
     // 侧边栏保留淡灰区分
     expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--sidebar:\s*hsl\(var\(--nav-background\)\);/);
     expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--sidebar-accent:\s*hsl\(var\(--accent\)\);/);
-    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--interactive-hover:\s*hsl\(var\(--accent\)\);/);
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--interactive-hover:\s*color-mix\(in hsl, hsl\(var\(--foreground\)\) 10%, transparent 90%\);/);
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-nav-item-hover:\s*var\(--interactive-hover\);/);
 
     // 暗色走同样的派生链（扁平，shell 表面 = --background）
     expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-backdrop:\s*hsl\(var\(--background\)\);/);

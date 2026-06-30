@@ -99,7 +99,7 @@
   grid-column: span 3;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .ai-params-grid {
     grid-template-columns: 1fr;
   }
@@ -487,7 +487,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .ai-params-grid {
     grid-template-columns: 1fr;
     gap: 10px;

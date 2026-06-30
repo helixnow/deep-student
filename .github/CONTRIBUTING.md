@@ -36,8 +36,8 @@ npm run lint
 - 详细规范参见 [CODE_STYLE.md](../docs/CODE_STYLE.md)
 
 ### 项目规范
-- **请务必阅读 [`AGENTS.md`](../AGENTS.md)**，其中包含重要的开发规范
-- 特别注意：拖拽上传功能必须使用统一组件（`UnifiedDragDropZone` 或 `useTauriDragAndDrop`）
+- **请务必阅读 [`docs/CODE_STYLE.md`](../docs/CODE_STYLE.md)**，其中包含重要的开发规范
+- 特别注意：拖拽上传功能必须使用统一组件（`UnifiedDragDropZone` 或 `useTauriDragAndDrop`），详见 CODE_STYLE 第 5.2 节
 
 ### CI/CD
 

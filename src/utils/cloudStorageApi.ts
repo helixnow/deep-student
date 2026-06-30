@@ -10,7 +10,7 @@ import { getErrorMessage } from './errorUtils';
 // ============== 类型定义 ==============
 
 /** 存储提供商类型 */
-export type StorageProvider = 'webdav' | 's3';
+export type StorageProvider = 'webdav' | 's3' | 'ftp';
 
 /** WebDAV 配置 */
 export interface WebDavConfig {
@@ -35,6 +35,20 @@ export interface S3Config {
   pathStyle?: boolean;
 }
 
+/** FTP/FTPS 配置 */
+export interface FtpConfig {
+  /** FTP 服务器主机名或 IP 地址 */
+  host: string;
+  /** FTP 端口（默认 21） */
+  port?: number;
+  /** 用户名 */
+  username: string;
+  /** 密码 */
+  password: string;
+  /** 是否使用 TLS（FTPS 显式加密） */
+  useTls?: boolean;
+}
+
 /** 云存储配置 */
 export interface CloudStorageConfig {
   /** 存储提供商类型 */
@@ -43,6 +57,8 @@ export interface CloudStorageConfig {
   webdav?: WebDavConfig;
   /** S3 配置 */
   s3?: S3Config;
+  /** FTP 配置 */
+  ftp?: FtpConfig;
   /** 根目录路径 */
   root?: string;
   /** 端到端加密密码（可选）
@@ -64,8 +80,9 @@ export const CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY = 'cloud_storage_config_v2';
  * 注意：这里返回的是“安全配置”（password / secretAccessKey 通常为空字符串）。
  */
 export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
-  if (typeof window === 'undefined') return null;
-  const raw = window.localStorage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
+  const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
+  if (!storage) return null;
+  const raw = storage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as CloudStorageConfig;
@@ -75,17 +92,18 @@ export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
 }
 
 /**
- * 从 localStorage + 系统安全存储加载完整云存储配置（包含敏感凭据）
+ * 加载用于调用后端命令的云存储配置（不含明文凭据）
  *
- * - localStorage: provider/root/endpoint/bucket/accessKeyId 等非敏感信息
- * - 安全存储: webdavPassword / s3SecretAccessKey
+ * [P0-3A] 敏感字段（密码 / secretAccessKey / 加密密码）一律传空，由后端
+ * 各 Tauri 命令在入口处调用 `hydrate_cloud_config` 从系统安全存储自行补全。
+ * 明文凭据不再在前端内存与 IPC 通道中往返，仅在用户首次录入时经过一次。
+ *
+ * 函数名保留 `WithCredentials` 以兼容既有调用方——语义是"可直接用于
+ * 需要凭据的后端调用"，而非"对象里携带明文凭据"。
  */
 export async function loadStoredCloudStorageConfigWithCredentials(): Promise<CloudStorageConfig | null> {
   const safe = loadStoredCloudStorageConfigSafe();
   if (!safe) return null;
-
-  const credentials = await getCredentials().catch(() => null);
-  const encryptionPassword = credentials?.encryptionPassword ?? undefined;
 
   if (safe.provider === 'webdav') {
     return {
@@ -93,11 +111,24 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
       webdav: safe.webdav
         ? {
             ...safe.webdav,
-            // 防御性编程：不回退到 safe（localStorage）中的密码字段
-            password: credentials?.webdavPassword ?? '',
+            // 空串占位：后端 hydrate_cloud_config 会从安全存储补全
+            password: '',
           }
         : undefined,
-      encryptionPassword,
+      encryptionPassword: undefined,
+    };
+  }
+
+  if (safe.provider === 'ftp') {
+    return {
+      ...safe,
+      ftp: safe.ftp
+        ? {
+            ...safe.ftp,
+            password: '',
+          }
+        : undefined,
+      encryptionPassword: undefined,
     };
   }
 
@@ -106,10 +137,10 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
     s3: safe.s3
       ? {
           ...safe.s3,
-          secretAccessKey: credentials?.s3SecretAccessKey ?? '',
+          secretAccessKey: '',
         }
       : undefined,
-    encryptionPassword,
+    encryptionPassword: undefined,
   };
 }
 
@@ -429,6 +460,28 @@ export function createS3Config(
 }
 
 /**
+ * 创建默认的 FTP 配置
+ */
+export function createFtpConfig(
+  host: string,
+  username: string,
+  password: string,
+  options?: { port?: number; useTls?: boolean; root?: string }
+): CloudStorageConfig {
+  return {
+    provider: 'ftp',
+    ftp: {
+      host,
+      port: options?.port ?? 21,
+      username,
+      password,
+      useTls: options?.useTls ?? false,
+    },
+    root: options?.root,
+  };
+}
+
+/**
  * 检查 S3 存储是否已启用（编译时 feature）
  */
 export async function isS3Enabled(): Promise<boolean> {
@@ -448,6 +501,8 @@ export interface CloudStorageCredentials {
   webdavPassword?: string;
   /** S3 Secret Access Key */
   s3SecretAccessKey?: string;
+  /** FTP 密码 */
+  ftpPassword?: string;
   /** 端到端加密密码 */
   encryptionPassword?: string;
 }

@@ -20,12 +20,12 @@ impl GradingEventEmitter {
     pub fn emit_data(&self, stream_session_id: &str, chunk: String, accumulated: String) {
         let event_name = format!("essay_grading_stream_{}", stream_session_id);
 
+        // A6-11: accumulated 仅用于计算字符数；不再放进 payload（前端按 chunk 自行累加）
         let char_count = accumulated.chars().count();
 
         let payload = GradingStreamData {
             event_type: "data".to_string(),
             chunk,
-            accumulated,
             char_count,
         };
 

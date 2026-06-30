@@ -50,10 +50,10 @@ describe('modern sidebar icon contract', () => {
 
     expect(recentSessionRow).toContain("<CommonTooltip content={isConfirmingArchive ? '确认归档会话' : '归档会话'} position=\"right\">");
     expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? '确认归档会话' : '归档会话'}");
-    expect(recentSessionRow).toContain('className="t-icon-swap h-3.5 w-3.5"');
+    expect(recentSessionRow).toContain('className="w-3.5 h-3.5 t-icon-swap"');
     expect(recentSessionRow).toContain("data-state={isConfirmingArchive ? 'b' : 'a'}");
-    expect(recentSessionRow).toContain('<Archive className="h-3.5 w-3.5" />');
-    expect(recentSessionRow).toContain('<Check className="h-3.5 w-3.5" />');
+    expect(recentSessionRow).toContain('<Archive size={14} />');
+    expect(recentSessionRow).toContain('<Check size={14} />');
     expect(recentSessionRow).not.toContain('title="确认归档会话"');
     expect(recentSessionRow).not.toContain('title="归档会话"');
   });
@@ -81,6 +81,6 @@ describe('modern sidebar icon contract', () => {
     expect(sectionHeader).toContain('opacity-0');
     expect(sectionHeader).toContain('group-hover/sidebar-top-section:opacity-100');
     expect(sectionHeader).toContain('group-focus-within/sidebar-top-section:opacity-100');
-    expect(sectionHeader).toMatch(/<ChevronRight[\s\S]*text-\[color:var\(--shell-navigation-section-label\)\]/);
+    expect(sectionHeader).toMatch(/<CaretRight[\s\S]*text-\[color:var\(--shell-navigation-section-label\)\]/);
   });
 });

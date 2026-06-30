@@ -1051,8 +1051,10 @@ pub async fn dstu_create(
             };
 
             // 验证 Base64 数据大小（避免超大字符串导致内存压力）
-            const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10MB
-            const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB
+            // #62: 文件上限 50MB→200MB，与附件上传（attachment_repo）及学习资源导入对齐
+            // ★ 2026-06-12（审阅问题 M8）：图片 10MB→50MB，与 attachment_repo::MAX_IMAGE_BYTES 对齐
+            const MAX_IMAGE_SIZE: usize = 50 * 1024 * 1024; // 50MB
+            const MAX_FILE_SIZE: usize = 200 * 1024 * 1024; // 200MB
             let max_file_size = if resource_type == "images" {
                 MAX_IMAGE_SIZE
             } else {
@@ -1239,14 +1241,16 @@ pub async fn dstu_update(
     path: String,
     content: String,
     resource_type: String,
+    expected_updated_at_ms: Option<i64>,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<DstuNode, String> {
     log::info!(
-        "[DSTU::handlers] dstu_update: path={}, type={}, content_len={}",
+        "[DSTU::handlers] dstu_update: path={}, type={}, content_len={}, expected_ms={:?}",
         path,
         resource_type,
-        content.len()
+        content.len(),
+        expected_updated_at_ms
     );
 
     // ============================================================================
@@ -1282,6 +1286,33 @@ pub async fn dstu_update(
     // 根据类型路由到对应 Repo
     let node = match resource_type.as_str() {
         "notes" | "note" => {
+            // ★ R3（乐观锁）：前端携带上次已知 updatedAt（毫秒）。
+            // 先读当前笔记比较毫秒基线，一致则把当前 updated_at 字符串作为
+            // 原子乐观锁传给 update_note（防止比较与写入之间的竞态窗口）。
+            let expected_updated_at: Option<String> = if let Some(expected_ms) =
+                expected_updated_at_ms
+            {
+                let current = VfsNoteRepo::get_note(&vfs_db, &id)
+                    .map_err(|e| e.to_string())?
+                    .ok_or_else(|| format!("Note not found: {}", id))?;
+                let current_ms = chrono::DateTime::parse_from_rfc3339(&current.updated_at)
+                    .map(|dt| dt.timestamp_millis())
+                    .unwrap_or(0);
+                if current_ms > expected_ms {
+                    log::warn!(
+                        "[DSTU::handlers] dstu_update: CONFLICT - note {} updated elsewhere (expected_ms={}, current_ms={})",
+                        id, expected_ms, current_ms
+                    );
+                    return Err(format!(
+                        "CONFLICT(notes.conflict): The note has been updated elsewhere, please refresh. (expected={}, actual={})",
+                        expected_ms, current_ms
+                    ));
+                }
+                Some(current.updated_at)
+            } else {
+                None
+            };
+
             let mut updated_note = match VfsNoteRepo::update_note(
                 &vfs_db,
                 &id,
@@ -1289,7 +1320,7 @@ pub async fn dstu_update(
                     content: Some(content),
                     title: None,
                     tags: None,
-                    expected_updated_at: None,
+                    expected_updated_at,
                 },
             ) {
                 Ok(n) => {
@@ -2060,9 +2091,10 @@ pub async fn dstu_copy(
                 }
             };
 
-            // 教材复制需要复制 blob 引用
-            // 由于 blob 是内容寻址的（sha256），我们需要生成新的 sha256 或标记为副本
-            // 为了简化，我们创建一个新的文件名但指向同一个 blob
+            // ★ 2026-06-12（审阅问题 S3）：通过 repo 层 copy_textbook 复制。
+            // 旧实现直接复用 blob_hash 但不递增引用计数，删除任一副本会导致
+            // 另一副本的物理文件被清扫（数据丢失）；且不复制 preview_json，
+            // 副本永远没有页图预览。
             let new_file_name = format!("{} (副本)", textbook.file_name.trim_end_matches(".pdf"));
             let new_file_name = if textbook.file_name.ends_with(".pdf") {
                 format!("{}.pdf", new_file_name)
@@ -2070,20 +2102,10 @@ pub async fn dstu_copy(
                 new_file_name
             };
 
-            // 使用新的 sha256（在原 sha256 基础上添加时间戳以确保唯一）
-            let new_sha256 = format!(
-                "{}_{}",
-                textbook.sha256,
-                chrono::Utc::now().timestamp_millis()
-            );
-
-            let new_textbook = match VfsTextbookRepo::create_textbook(
+            let new_textbook = match VfsTextbookRepo::copy_textbook(
                 &vfs_db,
-                &new_sha256,
+                &textbook.id,
                 &new_file_name,
-                textbook.size,
-                textbook.blob_hash.as_deref(),
-                textbook.original_path.as_deref(),
             ) {
                 Ok(t) => {
                     log::info!(
@@ -2094,7 +2116,7 @@ pub async fn dstu_copy(
                 }
                 Err(e) => {
                     log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - create_textbook error={}",
+                        "[DSTU::handlers] dstu_copy: FAILED - copy_textbook error={}",
                         e
                     );
                     return Err(e.to_string());
@@ -2225,20 +2247,14 @@ pub async fn dstu_copy(
                 }
             };
 
-            // 创建新题目集
-            let new_exam_name = exam.exam_name.map(|n| format!("{} (副本)", n));
-            let new_temp_id = format!("copy_{}", nanoid::nanoid!(10));
-
-            let new_exam = match VfsExamRepo::create_exam_sheet(
+            // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_exam_sheet 复制。
+            // 旧实现仅复制 exam_sheets 行：页图 blob 引用计数不增（purge 任一份
+            // 导致另一份页图被物理清扫），且不复制题目（副本是空卷）。
+            let _ = exam; // 名称由 repo 统一加"(副本)"后缀（与文件复制语义一致）
+            let new_exam = match VfsExamRepo::copy_exam_sheet(
                 &vfs_db,
-                VfsCreateExamSheetParams {
-                    exam_name: new_exam_name,
-                    temp_id: new_temp_id,
-                    metadata_json: exam.metadata_json.clone(),
-                    preview_json: exam.preview_json.clone(),
-                    status: exam.status.clone(),
-                    folder_id: dest_folder_id.clone(),
-                },
+                &src_id,
+                dest_folder_id.as_deref(),
             ) {
                 Ok(e) => {
                     log::info!(
@@ -2249,28 +2265,12 @@ pub async fn dstu_copy(
                 }
                 Err(e) => {
                     log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - create_exam_sheet error={}",
+                        "[DSTU::handlers] dstu_copy: FAILED - copy_exam_sheet error={}",
                         e
                     );
                     return Err(e.to_string());
                 }
             };
-
-            // 如果指定了目标文件夹，将新资源添加到文件夹
-            if let Some(ref folder_id) = dest_folder_id {
-                let folder_item = VfsFolderItem::new(
-                    Some(folder_id.clone()),
-                    "exam".to_string(),
-                    new_exam.id.clone(),
-                );
-                if let Err(e) = VfsFolderRepo::add_item_to_folder(&vfs_db, &folder_item) {
-                    log::warn!(
-                        "[DSTU::handlers] dstu_copy: failed to add exam to folder {}: {}",
-                        folder_id,
-                        e
-                    );
-                }
-            }
 
             exam_to_dstu_node(&new_exam)
         }
@@ -2360,42 +2360,40 @@ pub async fn dstu_copy(
                 }
             };
 
-            // 创建新文件记录（指向同一个 blob）
+            // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_file 复制。
+            // 旧实现直接复用 blob_hash 但不递增引用计数（删除任一副本导致另一
+            // 副本物理文件被清扫），且不复制 preview/OCR/压缩产物。
             let new_file_name = format!("{} (副本)", file.file_name);
-            // 使用新的 sha256 以确保唯一性
-            let new_sha256 = format!("{}_{}", file.sha256, chrono::Utc::now().timestamp_millis());
-
-            let new_file = match VfsFileRepo::create_file(
-                &vfs_db,
-                &new_sha256,
-                &new_file_name,
-                file.size,
-                &file.file_type,
-                file.mime_type.as_deref(),
-                file.blob_hash.as_deref(),
-                file.original_path.as_deref(),
-            ) {
-                Ok(f) => {
-                    log::info!(
-                        "[DSTU::handlers] dstu_copy: SUCCESS - created file copy, id={}",
-                        f.id
-                    );
-                    f
-                }
-                Err(e) => {
-                    log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - create_file error={}",
-                        e
-                    );
-                    return Err(e.to_string());
+            let new_file = {
+                let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+                match VfsFileRepo::copy_file_with_conn(&conn, &src_id, &new_file_name) {
+                    Ok(f) => {
+                        log::info!(
+                            "[DSTU::handlers] dstu_copy: SUCCESS - created file copy, id={}",
+                            f.id
+                        );
+                        f
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[DSTU::handlers] dstu_copy: FAILED - copy_file error={}",
+                            e
+                        );
+                        return Err(e.to_string());
+                    }
                 }
             };
 
-            // 如果指定了目标文件夹，将新资源添加到文件夹
+            // 如果指定了目标文件夹，将新资源添加到文件夹（保留原条目类型）
             if let Some(ref folder_id) = dest_folder_id {
+                let item_type = if src_resource_type == "images" {
+                    "image"
+                } else {
+                    "file"
+                };
                 let folder_item = VfsFolderItem::new(
                     Some(folder_id.clone()),
-                    "file".to_string(),
+                    item_type.to_string(),
                     new_file.id.clone(),
                 );
                 if let Err(e) = VfsFolderRepo::add_item_to_folder(&vfs_db, &folder_item) {
@@ -2757,30 +2755,19 @@ fn copy_resource_to_folder(
             );
         }
         "textbook" => {
-            // 复制教材
+            // ★ 2026-06-12（审阅问题 S3）：通过 repo 层 copy_textbook 复制，
+            // 正确递增共享 blob 引用计数并复制预渲染数据。
             let textbook = match VfsTextbookRepo::get_textbook(vfs_db, &item.item_id) {
                 Ok(Some(t)) => t,
                 Ok(None) => return Err(format!("教材不存在: {}", item.item_id)),
                 Err(e) => return Err(e.to_string()),
             };
 
-            let new_sha256 = format!(
-                "{}_{}",
-                textbook.sha256,
-                chrono::Utc::now().timestamp_millis()
-            );
-
-            let new_textbook = match VfsTextbookRepo::create_textbook(
-                vfs_db,
-                &new_sha256,
-                &textbook.file_name,
-                textbook.size,
-                textbook.blob_hash.as_deref(),
-                textbook.original_path.as_deref(),
-            ) {
-                Ok(t) => t,
-                Err(e) => return Err(e.to_string()),
-            };
+            let new_textbook =
+                match VfsTextbookRepo::copy_textbook(vfs_db, &textbook.id, &textbook.file_name) {
+                    Ok(t) => t,
+                    Err(e) => return Err(e.to_string()),
+                };
 
             let folder_item = VfsFolderItem::new(
                 Some(dest_folder_id.to_string()),
@@ -2852,36 +2839,17 @@ fn copy_resource_to_folder(
             );
         }
         "exam" => {
-            // 复制题目集
-            let exam = match VfsExamRepo::get_exam_sheet(vfs_db, &item.item_id) {
-                Ok(Some(e)) => e,
-                Ok(None) => return Err(format!("题目集不存在: {}", item.item_id)),
-                Err(e) => return Err(e.to_string()),
-            };
-
-            let new_temp_id = format!("copy_{}", nanoid::nanoid!(10));
-
-            let new_exam = match VfsExamRepo::create_exam_sheet(
+            // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_exam_sheet 复制，
+            // 正确递增页图/题图 blob 引用计数并复制题目。
+            // （repo 内部已写 folder_items，不再额外添加避免重复）
+            let new_exam = match VfsExamRepo::copy_exam_sheet(
                 vfs_db,
-                VfsCreateExamSheetParams {
-                    exam_name: exam.exam_name.clone(),
-                    temp_id: new_temp_id,
-                    metadata_json: exam.metadata_json.clone(),
-                    preview_json: exam.preview_json.clone(),
-                    status: exam.status.clone(),
-                    folder_id: Some(dest_folder_id.to_string()),
-                },
+                &item.item_id,
+                Some(dest_folder_id),
             ) {
                 Ok(e) => e,
                 Err(e) => return Err(e.to_string()),
             };
-
-            let folder_item = VfsFolderItem::new(
-                Some(dest_folder_id.to_string()),
-                "exam".to_string(),
-                new_exam.id.clone(),
-            );
-            VfsFolderRepo::add_item_to_folder(vfs_db, &folder_item).map_err(|e| e.to_string())?;
 
             log::debug!(
                 "[DSTU::handlers] copy_resource_to_folder: copied exam {} -> {}",
@@ -2924,32 +2892,25 @@ fn copy_resource_to_folder(
             );
         }
         "file" | "image" => {
-            // 复制文件/图片
+            // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_file 复制，
+            // 正确递增 blob 引用计数并复制 preview/OCR/压缩产物。
             let file = match VfsFileRepo::get_file(vfs_db, &item.item_id) {
                 Ok(Some(f)) => f,
                 Ok(None) => return Err(format!("文件不存在: {}", item.item_id)),
                 Err(e) => return Err(e.to_string()),
             };
 
-            let new_sha256 = format!("{}_{}", file.sha256, chrono::Utc::now().timestamp_millis());
+            let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+            let new_file =
+                match VfsFileRepo::copy_file_with_conn(&conn, &item.item_id, &file.file_name) {
+                    Ok(f) => f,
+                    Err(e) => return Err(e.to_string()),
+                };
 
-            let new_file = match VfsFileRepo::create_file(
-                vfs_db,
-                &new_sha256,
-                &file.file_name,
-                file.size,
-                &file.file_type,
-                file.mime_type.as_deref(),
-                file.blob_hash.as_deref(),
-                file.original_path.as_deref(),
-            ) {
-                Ok(f) => f,
-                Err(e) => return Err(e.to_string()),
-            };
-
+            // 保留原条目类型（image 副本仍是 image）
             let folder_item = VfsFolderItem::new(
                 Some(dest_folder_id.to_string()),
-                "file".to_string(),
+                item.item_type.clone(),
                 new_file.id.clone(),
             );
             VfsFolderRepo::add_item_to_folder(vfs_db, &folder_item).map_err(|e| e.to_string())?;
@@ -3279,61 +3240,55 @@ pub async fn dstu_set_metadata(
                 }
             }
             // 更新翻译内容（源文本和译文）
+            // ★ 2026-06-12（审阅问题 S1）：改为走 VfsTranslationRepo::update_translation_content，
+            // 正确重算加盐哈希、重置 index_state，并对历史共享资源做 copy-on-write。
+            // 同时修复：只传一个字段时不再把另一字段清空，而是保留现有内容。
             if metadata.get("sourceText").is_some() || metadata.get("translatedText").is_some() {
-                let translation = match VfsTranslationRepo::get_translation(&vfs_db, &id) {
-                    Ok(Some(t)) => t,
-                    Ok(None) => {
-                        log::warn!("[DSTU::handlers] dstu_set_metadata: FAILED - translation not found, id={}", id);
-                        return Err("资源不存在".to_string());
-                    }
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_translation error, id={}, error={}", id, e);
-                        return Err(e.to_string());
-                    }
-                };
+                // 读取现有内容，用于填充未提供的字段
+                let (cur_source, cur_translated) =
+                    match VfsTranslationRepo::get_translation_content(&vfs_db, &id) {
+                        Ok(Some(content_str)) => {
+                            match serde_json::from_str::<serde_json::Value>(&content_str) {
+                                Ok(v) => (
+                                    v.get("source")
+                                        .and_then(|s| s.as_str())
+                                        .unwrap_or("")
+                                        .to_string(),
+                                    v.get("translated")
+                                        .and_then(|s| s.as_str())
+                                        .unwrap_or("")
+                                        .to_string(),
+                                ),
+                                Err(_) => (String::new(), String::new()),
+                            }
+                        }
+                        Ok(None) => (String::new(), String::new()),
+                        Err(e) => {
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_translation_content error, id={}, error={}", id, e);
+                            return Err(e.to_string());
+                        }
+                    };
 
-                // 更新 resources.data 中的内容
                 let source = metadata
                     .get("sourceText")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                    .map(|s| s.to_string())
+                    .unwrap_or(cur_source);
                 let translated = metadata
                     .get("translatedText")
                     .and_then(|v| v.as_str())
-                    .unwrap_or("");
+                    .map(|s| s.to_string())
+                    .unwrap_or(cur_translated);
 
-                let content = serde_json::json!({
-                    "source": source,
-                    "translated": translated
-                });
-                let content_str = match serde_json::to_string(&content) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::error!(
-                            "[DSTU::handlers] dstu_set_metadata: FAILED - json serialize error={}",
-                            e
-                        );
-                        return Err(e.to_string());
-                    }
-                };
-
-                // 更新 resources 表
-                let conn = match vfs_db.get_conn_safe() {
-                    Ok(c) => c,
-                    Err(e) => {
-                        log::error!(
-                            "[DSTU::handlers] dstu_set_metadata: FAILED - get_conn error={}",
-                            e
-                        );
-                        return Err(e.to_string());
-                    }
-                };
-                if let Err(e) = conn.execute(
-                    "UPDATE resources SET data = ?1 WHERE id = ?2",
-                    rusqlite::params![content_str, translation.resource_id],
+                if let Err(e) = VfsTranslationRepo::update_translation_content(
+                    &vfs_db,
+                    &id,
+                    &source,
+                    &translated,
                 ) {
                     log::error!(
-                        "[DSTU::handlers] dstu_set_metadata: FAILED - execute error={}",
+                        "[DSTU::handlers] dstu_set_metadata: FAILED - update_translation_content error, id={}, error={}",
+                        id,
                         e
                     );
                     return Err(e.to_string());

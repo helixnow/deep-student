@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseMarkers } from './markerParser';
+import { parseMarkers, parseScore, removeScoreTag } from './markerParser';
 import { parseStreamingContent } from './streamingMarkerParser';
 
 const sampleWithInlineQuotes = `
@@ -36,5 +36,41 @@ describe('essay marker parser', () => {
     expect(note?.comment).toContain('“空心病”的比喻新颖有趣');
     expect(err?.explanation).toContain('不是走出忙碌之笼');
     expect(rawTagLeak).toBe(false);
+  });
+
+  it('does not duplicate content for nested markers (A6-08)', () => {
+    const nested = '前文<note text="批注">外层<good>内层亮点</good>文本</note>后文';
+    const markers = parseMarkers(nested);
+
+    // 外层 note 完整保留，内层 good 不再作为独立标记重复输出
+    const note = markers.find((m) => m.type === 'note');
+    expect(note).toBeDefined();
+    const standaloneGood = markers.filter((m) => m.type === 'good');
+    expect(standaloneGood).toHaveLength(0);
+
+    // 拼接结果不应出现"内层亮点"两次
+    const joined = markers.map((m) => m.content).join('');
+    expect(joined.match(/内层亮点/g)?.length).toBe(1);
+  });
+
+  it('parses score with both attribute orders (A6-08)', () => {
+    const totalFirst = parseScore('<score total="8" max="10"><dim name="内容" score="4" max="5">好</dim></score>');
+    expect(totalFirst?.total).toBe(8);
+    expect(totalFirst?.maxTotal).toBe(10);
+
+    const maxFirst = parseScore('<score max="10" total="8"><dim name="内容" score="4" max="5">好</dim></score>');
+    expect(maxFirst?.total).toBe(8);
+    expect(maxFirst?.maxTotal).toBe(10);
+
+    expect(removeScoreTag('正文<score max="10" total="8">x</score>')).toBe('正文');
+  });
+
+  it('restores code blocks containing dollar signs intact (A6-09)', () => {
+    const text = '说明文字\n```js\nconst price = "$100"; // $& $` $\' 都不该被破坏\n```\n结尾';
+    const parsed = parseStreamingContent(text, true);
+    const joined = parsed.markers.map((m) => m.content).join('');
+
+    expect(joined).toContain('$100');
+    expect(joined).not.toContain('__CODE_BLOCK_');
   });
 });

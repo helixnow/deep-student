@@ -215,11 +215,11 @@ mod tests {
         // Agent tool
         assert!(registry.has_tool("attempt_completion"));
         assert!(!registry.has_tool("anki:generate_cards"));
-        // TodoList tools
-        assert!(registry.has_tool("builtin-todo_init"));
-        assert!(registry.has_tool("builtin-todo_update"));
-        assert!(registry.has_tool("builtin-todo_add"));
-        assert!(registry.has_tool("builtin-todo_get"));
+        // TodoList tools（注册 ID 为无前缀的 tool_names 常量）
+        assert!(registry.has_tool(todo_executor::tool_names::TODO_INIT));
+        assert!(registry.has_tool(todo_executor::tool_names::TODO_UPDATE));
+        assert!(registry.has_tool(todo_executor::tool_names::TODO_ADD));
+        assert!(registry.has_tool(todo_executor::tool_names::TODO_GET));
     }
 
     #[test]
@@ -227,8 +227,8 @@ mod tests {
         let registry = SchemaToolRegistry::new_with_builtin_tools();
         // 使用 TodoList 工具测试
         let schemas = registry.get_schemas(&[
-            "builtin-todo_init".to_string(),
-            "builtin-todo_update".to_string(),
+            todo_executor::tool_names::TODO_INIT.to_string(),
+            todo_executor::tool_names::TODO_UPDATE.to_string(),
         ]);
         assert_eq!(schemas.len(), 2);
     }
@@ -236,8 +236,10 @@ mod tests {
     #[test]
     fn test_get_schemas_with_invalid_id() {
         let registry = SchemaToolRegistry::new_with_builtin_tools();
-        let schemas =
-            registry.get_schemas(&["builtin-todo_init".to_string(), "invalid_tool".to_string()]);
+        let schemas = registry.get_schemas(&[
+            todo_executor::tool_names::TODO_INIT.to_string(),
+            "invalid_tool".to_string(),
+        ]);
         // 应该只返回有效的 1 个
         assert_eq!(schemas.len(), 1);
     }

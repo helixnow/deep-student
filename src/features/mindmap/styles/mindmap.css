@@ -905,3 +905,49 @@
 .outline-content-enter {
   animation: contentFadeIn 0.25s ease-out both;
 }
+
+/* --- 触屏（粗指针）适配 --- */
+/* 触屏没有 hover：依赖悬停显隐的控件须常驻；24px 以下控件用伪元素扩大
+   命中区域到 ~40px（Apple HIG 44 / Material 48 的折中），视觉尺寸不变 */
+@media (pointer: coarse) {
+  /* 画布：节点操作按钮（选中时已显示）扩大命中区 */
+  .mm-action-btn {
+    position: relative;
+  }
+  .mm-action-btn::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  /* 画布：折叠/展开按钮常驻可见 + 扩大命中区 */
+  .mm-collapse-btn {
+    position: relative;
+  }
+  .mm-collapse-btn::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+
+  /* 大纲：折叠箭头无 hover 可触发，常驻弱显示 */
+  .collapse-toggle {
+    position: relative;
+    opacity: 0.55;
+  }
+  .collapse-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+  }
+
+  /* 大纲：bullet（拖拽手柄）扩大命中区 */
+  .node-bullet-container {
+    position: relative;
+  }
+  .node-bullet-container::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}

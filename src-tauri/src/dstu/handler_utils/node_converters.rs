@@ -479,12 +479,13 @@ mod tests {
 
     #[test]
     fn test_get_textbook_preview_type_office_excel() {
-        // Excel 表格
+        // Excel 表格（仅 OOXML 走富表格渲染）
         assert_eq!(get_textbook_preview_type("data.xlsx"), PreviewType::Xlsx);
-        assert_eq!(get_textbook_preview_type("data.xls"), PreviewType::Xlsx);
-        assert_eq!(get_textbook_preview_type("data.ods"), PreviewType::Xlsx);
-        assert_eq!(get_textbook_preview_type("data.xlsb"), PreviewType::Xlsx);
         assert_eq!(get_textbook_preview_type("DATA.XLSX"), PreviewType::Xlsx);
+        // ★ 审阅问题 R3：老格式降级为 Text（前端 ExcelJS 渲染必败，改走提取文本）
+        assert_eq!(get_textbook_preview_type("data.xls"), PreviewType::Text);
+        assert_eq!(get_textbook_preview_type("data.ods"), PreviewType::Text);
+        assert_eq!(get_textbook_preview_type("data.xlsb"), PreviewType::Text);
     }
 
     #[test]

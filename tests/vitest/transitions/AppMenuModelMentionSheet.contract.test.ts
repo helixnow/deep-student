@@ -34,7 +34,7 @@ describe('AppMenu / ModelMentionPopover / Sheet transition contracts', () => {
   });
 
   it('gives ModelMentionPopover the same dropdown close-state hooks', () => {
-    const source = readSource('src/chat-v2/components/input-bar/ModelMentionPopover.tsx');
+    const source = readSource('src/features/chat/components/input-bar/ModelMentionPopover.tsx');
 
     expect(source).toContain('t-dropdown');
     expect(source).toContain('is-open');

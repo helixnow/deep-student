@@ -295,11 +295,11 @@ Inspired by [mem0](https://github.com/mem0ai/mem0) and [memU](https://github.com
 An extensible workbench, not a closed feature set.
 
 - Skills load AI capabilities on demand — tools only loaded when activated, saving tokens
-- 12 built-in skills: Cards · Research · Paper · Mind Map · Q-Bank · Memory · Tutor · Literature Review · Exam Analysis · Session Manager · Office Suite · Todo
+- 26 built-in skills (6 scenario skills + 20 tool groups): Cards · Research · Paper · Tutor · Literature Review · Exam Analysis · Mind Map · Q-Bank · Memory · Session Manager · Office Suite · Todo · Canvas Notes · Image Generation · Web Fetch · Subagent Workspace, and more
 - Three-tier loading (Built-in → Global → Project-level), custom skills via SKILL.md
 - MCP protocol compatible, connecting external tools like Arxiv, Context7
 - 9 pre-configured model providers, plus any OpenAI-compatible endpoint
-- Adapted for Gemini 3, GPT-5.2 Pro, GLM-5, Seed 2.0, Kimi K2.5, and more
+- Adapted for Gemini 3, GPT-5.2 Pro, GLM-5, DeepSeek V4, Seed 2.0, Kimi K2.5, and more
 
 <details>
 <summary>📸 View Screenshots</summary>
@@ -382,12 +382,13 @@ DeepStudent
 ```
 DeepStudent
 ├── src/                    # React Frontend
-│   ├── chat-v2/            #   Chat V2 Conversation Engine
-│   │   ├── adapters/       #     Backend Adapters (TauriAdapter)
-│   │   ├── skills/         #     Skill System (builtin / builtin-tools / loader)
-│   │   ├── components/     #     Chat UI Components
-│   │   └── plugins/        #     Plugins (event handling, tool rendering)
-│   ├── components/         #   UI Components (feature module pages)
+│   ├── features/           #   Feature modules (14: chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / voice-input, etc.)
+│   │   └── chat/           #     Chat V2 Conversation Engine
+│   │       ├── core/       #       Store / Types / Registries
+│   │       ├── skills/     #       Skill System (builtin / builtin-tools / loader)
+│   │       ├── components/ #       Chat UI Components
+│   │       └── plugins/    #       Plugins (event handling, block rendering)
+│   ├── components/         #   Shared UI Components
 │   ├── stores/             #   Zustand State Management
 │   ├── mcp/                #   MCP Client & Built-in Tool Definitions
 │   ├── essay-grading/      #   Essay Grading Frontend
@@ -432,7 +433,7 @@ DeepStudent
 | Area | Technology |
 |------|----------|
 | **Frontend Framework** | React 18 + TypeScript 5.6 + Vite 6 |
-| **UI Components** | Tailwind CSS 3 + Radix UI + Lucide Icons |
+| **UI Components** | Tailwind CSS 3 + Radix UI + Phosphor Icons |
 | **Desktop / Mobile** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
 | **Data Storage** | SQLite (Rusqlite) + LanceDB (Vector Search) + Local Blob |
 | **State Management** | Zustand 5 + Immer |
@@ -508,7 +509,8 @@ DeepStudent started as a Python demo in March 2025 and has evolved through nearl
 | **2025.12** | ⚡ Performance — Parallel session loading, config caching, DSTU resource protocol |
 | **2026.01** | 🧩 Skill System & VFS — File-based skill loading, unified Virtual File System |
 | **2026.02** | 🚀 Open Source Release — Renamed to DeepStudent, released v0.9.23; added Translation Workbench, Cloud Sync, Session Branching, Smart Memory enhancements, and more |
-| **2026.03** | 🐧 Linux & Hardening — Linux build support (deb/AppImage); Todo system; question history view; model capability auto-detection; reading mode for mobile; content search & session tagging; resource export; memory batch write & idempotency; cross-session permission checks; released v0.9.30–v0.9.33 |
+| **2026.03** | 🐧 Linux & Hardening — Linux build support (deb/AppImage); Todo & Pomodoro system; question history view; model capability auto-detection; reading mode for mobile; content search & session tagging; resource export; memory batch write & idempotency; cross-session permission checks; released v0.9.30–v0.9.35 |
+| **2026.04–06** | 🧱 Architecture & Stability — DeepSeek V4 / V3.2 adapter family; frontend `features/` modular refactor and Phosphor icon migration; real-environment multi-instance E2E test system; cloud sync convergence remediation; released v0.9.36–v0.9.40 |
 
 ---
 
@@ -539,7 +541,7 @@ DeepStudent would not be possible without these outstanding open-source projects
 [Milkdown](https://milkdown.dev) · [ProseMirror](https://prosemirror.net) · [CodeMirror](https://codemirror.net) · [KaTeX](https://katex.org) · [Mermaid](https://mermaid.js.org) · [react-markdown](https://github.com/remarkjs/react-markdown)
 
 **UI & Styling**
-[Tailwind CSS](https://tailwindcss.com) · [Radix UI](https://www.radix-ui.com) · [Lucide](https://lucide.dev) · [Framer Motion](https://www.framer.com/motion) · [Recharts](https://recharts.org) · [React Flow](https://reactflow.dev)
+[Tailwind CSS](https://tailwindcss.com) · [Radix UI](https://www.radix-ui.com) · [Phosphor Icons](https://phosphoricons.com) · [Framer Motion](https://www.framer.com/motion) · [Recharts](https://recharts.org) · [React Flow](https://reactflow.dev)
 
 **Data & State**
 [LanceDB](https://lancedb.com) · [SQLite](https://www.sqlite.org) / [rusqlite](https://github.com/rusqlite/rusqlite) · [Apache Arrow](https://arrow.apache.org) · [Zustand](https://zustand.docs.pmnd.rs) · [Immer](https://immerjs.github.io/immer) · [Serde](https://serde.rs)

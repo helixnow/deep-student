@@ -7,26 +7,32 @@ describe('shared switch size contract', () => {
     resolve(process.cwd(), 'src/components/ui/shad/Switch.tsx'),
     'utf-8'
   );
-  const advancedPanelSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/plugins/chat/AdvancedPanel.tsx'),
+  const switchCssSource = readFileSync(
+    resolve(process.cwd(), 'src/components/ui/shad/Switch.css'),
     'utf-8'
   );
-  const apisTabSource = readFileSync(
-    resolve(process.cwd(), 'src/features/settings/components/ApisTab.tsx'),
+  const advancedPanelSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/plugins/chat/AdvancedPanel.tsx'),
+    'utf-8'
+  );
+  const apiEditModalSource = readFileSync(
+    resolve(process.cwd(), 'src/features/settings/components/ShadApiEditModal.tsx'),
     'utf-8'
   );
 
   it('supports explicit switch sizes instead of relying on transform scaling hacks', () => {
-    expect(switchSource).toContain("size?: 'sm' | 'default'");
+    expect(switchSource).toContain('export type SwitchSize = "default" | "sm"');
+    expect(switchSource).toContain('size?: SwitchSize');
     expect(switchSource).toContain("data-size={size}");
-    expect(switchSource).toContain("size === 'sm'");
-    expect(switchSource).not.toContain("import './Switch.css';");
+    expect(switchSource).toContain("import \"./Switch.css\"");
+    expect(switchCssSource).toContain('[data-slot="switch"][data-size="sm"]');
+    expect(switchCssSource).toContain('transform: translateX(0.75rem)');
   });
 
   it('replaces scale-75 switch overrides in dense panels with the shared small size', () => {
     expect(advancedPanelSource).toContain('size="sm"');
     expect(advancedPanelSource).not.toContain('scale-75');
-    expect(apisTabSource).toContain('size="sm"');
-    expect(apisTabSource).not.toContain('scale-75');
+    expect(apiEditModalSource).toContain('size="sm"');
+    expect(apiEditModalSource).not.toContain('scale-75');
   });
 });

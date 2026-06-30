@@ -184,6 +184,74 @@ const installConsoleWarningFilter = () => {
 };
 
 installConsoleWarningFilter();
+
+const installTauriLabFrontendLogBridge = () => {
+  if (typeof window === 'undefined') return;
+  // F21: tauri-lab 前端日志桥仅服务于开发/测试 harness（后端 `tauri_lab_frontend_log`
+  // 在没有 TAURI_LAB_* 环境变量时本就直接 no-op）。生产构建下跳过安装，消除每条
+  // warn/error 触发的无谓 IPC（原先 prod 也启用）。
+  if ((import.meta as any).env?.MODE === 'production') return;
+  const key = '__TAURI_LAB_FRONTEND_LOG_BRIDGE__';
+  if ((window as any)[key]) return;
+  (window as any)[key] = true;
+
+  let invokePromise: Promise<any> | null = null;
+  const getInvoke = () => {
+    invokePromise ||= import('@tauri-apps/api/core').then(module => module.invoke);
+    return invokePromise;
+  };
+
+  const serializeArg = (arg: unknown): string => {
+    if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+    if (typeof arg === 'string') return arg;
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  };
+
+  // F21: 去重节流——相同 (level+message) 在窗口期内只上报一次，避免高频 warn/error 刷爆 IPC。
+  const recentSends = new Map<string, number>();
+  const SEND_THROTTLE_MS = 5_000;
+  const send = (level: 'warn' | 'error', args: unknown[], stack?: string) => {
+    const message = args.map(serializeArg).filter(Boolean).join(' ');
+    if (!message && !stack) return;
+    const dedupeKey = `${level}:${message}`;
+    const now = Date.now();
+    for (const [storedKey, storedAt] of recentSends) {
+      if (now - storedAt > SEND_THROTTLE_MS) recentSends.delete(storedKey);
+    }
+    const last = recentSends.get(dedupeKey);
+    if (last && now - last < SEND_THROTTLE_MS) return;
+    recentSends.set(dedupeKey, now);
+    void getInvoke()
+      .then(invoke => invoke('tauri_lab_frontend_log', { level, message, stack }))
+      .catch(() => {});
+  };
+
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  console.warn = (...args: unknown[]) => {
+    originalWarn.apply(console, args as any);
+    send('warn', args);
+  };
+  console.error = (...args: unknown[]) => {
+    originalError.apply(console, args as any);
+    const stack = args.find(arg => arg instanceof Error)?.stack;
+    send('error', args, stack);
+  };
+
+  window.addEventListener('error', event => {
+    send('error', [event.message], event.error instanceof Error ? event.error.stack : undefined);
+  });
+  window.addEventListener('unhandledrejection', event => {
+    const reason = event.reason;
+    send('error', [reason], reason instanceof Error ? reason.stack : undefined);
+  });
+};
+
+installTauriLabFrontendLogBridge();
 // 动态初始化 Sentry（仅当配置存在且用户已同意）
 // 🆕 合规要求：Sentry 默认关闭，需用户在设置中主动开启
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
@@ -221,6 +289,10 @@ async function initSentryIfConfigured() {
 export { SENTRY_CONSENT_KEY };
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
+
+// ★ 3.2 番茄钟置顶小窗：独立轻量入口（不挂载完整 App）
+const IS_POMODORO_MINI_WINDOW =
+  new URLSearchParams(window.location.search).get('window') === 'pomodoro-mini';
 
 /** Safe i18n accessor for contexts where hooks are unavailable (e.g. error boundary fallback).
  *  Falls back to the provided default string if i18n is not yet initialised or throws. */
@@ -369,9 +441,22 @@ const appTree = (
   </ErrorBoundary>
 );
 
-// 在开发态移除 StrictMode，避免 effect/事件监听的二次执行造成噪声与性能影响；
-// 生产环境仍保留 StrictMode 以捕获潜在问题。
-if ((import.meta as any).env?.MODE === 'production') {
+// F22: React 18 的 StrictMode 双调用诊断仅在开发态生效，生产构建为 no-op——
+// 因此原先「仅 prod 启用」等于全程没有 StrictMode 检查（注释意图与 React 行为相反）。
+// 调整为：
+//   - 开发态可通过 VITE_ENABLE_STRICT_MODE=true 显式开启，按需排查 effect/副作用幂等性；
+//     默认关闭以保持现有开发体验（团队此前因二次执行噪声移除，需先清理后再常态化）。
+//   - 生产构建仍包裹 StrictMode（运行时无副作用），保持渲染树一致。
+const enableDevStrictMode =
+  (import.meta as any).env?.MODE !== 'production' &&
+  (import.meta as any).env?.VITE_ENABLE_STRICT_MODE === 'true';
+
+if (IS_POMODORO_MINI_WINDOW) {
+  // 置顶小窗：只渲染番茄钟 UI，跳过 App 与全部重量级初始化
+  import('./features/pomodoro/components/PomodoroMiniWindow').then(({ PomodoroMiniWindow }) => {
+    root.render(<PomodoroMiniWindow />);
+  });
+} else if ((import.meta as any).env?.MODE === 'production' || enableDevStrictMode) {
   initSentryIfConfigured().finally(() => {
     root.render(<React.StrictMode>{appTree}</React.StrictMode>);
   });
@@ -383,9 +468,11 @@ if ((import.meta as any).env?.MODE === 'production') {
 
 
 // Initialize Frontend MCP Service from saved settings (best-effort)
-bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
-  debugLog.warn('[MCP] Bootstrap failed:', err);
-});
+if (!IS_POMODORO_MINI_WINDOW) {
+  bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
+    debugLog.warn('[MCP] Bootstrap failed:', err);
+  });
+}
 
 // Respond to settings change to reload MCP servers from DB
 const handleSystemSettingsChanged = async (event?: Event) => {

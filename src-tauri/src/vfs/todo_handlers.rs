@@ -56,11 +56,15 @@ pub struct CreateTodoItemInput {
     #[serde(default)]
     pub due_time: Option<String>,
     #[serde(default)]
+    pub reminder: Option<String>,
+    #[serde(default)]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub parent_id: Option<String>,
     #[serde(default)]
     pub attachments: Option<Vec<String>>,
+    #[serde(default)]
+    pub repeat_json: Option<String>,
 }
 
 fn default_priority() -> String {
@@ -161,9 +165,72 @@ pub fn todo_toggle_list_favorite(app: AppHandle, list_id: String) -> Result<VfsT
 }
 
 #[tauri::command]
-pub fn todo_ensure_inbox(app: AppHandle) -> Result<VfsTodoList, String> {
+pub fn todo_ensure_inbox(app: AppHandle, title: Option<String>) -> Result<VfsTodoList, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::ensure_default_inbox(&vfs_db).map_err(|e| e.to_string())
+    VfsTodoRepo::ensure_default_inbox_with_title(&vfs_db, title.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// 回收站命令
+// ============================================================================
+
+#[tauri::command]
+pub fn todo_list_deleted_lists(
+    app: AppHandle,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<VfsTodoList>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::list_deleted_todo_lists(&vfs_db, limit.unwrap_or(100), offset.unwrap_or(0))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_restore_list(app: AppHandle, list_id: String) -> Result<VfsTodoList, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::restore_todo_list(&vfs_db, &list_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_list(app: AppHandle, list_id: String) -> Result<(), String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_todo_list(&vfs_db, &list_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_deleted_lists(app: AppHandle) -> Result<usize, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_deleted_todo_lists(&vfs_db).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_restore_item(app: AppHandle, item_id: String) -> Result<VfsTodoItem, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::restore_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_list_deleted_items(
+    app: AppHandle,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<VfsTodoItem>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::list_deleted_todo_items(&vfs_db, limit.unwrap_or(100), offset.unwrap_or(0))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_item(app: AppHandle, item_id: String) -> Result<(), String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn todo_purge_deleted_items(app: AppHandle) -> Result<usize, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::purge_deleted_todo_items(&vfs_db).map_err(|e| e.to_string())
 }
 
 // ============================================================================
@@ -180,9 +247,11 @@ pub fn todo_create_item(app: AppHandle, input: CreateTodoItemInput) -> Result<Vf
         priority: input.priority,
         due_date: input.due_date,
         due_time: input.due_time,
+        reminder: input.reminder,
         tags: input.tags,
         parent_id: input.parent_id,
         attachments: input.attachments,
+        repeat_json: input.repeat_json,
     };
     VfsTodoRepo::create_todo_item(&vfs_db, params).map_err(|e| e.to_string())
 }
@@ -274,6 +343,20 @@ pub fn todo_list_upcoming(
     VfsTodoRepo::list_upcoming_items(&vfs_db, days, include_completed).map_err(|e| e.to_string())
 }
 
+/// 所有设置了提醒的待处理任务（前端提醒调度器轮询用）
+#[tauri::command]
+pub fn todo_list_reminders(app: AppHandle) -> Result<Vec<VfsTodoItem>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::list_reminder_items(&vfs_db).map_err(|e| e.to_string())
+}
+
+/// 全部待处理任务（跨清单，四象限矩阵视图用）
+#[tauri::command]
+pub fn todo_list_all_pending(app: AppHandle) -> Result<Vec<VfsTodoItem>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsTodoRepo::list_all_pending_items(&vfs_db).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn todo_list_completed(
     app: AppHandle,
@@ -293,6 +376,149 @@ pub fn todo_search(app: AppHandle, query: String) -> Result<Vec<VfsTodoItem>, St
 pub fn todo_get_active_summary(app: AppHandle) -> Result<Option<TodoActiveSummary>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     VfsTodoRepo::get_active_todo_summary(&vfs_db).map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// AI 拆解子任务
+// ============================================================================
+
+/// 从模型输出中提取 JSON 字符串数组（容忍 markdown 代码块包裹与前后杂文）
+fn parse_breakdown_titles(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    let cleaned = if trimmed.starts_with("```") {
+        trimmed
+            .trim_start_matches("```json")
+            .trim_start_matches("```JSON")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+            .to_string()
+    } else {
+        trimmed.to_string()
+    };
+
+    // 优先整体解析；失败则截取第一个 [...] 片段再解析
+    let candidate = if serde_json::from_str::<serde_json::Value>(&cleaned).is_ok() {
+        cleaned
+    } else {
+        match (cleaned.find('['), cleaned.rfind(']')) {
+            (Some(start), Some(end)) if end > start => cleaned[start..=end].to_string(),
+            _ => return Vec::new(),
+        }
+    };
+
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&candidate) else {
+        return Vec::new();
+    };
+    let Some(arr) = value.as_array() else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|v| {
+            // 兼容 ["t1"] 与 [{"title":"t1"}] 两种形态
+            v.as_str()
+                .map(|s| s.to_string())
+                .or_else(|| v.get("title").and_then(|t| t.as_str()).map(|s| s.to_string()))
+        })
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(|s| {
+            if s.chars().count() > 60 {
+                s.chars().take(60).collect()
+            } else {
+                s
+            }
+        })
+        .take(8)
+        .collect()
+}
+
+/// AI 拆解子任务：调用工具模型把任务拆解为若干可执行子任务并直接落库
+#[tauri::command]
+pub async fn todo_ai_breakdown(
+    app: AppHandle,
+    state: State<'_, crate::commands::AppState>,
+    item_id: String,
+) -> Result<Vec<VfsTodoItem>, String> {
+    let vfs_db: Arc<VfsDatabase> = {
+        let s: State<Arc<VfsDatabase>> = app.state();
+        s.inner().clone()
+    };
+
+    let item = VfsTodoRepo::get_todo_item(&vfs_db, &item_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "任务不存在".to_string())?;
+
+    if item.parent_id.is_some() {
+        return Err("子任务不支持再次拆解".to_string());
+    }
+
+    // 已有子任务标题，提示模型避免重复
+    let siblings = VfsTodoRepo::list_items_by_list(&vfs_db, &item.todo_list_id, false)
+        .map_err(|e| e.to_string())?;
+    let existing: Vec<String> = siblings
+        .iter()
+        .filter(|i| i.parent_id.as_deref() == Some(item_id.as_str()))
+        .map(|i| i.title.clone())
+        .collect();
+
+    let mut prompt = String::from(
+        "你是任务规划助手。把下面的任务拆解为 3-6 个具体、可独立执行的子任务。\n\
+         输出要求：只输出一个 JSON 字符串数组，例如 [\"子任务一\",\"子任务二\"]。\
+         不要 markdown 代码块，不要编号，不要任何解释文字。\n\
+         每条不超过 30 字，语言与任务标题保持一致，按执行顺序排列。\n\n",
+    );
+    prompt.push_str(&format!("任务标题：{}\n", item.title));
+    if let Some(desc) = item.description.as_deref() {
+        if !desc.trim().is_empty() {
+            let snippet: String = desc.chars().take(500).collect();
+            prompt.push_str(&format!("任务备注：{}\n", snippet));
+        }
+    }
+    if let Some(due) = item.due_date.as_deref() {
+        prompt.push_str(&format!("截止日期：{}\n", due));
+    }
+    if !existing.is_empty() {
+        prompt.push_str(&format!(
+            "已有子任务（不要重复生成）：{}\n",
+            existing.join("、")
+        ));
+    }
+
+    let output = state
+        .llm_manager
+        .call_model2_raw_prompt(
+            &prompt,
+            None,
+            crate::llm_usage::CallerType::Other("todo_breakdown".to_string()),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let titles = parse_breakdown_titles(&output.assistant_message);
+    if titles.is_empty() {
+        return Err("AI 未能生成有效的子任务，请重试".to_string());
+    }
+
+    let mut created = Vec::with_capacity(titles.len());
+    for title in titles {
+        let params = VfsCreateTodoItemParams {
+            todo_list_id: item.todo_list_id.clone(),
+            title,
+            description: None,
+            priority: "none".to_string(),
+            due_date: None,
+            due_time: None,
+            reminder: None,
+            tags: None,
+            parent_id: Some(item_id.clone()),
+            attachments: None,
+            repeat_json: None,
+        };
+        let sub = VfsTodoRepo::create_todo_item(&vfs_db, params).map_err(|e| e.to_string())?;
+        created.push(sub);
+    }
+    Ok(created)
 }
 
 // ============================================================================
@@ -369,4 +595,44 @@ pub fn pomodoro_today_stats(app: AppHandle) -> Result<PomodoroTodayStats, String
 pub fn pomodoro_list_today(app: AppHandle) -> Result<Vec<PomodoroRecord>, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
     VfsPomodoroRepo::list_today_records(&vfs_db).map_err(|e| e.to_string())
+}
+
+/// 近 N 天按本地日期聚合的番茄统计（趋势/热力图数据源）
+#[tauri::command]
+pub fn pomodoro_daily_stats(
+    app: AppHandle,
+    days: Option<u32>,
+) -> Result<Vec<PomodoroDailyStat>, String> {
+    let vfs_db: State<Arc<VfsDatabase>> = app.state();
+    VfsPomodoroRepo::get_daily_stats(&vfs_db, days.unwrap_or(7)).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_breakdown_titles;
+
+    #[test]
+    fn parses_plain_string_array() {
+        let titles = parse_breakdown_titles(r#"["查资料","写提纲","完成初稿"]"#);
+        assert_eq!(titles, vec!["查资料", "写提纲", "完成初稿"]);
+    }
+
+    #[test]
+    fn parses_fenced_and_object_array() {
+        let raw = "```json\n[{\"title\":\"step one\"},{\"title\":\"step two\"}]\n```";
+        let titles = parse_breakdown_titles(raw);
+        assert_eq!(titles, vec!["step one", "step two"]);
+    }
+
+    #[test]
+    fn extracts_array_from_surrounding_text() {
+        let raw = "好的，拆解如下：[\"a\",\"b\"] 希望有帮助";
+        assert_eq!(parse_breakdown_titles(raw), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn rejects_garbage_and_filters_empty() {
+        assert!(parse_breakdown_titles("无法拆解").is_empty());
+        assert_eq!(parse_breakdown_titles(r#"["", "ok"]"#), vec!["ok"]);
+    }
 }

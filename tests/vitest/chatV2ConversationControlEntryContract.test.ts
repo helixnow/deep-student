@@ -20,11 +20,11 @@ describe('chat v2 conversation control entry contract', () => {
     expect(chatPageSource).not.toContain('<AdvancedPanel');
   });
 
-  it('adds the mobile conversation-control trigger to the chat header actions instead of the session sidebar list', () => {
-    expect(layoutHookSource).toContain('SlidersHorizontal');
-    expect(layoutHookSource).toContain('setShowChatControl(true);');
-    expect(layoutHookSource).toContain('setSessionSheetOpen(true);');
-    expect(layoutHookSource).toContain('aria-label={t(\'common:chat_controls\')}');
+  it('does not duplicate the conversation-control trigger in mobile header or session sidebar', () => {
+    expect(layoutHookSource).not.toContain('SlidersHorizontal');
+    expect(layoutHookSource).not.toContain('setShowChatControl(true);');
+    expect(layoutHookSource).not.toContain('aria-label={t(\'common:chat_controls\')}');
+    expect(inputBarSource).toContain('SlidersHorizontal');
     expect(sessionSidebarSource).not.toContain('{t(\'common:chat_controls\')}');
     expect(sessionSidebarSource).not.toContain('toggleChatControl');
   });

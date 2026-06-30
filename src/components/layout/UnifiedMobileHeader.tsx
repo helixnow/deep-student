@@ -21,12 +21,15 @@ export interface UnifiedMobileHeaderProps {
   onBack?: () => void;
   /** 额外的 className */
   className?: string;
+  /** D-1: 当前视图未注册 useMobileHeader 时的兜底标题（取导航标签），避免顶栏空白 */
+  fallbackTitle?: string;
 }
 
 export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   canGoBack = false,
   onBack,
   className,
+  fallbackTitle,
 }) => {
   const { t } = useTranslation(['common']);
   const ctx = useMobileHeaderContextSafe();
@@ -81,7 +84,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             size="icon"
             onClick={config.onMenuClick}
             className={shellIconButtonClassName}
-            aria-label="展开侧边栏"
+            aria-label={t('common:mobile_header.open_sidebar', '展开侧边栏')}
           >
             <List size={21} weight="regular" />
           </NotionButton>
@@ -101,12 +104,12 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
 
       {/* 中间：标题区域 */}
       <div className="flex-1 min-w-0 flex flex-col items-center justify-center overflow-hidden">
-        {/* titleNode 优先级高于 title，用于面包屑等复杂渲染 */}
+        {/* titleNode 优先级高于 title，用于面包屑等复杂渲染；均为空时回退到导航标签（D-1） */}
         {config.titleNode ? (
           config.titleNode
-        ) : config.title ? (
+        ) : (config.title || fallbackTitle) ? (
           <h1 className="max-w-full truncate text-[15px] font-semibold text-[color:var(--shell-navigation-foreground)]">
-            {config.title}
+            {config.title || fallbackTitle}
           </h1>
         ) : null}
         {config.subtitle && (

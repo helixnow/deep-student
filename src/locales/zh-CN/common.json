@@ -1,8 +1,8 @@
 {
   "app": {
-    "name": "深度学习助手",
-    "title": "AI错题管理系统",
-    "description": "AI驱动的智能学习管理系统",
+    "name": "Deep Student",
+    "title": "Deep Student",
+    "description": "AI驱动的智能学习助手",
     "version": "版本"
   },
   "contextMenu": {
@@ -352,7 +352,7 @@
       "exported": "导出成功",
       "export": "导出成功",
       "imported": "导入成功",
-      "mistake_updated": "错题已更新！",
+      "mistake_updated": "错题已更新",
       "analysis_completed": "分析完成",
       "ocr_completed": "OCR分析完成",
       "streaming_completed": "流式处理已完成",
@@ -398,7 +398,7 @@
       "chat_failed_with_details": "对话失败: {{error}}",
       "save_failed_with_details": "保存失败: {{error}}",
       "summary_save_failed": "总结保存失败：{{error}}\n错题已保存，可稍后手动生成总结。",
-      "mistake_updated": "错题已更新！",
+      "mistake_updated": "错题已更新",
       "update_failed_with_details": "更新失败: {{error}}",
       "summary_generation_failed": "总结生成失败: {{error}}",
       "load_failed": "加载失败",
@@ -1130,7 +1130,16 @@
     "forward_tooltip": "前进到下一个页面 ({{shortcut}})",
     "no_back_history": "没有可后退的历史",
     "no_forward_history": "没有可前进的历史",
-    "restoreFailed": "页面状态无法恢复"
+    "restoreFailed": "页面状态无法恢复",
+    "dashboard": "总览",
+    "data_management": "数据管理",
+    "template_json_preview": "模板预览",
+    "pdf_reader": "PDF 阅读器",
+    "sandbox_workbench": "沙箱工作台",
+    "todo": "待办",
+    "tree_test": "Tree Test",
+    "crepe_demo": "Crepe Demo",
+    "chat_v2_test": "Chat V2 Test"
   },
   "time": {
     "now": "刚刚",
@@ -1801,7 +1810,7 @@
   "siliconflow.config_created_success": "成功创建SiliconFlow配置！模型: {{model}}",
   "siliconflow.config_create_failed": "创建SiliconFlow配置失败: {{error}}",
   "siliconflow.api_key_saved": "已保存",
-  "siliconflow.api_key_auto_save": "输入您的SiliconFlow API密钥(将自动保存)",
+  "siliconflow.api_key_auto_save": "输入您的SiliconFlow API密钥",
   "siliconflow.clear_api_key_title": "清除API密钥",
   "siliconflow.getting_models": "正在加载...",
   "siliconflow.get_model_list": "获取模型列表",
@@ -1823,7 +1832,7 @@
   "siliconflow.yes": "是",
   "siliconflow.no": "否",
   "siliconflow.usage_instructions": "使用说明:",
-  "siliconflow.instruction_1": "1. 输入API密钥(本地自动保存，无需重复输入)",
+  "siliconflow.instruction_1": "1. 输入或粘贴 API 密钥后，点击保存",
   "siliconflow.instruction_2": "2. 点击 \\\"获取模型列表\\\" 按钮获取可用模型",
   "siliconflow.instruction_3": "3. 从下拉框选择所需模型(支持chat、embedding、reranker)",
   "siliconflow.instruction_4": "4. 点击 \\\"创建API配置\\\" 完成设置",
@@ -1860,7 +1869,7 @@
   "siliconflow.show": "显示",
   "siliconflow.hide_api_key": "隐藏API密钥",
   "siliconflow.show_api_key": "显示API密钥",
-  "siliconflow.api_key_placeholder_local": "输入您的SiliconFlow API密钥（本地保存）",
+  "siliconflow.api_key_placeholder_local": "输入您的 SiliconFlow API 密钥",
   "siliconflow.new_api_config_name": "新建API配置",
   "siliconflow.one_click_success": "一键分配成功",
   "siliconflow.one_click_failed": "一键分配失败",
@@ -3316,6 +3325,7 @@
   "mobile_header": {
     "back": "返回",
     "open_menu": "打开菜单",
+    "open_sidebar": "展开侧边栏",
     "menu": "菜单"
   },
   "sidebar": {
@@ -3678,7 +3688,6 @@
     "navigation_description": "已切换到聊天页（目标会话: {{id}}）"
   },
   "command_palette_label": "命令面板",
-  "ann_indexing": "🧠 ANN 索引构建中... ({{count}} 项)",
   "error_boundary": {
     "title": "应用遇到严重错误",
     "description": "应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。",

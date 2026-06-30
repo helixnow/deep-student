@@ -29,7 +29,7 @@ describe('skillDefaults bootstrap', () => {
     vi.resetModules();
   });
 
-  it('adds deep-student for first-time users', async () => {
+  it('does not enable skills implicitly for first-time users', async () => {
     Object.defineProperty(globalThis, 'localStorage', {
       value: createStorage(),
       configurable: true,
@@ -38,11 +38,11 @@ describe('skillDefaults bootstrap', () => {
 
     const { skillDefaults } = await import('../skillDefaults');
 
-    expect(skillDefaults.getAll()).toContain('deep-student');
+    expect(skillDefaults.getAll()).toEqual([]);
     expect(globalThis.localStorage.getItem('dstu-skill-defaults:migrate-deep-student-v1')).toBe('1');
   });
 
-  it('migrates existing users once if key missing', async () => {
+  it('preserves existing non-legacy defaults when migration key is missing', async () => {
     const existing = JSON.stringify(['tutor-mode']);
     Object.defineProperty(globalThis, 'localStorage', {
       value: createStorage({
@@ -55,7 +55,7 @@ describe('skillDefaults bootstrap', () => {
     const { skillDefaults } = await import('../skillDefaults');
 
     expect(skillDefaults.getAll()).toContain('tutor-mode');
-    expect(skillDefaults.getAll()).toContain('deep-student');
+    expect(skillDefaults.getAll()).not.toContain('deep-student');
     expect(globalThis.localStorage.getItem('dstu-skill-defaults:migrate-deep-student-v1')).toBe('1');
   });
 

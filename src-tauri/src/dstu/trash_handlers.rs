@@ -81,29 +81,62 @@ fn lookup_resource_id(db: &VfsDatabase, item_type: &str, item_id: &str) -> Optio
         .flatten()
 }
 
-/// 异步清理资源的向量索引（text + multimodal）
+/// 异步清理资源的**完整**索引（Lance 向量 + vfs_index_units/segments + 维度计数）
+///
+/// ★ 2026-06-10 修复（审阅问题 F3）：原实现只删 Lance 向量，
+/// 遗留 vfs_index_units/segments 悬挂行并导致 embedding_dim 计数漂移，
+/// 且 index_state 停留 'indexed' 使恢复后的资源永远不会被重新索引。
+/// 现统一走 `VfsIndexService::delete_resource_index_full`。
 ///
 /// 失败仅记录警告，不阻塞删除流程。
-async fn cleanup_vector_index(lance_store: &VfsLanceStore, resource_id: &str) {
-    if let Err(e) = lance_store.delete_by_resource("text", resource_id).await {
-        warn!(
-            "[DSTU::trash] Failed to delete text vectors for {}: {}",
-            resource_id, e
-        );
-    }
-    if let Err(e) = lance_store
-        .delete_by_resource("multimodal", resource_id)
+async fn cleanup_vector_index(
+    db: &Arc<VfsDatabase>,
+    lance_store: &VfsLanceStore,
+    resource_id: &str,
+) {
+    let index_service = crate::vfs::index_service::VfsIndexService::new(Arc::clone(db));
+    match index_service
+        .delete_resource_index_full(resource_id, lance_store)
         .await
     {
-        warn!(
-            "[DSTU::trash] Failed to delete multimodal vectors for {}: {}",
-            resource_id, e
-        );
+        Ok(result) => {
+            info!(
+                "[DSTU::trash] Cleaned up full index for resource {} ({} units, {} vectors)",
+                resource_id,
+                result.deleted_unit_count,
+                result.lance_row_ids.len()
+            );
+        }
+        Err(e) => {
+            warn!(
+                "[DSTU::trash] Failed to clean up full index for {}: {}",
+                resource_id, e
+            );
+        }
     }
-    info!(
-        "[DSTU::trash] Cleaned up vector index for resource {}",
-        resource_id
-    );
+}
+
+/// 恢复后将资源标记为待重新索引
+///
+/// ★ 2026-06-10 修复（审阅问题 F3）：软删除时索引数据已被完整清理，
+/// 恢复时必须 mark_pending，否则资源恢复后永久退出语义检索。
+fn mark_resource_pending_after_restore(db: &Arc<VfsDatabase>, item_type: &str, item_id: &str) {
+    if let Some(resource_id) = lookup_resource_id(db, item_type, item_id) {
+        match crate::vfs::repos::VfsIndexStateRepo::mark_pending(db, &resource_id) {
+            Ok(()) => {
+                info!(
+                    "[DSTU::trash] Marked restored resource {} as pending for re-index",
+                    resource_id
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "[DSTU::trash] Failed to mark restored resource {} pending: {}",
+                    resource_id, e
+                );
+            }
+        }
+    }
 }
 
 /// 软删除资源或文件夹
@@ -155,8 +188,9 @@ pub async fn dstu_soft_delete(
             );
 
             // ★ P1 修复：软删除后清理向量索引，防止已删除资源仍可通过 RAG 检索到
+            // ★ F3 修复：改用完整清理（向量 + units/segments + index_state 重置）
             if let Some(resource_id) = lookup_resource_id(&db, &item_type, &id) {
-                cleanup_vector_index(lance_store.inner(), &resource_id).await;
+                cleanup_vector_index(db.inner(), lance_store.inner(), &resource_id).await;
             }
 
             // 发射删除事件
@@ -211,6 +245,8 @@ pub async fn dstu_trash_restore(
                 "[DSTU::trash] dstu_trash_restore: SUCCESS - type={}, id={}",
                 item_type, id
             );
+            // ★ F3 修复：恢复后标记待重索引（软删除时索引已被完整清理）
+            mark_resource_pending_after_restore(&db, &item_type, &id);
             // 发射恢复事件
             let path = format!("/_trash/{}", id);
             emit_watch_event(&window, DstuWatchEvent::restored(&path, None));
@@ -661,18 +697,27 @@ pub async fn dstu_empty_trash(
         emit_watch_event(&window, DstuWatchEvent::purged("/_trash"));
     }
 
-    // ★ P1 修复：purge 成功后异步清理所有向量索引
+    // ★ P1 修复：purge 成功后异步清理所有索引数据
+    // ★ F3 修复：改用完整清理（向量 + units/segments + 维度计数刷新）
     if !resource_ids_to_cleanup.is_empty() {
         let lance_for_cleanup = Arc::clone(lance_store.inner());
+        let db_for_cleanup = Arc::clone(db.inner());
         crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
+            let index_service =
+                crate::vfs::index_service::VfsIndexService::new(Arc::clone(&db_for_cleanup));
             for rid in &resource_ids_to_cleanup {
-                let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
-                let _ = lance_for_cleanup
-                    .delete_by_resource("multimodal", rid)
-                    .await;
+                if let Err(e) = index_service
+                    .delete_resource_index_full(rid, &lance_for_cleanup)
+                    .await
+                {
+                    warn!(
+                        "[DSTU::trash] dstu_empty_trash: index cleanup failed for {}: {}",
+                        rid, e
+                    );
+                }
             }
             info!(
-                "[DSTU::trash] dstu_empty_trash: cleaned up vectors for {} resources",
+                "[DSTU::trash] dstu_empty_trash: cleaned up index for {} resources",
                 resource_ids_to_cleanup.len()
             );
         });
@@ -761,22 +806,32 @@ pub async fn dstu_permanently_delete(
             );
 
             // ★ P1 修复：永久删除后清理向量索引（如果软删除时未清理）
+            // ★ F3 修复：vfs_index_units 对 resources 无外键，purge 后必须显式清理 units/segments
             if let Some(ref rid) = resource_id {
-                cleanup_vector_index(lance_store.inner(), rid).await;
+                cleanup_vector_index(db.inner(), lance_store.inner(), rid).await;
             }
 
-            // ★ P1 修复：essay_session 的子 essays 向量清理
+            // ★ P1 修复：essay_session 的子 essays 索引清理
             if !session_essay_resource_ids.is_empty() {
                 let lance_for_cleanup = Arc::clone(lance_store.inner());
+                let db_for_cleanup = Arc::clone(db.inner());
                 crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
+                    let index_service = crate::vfs::index_service::VfsIndexService::new(
+                        Arc::clone(&db_for_cleanup),
+                    );
                     for rid in &session_essay_resource_ids {
-                        let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
-                        let _ = lance_for_cleanup
-                            .delete_by_resource("multimodal", rid)
-                            .await;
+                        if let Err(e) = index_service
+                            .delete_resource_index_full(rid, &lance_for_cleanup)
+                            .await
+                        {
+                            log::warn!(
+                                "[DSTU::trash] dstu_permanently_delete: child essay index cleanup failed for {}: {}",
+                                rid, e
+                            );
+                        }
                     }
                     log::info!(
-                        "[DSTU::trash] dstu_permanently_delete: cleaned up vectors for {} child essays",
+                        "[DSTU::trash] dstu_permanently_delete: cleaned up index for {} child essays",
                         session_essay_resource_ids.len()
                     );
                 });

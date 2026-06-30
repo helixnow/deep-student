@@ -306,7 +306,7 @@
 }
 
 /* 小屏适配：避免占满屏过高 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .code-editor-content,
   .code-editor textarea {
     min-height: 160px;
@@ -472,7 +472,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .minimal-template-editor {
     flex-direction: column;
     padding: 0 12px;
@@ -829,7 +829,7 @@
 }
 
 /* 移动端：分栏面板保持弹性高度 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .template-code-split-panel {
     min-height: 0;
   }

@@ -344,7 +344,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                               {effectiveShortcut ? formatShortcut(effectiveShortcut) : t('command_palette:no_shortcut', '无')}
                             </span>
 
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity">
                               <NotionButton
                                 size="sm"
                                 variant="ghost"

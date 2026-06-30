@@ -4,8 +4,8 @@ use tauri::State;
 use super::database::LlmUsageDatabase;
 use super::repo::LlmUsageRepo;
 use super::types::{
-    CallerTypeSummary, DailySummary, ModelSummary, TimeGranularity, UsageRecord, UsageSummary,
-    UsageTrendPoint,
+    CallerTypeSummary, DailySummary, ModelSummary, SessionUsageSummary, TimeGranularity,
+    UsageRecord, UsageSummary, UsageTrendPoint,
 };
 
 #[tauri::command]
@@ -55,6 +55,16 @@ pub async fn llm_usage_summary(
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     LlmUsageRepo::get_usage_summary(&conn, start_date.as_deref(), end_date.as_deref())
         .map_err(|e| e.to_string())
+}
+
+/// ★ 1.2 会话级用量汇总（输入栏常驻「本会话累计」）
+#[tauri::command(rename_all = "camelCase")]
+pub async fn llm_usage_session_summary(
+    db: State<'_, Arc<LlmUsageDatabase>>,
+    session_id: String,
+) -> Result<SessionUsageSummary, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    LlmUsageRepo::get_session_usage(&conn, &session_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

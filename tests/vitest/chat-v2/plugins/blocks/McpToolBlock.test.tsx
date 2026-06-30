@@ -89,8 +89,8 @@ describe('McpToolBlock', () => {
 
       render(<McpToolBlockComponent block={block} />);
 
-      // 工具名称应该显示
-      expect(screen.getByText('execute_code')).toBeInTheDocument();
+      // 工具名称应该显示（带人性化格式化）
+      expect(screen.getByText('Execute Code')).toBeInTheDocument();
     });
 
     it('should render unknown tool name when not provided', () => {
@@ -147,6 +147,47 @@ describe('McpToolBlock', () => {
       expect(screen.getByText('Completed')).toBeInTheDocument();
       // 应该显示输出结果
       expect(screen.getByText('Output Result')).toBeInTheDocument();
+    });
+
+    it('should render loaded skill names for load_skills output', () => {
+      const block = createMcpToolBlock({
+        status: 'success',
+        toolName: 'load_skills',
+        toolInput: { skills: ['tutor-mode', 'learning-resource'] },
+        toolOutput: {
+          status: 'success',
+          loaded_skill_ids: ['ask-user', 'deep-student', 'knowledge-retrieval'],
+          loaded_tool_names: ['builtin-ask_user', 'builtin-note_create'],
+          message: 'Skills loaded successfully.',
+        },
+      });
+
+      render(<McpToolBlockComponent block={block} />);
+
+      expect(screen.getByText('ask-user')).toBeInTheDocument();
+      expect(screen.getByText('deep-student')).toBeInTheDocument();
+      expect(screen.getByText('knowledge-retrieval')).toBeInTheDocument();
+    });
+
+    it('should render loaded skill names for nested load_skills output', () => {
+      const block = createMcpToolBlock({
+        status: 'success',
+        toolName: 'load_skills',
+        toolInput: { skills: ['vfs-memory'] },
+        toolOutput: {
+          result: {
+            status: 'success',
+            loaded_skill_ids: ['vfs-memory'],
+            loaded_tool_names: ['builtin-memory_delete', 'builtin-memory_search'],
+            message: 'Skills loaded successfully.',
+          },
+        },
+      });
+
+      render(<McpToolBlockComponent block={block} />);
+
+      expect(screen.getByText('vfs-memory')).toBeInTheDocument();
+      expect(screen.getByText('builtin-memory_delete')).toBeInTheDocument();
     });
 
     it('should format output based on type (JSON)', () => {

@@ -212,4 +212,21 @@ describe('API key clearing confirmation', () => {
     });
     expect(showMessage).toHaveBeenCalledWith('success', expect.stringMatching(/saved|已保存/i));
   });
+
+  test('does not save a SiliconFlow API key until the user clicks save', async () => {
+    render(<SiliconFlowSection variant="inline" onCreateConfig={vi.fn()} />);
+
+    const input = screen.getByPlaceholderText(/siliconflow\.api_key_placeholder_local/);
+    fireEvent.change(input, { target: { value: 'sk-silicon-pasted' } });
+
+    expect(TauriAPI.saveSetting).not.toHaveBeenCalledWith('builtin-siliconflow.api_key', 'sk-silicon-pasted');
+    expect(screen.getByText(/unsaved|未保存/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /save|保存/i }));
+
+    await waitFor(() => {
+      expect(TauriAPI.saveSetting).toHaveBeenCalledWith('builtin-siliconflow.api_key', 'sk-silicon-pasted');
+      expect(TauriAPI.saveSetting).toHaveBeenCalledWith('siliconflow.api_key', 'sk-silicon-pasted');
+    });
+  });
 });

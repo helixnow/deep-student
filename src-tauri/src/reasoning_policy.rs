@@ -528,10 +528,14 @@ mod tests {
 
     #[test]
     fn test_should_clear_reasoning() {
-        let reasoning_config = make_config(Some("deepseek"), "deepseek-r1", true);
+        let legacy_reasoning_config = make_config(Some("deepseek"), "deepseek-r1", true);
+        let v4_reasoning_config = make_config(Some("deepseek"), "deepseek-v4", true);
         let normal_config = make_config(Some("openai"), "gpt-4o", false);
 
-        assert!(should_clear_reasoning_on_new_question(&reasoning_config));
+        assert!(!should_clear_reasoning_on_new_question(
+            &legacy_reasoning_config
+        ));
+        assert!(should_clear_reasoning_on_new_question(&v4_reasoning_config));
         assert!(!should_clear_reasoning_on_new_question(&normal_config));
     }
 

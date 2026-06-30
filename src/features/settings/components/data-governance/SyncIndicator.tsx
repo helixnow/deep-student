@@ -18,7 +18,10 @@ import * as DataGovernanceApi from '@/api/dataGovernance';
 
 const POLL_INTERVAL_MS = 30_000;
 
-export const SyncIndicator: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
+export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string | number }> = ({
+  compact = false,
+  refreshSignal,
+}) => {
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +47,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean }> = ({ compact = false
       cancelled = true;
       clearInterval(timer);
     };
-  }, []);
+  }, [refreshSignal]);
 
   if (loading || !counts) return null;
 

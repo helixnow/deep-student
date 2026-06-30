@@ -108,8 +108,10 @@ mod tests {
     #[test]
     fn test_magistral_prompt_mode() {
         let adapter = MistralAdapter;
+        // 启用思考时设置 prompt_mode: "reasoning"
         let config = ApiConfig {
             model: "magistral-medium-latest".to_string(),
+            enable_thinking: Some(true),
             ..Default::default()
         };
         let mut body = Map::new();
@@ -117,6 +119,15 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert_eq!(body.get("prompt_mode"), Some(&json!("reasoning")));
+
+        // 未启用思考（默认配置）时显式置 null 以禁用 API 默认的 reasoning
+        let config_off = ApiConfig {
+            model: "magistral-medium-latest".to_string(),
+            ..Default::default()
+        };
+        let mut body_off = Map::new();
+        adapter.apply_reasoning_config(&mut body_off, &config_off, None);
+        assert_eq!(body_off.get("prompt_mode"), Some(&Value::Null));
     }
 
     #[test]
@@ -124,6 +135,7 @@ mod tests {
         let adapter = MistralAdapter;
         let config = ApiConfig {
             model: "mistral/magistral-medium-latest".to_string(),
+            enable_thinking: Some(true),
             ..Default::default()
         };
         let mut body = Map::new();
@@ -190,8 +202,9 @@ mod tests {
 
         adapter.apply_common_params(&mut body, &config);
 
-        assert_eq!(body.get("min_p"), Some(&json!(0.1)));
+        // f32 经 serde_json 提升为 f64 带精度尾数，按相同方式构造期望值
+        assert_eq!(body.get("min_p"), Some(&json!(0.1f32 as f64)));
         assert_eq!(body.get("top_k"), Some(&json!(50)));
-        assert_eq!(body.get("repetition_penalty"), Some(&json!(1.1)));
+        assert_eq!(body.get("repetition_penalty"), Some(&json!(1.1f32 as f64)));
     }
 }

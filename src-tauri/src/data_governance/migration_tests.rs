@@ -208,6 +208,105 @@ mod tests {
         }
     }
 
+    /// 回归防护：迁移目录中不得存在「损坏的符号链接」SQL 文件。
+    ///
+    /// ## 背景
+    /// 曾有 `chat_v2/V20260524` 与 `llm_usage/V20260524` 迁移以 git 符号链接
+    /// (mode 120000) 提交，分别指向 `../vfs/` 与 `../mistakes/` 下的同名文件。
+    /// 在 Windows（`core.symlinks=false`，默认）检出时，符号链接被还原成
+    /// 「内容 = 链接目标路径」的普通文本文件；而迁移是通过
+    /// `refinery::embed_migrations!` / `include_str!` 在**编译期**内联进二进制的，
+    /// 于是二进制里嵌入的就是那行路径字符串，启动迁移时被 SQLite 当作 SQL 执行，
+    /// 报错 `near ".": syntax error ... at offset 0`，并触发全库回滚。
+    ///
+    /// ## 防护策略（跨平台）
+    /// 扫描 `migrations/` 下所有 `*.sql`：
+    /// 1. 不得是符号链接（Unix 上能构建，但对 Windows 用户是隐患）；
+    /// 2. 内容不得以 `..` 路径开头，也不得是「单行指向另一个 .sql」的形态
+    ///    （Windows 检出后损坏文本文件的特征）；
+    /// 3. 必须包含至少一个 `;`（真实迁移至少有一条语句）。
+    #[test]
+    fn test_no_broken_symlink_migration_files() {
+        use std::path::{Path, PathBuf};
+
+        let migrations_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        assert!(
+            migrations_root.is_dir(),
+            "migrations root should exist: {}",
+            migrations_root.display()
+        );
+
+        // 递归收集所有 .sql 文件（用 symlink_metadata 避免跟随符号链接）
+        fn collect_sql(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in std::fs::read_dir(dir).expect("read_dir migrations") {
+                let entry = entry.expect("dir entry");
+                let path = entry.path();
+                let meta = std::fs::symlink_metadata(&path).expect("symlink_metadata");
+                if meta.file_type().is_dir() {
+                    collect_sql(&path, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("sql") {
+                    out.push(path);
+                }
+            }
+        }
+
+        let mut sql_files = Vec::new();
+        collect_sql(&migrations_root, &mut sql_files);
+        assert!(
+            !sql_files.is_empty(),
+            "should find migration .sql files under {}",
+            migrations_root.display()
+        );
+
+        let mut problems: Vec<String> = Vec::new();
+        for path in &sql_files {
+            let meta = std::fs::symlink_metadata(path).expect("symlink_metadata");
+            if meta.file_type().is_symlink() {
+                problems.push(format!(
+                    "{} 是符号链接（migrations/ 下禁止符号链接，Windows 检出会损坏）",
+                    path.display()
+                ));
+                continue;
+            }
+
+            let content = std::fs::read_to_string(path).unwrap_or_default();
+            let trimmed = content.trim();
+
+            if trimmed.starts_with("../") || trimmed.starts_with("..\\") {
+                problems.push(format!(
+                    "{} 疑似损坏的符号链接文本（内容以 \"..\" 路径开头）: {:?}",
+                    path.display(),
+                    trimmed.lines().next().unwrap_or("")
+                ));
+                continue;
+            }
+
+            let non_empty_lines: Vec<&str> =
+                trimmed.lines().filter(|l| !l.trim().is_empty()).collect();
+            if non_empty_lines.len() == 1 && non_empty_lines[0].trim_end().ends_with(".sql") {
+                problems.push(format!(
+                    "{} 疑似损坏的符号链接文本（单行指向 .sql）: {:?}",
+                    path.display(),
+                    non_empty_lines[0]
+                ));
+                continue;
+            }
+
+            if !content.contains(';') {
+                problems.push(format!(
+                    "{} 不含任何 SQL 语句分号 ';'，疑似空文件或损坏",
+                    path.display()
+                ));
+            }
+        }
+
+        assert!(
+            problems.is_empty(),
+            "发现损坏/可疑的迁移文件:\n{}",
+            problems.join("\n")
+        );
+    }
+
     /// 测试单个 VFS 数据库的完整迁移
     #[test]
     fn test_vfs_database_full_migration() {
@@ -1585,16 +1684,19 @@ mod tests {
             err_msg
         );
 
+        // 2026-06：run_all 引入"任一库失败 → 所有核心库从迁移前快照恢复"的
+        // 全库一致性回滚语义。chat_v2 锁失败后，已迁移完成的 VFS 也会被
+        // 回滚到迁移前状态（本测试中为全新空库 v0），而非保留已迁移版本。
         let vfs_db_path = get_database_path(&temp_dir, &DatabaseId::Vfs);
         let vfs_conn = Connection::open(&vfs_db_path).expect("Failed to open vfs db");
         let vfs_version = coordinator
             .get_current_version(&vfs_conn)
             .expect("Failed to read VFS version");
         assert_eq!(
-            vfs_version,
-            expected_latest_version(&DatabaseId::Vfs),
-            "VFS should already be migrated before chat_v2 lock failure"
+            vfs_version, 0,
+            "VFS should be rolled back to pre-migration snapshot after chat_v2 failure (all-or-nothing recovery)"
         );
+        drop(vfs_conn);
 
         lock_conn
             .execute_batch("ROLLBACK;")

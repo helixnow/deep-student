@@ -37,6 +37,8 @@
     "zoom_out": "缩小",
     "rotate": "旋转",
     "rotate_cw": "顺时针旋转 90°",
+    "dark_reading": "暗色阅读",
+    "light_reading": "关闭暗色阅读",
     "fullscreen": "全屏",
     "exit_fullscreen": "退出全屏",
     "single_page": "单页视图",

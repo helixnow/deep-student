@@ -4,7 +4,7 @@ import {
   canReferenceToChat,
   mapSourceToResourceType,
   type SourceDatabase,
-} from '@/components/notes/learningHubApi';
+} from '@/features/notes/learningHubApi';
 
 describe('learningHubApi source-db contracts', () => {
   it('supports modern source databases in type contracts', () => {
@@ -23,13 +23,14 @@ describe('learningHubApi source-db contracts', () => {
     expect(mapSourceToResourceType('exam_sessions')).toEqual({ resourceType: 'exam', typeId: 'exam' });
   });
 
-  it('allows all supported source databases to reference into chat', () => {
-    const sourceDbs: SourceDatabase[] = ['notes', 'textbooks', 'mistakes', 'chat_v2', 'exam_sessions'];
+  it('allows chat-compatible source databases to reference into chat', () => {
+    const sourceDbs: SourceDatabase[] = ['notes', 'textbooks', 'chat_v2', 'exam_sessions'];
 
     sourceDbs.forEach((sourceDb) => {
       expect(canReferenceToChat({ sourceDb })).toBe(true);
     });
 
     expect(canReferenceToChat({})).toBe(false);
+    expect(canReferenceToChat({ sourceDb: 'attachments' })).toBe(false);
   });
 });

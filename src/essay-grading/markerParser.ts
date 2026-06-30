@@ -75,16 +75,16 @@ function extractAttributeValue(attrs: string, attrName: string): string | undefi
  * 解析批改结果中的评分
  */
 export function parseScore(text: string): ParsedScore | null {
-  // 匹配 <score total="X" max="Y">...</score>
-  const scoreRegex = /<score\s+total="([^"]+)"\s+max="([^"]+)"[^>]*>([\s\S]*?)<\/score>/i;
+  // 匹配 <score total="X" max="Y">...</score>（与后端/流式解析器一致，兼容 total/max 两种属性顺序）
+  const scoreRegex = /<score\s+(?:total="([^"]+)"\s+max="([^"]+)"|max="([^"]+)"\s+total="([^"]+)")[^>]*>([\s\S]*?)<\/score>/i;
   const dimRegex = /<dim\s+name="([^"]+)"\s+score="([^"]+)"\s+max="([^"]+)"[^>]*>([^<]*)<\/dim>/gi;
   
   const scoreMatch = text.match(scoreRegex);
   if (!scoreMatch) return null;
   
-  const total = parseFloat(scoreMatch[1]);
-  const maxTotal = parseFloat(scoreMatch[2]);
-  const dimsContent = scoreMatch[3];
+  const total = parseFloat(scoreMatch[1] ?? scoreMatch[4]);
+  const maxTotal = parseFloat(scoreMatch[2] ?? scoreMatch[3]);
+  const dimsContent = scoreMatch[5];
   
   if (isNaN(total) || isNaN(maxTotal)) return null;
   
@@ -124,7 +124,8 @@ export function parseScore(text: string): ParsedScore | null {
  * 从文本中移除评分标签，返回纯内容
  */
 export function removeScoreTag(text: string): string {
-  return text.replace(/<score\s+total="[^"]+"\s+max="[^"]+"[^>]*>[\s\S]*?<\/score>/gi, '').trim();
+  // 与流式解析器保持一致：兼容 total/max 两种属性顺序
+  return text.replace(/<score\s+(?:total="[^"]+"\s+max="[^"]+"|max="[^"]+"\s+total="[^"]+")[^>]*>[\s\S]*?<\/score>/gi, '').trim();
 }
 
 /**
@@ -205,11 +206,15 @@ export function parseMarkers(text: string): ParsedMarker[] {
     }
   }
   
-  // 按位置排序
-  allMatches.sort((a, b) => a.index - b.index);
+  // 按位置排序；同起点时优先更长的匹配（外层标记优先于其内部的嵌套标记）
+  allMatches.sort((a, b) => a.index - b.index || b.length - a.length);
   
   // 构建结果
   for (const matchInfo of allMatches) {
+    // 跳过与已处理区间重叠的匹配（如嵌套在 note 内部的 good），避免内容重复渲染
+    if (matchInfo.index < lastIndex) {
+      continue;
+    }
     // 添加标记前的普通文本
     if (matchInfo.index > lastIndex) {
       const textBefore = text.slice(lastIndex, matchInfo.index);

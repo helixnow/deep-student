@@ -87,7 +87,7 @@ vi.mock('@/features/settings/components/MediaCacheSection', () => ({
   MediaCacheSection: () => <div data-testid="media-cache-section">cache-section</div>,
 }));
 
-import { DataGovernanceDashboard } from '@/features/settings';
+import { DataGovernanceDashboard } from '@/features/settings/components/DataGovernanceDashboard';
 
 // ============================================================================
 // 默认 mock 数据
@@ -134,6 +134,10 @@ const sampleBackupList = [
     databases: ['vfs'],
   },
 ];
+
+const exportBackupButtonName = /导出备份|data:governance\.export_backup/i;
+const useTieredBackupName = /使用分层备份|data:governance\.use_tiered_backup/i;
+const importButtonName = /导入|data:governance\.import_button/i;
 
 /** 导航到备份 Tab 的辅助函数 */
 async function navigateToBackupTab() {
@@ -303,7 +307,7 @@ describe('DataGovernanceDashboard restore confirmation flow', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('button', {
-          name: /完整备份|data:governance\.create_full_backup/i,
+          name: exportBackupButtonName,
         }),
       ).toBeEnabled();
     });
@@ -388,21 +392,17 @@ describe('DataGovernanceDashboard restore maintenance mode', () => {
     // 完整备份按钮应被禁用
     expect(
       screen.getByRole('button', {
-        name: /完整备份|data:governance\.create_full_backup/i,
+        name: exportBackupButtonName,
       }),
     ).toBeDisabled();
 
-    // 分层备份按钮应被禁用
-    expect(
-      screen.getByRole('button', {
-        name: /创建分层备份|data:governance\.create_tiered_backup/i,
-      }),
-    ).toBeDisabled();
+    // 分层备份开关应被禁用
+    expect(screen.getByRole('checkbox', { name: useTieredBackupName })).toBeDisabled();
 
     // 导入按钮应被禁用
     expect(
       screen.getByRole('button', {
-        name: /导入|data:governance\.import_button/i,
+        name: importButtonName,
       }),
     ).toBeDisabled();
   });
@@ -463,7 +463,7 @@ describe('DataGovernanceDashboard restore maintenance mode', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('button', {
-          name: /完整备份|data:governance\.create_full_backup/i,
+          name: exportBackupButtonName,
         }),
       ).toBeEnabled();
     });
@@ -532,7 +532,7 @@ describe('DataGovernanceDashboard restore maintenance mode', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('button', {
-          name: /完整备份|data:governance\.create_full_backup/i,
+          name: exportBackupButtonName,
         }),
       ).toBeEnabled();
     });
@@ -566,11 +566,11 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     // 入口需要是可见的填充样式，避免 ghost 按钮在深色主题下不明显
-    expect(importBtn.className).toContain('bg-muted/50');
+    expect(importBtn.className).toContain('bg-[var(--button-tonal-bg)]');
   });
 
   it('clicking import button calls open dialog, then importZip API', async () => {
@@ -587,7 +587,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     await act(async () => {
@@ -618,7 +618,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     await act(async () => {
@@ -644,7 +644,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     await act(async () => {
@@ -685,7 +685,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     await act(async () => {
@@ -736,7 +736,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     await act(async () => {
@@ -780,7 +780,7 @@ describe('DataGovernanceDashboard import ZIP flow', () => {
     await navigateToBackupTab();
 
     const importBtn = screen.getByRole('button', {
-      name: /导入|data:governance\.import_button/i,
+      name: importButtonName,
     });
 
     await act(async () => {
@@ -1027,7 +1027,7 @@ describe('DataGovernanceDashboard disk space check for restore', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('button', {
-          name: /完整备份|data:governance\.create_full_backup/i,
+          name: exportBackupButtonName,
         }),
       ).toBeEnabled();
     });

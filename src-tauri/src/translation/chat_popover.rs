@@ -265,6 +265,19 @@ async fn run_chat_translation(
             info!("[ChatTranslation] cancelled event={}", event_name);
             Ok(())
         }
+        // ★ A6-02：流意外中断按错误处理，避免把不完整译文当作完成
+        Ok(StreamStatus::Incomplete) => {
+            let msg = "翻译流式响应异常中断，结果不完整。请重试。".to_string();
+            emit_event(
+                &window,
+                &event_name,
+                ChatTranslationEvent::Error {
+                    message: msg.clone(),
+                },
+            );
+            warn!("[ChatTranslation] incomplete event={} msg={}", event_name, msg);
+            Err(AppError::llm(msg))
+        }
         Err(e) => {
             let msg = e.to_string();
             emit_event(

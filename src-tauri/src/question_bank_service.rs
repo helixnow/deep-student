@@ -396,7 +396,7 @@ impl QuestionBankService {
         {
             (override_val, false)
         } else {
-            self.check_answer_correctness(
+            Self::check_answer_correctness(
                 user_answer,
                 question.answer.as_deref(),
                 &question.question_type,
@@ -443,6 +443,27 @@ impl QuestionBankService {
 
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
+        // ★ I1 修复：答错时自动创建（或复用）SM-2 复习计划，接通间隔重复学习闭环。
+        // 失败不阻塞答题流程，仅记录告警。
+        if is_correct == Some(false) {
+            let review_service =
+                crate::review_plan_service::ReviewPlanService::new(Arc::clone(&self.vfs_db));
+            match review_service.get_or_create_plan(question_id, &question.exam_id) {
+                Ok(plan) => {
+                    info!(
+                        "[QuestionBankService] Auto review plan for wrong answer: question_id={}, plan_id={}",
+                        question_id, plan.id
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "[QuestionBankService] Failed to auto-create review plan for question_id={}: {}",
+                        question_id, e
+                    );
+                }
+            }
+        }
+
         let message = if needs_manual_grading {
             "需要手动批改".to_string()
         } else if raw_is_correct {
@@ -479,7 +500,6 @@ impl QuestionBankService {
 
     /// 判断答案正确性
     fn check_answer_correctness(
-        &self,
         user_answer: &str,
         correct_answer: Option<&str>,
         question_type: &QuestionType,
@@ -501,7 +521,17 @@ impl QuestionBankService {
                         .filter(|c| c.is_alphanumeric())
                         .collect::<String>()
                 };
-                let is_correct = normalize(user_answer) == normalize(correct_answer);
+                let mut is_correct = normalize(user_answer) == normalize(correct_answer);
+                // 兜底：导入的参考答案可能是 "A. 选项全文" 形式，提取其中的独立选项字母再比较，
+                // 避免用户选了正确选项却因答案串含选项内容而被判错
+                if !is_correct {
+                    if let (Some(user_keys), Some(correct_keys)) = (
+                        Self::extract_choice_keys(user_answer),
+                        Self::extract_choice_keys(correct_answer),
+                    ) {
+                        is_correct = user_keys == correct_keys;
+                    }
+                }
                 (is_correct, false)
             }
             QuestionType::MultipleChoice | QuestionType::IndefiniteChoice => {
@@ -515,7 +545,16 @@ impl QuestionBankService {
                 let mut correct_chars = normalize(correct_answer);
                 user_chars.sort();
                 correct_chars.sort();
-                let is_correct = user_chars == correct_chars;
+                let mut is_correct = user_chars == correct_chars;
+                // 兜底：同单选，支持 "A.内容 C.内容" 形式的参考答案
+                if !is_correct {
+                    if let (Some(user_keys), Some(correct_keys)) = (
+                        Self::extract_choice_keys(user_answer),
+                        Self::extract_choice_keys(correct_answer),
+                    ) {
+                        is_correct = user_keys == correct_keys;
+                    }
+                }
                 (is_correct, false)
             }
             // 填空题：模糊匹配
@@ -543,6 +582,68 @@ impl QuestionBankService {
                     (false, true) // 不匹配，需手动批改（而非直接判错）
                 }
             }
+        }
+    }
+
+    /// 从选择题答案文本中提取选项键集合（保守启发式）。
+    ///
+    /// 支持两种形态：
+    /// 1. 纯键串："A"、"ABD"、"a,c"、"A、C"——除分隔符外只有 ASCII 字母；
+    /// 2. 结构化："A. 选项内容 C. 选项内容"、"正确答案：A"——取左邻为边界、
+    ///    右邻为键分隔符（或串尾）的独立字母。
+    ///
+    /// 不像键集合（含数字/内容文本且无结构化键）时返回 None，调用方保持原判定。
+    /// 仅作为标准化精确比较失败后的兜底，避免参考答案携带选项全文时误判。
+    fn extract_choice_keys(answer: &str) -> Option<std::collections::BTreeSet<char>> {
+        const MAX_KEYS: usize = 8;
+        let trimmed = answer.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        // 形态一：纯键串（允许常见分隔符）
+        let only_key_chars = trimmed
+            .chars()
+            .all(|c| c.is_ascii_alphabetic() || c.is_whitespace() || ",，、;；/和与".contains(c));
+        if only_key_chars {
+            let letters: Vec<char> = trimmed
+                .chars()
+                .filter(|c| c.is_ascii_alphabetic())
+                .map(|c| c.to_ascii_uppercase())
+                .collect();
+            let keys: std::collections::BTreeSet<char> = letters.iter().copied().collect();
+            // 键不应重复出现（"the answer" 这类英文内容会有重复字母，拒绝识别为键串）
+            if !keys.is_empty() && keys.len() <= MAX_KEYS && keys.len() == letters.len() {
+                return Some(keys);
+            }
+            return None;
+        }
+
+        // 形态二：结构化键
+        let chars: Vec<char> = trimmed.chars().collect();
+        let mut keys = std::collections::BTreeSet::new();
+        for (i, &c) in chars.iter().enumerate() {
+            if !c.is_ascii_alphabetic() {
+                continue;
+            }
+            let left_ok = if i == 0 {
+                true
+            } else {
+                let p = chars[i - 1];
+                p.is_whitespace() || "（(，,、;；:：".contains(p)
+            };
+            let right_ok = match chars.get(i + 1) {
+                None => true,
+                Some(&n) => "．.、:：)）。".contains(n),
+            };
+            if left_ok && right_ok {
+                keys.insert(c.to_ascii_uppercase());
+            }
+        }
+        if !keys.is_empty() && keys.len() <= MAX_KEYS {
+            Some(keys)
+        } else {
+            None
         }
     }
 
@@ -910,19 +1011,20 @@ impl QuestionBankService {
         };
 
         // 从 answer_submissions 表统计每日做题次数（而非 questions.last_attempt_at 统计题数）
+        // DATE(…, 'localtime')：按本地日界线分组，与打卡/热力图口径一致
         let sql = format!(
             r#"
             SELECT
-                DATE(s.submitted_at) as date,
+                DATE(s.submitted_at, 'localtime') as date,
                 COUNT(*) as attempt_count,
                 SUM(CASE WHEN s.is_correct = 1 THEN 1 ELSE 0 END) as correct_count
             FROM answer_submissions s
             INNER JOIN questions q ON s.question_id = q.id
             WHERE q.{}
                 AND s.submitted_at IS NOT NULL
-                AND DATE(s.submitted_at) >= ?
-                AND DATE(s.submitted_at) <= ?
-            GROUP BY DATE(s.submitted_at)
+                AND DATE(s.submitted_at, 'localtime') >= ?
+                AND DATE(s.submitted_at, 'localtime') <= ?
+            GROUP BY DATE(s.submitted_at, 'localtime')
             ORDER BY date ASC
             "#,
             base_condition
@@ -1025,27 +1127,40 @@ impl QuestionBankService {
 
         // 构建基础查询条件
         let base_condition = if exam_id.is_some() {
-            "exam_id = ?1 AND deleted_at IS NULL"
+            "q.exam_id = ?1 AND q.deleted_at IS NULL"
         } else {
-            "deleted_at IS NULL"
+            "q.deleted_at IS NULL"
         };
 
-        // 查询每日活跃度（统计做题次数）
+        // 查询每日活跃度：以 answer_submissions 为准（与 get_learning_trend 口径一致），
+        // 重复练习不会把题目从历史日期"挪走"；无提交记录的存量题按 last_attempt_at 兜底。
+        // DATE(…, 'localtime') 使日界线与 chrono::Local（连续打卡判定）一致。
         let sql = format!(
             r#"
-            SELECT
-                DATE(last_attempt_at) as date,
-                COUNT(*) as count,
-                SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_count
-            FROM questions
-            WHERE {}
-                AND last_attempt_at IS NOT NULL
-                AND DATE(last_attempt_at) >= ?
-                AND DATE(last_attempt_at) <= ?
-            GROUP BY DATE(last_attempt_at)
+            SELECT date, COUNT(*) as count, SUM(correct) as correct_count FROM (
+                SELECT
+                    DATE(s.submitted_at, 'localtime') as date,
+                    s.question_id,
+                    MAX(CASE WHEN s.is_correct = 1 THEN 1 ELSE 0 END) as correct
+                FROM answer_submissions s
+                INNER JOIN questions q ON q.id = s.question_id
+                WHERE {cond}
+                GROUP BY DATE(s.submitted_at, 'localtime'), s.question_id
+                UNION ALL
+                SELECT
+                    DATE(q.last_attempt_at, 'localtime') as date,
+                    q.id,
+                    CASE WHEN q.is_correct = 1 THEN 1 ELSE 0 END as correct
+                FROM questions q
+                WHERE {cond}
+                    AND q.last_attempt_at IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM answer_submissions s2 WHERE s2.question_id = q.id)
+            )
+            WHERE date >= ? AND date <= ?
+            GROUP BY date
             ORDER BY date ASC
             "#,
-            base_condition
+            cond = base_condition
         );
 
         let mut stmt = conn
@@ -1394,8 +1509,9 @@ impl QuestionBankService {
         let total_count = session.question_ids.len() as u32;
         let answered_count = session.answers.len() as u32;
         let correct_count = session.results.values().filter(|&&v| v).count() as u32;
-        let wrong_count = answered_count - correct_count;
-        let unanswered_count = total_count - answered_count;
+        // session 由前端传入，answers/results 可能不一致；用饱和减法避免 u32 下溢
+        let wrong_count = answered_count.saturating_sub(correct_count);
+        let unanswered_count = total_count.saturating_sub(answered_count);
 
         let correct_rate = if total_count > 0 {
             (correct_count as f64 / total_count as f64 * 100.0).round()
@@ -1537,7 +1653,8 @@ impl QuestionBankService {
         exam_id: &str,
         count: u32,
     ) -> Result<DailyPracticeResult, AppError> {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        // "今天"用本地时区（与 todo/review_plan 模块一致）
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let target_count = count as usize;
 
         // M-031: 使用 SQL 层随机抽取各类别题目，避免全量加载
@@ -1779,27 +1896,39 @@ impl QuestionBankService {
 
         // 构建查询条件
         let base_condition = if exam_id.is_some() {
-            "exam_id = ?1 AND deleted_at IS NULL"
+            "q.exam_id = ?1 AND q.deleted_at IS NULL"
         } else {
-            "deleted_at IS NULL"
+            "q.deleted_at IS NULL"
         };
 
-        // 查询每日做题统计
+        // 查询每日做题统计：口径与 get_activity_heatmap 一致（以 answer_submissions 为准，
+        // 存量无提交记录的题按 last_attempt_at 兜底；'localtime' 对齐本地日界线与连续打卡判定）
         let sql = format!(
             r#"
-            SELECT
-                DATE(last_attempt_at) as date,
-                COUNT(*) as question_count,
-                SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_count
-            FROM questions
-            WHERE {}
-                AND last_attempt_at IS NOT NULL
-                AND DATE(last_attempt_at) >= ?
-                AND DATE(last_attempt_at) < ?
-            GROUP BY DATE(last_attempt_at)
+            SELECT date, COUNT(*) as question_count, SUM(correct) as correct_count FROM (
+                SELECT
+                    DATE(s.submitted_at, 'localtime') as date,
+                    s.question_id,
+                    MAX(CASE WHEN s.is_correct = 1 THEN 1 ELSE 0 END) as correct
+                FROM answer_submissions s
+                INNER JOIN questions q ON q.id = s.question_id
+                WHERE {cond}
+                GROUP BY DATE(s.submitted_at, 'localtime'), s.question_id
+                UNION ALL
+                SELECT
+                    DATE(q.last_attempt_at, 'localtime') as date,
+                    q.id,
+                    CASE WHEN q.is_correct = 1 THEN 1 ELSE 0 END as correct
+                FROM questions q
+                WHERE {cond}
+                    AND q.last_attempt_at IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM answer_submissions s2 WHERE s2.question_id = q.id)
+            )
+            WHERE date >= ? AND date < ?
+            GROUP BY date
             ORDER BY date ASC
             "#,
-            base_condition
+            cond = base_condition
         );
 
         let mut stmt = conn
@@ -1863,10 +1992,10 @@ impl QuestionBankService {
             return 0;
         }
 
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         // 如果今天没有打卡，检查昨天
-        let yesterday = (chrono::Utc::now() - Duration::days(1))
+        let yesterday = (chrono::Local::now() - Duration::days(1))
             .format("%Y-%m-%d")
             .to_string();
 
@@ -2272,4 +2401,119 @@ pub struct CheckInCalendar {
     pub month_check_in_days: u32,
     /// 本月总做题数
     pub month_total_questions: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(
+        user: &str,
+        correct: Option<&str>,
+        qtype: QuestionType,
+    ) -> (bool, bool) {
+        QuestionBankService::check_answer_correctness(user, correct, &qtype)
+    }
+
+    #[test]
+    fn test_single_choice_basic_and_case_insensitive() {
+        assert_eq!(check("A", Some("A"), QuestionType::SingleChoice), (true, false));
+        assert_eq!(check("a", Some("A."), QuestionType::SingleChoice), (true, false));
+        assert_eq!(check("B", Some("A"), QuestionType::SingleChoice), (false, false));
+    }
+
+    #[test]
+    fn test_single_choice_answer_with_option_text() {
+        // 导入答案携带选项全文时，提取键比较
+        assert_eq!(
+            check("A", Some("A. 三角形内角和为180°"), QuestionType::SingleChoice),
+            (true, false)
+        );
+        assert_eq!(
+            check("B", Some("A. 三角形内角和为180°"), QuestionType::SingleChoice),
+            (false, false)
+        );
+        assert_eq!(
+            check("A", Some("正确答案：A"), QuestionType::SingleChoice),
+            (true, false)
+        );
+    }
+
+    #[test]
+    fn test_multiple_choice_order_and_missing() {
+        // 乱序等价
+        assert_eq!(check("BA", Some("AB"), QuestionType::MultipleChoice), (true, false));
+        assert_eq!(check("A,B", Some("B、A"), QuestionType::MultipleChoice), (true, false));
+        // 漏选判错
+        assert_eq!(check("A", Some("AB"), QuestionType::MultipleChoice), (false, false));
+        // 多选判错
+        assert_eq!(check("ABC", Some("AB"), QuestionType::MultipleChoice), (false, false));
+    }
+
+    #[test]
+    fn test_multiple_choice_answer_with_option_text() {
+        assert_eq!(
+            check("AC", Some("A. 苹果 C. 橙子"), QuestionType::MultipleChoice),
+            (true, false)
+        );
+        assert_eq!(
+            check("A", Some("A. 苹果 C. 橙子"), QuestionType::MultipleChoice),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn test_fill_blank_whitespace_and_case() {
+        assert_eq!(
+            check(" Newton ", Some("newton"), QuestionType::FillBlank),
+            (true, false)
+        );
+        assert_eq!(
+            check("能量 守恒", Some("能量守恒"), QuestionType::FillBlank),
+            (true, false)
+        );
+        assert_eq!(
+            check("动量守恒", Some("能量守恒"), QuestionType::FillBlank),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn test_subjective_needs_manual_grading() {
+        assert_eq!(
+            check("我的论述……", Some("参考答案"), QuestionType::ShortAnswer),
+            (false, true)
+        );
+        assert_eq!(
+            check("证明过程", Some("参考证明"), QuestionType::Proof),
+            (false, true)
+        );
+    }
+
+    #[test]
+    fn test_missing_answer_needs_manual_grading() {
+        assert_eq!(check("A", None, QuestionType::SingleChoice), (false, true));
+        assert_eq!(check("A", Some("  "), QuestionType::SingleChoice), (false, true));
+    }
+
+    #[test]
+    fn test_extract_choice_keys_conservative() {
+        use std::collections::BTreeSet;
+        let keys = |s: &str| QuestionBankService::extract_choice_keys(s);
+        let set = |cs: &[char]| cs.iter().copied().collect::<BTreeSet<char>>();
+
+        // 纯键串
+        assert_eq!(keys("A"), Some(set(&['A'])));
+        assert_eq!(keys("abd"), Some(set(&['A', 'B', 'D'])));
+        assert_eq!(keys("A、C"), Some(set(&['A', 'C'])));
+        // 结构化
+        assert_eq!(keys("A. 内容 C. 内容"), Some(set(&['A', 'C'])));
+        assert_eq!(keys("（B）"), Some(set(&['B'])));
+        assert_eq!(keys("选A。"), Some(set(&['A'])));
+        // 内容文本不应误判出键
+        assert_eq!(keys("答案是第一个"), None);
+        assert_eq!(keys(""), None);
+        // 嵌在词中的字母不是键
+        assert_eq!(keys("the answer"), None);
+    }
 }

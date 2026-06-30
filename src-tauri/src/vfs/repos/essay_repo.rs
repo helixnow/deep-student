@@ -74,10 +74,10 @@ impl VfsEssayRepo {
         // 搜索过滤（在 title 和 resources.data 中搜索）
         if let Some(q) = search {
             sql.push_str(&format!(
-                " AND (e.title LIKE ?{} OR EXISTS (SELECT 1 FROM resources r WHERE r.id = e.resource_id AND r.data LIKE ?{}))",
+                " AND (e.title LIKE ?{} ESCAPE '\\' OR EXISTS (SELECT 1 FROM resources r WHERE r.id = e.resource_id AND r.data LIKE ?{} ESCAPE '\\'))",
                 param_idx, param_idx + 1
             ));
-            let search_pattern = format!("%{}%", q);
+            let search_pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(q));
             params_vec.push(Box::new(search_pattern.clone()));
             params_vec.push(Box::new(search_pattern));
             param_idx += 2;
@@ -597,6 +597,8 @@ impl VfsEssayRepo {
 
             if ref_count == 0 {
                 // 没有其他引用，可以安全删除 resource
+                // ★ 2026-06-12（第二轮审阅）：同时清理索引产物（units/segments/Lance 向量）
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
                 conn.execute("DELETE FROM resources WHERE id = ?1", params![&rid])?;
                 debug!("[VFS::EssayRepo] Purged orphan resource: {}", rid);
             }
@@ -1035,6 +1037,8 @@ impl VfsEssayRepo {
                     .unwrap_or(0);
 
                 if ref_count == 0 {
+                    // ★ 2026-06-12（第二轮审阅）：同时清理索引产物
+                    super::index_unit_repo::purge_index_artifacts_by_resource(&conn, rid)?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![rid])?;
                     debug!("[VFS::EssayRepo] Purged orphan resource: {}", rid);
                 }

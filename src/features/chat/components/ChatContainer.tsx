@@ -86,7 +86,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const mobileLayout = useMobileLayoutSafe();
-  const isMobile = mobileLayout?.isMobile ?? (typeof window !== 'undefined' && window.innerWidth <= 768);
+  const isMobile = mobileLayout?.isMobile ?? (typeof window !== 'undefined' && window.innerWidth < 768);
 
   // ★ 文梣28清理：移除 currentSubject，记忆提取功能内部获取 subject
 

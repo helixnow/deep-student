@@ -1593,11 +1593,19 @@ describe('DataGovernanceApi Backup Config contract', () => {
 // ═══════════════════════════════════════════════════════════
 
 describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
+  function expectCleanupInvoke(expected: Record<string, unknown>) {
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke.mock.calls[0]![0]).toBe('data_governance_cleanup_audit_logs');
+    const args = mockInvoke.mock.calls[0]![1] as Record<string, unknown>;
+    expect(args).toMatchObject(expected);
+    expect(args.confirmation_token).toMatch(/^AUDIT_CLEANUP_\d+$/);
+  }
+
   it('passes keepRecent and beforeDays as snake_case params', async () => {
     mockInvoke.mockResolvedValue(42);
     await cleanupAuditLogs(100, 30);
 
-    expectSingleInvoke('data_governance_cleanup_audit_logs', {
+    expectCleanupInvoke({
       keep_recent: 100,
       before_days: 30,
     });
@@ -1607,7 +1615,7 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     mockInvoke.mockResolvedValue(0);
     await cleanupAuditLogs();
 
-    expectSingleInvoke('data_governance_cleanup_audit_logs', {
+    expectCleanupInvoke({
       keep_recent: undefined,
       before_days: undefined,
     });
@@ -1617,7 +1625,7 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     mockInvoke.mockResolvedValue(10);
     await cleanupAuditLogs(50);
 
-    expectSingleInvoke('data_governance_cleanup_audit_logs', {
+    expectCleanupInvoke({
       keep_recent: 50,
       before_days: undefined,
     });
@@ -1627,7 +1635,7 @@ describe('DataGovernanceApi.cleanupAuditLogs() contract', () => {
     mockInvoke.mockResolvedValue(25);
     await cleanupAuditLogs(undefined, 90);
 
-    expectSingleInvoke('data_governance_cleanup_audit_logs', {
+    expectCleanupInvoke({
       keep_recent: undefined,
       before_days: 90,
     });

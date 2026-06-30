@@ -159,6 +159,7 @@ pub use handlers::{
     chat_v2_retry_variants,
     chat_v2_rollback_migration,
     // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
+    chat_v2_get_message_summary,
     chat_v2_save_session,
     chat_v2_send_message,
     chat_v2_session_message_count,

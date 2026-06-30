@@ -4,10 +4,6 @@ import { useTranslation } from 'react-i18next';
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
@@ -19,9 +15,9 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { Folder, FileText, Star } from '@phosphor-icons/react';
 import { ReferenceIcon } from './ReferenceIcon';
@@ -142,17 +138,8 @@ export function DndFileTree({
     onCollapse?.(id);
   }, [onCollapse]);
 
-  // 配置拖拽传感器
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // 配置拖拽传感器（触屏长按激活）
+  const sensors = useTouchFriendlyDndSensors();
 
   const flattenedNodes = useMemo(() => {
     const expandedSet = new Set(effectiveExpandedIds);

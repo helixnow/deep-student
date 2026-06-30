@@ -14,12 +14,20 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use tauri::Emitter;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::repos::VfsTodoRepo;
 use crate::vfs::types::{VfsCreateTodoItemParams, VfsUpdateTodoItemParams};
+
+/// 通知前端待办数据已被 AI 修改（前端据此刷新打开中的 Todo 页面）
+fn emit_todo_changed(ctx: &ExecutionContext, action: &str) {
+    if let Err(e) = ctx.window.emit("todo://changed", json!({ "source": "ai", "action": action })) {
+        log::debug!("[UserTodoExecutor] Failed to emit todo://changed: {}", e);
+    }
+}
 
 // ============================================================================
 // 常量
@@ -266,6 +274,10 @@ impl UserTodoExecutor {
                 .get("due_time")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            reminder: args
+                .get("reminder")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             tags: args.get("tags").and_then(|v| v.as_array()).map(|arr| {
                 arr.iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
@@ -273,9 +285,11 @@ impl UserTodoExecutor {
             }),
             parent_id: None,
             attachments: None,
+            repeat_json: None,
         };
 
         let item = VfsTodoRepo::create_todo_item(vfs_db, params).map_err(|e| e.to_string())?;
+        emit_todo_changed(ctx, "create_item");
 
         Ok(json!({
             "success": true,
@@ -317,6 +331,7 @@ impl UserTodoExecutor {
         }
 
         let item = VfsTodoRepo::toggle_todo_item(vfs_db, item_id).map_err(|e| e.to_string())?;
+        emit_todo_changed(ctx, "complete_item");
 
         Ok(json!({
             "success": true,
@@ -355,13 +370,9 @@ impl UserTodoExecutor {
                     VfsTodoRepo::list_items_by_list(vfs_db, list_id, include_completed)
                         .map_err(|e| e.to_string())?
                 } else {
-                    // Default: list today + overdue
-                    let mut all = VfsTodoRepo::list_today_items(vfs_db, include_completed)
-                        .map_err(|e| e.to_string())?;
-                    let overdue = VfsTodoRepo::list_overdue_items(vfs_db, include_completed)
-                        .map_err(|e| e.to_string())?;
-                    all.extend(overdue);
-                    all
+                    // Default: today 视图（list_today_items 已含逾期未完成，无需再合并）
+                    VfsTodoRepo::list_today_items(vfs_db, include_completed)
+                        .map_err(|e| e.to_string())?
                 }
             }
         };
@@ -463,6 +474,7 @@ impl UserTodoExecutor {
 
         let item =
             VfsTodoRepo::update_todo_item(vfs_db, item_id, params).map_err(|e| e.to_string())?;
+        emit_todo_changed(ctx, "update_item");
 
         Ok(json!({
             "success": true,

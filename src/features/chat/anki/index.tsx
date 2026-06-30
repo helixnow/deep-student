@@ -52,13 +52,31 @@ interface AnkiActionParams {
   context?: AnkiActionContext;
 }
 
-interface AnkiSyncWarning {
-  code: 'anki_sync_partial';
-  details: {
-    total: number;
-    added: number;
-    failed: number;
-  };
+type AnkiSyncWarning =
+  | {
+      code: 'anki_sync_partial';
+      details: {
+        total: number;
+        added: number;
+        failed: number;
+        duplicates?: number;
+      };
+    }
+  | {
+      code: 'anki_sync_all_duplicates';
+      details: {
+        total: number;
+        duplicates: number;
+      };
+    };
+
+/** 后端 add_cards_to_anki_connect 返回的同步明细报告（serde camelCase） */
+interface AnkiSyncReport {
+  noteIds: Array<number | null>;
+  added: number;
+  duplicates: number;
+  failed: number;
+  createdModels: string[];
 }
 
 /**
@@ -227,23 +245,34 @@ export async function importCardsViaAnkiConnect(
 
     // 后端签名：add_cards_to_anki_connect(selected_cards, deck_name, note_type)
     // Tauri v2 默认期望 camelCase JS 参数，自动映射到 snake_case Rust 参数
-    const results = await invoke<Array<number | null>>('add_cards_to_anki_connect', {
+    const report = await invoke<AnkiSyncReport>('add_cards_to_anki_connect', {
       selectedCards: validCards,
       deckName,
       noteType,
     });
 
-    const importedCount = Array.isArray(results) ? results.filter(r => r !== null).length : 0;
-    const failed = validCards.length - importedCount;
-    const warning =
-      importedCount > 0 && failed > 0
-        ? {
-            code: 'anki_sync_partial' as const,
-            details: { total: validCards.length, added: importedCount, failed },
-          }
-        : undefined;
+    const importedCount = report.added;
+    let warning: AnkiSyncWarning | undefined;
+    if (report.failed > 0 && report.added > 0) {
+      warning = {
+        code: 'anki_sync_partial',
+        details: {
+          total: validCards.length,
+          added: report.added,
+          failed: report.failed,
+          duplicates: report.duplicates,
+        },
+      };
+    } else if (report.added === 0 && report.failed === 0 && report.duplicates > 0) {
+      // 全部已存在：幂等成功，不算失败
+      warning = {
+        code: 'anki_sync_all_duplicates',
+        details: { total: validCards.length, duplicates: report.duplicates },
+      };
+    }
 
-    return { success: importedCount > 0, importedCount, warning };
+    const success = report.added > 0 || (report.failed === 0 && report.duplicates > 0);
+    return { success, importedCount, warning };
   } catch (error: unknown) {
     console.error('[anki] importCardsViaAnkiConnect error:', error);
     return { success: false, importedCount: 0 };
@@ -295,7 +324,7 @@ export function dispatchOpenAnkiPanelEvent(params: OpenAnkiPanelParams): void {
  * 桌面端（>768px）：不做任何处理，直接渲染 children + className，
  * 保持原有 CSS 布局（如 calc(-50vw + 50%) 等）。
  *
- * 移动端（≤768px）：使用 getBoundingClientRect 精确计算元素距视口
+ * 移动端（<768px）：使用 getBoundingClientRect 精确计算元素距视口
  * 左侧的偏移，通过 inline style 突破所有父容器限制实现真正全宽。
  * 解决移动端头像/padding 导致 CSS calc 偏移不准的问题。
  */
@@ -312,8 +341,9 @@ export const FullWidthCardWrapper: React.FC<{
     const el = wrapperRef.current;
     if (!el) return;
 
-    // 桌面端：清除所有 inline 定位，完全交给 CSS
-    if (window.innerWidth > MOBILE_BREAKPOINT) {
+    // 桌面端（≥768，与 App shell isSmallScreen=<768 边界对齐）：清除所有 inline 定位，完全交给 CSS。
+    // 用 >= 而非 >：768px（如 iPad 竖屏）属桌面双栏布局，不应套用移动端全宽 inline 计算
+    if (window.innerWidth >= MOBILE_BREAKPOINT) {
       if (el.style.width || el.style.marginLeft) {
         el.style.width = '';
         el.style.marginLeft = '';

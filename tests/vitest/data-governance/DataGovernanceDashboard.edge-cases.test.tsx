@@ -26,6 +26,7 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   listResumableJobs: vi.fn(),
   getSyncStatus: vi.fn(),
   getAuditLogs: vi.fn(),
+  backupAndExportZip: vi.fn(),
   runBackup: vi.fn(),
   restoreBackup: vi.fn(),
   verifyBackup: vi.fn(),
@@ -35,6 +36,7 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
 
 const mockStartListening = vi.hoisted(() => vi.fn());
 const mockStopListening = vi.hoisted(() => vi.fn());
+const mockSaveDialog = vi.hoisted(() => vi.fn());
 
 vi.mock('@/api/dataGovernance', () => ({
   DataGovernanceApi: mockDataGovernanceApi,
@@ -48,6 +50,11 @@ vi.mock('@/hooks/useBackupJobListener', () => ({
     startListening: mockStartListening,
     stopListening: mockStopListening,
   }),
+}));
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: vi.fn(),
+  save: mockSaveDialog,
 }));
 
 vi.mock('@/features/settings/components/data-governance/MigrationTab', () => ({
@@ -74,6 +81,8 @@ import {
   getSyncPhaseName,
 } from '@/types/dataGovernance';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
+
+const exportBackupButtonName = /导出备份|data:governance\.export_backup/i;
 
 // ============================================================================
 // 默认 mock 数据
@@ -131,6 +140,13 @@ function setupDefaultMocks() {
   mockDataGovernanceApi.getSyncStatus.mockResolvedValue(null);
   mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
   mockDataGovernanceApi.checkDiskSpaceForRestore.mockResolvedValue({ has_enough_space: true, available_bytes: 10737418240, required_bytes: 2147483648, backup_size: 1536000 });
+  mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
+    job_id: 'backup-export-job',
+    kind: 'export',
+    status: 'queued',
+    message: 'Job started',
+  });
+  mockSaveDialog.mockResolvedValue('/tmp/deep-student-backup.zip');
 }
 
 /** 生成 N 个备份条目，按时间倒序排列（index 0 最新） */
@@ -290,7 +306,7 @@ describe('Edge case: concurrent operation conflict', () => {
   });
 
   it('disables restore/delete/export buttons when a backup is already running', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'concurrent-job-001',
       kind: 'export',
       status: 'queued',
@@ -316,15 +332,13 @@ describe('Edge case: concurrent operation conflict', () => {
     expect(deleteBtn).toBeEnabled();
 
     // 启动备份
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 备份运行中，其他操作按钮应被禁用
@@ -336,7 +350,7 @@ describe('Edge case: concurrent operation conflict', () => {
   });
 
   it('blocks second backup attempt when one is already running', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'concurrent-job-002',
       kind: 'export',
       status: 'queued',
@@ -355,15 +369,13 @@ describe('Edge case: concurrent operation conflict', () => {
     });
 
     // 启动第一次备份
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalledTimes(1);
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalledTimes(1);
     });
 
     // 第二次点击 —— 按钮已被禁用，click 不应触发第二次 API 调用
@@ -371,8 +383,8 @@ describe('Edge case: concurrent operation conflict', () => {
       fireEvent.click(createBtn);
     });
 
-    // runBackup 应仍然只被调用 1 次
-    expect(mockDataGovernanceApi.runBackup).toHaveBeenCalledTimes(1);
+    // backupAndExportZip 应仍然只被调用 1 次
+    expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -498,7 +510,7 @@ describe('Edge case: maintenance mode UI state', () => {
   });
 
   it('enters maintenance mode when backup operation starts', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'maintenance-job-001',
       kind: 'export',
       status: 'queued',
@@ -521,15 +533,13 @@ describe('Edge case: maintenance mode UI state', () => {
     expect(useSystemStatusStore.getState().maintenanceReason).toBeNull();
 
     // 启动备份
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 备份后：应进入维护模式
@@ -557,7 +567,7 @@ describe('Edge case: maintenance mode UI state', () => {
   });
 
   it('disables all backup action buttons while isBackupRunning is true', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'maintenance-job-002',
       kind: 'export',
       status: 'queued',
@@ -576,25 +586,23 @@ describe('Edge case: maintenance mode UI state', () => {
     });
 
     // 启动备份 → 进入维护模式 + isBackupRunning
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
-    // 完整备份按钮被禁用
+    // 导出备份按钮被禁用
     expect(createBtn).toBeDisabled();
 
-    // 增量备份按钮被禁用
-    const incrementalBtn = screen.getByRole('button', {
-      name: /增量备份|data:governance\.create_incremental_backup/i,
+    // 导入按钮也应被禁用，避免并发修改备份目录
+    const importBtn = screen.getByRole('button', {
+      name: /导入|data:governance\.import_button/i,
     });
-    expect(incrementalBtn).toBeDisabled();
+    expect(importBtn).toBeDisabled();
   });
 });
 
@@ -632,7 +640,7 @@ describe('Edge case: unmount cleanup', () => {
     // 但仍验证不会有其他未预期的错误输出）
     const consoleErrorSpy = vi.spyOn(globalThis.console, 'error').mockImplementation(() => {});
 
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'unmount-job-001',
       kind: 'export',
       status: 'queued',
@@ -652,15 +660,13 @@ describe('Edge case: unmount cleanup', () => {
     });
 
     // 启动备份
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 在备份进行中卸载组件

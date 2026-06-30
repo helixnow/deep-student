@@ -66,18 +66,6 @@ impl OcrEngineType {
         }
     }
 
-    /// 是否支持 grounding（坐标定位）
-    pub fn supports_grounding(&self) -> bool {
-        match self {
-            Self::DeepSeekOcr => true,
-            Self::PaddleOcrVl => true, // PaddleOCR-VL 也支持坐标输出
-            Self::PaddleOcrVlV1 => true,
-            Self::Glm4vOcr => true,
-            Self::GenericVlm => false,
-            Self::SystemOcr => false,
-        }
-    }
-
     /// 获取推荐的模型名称（硅基流动平台）
     pub fn recommended_model(&self) -> &'static str {
         match self {

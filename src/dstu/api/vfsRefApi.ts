@@ -1,11 +1,11 @@
 /**
  * VFS 引用模式 API - 重导出模块
  *
- * ⚠️ 此文件为兼容层，实际实现在 @/chat-v2/context/vfsRefApi
+ * ⚠️ 此文件为兼容层，实际实现在 @/features/chat/context/vfsRefApi
  *
- * 统一入口：所有 VFS 引用 API 均从 @/chat-v2/context 导出
+ * 统一入口：所有 VFS 引用 API 均从 @/features/chat/context 导出
  *
- * @see src/chat-v2/context/vfsRefApi.ts - 唯一实现
+ * @see src/features/chat/context/vfsRefApi.ts - 唯一实现
  * @see 24-LRFS统一入口模型与访达式资源管理器.md - 契约 C
  */
 

@@ -22,6 +22,7 @@ import { nodeTypes as defaultNodeTypes } from './nodes';
 import { edgeTypes as defaultEdgeTypes } from './edges';
 import { useMindMapKeyboard } from '../../hooks/useMindMapKeyboard';
 import { useMindMapClipboard } from '../../hooks/useMindMapClipboard';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
@@ -54,6 +55,7 @@ const MindMapCanvasInner: React.FC = () => {
   const { fitView, setCenter, getNodes, getZoom } = reactFlowInstance;
   const hasFitView = useRef(false);
   const prevFocusedNodeId = useRef<string | null>(null);
+  const isCanvasActive = useMindMapIsActive();
 
   useMindMapKeyboard();
   useMindMapClipboard();
@@ -402,7 +404,9 @@ const MindMapCanvasInner: React.FC = () => {
     setIsDragging(true);
 
     // 收集所有后代节点的相对偏移，使子树跟随拖拽
+    // ★ A6-25：先建 id→layoutNode 索引，避免每个后代各做一次 O(n) 的 allNodes.find
     const allNodes = getNodes();
+    const layoutNodeById = new Map(allNodes.map(n => [n.id, n]));
     const offsets: Record<string, { dx: number; dy: number }> = {};
     const overrides: Record<string, { x: number; y: number }> = { [node.id]: node.position };
 
@@ -410,7 +414,7 @@ const MindMapCanvasInner: React.FC = () => {
       const mmNode = findNodeById(document.root, parentId);
       if (!mmNode?.children) return;
       for (const child of mmNode.children) {
-        const layoutNode = allNodes.find(n => n.id === child.id);
+        const layoutNode = layoutNodeById.get(child.id);
         if (layoutNode) {
           offsets[child.id] = {
             dx: layoutNode.position.x - node.position.x,
@@ -454,10 +458,24 @@ const MindMapCanvasInner: React.FC = () => {
     const dragCenterX = dragPos.x + dragW / 2;
     const dragCenterY = dragPos.y + dragH / 2;
 
+    // ★ A6-25：每次 drag move 只算一次拖拽子树 id 集合（O(子树)），
+    // 替代旧实现对每个候选节点调用 isDescendantOf（每个候选 O(全树)，整体 O(n²)，
+    // 500+ 节点大图拖拽时每次 mousemove 高达数十万次节点访问，明显卡顿）。
+    const dragSubtree = findNodeById(document.root, dragId);
+    const dragSubtreeIds = new Set<string>();
+    if (dragSubtree) {
+      const stack: MindMapNode[] = [dragSubtree];
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        dragSubtreeIds.add(cur.id);
+        for (const child of cur.children) stack.push(child);
+      }
+    }
+
     for (const n of allNodes) {
       if (n.id === dragId) continue;
-      if (n.id in offsets) continue; // 跳过子树节点
-      if (isDescendantOf(document.root, dragId, n.id)) continue;
+      if (n.id in offsets) continue; // 跳过子树节点（拖拽开始时快照）
+      if (dragSubtreeIds.has(n.id)) continue; // 防御：拖拽中文档被外部更新时的新后代
 
       const nCenterX = n.position.x + (n.measured?.width || 100) / 2;
       const nCenterY = n.position.y + (n.measured?.height || 36) / 2;
@@ -520,6 +538,8 @@ const MindMapCanvasInner: React.FC = () => {
 
   // Ctrl+0 / Cmd+0: 适应视图（注册在 document，stopPropagation 防止 global.zoom-reset 冲突）
   useEffect(() => {
+    // ★ 标签页保活：非活跃实例不注册，防止隐藏标签页抢占快捷键
+    if (!isCanvasActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
@@ -534,7 +554,43 @@ const MindMapCanvasInner: React.FC = () => {
     // 使用 window.document 避免与组件内 MindMapDocument 变量 shadowing
     window.document.addEventListener('keydown', handleKeyDown);
     return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [fitView]);
+  }, [fitView, isCanvasActive]);
+
+  // ★ 移动端虚拟键盘：进入节点编辑后若节点位于键盘遮挡区，向上平移画布。
+  // ReactFlow 画布不是文档流，浏览器不会自动滚动聚焦元素，需手动调整 viewport。
+  const editingNodeIdForKeyboard = useMindMapStore(s => s.editingNodeId);
+  useEffect(() => {
+    if (!editingNodeIdForKeyboard) return;
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const ensureNodeVisible = () => {
+      const node = reactFlowInstance
+        .getNodes()
+        .find((n) => n.id === editingNodeIdForKeyboard);
+      if (!node) return;
+      const center = {
+        x: node.position.x + (node.measured?.width ?? 0) / 2,
+        y: node.position.y + (node.measured?.height ?? 0) / 2,
+      };
+      const screen = reactFlowInstance.flowToScreenPosition(center);
+      // visualViewport 高度已扣除键盘；节点低于可视区 55% 视为可能被遮挡
+      if (screen.y > vv.height * 0.55) {
+        const dy = screen.y - vv.height * 0.35;
+        const vp = reactFlowInstance.getViewport();
+        reactFlowInstance.setViewport({ ...vp, y: vp.y - dy }, { duration: 200 });
+      }
+    };
+
+    // 键盘弹出会触发 visualViewport resize；进入编辑稍后也主动检查一次
+    vv.addEventListener('resize', ensureNodeVisible);
+    const timer = window.setTimeout(ensureNodeVisible, 350);
+    return () => {
+      vv.removeEventListener('resize', ensureNodeVisible);
+      window.clearTimeout(timer);
+    };
+  }, [editingNodeIdForKeyboard, reactFlowInstance]);
 
   return (
     <div className={`w-full h-full overflow-hidden bg-[var(--mm-bg)] ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''} ${isExporting ? 'mm-exporting' : ''}`}>

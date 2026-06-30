@@ -58,6 +58,8 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { cancelPdfProcessing, getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
 import type { ContextWindowUsage } from './contextWindowUsage';
+import { formatContextTokenAmount } from './contextWindowUsage';
+import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import { vfsRefApi } from '../../context/vfsRefApi';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
@@ -71,9 +73,8 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
-import { MobileBottomSheet } from './MobileBottomSheet';
-import { MobileSheetHeader } from './MobileSheetHeader';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerPanel } from './ComposerPanel';
@@ -88,6 +89,7 @@ import {
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 常量
@@ -183,14 +185,22 @@ function getCompactThinkingLabel(label?: string): string | undefined {
 
 function ContextWindowUsageRing({
   usage,
+  sessionUsage,
   t,
   disabled,
 }: {
   usage: ContextWindowUsage;
+  sessionUsage?: SessionUsageSummary | null;
   t: TFunction;
   disabled: boolean;
 }) {
-  const contextUsageColor = 'var(--text-primary)';
+  // ★ 1.2 水位分级警示：<75% 默认，75-90% warning，>90% danger
+  const contextUsageColor =
+    usage.usedPercent >= 90
+      ? 'hsl(var(--danger))'
+      : usage.usedPercent >= 75
+        ? 'hsl(var(--warning))'
+        : 'var(--text-primary)';
   const ringRadius = 6.75;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
@@ -232,6 +242,34 @@ function ContextWindowUsageRing({
           </span>
         </div>
       </div>
+      {usage.usedPercent >= 75 && (
+        <p className="mt-2 border-t border-[color:var(--input-shell-border)] pt-2 text-[11px] leading-snug text-[color:var(--text-secondary)]">
+          {t('chatV2:tokenUsage.contextHighWaterHint')}
+        </p>
+      )}
+      {/* ★ 1.2 本会话累计（token / 费用） */}
+      {sessionUsage && sessionUsage.totalTokens > 0 && (
+        <div className="mt-2 space-y-1.5 border-t border-[color:var(--input-shell-border)] pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[color:var(--text-secondary)]">
+              {t('chatV2:tokenUsage.sessionTotal')}
+            </span>
+            <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
+              {formatContextTokenAmount(sessionUsage.totalTokens)}
+            </span>
+          </div>
+          {typeof sessionUsage.estimatedCostUsd === 'number' && sessionUsage.estimatedCostUsd > 0 && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[color:var(--text-secondary)]">
+                {t('chatV2:tokenUsage.sessionCost')}
+              </span>
+              <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
+                ${sessionUsage.estimatedCostUsd.toFixed(sessionUsage.estimatedCostUsd < 0.1 ? 4 : 2)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -450,6 +488,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   canAbort,
   isStreaming,
   contextWindowUsage,
+  sessionUsage,
   attachments,
   panelStates,
   disabledReason,
@@ -566,9 +605,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const [keyboardInsetPx, setKeyboardInsetPx] = useState(0);
   // 🔧 统一使用 MobileLayoutContext 的移动端判断
   const isMobile = mobileLayout?.isMobile ?? false;
-  const [showEmptyTip, setShowEmptyTip] = useState(false);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const emptyTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // 🔧 首帧轻量化：isReady 控制重 UI 延迟挂载
@@ -952,13 +989,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, attachments.length, t]);
 
   // ========== 相机拍照处理 ==========
-  // 检测是否在移动端环境
-  const isMobileEnv = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent.toLowerCase();
-    return /android|iphone|ipad|ipod|mobile/.test(ua);
-  }, []);
+  // A-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
+  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态
+  const isMobileEnv = useMediaQuery('(pointer: coarse)');
 
   const handleCameraClick = useCallback(() => {
     if (cameraInputRef.current) {
@@ -1065,6 +1098,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
     '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
+  const composerPanelShortcutClassName =
+    'rounded border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] font-mono text-[10px] text-[color:var(--composer-panel-muted-foreground)]';
   const studyUiSendButtonAriaLabel = '发送消息';
   const tooltipPosition = 'top' as const;
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
@@ -1324,13 +1359,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       </>
     ) : null;
 
-  // 空文本提示
-  const triggerEmptyTip = useCallback(() => {
-    if (emptyTipTimerRef.current) clearTimeout(emptyTipTimerRef.current);
-    setShowEmptyTip(true);
-    emptyTipTimerRef.current = setTimeout(() => setShowEmptyTip(false), 1800);
-  }, []);
-
   // IME 合成态检测
   const isImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const anyNative = e.nativeEvent as any;
@@ -1344,19 +1372,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 判断是否应该发送
   const shouldSendOnEnter = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // C-11: 移动端软键盘没有 Shift+Enter，Enter 应为换行，发送只走按钮
+      //（与微信/Telegram 移动端心智一致）
+      if (isMobile) return false;
       const mode = sendShortcut || 'enter';
       if (mode === 'enter') {
         return e.key === 'Enter' && !e.shiftKey && !isImeComposing(e);
       }
       return e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isImeComposing(e);
     },
-    [sendShortcut, isImeComposing]
+    [isMobile, sendShortcut, isImeComposing]
   );
 
   // 处理发送
   const handleSend = useCallback(() => {
     if (!canSendWithAttachments) {
-      triggerEmptyTip();
+      showGlobalNotification('warning', t('common:messages.error.empty_input'));
       return;
     }
     if (disabledSend) return;
@@ -1368,7 +1399,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, disabledSend, onSend, triggerEmptyTip]);
+  }, [canSendWithAttachments, disabledSend, onSend, t]);
 
   // 处理停止
   const handleStop = useCallback(() => {
@@ -1410,7 +1441,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     if (!hasAnyPanelOpen) return;
 
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       const target = e.target as Node;
       // 检查点击是否在面板容器内
       if (panelContainerRef.current?.contains(target)) {
@@ -1427,10 +1458,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       closeAllPanels();
     };
 
-    // 使用 mousedown 而不是 click，更早响应
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    // pointerdown 同时覆盖鼠标与触摸（触摸场景不依赖合成 mouse 事件），且比 click 更早响应
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, [hasAnyPanelOpen, closeAllPanels]);
+
+  // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
+  // 与 Radix 浮层、MobileSlidingLayout 的返回键语义保持一致（A-5 体系补全）。
+  const closeAllPanelsRef = useRef(closeAllPanels);
+  closeAllPanelsRef.current = closeAllPanels;
+  useEffect(() => {
+    if (!isMobile || !hasAnyPanelOpen) return;
+    return registerBackHandler(() => {
+      closeAllPanelsRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isMobile, hasAnyPanelOpen]);
 
   // 统一的面板切换函数，自动处理互斥逻辑
   const togglePanel = useCallback((panelName: keyof PanelStates) => {
@@ -1530,7 +1573,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         <span className="flex items-center justify-between w-full">
           <span className="app-menu-tool-label">{label}</span>
           {shortcut && (
-            <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-muted/50 rounded border border-border/50 text-muted-foreground">{shortcut}</kbd>
+            <kbd className={cn('ml-2 px-1.5 py-0.5', composerPanelShortcutClassName)}>{shortcut}</kbd>
           )}
         </span>
       </AppMenuSwitchItem>
@@ -1545,13 +1588,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     adjustTextareaHeight();
   }, [inputValue, adjustTextareaHeight]);
-
-  // 清理 timer
-  useEffect(() => {
-    return () => {
-      if (emptyTipTimerRef.current) clearTimeout(emptyTipTimerRef.current);
-    };
-  }, []);
 
   // 🔧 P2: 全局键盘快捷键支持
   // 注册在 document 上，处理后 stopPropagation 防止与命令系统双重执行
@@ -1648,7 +1684,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 响应式 bottom gap + 移动端检测
   useEffect(() => {
     const handleResize = () => {
-      const mobile = mobileLayout?.isMobile ?? (window.innerWidth <= MOBILE_BREAKPOINT_PX);
+      const mobile = mobileLayout?.isMobile ?? (window.innerWidth < MOBILE_BREAKPOINT_PX);
       setBottomGapPx(mobile ? MOBILE_DOCK_GAP_PX : DESKTOP_DOCK_GAP_PX);
     };
     handleResize();
@@ -2109,13 +2145,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             </div>
           </div>
         )}
-        {/* 空输入提示 */}
-        {showEmptyTip && (
-          <div className="input-empty-tip" role="status" aria-live="polite">
-            {t('common:messages.error.empty_input')}
-          </div>
-        )}
-
         {composerInlinePanel && (
           <div className="mb-2 w-full">
             {composerInlinePanel}
@@ -2461,7 +2490,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 tooltipContent={
                   <span className="flex items-center gap-2">
                     <span>{t('analysis:input_bar.mcp.title')}</span>
-                    <kbd className="px-1 py-0.5 text-[10px] font-mono bg-muted/50 rounded border border-border/50">⌘⇧M</kbd>
+                    <kbd className={cn('px-1 py-0.5', composerPanelShortcutClassName)}>⌘⇧M</kbd>
                   </span>
                 }
                 active={panelStates.mcp || mcpEnabled}
@@ -2491,6 +2520,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {contextWindowUsage && (
               <ContextWindowUsageRing
                 usage={contextWindowUsage}
+                sessionUsage={sessionUsage}
                 t={t}
                 disabled={tooltipDisabled}
               />
@@ -2757,21 +2787,37 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 content={disabledSend ? sendBlockedReason : undefined}
                 disabled={!disabledSend || isMobile || !sendBlockedReason}
               >
-                <button
-                  data-testid="btn-send"
-                  type="button"
-                  onClick={handleSend}
-                  disabled={disabledSend}
-                  className={cn(
-                    studyUiButtonBaseClassName,
-                    studyUiButtonSizeIconClassName,
-                    studyUiSendButtonSizeClass,
-                    isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass
+                <span className="relative inline-flex">
+                  <button
+                    data-testid="btn-send"
+                    type="button"
+                    onClick={handleSend}
+                    disabled={disabledSend}
+                    className={cn(
+                      studyUiButtonBaseClassName,
+                      studyUiButtonSizeIconClassName,
+                      studyUiSendButtonSizeClass,
+                      isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass
+                    )}
+                    aria-label={studyUiSendButtonAriaLabel}
+                  >
+                    <ArrowUp size={16} weight="bold" />
+                  </button>
+                  {/* C-2: 移动端无 tooltip，点击禁用按钮时用 toast 解释禁用原因 */}
+                  {disabledSend && isMobile && sendBlockedReason && (
+                    <button
+                      type="button"
+                      data-testid="btn-send-disabled-hint"
+                      className="absolute inset-0 cursor-not-allowed rounded-full bg-transparent"
+                      aria-label={sendBlockedReason}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showGlobalNotification('info', sendBlockedReason);
+                      }}
+                    />
                   )}
-                  aria-label={studyUiSendButtonAriaLabel}
-                >
-                  <ArrowUp size={16} weight="bold" />
-                </button>
+                </span>
               </CommonTooltip>
             )}
           </div>
@@ -2849,7 +2895,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               {/* 附件列表 */}
               <CustomScrollArea viewportClassName="max-h-56" className="flex flex-col gap-2">
                 {attachments.length === 0 ? (
-                  <div className="flex items-center justify-center rounded-lg border border-dashed bg-card/70 px-3 py-6 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-center rounded-lg border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-6 text-sm text-[color:var(--composer-panel-muted-foreground)]">
                     {t('analysis:input_bar.attachments.empty')}
                   </div>
                 ) : (
@@ -2911,13 +2957,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                           ? 'border-amber-200/60 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/20'
                           : attachment.status === 'ready' ? 'border-emerald-200/60 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20'
                             : (isMediaProcessing || isUploading) ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
-                              : 'border-slate-200/70 bg-card/90 dark:border-slate-700/50';
+                              : 'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]';
 
                     // 判断是否为图片或 PDF（需要显示注入模式选择器）
                     const showInjectModeSelector = isImage || isPdf;
 
                     return (
-                      <div key={attachment.id} className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out motion-reduce:transition-none', toneClass)}>
+                      <div key={attachment.id} className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
                         {/* 第一行：文件名、大小、状态、移除按钮 */}
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
@@ -2943,7 +2989,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
                               return (
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                                  <div className="flex-1 h-1 rounded-full bg-[color:var(--composer-panel-muted-surface)] overflow-hidden">
                                     <div
                                       className="h-full bg-blue-500 transition-all duration-300"
                                       style={{ width: `${unifiedPercent}%` }}

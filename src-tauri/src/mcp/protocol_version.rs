@@ -5,12 +5,12 @@ use serde_json::Value;
 /// 支持的MCP协议版本
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ProtocolVersion {
-    /// 2025-06-18: 最新版本，支持Streamable HTTP
-    V2025_06_18,
-    /// 2025-03-26: SSE弃用版本，OAuth 2.1支持
-    V2025_03_26,
     /// 2024-11-05: 当前版本（向后兼容）
     V2024_11_05,
+    /// 2025-03-26: SSE弃用版本，OAuth 2.1支持
+    V2025_03_26,
+    /// 2025-06-18: 最新版本，支持Streamable HTTP
+    V2025_06_18,
 }
 
 impl ProtocolVersion {

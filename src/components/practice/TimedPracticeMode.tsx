@@ -145,7 +145,9 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
   
   // 计算时间状态颜色
   const getTimeColor = () => {
-    const totalSeconds = durationMinutes * 60;
+    // 用会话自身的时长（恢复的会话可能与当前配置输入不同）
+    const totalSeconds = (activeSession?.duration_minutes ?? durationMinutes) * 60;
+    if (totalSeconds <= 0) return 'text-rose-600';
     const ratio = remainingSeconds / totalSeconds;
     
     if (ratio > 0.5) return 'text-emerald-600';

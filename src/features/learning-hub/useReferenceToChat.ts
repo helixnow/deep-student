@@ -214,14 +214,20 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
       console.log(LOG_PREFIX, 'referenceToChat (ref mode):', { sourceType, sourceId });
 
       // 1. 检查是否有活跃会话
-      const sessionIds = sessionManager.getAllSessionIds();
-      if (sessionIds.length === 0) {
-        const errorMsg = t('notes:reference.no_active_session');
-        showGlobalNotification('warning', errorMsg);
-        return { success: false, error: errorMsg };
+      // ★ D4 修复（对齐 useVfsContextInject 的 P1-26）：优先当前活跃会话，
+      // 回退任意会话——否则多会话场景引用会进最旧的会话
+      let activeSessionId = sessionManager.getCurrentSessionId();
+      if (!activeSessionId || !sessionManager.has(activeSessionId)) {
+        const sessionIds = sessionManager.getAllSessionIds();
+        if (sessionIds.length === 0) {
+          const errorMsg = t('notes:reference.no_active_session');
+          showGlobalNotification('warning', errorMsg);
+          return { success: false, error: errorMsg };
+        }
+        activeSessionId = sessionIds[0];
+        console.log(LOG_PREFIX, 'No current session, falling back to:', activeSessionId);
       }
 
-      const activeSessionId = sessionIds[0];
       const store = sessionManager.get(activeSessionId);
       if (!store) {
         const errorMsg = t('notes:reference.session_not_found');

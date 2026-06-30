@@ -19,7 +19,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260510;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260527;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;
@@ -364,9 +364,20 @@ mod tests {
         }
     }
 
-    /// 创建测试数据库
+    /// 创建测试数据库（已应用全部 chat_v2 迁移）
+    ///
+    /// `ChatV2Database::new` 本身不执行迁移（迁移由 MigrationCoordinator
+    /// 在应用启动时统一执行），需先走生产一致的迁移路径建表。
     fn setup_test_db() -> (TempDir, ChatV2Database) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let mut coordinator =
+            MigrationCoordinator::new(temp_dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::ChatV2)
+            .expect("ChatV2 migrations should apply cleanly");
         let db = ChatV2Database::new(temp_dir.path()).expect("Failed to create database");
         (temp_dir, db)
     }

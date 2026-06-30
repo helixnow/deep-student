@@ -24,8 +24,8 @@
 | `check-templates.sh` | 检查数据库中的模板状态（需传入 db 路径） |
 | `test-templates.sh` | 测试模板查询功能（需传入 db 路径） |
 
-## API 测试
+## 同步测试
 
-| 脚本 | 用途 |
+| 文件 | 用途 |
 |------|------|
-| `test-deepseek-ocr.sh` | 手动测试 DeepSeek-OCR API（需传入 API key） |
+| `docker-compose.sync-test.yml` | 云同步测试用 WebDAV 等本地服务编排 |

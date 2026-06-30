@@ -66,6 +66,11 @@
     "showAnswer": "Show Answer"
   },
 
+  "keyboard": {
+    "space": "Space",
+    "ratingHint": "Press 1-4 to rate"
+  },
+
   "rating": {
     "prompt": "How well did you know this?",
     "again": "Again",

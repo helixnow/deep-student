@@ -33,7 +33,7 @@ import {
   ArrowsClockwise, CaretDown, CaretRight, Play, Pause, ArrowCounterClockwise,
   Trash, DownloadSimple, ArrowSquareOut, Warning, CheckCircle,
   CircleNotch, FileText, Hash, TrendUp,
-  ChartBar, Circle, MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots,
+  ChartBar, Circle, MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots, Coffee,
 } from '@phosphor-icons/react';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import { exportCardsAsApkg } from '@/features/chat/anki';
@@ -336,6 +336,10 @@ const SessionRow: React.FC<{
   // P0: 内联删除确认
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 组件卸载时清理内联删除确认计时器，避免在已卸载组件上触发 setState
+  useEffect(() => () => {
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+  }, []);
 
   const group = classify(session);
 
@@ -406,19 +410,21 @@ const SessionRow: React.FC<{
         showGlobalNotification('success', t('taskDashboard.resumed'));
       } else if (action === 'retryFailed') {
         // [S2] 真正重试失败任务：获取文档所有 task → 筛选失败的 → 并行 trigger
+        // Cancelled 一并覆盖：会话统计将其计入"失败"组（database/mod.rs 的 failed_tasks），
+        // 重试入口需与徽标口径一致，否则仅含 Cancelled 的会话点重试会提示"没有卡住的任务"
         const tasks = await invoke<{ id: string; status: string }[]>(
           'get_document_tasks',
           { documentId: session.documentId },
         );
         const failedTasks = tasks.filter(
-          t2 => t2.status === 'Failed' || t2.status === 'Truncated',
+          t2 => t2.status === 'Failed' || t2.status === 'Truncated' || t2.status === 'Cancelled',
         );
         if (failedTasks.length === 0) {
           showGlobalNotification('info', t('taskDashboard.noStuckTasks'));
         } else {
           // [M1] 使用 allSettled 避免部分失败中断其余任务
           const results = await Promise.allSettled(
-            failedTasks.map(ft => invoke('trigger_task_processing', { task_id: ft.id })),
+            failedTasks.map(ft => invoke('trigger_task_processing', { taskId: ft.id })),
           );
           const succeeded = results.filter(r => r.status === 'fulfilled').length;
           const failed = results.length - succeeded;
@@ -846,6 +852,26 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   const hasActiveRef = useRef(false);
   const { isActive: isViewActive } = useViewVisibility('task-dashboard');
 
+  // ★ 4.2 防休眠开关（长任务时阻止系统休眠）
+  const [preventSleep, setPreventSleep] = useState(false);
+  useEffect(() => {
+    invoke<boolean>('get_prevent_sleep')
+      .then(setPreventSleep)
+      .catch(() => { /* 平台不支持时保持 false */ });
+  }, []);
+  const togglePreventSleep = useCallback(async () => {
+    try {
+      const next = await invoke<boolean>('set_prevent_sleep', { enabled: !preventSleep });
+      setPreventSleep(next);
+      if (next !== !preventSleep && !preventSleep) {
+        // 请求开启但实际未开启 → 平台不支持
+        showGlobalNotification('info', t('taskDashboard.preventSleepUnsupported'));
+      }
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err));
+    }
+  }, [preventSleep, t]);
+
   const load = useCallback(async () => {
     try {
       const [s, st] = await Promise.all([
@@ -928,9 +954,15 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
     return { active: a, attention: at, completed: c };
   }, [sessions]);
 
-  // 同步 hasActiveRef
+  // 同步 hasActiveRef；任务全部结束时自动解除防休眠
   useEffect(() => {
+    const hadActive = hasActiveRef.current;
     hasActiveRef.current = groups.active.length > 0;
+    if (hadActive && groups.active.length === 0) {
+      invoke<boolean>('set_prevent_sleep', { enabled: false })
+        .then(setPreventSleep)
+        .catch(() => { /* ignore */ });
+    }
   }, [groups.active.length]);
 
   // 聚合指标
@@ -1045,7 +1077,11 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   useMobileHeader('task-dashboard', {
     title: t('taskDashboard.title'),
     subtitle: t('taskDashboard.subtitle'),
+    showBackArrow: true,
     suppressGlobalBackButton: true,
+    onMenuClick: () => {
+      window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'chat-v2' } }));
+    },
   }, [t]);
 
   // ======== 渲染 ========
@@ -1064,7 +1100,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   return (
     <div className="study-shell-page h-full">
       <CustomScrollArea className="h-full">
-        <div className={`study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isSmallScreen ? 'pb-20' : ''}`}>
+        <div className="study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* ======== 页面标题 ======== */}
         {!isSmallScreen && (
           <div className="mb-8">
@@ -1097,6 +1133,17 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                 <span className="inline-flex items-center gap-1.5">
                   <CircleNotch size={12} className="text-[color:hsl(var(--info))] animate-spin" />
                   <span className="text-[color:hsl(var(--info))] font-medium">{groups.active.length}</span>
+                  <CommonTooltip content={preventSleep ? t('taskDashboard.preventSleepOn') : t('taskDashboard.preventSleepOff')}>
+                    <NotionButton
+                      size="sm"
+                      variant={preventSleep ? 'secondary' : 'ghost'}
+                      onClick={togglePreventSleep}
+                      className="ml-1 h-6 text-[12px]"
+                    >
+                      <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
+                      {t('taskDashboard.preventSleep')}
+                    </NotionButton>
+                  </CommonTooltip>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">

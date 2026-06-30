@@ -55,10 +55,6 @@
     "batchResolved": "{{count}} conflicts resolved"
   },
   "resource": {
-    "sync_note_failed": "Failed to sync note: {{error}}",
-    "sync_exam_failed": "Failed to sync exam: {{error}}",
-    "sync_textbook_pages_failed": "Failed to sync textbook pages: {{error}}",
-    "check_sync_needed_failed": "Failed to check sync status: {{error}}",
     "create_resource_failed": "Failed to create resource: {{error}}"
   },
   "conflict_type": {
@@ -89,5 +85,10 @@
     "data_version": "Data Version:",
     "update_time": "Updated:",
     "checksum": "Checksum:"
+  },
+  "notifications": {
+    "conflictResolveFailed": "Failed to resolve conflict: {{error}}",
+    "conflictBatchResolvePartial": "Some conflicts could not be resolved: {{resolved}} succeeded, {{failed}} failed",
+    "conflictBatchResolveFailed": "Batch conflict resolution failed: {{error}}"
   }
 }

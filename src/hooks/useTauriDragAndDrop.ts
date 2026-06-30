@@ -255,7 +255,7 @@ export const useTauriDragAndDrop = ({
               }
             }
 
-            const rawBytes = await invoke<number[]>('read_file_bytes', { path });
+            const rawBytes = await invoke<ArrayBuffer>('read_file_bytes', { path });
             const bytes = new Uint8Array(rawBytes);
             
             // 推断 MIME 类型（使用完整映射表，与 UnifiedDragDropZone 保持一致）

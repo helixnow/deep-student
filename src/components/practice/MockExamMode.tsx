@@ -85,6 +85,18 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   const [totalCount, setTotalCount] = useState(30);
   const [shuffle, setShuffle] = useState(true);
   const [includeMistakes, setIncludeMistakes] = useState(true);
+
+  // 与 TimedPracticeMode 一致的输入钳制：时长为 0/NaN 会导致 targetEndTime = 现在，
+  // 考试一开始就被自动交卷
+  const normalizeDurationMinutes = useCallback((value: number): number => {
+    if (!Number.isFinite(value)) return 60;
+    return Math.max(10, Math.min(180, Math.round(value)));
+  }, []);
+
+  const normalizeTotalCount = useCallback((value: number): number => {
+    if (!Number.isFinite(value)) return 30;
+    return Math.max(5, Math.min(100, Math.round(value)));
+  }, []);
   const [typeDistribution, setTypeDistribution] = useState<Record<string, number>>({});
   const [difficultyDistribution, setDifficultyDistribution] = useState<Record<string, number>>({});
   
@@ -135,7 +147,9 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   
   const getExamTimeColor = () => {
     if (!targetEndTime) return 'text-sky-600';
-    const totalSeconds = durationMinutes * 60;
+    // 用会话自身的时长（恢复的会话可能与当前配置输入不同）
+    const totalSeconds = (activeSession?.config.duration_minutes ?? durationMinutes) * 60;
+    if (totalSeconds <= 0) return 'text-rose-600';
     const ratio = examRemainingSeconds / totalSeconds;
     if (ratio > 0.5) return 'text-emerald-600';
     if (ratio > 0.25) return 'text-amber-600';
@@ -203,7 +217,12 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 交卷（手动）
   const handleSubmit = useCallback(async () => {
     if (!activeSession) return;
-    
+    // 倒计时自动交卷已触发时忽略手动交卷，避免双重提交
+    if (autoSubmitTriggeredRef.current) {
+      setShowConfirmDialog(false);
+      return;
+    }
+
     setShowConfirmDialog(false);
     const previousTargetEndTime = targetEndTime;
     setTargetEndTime(null);
@@ -349,7 +368,12 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 min={10}
                 max={180}
                 value={durationMinutes}
-                onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') return;
+                  setDurationMinutes(normalizeDurationMinutes(Number(raw)));
+                }}
+                onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
 />
             </div>
             <div className="space-y-2">
@@ -359,7 +383,12 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 min={5}
                 max={100}
                 value={totalCount}
-                onChange={(e) => setTotalCount(Number(e.target.value))}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') return;
+                  setTotalCount(normalizeTotalCount(Number(raw)));
+                }}
+                onBlur={(e) => setTotalCount(normalizeTotalCount(Number(e.target.value)))}
 />
             </div>
           </div>

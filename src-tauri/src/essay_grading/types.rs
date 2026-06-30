@@ -179,11 +179,8 @@ pub struct GradingStreamData {
     #[serde(rename = "type")]
     pub event_type: String, // "data"
 
-    /// 本次增量内容
+    /// 本次增量内容（A6-11: 前端按 chunk 自行累加，不再回传全量 accumulated 以避免 IPC O(n²)）
     pub chunk: String,
-
-    /// 累积内容
-    pub accumulated: String,
 
     /// 当前字符数
     pub char_count: usize,

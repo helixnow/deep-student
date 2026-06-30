@@ -21,7 +21,8 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::path_cache_repo::VfsPathCacheRepo;
 use crate::vfs::repos::{
-    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsMindMapRepo, VfsNoteRepo, VfsTranslationRepo,
+    VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsMindMapRepo, VfsNoteRepo,
+    VfsTranslationRepo,
 };
 use crate::vfs::types::{
     FolderResourceInfo, FolderResourcesResult, FolderTreeNode, ResourceLocation, VfsFolder,
@@ -1232,7 +1233,15 @@ impl VfsFolderRepo {
     /// 递归清理文件夹树内的所有资源，再删除文件夹树本身，避免留下孤儿记录。
     pub fn purge_folder(db: &VfsDatabase, folder_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_folder_with_conn(&conn, db.blobs_dir(), folder_id)
+        Self::purge_folder_with_conn(&conn, db.blobs_dir(), folder_id)?;
+        // ★ 2026-06-10（审阅问题 A2）：事务提交后清扫 ref_count=0 的 blob（两阶段删除第二阶段）
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::FolderRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
     }
 
     /// 永久删除文件夹（使用现有连接）
@@ -1622,8 +1631,12 @@ impl VfsFolderRepo {
 
             match canonical_item_type.as_str() {
                 "note" => VfsNoteRepo::purge_note_with_conn(conn, &item.item_id)?,
-                "file" => VfsFileRepo::purge_file_with_conn(conn, blobs_dir, &item.item_id)?,
-                "exam" => VfsExamRepo::purge_exam_sheet_with_conn(conn, &item.item_id)?,
+                // ★ 2026-06-12（第二轮审阅）："image" 与 "file" 同存 files 表。
+                // 旧实现漏掉 image 分支 → 删除文件夹树时图片附件实体+blob 全部泄漏。
+                "file" | "image" => {
+                    VfsFileRepo::purge_file_with_conn(conn, blobs_dir, &item.item_id)?
+                }
+                "exam" => VfsExamRepo::purge_exam_sheet_with_conn(conn, blobs_dir, &item.item_id)?,
                 "translation" => {
                     VfsTranslationRepo::purge_translation_with_conn(conn, &item.item_id)?
                 }
@@ -2748,10 +2761,7 @@ mod tests {
 
     /// 创建测试数据库（使用 VfsDatabase::new 自动执行迁移）
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create database");
-        // VfsDatabase::new 已经执行了所有迁移，包括 011_remove_subject
-        (temp_dir, db)
+        crate::vfs::database::setup_migrated_test_db()
     }
 
     #[test]
@@ -3068,5 +3078,73 @@ mod tests {
             )
             .expect("Failed to count resources");
         assert_eq!(remaining_resources, 0);
+    }
+
+    /// ★ 2026-06-12（第二轮审阅）回归测试：
+    /// 文件夹树 purge 必须处理 item_type='image' 的图片附件（旧实现漏删致实体+blob 泄漏）
+    #[test]
+    fn test_purge_folder_tree_handles_image_items() {
+        let (_temp_dir, db) = setup_test_db();
+
+        let folder = VfsFolder::new("图片文件夹".to_string(), None, None, None);
+        VfsFolderRepo::create_folder(&db, &folder).expect("create folder");
+
+        // 创建带 blob 的图片附件（files 表 + folder_items.item_type='image'）
+        let blob = crate::vfs::repos::VfsBlobRepo::store_blob(
+            &db,
+            b"png-bytes",
+            Some("image/png"),
+            Some("png"),
+        )
+        .expect("store blob");
+
+        let image = crate::vfs::repos::VfsFileRepo::create_file_in_folder(
+            &db,
+            "sha256_image_purge_test",
+            "截图.png",
+            9,
+            "image",
+            Some("image/png"),
+            Some(&blob.hash),
+            None,
+            Some(&folder.id),
+        )
+        .expect("create image file");
+
+        // 模拟附件上传链路写入的 item_type='image'
+        {
+            let conn = db.get_conn_safe().unwrap();
+            conn.execute(
+                "UPDATE folder_items SET item_type = 'image' WHERE item_id = ?1",
+                params![image.id],
+            )
+            .unwrap();
+        }
+
+        VfsFolderRepo::purge_folder(&db, &folder.id).expect("purge folder");
+
+        let conn = db.get_conn_safe().unwrap();
+        let remaining_files: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM files WHERE id = ?1",
+                params![image.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(remaining_files, 0, "image file row must be purged with folder");
+
+        let blob_rc: Option<i32> = conn
+            .query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                params![blob.hash],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert!(
+            blob_rc.is_none() || blob_rc == Some(0),
+            "image blob must be dereferenced, got {:?}",
+            blob_rc
+        );
     }
 }

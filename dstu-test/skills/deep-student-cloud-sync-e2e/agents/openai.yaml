@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deep Student Cloud Sync E2E"
+  short_description: "Run real UI-driven cloud sync E2E tests with WebDAV fixtures and assertions."
+  default_prompt: "Use this skill when you need to test Deep Student cloud sync through real Tauri UI operations, tauri-lab WebDAV fixtures, SQLite/WebDAV assertions, logs, and evidence snapshots."

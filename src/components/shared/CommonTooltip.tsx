@@ -28,6 +28,11 @@ export interface CommonTooltipProps {
   maxWidth?: number | string;
   /** 自定义className */
   className?: string;
+  /**
+   * 快捷键角标：在提示文案右侧渲染 kbd 键位（如 "⌘K" 或 ["⌘", "K"]）。
+   * 用于让键位提示渗透到各处 Tooltip（借鉴 OpenCode 界面处处标键位）。
+   */
+  shortcut?: string | string[];
   /** 子元素 */
   children: React.ReactElement;
 }
@@ -56,6 +61,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   delay = DEFAULT_TOOLTIP_DELAY_MS,
   maxWidth = 300,
   className = '',
+  shortcut,
   children,
 }) => {
   const tooltipId = useId();
@@ -64,8 +70,12 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // 触屏支持：记录最近一次 pointer 类型，touch tap 时切换 tooltip（无自身点击行为的元素）
+  const lastPointerTypeRef = useRef<string>('');
   const { dismissTooltips, tooltipDismissVersion, tooltipsSuppressed } = useOverlayCoordinator();
   const isTooltipDisabled = disabled || tooltipsSuppressed;
+  // 子元素是否有自身点击行为（按钮类）。纯提示元素在触屏上 tap 即可查看提示
+  const childHasOwnClick = typeof children.props.onClick === 'function';
 
   const clearShowTimer = useCallback(() => {
     if (timerRef.current) {
@@ -210,24 +220,56 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     }
   }, [dismissTooltip, isTooltipDisabled]);
 
+  // 触屏 tap 外部区域关闭 tooltip
+  useEventRegistry(isVisible ? [
+    {
+      target: 'window',
+      type: 'pointerdown',
+      listener: ((event: PointerEvent) => {
+        const target = event.target as Node | null;
+        if (!target) return;
+        if (triggerRef.current?.contains(target)) return;
+        if (tooltipRef.current?.contains(target)) return;
+        dismissTooltip();
+      }) as EventListener,
+    },
+  ] : [], [dismissTooltip, isVisible]);
+
   // 克隆子元素并添加事件处理 + aria-describedby 关联
   const trigger = React.cloneElement(children, {
     ref: triggerRef,
     'aria-describedby': isVisible ? tooltipId : undefined,
     onMouseEnter: (e: React.MouseEvent) => {
-      handleMouseEnter();
+      // 触屏 tap 会合成 mouseenter，交由 click 的 toggle 逻辑处理
+      if (lastPointerTypeRef.current !== 'touch') {
+        handleMouseEnter();
+      }
       children.props.onMouseEnter?.(e);
     },
     onMouseLeave: (e: React.MouseEvent) => {
-      handleMouseLeave();
+      if (lastPointerTypeRef.current !== 'touch') {
+        handleMouseLeave();
+      }
       children.props.onMouseLeave?.(e);
     },
     onPointerDown: (e: React.PointerEvent) => {
-      handleTriggerActivation();
+      lastPointerTypeRef.current = e.pointerType;
+      // 触屏点击纯提示元素时不立即关闭（交由 click 切换显示）
+      if (!(e.pointerType === 'touch' && !childHasOwnClick)) {
+        handleTriggerActivation();
+      }
       children.props.onPointerDown?.(e);
     },
     onClick: (e: React.MouseEvent) => {
-      handleTriggerActivation();
+      if (lastPointerTypeRef.current === 'touch' && !childHasOwnClick) {
+        // 触屏：tap 切换 tooltip（无延迟），让纯提示内容在触屏可达
+        if (!isTooltipDisabled && content) {
+          clearShowTimer();
+          setIsVisible((prev) => !prev);
+        }
+      } else {
+        handleTriggerActivation();
+      }
       children.props.onClick?.(e);
     },
     onKeyDown: (e: React.KeyboardEvent) => {
@@ -264,7 +306,18 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
       aria-hidden={!isVisible}
     >
       <div className="common-tooltip__content">
-        {content}
+        {shortcut ? (
+          <span className="common-tooltip__row">
+            <span>{content}</span>
+            <span className="common-tooltip__shortcut" aria-hidden="true">
+              {(Array.isArray(shortcut) ? shortcut : [shortcut]).map((key, index) => (
+                <kbd key={index} className="common-tooltip__kbd">{key}</kbd>
+              ))}
+            </span>
+          </span>
+        ) : (
+          content
+        )}
       </div>
       {showArrow && <div className="common-tooltip__arrow" />}
     </div>

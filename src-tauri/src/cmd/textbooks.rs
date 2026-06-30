@@ -1,17 +1,17 @@
 //! 教材库命令模块
 //! 从 commands.rs 剥离 (原始行号: 7077-7400)
 
-use crate::commands::{read_file_bytes, AppState};
+use crate::commands::AppState;
 use crate::document_parser::DocumentParser;
 use crate::models::AppError;
-use crate::textbooks_db::{ListQuery as TextbooksListQuery, Textbook as TextbookDto, TextbooksDb};
+use crate::textbooks_db::{Textbook as TextbookDto, TextbooksDb};
 use crate::unified_file_manager;
 use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPreviewConfig};
 // ★ 2026-02 移除：VfsIndexService 和 UnitBuildInput 不再需要
 // sync_resource_units 调用已移除，由 Pipeline 统一处理
 use crate::vfs::{PdfProcessingService, ProcessingStage};
-use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use rusqlite::OptionalExtension;
+use serde::Serialize;
 use std::sync::Arc;
 use tauri::{Emitter, State, Window};
 use tracing::{info, warn};
@@ -189,12 +189,15 @@ pub async fn textbooks_add(
         );
 
         // ★ 校验提前：在哈希和复制之前验证扩展名
+        // ★ 2026-06-12（审阅问题 R2）：补齐 "markdown"/"xlsb"。
+        // 前端 DOCUMENT_EXTENSIONS 含这两个扩展名且 DocumentParser 支持解析，
+        // 旧白名单缺失导致同一拖拽批次中它们被静默拒绝。
         let extension = match resolved_ext {
             Some(ref ext) if ext == "pdf" => ext.clone(),
             Some(ref ext) => {
                 let supported_extensions = [
-                    "docx", "txt", "md", "xlsx", "xls", "ods", "html", "htm", "pptx", "epub",
-                    "rtf", "csv", "json", "xml",
+                    "docx", "txt", "md", "markdown", "xlsx", "xls", "xlsb", "ods", "html", "htm",
+                    "pptx", "epub", "rtf", "csv", "json", "xml",
                 ];
                 if supported_extensions.contains(&ext.as_str()) {
                     ext.clone()
@@ -261,7 +264,55 @@ pub async fn textbooks_add(
                 crate::vfs::VfsTextbookRepo::restore_textbook(vfs_db, &tb.id)
                     .map_err(|e| AppError::database(format!("VFS 恢复教材失败: {}", e)))?;
                 watch_event_type = "restored";
+
+                // ★ 2026-06-12（审阅问题 M7）：从回收站恢复时同步更新为本次导入的文件名。
+                // 旧行为静默复用旧名称，用户重命名后再导入会看到"消失的文件"。
+                if tb.file_name != display_name {
+                    if let Ok(conn) = vfs_db.get_conn_safe() {
+                        if let Err(e) = crate::vfs::VfsTextbookRepo::rename_textbook_with_conn(
+                            &conn,
+                            &tb.id,
+                            display_name,
+                        ) {
+                            warn!("[Textbooks] 恢复后重命名失败: {} ({})", tb.id, e);
+                        }
+                    }
+                }
             }
+
+            // ★ 2026-06-12（审阅问题 R1）：老记录若缺少 blob 内容，趁重新导入自愈补存。
+            if tb.blob_hash.is_none() {
+                let vfs_db_heal = std::sync::Arc::clone(vfs_db);
+                let window_heal = window.clone();
+                let src_heal = src.to_string();
+                let ext_heal = extension.clone();
+                let tb_id_heal = tb.id.clone();
+                let heal_result = tauri::async_runtime::spawn_blocking(move || {
+                    let bytes = unified_file_manager::read_all_bytes(&window_heal, &src_heal)?;
+                    let conn = vfs_db_heal
+                        .get_conn_safe()
+                        .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+                    crate::vfs::VfsTextbookRepo::attach_blob_if_missing_with_conn(
+                        &conn,
+                        vfs_db_heal.blobs_dir(),
+                        &tb_id_heal,
+                        &bytes,
+                        None,
+                        Some(&ext_heal),
+                    )
+                    .map_err(|e| AppError::database(format!("补存 blob 失败: {}", e)))
+                })
+                .await;
+                match heal_result {
+                    Ok(Ok(true)) => {
+                        info!("[Textbooks] Healed blob for existing textbook {}", tb.id)
+                    }
+                    Ok(Ok(false)) => {}
+                    Ok(Err(e)) => warn!("[Textbooks] Blob heal failed for {}: {}", tb.id, e),
+                    Err(e) => warn!("[Textbooks] Blob heal task panicked for {}: {}", tb.id, e),
+                }
+            }
+
             attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
             emit_textbook_watch_event(&window, &tb.id, watch_event_type);
             start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
@@ -270,132 +321,191 @@ pub async fn textbooks_add(
             continue;
         }
 
-        let size = unified_file_manager::get_file_size(&window, src).unwrap_or(0);
         let file_name = display_name.to_string();
 
-        // 阶段3：根据文件类型处理
-        let conn = vfs_db
-            .get_conn_safe()
-            .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+        // ★ 2026-06-12（审阅问题 R1/R4/R5 重构）：
+        // - R1: 文件内容一次性读入并复制进 VFS blob 存储（旧实现只记 original_path，
+        //   原文件移动/外置盘弹出后资源永久失效）
+        // - R4: 复用同一份字节做哈希后的 blob 写入与解析，不再重复读盘
+        // - R5: blob 写入 + PDF 渲染 + 文档解析整体放入 spawn_blocking，
+        //   不再阻塞 tokio 异步线程（渲染 50 页大 PDF 可达数十秒）
+        emit_progress(&window, &file_name, "copying", None, None, 10, None);
 
-        let blobs_dir = vfs_db.blobs_dir();
+        struct HeavyOutcome {
+            blob_hash: Option<String>,
+            preview_json_str: Option<String>,
+            extracted_text: Option<String>,
+            page_count: Option<i32>,
+            size: u64,
+        }
 
-        let (preview_json_str, extracted_text, page_count) = if extension == "pdf" {
-            // PDF 文件：使用 PDF 预渲染流程
+        let vfs_db_task = std::sync::Arc::clone(vfs_db);
+        let window_task = window.clone();
+        let src_task = src.to_string();
+        let file_name_task = file_name.clone();
+        let extension_task = extension.clone();
+        let is_pdf = extension == "pdf";
+
+        if is_pdf {
             emit_progress(&window, &file_name, "rendering", Some(0), None, 15, None);
-            let pdf_bytes = read_file_bytes(window.clone(), src.to_string())
-                .await
-                .map_err(|e| {
-                    emit_progress(
-                        &window,
-                        &file_name,
-                        "error",
-                        None,
-                        None,
-                        0,
-                        Some(format!("读取 PDF 失败: {}", e)),
-                    );
-                    AppError::file_system(format!("读取 PDF 文件失败: {}", e))
-                })?;
-
-            let window_clone = window.clone();
-            let file_name_clone = file_name.clone();
-            let progress_callback = move |current_page: usize, total_pages: usize| {
-                let render_progress =
-                    ((current_page as f32 / total_pages as f32) * 70.0) as u8 + 15;
-                let payload = TextbookImportProgress {
-                    file_name: file_name_clone.clone(),
-                    stage: "rendering".to_string(),
-                    current_page: Some(current_page),
-                    total_pages: Some(total_pages),
-                    progress: render_progress.min(85),
-                    error: None,
-                };
-                if let Err(err) = window_clone.emit("textbook-import-progress", &payload) {
-                    warn!(
-                        "[Textbooks] 发送渲染进度事件失败: file={}, page={}/{}, err={}",
-                        file_name_clone, current_page, total_pages, err
-                    );
-                }
-            };
-
-            match render_pdf_preview_with_progress(
-                &conn,
-                &blobs_dir,
-                &pdf_bytes,
-                &PdfPreviewConfig::default(),
-                progress_callback,
-            ) {
-                Ok(result) => {
-                    let preview_str = result
-                        .preview_json
-                        .as_ref()
-                        .and_then(|p| serde_json::to_string(p).ok());
-                    info!(
-                        "[Textbooks] PDF preview rendered: {} pages, text_len={}, has_preview={}",
-                        result.page_count,
-                        result.extracted_text.as_ref().map(|t| t.len()).unwrap_or(0),
-                        preview_str.is_some()
-                    );
-                    (
-                        preview_str,
-                        result.extracted_text,
-                        Some(result.page_count as i32),
-                    )
-                }
-                Err(e) => {
-                    warn!(
-                        "[Textbooks] PDF preview failed, storing without preview: {}",
-                        e
-                    );
-                    (None, None, None)
-                }
-            }
         } else {
-            // 非 PDF 文件：使用 DocumentParser 提取文本
             emit_progress(&window, &file_name, "parsing", None, None, 15, None);
-            let parser = DocumentParser::new();
-            match parser.extract_text_from_path(src) {
-                Ok(text) => {
-                    info!(
-                        "[Textbooks] Document text extracted: {} chars from {}",
-                        text.len(),
-                        file_name
-                    );
-                    (None, Some(text), Some(1))
-                }
-                Err(e) => {
-                    warn!(
-                        "[Textbooks] Document parsing failed for {}: {}",
-                        file_name, e
-                    );
-                    emit_progress(
-                        &window,
-                        &file_name,
-                        "error",
-                        None,
-                        None,
-                        0,
-                        Some(format!("文档解析失败: {}", e)),
-                    );
-                    skipped_reasons.push(format!("{}: 文档解析失败 ({})", display_name, e));
-                    continue;
-                }
+        }
+
+        let heavy = tauri::async_runtime::spawn_blocking(
+            move || -> std::result::Result<HeavyOutcome, AppError> {
+                let file_bytes =
+                    unified_file_manager::read_all_bytes(&window_task, &src_task)
+                        .map_err(|e| AppError::file_system(format!("读取文件失败: {}", e)))?;
+                let size = file_bytes.len() as u64;
+
+                let conn = vfs_db_task
+                    .get_conn_safe()
+                    .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
+                let blobs_dir = vfs_db_task.blobs_dir();
+
+                // 1. 复制内容进 VFS blob（内容寻址，重复导入自动去重）
+                let blob = crate::vfs::repos::VfsBlobRepo::store_blob_with_conn(
+                    &conn,
+                    blobs_dir,
+                    &file_bytes,
+                    None,
+                    Some(&extension_task),
+                )
+                .map_err(|e| AppError::database(format!("复制文件进 VFS 失败: {}", e)))?;
+
+                // 2. 渲染 / 解析
+                let (preview_json_str, extracted_text, page_count) = if is_pdf {
+                    let window_clone = window_task.clone();
+                    let file_name_clone = file_name_task.clone();
+                    let progress_callback = move |current_page: usize, total_pages: usize| {
+                        let render_progress =
+                            ((current_page as f32 / total_pages as f32) * 70.0) as u8 + 15;
+                        let payload = TextbookImportProgress {
+                            file_name: file_name_clone.clone(),
+                            stage: "rendering".to_string(),
+                            current_page: Some(current_page),
+                            total_pages: Some(total_pages),
+                            progress: render_progress.min(85),
+                            error: None,
+                        };
+                        if let Err(err) =
+                            window_clone.emit("textbook-import-progress", &payload)
+                        {
+                            warn!(
+                                "[Textbooks] 发送渲染进度事件失败: file={}, page={}/{}, err={}",
+                                file_name_clone, current_page, total_pages, err
+                            );
+                        }
+                    };
+
+                    match render_pdf_preview_with_progress(
+                        &conn,
+                        blobs_dir,
+                        &file_bytes,
+                        &PdfPreviewConfig::default(),
+                        progress_callback,
+                    ) {
+                        Ok(result) => {
+                            let preview_str = result
+                                .preview_json
+                                .as_ref()
+                                .and_then(|p| serde_json::to_string(p).ok());
+                            info!(
+                                "[Textbooks] PDF preview rendered: {} pages, text_len={}, has_preview={}",
+                                result.page_count,
+                                result.extracted_text.as_ref().map(|t| t.len()).unwrap_or(0),
+                                preview_str.is_some()
+                            );
+                            (
+                                preview_str,
+                                result.extracted_text,
+                                Some(result.page_count as i32),
+                            )
+                        }
+                        Err(e) => {
+                            warn!(
+                                "[Textbooks] PDF preview failed, storing without preview: {}",
+                                e
+                            );
+                            (None, None, None)
+                        }
+                    }
+                } else {
+                    let parser = DocumentParser::new();
+                    match parser.extract_text_from_bytes(&file_name_task, file_bytes) {
+                        Ok(text) => {
+                            info!(
+                                "[Textbooks] Document text extracted: {} chars from {}",
+                                text.len(),
+                                file_name_task
+                            );
+                            (None, Some(text), Some(1))
+                        }
+                        Err(e) => {
+                            return Err(AppError::file_system(format!("文档解析失败: {}", e)));
+                        }
+                    }
+                };
+
+                Ok(HeavyOutcome {
+                    blob_hash: Some(blob.hash),
+                    preview_json_str,
+                    extracted_text,
+                    page_count,
+                    size,
+                })
+            },
+        )
+        .await;
+
+        let outcome = match heavy {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(e)) => {
+                warn!("[Textbooks] Processing failed for {}: {}", file_name, e);
+                emit_progress(
+                    &window,
+                    &file_name,
+                    "error",
+                    None,
+                    None,
+                    0,
+                    Some(e.to_string()),
+                );
+                skipped_reasons.push(format!("{}: {}", display_name, e));
+                continue;
+            }
+            Err(e) => {
+                warn!("[Textbooks] Processing task panicked for {}: {}", file_name, e);
+                emit_progress(
+                    &window,
+                    &file_name,
+                    "error",
+                    None,
+                    None,
+                    0,
+                    Some(format!("处理任务异常终止: {}", e)),
+                );
+                skipped_reasons.push(format!("{}: 处理任务异常终止", display_name));
+                continue;
             }
         };
 
         // 阶段4：入库
         emit_progress(&window, &file_name, "saving", None, None, 90, None);
+        let conn = vfs_db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
         let tb = crate::vfs::VfsTextbookRepo::create_textbook_with_preview(
             &conn,
             &sha256,
             &file_name,
-            size as i64,
-            None,      // blob_hash
-            Some(src), // original_path
-            preview_json_str.as_deref(),
-            extracted_text.as_deref(),
-            page_count,
+            outcome.size as i64,
+            outcome.blob_hash.as_deref(),
+            Some(src), // original_path 保留为来源提示（打开所在目录等用途）
+            outcome.preview_json_str.as_deref(),
+            outcome.extracted_text.as_deref(),
+            outcome.page_count,
         )
         .map_err(|e| {
             emit_progress(
@@ -446,356 +556,123 @@ pub async fn textbooks_add(
     Ok(out)
 }
 
+/// ★ 2026-06-12（审阅 UI/UX：失联重新关联）
+/// 重新关联失联的教材/文件：校验所选文件内容哈希与记录一致后更新 original_path，
+/// 并把内容补存进 VFS blob（彻底自愈，之后不再依赖外部路径）。
 #[tauri::command]
-pub async fn textbooks_list(
-    state: State<'_, AppState>,
-    query: Option<TextbooksListQuery>,
-) -> Result<Vec<TextbookDto>> {
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-
-    let q = query.unwrap_or(TextbooksListQuery {
-        q: None,
-        favorite: None,
-        status: None,
-        limit: Some(500),
-        offset: Some(0),
-        sort_by: Some("time".into()),
-        order: Some("desc".into()),
-    });
-
-    let limit = q.limit.unwrap_or(500) as u32;
-    let offset = q.offset.unwrap_or(0) as u32;
-    // VFS 版本：include_global = true 以包含全局教材
-    let vfs_items = TextbooksDb::list_vfs(vfs_db, None, true, limit, offset)?;
-
-    // 转换为旧版 TextbookDto 以保持兼容性
-    let items: Vec<TextbookDto> = vfs_items.into_iter().map(|v| v.to_textbook()).collect();
-    Ok(items)
-}
-
-#[tauri::command]
-pub async fn textbooks_remove(
+pub async fn textbooks_relink(
     window: Window,
     state: State<'_, AppState>,
     id: String,
-) -> Result<bool> {
-    warn!(
-        "[Textbooks] textbooks_remove is deprecated; prefer DSTU trash/purge flows for new callers. id={}",
-        id
-    );
-    // ★ 切换到 VFS 版本
+    new_path: String,
+) -> Result<TextbookDto> {
     let vfs_db = state
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
-    let deleted = TextbooksDb::delete_vfs(vfs_db, &id)?;
+    let tb = crate::vfs::VfsTextbookRepo::get_textbook(vfs_db, &id)
+        .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
+        .ok_or_else(|| AppError::not_found(format!("教材不存在: {}", id)))?;
 
-    if deleted {
-        emit_textbook_watch_event(&window, &id, "purged");
+    // 哈希校验放入 blocking 线程（大文件读取耗时）
+    let window_hash = window.clone();
+    let path_hash = new_path.clone();
+    let new_sha256 = tauri::async_runtime::spawn_blocking(move || {
+        unified_file_manager::hash_file_sha256(&window_hash, &path_hash)
+    })
+    .await
+    .map_err(|e| AppError::file_system(format!("哈希计算任务异常: {}", e)))??;
+
+    if new_sha256 != tb.sha256 {
+        return Err(AppError::validation(
+            "所选文件与原文件内容不一致，请选择同一个文件",
+        ));
     }
 
-    Ok(deleted)
-}
+    // 更新 original_path + 自愈补存 blob
+    let vfs_db_task = std::sync::Arc::clone(vfs_db);
+    let window_task = window.clone();
+    let new_path_task = new_path.clone();
+    let id_task = id.clone();
+    let extension = std::path::Path::new(&tb.file_name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
 
-/// 采用已有文件（不复制），直接计算哈希并入库
-#[tauri::command]
-pub async fn textbooks_adopt(
-    window: Window,
-    state: State<'_, AppState>,
-    pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
-    paths: Vec<String>,
-    folder_id: Option<String>,
-) -> Result<Vec<TextbookDto>> {
-    if paths.is_empty() {
-        return Ok(vec![]);
-    }
-
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-
-    let mut out: Vec<TextbookDto> = Vec::new();
-    for p in paths {
-        let size = unified_file_manager::get_file_size(&window, &p)?;
-        if size == 0 {
-            continue;
-        }
-        let sha256 = unified_file_manager::hash_file_sha256(&window, &p)?;
-        let (resolved_name, resolved_ext) = unified_file_manager::resolve_file_info(&window, &p);
-        // ★ 移动端修复：不透明 document ID → 生成友好文件名
-        let uri_raw_name = unified_file_manager::extract_file_name(&p);
-        let file_name = if unified_file_manager::is_opaque_document_id(&uri_raw_name) {
-            let ext_suffix = resolved_ext
-                .as_ref()
-                .map(|e| format!(".{}", e))
-                .unwrap_or_default();
-            format!(
-                "导入文档_{}{}",
-                Utc::now().format("%Y%m%d_%H%M%S"),
-                ext_suffix
-            )
-        } else {
-            resolved_name
-        };
-        let extension = resolved_ext.unwrap_or_else(|| {
-            std::path::Path::new(&file_name)
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .unwrap_or_default()
-                .to_lowercase()
-        });
-
-        if let Some(tb) = crate::vfs::VfsTextbookRepo::get_by_sha256(vfs_db, &sha256)
-            .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
-        {
-            let mut watch_event_type = "created";
-            if tb.status != "active" {
-                crate::vfs::VfsTextbookRepo::restore_textbook(vfs_db, &tb.id)
-                    .map_err(|e| AppError::database(format!("VFS 恢复教材失败: {}", e)))?;
-                watch_event_type = "restored";
-            }
-            attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
-            emit_textbook_watch_event(&window, &tb.id, watch_event_type);
-            start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
-            out.push(tb.to_textbook());
-            continue;
-        }
-
-        let conn = vfs_db
+    tauri::async_runtime::spawn_blocking(move || -> std::result::Result<(), AppError> {
+        let conn = vfs_db_task
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
-        let blobs_dir = vfs_db.blobs_dir();
 
-        let (preview_json_str, extracted_text, page_count) = if extension == "pdf" {
-            let pdf_bytes = read_file_bytes(window.clone(), p.clone())
-                .await
-                .map_err(|e| AppError::file_system(format!("读取 PDF 文件失败: {}", e)))?;
-
-            match render_pdf_preview_with_progress(
-                &conn,
-                &blobs_dir,
-                &pdf_bytes,
-                &PdfPreviewConfig::default(),
-                |_current_page, _total_pages| {},
-            ) {
-                Ok(result) => (
-                    result
-                        .preview_json
-                        .as_ref()
-                        .and_then(|preview| serde_json::to_string(preview).ok()),
-                    result.extracted_text,
-                    Some(result.page_count as i32),
-                ),
-                Err(e) => {
-                    warn!(
-                        "[Textbooks] PDF preview failed during adopt, storing without preview: {}",
-                        e
-                    );
-                    (None, None, None)
-                }
-            }
-        } else {
-            let parser = DocumentParser::new();
-            match parser.extract_text_from_path(&p) {
-                Ok(text) => (None, Some(text), Some(1)),
-                Err(e) => {
-                    warn!(
-                        "[Textbooks] Document parsing failed during adopt for {}: {}",
-                        file_name, e
-                    );
-                    (None, None, None)
-                }
-            }
-        };
-
-        let tb = crate::vfs::VfsTextbookRepo::create_textbook_with_preview(
-            &conn,
-            &sha256,
-            &file_name,
-            size as i64,
-            None,     // blob_hash
-            Some(&p), // original_path
-            preview_json_str.as_deref(),
-            extracted_text.as_deref(),
-            page_count,
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        conn.execute(
+            "UPDATE files SET original_path = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![new_path_task, now, id_task],
         )
-        .map_err(|e| AppError::database(format!("VFS 创建教材失败: {}", e)))?;
+        .map_err(|e| AppError::database(format!("更新 original_path 失败: {}", e)))?;
 
-        attach_textbook_to_folder(vfs_db, &tb.id, folder_id.as_deref());
+        let bytes = unified_file_manager::read_all_bytes(&window_task, &new_path_task)?;
+        crate::vfs::VfsTextbookRepo::attach_blob_if_missing_with_conn(
+            &conn,
+            vfs_db_task.blobs_dir(),
+            &id_task,
+            &bytes,
+            None,
+            extension.as_deref(),
+        )
+        .map_err(|e| AppError::database(format!("补存 blob 失败: {}", e)))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| AppError::file_system(format!("重新关联任务异常: {}", e)))??;
 
-        emit_textbook_watch_event(&window, &tb.id, "created");
-        start_textbook_pipeline_if_needed(pdf_processing_service.inner(), &tb.id, &extension);
+    let updated = crate::vfs::VfsTextbookRepo::get_textbook(vfs_db, &id)
+        .map_err(|e| AppError::database(format!("VFS 查询教材失败: {}", e)))?
+        .ok_or_else(|| AppError::not_found(format!("教材不存在: {}", id)))?;
 
-        out.push(tb.to_textbook());
-    }
-    Ok(out)
+    emit_textbook_watch_event(&window, &id, "updated");
+    Ok(updated.to_textbook())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PurgeTrashOptions {
-    pub delete_files: Option<bool>,
-}
-
-/// 恢复回收站中的教材
+/// ★ 2026-06-12（审阅问题 R1/R4 配套）
+/// 查询 files 行对应的 VFS blob 绝对路径（若存在）。
+/// 前端用它把 PDF 预览切到 pdfstream:// 流式加载，避免整文件 base64 过 IPC。
 #[tauri::command]
-pub async fn textbooks_recover(state: State<'_, AppState>, id: String) -> Result<bool> {
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-    crate::vfs::VfsTextbookRepo::restore_textbook(vfs_db, &id)
-        .map_err(|e| AppError::database(format!("VFS 恢复教材失败: {}", e)))?;
-    Ok(true)
-}
-
-/// 清空回收站（可选物理删除文件）
-#[tauri::command]
-pub async fn textbooks_purge_trash(
-    _window: Window,
-    state: State<'_, AppState>,
-    options: Option<PurgeTrashOptions>,
-) -> Result<serde_json::Value> {
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-
-    let delete_files = options.and_then(|o| o.delete_files).unwrap_or(false);
-    let mut deleted_files: Vec<String> = Vec::new();
-
-    if delete_files {
-        // 先获取所有已删除的教材，删除物理文件
-        let trashed = crate::vfs::VfsTextbookRepo::list_deleted_textbooks(vfs_db, 10000, 0)
-            .map_err(|e| AppError::database(format!("VFS 列出回收站失败: {}", e)))?;
-        for tb in &trashed {
-            if let Some(ref path) = tb.original_path {
-                // content:// 等虚拟 URI 无法通过 std::fs 操作，跳过物理删除
-                if unified_file_manager::is_virtual_uri(path) {
-                    continue;
-                }
-                if std::path::Path::new(path).exists() {
-                    if let Err(e) = std::fs::remove_file(path) {
-                        warn!("[Textbooks] 删除文件失败: {} ({})", path, e);
-                    } else {
-                        deleted_files.push(path.clone());
-                    }
-                }
-            }
-        }
-    }
-
-    let purged = crate::vfs::VfsFileRepo::purge_deleted_files(vfs_db)
-        .map_err(|e| AppError::database(format!("VFS 清空回收站失败: {}", e)))?;
-    Ok(serde_json::json!({ "purged": purged, "deleted_files": deleted_files }))
-}
-
-/// 永久删除单个教材（可选物理删除）
-#[tauri::command]
-pub async fn textbooks_delete_permanent(
-    _window: Window,
+pub async fn vfs_get_file_blob_path(
     state: State<'_, AppState>,
     id: String,
-    delete_file: Option<bool>,
-) -> Result<bool> {
-    // ★ 切换到 VFS 版本
+) -> Result<Option<String>> {
     let vfs_db = state
         .vfs_db
         .as_ref()
         .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
 
-    // 如果需要删除物理文件，先获取教材信息
-    if delete_file.unwrap_or(false) {
-        if let Ok(Some(tb)) = crate::vfs::VfsTextbookRepo::get_textbook(vfs_db, &id) {
-            if let Some(ref path) = tb.original_path {
-                // content:// 等虚拟 URI 无法通过 std::fs 操作，跳过物理删除
-                if !unified_file_manager::is_virtual_uri(path) {
-                    let p = std::path::Path::new(path);
-                    if p.exists() {
-                        if let Err(err) = std::fs::remove_file(p) {
-                            warn!(
-                                "[Textbooks] 永久删除教材时清理文件失败: {} ({})",
-                                p.display(),
-                                err
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let conn = vfs_db
+        .get_conn_safe()
+        .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
 
-    crate::vfs::VfsTextbookRepo::purge_textbook_with_folder_item(vfs_db, &id)
-        .map_err(|e| AppError::database(format!("VFS 永久删除教材失败: {}", e)))?;
-    Ok(true)
-}
+    let blob_hash: Option<Option<String>> = conn
+        .query_row(
+            "SELECT blob_hash FROM files WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| AppError::database(format!("查询 blob_hash 失败: {}", e)))?;
 
-/// 更新教材阅读进度（打开时间和页码）
-#[tauri::command]
-pub async fn textbooks_update_reading_progress(
-    state: State<'_, AppState>,
-    id: String,
-    last_page: Option<i64>,
-) -> Result<bool> {
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-    let params = crate::textbooks_db::VfsUpdateTextbookParams {
-        last_page: last_page.map(|p| p as i32),
-        ..Default::default()
+    let Some(Some(hash)) = blob_hash else {
+        return Ok(None);
     };
-    TextbooksDb::update_vfs(vfs_db, &id, params)?;
-    Ok(true)
-}
 
-/// 设置教材收藏状态
-#[tauri::command]
-pub async fn textbooks_set_favorite(
-    state: State<'_, AppState>,
-    id: String,
-    favorite: bool,
-) -> Result<bool> {
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-    let params = crate::textbooks_db::VfsUpdateTextbookParams {
-        favorite: Some(favorite),
-        ..Default::default()
-    };
-    TextbooksDb::update_vfs(vfs_db, &id, params)?;
-    Ok(true)
-}
+    let path = crate::vfs::VfsBlobRepo::get_blob_path_with_conn(&conn, vfs_db.blobs_dir(), &hash)
+        .map_err(|e| AppError::database(format!("查询 blob 路径失败: {}", e)))?;
 
-/// 更新教材页数
-#[tauri::command]
-pub async fn textbooks_update_page_count(
-    state: State<'_, AppState>,
-    id: String,
-    page_count: i64,
-) -> Result<bool> {
-    // ★ 切换到 VFS 版本
-    let vfs_db = state
-        .vfs_db
-        .as_ref()
-        .ok_or_else(|| AppError::configuration("VFS database not configured"))?;
-    let params = crate::textbooks_db::VfsUpdateTextbookParams {
-        page_count: Some(page_count as i32),
-        ..Default::default()
-    };
-    TextbooksDb::update_vfs(vfs_db, &id, params)?;
-    Ok(true)
+    Ok(path
+        .filter(|p| p.exists())
+        .map(|p| p.to_string_lossy().to_string()))
 }
 
 /// 更新教材书签

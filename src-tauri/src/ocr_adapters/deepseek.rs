@@ -151,57 +151,66 @@ struct DeepseekGroundingSpan {
 }
 
 /// 解析 DeepSeek-OCR 的 grounding 输出
+///
+/// ★ 2026-06-12（代理 3 审阅 C1）：扫描循环改为线性推进。
+/// 旧实现在响应不含 `<|ref|>` 或标记残缺时按 `pos += 1` 逐字节重扫剩余全文,
+/// 最坏 O(n²)（8K token 纯文本响应可烧数秒 CPU）。现在找不到下一个标记直接
+/// 结束,残缺标记则跳过该标记继续,整体 O(n)。
 fn parse_deepseek_grounding(raw: &str) -> Vec<DeepseekGroundingSpan> {
     let mut spans = Vec::new();
     let mut pos = 0;
     let text = raw.as_bytes();
 
     while pos < text.len() {
-        // 查找 <|ref|>
-        if let Some(ref_start) = find_substr(text, b"<|ref|>", pos) {
-            let label_start = ref_start + 7; // len("<|ref|>") = 7
+        // 查找 <|ref|>；不存在则不会再有任何片段，直接结束
+        let Some(ref_start) = find_substr(text, b"<|ref|>", pos) else {
+            break;
+        };
+        let label_start = ref_start + 7; // len("<|ref|>") = 7
 
-            // 查找 <|/ref|>
-            if let Some(ref_end) = find_substr(text, b"<|/ref|>", label_start) {
-                let label = safe_slice(raw, label_start, ref_end).to_string();
+        // 查找 <|/ref|>；缺失则跳过当前 <|ref|> 标记继续向后
+        let Some(ref_end) = find_substr(text, b"<|/ref|>", label_start) else {
+            pos = label_start;
+            continue;
+        };
+        let label = safe_slice(raw, label_start, ref_end).to_string();
 
-                // 查找 <|det|>
-                let det_search_start = ref_end + 8; // len("<|/ref|>") = 8
-                if let Some(det_start) = find_substr(text, b"<|det|>", det_search_start) {
-                    let coords_start = det_start + 7; // len("<|det|>") = 7
+        // 查找 <|det|>；缺失则从 <|/ref|> 之后继续找下一个片段
+        let det_search_start = ref_end + 8; // len("<|/ref|>") = 8
+        let Some(det_start) = find_substr(text, b"<|det|>", det_search_start) else {
+            pos = det_search_start;
+            continue;
+        };
+        let coords_start = det_start + 7; // len("<|det|>") = 7
 
-                    // 查找 <|/det|>
-                    if let Some(det_end) = find_substr(text, b"<|/det|>", coords_start) {
-                        let coords_str = safe_slice(raw, coords_start, det_end);
+        // 查找 <|/det|>；缺失则从 <|det|> 之后继续
+        let Some(det_end) = find_substr(text, b"<|/det|>", coords_start) else {
+            pos = coords_start;
+            continue;
+        };
 
-                        // 解析坐标
-                        if let Ok(bbox) = parse_bbox_array(coords_str) {
-                            let raw_text = safe_slice(raw, ref_start, det_end + 8).to_string();
+        let coords_str = safe_slice(raw, coords_start, det_end);
 
-                            // 采集跟随文本
-                            let after_det_start = det_end + 8;
-                            let next_ref = find_substr(text, b"<|ref|>", after_det_start)
-                                .unwrap_or(text.len());
-                            let following_text = safe_slice(raw, after_det_start, next_ref)
-                                .trim()
-                                .to_string();
+        // 解析坐标
+        if let Ok(bbox) = parse_bbox_array(coords_str) {
+            let raw_text = safe_slice(raw, ref_start, det_end + 8).to_string();
 
-                            spans.push(DeepseekGroundingSpan {
-                                label,
-                                bbox_0_999_xyxy: bbox,
-                                raw_text,
-                                following_text,
-                            });
-                        }
+            // 采集跟随文本
+            let after_det_start = det_end + 8;
+            let next_ref = find_substr(text, b"<|ref|>", after_det_start).unwrap_or(text.len());
+            let following_text = safe_slice(raw, after_det_start, next_ref)
+                .trim()
+                .to_string();
 
-                        pos = det_end + 8;
-                        continue;
-                    }
-                }
-            }
+            spans.push(DeepseekGroundingSpan {
+                label,
+                bbox_0_999_xyxy: bbox,
+                raw_text,
+                following_text,
+            });
         }
 
-        pos += 1;
+        pos = det_end + 8;
     }
 
     spans
@@ -404,6 +413,29 @@ mod tests {
         assert_eq!(result.regions.len(), 1);
         assert_eq!(result.regions[0].label, "题目");
         assert!(result.regions[0].bbox_pixels.is_some());
+    }
+
+    #[test]
+    fn test_parse_grounding_malformed_markers() {
+        // 无任何标记的纯文本：应快速返回空（回归 C1 修复：不退化为 O(n²)）
+        let plain = "纯文本响应，没有任何 grounding 标记。".repeat(2000);
+        assert!(parse_deepseek_grounding(&plain).is_empty());
+
+        // ref 没有闭合：跳过，不 panic、不收集
+        let raw = "<|ref|>未闭合标签 然后是正文";
+        assert!(parse_deepseek_grounding(raw).is_empty());
+
+        // ref 闭合但缺 det：与旧实现一致的贪婪语义——
+        // <|det|> 搜索不限定紧邻，第一个 ref 会配对到后面最近的 det
+        let raw = "<|ref|>无框<|/ref|>正文<|ref|>有框<|/ref|><|det|>[[1,2,3,4]]<|/det|>";
+        let spans = parse_deepseek_grounding(raw);
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].label, "无框");
+        assert_eq!(spans[0].bbox_0_999_xyxy, vec![1.0, 2.0, 3.0, 4.0]);
+
+        // det 未闭合：跳过
+        let raw = "<|ref|>标签<|/ref|><|det|>[[1,2,3,4]]";
+        assert!(parse_deepseek_grounding(raw).is_empty());
     }
 
     #[test]

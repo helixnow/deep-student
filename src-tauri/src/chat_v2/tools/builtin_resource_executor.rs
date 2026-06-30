@@ -50,6 +50,10 @@ const DEFAULT_SEARCH_TOP_K: u32 = 10;
 /// ★ L-028: 搜索查询最大数量限制（后端 clamp）
 const MAX_SEARCH_TOP_K: u64 = 50;
 
+/// ★ D15 修复：resource_read 单次返回内容的硬上限（字符数）。
+/// 超过该上限将截断并在结果中附带 truncationNotice，引导 LLM 按页读取。
+const MAX_READ_CONTENT_CHARS: usize = 40_000;
+
 // ============================================================================
 // 内置学习资源工具执行器
 // ============================================================================
@@ -1151,6 +1155,21 @@ impl BuiltinResourceExecutor {
             (content, total)
         };
 
+        // ★ D15 修复：出口硬上限——无论按页还是全量读取，content 超过上限即截断，
+        // 防止超大文档（无页结构的笔记/大文本文件等）一次性撑爆 LLM 上下文。
+        let original_char_count = content.chars().count();
+        let (content, content_truncated) = if original_char_count > MAX_READ_CONTENT_CHARS {
+            log::info!(
+                "[BuiltinResourceExecutor] resource_read content truncated: {} -> {} chars (resource={})",
+                original_char_count,
+                MAX_READ_CONTENT_CHARS,
+                resolved.read_id
+            );
+            (safe_truncate_chars(&content, MAX_READ_CONTENT_CHARS), true)
+        } else {
+            (content, false)
+        };
+
         let availability =
             Self::collect_read_availability(resolved.resource_type, &content, metadata.as_ref());
         let degradation = Self::build_degradation_info(
@@ -1185,6 +1204,7 @@ impl BuiltinResourceExecutor {
             "type": resolved.resource_type,
             "content": content,
             "contentLength": content.len(),
+            "contentTruncated": content_truncated,
             "availability": {
                 "hasExtractedText": availability.has_extracted_text,
                 "hasOcrPages": availability.has_ocr_pages,
@@ -1200,6 +1220,22 @@ impl BuiltinResourceExecutor {
             },
             "durationMs": duration,
         });
+
+        // ★ D15 修复：明确告知 LLM 内容已被截断及应对方式
+        if content_truncated {
+            let paging_hint = if paged_total_pages > 0 {
+                format!(
+                    "请缩小 page_start/page_end 范围分批读取（共 {} 页）。",
+                    paged_total_pages
+                )
+            } else {
+                "该资源没有分页结构，已返回开头部分内容。".to_string()
+            };
+            result["truncationNotice"] = json!(format!(
+                "内容过长已截断：原始 {} 字符，仅返回前 {} 字符。{}",
+                original_char_count, MAX_READ_CONTENT_CHARS, paging_hint
+            ));
+        }
 
         // ★ 按页读取信息：让 LLM 知道总页数和当前读取的范围
         if paged_total_pages > 0 {
@@ -2947,11 +2983,15 @@ impl BuiltinResourceExecutor {
         let data = op.get("data").ok_or("add_node: missing 'data'")?;
 
         let mut new_node = data.clone();
-        Self::ensure_node_id(&mut new_node);
 
         let index = op.get("index").and_then(|v| v.as_u64());
 
         let root = doc.get_mut("root").ok_or("Document has no 'root' node")?;
+
+        // ★ A6-27：先收集文档现有 id，再为新子树分配全局唯一 id（消除重复 id）
+        let mut existing_ids = std::collections::HashSet::new();
+        Self::collect_node_ids(root, &mut existing_ids);
+        Self::ensure_unique_subtree_ids(&mut new_node, &mut existing_ids);
 
         let parent = Self::find_node_mut(root, parent_id)
             .ok_or_else(|| format!("add_node: parent '{}' not found", parent_id))?;
@@ -3023,9 +3063,30 @@ impl BuiltinResourceExecutor {
             }
         }
 
-        // 先从原位置移除
         let root = doc.get_mut("root").ok_or("Document has no 'root' node")?;
 
+        // ★ 修复：移除前完成全部校验，防止"先移除、后查找失败"导致子树永久丢失。
+        // 之前若 new_parent 是被移节点自身或其后代，移除后 new_parent 随子树消失，
+        // 节点无法插回且同批次其它成功操作仍会保存损坏的文档。
+        {
+            let root_ref: &Value = root;
+            let moving = Self::find_node_ref(root_ref, node_id)
+                .ok_or_else(|| format!("move_node: node '{}' not found", node_id))?;
+            if node_id == new_parent_id || Self::contains_node_id(moving, new_parent_id) {
+                return Err(format!(
+                    "move_node: cannot move node '{}' into itself or its own descendant '{}'",
+                    node_id, new_parent_id
+                ));
+            }
+            if Self::find_node_ref(root_ref, new_parent_id).is_none() {
+                return Err(format!(
+                    "move_node: new parent '{}' not found",
+                    new_parent_id
+                ));
+            }
+        }
+
+        // 校验通过后再从原位置移除
         let removed = Self::find_and_remove_child(root, node_id)
             .ok_or_else(|| format!("move_node: node '{}' not found", node_id))?;
 
@@ -3093,6 +3154,21 @@ impl BuiltinResourceExecutor {
         None
     }
 
+    /// 递归查找节点（只读引用），用于修改前的存在性/后代关系校验
+    fn find_node_ref<'a>(node: &'a Value, target_id: &str) -> Option<&'a Value> {
+        if node.get("id").and_then(|v| v.as_str()) == Some(target_id) {
+            return Some(node);
+        }
+        if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+            for child in children {
+                if let Some(found) = Self::find_node_ref(child, target_id) {
+                    return Some(found);
+                }
+            }
+        }
+        None
+    }
+
     /// 只读检查：节点树中是否包含指定 id 的节点
     fn contains_node_id(node: &Value, target_id: &str) -> bool {
         if node.get("id").and_then(|v| v.as_str()) == Some(target_id) {
@@ -3134,6 +3210,15 @@ impl BuiltinResourceExecutor {
     /// 将 patch 合并到节点上（style 字段深度合并）
     fn apply_update_patch(node: &mut Value, patch: &Value) {
         if let Some(patch_obj) = patch.as_object() {
+            // ★ A6-27：对齐前端 updateNode 语义——patch 改了 text（且与现值不同）时
+            // 自动清除旧 blankedRanges（挖空区间是字符索引，文本一变即失效，否则
+            // 背诵模式遮挡错位）。若 patch 自身带了 blankedRanges 则以 patch 为准
+            // （下方循环会写入），不清除。
+            let text_changed = match patch_obj.get("text") {
+                Some(new_text) => node.get("text") != Some(new_text),
+                None => false,
+            };
+            let patch_has_blanked = patch_obj.contains_key("blankedRanges");
             for (key, value) in patch_obj {
                 if key == "style" {
                     // style 字段：深度合并而非替换
@@ -3159,26 +3244,54 @@ impl BuiltinResourceExecutor {
                     node[key] = value.clone();
                 }
             }
+            if text_changed && !patch_has_blanked {
+                if let Some(obj) = node.as_object_mut() {
+                    obj.remove("blankedRanges");
+                }
+            }
         }
     }
 
-    /// 确保新节点有 id 和 children 字段
-    fn ensure_node_id(node: &mut Value) {
-        // 如果没有 id，生成一个
-        if node.get("id").and_then(|v| v.as_str()).is_none() {
-            node["id"] = json!(format!("n_{}", nanoid::nanoid!(8)));
+    /// 收集子树内所有节点 id（含自身）到集合，用于 add_node 的去重。
+    fn collect_node_ids(node: &Value, out: &mut std::collections::HashSet<String>) {
+        if let Some(id) = node.get("id").and_then(|v| v.as_str()) {
+            out.insert(id.to_string());
         }
+        if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+            for child in children {
+                Self::collect_node_ids(child, out);
+            }
+        }
+    }
 
-        // 确保有 children 数组
+    /// ★ A6-27：确保新子树每个节点都有 id 与 children 数组；id 缺失或与文档中既有
+    /// id 冲突时重新生成（LLM 多轮编辑常复制旧节点 JSON 再 add，会带来重复 id，
+    /// 破坏前端 findNodeById / React key 的唯一性假设）。`existing` 随新分配的 id
+    /// 一起增长，避免新子树内部自冲突。
+    fn ensure_unique_subtree_ids(node: &mut Value, existing: &mut std::collections::HashSet<String>) {
+        let current = node
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let final_id = match current {
+            Some(id) if !id.is_empty() && !existing.contains(&id) => id,
+            _ => loop {
+                let candidate = format!("n_{}", nanoid::nanoid!(8));
+                if !existing.contains(&candidate) {
+                    break candidate;
+                }
+            },
+        };
+        existing.insert(final_id.clone());
+        node["id"] = json!(final_id);
+
         if node.get("children").is_none() {
             node["children"] = json!([]);
         }
-
-        // 递归处理嵌套子节点
         if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
             let len = children.len();
             for i in 0..len {
-                Self::ensure_node_id(&mut node["children"][i]);
+                Self::ensure_unique_subtree_ids(&mut node["children"][i], existing);
             }
         }
     }

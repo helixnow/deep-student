@@ -5,17 +5,13 @@ import { cn } from "../../lib/utils";
 import {
   DndContext,
   DragEndEvent,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext,
   useSortable,
   horizontalListSortingStrategy,
-  sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
+import { useTouchFriendlyDndSensors } from "@/hooks/useTouchFriendlyDndSensors";
 import { CSS } from "@dnd-kit/utilities";
 import { X, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
@@ -125,14 +121,7 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
   onReorder,
 }) => {
   const { t } = useTranslation(['notes']);
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
+  const sensors = useTouchFriendlyDndSensors({ mouseDistance: 6 });
 
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {

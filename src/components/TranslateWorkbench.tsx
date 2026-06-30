@@ -15,6 +15,7 @@ import { fileManager } from '../utils/fileManager';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
 import { NotionButton } from './ui/NotionButton';
+import { NotionAlertDialog } from './ui/NotionDialog';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 
@@ -60,9 +61,11 @@ interface TranslateWorkbenchProps {
   onBack?: () => void;
   /** DSTU 模式配置（必需） */
   dstuMode: TranslateWorkbenchDstuMode;
+  /** ★ A6-28 标签页：当前是否为活跃标签页；非活跃实例不响应全局快捷键 */
+  isActive?: boolean;
 }
 
-export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, dstuMode }) => {
+export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, dstuMode, isActive }) => {
   const { t } = useTranslation(['translation', 'common']);
 
   // DSTU 会话数据
@@ -104,6 +107,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
   const [isSyncScroll, setIsSyncScroll] = useState(true);
   const [isAutoTranslate, setIsAutoTranslate] = useState(false);
+  // A6-16: 清空确认改为声明式 NotionAlertDialog（替换 window.confirm）
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // 错误状态管理
   const [translationError, setTranslationError] = useState<string | null>(null);
@@ -287,6 +292,27 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     }
   }, [t, handleSetSourceText]);
 
+  // ★ A6-06：当前翻译参数的签名（内容+语向+风格参数），用于自动翻译去重
+  const buildTranslationSig = useCallback(
+    () => JSON.stringify([sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary]),
+    [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary]
+  );
+
+  // ★ A6-06：最近一次已执行翻译的参数签名；恢复历史会话时已有译文视为"已翻译过"
+  const lastTranslatedSigRef = useRef<string | null>(
+    initialSession?.translatedText
+      ? JSON.stringify([
+          initialSession.sourceText || '',
+          initialSession.srcLang || 'auto',
+          initialSession.tgtLang || 'zh-CN',
+          '',
+          initialSession.formality || 'auto',
+          initialSession.domain || 'general',
+          initialSession.glossary || [],
+        ])
+      : null
+  );
+
   // 翻译（使用流式管线）
   const handleTranslate = useCallback(async () => {
     // 防止重复调用
@@ -310,6 +336,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     // 清除之前的错误状态
     setTranslationError(null);
     setTranslationQuality(null);
+
+    // ★ A6-06：登记本次翻译的参数签名（手动/自动触发都登记），自动翻译据此避免对同一内容重复触发
+    lastTranslatedSigRef.current = buildTranslationSig();
 
     try {
       const outcome = await translationStream.startTranslation({
@@ -367,7 +396,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     } finally {
       setIsRetrying(false);
     }
-  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline]);
+  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig]);
 
   // 重试翻译
   const handleRetryTranslation = useCallback(() => {
@@ -421,6 +450,11 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
   useEffect(() => {
     if (isAutoTranslate && sourceText.trim() && !isTranslating && !translationError) {
+      // ★ A6-06：内容与参数均未变化时不再触发——否则翻译完成 → isTranslating 翻转 →
+      // effect 重跑 → 同一文本被无限次重译（持续消耗 API 配额）
+      if (buildTranslationSig() === lastTranslatedSigRef.current) {
+        return;
+      }
       const len = sourceText.length;
       const delay = len < 200 ? 1500 : len < 1000 ? 2500 : 4000;
       const timer = setTimeout(() => {
@@ -428,7 +462,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       }, delay);
       return () => clearTimeout(timer);
     }
-  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate]);
+  }, [sourceText, srcLang, tgtLang, formality, domain, glossary, isAutoTranslate, isTranslating, translationError, handleTranslate, buildTranslationSig]);
 
   // 编辑译文
   const handleEditTranslation = useCallback(() => {
@@ -615,7 +649,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, initialSession]);
 
   // 快捷键支持（注册在 document 上，处理后 stopPropagation 阻止冒泡到命令系统）
+  // ★ A6-28 标签页保活：非活跃实例不注册，防止多个翻译标签页同时响应同一按键
+  //   （对齐 MindMapContentView/MindMapCanvas 的 isActive 守卫；isActive 未传时视为活跃）
   useEffect(() => {
+    if (isActive === false) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ctrl/Cmd + Enter: 翻译
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -648,7 +685,27 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [sourceText, isTranslating, srcLang, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit]);
+  }, [sourceText, isTranslating, srcLang, isEditingTranslation, handleTranslate, handleSwapLanguages, handleCancelEdit, isActive]);
+
+  // A6-16: 清空逻辑拆分 —— 有内容时弹声明式确认框，否则直接清空
+  const doClear = useCallback(() => {
+    setSourceText('');
+    setTranslatedText('');
+    setTranslationQuality(null);
+  }, [setTranslatedText]);
+
+  const handleClearRequest = useCallback(() => {
+    if (sourceText) {
+      setShowClearConfirm(true);
+    } else {
+      doClear();
+    }
+  }, [sourceText, doClear]);
+
+  const handleConfirmClear = useCallback(() => {
+    setShowClearConfirm(false);
+    doClear();
+  }, [doClear]);
 
   return (
       <div className="w-full h-full flex-1 min-h-0 bg-[hsl(var(--background))] flex flex-col overflow-hidden">
@@ -728,10 +785,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onRestoreDefaultPrompt={handleRestoreDefaultPrompt}
               onTranslate={handleTranslate}
               onCancelTranslation={() => translationStream.cancelTranslation()}
-              onClear={() => {
-                if (sourceText && !window.confirm(t('translation:confirm.clear', '确定清空所有内容？'))) return;
-                setSourceText(''); setTranslatedText(''); setTranslationQuality(null);
-              }}
+              onClear={handleClearRequest}
               onEditTranslation={handleEditTranslation}
               onSaveEditedTranslation={handleSaveEditedTranslation}
               onCancelEdit={handleCancelEdit}
@@ -741,6 +795,18 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onRateTranslation={handleRateTranslation}
 />
         </div>
+
+        {/* A6-16: 清空确认（替换 window.confirm） */}
+        <NotionAlertDialog
+          open={showClearConfirm}
+          onOpenChange={setShowClearConfirm}
+          title={t('translation:confirm.clear_title')}
+          description={t('translation:confirm.clear')}
+          confirmText={t('common:clear')}
+          cancelText={t('common:cancel')}
+          confirmVariant="danger"
+          onConfirm={handleConfirmClear}
+        />
       </div>
   );
 };

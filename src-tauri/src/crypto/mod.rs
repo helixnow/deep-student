@@ -77,28 +77,74 @@ impl CryptoService {
             Ok(key)
         } else {
             tracing::warn!("🔐 [Crypto] 主密钥文件不存在，将创建新密钥: {:?}", key_path);
-            if let Some(parent) = key_path.parent() {
-                fs::create_dir_all(parent)?;
+            Self::create_master_key(key_path)
+        }
+    }
+
+    /// 生成并持久化一把全新的主密钥（覆盖已有文件）
+    fn create_master_key(key_path: &Path) -> Result<[u8; 32]> {
+        if let Some(parent) = key_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut key = [0u8; 32];
+        OsRng.fill_bytes(&mut key);
+        let mut encoded = general_purpose::STANDARD.encode(key);
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(key_path)
+            .with_context(|| format!("无法创建主密钥文件: {:?}", key_path))?;
+        file.write_all(encoded.as_bytes())?;
+        encoded.zeroize();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::Permissions::from_mode(0o600);
+            fs::set_permissions(key_path, perms)?;
+        }
+        #[cfg(windows)]
+        {
+            // F8: best-effort 收紧 .master_key 的 ACL（owner+SYSTEM+Administrators，移除继承），
+            // 等价于 Unix 0600。失败仅告警、不阻断密钥创建（文件已写入且 owner 可读）。
+            Self::restrict_master_key_acl_windows(key_path);
+        }
+        tracing::info!("🔐 [Crypto] 新主密钥已创建");
+        Ok(key)
+    }
+
+    /// F8: 用 `icacls` 把 `.master_key` 收紧为「仅 owner + SYSTEM + Administrators」。best-effort。
+    #[cfg(windows)]
+    fn restrict_master_key_acl_windows(key_path: &Path) {
+        use std::os::windows::process::CommandExt;
+        use std::process::Command;
+        let user = match std::env::var("USERNAME") {
+            Ok(u) if !u.trim().is_empty() => match std::env::var("USERDOMAIN") {
+                Ok(d) if !d.trim().is_empty() => format!("{}\\{}", d.trim(), u.trim()),
+                _ => u.trim().to_string(),
+            },
+            _ => {
+                tracing::warn!("跳过 .master_key ACL 收紧：无法解析当前用户(USERNAME)");
+                return;
             }
-            let mut key = [0u8; 32];
-            OsRng.fill_bytes(&mut key);
-            let mut encoded = general_purpose::STANDARD.encode(key);
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(key_path)
-                .with_context(|| format!("无法创建主密钥文件: {:?}", key_path))?;
-            file.write_all(encoded.as_bytes())?;
-            encoded.zeroize();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let perms = fs::Permissions::from_mode(0o600);
-                fs::set_permissions(key_path, perms)?;
-            }
-            tracing::info!("🔐 [Crypto] 新主密钥已创建");
-            Ok(key)
+        };
+        let grants = [
+            format!("{}:(F)", user),
+            "*S-1-5-18:(F)".to_string(),     // SYSTEM
+            "*S-1-5-32-544:(F)".to_string(), // Administrators
+        ];
+        let mut cmd = Command::new("icacls");
+        cmd.arg(key_path).arg("/inheritance:r");
+        for g in &grants {
+            cmd.arg("/grant:r").arg(g);
+        }
+        match cmd.creation_flags(0x08000000).output() {
+            Ok(out) if out.status.success() => {}
+            Ok(out) => tracing::warn!(
+                "icacls 收紧 .master_key 权限未成功: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            ),
+            Err(e) => tracing::warn!("无法执行 icacls 收紧 .master_key 权限: {}", e),
         }
     }
 
@@ -179,10 +225,25 @@ impl CryptoService {
         Ok(serde_json::to_string(&encrypted)?)
     }
 
+    /// 轮换主密钥：在 `new_path` 目录下强制生成全新的 `.master_key` 并覆盖同名旧文件。
+    ///
+    /// # 安全语义（重要）
+    ///
+    /// 本方法**只换钥匙，不搬数据**：旧密钥加密的所有密文（如已存储的 API Key）
+    /// 在轮换后将永久无法解密。调用方若需保留既有数据，必须自行实现
+    /// "旧实例解密 → 新实例重加密" 的迁移流程后再丢弃旧实例。
+    /// 若 `new_path` 与当前实例的密钥目录相同，旧密钥文件会被原地覆盖，
+    /// 该操作不可逆。当前仅测试使用，生产接入前需先补数据重加密编排。
     pub fn rotate_master_key(&self, new_path: &Path) -> Result<Self> {
-        let master_key = Self::load_or_create_master_key(new_path)?;
+        // 修复两个问题：
+        // 1. new_path 是目录，必须拼接 .master_key 文件名（旧实现直接把目录
+        //    当文件打开，报 "Is a directory"）；
+        // 2. 轮换必须强制生成新密钥并覆盖旧文件——load_or_create 在文件已存在时
+        //    会原样加载旧密钥，"轮换"变成无操作。
+        let key_path = new_path.join(".master_key");
+        let master_key = Self::create_master_key(&key_path)?;
         Ok(Self {
-            key_path: new_path.to_path_buf(),
+            key_path,
             master_key,
         })
     }

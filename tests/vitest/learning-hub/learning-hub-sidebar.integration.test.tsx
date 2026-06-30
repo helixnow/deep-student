@@ -70,16 +70,16 @@ vi.mock('@/components/ui/app-menu', () => ({
   AppMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));
-vi.mock('@/components/learning-hub/stores/finderStore', () => {
-  const useFinderStore = ((selector?: (state: typeof finderState) => unknown) => selector ? selector(finderState) : finderState) as typeof import('@/components/learning-hub/stores/finderStore').useFinderStore;
+vi.mock('@/features/learning-hub/stores/finderStore', () => {
+  const useFinderStore = ((selector?: (state: typeof finderState) => unknown) => selector ? selector(finderState) : finderState) as typeof import('@/features/learning-hub/stores/finderStore').useFinderStore;
   (useFinderStore as any).getState = () => finderState;
   return { useFinderStore };
 });
-vi.mock('@/components/learning-hub/stores/recentStore', () => ({
+vi.mock('@/features/learning-hub/stores/recentStore', () => ({
   useRecentStore: (selector: (state: { addRecent: typeof sidebarMocks.addRecent }) => unknown) => selector({ addRecent: sidebarMocks.addRecent }),
 }));
-vi.mock('@/components/learning-hub/LearningHubNavigationContext', () => ({ useLearningHubNavigationSafe: () => null }));
-vi.mock('@/components/learning-hub/components/finder', () => ({
+vi.mock('@/features/learning-hub/LearningHubNavigationContext', () => ({ useLearningHubNavigationSafe: () => null }));
+vi.mock('@/features/learning-hub/components/finder', () => ({
   DesktopView: () => null,
   FinderToolbar: () => null,
   FinderQuickAccess: () => null,
@@ -97,7 +97,7 @@ vi.mock('@/dstu', () => ({
 }));
 vi.mock('@/features/chat/context/vfsRefApi', () => ({ updatePathCacheV2: vi.fn() }));
 vi.mock('@/shared/result', () => ({ VfsError: class {}, VfsErrorCode: {}, err: vi.fn(), ok: vi.fn(), reportError: vi.fn() }));
-vi.mock('@/components/learning-hub/components/LearningHubContextMenu', () => ({ LearningHubContextMenu: () => null }));
+vi.mock('@/features/learning-hub/components/LearningHubContextMenu', () => ({ LearningHubContextMenu: () => null }));
 vi.mock('@/components/ui/NotionDialog', () => ({
   NotionDialog: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   NotionDialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -112,9 +112,9 @@ vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.
 vi.mock('@/debug-panel/hooks/usePageLifecycle', () => ({ usePageMount: vi.fn(), pageLifecycleTracker: { log: vi.fn() } }));
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({ debugLog: { log: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('@/utils/concurrency', () => ({ pLimit: () => async (task: () => Promise<unknown>) => task() }));
-vi.mock('@/components/learning-hub/components/ImportProgressModal', () => ({ ImportProgressModal: () => null }));
-vi.mock('@/components/learning-hub/hooks', async () => {
-  const actual = await vi.importActual<typeof import('@/components/learning-hub/hooks')>('@/components/learning-hub/hooks');
+vi.mock('@/features/learning-hub/components/ImportProgressModal', () => ({ ImportProgressModal: () => null }));
+vi.mock('@/features/learning-hub/hooks', async () => {
+  const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
   return {
     ...actual,
     useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: false, isInjecting: false }),
@@ -122,7 +122,7 @@ vi.mock('@/components/learning-hub/hooks', async () => {
 });
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ useCommandEvents: vi.fn() }));
 
-import { LearningHubSidebar } from '@/components/learning-hub/LearningHubSidebar';
+import { LearningHubSidebar } from '@/features/learning-hub/LearningHubSidebar';
 
 describe('LearningHubSidebar integration', () => {
   beforeEach(() => {

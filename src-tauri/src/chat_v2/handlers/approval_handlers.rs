@@ -30,7 +30,8 @@ use crate::database::Database;
 /// - `tool_name`: 工具名称（用于"记住选择"功能）
 /// - `approved`: 是否批准
 /// - `reason`: 拒绝原因（可选）
-/// - `remember`: 是否记住选择
+/// - `remember`: 是否记住选择（全局持久化）
+/// - `remember_session`: 🆕 是否仅在本会话内记住（三档分级中间档，内存态）
 ///
 /// ## 返回
 /// - `Ok(())`: 响应发送成功
@@ -46,15 +47,18 @@ pub async fn chat_v2_tool_approval_respond(
     approved: bool,
     reason: Option<String>,
     remember: bool,
+    remember_session: Option<bool>,
     arguments: Option<Value>,
 ) -> Result<(), String> {
+    let remember_session = remember_session.unwrap_or(false);
     log::info!(
-        "[ChatV2::approval] Received approval response: session={}, tool_call_id={}, tool_name={}, approved={}, remember={}",
+        "[ChatV2::approval] Received approval response: session={}, tool_call_id={}, tool_name={}, approved={}, remember={}, remember_session={}",
         session_id,
         tool_call_id,
         tool_name,
         approved,
-        remember
+        remember,
+        remember_session
     );
 
     let response = ApprovalResponse {
@@ -64,6 +68,7 @@ pub async fn chat_v2_tool_approval_respond(
         approved,
         reason,
         remember,
+        remember_session,
     };
 
     // 发送响应到等待的 Pipeline

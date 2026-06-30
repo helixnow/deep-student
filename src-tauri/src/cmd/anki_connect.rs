@@ -136,13 +136,18 @@ pub async fn create_anki_deck(deck_name: String) -> Result<()> {
     }
 }
 /// 将选定的卡片添加到AnkiConnect
+///
+/// 返回同步明细报告（新增/重复/失败分开统计）：
+/// - 全部已存在（duplicates == total）属于幂等成功，返回 Ok 而非错误，
+///   由前端按 `added == 0 && failed == 0` 展示"均已存在"提示；
+/// - 仅当存在真实失败且无任何新增时返回 Err。
 #[tauri::command]
 pub async fn add_cards_to_anki_connect(
     selected_cards: Vec<crate::models::AnkiCard>,
     deck_name: String,
     mut note_type: String,
     state: State<'_, AppState>,
-) -> Result<Vec<Option<u64>>> {
+) -> Result<crate::anki_connect_service::AnkiSyncReport> {
     if selected_cards.is_empty() {
         return Err(AppError::validation("没有选择任何卡片".to_string()));
     }
@@ -199,6 +204,7 @@ pub async fn add_cards_to_anki_connect(
     }
 
     let mut card_models: HashMap<String, String> = HashMap::new();
+    let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> = HashMap::new();
     for card in &selected_cards {
         let Some(template_id) = card
             .template_id
@@ -215,37 +221,46 @@ pub async fn add_cards_to_anki_connect(
             let model_name = template.note_type.trim();
             if !model_name.is_empty() {
                 card_models.insert(card.id.clone(), model_name.to_string());
+                templates_by_model
+                    .entry(model_name.to_string())
+                    .or_insert(template);
             }
         }
     }
 
-    match crate::anki_connect_service::add_notes_to_anki_with_card_models(
+    // D1 修复：detailed 版本会自动创建缺失模型、用 canAddNotes 把重复与失败分开
+    match crate::anki_connect_service::add_notes_to_anki_detailed(
         selected_cards,
         deck_name,
         note_type,
         card_models,
+        templates_by_model,
     )
     .await
     {
-        Ok(note_ids) => {
-            let successful_count = note_ids.iter().filter(|id| id.is_some()).count();
-            let failed_count = note_ids.len() - successful_count;
-
+        Ok(report) => {
             println!(
-                "卡片添加完成: 成功 {} 张, 失败 {} 张",
-                successful_count, failed_count
+                "卡片添加完成: 新增 {} 张, 重复 {} 张, 失败 {} 张{}",
+                report.added,
+                report.duplicates,
+                report.failed,
+                if report.created_models.is_empty() {
+                    String::new()
+                } else {
+                    format!("（自动创建模型: {}）", report.created_models.join(", "))
+                }
             );
 
-            if failed_count > 0 {
-                println!("部分卡片添加失败，可能是重复卡片或格式错误");
-            }
-
-            if successful_count == 0 {
-                Err(AppError::validation(
-                    "所有卡片同步失败，可能是重复卡片或字段/模板不匹配".to_string(),
-                ))
+            if report.added == 0 && report.failed > 0 {
+                let mut reason = String::from("所有卡片同步失败");
+                if report.duplicates > 0 {
+                    reason.push_str(&format!("（其中 {} 张为重复卡片）", report.duplicates));
+                }
+                reason.push_str("。请检查 Anki 中是否存在对应笔记类型、卡片字段是否为空");
+                Err(AppError::validation(reason))
             } else {
-                Ok(note_ids)
+                // 含"全部已存在"的幂等成功：duplicates 信息随报告返回前端展示
+                Ok(report)
             }
         }
         Err(e) => {
@@ -504,13 +519,27 @@ pub async fn export_cards_as_apkg_with_template(
         })
     });
     let (template_config, full_template) = if let Some(ref tid) = effective_template_id {
-        let config =
-            get_template_config(tid, &state.database).map_err(|e| AppError::validation(e))?;
-        let full_tmpl = state
-            .database
-            .get_custom_template_by_id(tid)
-            .map_err(|e| AppError::validation(format!("获取模板失败: {}", e)))?;
-        (Some(config), full_tmpl)
+        // 模板缺失（如已被删除）时不中断整批导出：警告后回退默认 Basic 模板，
+        // 与 EnhancedAnkiService::export_apkg_for_selection 行为保持一致
+        let config = match get_template_config(tid, &state.database) {
+            Ok(config) => Some(config),
+            Err(e) => {
+                log::warn!(
+                    "获取模板配置失败 - 模板ID: {}, 错误: {}，将使用默认模板继续导出",
+                    tid,
+                    e
+                );
+                None
+            }
+        };
+        let full_tmpl = match state.database.get_custom_template_by_id(tid) {
+            Ok(tmpl) => tmpl,
+            Err(e) => {
+                log::warn!("获取完整模板失败 - 模板ID: {}, 错误: {}，回退默认模板", tid, e);
+                None
+            }
+        };
+        (config, full_tmpl)
     } else {
         // 没有任何模板可用 — 直接用 Basic 兜底而不是导出空壳
         (None, None)

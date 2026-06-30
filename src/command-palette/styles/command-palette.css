@@ -378,7 +378,7 @@
 
 /* ==================== 响应式适配 ==================== */
 
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .command-palette-backdrop {
     padding-top: 10vh;
   }
@@ -396,5 +396,28 @@
   .command-palette-footer {
     flex-wrap: wrap;
     gap: 8px;
+  }
+}
+
+/* ==================== 触屏适配 ==================== */
+
+/* 触屏主指针设备:hover 不可达、触控目标需放大 */
+@media (pointer: coarse) {
+  /* 收藏按钮默认依赖 hover 显现,触屏上永远不可见 → 常显 */
+  .command-palette-item-favorite {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+  }
+
+  .command-palette-mode-btn,
+  .command-palette-close-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  /* 键盘快捷键提示(↑↓/Enter/Esc)对触屏无意义,隐藏以释放纵向空间 */
+  .command-palette-footer {
+    display: none;
   }
 }

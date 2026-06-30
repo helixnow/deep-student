@@ -39,7 +39,11 @@
     "workspace_primary_entry": "工作区主入口",
     "pinned_sessions": "置顶会话",
     "topic_sessions": "课题",
-    "conversation_sessions": "对话"
+    "conversation_sessions": "对话",
+    "pin_session": "置顶会话",
+    "unpin_session": "取消置顶会话",
+    "archive_session": "归档会话",
+    "confirm_archive_session": "确认归档会话"
   },
   "actions": {
     "collapse_all_topics": "收起所有课题",
@@ -47,7 +51,12 @@
     "create_topic": "新建课题",
     "create_conversation": "新建对话",
     "expand_group_sessions": "展开显示",
-    "collapse_group_sessions": "折叠显示"
+    "collapse_group_sessions": "折叠显示",
+    "rename_session": "重命名会话"
+  },
+  "rename": {
+    "title": "重命名对话",
+    "label": "对话名称"
   },
   "expand": "展开侧边栏",
   "collapse": "收起侧边栏",

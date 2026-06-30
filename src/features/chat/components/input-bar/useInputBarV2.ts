@@ -141,6 +141,11 @@ export function useInputBarV2(
       return;
     }
 
+    // 自动分配模型的提示通知
+    if (readiness.code === 'MODEL2_AUTO_ASSIGNED' && readiness.message) {
+      showGlobalNotification('info', readiness.message);
+    }
+
     const currentAttachments = state.attachments;
     let effectiveAttachments = currentAttachments;
     

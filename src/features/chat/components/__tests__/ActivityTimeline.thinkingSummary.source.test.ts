@@ -16,8 +16,10 @@ describe('activity timeline thinking summary source', () => {
     'utf-8'
   );
 
-  it('keeps thinking content expanded by default and only applies sticky behavior while expanded', () => {
-    expect(activityTimelineSource).toContain('const [isExpanded, setIsExpanded] = useState(true);');
+  it('keeps completed thinking auto-collapsed by default and only applies sticky behavior while expanded', () => {
+    expect(activityTimelineSource).toContain('function readAutoCollapseSetting(): boolean');
+    expect(activityTimelineSource).toContain('return !autoCollapseEnabled;');
+    expect(activityTimelineSource).toContain('setIsExpanded(false);');
     expect(activityTimelineSource).toContain('const [preserveStickyOnCollapse, setPreserveStickyOnCollapse] = useState(false);');
     expect(activityTimelineSource).toContain('const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);');
     expect(activityTimelineSource).toContain('thinking-summary-sticky sticky top-0 z-10');
@@ -54,7 +56,7 @@ describe('activity timeline thinking summary source', () => {
   });
 
   it('keeps list markers inside the visible thinking-chain viewport', () => {
-    expect(activityTimelineSource).toContain('className="py-1.5 pl-2 pr-1 text-gray-500 dark:text-gray-400 text-xs leading-snug overflow-y-auto"');
+    expect(activityTimelineSource).toContain('className="py-1.5 pl-2 pr-1 text-gray-500 dark:text-gray-400 text-xs leading-snug"');
     expect(thinkingChainCssSource).toContain('padding-left: 1.5rem !important;');
     expect(thinkingChainCssSource).toContain('list-style-position: outside;');
   });

@@ -61,7 +61,7 @@ const OPENALEX_MAX_RESULTS_LIMIT: u64 = 50;
 const OPENALEX_SELECT_FIELDS: &str = "id,title,authorships,abstract_inverted_index,publication_year,cited_by_count,doi,open_access,primary_location,type,ids";
 
 /// User-Agent（OpenAlex 要求包含 mailto 以进入 polite pool）
-const UA: &str = "DeepStudent/1.0 (Academic Search; mailto:support@deepstudent.app)";
+const UA: &str = "DeepStudent/1.0 (Academic Search; mailto:support@deepstudent.cn)";
 
 // ============================================================================
 // 学术搜索执行器
@@ -653,7 +653,7 @@ impl AcademicSearchExecutor {
             ("search", query.to_string()),
             ("per-page", max_results.to_string()),
             ("select", OPENALEX_SELECT_FIELDS.to_string()),
-            ("mailto", "support@deepstudent.app".to_string()),
+            ("mailto", "support@deepstudent.cn".to_string()),
         ];
 
         if !filters.is_empty() {

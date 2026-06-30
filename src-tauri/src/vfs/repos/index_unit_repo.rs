@@ -293,6 +293,55 @@ pub fn delete_by_resource(conn: &Connection, resource_id: &str) -> Result<i64, V
     Ok(rows as i64)
 }
 
+/// 彻底清理资源的全部索引产物（units + segments + LanceDB 向量入列）
+///
+/// ★ 2026-06-12（第二轮审阅）：purge 业务记录时必须调用本函数。
+/// 旧实现各 repo 直接 `DELETE FROM vfs_index_units`（或根本不删），导致：
+/// 1. essay/translation/textbook/exam purge 后 units/segments 永久残留；
+/// 2. 所有 purge 链路的 LanceDB 向量从不删除 → 语义检索还能命中已删除内容。
+///
+/// 本函数先把 segments 的 lance_row_id 写入 `__lance_orphan_queue`
+/// （与业务删除同事务），由后台索引循环 drain 后真正删除向量，
+/// 然后删除 units（FK CASCADE 自动清掉 segments）。
+pub fn purge_index_artifacts_by_resource(
+    conn: &Connection,
+    resource_id: &str,
+) -> Result<i64, VfsError> {
+    conn.execute(
+        r#"INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+           SELECT s.lance_row_id, u.resource_id
+           FROM vfs_index_segments s
+           JOIN vfs_index_units u ON s.unit_id = u.id
+           WHERE u.resource_id = ?1"#,
+        params![resource_id],
+    )?;
+    let rows = conn.execute(
+        "DELETE FROM vfs_index_units WHERE resource_id = ?1",
+        params![resource_id],
+    )?;
+    Ok(rows as i64)
+}
+
+/// 清扫孤儿索引单元（resource 已被删除但 units 残留的历史数据）
+///
+/// ★ 2026-06-12（第二轮审阅）：启动时调用，回收历史版本遗留的索引产物。
+/// 返回清理的 unit 行数。
+pub fn sweep_orphan_index_units(conn: &Connection) -> Result<i64, VfsError> {
+    conn.execute(
+        r#"INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id)
+           SELECT s.lance_row_id, u.resource_id
+           FROM vfs_index_segments s
+           JOIN vfs_index_units u ON s.unit_id = u.id
+           WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = u.resource_id)"#,
+        [],
+    )?;
+    let rows = conn.execute(
+        "DELETE FROM vfs_index_units WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = vfs_index_units.resource_id)",
+        [],
+    )?;
+    Ok(rows as i64)
+}
+
 /// 设置文本索引状态
 pub fn set_text_state(
     conn: &Connection,
@@ -568,4 +617,112 @@ pub fn sync_units(
         units: result,
         orphaned_lance_row_ids,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ★ 2026-06-12（第二轮审阅）回归测试：purge 索引产物必须级联 + 入列 Lance 队列
+
+    fn setup() -> (tempfile::TempDir, crate::vfs::database::VfsDatabase) {
+        crate::vfs::database::setup_migrated_test_db()
+    }
+
+    fn seed_resource_with_index(
+        conn: &Connection,
+        resource_id: &str,
+        lance_row_id: &str,
+    ) -> String {
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO resources (id, hash, type, storage_mode, data, ref_count, created_at, updated_at)
+             VALUES (?1, ?2, 'note', 'inline', 'content', 0, ?3, ?3)",
+            params![resource_id, format!("hash_{}", resource_id), now],
+        )
+        .unwrap();
+        let unit_id = format!("unit_{}", resource_id);
+        conn.execute(
+            "INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, created_at, updated_at)
+             VALUES (?1, ?2, 0, 'text', ?3, ?3)",
+            params![unit_id, resource_id, now],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO vfs_index_segments (id, unit_id, segment_index, modality, embedding_dim, lance_row_id, created_at, updated_at)
+             VALUES (?1, ?2, 0, 'text', 768, ?3, ?4, ?4)",
+            params![format!("seg_{}", resource_id), unit_id, lance_row_id, now],
+        )
+        .unwrap();
+        unit_id
+    }
+
+    #[test]
+    fn test_purge_index_artifacts_cascades_and_enqueues_lance_rows() {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        seed_resource_with_index(&conn, "res_purge_1", "lance_row_a");
+
+        let removed = purge_index_artifacts_by_resource(&conn, "res_purge_1").unwrap();
+        assert_eq!(removed, 1, "one unit removed");
+
+        let units: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM vfs_index_units WHERE resource_id = 'res_purge_1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let segments: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM vfs_index_segments WHERE lance_row_id = 'lance_row_a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let queued: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE lance_row_id = 'lance_row_a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(units, 0, "units must be deleted");
+        assert_eq!(segments, 0, "segments must cascade");
+        assert_eq!(queued, 1, "lance row must be enqueued for deletion");
+    }
+
+    #[test]
+    fn test_sweep_orphan_index_units_only_removes_orphans() {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+
+        // 活资源 + 孤儿资源各一
+        seed_resource_with_index(&conn, "res_alive", "lance_alive");
+        seed_resource_with_index(&conn, "res_orphan", "lance_orphan");
+        // 模拟历史 purge 漏删 index units：直接删 resources 行
+        conn.execute("DELETE FROM resources WHERE id = 'res_orphan'", [])
+            .unwrap();
+
+        let removed = sweep_orphan_index_units(&conn).unwrap();
+        assert_eq!(removed, 1, "only the orphan unit is swept");
+
+        let alive_units: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM vfs_index_units WHERE resource_id = 'res_alive'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(alive_units, 1, "live resource units must survive");
+
+        let queued: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE lance_row_id = 'lance_orphan'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(queued, 1, "orphan lance row must be enqueued");
+    }
 }

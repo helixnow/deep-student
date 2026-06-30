@@ -371,7 +371,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
               <button key={type} onClick={() => setBatchImportType(type)}
                 className={cn('px-1.5 py-0.5 rounded text-[10px]', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
               >
-                {type === 'fact' ? '事实' : type === 'study' ? '学习' : '笔记'}
+                {type === 'fact' ? t('memory.type_fact', '事实') : type === 'study' ? t('memory.type_study', '学习') : t('memory.type_note', '笔记')}
               </button>
             ))}
             <div className="flex-1" />
@@ -410,7 +410,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
               <button key={type} onClick={() => setNewType(type)}
                 className={cn('px-1.5 py-0.5 rounded text-[10px]', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
               >
-                {type === 'fact' ? '事实' : type === 'study' ? '学习' : '笔记'}
+                {type === 'fact' ? t('memory.type_fact', '事实') : type === 'study' ? t('memory.type_study', '学习') : t('memory.type_note', '笔记')}
               </button>
             ))}
             <div className="flex-1" />

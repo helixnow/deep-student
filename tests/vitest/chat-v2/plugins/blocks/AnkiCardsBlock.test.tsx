@@ -58,6 +58,9 @@ vi.mock('@/features/chat/anki', () => ({
       preview
     </button>
   ),
+  FullWidthCardWrapper: ({ children, className }: any) => (
+    <div className={className}>{children}</div>
+  ),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -193,7 +196,7 @@ describe('AnkiCardsBlock', () => {
     expect(screen.getByRole('button', { name: 'Sync' })).toBeDisabled();
   });
 
-  it('should dispatch open panel event when preview clicked', () => {
+  it('should expand inline editor when preview clicked', () => {
     const block = createBlock({ status: 'success' });
     const data = createData({ cards: [{ id: 'card-1', front: 'Q1', back: 'A1' } as any] });
 
@@ -201,13 +204,9 @@ describe('AnkiCardsBlock', () => {
 
     fireEvent.click(screen.getByTestId('anki-preview'));
 
-    expect(mockDispatchOpenAnkiPanelEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        blockId: 'anki-block-1',
-        messageId: 'msg-1',
-        businessSessionId: 'sess-1',
-      })
-    );
+    expect(screen.queryByTestId('anki-preview')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'blocks.ankiCards.collapse' }).length).toBeGreaterThan(0);
+    expect(mockDispatchOpenAnkiPanelEvent).not.toHaveBeenCalled();
   });
 
   it('should render progress and AnkiConnect status when provided', () => {

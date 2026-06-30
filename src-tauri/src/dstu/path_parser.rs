@@ -309,13 +309,12 @@ pub fn is_parent_path(parent: &str, child: &str) -> bool {
         return child_normalized != "/";
     }
 
+    // 注意：必须按字节索引取分隔符。此前用 chars().nth(byte_len) 混用了
+    // 字节长度与字符索引，含非 ASCII（中文）的父路径全部误判为非父级，
+    // 导致"移动到自身子树"的环检测对中文目录失效。
+    // starts_with 已保证 parent_normalized.len() 是 child 的合法字符边界。
     child_normalized.starts_with(&parent_normalized)
-        && child_normalized.len() > parent_normalized.len()
-        && child_normalized
-            .chars()
-            .nth(parent_normalized.len())
-            .map(|c| c == '/')
-            .unwrap_or(false)
+        && child_normalized.as_bytes().get(parent_normalized.len()) == Some(&b'/')
 }
 
 /// 获取父路径

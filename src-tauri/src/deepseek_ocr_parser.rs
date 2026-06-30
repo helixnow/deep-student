@@ -42,61 +42,69 @@ pub struct DeepseekRegion {
 ///
 /// 输入：完整的 OCR 输出文本
 /// 输出：所有识别到的 <|ref|>...<|/ref|><|det|>...</|det|> 片段
+///
+/// ★ 2026-06-12（代理 3 审阅 C1）：扫描循环改为线性推进。
+/// 旧实现在响应不含 `<|ref|>` 或标记残缺时按 `pos += 1` 逐字节重扫剩余全文,
+/// 最坏 O(n²)。现在找不到下一个标记直接结束,残缺标记则跳过该标记继续,整体 O(n)。
 pub fn parse_deepseek_grounding(raw: &str) -> Vec<DeepseekGroundingSpan> {
     let mut spans = Vec::new();
     let mut pos = 0;
     let text = raw.as_bytes();
 
     while pos < text.len() {
-        // 查找 <|ref|>
-        if let Some(ref_start) = find_substr(text, b"<|ref|>", pos) {
-            let label_start = ref_start + 7; // len("<|ref|>") = 7
+        // 查找 <|ref|>；不存在则不会再有任何片段，直接结束
+        let Some(ref_start) = find_substr(text, b"<|ref|>", pos) else {
+            break;
+        };
+        let label_start = ref_start + 7; // len("<|ref|>") = 7
 
-            // 查找 <|/ref|>
-            if let Some(ref_end) = find_substr(text, b"<|/ref|>", label_start) {
-                // 安全切片：使用 safe_slice 替代直接字节索引，避免在UTF-8字符中间切割
-                let label = safe_slice(raw, label_start, ref_end).to_string();
+        // 查找 <|/ref|>；缺失则跳过当前 <|ref|> 标记继续向后
+        let Some(ref_end) = find_substr(text, b"<|/ref|>", label_start) else {
+            pos = label_start;
+            continue;
+        };
+        // 安全切片：使用 safe_slice 替代直接字节索引，避免在UTF-8字符中间切割
+        let label = safe_slice(raw, label_start, ref_end).to_string();
 
-                // 查找 <|det|>
-                let det_search_start = ref_end + 8; // len("<|/ref|>") = 8
-                if let Some(det_start) = find_substr(text, b"<|det|>", det_search_start) {
-                    let coords_start = det_start + 7; // len("<|det|>") = 7
+        // 查找 <|det|>；缺失则从 <|/ref|> 之后继续找下一个片段
+        let det_search_start = ref_end + 8; // len("<|/ref|>") = 8
+        let Some(det_start) = find_substr(text, b"<|det|>", det_search_start) else {
+            pos = det_search_start;
+            continue;
+        };
+        let coords_start = det_start + 7; // len("<|det|>") = 7
 
-                    // 查找 <|/det|> (注意是 <|/det|> 而不是 </|det|>)
-                    if let Some(det_end) = find_substr(text, b"<|/det|>", coords_start) {
-                        // 安全切片：提取坐标字符串
-                        let coords_str = safe_slice(raw, coords_start, det_end);
+        // 查找 <|/det|> (注意是 <|/det|> 而不是 </|det|>)；缺失则从 <|det|> 之后继续
+        let Some(det_end) = find_substr(text, b"<|/det|>", coords_start) else {
+            pos = coords_start;
+            continue;
+        };
 
-                        // 解析坐标 [[x1,y1,x2,y2],...]
-                        if let Ok(bbox) = parse_bbox_array(&coords_str) {
-                            // 安全切片：提取完整的 <|ref|>...<|/det|> 原始文本
-                            let raw_text = safe_slice(raw, ref_start, det_end + 8).to_string();
+        // 安全切片：提取坐标字符串
+        let coords_str = safe_slice(raw, coords_start, det_end);
 
-                            // 采集该检测框所对应的实际文本：从 <|/det|> 之后到下一个 <|ref|>（或文本末尾）
-                            let after_det_start = det_end + 8; // 跳过 "<|/det|>"
-                            let next_ref = find_substr(text, b"<|ref|>", after_det_start)
-                                .unwrap_or(text.len());
-                            // 安全切片：提取跟随文本
-                            let following_text = safe_slice(raw, after_det_start, next_ref)
-                                .trim()
-                                .to_string();
+        // 解析坐标 [[x1,y1,x2,y2],...]
+        if let Ok(bbox) = parse_bbox_array(coords_str) {
+            // 安全切片：提取完整的 <|ref|>...<|/det|> 原始文本
+            let raw_text = safe_slice(raw, ref_start, det_end + 8).to_string();
 
-                            spans.push(DeepseekGroundingSpan {
-                                label,
-                                bbox_0_999_xyxy: bbox,
-                                raw_text,
-                                following_text,
-                            });
-                        }
+            // 采集该检测框所对应的实际文本：从 <|/det|> 之后到下一个 <|ref|>（或文本末尾）
+            let after_det_start = det_end + 8; // 跳过 "<|/det|>"
+            let next_ref = find_substr(text, b"<|ref|>", after_det_start).unwrap_or(text.len());
+            // 安全切片：提取跟随文本
+            let following_text = safe_slice(raw, after_det_start, next_ref)
+                .trim()
+                .to_string();
 
-                        pos = det_end + 8; // len("<|/det|>") = 8
-                        continue;
-                    }
-                }
-            }
+            spans.push(DeepseekGroundingSpan {
+                label,
+                bbox_0_999_xyxy: bbox,
+                raw_text,
+                following_text,
+            });
         }
 
-        pos += 1;
+        pos = det_end + 8; // len("<|/det|>") = 8
     }
 
     spans
@@ -310,9 +318,9 @@ mod tests {
         let slice = safe_slice(s, 10, 16); // "<|ref|>问题"
         assert_eq!(slice, "问题");
 
-        // 危险情况1：start 在 UTF-8 字符中间（会自动向前调整）
+        // 危险情况1：start 在 UTF-8 字符中间（会自动向前回退到字符边界）
         let slice = safe_slice(s, 11, 16); // 11 是 "问" 的第二个字节
-        assert!(slice.len() <= 5); // 会回退到前一个字符边界
+        assert_eq!(slice, "问题"); // start 回退到 10（"问" 起始），得到完整 "问题"（6 字节）
 
         // 危险情况2：end 在 UTF-8 字符中间（会自动向后调整）
         let slice = safe_slice(s, 10, 14); // 14 是 "题" 的第二个字节

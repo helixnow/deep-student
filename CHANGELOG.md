@@ -410,7 +410,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * enhance progress tracking for backup/restore/import operations with detailed error reporting ([9fb24a4](https://github.com/helixnow/deep-student/commit/9fb24a41147ebdb2ee38819f0821ac8e76894bd6))
 
-## [0.9.10](https://github.com/000haoji/deep-student/compare/v0.9.9...v0.9.10) (2026-02-17)
+## [0.9.10](https://github.com/helixnow/deep-student/compare/v0.9.9...v0.9.10) (2026-02-17)
 
 
 ### Features

@@ -97,7 +97,7 @@ const TreeNode: React.FC<{
           {/* Navigate button */}
           <NotionButton
             variant="ghost" size="icon" iconOnly
-            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="!h-5 !w-5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 transition-opacity"
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
             title="打开文件夹"
           >

@@ -171,7 +171,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[400px] sm:w-[540px]">
+      <SheetContent side="right" className="w-[min(92vw,400px)] sm:w-[540px]">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
             <ClockCounterClockwise size={20} />

@@ -302,54 +302,8 @@ impl ChatV2Pipeline {
         );
     }
 
-    /// 减少资源引用计数
-    ///
-    /// 消息删除时调用，减少所有关联资源的引用计数。
-    /// 🆕 VFS 统一存储（2025-12-07）：使用 vfs.db
-    ///
-    /// ## 约束（来自文档 17）
-    /// - 消息删除时调用 decrementRef
-    #[allow(dead_code)]
-    async fn decrement_resource_refs(&self, resource_ids: &[&str]) {
-        if resource_ids.is_empty() {
-            return;
-        }
-
-        // 🆕 获取 VFS 数据库连接
-        let vfs_db = match &self.vfs_db {
-            Some(db) => db,
-            None => {
-                log::warn!(
-                    "[ChatV2::pipeline] vfs_db not available, skipping decrement_resource_refs"
-                );
-                return;
-            }
-        };
-
-        let conn = match vfs_db.get_conn_safe() {
-            Ok(conn) => conn,
-            Err(e) => {
-                log::error!("[ChatV2::pipeline] Failed to get vfs.db connection for decrement_resource_refs: {}", e);
-                return;
-            }
-        };
-
-        // 遍历所有资源 ID，调用 VfsResourceRepo 减少引用计数
-        for id in resource_ids {
-            if let Err(e) = VfsResourceRepo::decrement_ref_with_conn(&conn, id) {
-                // 引用计数失败不阻塞流程，仅记录警告
-                log::warn!(
-                    "[ChatV2::pipeline] Failed to decrement ref for resource {}: {}",
-                    id,
-                    e
-                );
-            }
-        }
-
-        log::debug!(
-            "[ChatV2::pipeline] Decremented refs for {} resources in vfs.db: {:?}",
-            resource_ids.len(),
-            resource_ids.iter().take(3).collect::<Vec<_>>()
-        );
-    }
+    // 注：资源引用递减不在 pipeline 层实现。
+    // 消息删除（block_actions::delete_message_from_db）、会话删除/清空回收站
+    // （manage_session::decrement_vfs_refs_for_session 等）均在 handler 层
+    // 直接调用 VfsResourceRepo::decrement_refs_with_conn，与 increment 对称。
 }

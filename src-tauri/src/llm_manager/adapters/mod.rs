@@ -380,8 +380,9 @@ mod tests {
 
     #[test]
     fn test_get_adapter_fallback_to_default() {
+        // 默认适配器为 GenericOpenAIAdapter，id 为 "general"
         let adapter = get_adapter(None, None, "unknown");
-        assert_eq!(adapter.id(), "openai");
+        assert_eq!(adapter.id(), "general");
     }
 
     #[test]

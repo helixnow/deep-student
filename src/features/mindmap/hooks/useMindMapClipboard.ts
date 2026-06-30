@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useMindMapStore } from '../store';
+import { useMindMapIsActive } from '../MindMapActiveContext';
 import { findNodeById } from '../utils/node/find';
 import type { MindMapNode } from '../types';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
@@ -26,6 +27,8 @@ async function readFromSystemClipboard(): Promise<string | null> {
 }
 
 export function useMindMapClipboard(): void {
+  // ★ 标签页保活：非活跃实例不响应复制/剪切/粘贴，防止单例 store 上重复执行
+  const isActive = useMindMapIsActive();
   const document = useMindMapStore(s => s.document);
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
   const selection = useMindMapStore(s => s.selection);
@@ -49,6 +52,7 @@ export function useMindMapClipboard(): void {
   }, [addNode, updateNode]);
 
   useEffect(() => {
+    if (!isActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (editingNodeId) return;
 
@@ -99,5 +103,5 @@ export function useMindMapClipboard(): void {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [document.root, focusedNodeId, selection, editingNodeId, clipboard, copyNodes, cutNodes, pasteNodes, handlePasteExternal]);
+  }, [isActive, document.root, focusedNodeId, selection, editingNodeId, clipboard, copyNodes, cutNodes, pasteNodes, handlePasteExternal]);
 }

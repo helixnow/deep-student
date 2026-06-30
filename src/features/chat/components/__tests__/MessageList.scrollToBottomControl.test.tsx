@@ -106,7 +106,17 @@ vi.mock('@/features/chat/components/ui/ThreadEmptyStateShell', () => ({
 import { MessageList } from '@/features/chat/components/MessageList';
 
 function renderMessageList() {
-  const store = {} as StoreApi<ChatStore>;
+  const store = {
+    getState: () => ({
+      getMessage: (messageId: string) => ({
+        id: messageId,
+        role: 'assistant',
+      }),
+    }),
+    subscribe: vi.fn(() => vi.fn()),
+    setState: vi.fn(),
+    destroy: vi.fn(),
+  } as unknown as StoreApi<ChatStore>;
   return render(<MessageList store={store} />);
 }
 

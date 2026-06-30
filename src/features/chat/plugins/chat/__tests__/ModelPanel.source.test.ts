@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('ModelPanel source contract', () => {
   const source = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/plugins/chat/ModelPanel.tsx'),
+    resolve(process.cwd(), 'src/features/chat/plugins/chat/ModelPanel.tsx'),
     'utf-8'
   );
 

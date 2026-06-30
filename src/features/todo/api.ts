@@ -41,8 +41,44 @@ export async function toggleTodoListFavorite(listId: string): Promise<TodoList> 
   return invoke('todo_toggle_list_favorite', { listId });
 }
 
-export async function ensureInbox(): Promise<TodoList> {
-  return invoke('todo_ensure_inbox');
+export async function ensureInbox(title?: string): Promise<TodoList> {
+  return invoke('todo_ensure_inbox', { title });
+}
+
+// ============================================================================
+// Recycle Bin API
+// ============================================================================
+
+export async function listDeletedTodoLists(limit = 100, offset = 0): Promise<TodoList[]> {
+  return invoke('todo_list_deleted_lists', { limit, offset });
+}
+
+export async function restoreTodoList(listId: string): Promise<TodoList> {
+  return invoke('todo_restore_list', { listId });
+}
+
+export async function purgeTodoList(listId: string): Promise<void> {
+  return invoke('todo_purge_list', { listId });
+}
+
+export async function purgeDeletedTodoLists(): Promise<number> {
+  return invoke('todo_purge_deleted_lists');
+}
+
+export async function restoreTodoItem(itemId: string): Promise<TodoItem> {
+  return invoke('todo_restore_item', { itemId });
+}
+
+export async function listDeletedTodoItems(limit = 100, offset = 0): Promise<TodoItem[]> {
+  return invoke('todo_list_deleted_items', { limit, offset });
+}
+
+export async function purgeTodoItem(itemId: string): Promise<void> {
+  return invoke('todo_purge_item', { itemId });
+}
+
+export async function purgeDeletedTodoItems(): Promise<number> {
+  return invoke('todo_purge_deleted_items');
 }
 
 // ============================================================================
@@ -91,6 +127,21 @@ export async function listOverdueItems(includeCompleted = false): Promise<TodoIt
 
 export async function listUpcomingItems(days: number, includeCompleted = false): Promise<TodoItem[]> {
   return invoke('todo_list_upcoming', { days, includeCompleted });
+}
+
+/** 所有设置了提醒的待处理任务（提醒调度器轮询用） */
+export async function listReminderItems(): Promise<TodoItem[]> {
+  return invoke('todo_list_reminders');
+}
+
+/** 全部待处理任务（跨清单，四象限矩阵视图用） */
+export async function listAllPendingItems(): Promise<TodoItem[]> {
+  return invoke('todo_list_all_pending');
+}
+
+/** AI 拆解：让工具模型把任务拆为若干子任务并落库，返回新建的子任务 */
+export async function aiBreakdownTodo(itemId: string): Promise<TodoItem[]> {
+  return invoke('todo_ai_breakdown', { itemId });
 }
 
 export async function listCompletedItems(listId?: string): Promise<TodoItem[]> {

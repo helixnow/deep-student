@@ -113,7 +113,7 @@
 }
 
 /* Mobile Adjustments */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .prose-note {
     font-size: 16px;
     padding-left: 1rem;

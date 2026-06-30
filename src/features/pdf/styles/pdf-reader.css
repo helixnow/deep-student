@@ -251,7 +251,7 @@
 }
 
 /* 响应式设计 */
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .pdf-reader-header {
     flex-direction: column;
     gap: 1rem;

@@ -378,8 +378,10 @@ mod tests {
 
     #[test]
     fn test_values_to_candidates_filters_long_content() {
+        // "bad" 的 content 为 15 字 × 6 = 90 字符（> 80 过滤阈值）；
+        // 旧测试数据只有 75 字符未超阈值，导致断言与过滤语义不符
         let items: Vec<serde_json::Value> = serde_json::from_str(
-            r#"[{"title":"ok","content":"短内容","folder":"偏好"},{"title":"bad","content":"这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容","folder":""}]"#,
+            r#"[{"title":"ok","content":"短内容","folder":"偏好"},{"title":"bad","content":"这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容这是一段超过八十个字的超长内容","folder":""}]"#,
         ).unwrap();
         let candidates = MemoryAutoExtractor::values_to_candidates(&items);
         assert_eq!(candidates.len(), 1);

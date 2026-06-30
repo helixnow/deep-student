@@ -9,6 +9,8 @@ import { Input } from '@/components/ui/shad/Input';
 interface NotesEditorHeaderProps {
     lastSaved: Date | null;
     isSaving?: boolean;
+    /** 字数统计（非空白字符数） */
+    charCount?: number;
     // ========== DSTU 模式 Props ==========
     /** DSTU 模式：初始标题 */
     initialTitle?: string;
@@ -23,6 +25,7 @@ interface NotesEditorHeaderProps {
 export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({ 
     lastSaved, 
     isSaving,
+    charCount,
     initialTitle,
     onTitleChange: dstuOnTitleChange,
     noteId: dstuNoteId,
@@ -105,20 +108,31 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         setIsEditing(false);
         if (!noteId) return;
 
-        // Don't submit if unchanged
-        if (titleInput.trim() === (displayTitle || "").trim()) {
+        // ★ Y9 修复：提交前 trim，避免首尾空白进入数据；
+        // 纯空白标题不提交（后端会拒绝空标题），直接回滚为原标题。
+        const trimmedTitle = titleInput.trim();
+        if (!trimmedTitle) {
             pendingTitleRef.current = null;
+            setTitleInput(displayTitle);
+            return;
+        }
+
+        // Don't submit if unchanged
+        if (trimmedTitle === (displayTitle || "").trim()) {
+            pendingTitleRef.current = null;
+            setTitleInput(trimmedTitle);
             return;
         }
 
         // Store the pending title to prevent useEffect from reverting
-        pendingTitleRef.current = titleInput;
+        pendingTitleRef.current = trimmedTitle;
+        setTitleInput(trimmedTitle);
         
         if (isDstuMode) {
             // DSTU 模式：调用 props 的 onTitleChange
             if (dstuOnTitleChange) {
                 try {
-                    await dstuOnTitleChange(titleInput);
+                    await dstuOnTitleChange(trimmedTitle);
                 } catch (error: unknown) {
                     // 标题保存失败，回滚
                     pendingTitleRef.current = null;
@@ -129,7 +143,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         } else {
             // Context 模式：调用 NotesContext.renameItem
             if (renameItem) {
-                renameItem(noteId, titleInput);
+                renameItem(noteId, trimmedTitle);
             }
         }
     };
@@ -139,6 +153,31 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             e.currentTarget.blur(); // Triggers onBlur -> handleTitleSubmit
         }
     };
+
+    // ★ F6 修复：标题编辑中直接关闭标签页（不触发 blur）时，卸载前提交修改，
+    // 防止已输入的标题被静默丢弃。
+    const unmountFlushRef = useRef({ isEditing, titleInput, displayTitle, noteId, readOnly });
+    unmountFlushRef.current = { isEditing, titleInput, displayTitle, noteId, readOnly };
+    const dstuOnTitleChangeRef = useRef(dstuOnTitleChange);
+    dstuOnTitleChangeRef.current = dstuOnTitleChange;
+    const renameItemRef = useRef(renameItem);
+    renameItemRef.current = renameItem;
+
+    useEffect(() => {
+        return () => {
+            const snap = unmountFlushRef.current;
+            if (snap.readOnly || !snap.isEditing || !snap.noteId) return;
+            const trimmed = snap.titleInput.trim();
+            if (!trimmed || trimmed === (snap.displayTitle || '').trim()) return;
+            if (dstuOnTitleChangeRef.current) {
+                dstuOnTitleChangeRef.current(trimmed).catch((err) => {
+                    console.warn('[NotesEditorHeader] Unmount title flush failed:', err);
+                });
+            } else if (renameItemRef.current) {
+                renameItemRef.current(snap.noteId, trimmed);
+            }
+        };
+    }, []);
 
     if (!noteId) return null;
 
@@ -187,8 +226,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     </div>
                 )}
 
-                {/* Save status (Right aligned) */}
+                {/* Save status & word count (Right aligned) */}
                 <div className={`text-[10px] shrink-0 ${showBreadcrumbs ? 'ml-auto' : 'ml-0'} flex items-center gap-2`}>
+                    {typeof charCount === 'number' && charCount > 0 && (
+                        <span className="text-muted-foreground/40 tabular-nums">
+                            {t('notes:common.char_count', { count: charCount })}
+                        </span>
+                    )}
                     {isSaving && (
                         <span className="text-muted-foreground/40">
                             {t('notes:common.saving')}

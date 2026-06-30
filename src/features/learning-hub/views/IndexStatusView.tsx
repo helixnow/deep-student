@@ -1143,7 +1143,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 操作按钮 - Notion 风格 */}
           <div className="flex-shrink-0 w-8 flex justify-end" onClick={(e) => e.stopPropagation()}>
             {needsReindex && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label="reindex">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label="reindex">
                 {isReindexing ? (
                   <CircleNotch className="h-4 w-4 animate-spin" />
                 ) : (

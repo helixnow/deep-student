@@ -295,11 +295,11 @@ DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部�
 可扩展的工作台，不是封闭的功能集合。
 
 - 技能（Skills）按需加载 AI 能力，激活时才加载对应工具，节省 Token
-- 内置 12 项技能：制卡 · 调研 · 论文 · 导图 · 题库 · 记忆 · 导师 · 文献综述 · 试卷分析 · 会话管理 · Office 套件 · 待办事项
+- 内置 26 项技能（6 个场景技能 + 20 个工具组）：制卡 · 调研 · 论文 · 导师 · 文献综述 · 试卷分析 · 导图 · 题库 · 记忆 · 会话管理 · Office 套件 · 待办 · 画布笔记 · 图片生成 · 网页抓取 · 子代理工作区等
 - 三级加载（内置 → 全局 → 项目级），支持 SKILL.md 自定义
 - MCP 协议兼容，可连接 Arxiv、Context7 等外部工具
 - 预置 9 家模型供应商，支持任意 OpenAI 兼容接口
-- 已适配 Gemini 3、GPT-5.2 Pro、GLM-5、Seed 2.0、Kimi K2.5 等最新模型
+- 已适配 Gemini 3、GPT-5.2 Pro、GLM-5、DeepSeek V4、Seed 2.0、Kimi K2.5 等最新模型
 
 <details>
 <summary>📸 查看截图</summary>
@@ -382,12 +382,13 @@ DeepStudent
 ```
 DeepStudent
 ├── src/                    # React 前端
-│   ├── chat-v2/            #   Chat V2 对话引擎
-│   │   ├── adapters/       #     后端适配器 (TauriAdapter)
-│   │   ├── skills/         #     技能系统 (builtin / builtin-tools / 加载器)
-│   │   ├── components/     #     对话 UI 组件
-│   │   └── plugins/        #     插件 (事件处理、工具渲染)
-│   ├── components/         #   UI 组件（含各功能模块页面）
+│   ├── features/           #   特性模块（14 个：chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / voice-input 等）
+│   │   └── chat/           #     Chat V2 对话引擎
+│   │       ├── core/       #       Store / 类型 / 注册表
+│   │       ├── skills/     #       技能系统 (builtin / builtin-tools / 加载器)
+│   │       ├── components/ #       对话 UI 组件
+│   │       └── plugins/    #       插件 (事件处理、块渲染)
+│   ├── components/         #   共享 UI 组件
 │   ├── stores/             #   Zustand 状态管理
 │   ├── mcp/                #   MCP 客户端 & 内置工具定义
 │   ├── essay-grading/      #   作文批改前端
@@ -432,7 +433,7 @@ DeepStudent
 | 领域 | 技术方案 |
 |------|----------|
 | **前端框架** | React 18 + TypeScript 5.6 + Vite 6 |
-| **UI 组件** | Tailwind CSS 3 + Radix UI + Lucide Icons |
+| **UI 组件** | Tailwind CSS 3 + Radix UI + Phosphor Icons |
 | **桌面 / 移动** | Tauri 2 (Rust) — macOS · Windows · Android · iOS |
 | **数据存储** | SQLite (Rusqlite) + LanceDB (向量检索) + 本地 Blob |
 | **状态管理** | Zustand 5 + Immer |
@@ -508,7 +509,8 @@ DeepStudent 起源于 2025 年 3 月的一个 Python demo，经过近一年持�
 | **2025.12** | ⚡ 性能优化 — 会话加载并行化、配置缓存、DSTU 资源协议 |
 | **2026.01** | 🧩 技能系统与 VFS — 文件式技能加载、统一虚拟文件系统 |
 | **2026.02** | 🚀 开源发布 — 更名 DeepStudent，发布至 v0.9.23；新增翻译工作台、云同步、会话分支、智能记忆增强等 |
-| **2026.03** | 🐧 Linux 支持与安全加固 — Linux 构建支持（deb/AppImage）；待办事项系统；做题历史回顾；模型能力自动检测；移动端阅读模式；内容搜索与会话标签；资源导出；记忆批量写入与幂等性；跨会话权限检查；发布 v0.9.30–v0.9.33 |
+| **2026.03** | 🐧 Linux 支持与安全加固 — Linux 构建支持（deb/AppImage）；待办事项与番茄钟系统；做题历史回顾；模型能力自动检测；移动端阅读模式；内容搜索与会话标签；资源导出；记忆批量写入与幂等性；跨会话权限检查；发布 v0.9.30–v0.9.35 |
+| **2026.04–06** | 🧱 架构与稳定性 — DeepSeek V4 / V3.2 系列适配；前端 `features/` 模块化重构与 Phosphor 图标迁移；真实环境多实例 E2E 测试体系；云同步收敛性整治；发布 v0.9.36–v0.9.40 |
 
 ---
 
@@ -539,7 +541,7 @@ DeepStudent 的诞生离不开以下优秀的开源项目：
 [Milkdown](https://milkdown.dev) · [ProseMirror](https://prosemirror.net) · [CodeMirror](https://codemirror.net) · [KaTeX](https://katex.org) · [Mermaid](https://mermaid.js.org) · [react-markdown](https://github.com/remarkjs/react-markdown)
 
 **UI 与样式**
-[Tailwind CSS](https://tailwindcss.com) · [Radix UI](https://www.radix-ui.com) · [Lucide](https://lucide.dev) · [Framer Motion](https://www.framer.com/motion) · [Recharts](https://recharts.org) · [React Flow](https://reactflow.dev)
+[Tailwind CSS](https://tailwindcss.com) · [Radix UI](https://www.radix-ui.com) · [Phosphor Icons](https://phosphoricons.com) · [Framer Motion](https://www.framer.com/motion) · [Recharts](https://recharts.org) · [React Flow](https://reactflow.dev)
 
 **数据与状态**
 [LanceDB](https://lancedb.com) · [SQLite](https://www.sqlite.org) / [rusqlite](https://github.com/rusqlite/rusqlite) · [Apache Arrow](https://arrow.apache.org) · [Zustand](https://zustand.docs.pmnd.rs) · [Immer](https://immerjs.github.io/immer) · [Serde](https://serde.rs)

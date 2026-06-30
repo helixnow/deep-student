@@ -23,7 +23,7 @@
  * | 暂停 | pause_document_processing | 标记暂停，取消当前流 |
  * | 恢复 | resume_document_processing | 继续 Paused/Pending 任务 |
  * | 重试单个 | trigger_task_processing | 重新处理指定任务 |
- * | 取消 | delete_document_session | 清理文档会话 |
+ * | 取消 | cancel_document_processing | 仅停止生成，保留已生成卡片 |
  * | 查询状态 | get_document_tasks | 获取所有任务状态 |
  *
  * @module TaskController
@@ -216,9 +216,9 @@ export class TaskController {
         };
       }
 
-      // 调用后端重试命令
+      // 调用后端重试命令（Tauri v2 默认参数 key 为 camelCase）
       await invoke<void>('trigger_task_processing', {
-        task_id: taskId.trim(),
+        taskId: taskId.trim(),
       });
 
       // 获取更新后的任务状态
@@ -245,10 +245,11 @@ export class TaskController {
   }
 
   /**
-   * 取消文档处理
+   * 取消文档处理（非破坏性）
    *
-   * 调用后端 delete_document_session 命令，清理文档会话
-   * 会停止所有未完成的任务，并删除相关状态
+   * 调用后端 cancel_document_processing 命令：仅停止生成，
+   * 未完成任务标记为 Cancelled，已生成的任务与卡片全部保留。
+   * 如需删除整个会话（含卡片），请使用 delete_document_session。
    *
    * @param documentId 文档 ID
    * @returns 操作结果
@@ -272,17 +273,15 @@ export class TaskController {
         };
       }
 
-      // 调用后端删除会话命令
-      // 后端会清理 DOCUMENT_STATES 和 RUNNING_HANDLES
-      // 注意：统一使用 snake_case 参数名与后端 Rust 命令保持一致
-      await invoke<void>('delete_document_session', {
+      // 仅停止生成：后端断开运行中的流、将未完成任务置为 Cancelled，
+      // 保留已生成的卡片（非破坏性取消）
+      await invoke<void>('cancel_document_processing', {
         documentId: documentId.trim(),
       });
 
       return {
         ok: true,
-        message: '文档处理已取消，会话已清理',
-        tasks: [], // 取消后任务列表为空
+        message: '文档处理已取消，已生成的卡片已保留',
       };
     } catch (error: unknown) {
       // 错误处理

@@ -9,7 +9,7 @@ vi.mock('@/dstu/factory', () => ({
   createEmpty: mockCreateEmpty,
 }));
 
-vi.mock('@/components/learning-hub/apps/views/ExamContentView', () => ({
+vi.mock('@/features/learning-hub/apps/views/ExamContentView', () => ({
   default: () => <div data-testid="exam-content-view">exam-content-view</div>,
 }));
 

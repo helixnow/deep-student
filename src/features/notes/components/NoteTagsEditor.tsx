@@ -224,10 +224,10 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                             <span onClick={() => !readonly && handleStartRename(tag)} className="cursor-pointer">{tag}</span>
                                             {!readonly && (
                                                 <>
-                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 hover:opacity-100 transition-opacity" title={t('notes:header.rename_tag')} aria-label="rename">
+                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity" title={t('notes:header.rename_tag')} aria-label="rename">
                                                         <PencilSimple className="h-3 w-3" />
                                                     </NotionButton>
-                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity" title={t('notes:header.remove_tag')} aria-label="remove">
+                                                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity" title={t('notes:header.remove_tag')} aria-label="remove">
                                                         <X className="h-3 w-3" />
                                                     </NotionButton>
                                                 </>

@@ -198,7 +198,7 @@ const QuestionGridCard: React.FC<{
           )}
           {/* 编辑按钮 - 非编辑模式下显示 */}
           {!isEditMode && onEdit && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-5 !h-5 !p-0 opacity-0 group-hover:opacity-100 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-5 !h-5 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
               <PencilSimple size={12} />
             </NotionButton>
           )}
@@ -294,7 +294,7 @@ const QuestionListRow: React.FC<{
         )}
         {/* 编辑按钮 - 非编辑模式下显示 */}
         {!isEditMode && onEdit && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-6 !h-6 !p-0 opacity-0 group-hover:opacity-100 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-6 !h-6 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
             <PencilSimple size={14} />
           </NotionButton>
         )}
@@ -512,10 +512,32 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      {/* 桌面端：统计摘要（移动端隐藏） */}
+      {/* 桌面端：统计摘要 */}
       {stats && (
         <div className="flex-shrink-0 px-4 py-4 border-b border-border/40 hidden sm:block">
           <StatsSummary stats={stats} onStartPractice={() => onQuestionClick?.(0)} />
+        </div>
+      )}
+      {/* 移动端：紧凑单行统计 */}
+      {stats && (
+        <div className="flex sm:hidden flex-shrink-0 items-center justify-between gap-2 px-3 py-2 border-b border-border/40 text-xs">
+          <span className="text-muted-foreground">
+            {t('practice:questionBank.all')} {stats.total}
+          </span>
+          <span className="text-emerald-600 dark:text-emerald-400">
+            {t('practice:questionBank.masteredFilter')} {stats.mastered}
+          </span>
+          <span className="text-amber-600 dark:text-amber-400">
+            {t('practice:questionBank.needsReview')} {stats.review}
+          </span>
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={() => onQuestionClick?.(0)}
+            className="!h-6 !px-2 !py-0 text-xs"
+          >
+            {t('practice:questionBank.startPractice', '开始练习')}
+          </NotionButton>
         </div>
       )}
       
@@ -667,7 +689,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <p className="text-sm">{t('practice:questionBank.noMatch')}</p>
           </div>
         ) : viewType === 'grid' ? (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-2">
             {filteredQuestions.map((q, idx) => (
               <React.Fragment key={q.id}>
                 <QuestionGridCard
@@ -680,7 +702,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   onSelect={(selected) => toggleSelect(q.id, selected)}
 />
                 {expandedEditId === q.id && (
-                  <div className="col-span-2">
+                  <div className="col-span-full">
                     <QuestionInlineEditor
                       question={q}
                       onSave={handleSaveQuestion}

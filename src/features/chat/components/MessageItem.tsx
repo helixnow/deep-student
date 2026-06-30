@@ -33,15 +33,15 @@ import type { ChatStore, Block } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { getModelDisplayName, formatMessageTime } from '@/utils/formatUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 // 🔧 编辑/重试调试日志
 import { logChatV2 } from '../debug/chatV2Logger';
 // 🆕 调试信息导出
 import { copyDebugInfoToClipboard } from '../debug/exportSessionDebug';
 // 🆕 开发者选项：显示请求体 + 过滤配置
 import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from '../hooks/useDevShowRawRequest';
-// 🆕 AI 内容标识（合规）
-import { PulseDot } from '@/components/ui/PulseDot';
 import { ThreadContentShell } from './ui/ThreadContentShell';
+import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
@@ -592,12 +592,22 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 判断是否是用户消息
   const isUser = message?.role === 'user';
+  const streamReconnectState = isUser ? undefined : message?._meta?.streamReconnect;
+  const reconnectInlineText = streamReconnectState
+    ? t('messageItem.reconnect.inline', {
+        attempt: streamReconnectState.retryAttempt,
+        max: streamReconnectState.retryMax,
+      })
+    : '';
 
   // 🆕 判断是否正在等待首次响应（助手消息 + 流式中 + 无内容块）
   const isWaitingForContent = !isUser && sessionStatus === 'streaming' && displayBlockIds.length === 0;
+  const shouldShowReconnectInline = !isUser && Boolean(streamReconnectState);
 
   // 📱 移动端适配：检测是否为小屏幕
   const { isSmallScreen } = useBreakpoint();
+  // 📱 触屏平板（≥768 但无 hover）：历史消息 footer 的 hover 显隐对触屏不可达，coarse 指针下保持常显
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
 
   // 📱 移动端多变体：需要使用不同布局（头像和内容分行显示）
   const isMobileMultiVariant = isSmallScreen && isMultiVariant && !isUser;
@@ -721,8 +731,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     return hasAssistantFailure && !hasConsumableAssistantContent;
   }, [assistantBlocks, hasConsumableAssistantContent, isMultiVariant, isUser, message?._meta?.terminalError]);
 
-  const showAssistantFooterAlways = !isUser && isLatest;
-  const assistantFooterClassName = showAssistantFooterAlways
+  const shouldHideLatestAssistantFooter = !isUser && isLatest && (sessionStatus === 'streaming' || hasActiveBlock);
+  const showAssistantFooterAlways = !isUser && isLatest && !shouldHideLatestAssistantFooter;
+  // ≥768 触屏平板无 hover：coarse 指针下与小屏一样常显，避免历史消息操作（复制/重试/编辑/删除）不可达
+  // 注：|| 优先级高于 ?:，等价于 (showAssistantFooterAlways || isCoarsePointer) ? ...，且保留桌面端 fine 指针的 hover 显隐契约
+  const assistantFooterClassName = showAssistantFooterAlways || isCoarsePointer
     ? 'mt-3'
     : 'mt-3 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity';
 
@@ -757,13 +770,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const [isRetryingAllVariants, setIsRetryingAllVariants] = useState(false);
   const [isDeletingMultiMessage, setIsDeletingMultiMessage] = useState(false);
   const [isRetryingFailure, setIsRetryingFailure] = useState(false);
-  const [showFailureDetails, setShowFailureDetails] = useState(false);
-
-  useEffect(() => {
-    if (!hasZeroOutputFailure) {
-      setShowFailureDetails(false);
-    }
-  }, [hasZeroOutputFailure, messageId]);
 
   const handleMultiVariantCopy = useCallback(async () => {
     if (multiCopied) return;
@@ -1248,6 +1254,24 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
                     // 🆕 等待首次响应：displayBlockIds 为空且正在流式生成
                     if (blocks.length === 0 && sessionStatus === 'streaming') {
+                      // 🔧 重连中：显示重连文本（正文样式），而非"正在思考"
+                      if (shouldShowReconnectInline && streamReconnectState) {
+                        return (
+                          <div
+                            className={cn(
+                              'prose prose-sm dark:prose-invert max-w-none',
+                              'text-foreground',
+                              'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide'
+                            )}
+                          >
+                            <p className="m-0 text-[15px] leading-relaxed tracking-wide text-foreground">
+                              <TextShimmer className="text-[15px] leading-relaxed tracking-wide text-foreground" duration={1.6} spread={3}>
+                                {reconnectInlineText}
+                              </TextShimmer>
+                            </p>
+                          </div>
+                        );
+                      }
                       return (
                         <ThinkingIndicator />
                       );
@@ -1418,41 +1442,54 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
+          {!isInlineEditing && !isWaitingForContent && shouldShowReconnectInline && streamReconnectState && (
+            <div
+              className={cn(
+                'prose prose-sm dark:prose-invert max-w-none',
+                'text-foreground',
+                'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide',
+                'mt-2'
+              )}
+            >
+              <p className="m-0 text-[15px] leading-relaxed tracking-wide text-foreground">
+                <TextShimmer className="text-[15px] leading-relaxed tracking-wide text-foreground" duration={1.6} spread={3}>
+                  {reconnectInlineText}
+                </TextShimmer>
+              </p>
+            </div>
+          )}
+
           {showActions && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
-            <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="mt-2">
+              <div
+                className={cn(
+                  'prose prose-sm dark:prose-invert max-w-none',
+                  'text-foreground',
+                  'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide'
+                )}
+              >
+                <p className="m-0 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-foreground">
+                  {assistantFailureDetails || t('messageItem.failure.genericError')}
+                </p>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
                 <NotionButton
                   variant="ghost"
                   size="sm"
                   onClick={handleRetryFromFailureBar}
                   disabled={isLocked || isRetryingFailure}
-                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  className="text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 >
                   <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
                   {t('messageItem.failure.retry')}
                 </NotionButton>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowFailureDetails((prev) => !prev)}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  {showFailureDetails
-                    ? t('messageItem.failure.hideErrorDetails')
-                    : t('messageItem.failure.viewErrorDetails')}
-                </NotionButton>
               </div>
-              {showFailureDetails && (
-                <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-background/80 p-3 text-xs leading-relaxed text-muted-foreground">
-                  {assistantFailureDetails || t('messageItem.failure.genericError')}
-                </pre>
-              )}
             </div>
           )}
 
           {/* Token 统计 + 操作按钮（等待状态时隐藏） */}
           {/* 🔧 统一：多变体也在底部显示汇总 Token 统计 */}
-          {showActions && !isInlineEditing && !isWaitingForContent && !hasZeroOutputFailure && (
+          {showActions && !isInlineEditing && !isWaitingForContent && !hasZeroOutputFailure && !shouldHideLatestAssistantFooter && (
             <div className={cn(
               isUser ? 'mt-3' : assistantFooterClassName,
               isMultiVariant && 'max-w-thread mx-auto',

@@ -631,9 +631,19 @@
     "preview_title": "Template Config: {{name}}",
     "label": "Card Template"
   },
+  "completionNotify": {
+    "title": "Card generation complete",
+    "titleWithFailed": "Card generation complete ({{failed}} tasks failed)",
+    "body": "\"{{name}}\" generated {{count}} cards",
+    "bodyFallback": "Batch card generation finished"
+  },
   "taskDashboard": {
     "title": "Card Tasks",
     "loading": "Loading...",
+    "preventSleep": "Keep awake",
+    "preventSleepOn": "Keep awake is on: the system won't sleep while generating cards",
+    "preventSleepOff": "Prevent system sleep while cards are generating (auto-released when done)",
+    "preventSleepUnsupported": "Keep awake is not supported on this platform",
     "empty": "No card tasks yet",
     "emptyHint": "Start making cards in chat to see task progress here",
     "sectionActive": "In Progress",

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveFilePreviewMode } from '@/components/learning-hub/apps/views/filePreviewResolver';
+import { resolveFilePreviewMode } from '@/features/learning-hub/apps/views/filePreviewResolver';
 
 describe('file preview resolver', () => {
   it('resolves audio preview by mime type', () => {

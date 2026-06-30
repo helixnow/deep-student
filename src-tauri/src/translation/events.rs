@@ -33,10 +33,10 @@ impl TranslationEventEmitter {
             .filter(|s| !s.is_empty())
             .count();
 
+        // A6-11: accumulated 仅用于计算字符/单词数；不再放进 payload（前端按 chunk 自行累加）
         let payload = TranslationStreamData {
             event_type: "data".to_string(),
             chunk,
-            accumulated,
             char_count,
             word_count,
         };

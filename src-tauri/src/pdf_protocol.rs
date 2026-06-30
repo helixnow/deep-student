@@ -12,6 +12,13 @@ const DEFAULT_CORS_ORIGIN: &str = "tauri://localhost";
 /// 超过该阈值时改为返回 206 Partial Content，避免一次性把整个 PDF 读入内存。
 const PDF_PROTOCOL_NO_RANGE_CAP: u64 = 4 * 1024 * 1024;
 
+/// ★ 2026-06-12（代理 3 审阅 A1）：单次 Range 响应的最大字节数（8MB）。
+/// 此前 `bytes=0-` 这类开区间请求会把整个 PDF 一次读入内存（数百 MB 的 OOM 风险）。
+/// 截断后返回实际范围的 Content-Range，客户端（PDF.js 按 64KB 块请求，浏览器
+/// 按 Content-Range 续读）均能正确继续。8MB 为 64KB 的整数倍，保证与 PDF.js
+/// ChunkedStreamManager 的块边界对齐。
+const PDF_PROTOCOL_RANGE_CAP: u64 = 8 * 1024 * 1024;
+
 fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
     let origin = request
         .headers()
@@ -19,20 +26,28 @@ fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
         .and_then(|v| v.to_str().ok())
         .unwrap_or(DEFAULT_CORS_ORIGIN);
 
-    // 兼容桌面与移动端 WebView 来源：
-    // - tauri://localhost（桌面自定义协议）
-    // - http(s)://tauri.localhost（Windows / Android）
-    // - http(s)://localhost（开发态）
-    if origin == "tauri://localhost"
-        || origin == "http://tauri.localhost"
-        || origin == "https://tauri.localhost"
-        || origin.starts_with("http://localhost")
-        || origin.starts_with("https://localhost")
-    {
+    if is_allowed_origin(origin) {
         origin.to_string()
     } else {
         DEFAULT_CORS_ORIGIN.to_string()
     }
+}
+
+/// 兼容桌面与移动端 WebView 来源：
+/// - tauri://localhost（桌面自定义协议）
+/// - http(s)://tauri.localhost（Windows / Android）
+/// - http(s)://localhost（开发态，可带端口）
+///
+/// ★ 2026-06-12（代理 3 审阅 A2）：localhost 改为精确匹配 host（允许带端口），
+/// 避免 `http://localhost.evil.com` 这类前缀域名通过校验。
+fn is_allowed_origin(origin: &str) -> bool {
+    origin == "tauri://localhost"
+        || origin == "http://tauri.localhost"
+        || origin == "https://tauri.localhost"
+        || origin == "http://localhost"
+        || origin == "https://localhost"
+        || origin.starts_with("http://localhost:")
+        || origin.starts_with("https://localhost:")
 }
 
 fn with_cors_headers(
@@ -74,10 +89,25 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
         resolvers.push(Box::new(|| app.path().picture_dir()));
     }
 
-    resolvers
+    let mut dirs: Vec<PathBuf> = resolvers
         .into_iter()
         .filter_map(|f| f().ok().and_then(|p| std::fs::canonicalize(&p).ok()))
-        .collect()
+        .collect();
+
+    // ★ 2026-06-12（审阅问题 R1 配套）：VFS blobs 目录加入白名单。
+    // 数据槽可由用户迁移到任意位置（可能在 app_data 之外），
+    // 教材 PDF 复制进 blob 后需要可被 pdfstream:// 流式读取。
+    if let Some(state) = app.try_state::<crate::commands::AppState>() {
+        if let Some(vfs_db) = state.vfs_db.as_ref() {
+            if let Ok(blobs_dir) = std::fs::canonicalize(vfs_db.blobs_dir()) {
+                if !dirs.contains(&blobs_dir) {
+                    dirs.push(blobs_dir);
+                }
+            }
+        }
+    }
+
+    dirs
 }
 
 /// 处理 pdfstream:// 协议请求
@@ -190,6 +220,11 @@ pub fn handle_asset_protocol(
             let range_str = range_value.to_str()?;
 
             if let Some((start, end)) = parse_range_header(range_str, file_size) {
+                // ★ 2026-06-12（代理 3 审阅 A1）：限幅单次响应大小，
+                // 防止 `bytes=0-` 把整个大 PDF 一次性读入内存。
+                // 返回实际截断后的 Content-Range，客户端按需继续请求剩余部分。
+                let end = end.min(start + PDF_PROTOCOL_RANGE_CAP - 1);
+
                 // 计算实际读取范围
                 let content_length = end - start + 1;
 
@@ -358,6 +393,28 @@ mod tests {
         assert_eq!(parse_range_header("bytes=0-1023", 0), None);
         assert_eq!(parse_range_header("bytes=0-", 0), None);
         assert_eq!(parse_range_header("bytes=-1024", 0), None);
+    }
+
+    #[test]
+    fn test_is_allowed_origin() {
+        assert!(is_allowed_origin("tauri://localhost"));
+        assert!(is_allowed_origin("http://tauri.localhost"));
+        assert!(is_allowed_origin("https://tauri.localhost"));
+        assert!(is_allowed_origin("http://localhost"));
+        assert!(is_allowed_origin("http://localhost:1420"));
+        assert!(is_allowed_origin("https://localhost:8080"));
+        // 前缀域名攻击：不能匹配
+        assert!(!is_allowed_origin("http://localhost.evil.com"));
+        assert!(!is_allowed_origin("https://localhost.evil.com:443"));
+        assert!(!is_allowed_origin("http://evil.com"));
+    }
+
+    #[test]
+    fn test_range_cap_alignment() {
+        // 8MB cap 必须是 PDF.js 默认块大小（64KB）的整数倍，
+        // 否则截断响应会打破 ChunkedStreamManager 的块边界假设。
+        assert_eq!(PDF_PROTOCOL_RANGE_CAP % (64 * 1024), 0);
+        assert!(PDF_PROTOCOL_RANGE_CAP >= PDF_PROTOCOL_NO_RANGE_CAP);
     }
 
     #[test]

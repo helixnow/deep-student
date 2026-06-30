@@ -48,7 +48,7 @@ describe('resolveSingleVariantDisplayMeta', () => {
     expect(resolved.resolvedUsage?.totalTokens).toBe(120);
   });
 
-  it('prefers message meta when present', () => {
+  it('prefers the active variant over message meta when both are present', () => {
     const variant = createVariant({ usage: createUsage(50) });
     const message = createMessage({
       _meta: {
@@ -61,7 +61,7 @@ describe('resolveSingleVariantDisplayMeta', () => {
 
     const resolved = resolveSingleVariantDisplayMeta(message, [variant]);
 
-    expect(resolved.resolvedModelId).toBe('anthropic/claude-sonnet');
-    expect(resolved.resolvedUsage?.totalTokens).toBe(300);
+    expect(resolved.resolvedModelId).toBe('openai/gpt-4o-mini');
+    expect(resolved.resolvedUsage?.totalTokens).toBe(50);
   });
 });

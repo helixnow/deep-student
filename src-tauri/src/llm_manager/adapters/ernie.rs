@@ -272,8 +272,10 @@ mod tests {
 
         adapter.apply_common_params(&mut body, &config);
 
-        // ERNIE 使用 penalty_score
-        assert_eq!(body.get("penalty_score"), Some(&json!(1.2)));
+        // ERNIE 使用 penalty_score。
+        // 注意：repetition_penalty 是 f32，经 serde_json 提升为 f64 会带精度尾数
+        //（1.2f32 as f64 = 1.2000000476837158），按同样方式构造期望值。
+        assert_eq!(body.get("penalty_score"), Some(&json!(1.2f32 as f64)));
         assert!(!body.contains_key("repetition_penalty"));
     }
 }

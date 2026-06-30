@@ -113,6 +113,8 @@ fn build_change(
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -189,47 +191,46 @@ fn adv_02_clock_ahead_is_rejected_by_drift_guard() {
 
 /// **A.03** 同秒并发：A 和 B 在同一秒对同一记录写入，时间戳相等
 ///
-/// LWW 门判定"严格晚于"才跳过。相等时不跳过 → 后 apply 者胜。
-/// 关键是两端必须用相同的排序规则才能收敛。
+/// 关键是两端必须用相同的排序规则才能收敛：平局由内容 tiebreaker 决定
+/// （内容随数据传播、双方一致可见），与到达顺序无关。
+/// 旧实现"先到者保留"是到达顺序依赖的——A 先收到 A 保 A，B 先收到 B 保 B，
+/// 两台设备永不收敛（P0）。
 #[test]
 fn adv_03_same_second_concurrent_writes() {
-    let conn = new_db();
     let same_ts = "2026-05-01T12:00:00Z";
+    let data_a = json!({
+        "id": "n1",
+        "title": "a_write",
+        "body": "",
+        "updated_at": same_ts,
+        "deleted_at": serde_json::Value::Null,
+    });
+    let data_b = json!({
+        "id": "n1",
+        "title": "b_write",
+        "body": "",
+        "updated_at": same_ts,
+        "deleted_at": serde_json::Value::Null,
+    });
 
-    // 先写 A 的变更
-    let change_a = build_change(
-        "n1",
-        ChangeOperation::Insert,
-        json!({
-            "id": "n1",
-            "title": "a_write",
-            "body": "",
-            "updated_at": same_ts,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        same_ts,
-    );
-    SyncManager::apply_downloaded_changes(&conn, &[change_a], None).unwrap();
+    // 顺序 1：先 A 后 B
+    let conn1 = new_db();
+    let change_a = build_change("n1", ChangeOperation::Insert, data_a.clone(), same_ts);
+    let change_b = build_change("n1", ChangeOperation::Update, data_b.clone(), same_ts);
+    SyncManager::apply_downloaded_changes(&conn1, &[change_a], None).unwrap();
+    SyncManager::apply_downloaded_changes(&conn1, &[change_b], None).unwrap();
+    let (title1, _, _, _, _) = get_item(&conn1, "n1").unwrap();
 
-    // 现在 B 的变更带相同时间戳
-    let change_b = build_change(
-        "n1",
-        ChangeOperation::Update,
-        json!({
-            "id": "n1",
-            "title": "b_write",
-            "body": "",
-            "updated_at": same_ts,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        same_ts,
-    );
-    SyncManager::apply_downloaded_changes(&conn, &[change_b], None).unwrap();
+    // 顺序 2：先 B 后 A
+    let conn2 = new_db();
+    let change_b2 = build_change("n1", ChangeOperation::Insert, data_b, same_ts);
+    let change_a2 = build_change("n1", ChangeOperation::Update, data_a, same_ts);
+    SyncManager::apply_downloaded_changes(&conn2, &[change_b2], None).unwrap();
+    SyncManager::apply_downloaded_changes(&conn2, &[change_a2], None).unwrap();
+    let (title2, _, _, _, _) = get_item(&conn2, "n1").unwrap();
 
-    let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 时间戳相等 → LWW 不跳过 → B 覆盖 A
-    // 这在逻辑上是对的（等价时允许覆盖），但两端必须用相同顺序才收敛
-    assert_eq!(title, "b_write", "同时间戳下后应用者胜");
+    // 收敛性：两种到达顺序必须得到同一结果（内容平局决胜，与顺序无关）
+    assert_eq!(title1, title2, "同时间戳并发写入必须与到达顺序无关地收敛");
 }
 
 /// **A.04** 时间戳格式差异：ISO "2026-05-01T12:00:00Z" vs SQLite "2026-05-01 12:00:00"
@@ -259,8 +260,8 @@ fn adv_04_timestamp_format_variants() {
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 两种格式应被解析为同一时刻 → 不跳过 → 云端胜
-    assert_eq!(title, "cloud", "不同格式的相同时间戳应被视为相等");
+    // SQLite 裸格式没有时区信息，当前策略保守保留本地，避免误把模糊时间当更新。
+    assert_eq!(title, "local", "模糊时间格式应保守保留本地值");
 }
 
 /// **A.05** 时区表示：+08:00 和 Z 应被正确转换为同一 UTC 时刻
@@ -542,7 +543,7 @@ fn adv_11_payload_missing_fields_preserves_local() {
 
 /// **A.12** 云端 payload 有本地 schema 里**没有**的字段（新客户端 → 老客户端）
 ///
-/// 预期：apply 应当**报错**（未知列），整批回滚
+/// 预期：未知列被隔离为单条失败，不让整批 API 失败。
 #[test]
 fn adv_12_payload_unknown_columns_rejected() {
     let conn = new_db();
@@ -559,8 +560,9 @@ fn adv_12_payload_unknown_columns_rejected() {
         }),
         "2026-05-01T11:00:00Z",
     );
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err(), "未知列必须导致失败，不能静默插入");
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "未知列必须被隔离，不能静默插入");
 }
 
 /// **A.13** 云端 payload 里字段类型不匹配（本地 INTEGER，云端 String）
@@ -869,9 +871,8 @@ fn adv_22_cloud_garbage_updated_at() {
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 当 LWW 门无法决策时，默认"允许"是一个策略选择。
-    // 这里验证：至少不 panic，且行为符合预期（允许覆盖）
-    assert_eq!(title, "cloud");
+    // 当 LWW 门无法可靠决策时，当前策略保守保留本地。
+    assert_eq!(title, "local");
 }
 
 /// **A.23** 本地记录不存在（新插入），LWW 门应让 INSERT 通过
@@ -895,10 +896,9 @@ fn adv_23_insert_nonexistent_passes_lww() {
     assert_eq!(title, "new");
 }
 
-/// **A.24** payload 缺 updated_at → 写入 NOT NULL 列触发约束错误（整批回滚）
+/// **A.24** payload 缺 updated_at → 单条变更被隔离
 ///
-/// 这是**更严格的保护**：而不是静默用云端值覆盖较新本地，而是**直接拒绝**。
-/// 生产端必须保证每条上传的 change 都带 updated_at，否则整批失败。
+/// 生产端必须保证每条上传的 change 都带 updated_at，否则该条变更失败。
 #[test]
 fn adv_24_payload_missing_updated_at_is_rejected() {
     let conn = new_db();
@@ -916,13 +916,13 @@ fn adv_24_payload_missing_updated_at_is_rejected() {
         }),
         "2026-05-01T10:00:00Z",
     );
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    // 因为 items.updated_at NOT NULL，UPSERT 会违反约束 → 整批回滚
-    assert!(r.is_err(), "缺 updated_at 的 UPSERT 应触发 NOT NULL 错误");
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "缺 updated_at 的 UPSERT 应被隔离");
 
     // 本地值未被改变
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    assert_eq!(title, "local_newer", "事务回滚，本地值不变");
+    assert_eq!(title, "local_newer", "失败变更被隔离，本地值不变");
 }
 
 // ============================================================================
@@ -1064,9 +1064,12 @@ fn adv_28_table_name_injection_blocked() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
     // 确认 items 表仍在
     let _: i64 = conn
         .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
@@ -1112,6 +1115,8 @@ fn adv_30_malicious_column_name_in_payload() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let _ = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     // 关键：items 表必须仍在
@@ -1232,6 +1237,8 @@ fn adv_33_payload_id_mismatch_with_record_id() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 当前行为：UPSERT 根据 payload 里的 id 写入（因为 build_insert_parts 用 payload 里的 id）
     // 这可能让 sync 在 record_id 和 payload id 不一致时产生混淆。
@@ -1471,6 +1478,8 @@ fn adv_40_delete_with_unexpected_data_field() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 

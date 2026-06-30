@@ -14,6 +14,12 @@ const FAILURE_THRESHOLD: u32 = 3;
 const COOLDOWN_DURATION: Duration = Duration::from_secs(60);
 /// 滑动窗口：仅统计此时间范围内的失败
 const SLIDING_WINDOW: Duration = Duration::from_secs(300);
+/// ★ 2026-06-12（代理 3 审阅 C3）：HalfOpen 探针超时。
+/// 若调用方在 allow_request 与 record_success/record_failure 之间提前返回
+/// （配置错误、任务取消、panic 等），探针会永久占位导致该引擎被永久拒绝。
+/// 超过此时长未上报结果即视为探针丢失，允许新探针。
+/// 取值需大于单次 OCR 调用的最长耗时（对冲链路 60s 硬超时 + 渐进启动间隔）。
+const PROBE_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CircuitState {
@@ -28,6 +34,8 @@ struct CircuitBreakerInner {
     last_failure_time: Option<Instant>,
     /// HalfOpen 状态下是否已有试探请求正在进行
     probe_in_flight: bool,
+    /// 当前探针的启动时间（用于探针超时回收，见 PROBE_TIMEOUT）
+    probe_started_at: Option<Instant>,
 }
 
 pub struct OcrCircuitBreaker {
@@ -35,6 +43,7 @@ pub struct OcrCircuitBreaker {
     failure_threshold: u32,
     cooldown: Duration,
     window: Duration,
+    probe_timeout: Duration,
 }
 
 impl OcrCircuitBreaker {
@@ -49,11 +58,20 @@ impl OcrCircuitBreaker {
                 failure_timestamps: Vec::new(),
                 last_failure_time: None,
                 probe_in_flight: false,
+                probe_started_at: None,
             }),
             failure_threshold: threshold.max(1),
             cooldown,
             window,
+            probe_timeout: PROBE_TIMEOUT,
         }
+    }
+
+    /// 覆盖探针超时（主要用于测试）
+    #[cfg(test)]
+    fn with_probe_timeout(mut self, probe_timeout: Duration) -> Self {
+        self.probe_timeout = probe_timeout;
+        self
     }
 
     pub fn allow_request(&self) -> bool {
@@ -70,6 +88,7 @@ impl OcrCircuitBreaker {
                         info!("[CircuitBreaker] 冷却期已过，进入 HalfOpen 试探状态");
                         inner.state = CircuitState::HalfOpen;
                         inner.probe_in_flight = true;
+                        inner.probe_started_at = Some(Instant::now());
                         true
                     } else {
                         false
@@ -81,10 +100,22 @@ impl OcrCircuitBreaker {
                 }
             }
             CircuitState::HalfOpen => {
-                if inner.probe_in_flight {
+                // ★ 2026-06-12（代理 3 审阅 C3）：探针超时回收。
+                // 调用方可能在 allow_request 后因提前返回/取消而从未上报结果，
+                // 旧逻辑会让 probe_in_flight 永久为 true → 引擎被永久拒绝。
+                let probe_lost = inner
+                    .probe_started_at
+                    .map(|t| t.elapsed() >= self.probe_timeout)
+                    .unwrap_or(true);
+
+                if inner.probe_in_flight && !probe_lost {
                     false
                 } else {
+                    if inner.probe_in_flight {
+                        warn!("[CircuitBreaker] HalfOpen 探针超时未上报结果，允许新探针");
+                    }
                     inner.probe_in_flight = true;
+                    inner.probe_started_at = Some(Instant::now());
                     true
                 }
             }
@@ -103,6 +134,7 @@ impl OcrCircuitBreaker {
         inner.failure_timestamps.clear();
         inner.last_failure_time = None;
         inner.probe_in_flight = false;
+        inner.probe_started_at = None;
     }
 
     pub fn record_failure(&self) {
@@ -130,8 +162,21 @@ impl OcrCircuitBreaker {
                 warn!("[CircuitBreaker] HalfOpen 试探失败，回到 Open 状态");
                 inner.state = CircuitState::Open;
                 inner.probe_in_flight = false;
+                inner.probe_started_at = None;
             }
             CircuitState::Open => {}
+        }
+    }
+
+    /// ★ 2026-06-13（代理 3 审阅 X1）：释放 HalfOpen 探针但**不计**成功/失败。
+    /// 用于 `allow_request` 之后、真正发起 OCR 调用之前因配置错误/参数问题提前返回的
+    /// 路径（无引擎、图片准备失败、请求全部构建失败等）——这些不是 OCR 服务的过错，
+    /// 既不该 record_failure 拖垮熔断，也不该让探针占位导致引擎被持续拒绝。
+    pub fn cancel_probe(&self) {
+        let mut inner = self.inner.lock().unwrap_or_else(|p| p.into_inner());
+        if inner.state == CircuitState::HalfOpen {
+            inner.probe_in_flight = false;
+            inner.probe_started_at = None;
         }
     }
 
@@ -251,6 +296,49 @@ mod tests {
         assert!(cb.allow_request()); // enter HalfOpen
         cb.record_failure();
         assert_eq!(cb.current_state(), CircuitState::Open);
+    }
+
+    #[test]
+    fn test_half_open_probe_timeout_recovers_leak() {
+        // 回归 C3：探针在 allow_request 后从未上报结果（提前返回/取消），
+        // 超时后必须允许新探针，而不是永久拒绝。
+        let cb =
+            OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60))
+                .with_probe_timeout(Duration::from_millis(30));
+        cb.record_failure();
+        std::thread::sleep(Duration::from_millis(5));
+
+        // 探针 1 获准但"丢失"（不上报结果）
+        assert!(cb.allow_request());
+        assert_eq!(cb.current_state(), CircuitState::HalfOpen);
+        // 探针未超时前：拒绝
+        assert!(!cb.allow_request());
+
+        // 超过探针超时后：允许新探针
+        std::thread::sleep(Duration::from_millis(40));
+        assert!(cb.allow_request());
+        assert_eq!(cb.current_state(), CircuitState::HalfOpen);
+
+        // 新探针成功 → 恢复 Closed
+        cb.record_success();
+        assert_eq!(cb.current_state(), CircuitState::Closed);
+    }
+
+    #[test]
+    fn test_cancel_probe_releases_without_penalty() {
+        // X1：HalfOpen 下 allow_request 后因配置错误提前返回，cancel_probe 应释放探针
+        // 且不改变状态/失败计数；随后应能立即获准新探针（而非等 120s 超时）。
+        let cb =
+            OcrCircuitBreaker::with_config(1, Duration::from_millis(1), Duration::from_secs(60));
+        cb.record_failure();
+        std::thread::sleep(Duration::from_millis(5));
+        assert!(cb.allow_request()); // 进入 HalfOpen，占用探针
+        assert_eq!(cb.current_state(), CircuitState::HalfOpen);
+        assert!(!cb.allow_request()); // 探针占位 → 拒绝
+
+        cb.cancel_probe(); // 配置错误提前返回，释放探针（不计失败）
+        assert_eq!(cb.current_state(), CircuitState::HalfOpen); // 状态不变
+        assert!(cb.allow_request()); // 立即允许新探针
     }
 
     #[test]

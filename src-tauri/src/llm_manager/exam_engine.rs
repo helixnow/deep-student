@@ -535,6 +535,8 @@ impl LLMManager {
         page_index: usize,
         task_type: crate::ocr_adapters::OcrTaskType,
     ) -> Result<Vec<ExamSegmentationCard>> {
+        use crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER;
+
         let engines = self
             .get_ocr_configs_by_priority(task_type)
             .await
@@ -543,6 +545,15 @@ impl LLMManager {
         if engines.is_empty() {
             return Err(AppError::configuration(
                 "没有已启用的 OCR 引擎，请在设置中配置",
+            ));
+        }
+
+        // ★ A3-X2：此前该路径（PDF OCR / VFS 索引用）完全未接入熔断器，所有引擎宕机时
+        // 每页都会跑完整 fallback 链路的超时重试，500 页批量会长时间空转。接入全局熔断器：
+        // Open 期间快速失败；成功 record_success 恢复，全失败 record_failure 累计。
+        if !OCR_CIRCUIT_BREAKER.allow_request() {
+            return Err(AppError::llm(
+                "OCR 服务暂时不可用（连续失败触发熔断），请稍后重试",
             ));
         }
 
@@ -567,6 +578,7 @@ impl LLMManager {
                             page_index
                         );
                     }
+                    OCR_CIRCUIT_BREAKER.record_success();
                     return Ok(cards);
                 }
                 Err(e) => {
@@ -582,6 +594,8 @@ impl LLMManager {
             }
         }
 
+        // 所有引擎均失败 → 记录熔断失败
+        OCR_CIRCUIT_BREAKER.record_failure();
         Err(last_err.unwrap_or_else(|| AppError::configuration("所有 OCR 引擎均失败")))
     }
 
@@ -617,6 +631,8 @@ impl LLMManager {
             .await
             .unwrap_or_default();
         if engines.is_empty() {
+            // ★ A3-X1：配置错误（非服务过错）——释放探针，不计失败
+            OCR_CIRCUIT_BREAKER.cancel_probe();
             return Err(AppError::configuration(
                 "没有已启用的 OCR 引擎，请在设置中配置",
             ));
@@ -624,9 +640,14 @@ impl LLMManager {
 
         // 准备图片数据（只做一次）
         let mime = Self::infer_image_mime(image_path);
-        let (data_url, _) = self
-            .prepare_segmentation_image_data(image_path, mime)
-            .await?;
+        let (data_url, _) = match self.prepare_segmentation_image_data(image_path, mime).await {
+            Ok(v) => v,
+            Err(e) => {
+                // ★ A3-X1：图片准备失败属本地输入问题，释放探针不计为引擎失败
+                OCR_CIRCUIT_BREAKER.cancel_probe();
+                return Err(e);
+            }
+        };
 
         // ── 阶段 1：预构建所有引擎的 HTTP 请求 ──
         let mut prepared: Vec<PreparedOcrRequest> = Vec::new();
@@ -746,6 +767,8 @@ impl LLMManager {
         }
 
         if prepared.is_empty() {
+            // ★ A3-X1：请求全部构建失败属配置问题，释放探针不计失败
+            OCR_CIRCUIT_BREAKER.cancel_probe();
             return Err(AppError::configuration(
                 "所有 OCR 引擎配置异常，无法构建请求",
             ));

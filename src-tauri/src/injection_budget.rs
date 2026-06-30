@@ -537,6 +537,9 @@ mod tests {
     fn test_type_limits() {
         let mut config = BudgetConfig::default();
         config.type_limits.insert(InjectionType::Rag, 500);
+        // 关闭智能截断以测试"超类型上限直接丢弃"路径
+        // （默认开启时超限项会被截断后选入而非丢弃）
+        config.enable_smart_truncation = false;
 
         let mut manager = InjectionBudgetManager::new(config);
 

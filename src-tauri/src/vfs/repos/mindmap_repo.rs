@@ -923,25 +923,30 @@ impl VfsMindMapRepo {
     /// 永久删除知识导图（使用现有连接）
     ///
     /// ★ P0 修复：使用事务保护，防止多步操作部分失败导致数据不一致
+    /// ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+    /// 支持在外层事务（如文件夹树 purge）内嵌套调用。
     pub fn purge_mindmap_with_conn(conn: &Connection, mindmap_id: &str) -> VfsResult<()> {
-        // 开始事务
-        conn.execute("BEGIN IMMEDIATE", [])?;
+        conn.execute_batch("SAVEPOINT vfs_mindmap_purge_tx")?;
 
         let result = Self::purge_mindmap_inner(conn, mindmap_id);
 
         match result {
             Ok(_) => {
-                // 修复：COMMIT 失败时也需要回滚
-                if let Err(commit_err) = conn.execute("COMMIT", []) {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(commit_err.into());
+                if let Err(release_err) =
+                    conn.execute_batch("RELEASE SAVEPOINT vfs_mindmap_purge_tx")
+                {
+                    let _ = conn.execute_batch(
+                        "ROLLBACK TO SAVEPOINT vfs_mindmap_purge_tx; RELEASE SAVEPOINT vfs_mindmap_purge_tx;",
+                    );
+                    return Err(release_err.into());
                 }
                 info!("[VFS::MindMapRepo] Purged mindmap: {}", mindmap_id);
                 Ok(())
             }
             Err(e) => {
-                // 回滚事务，忽略回滚本身的错误
-                let _ = conn.execute("ROLLBACK", []);
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_mindmap_purge_tx; RELEASE SAVEPOINT vfs_mindmap_purge_tx;",
+                );
                 Err(e)
             }
         }
@@ -995,8 +1000,32 @@ impl VfsMindMapRepo {
         )?;
 
         // 6. 减少主资源引用计数
+        // ★ 2026-06-12 修复（审阅问题 S5）：decrement 后若无任何导图/版本引用，
+        // 删除资源行与关联索引单元。旧实现只递减计数，资源行永久泄漏。
         if let Some(rid) = resource_id {
             VfsResourceRepo::decrement_ref_with_conn(conn, &rid)?;
+
+            let mindmap_refs: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM mindmaps WHERE resource_id = ?1",
+                    params![&rid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            let version_refs: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM mindmap_versions WHERE resource_id = ?1",
+                    params![&rid],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+
+            if mindmap_refs == 0 && version_refs == 0 {
+                // ★ 2026-06-12（第二轮审阅）：统一入口清理索引产物（含 Lance 向量入列）
+                super::index_unit_repo::purge_index_artifacts_by_resource(conn, &rid)?;
+                conn.execute("DELETE FROM resources WHERE id = ?1", params![&rid])?;
+                debug!("[VFS::MindMapRepo] Purged main resource: {}", rid);
+            }
         }
 
         // 7. 清理版本资源：递减引用计数，孤儿资源直接删除
@@ -1021,6 +1050,8 @@ impl VfsMindMapRepo {
                     .unwrap_or(0);
 
                 if mindmap_refs == 0 && version_refs == 0 {
+                    // ★ 2026-06-12（第二轮审阅）：统一入口清理索引产物（含 Lance 向量入列）
+                    super::index_unit_repo::purge_index_artifacts_by_resource(conn, version_rid)?;
                     conn.execute("DELETE FROM resources WHERE id = ?1", params![version_rid])?;
                     debug!(
                         "[VFS::MindMapRepo] Purged orphan version resource: {}",
@@ -1229,6 +1260,34 @@ impl VfsMindMapRepo {
                 now
             ],
         )?;
+
+        // ★ 版本保留策略：编辑器自动保存（source='manual'，约 1.5s debounce 一次）
+        // 每次内容变化都产生快照，无限增长会膨胀存储。仅保留最近 N 个 manual/NULL
+        // 版本；chat_* 来源的版本被聊天消息中的 mv_* 引用永久指向，不参与清理。
+        // 快照 resource 按 hash 去重共享，此处只清理版本行，不删除底层 resource。
+        const MAX_AUTOSAVE_VERSIONS: usize = 20;
+        let is_chat_source = source.map(|s| s.starts_with("chat")).unwrap_or(false);
+        if !is_chat_source {
+            if let Err(e) = conn.execute(
+                r#"
+                DELETE FROM mindmap_versions
+                WHERE mindmap_id = ?1
+                  AND (source IS NULL OR source NOT LIKE 'chat%')
+                  AND version_id NOT IN (
+                    SELECT version_id FROM mindmap_versions
+                    WHERE mindmap_id = ?1 AND (source IS NULL OR source NOT LIKE 'chat%')
+                    ORDER BY created_at DESC
+                    LIMIT ?2
+                  )
+                "#,
+                params![mindmap_id, MAX_AUTOSAVE_VERSIONS as i64],
+            ) {
+                warn!(
+                    "[VFS::MindMapRepo] Failed to prune autosave versions for {}: {}",
+                    mindmap_id, e
+                );
+            }
+        }
 
         debug!(
             "[VFS::MindMapRepo] Created version {} for mindmap {}",

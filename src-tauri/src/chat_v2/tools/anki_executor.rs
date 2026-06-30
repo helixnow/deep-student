@@ -450,9 +450,10 @@ mod tests {
         assert!(executor.can_handle("builtin-anki_analyze_content"));
         assert!(executor.can_handle("builtin-anki_query_progress"));
 
-        // 旧格式不再支持
+        // 无前缀 anki_* 作为宽容回退仍然支持（见 is_anki_tool 文档）
+        assert!(executor.can_handle("anki_generate_cards"));
+        // 冒号旧格式不支持
         assert!(!executor.can_handle("anki:generate_cards"));
-        assert!(!executor.can_handle("anki_generate_cards"));
 
         // 非 Anki 工具
         assert!(!executor.can_handle("note_read"));

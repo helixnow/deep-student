@@ -25,6 +25,8 @@ pub struct TranslationDeps {
 pub(crate) enum StreamStatus {
     Completed,
     Cancelled,
+    /// ★ A6-02：流未收到 DONE 标记就结束（网络中断/服务端异常），结果不完整
+    Incomplete,
 }
 
 /// 运行翻译管线
@@ -76,6 +78,17 @@ pub async fn run_translation(
     if matches!(stream_status, StreamStatus::Cancelled) {
         deps.emitter.emit_cancelled(&request.session_id);
         return Ok(None);
+    }
+
+    // ★ A6-02（对齐作文批改 M-064）：流未正常完成时不把部分译文当成完成结果返回
+    if matches!(stream_status, StreamStatus::Incomplete) {
+        println!(
+            "⚠️ [Translation] 流式响应未完成，丢弃不完整结果（已累积 {} 字符）",
+            accumulated.chars().count()
+        );
+        return Err(AppError::llm(
+            "翻译流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
+        ));
     }
 
     // 🔧 P0-06 修复：移除后端的 VFS 记录创建，由前端统一管理
@@ -157,16 +170,16 @@ fn domain_system_prompt(domain: &str) -> &str {
              Translate with absolute precision using standard legal terminology in the target language. \
              Preserve the exact structure of clauses, articles, and numbered sections. \
              Do not paraphrase or simplify legal language. Only output the translated text.",
-        "medical" => 
+        "medical" =>
             "You are a medical translator with expertise in clinical and biomedical texts. \
              Use standard medical terminology (ICD/MeSH terms where applicable). \
              Preserve drug names, dosages, anatomical terms, and abbreviations accurately. \
              Only output the translated text.",
-        "casual" | "conversation" => 
+        "casual" | "conversation" =>
             "You are a friendly translator for everyday conversations and social media content. \
              Use natural, colloquial language that sounds native. \
              Adapt idioms, slang, and cultural expressions appropriately. Only output the translated text.",
-        _ => 
+        _ =>
             "You are a professional translator. Translate the given text accurately while preserving its tone, style, and formatting. Do not add explanations or notes. Only output the translated text.",
     }
 }
@@ -349,9 +362,10 @@ where
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
                             buffer.push_str(&String::from_utf8_lossy(&bytes));
 
-                            while let Some(pos) = buffer.find("\n\n") {
+                            // ★ A6-01：兼容 LF（\n\n）与 CRLF（\r\n\r\n）两种 SSE 事件分隔
+                            while let Some((pos, sep_len)) = find_sse_event_boundary(&buffer) {
                                 let line = buffer[..pos].trim().to_string();
-                                buffer = buffer[pos + 2..].to_string();
+                                buffer = buffer[pos + sep_len..].to_string();
 
                                 if line.is_empty() {
                                     continue;
@@ -393,10 +407,37 @@ where
             return Ok(StreamStatus::Cancelled);
         }
 
-        Ok(StreamStatus::Completed)
+        // ★ A6-02：区分正常完成（收到 DONE）与流意外中断
+        if stream_ended {
+            Ok(StreamStatus::Completed)
+        } else {
+            println!("⚠️ [Translation] SSE 流未收到 DONE 标记就结束，结果可能不完整");
+            Ok(StreamStatus::Incomplete)
+        }
     }.await;
 
     llm.clear_cancel_stream(stream_event).await;
 
     result
+}
+
+/// 查找 SSE 事件边界，返回（分隔符起始位置, 分隔符长度）
+///
+/// ★ A6-01：与 essay_grading/pipeline.rs 中同名函数保持一致；部分供应商/反向代理
+/// 使用 CRLF（\r\n\r\n）分隔事件，只认 \n\n 会导致事件永远解析不到、缓冲区无限增长
+fn find_sse_event_boundary(buffer: &str) -> Option<(usize, usize)> {
+    let lf = buffer.find("\n\n");
+    let crlf = buffer.find("\r\n\r\n");
+    match (lf, crlf) {
+        (Some(l), Some(c)) => {
+            if c < l {
+                Some((c, 4))
+            } else {
+                Some((l, 2))
+            }
+        }
+        (Some(l), None) => Some((l, 2)),
+        (None, Some(c)) => Some((c, 4)),
+        (None, None) => None,
+    }
 }

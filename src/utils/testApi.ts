@@ -187,3 +187,13 @@ export async function getMistakeDetails(_id: string): Promise<MistakeItem | null
   console.warn('[DEPRECATED] getMistakeDetails is deprecated, migrate callers (2026-01 cleanup)');
   return null;
 }
+
+/** @deprecated 后端 command 已移除，仅 dev/ChatSaveTestPanel 诊断包装使用 */
+export async function updateMistake(_item: MistakeItem): Promise<MistakeItem> {
+  throw new Error('updateMistake is deprecated: backend command removed');
+}
+
+/** @deprecated 后端 command 已移除，仅 dev/ChatSaveTestPanel 诊断包装使用 */
+export async function runtimeAutosaveCommit(_params: unknown): Promise<unknown> {
+  throw new Error('runtimeAutosaveCommit is deprecated: backend command removed');
+}

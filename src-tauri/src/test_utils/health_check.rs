@@ -83,38 +83,19 @@ pub async fn check_web_search_service() -> HealthCheckResult {
     }
 }
 
-/// 检查记忆内化队列服务
-pub async fn check_memory_intake_service() -> HealthCheckResult {
-    // 记忆内化服务通过消息队列实现，检查队列是否初始化
-    use crate::persistent_message_queue;
-    let available = persistent_message_queue::get_persistent_message_queue().is_some();
-    HealthCheckResult {
-        service: "memory_intake".to_string(),
-        available,
-        latency_ms: None,
-        error: if available {
-            None
-        } else {
-            Some("Message queue not initialized".to_string())
-        },
-    }
-}
-
 /// 执行所有健康检查
 pub async fn check_all_dependencies(db: &crate::database::Database) -> Vec<HealthCheckResult> {
     let mut results = Vec::new();
 
-    let (prometheus, database, web_search, memory_intake) = tokio::join!(
+    let (prometheus, database, web_search) = tokio::join!(
         check_prometheus_metrics(),
         check_database_service(db),
-        check_web_search_service(),
-        check_memory_intake_service()
+        check_web_search_service()
     );
 
     results.push(prometheus);
     results.push(database);
     results.push(web_search);
-    results.push(memory_intake);
 
     results
 }

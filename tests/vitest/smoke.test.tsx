@@ -10,7 +10,7 @@ import {
   isValidResourceType,
   createTextBlock,
   createEmptyContextSnapshot,
-} from '../../src/chat-v2/context/types';
+} from '../../src/features/chat/context/types';
 
 // 最小化的 UnifiedSmartInputBar 烟雾测试
 describe('聊天模块烟雾测试', () => {

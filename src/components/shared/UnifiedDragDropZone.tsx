@@ -445,7 +445,7 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
               continue;
             }
 
-            const rawBytes = await invoke<number[]>('read_file_bytes', { path: p });
+            const rawBytes = await invoke<ArrayBuffer>('read_file_bytes', { path: p });
             const bytes = new Uint8Array(rawBytes);
             
             // 验证通过，添加到有效路径列表

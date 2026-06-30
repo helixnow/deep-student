@@ -23,6 +23,10 @@ struct DocumentRunState {
     // 标识该文档是否有"调度协程"正在运行（用于防止重复 resume/spawn）
     running: bool,
     current_task_id: Option<String>,
+    // 调度代际：每次启动新调度协程或暂停/删除会话时递增。
+    // 旧调度协程发现自己的代际落后时立即退出，
+    // 修复"暂停→快速恢复"窗口内新旧调度协程并发处理同一批任务的竞态。
+    epoch: u64,
 }
 
 /// 文档状态注册表 - 使用 DashMap 分片锁
@@ -170,15 +174,15 @@ impl EnhancedAnkiService {
             warn!("发送文档处理开始事件失败: {}", e);
         }
 
-        // 初始化文档运行状态（DashMap 无需 await，直接插入）
-        DOCUMENT_STATES.insert(
-            document_id.clone(),
-            DocumentRunState {
-                paused: false,
-                running: true,
-                current_task_id: None,
-            },
-        );
+        // 初始化文档运行状态（DashMap 无需 await，直接插入）；代际+1 并由本次调度协程持有
+        let my_epoch = {
+            let mut entry = DOCUMENT_STATES.entry(document_id.clone()).or_default();
+            entry.paused = false;
+            entry.running = true;
+            entry.current_task_id = None;
+            entry.epoch += 1;
+            entry.epoch
+        };
 
         // 异步处理所有任务
         let window_clone = window.clone();
@@ -191,6 +195,7 @@ impl EnhancedAnkiService {
                 tasks,
                 window_clone,
                 document_id_clone,
+                my_epoch,
             )
             .await;
         });
@@ -209,12 +214,21 @@ impl EnhancedAnkiService {
         tasks: Vec<DocumentTask>,
         window: Window,
         document_id: String,
+        my_epoch: u64,
     ) {
         // 并发度配置：可根据 API 限制调整
         const CONCURRENT_TASK_LIMIT: usize = 5;
 
         // 克隆 document_id 用于在闭包外部使用
         let document_id_for_check = document_id.clone();
+
+        // 调度协程是否仍持有最新代际（暂停/删除/新调度启动都会使旧代际失效）
+        let epoch_stale = |document_id: &str| {
+            DOCUMENT_STATES
+                .get(document_id)
+                .map(|s| s.epoch != my_epoch)
+                .unwrap_or(true)
+        };
 
         // 创建任务流并使用 buffer_unordered 实现有限并发
         // buffer_unordered 会同时最多执行 CONCURRENT_TASK_LIMIT 个 Future
@@ -226,26 +240,31 @@ impl EnhancedAnkiService {
                 let task_id = task.id.clone();
 
                 async move {
-                    // 暂停检查：如果文档已暂停，跳过任务
+                    // 暂停/代际检查：文档已暂停或本调度已被新代际取代时跳过任务
                     if let Some(state) = DOCUMENT_STATES.get(&document_id_clone) {
-                        if state.paused {
+                        if state.paused || state.epoch != my_epoch {
                             return (task_id.clone(), false); // 返回 (task_id, 是否执行)
                         }
+                    } else {
+                        // 状态已被清理（如会话被删除），不再执行
+                        return (task_id.clone(), false);
                     }
 
                     // 记录当前运行任务ID（仅供调试，并发下可能有多个）
-                    DOCUMENT_STATES
-                        .entry(document_id_clone.clone())
-                        .or_default()
-                        .current_task_id = Some(task_id.clone());
+                    // 用 get_mut 而非 entry().or_default()，避免会话删除后复活幽灵状态
+                    if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id_clone) {
+                        entry.current_task_id = Some(task_id.clone());
+                    }
 
+                    // F5（round2）：就绪信号替代 sleep(20ms)，确定性等待取消通道注册完成
+                    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
                     // 创建任务处理句柄
                     let handle = tokio::spawn({
                         let service = service.clone();
                         let window_clone = window_clone.clone();
                         async move {
                             if let Err(e) = service
-                                .process_task_and_generate_cards_stream(task, window_clone)
+                                .process_task_and_generate_cards_stream(task, window_clone, Some(ready_tx))
                                 .await
                             {
                                 warn!("任务处理失败: {}", e);
@@ -256,8 +275,8 @@ impl EnhancedAnkiService {
                     // 记录运行句柄，便于硬暂停时直接中止
                     RUNNING_HANDLES.insert(task_id.clone(), handle);
 
-                    // 短暂让出以便流任务完成取消通道注册，降低竞态窗口
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    // 确定性等待取消通道注册完成（任务若在注册前提前返回，ready_tx 被 drop，此处立即返回）
+                    let _ = ready_rx.await;
 
                     // 等待任务完成
                     let owned_handle_opt = RUNNING_HANDLES.remove(&task_id).map(|(_, h)| h);
@@ -293,12 +312,12 @@ impl EnhancedAnkiService {
                 warn!("任务 {} 因文档暂停被跳过", task_id);
             }
 
-            // 再次检查暂停状态，如果被暂停则提前终止流
+            // 再次检查暂停/代际状态，如已暂停或本调度被取代则提前终止流
             if let Some(state) = DOCUMENT_STATES.get(&document_id_for_check) {
-                if state.paused {
+                if state.paused || state.epoch != my_epoch {
                     warn!(
-                        "文档 {} 被暂停，已完成 {} 个任务，跳过 {} 个任务",
-                        document_id_for_check, completed_count, skipped_count
+                        "文档 {} 被暂停或调度代际已更替(epoch {} != {})，已完成 {} 个任务，跳过 {} 个任务",
+                        document_id_for_check, state.epoch, my_epoch, completed_count, skipped_count
                     );
                     break;
                 }
@@ -311,25 +330,26 @@ impl EnhancedAnkiService {
             .await
         {
             Ok(Some(retry_task)) => {
-                // 若文档被暂停，跳过重试任务
+                // 若文档被暂停或本调度已被取代，跳过重试任务
                 let paused = DOCUMENT_STATES
                     .get(&document_id_for_check)
                     .map(|s| s.paused)
                     .unwrap_or(false);
-                if !paused {
-                    // 更新当前运行任务ID
-                    DOCUMENT_STATES
-                        .entry(document_id_for_check.clone())
-                        .or_default()
-                        .current_task_id = Some(retry_task.id.clone());
+                if !paused && !epoch_stale(&document_id_for_check) {
+                    // 更新当前运行任务ID（get_mut 避免复活已删除的状态）
+                    if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id_for_check) {
+                        entry.current_task_id = Some(retry_task.id.clone());
+                    }
 
                     let service = streaming_service.clone();
                     let window_clone = window.clone();
                     let task_id_for_map = retry_task.id.clone();
 
+                    // F5（round2）：就绪信号替代 sleep(20ms)
+                    let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
                     let handle = tokio::spawn(async move {
                         if let Err(e) = service
-                            .process_task_and_generate_cards_stream(retry_task, window_clone)
+                            .process_task_and_generate_cards_stream(retry_task, window_clone, Some(ready_tx))
                             .await
                         {
                             warn!("统一重试任务处理失败: {}", e);
@@ -338,7 +358,8 @@ impl EnhancedAnkiService {
 
                     // 记录运行句柄
                     RUNNING_HANDLES.insert(task_id_for_map.clone(), handle);
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    // 确定性等待取消通道注册完成（替代 sleep(20ms)）
+                    let _ = ready_rx.await;
                     let owned_handle_opt = RUNNING_HANDLES.remove(&task_id_for_map).map(|(_, h)| h);
                     if let Some(handle) = owned_handle_opt {
                         let _ = handle.await;
@@ -356,20 +377,19 @@ impl EnhancedAnkiService {
             }
         }
 
-        // 调度完成，标记 running=false，如未暂停则清理状态
+        // 调度完成，标记 running=false，如未暂停则清理状态。
+        // 仅当本协程仍持有最新代际时才清理/宣告完成；否则状态归新调度协程所有，不得碰。
+        let mut should_emit_completed = false;
         if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id_for_check) {
-            entry.running = false;
-            if !entry.paused {
-                drop(entry); // 释放引用后再删除
-                DOCUMENT_STATES.remove(&document_id_for_check);
+            if entry.epoch == my_epoch {
+                entry.running = false;
+                should_emit_completed = !entry.paused;
+                if !entry.paused {
+                    drop(entry); // 释放引用后再删除
+                    DOCUMENT_STATES.remove(&document_id_for_check);
+                }
             }
         }
-
-        // 若未暂停，发送文档处理完成事件
-        let should_emit_completed = DOCUMENT_STATES
-            .get(&document_id_for_check)
-            .map(|s| !s.paused)
-            .unwrap_or(true);
         if should_emit_completed {
             // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
             let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
@@ -387,12 +407,14 @@ impl EnhancedAnkiService {
         document_id: String,
         window: Window,
     ) -> Result<(), AppError> {
-        // 标记文档为暂停
+        // 标记文档为暂停；代际+1 使旧调度协程立即失效，
+        // 即使随后快速 resume 把 paused 清回 false，旧协程也无法继续旧任务列表
         let current_task_id = {
             let mut entry = DOCUMENT_STATES.entry(document_id.clone()).or_default();
             entry.paused = true;
             // 暂停后，允许后续 resume 重新启动调度
             entry.running = false;
+            entry.epoch += 1;
             entry.current_task_id.clone()
         };
 
@@ -490,17 +512,19 @@ impl EnhancedAnkiService {
         window: Window,
     ) -> Result<(), AppError> {
         // 防重入：若该文档已在运行，则直接返回
-        {
+        let my_epoch = {
             let mut entry = DOCUMENT_STATES.entry(document_id.clone()).or_default();
             if entry.running {
                 // 已有调度进行中，仅确保不处于暂停态
                 entry.paused = false;
                 return Ok(());
             }
-            // 将状态切换为运行中
+            // 将状态切换为运行中，并由本次调度协程持有新代际
             entry.paused = false;
             entry.running = true;
-        }
+            entry.epoch += 1;
+            entry.epoch
+        };
 
         let mut remaining: Vec<DocumentTask> = self
             .doc_processor
@@ -542,8 +566,14 @@ impl EnhancedAnkiService {
         let window_clone = window.clone();
         let streaming_service = Arc::new(self.streaming_service.clone());
         tokio::spawn(async move {
-            Self::process_all_tasks_async(streaming_service, remaining, window_clone, document_id)
-                .await;
+            Self::process_all_tasks_async(
+                streaming_service,
+                remaining,
+                window_clone,
+                document_id,
+                my_epoch,
+            )
+            .await;
         });
 
         Ok(())
@@ -559,7 +589,7 @@ impl EnhancedAnkiService {
 
         if !matches!(
             task.status,
-            TaskStatus::Pending | TaskStatus::Failed | TaskStatus::Truncated
+            TaskStatus::Pending | TaskStatus::Failed | TaskStatus::Truncated | TaskStatus::Cancelled
         ) {
             return Err(AppError::validation("任务状态不是待处理"));
         }
@@ -569,7 +599,7 @@ impl EnhancedAnkiService {
 
         tokio::spawn(async move {
             if let Err(e) = streaming_service
-                .process_task_and_generate_cards_stream(task, window_clone)
+                .process_task_and_generate_cards_stream(task, window_clone, None)
                 .await
             {
                 tracing::warn!("任务处理失败: {}", e);
@@ -612,11 +642,85 @@ impl EnhancedAnkiService {
             .map_err(|e| AppError::database(format!("删除任务失败: {}", e)))
     }
 
+    /// 取消文档处理：仅停止生成，保留已生成的任务与卡片（非破坏性取消）
+    ///
+    /// 与 delete_document_session 的区别：不删除任何数据。
+    /// 行为：使调度协程失效 → 断开运行中的流 → 将未完成任务标记为 Cancelled → 派发事件。
+    pub async fn cancel_document_processing(
+        &self,
+        document_id: String,
+        window: Window,
+    ) -> Result<(), AppError> {
+        // 使调度协程立即失效（epoch+1），并阻止后续任务被调度
+        {
+            let mut entry = DOCUMENT_STATES.entry(document_id.clone()).or_default();
+            entry.paused = true;
+            entry.running = false;
+            entry.epoch += 1;
+        }
+
+        let tasks = match self.doc_processor.get_document_tasks(&document_id) {
+            Ok(tasks) => tasks,
+            Err(err) => {
+                warn!("获取文档任务失败，取消仅停止调度: {}", err);
+                Vec::new()
+            }
+        };
+
+        for task in tasks.into_iter().filter(|t| {
+            matches!(
+                t.status,
+                TaskStatus::Pending
+                    | TaskStatus::Processing
+                    | TaskStatus::Streaming
+                    | TaskStatus::Paused
+            )
+        }) {
+            // 运行中的任务先断流
+            if matches!(task.status, TaskStatus::Processing | TaskStatus::Streaming) {
+                if let Err(e) = self.streaming_service.cancel_streaming(task.id.clone()).await {
+                    warn!("取消流失败: {}，尝试直接中止任务句柄", e);
+                    if let Some((_, h)) = RUNNING_HANDLES.remove(&task.id) {
+                        h.abort();
+                    }
+                }
+            }
+
+            // 统一标记为 Cancelled（保留任务记录与已生成卡片）
+            self.doc_processor
+                .update_task_status(&task.id, TaskStatus::Cancelled, None)?;
+
+            let payload = StreamedCardPayload::TaskStatusUpdate {
+                task_id: task.id.clone(),
+                status: TaskStatus::Cancelled,
+                message: None,
+                segment_index: Some(task.segment_index),
+                document_id: Some(task.document_id.clone()),
+            };
+            if let Err(e) = window.emit("anki_generation_event", &payload) {
+                warn!("发送任务状态更新事件失败: {}", e);
+            }
+        }
+
+        // 清理运行状态并宣告文档处理结束（前端据此停止轮询/转入终态）
+        DOCUMENT_STATES.remove(&document_id);
+        let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
+            document_id: document_id.clone(),
+        };
+        if let Err(e) = window.emit("anki_generation_event", &complete_payload) {
+            warn!("发送文档处理完成事件失败: {}", e);
+        }
+
+        Ok(())
+    }
+
     /// 删除文档会话
     pub async fn delete_document_session(&self, document_id: String) -> Result<(), AppError> {
         if let Some(mut entry) = DOCUMENT_STATES.get_mut(&document_id) {
             entry.paused = true;
             entry.running = false;
+            // 代际+1：确保正在运行的调度协程立即失效
+            entry.epoch += 1;
         }
 
         if let Ok(tasks) = self.doc_processor.get_document_tasks(&document_id) {
@@ -861,9 +965,17 @@ mod tests {
         let tmp_dir = std::env::temp_dir().join(format!("dstu_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir).unwrap();
 
-        // file manager + db
+        // file manager + db（先经 MigrationCoordinator 建出 mistakes 全量 schema）
         let fm = Arc::new(FileManager::new(tmp_dir.clone()).expect("fm"));
-        let db_path = tmp_dir.join("test.db");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator = MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db_path = tmp_dir.join("mistakes.db");
         let db = Arc::new(crate::database::Database::new(&db_path).expect("db"));
         let llm =
             Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()).expect("llm"));
@@ -910,6 +1022,7 @@ mod tests {
                 paused: false,
                 running: false,
                 current_task_id: None,
+                ..Default::default()
             },
         );
 
@@ -934,7 +1047,15 @@ mod tests {
         std::fs::create_dir_all(&tmp_dir).unwrap();
 
         let fm = Arc::new(FileManager::new(tmp_dir.clone()).expect("fm"));
-        let db_path = tmp_dir.join("test.db");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator = MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db_path = tmp_dir.join("mistakes.db");
         let db = Arc::new(crate::database::Database::new(&db_path).expect("db"));
         let llm =
             Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()).expect("llm"));
@@ -980,6 +1101,7 @@ mod tests {
                 paused: false,
                 running: false,
                 current_task_id: None,
+                ..Default::default()
             },
         );
         svc.__test_pause_no_emit(doc_id.clone())

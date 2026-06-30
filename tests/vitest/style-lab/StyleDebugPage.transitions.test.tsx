@@ -4,26 +4,18 @@ import { describe, expect, it } from 'vitest';
 import { StyleDebugPage } from '@/components/style-lab/StyleDebugPage';
 
 describe('StyleDebugPage transitions lab', () => {
-  it('renders a dedicated transitions.dev demo tab with documented transition hooks', async () => {
+  it('renders the current token inspector tab with visual token groups', async () => {
     render(<StyleDebugPage />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Transition 动效' }));
+    await user.click(screen.getByRole('button', { name: 'Token 校对' }));
 
-    expect(screen.getByRole('button', { name: 'Transition 动效' })).toBeInTheDocument();
-    expect(screen.getByText('transitions.dev 动效调试')).toBeInTheDocument();
-    expect(screen.getByText('Card resize')).toBeInTheDocument();
-    expect(screen.getByText('Menu dropdown')).toBeInTheDocument();
-    expect(screen.getByText('Page side-by-side')).toBeInTheDocument();
-    expect(screen.getByText('Number pop-in')).toBeInTheDocument();
-    expect(screen.getByText('Text states swap')).toBeInTheDocument();
-    expect(screen.getByText('Icon swap')).toBeInTheDocument();
-
-    expect(document.querySelector('.t-resize')).toBeInTheDocument();
-    expect(document.querySelector('.t-dropdown')).toBeInTheDocument();
-    expect(document.querySelector('.t-page-slide')).toBeInTheDocument();
-    expect(document.querySelector('.t-digit-group')).toBeInTheDocument();
-    expect(document.querySelector('.t-text-swap')).toBeInTheDocument();
-    expect(document.querySelector('.t-icon-swap')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Token 校对' })).toHaveAttribute('data-state', 'active');
+    expect(screen.getByPlaceholderText('搜索 token 名称…')).toBeInTheDocument();
+    expect(screen.getByText('Surface 层级')).toBeInTheDocument();
+    expect(screen.getByText('阴影')).toBeInTheDocument();
+    expect(screen.getByText('圆角')).toBeInTheDocument();
+    expect(screen.getByText('--shadow-shell-soft')).toBeInTheDocument();
+    expect(screen.getByText('--radius-shell-panel')).toBeInTheDocument();
   });
 });

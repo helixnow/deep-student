@@ -12,7 +12,7 @@ describe('DeepStudent about logo token contract', () => {
   const logoSource = readSource('src/components/ui/DeepStudentLogo.tsx');
 
   it('uses the DeepStudent SVG wordmark in the About tab instead of the generic image asset', () => {
-    expect(aboutTabSource).toContain("import { DeepStudentLogo } from '../ui/DeepStudentLogo';");
+    expect(aboutTabSource).toContain("import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';");
     expect(aboutTabSource).toContain('<DeepStudentLogo');
     expect(aboutTabSource).toContain('w-44');
     expect(aboutTabSource).toContain('max-w-full');

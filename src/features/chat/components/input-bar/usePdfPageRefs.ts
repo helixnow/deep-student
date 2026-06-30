@@ -57,11 +57,25 @@ export function usePdfPageRefs(): UsePdfPageRefsReturn {
         pages: number[];
       }>).detail;
 
+      const current = pageRefsRef.current;
+
       if (!pages || pages.length === 0) {
-        setPageRefs(null);
-      } else {
-        setPageRefs({ sourceId, sourceName, pages });
+        // ★ 多 tab 修复：仅当清空事件来自当前源时才清除 chips，
+        // 避免后台 tab 的空选择覆盖活跃源状态
+        if (!current || current.sourceId === sourceId) {
+          setPageRefs(null);
+        }
+        return;
       }
+
+      // ★ 多 tab 修复：切换到新源时，通知旧 PDF tab 清除其页选高亮，
+      // 保证「PDF 内高亮」与「聊天 chips」状态一致（单一活跃源模型）
+      if (current && current.sourceId !== sourceId) {
+        document.dispatchEvent(new CustomEvent('pdf-page-refs:clear', {
+          detail: { sourceId: current.sourceId },
+        }));
+      }
+      setPageRefs({ sourceId, sourceName, pages });
     };
 
     document.addEventListener('pdf-page-refs:update', handler);
@@ -70,8 +84,12 @@ export function usePdfPageRefs(): UsePdfPageRefsReturn {
 
   // 清除所有页码引用
   const clearPageRefs = useCallback(() => {
+    const current = pageRefsRef.current;
     setPageRefs(null);
-    document.dispatchEvent(new CustomEvent('pdf-page-refs:clear'));
+    // ★ 携带 sourceId，避免误清其他 PDF tab 的选择
+    document.dispatchEvent(new CustomEvent('pdf-page-refs:clear', {
+      detail: current ? { sourceId: current.sourceId } : undefined,
+    }));
   }, []);
 
   // 移除单个页码
@@ -84,9 +102,9 @@ export function usePdfPageRefs(): UsePdfPageRefsReturn {
       clearPageRefs();
     } else {
       setPageRefs({ ...current, pages: newPages });
-      // 通知 PDF Viewer 移除单页选择
+      // 通知 PDF Viewer 移除单页选择（★ 携带 sourceId 防跨 tab 误删）
       document.dispatchEvent(new CustomEvent('pdf-page-refs:remove', {
-        detail: { page },
+        detail: { page, sourceId: current.sourceId },
       }));
     }
   }, [clearPageRefs]);

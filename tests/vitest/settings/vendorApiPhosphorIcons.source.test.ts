@@ -6,7 +6,7 @@ const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 
 
 describe('vendor API settings icon source contract', () => {
   it('uses Phosphor icons for vendor field labels in the API settings panel', () => {
-    const source = readSource('src/features/settings/components/ApisTab.tsx');
+    const source = readSource('src/features/settings/components/VendorDetailPanel.tsx');
 
     expect(source).toContain("} from '@phosphor-icons/react';");
     expect(source).not.toContain("from 'lucide-react'");
@@ -30,7 +30,7 @@ describe('vendor API settings icon source contract', () => {
 
     expect(genericFetcher).toContain("} from '@phosphor-icons/react';");
     expect(genericFetcher).not.toContain("from 'lucide-react'");
-    expect(genericFetcher).toContain('<Stack className="h-3.5 w-3.5" aria-hidden="true" />');
+    expect(genericFetcher).toContain('<Stack className="h-3 w-3" aria-hidden="true" />');
 
     expect(siliconFlowSection).toContain("} from '@phosphor-icons/react';");
     expect(siliconFlowSection).not.toContain("from 'lucide-react'");

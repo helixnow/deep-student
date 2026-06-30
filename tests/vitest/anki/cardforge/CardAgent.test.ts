@@ -213,7 +213,7 @@ describe('CardAgent', () => {
     );
   });
 
-  it('returns timeout with task:error event', async () => {
+  it('returns idle-timeout with task:error event after inactivity', async () => {
     vi.useFakeTimers();
     const agent = new CardAgent();
     await agent.waitForReady();
@@ -250,7 +250,7 @@ describe('CardAgent', () => {
       expect.objectContaining({
         documentId: 'doc-timeout',
         payload: expect.objectContaining({
-          error: expect.stringContaining('生成超时'),
+          error: expect.stringContaining('空闲超时'),
           isTimeout: true,
           partialCards: 0,
         }),
@@ -258,6 +258,63 @@ describe('CardAgent', () => {
     );
     expect(result.ok).toBe(true);
     expect(result.cards).toHaveLength(0);
+    expect(result.paused).toBe(false);
+  });
+
+  it('does not idle-timeout while cards keep arriving (F21 idle reset)', async () => {
+    vi.useFakeTimers();
+    const agent = new CardAgent();
+    await agent.waitForReady();
+
+    let startResolve: (() => void) | null = null;
+    const startPromise = new Promise<void>((resolve) => {
+      startResolve = resolve;
+    });
+
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'start_enhanced_document_processing') {
+        startResolve?.();
+        return 'doc-idle';
+      }
+      if (command === 'get_document_tasks') {
+        return [{ id: 'task-1', document_id: 'doc-idle', segment_index: 0, status: 'completed' }];
+      }
+      return undefined;
+    });
+
+    const onError = vi.fn();
+    agent.on('task:error', onError);
+
+    const promise = agent.generateCards({ content: 'Hello idle' });
+
+    await startPromise;
+    await Promise.resolve();
+
+    // 每个空闲窗口（300s）快到期前发来一张卡以重置计时器；总推进 750s 远超旧固定总超时
+    for (let i = 0; i < 3; i++) {
+      vi.advanceTimersByTime(250000);
+      generationCallback?.({
+        payload: {
+          NewCard: {
+            card: createBackendCard({ id: `card-${i}`, task_id: 'task-1', template_id: 'basic' }),
+            document_id: 'doc-idle',
+          },
+        },
+      });
+      await Promise.resolve();
+    }
+
+    // 因持续有生成活动，空闲计时器一直被重置，不应触发超时
+    expect(onError).not.toHaveBeenCalled();
+
+    generationCallback?.({
+      payload: { DocumentProcessingCompleted: { document_id: 'doc-idle' } },
+    });
+
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(result.cards).toHaveLength(3);
     expect(result.paused).toBe(false);
   });
 });

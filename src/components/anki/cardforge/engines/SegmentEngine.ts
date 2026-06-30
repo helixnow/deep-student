@@ -180,7 +180,6 @@ export class SegmentEngine {
     const splitPoints: HardSplitPoint[] = [];
     const chunkSize = this.config.chunkSize;
 
-    let currentPosition = 0;
     let currentTokens = 0;
     let splitIndex = 0;
 
@@ -493,13 +492,17 @@ ${request.afterContext}
       return 1.0;
     }
 
-    // 英文字母和数字（在 estimateTokens 中已按词处理）
+    // 🔧 F22（round2）：ASCII 字母/数字按约 4 字符/token 计（≈0.25）。
+    // 旧实现返回 0（理由是 estimateTokens 已按词处理英文），但 hardSplit 逐字符调用本函数
+    // 累计 token，字母返回 0 会导致英文长文几乎不产生硬分割点 → analyzeContent 低估分段数。
+    // 注：estimateTokens 在调用本函数前已剥离 [a-zA-Z]+ 单词，故该调整不影响其英文词级估算，
+    // 仅令 hardSplit 的英文累计与词级估算大致一致（约 5-6 字符/词 × 0.25 ≈ 1.3 token/词）。
     if (
       (code >= 0x0061 && code <= 0x007a) || // a-z
       (code >= 0x0041 && code <= 0x005a) || // A-Z
       (code >= 0x0030 && code <= 0x0039) // 0-9
     ) {
-      return 0; // 已在 estimateTokens 中按词计算
+      return 0.25;
     }
 
     // 其他字符（标点、空格等）

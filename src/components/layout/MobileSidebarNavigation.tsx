@@ -2,21 +2,14 @@ import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { createNavItems, type NavItem } from '@/config/navigation';
+import { createNavItems } from '@/config/navigation';
 import type { CurrentView } from '@/types/navigation';
 import { useViewStore } from '@/stores/viewStore';
+import { canonicalizeView } from '@/app/navigation/canonicalView';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { shellNavButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 
 export const MOBILE_APP_NAVIGATE_EVENT = 'deepstudent:mobile-sidebar-navigate';
-
-const MOBILE_SIDEBAR_NAV_ITEMS: CurrentView[] = [
-  'chat-v2',
-  'skills-management',
-  'learning-hub',
-  'task-dashboard',
-  'settings',
-];
 
 interface MobileSidebarNavigationProps {
   onNavigate?: () => void;
@@ -29,24 +22,8 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
 }) => {
   const { t } = useTranslation(['sidebar', 'common']);
   const currentView = useViewStore((state) => state.currentView);
-  const allNavItems = useMemo(() => createNavItems(t), [t]);
-
-  const navItems = useMemo(() => {
-    const items: NavItem[] = [];
-
-    allNavItems.forEach((item) => {
-      if (MOBILE_SIDEBAR_NAV_ITEMS.includes(item.view as CurrentView)) {
-        items.push(item);
-      }
-    });
-
-    items.sort((a, b) => (
-      MOBILE_SIDEBAR_NAV_ITEMS.indexOf(a.view as CurrentView) -
-      MOBILE_SIDEBAR_NAV_ITEMS.indexOf(b.view as CurrentView)
-    ));
-
-    return items;
-  }, [allNavItems]);
+  // 与桌面侧边栏同源同序（A-2/A-3 修复）：移动端不再白名单裁剪导航项
+  const navItems = useMemo(() => createNavItems(t), [t]);
 
   const handleNavigate = useCallback((view: CurrentView) => {
     window.dispatchEvent(new CustomEvent(MOBILE_APP_NAVIGATE_EVENT, { detail: { view } }));
@@ -63,7 +40,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
     >
       <nav aria-label={t('common:navigation_label', 'Navigation')} className="space-y-0.5">
         {navItems.map(({ view, icon: Icon, name }) => {
-          const isActive = currentView === view;
+          const isActive = canonicalizeView(currentView) === view;
 
           return (
             <NotionButton

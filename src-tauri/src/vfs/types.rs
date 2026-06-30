@@ -958,6 +958,10 @@ pub struct VfsCreateTodoItemParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub due_time: Option<String>,
 
+    /// 提醒时间（本地 datetime，`YYYY-MM-DDTHH:MM`）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reminder: Option<String>,
+
     /// 标签
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
@@ -969,6 +973,10 @@ pub struct VfsCreateTodoItemParams {
     /// 关联资源 ID
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<String>>,
+
+    /// 重复规则 JSON（`{"freq":"daily|weekly|monthly|yearly|weekdays","interval":1}`）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_json: Option<String>,
 }
 
 /// 更新待办项参数
@@ -1163,6 +1171,20 @@ pub struct PomodoroTodayStats {
     /// 今日总专注时长（秒）
     pub total_focus_seconds: i64,
     /// 今日中断次数
+    pub interrupted_count: usize,
+}
+
+/// 番茄钟单日聚合（按本地日期分桶，用于趋势/热力图）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PomodoroDailyStat {
+    /// 本地日期（YYYY-MM-DD）
+    pub date: String,
+    /// 当日完成的工作番茄数
+    pub completed_count: usize,
+    /// 当日专注时长（秒，含中断会话的实际专注部分）
+    pub focus_seconds: i64,
+    /// 当日中断次数
     pub interrupted_count: usize,
 }
 
@@ -2037,11 +2059,13 @@ impl PreviewType {
         match ext.to_lowercase().as_str() {
             // PDF
             "pdf" => PreviewType::Pdf,
-            // Word 文档
+            // Word 文档（仅 OOXML；前端 docx-preview 无法渲染老 .doc 二进制格式）
             "docx" => PreviewType::Docx,
-            // Excel 表格
-            "xlsx" | "xls" | "ods" | "xlsb" => PreviewType::Xlsx,
-            // PowerPoint 演示文稿
+            // Excel 表格（仅 OOXML；ExcelJS 无法渲染 xls/xlsb/ods，
+            // ★ 2026-06-12 审阅问题 R3：老格式降级为 Text 走后端提取文本）
+            "xlsx" => PreviewType::Xlsx,
+            "xls" | "ods" | "xlsb" => PreviewType::Text,
+            // PowerPoint 演示文稿（仅 OOXML）
             "pptx" => PreviewType::Pptx,
             // 图片
             "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg" | "bmp" => PreviewType::Image,
@@ -2997,10 +3021,12 @@ mod tests {
         assert_eq!(PreviewType::from_extension("PDF"), PreviewType::Pdf);
         // Word
         assert_eq!(PreviewType::from_extension("docx"), PreviewType::Docx);
-        // Excel
+        // Excel（仅 OOXML 走富表格渲染）
         assert_eq!(PreviewType::from_extension("xlsx"), PreviewType::Xlsx);
-        assert_eq!(PreviewType::from_extension("xls"), PreviewType::Xlsx);
-        assert_eq!(PreviewType::from_extension("ods"), PreviewType::Xlsx);
+        // ★ 审阅问题 R3：老格式降级为 Text（前端 ExcelJS 渲染必败，改走提取文本）
+        assert_eq!(PreviewType::from_extension("xls"), PreviewType::Text);
+        assert_eq!(PreviewType::from_extension("ods"), PreviewType::Text);
+        assert_eq!(PreviewType::from_extension("xlsb"), PreviewType::Text);
         // PowerPoint
         assert_eq!(PreviewType::from_extension("pptx"), PreviewType::Pptx);
         // 图片

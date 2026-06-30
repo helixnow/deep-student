@@ -240,7 +240,7 @@ fn image_needs_compression_with_conn(
 fn get_max_size_bytes(resource_type: &VfsResourceType) -> usize {
     match resource_type {
         VfsResourceType::Image => 10 * 1024 * 1024,       // 10MB
-        VfsResourceType::File => 50 * 1024 * 1024,        // 50MB
+        VfsResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
         VfsResourceType::Note => 50 * 1024 * 1024,        // 50MB
         VfsResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
         VfsResourceType::Exam => 50 * 1024 * 1024,        // 50MB
@@ -2217,6 +2217,12 @@ pub async fn vfs_upload_file(
                     "[VFS::handlers] 文件记录创建失败，补偿清理 blob: hash={}…",
                     &hash[..hash.len().min(16)]
                 );
+                // ★ 2026-06-13（审阅 R2-3）：store_blob_with_conn 已把 ref_count 置/加到 1
+                // （去重命中时 N→N+1），而 create_file 不增 ref。旧补偿直接 cleanup_blob
+                // （ref_count=1>0 → no-op）会漏删 → 孤儿 blob 残留（原 2071 注释已知此问题）。
+                // 正确补偿：先 decrement_ref 抵消本次 store 的 +1（去重命中回到 N，仍被他人引用），
+                // 再 cleanup（仅当回到 0 时真正删除文件+记录）。
+                let _ = VfsBlobRepo::decrement_ref_with_conn(&conn, &blobs_dir, hash);
                 if let Err(cleanup_err) =
                     VfsBlobRepo::cleanup_blob_with_conn(&conn, &blobs_dir, hash)
                 {
@@ -7152,8 +7158,8 @@ mod tests {
         let medium_data = "x".repeat(20 * 1024 * 1024);
         assert!(validate_file_size(&VfsResourceType::File, &medium_data).is_ok());
 
-        // 但 File 也有上限
-        let very_large_data = "x".repeat(51 * 1024 * 1024); // 51MB
+        // 但 File 也有上限（随常量走，避免上限调整时测试失真）
+        let very_large_data = "x".repeat(get_max_size_bytes(&VfsResourceType::File) + 1);
         assert!(validate_file_size(&VfsResourceType::File, &very_large_data).is_err());
     }
 
@@ -7177,7 +7183,10 @@ mod tests {
             get_max_size_bytes(&VfsResourceType::Image),
             10 * 1024 * 1024
         );
-        assert_eq!(get_max_size_bytes(&VfsResourceType::File), 50 * 1024 * 1024);
+        assert_eq!(
+            get_max_size_bytes(&VfsResourceType::File),
+            200 * 1024 * 1024
+        );
         assert_eq!(get_max_size_bytes(&VfsResourceType::Note), 50 * 1024 * 1024);
         assert_eq!(
             get_max_size_bytes(&VfsResourceType::Translation),

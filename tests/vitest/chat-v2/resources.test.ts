@@ -145,7 +145,7 @@ describe('Validation Functions', () => {
   describe('getFileSizeLimitText', () => {
     it('should return correct limit text', () => {
       expect(getFileSizeLimitText('image')).toBe('10MB');
-      expect(getFileSizeLimitText('file')).toBe('50MB');
+      expect(getFileSizeLimitText('file')).toBe('200MB');
     });
   });
 
@@ -288,14 +288,15 @@ describe('MockResourceStoreApi', () => {
       expect(resource).toBeNull();
     });
 
-    it('should return null for hash mismatch', async () => {
+    it('should ignore legacy hash arguments and return the resource by id', async () => {
       const createResult = await api.createOrReuse({
         type: 'note',
         data: 'Test content',
       });
 
       const resource = await api.get(createResult.resourceId, 'wrong_hash');
-      expect(resource).toBeNull();
+      expect(resource).not.toBeNull();
+      expect(resource?.id).toBe(createResult.resourceId);
     });
   });
 
@@ -472,7 +473,7 @@ describe('Convenience Functions', () => {
       expect(isLatestVersion).toBe(true);
     });
 
-    it('should return latest version as fallback', async () => {
+    it('should treat legacy stale hashes as current in VFS mode', async () => {
       // 创建资源
       const ref = await createResourceRef('note', 'Test content');
 
@@ -485,7 +486,7 @@ describe('Convenience Functions', () => {
       const { resource, isLatestVersion } = await getResourceWithFallback(modifiedRef);
 
       expect(resource).not.toBeNull();
-      expect(isLatestVersion).toBe(false);
+      expect(isLatestVersion).toBe(true);
     });
 
     it('should return null when resource not found', async () => {
@@ -512,7 +513,7 @@ describe('Constants', () => {
     expect(IMAGE_SIZE_LIMIT).toBe(10 * 1024 * 1024);
   });
 
-  it('FILE_SIZE_LIMIT should be 50MB', () => {
-    expect(FILE_SIZE_LIMIT).toBe(50 * 1024 * 1024);
+  it('FILE_SIZE_LIMIT should be 200MB (#62)', () => {
+    expect(FILE_SIZE_LIMIT).toBe(200 * 1024 * 1024);
   });
 });

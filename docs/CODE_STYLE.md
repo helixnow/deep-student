@@ -83,7 +83,20 @@ className={cn('base', isActive && 'bg-primary', className)}
 </div>
 ```
 
-### 5.2 移动端布局
+### 5.2 拖拽上传
+
+所有文件上传拖拽功能**必须**使用统一组件，**禁止**自行实现原生拖拽监听：
+
+| 组件 | 位置 |
+|-----|------|
+| `UnifiedDragDropZone` | `src/components/shared/UnifiedDragDropZone.tsx` |
+| `useTauriDragAndDrop` | `src/hooks/useTauriDragAndDrop.ts` |
+
+禁止：直接使用 `onDragOver`/`onDrop` 处理文件、监听 `tauri://drag-*` 事件、读取 `e.dataTransfer.files`、复制统一组件内部逻辑。
+
+原因：Tauri 环境下 Web 原生拖拽 API 无法获取文件路径；统一组件已处理可见性检查、文件验证、HEIC/HEIF 支持等复杂逻辑。
+
+### 5.3 移动端布局
 
 配置常量：`src/config/mobileLayout.ts`
 

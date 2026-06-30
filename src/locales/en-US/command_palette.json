@@ -48,6 +48,8 @@
   "import_failed": "Import failed",
   "total_commands": "{{count}} commands total",
   "search_tip": "Type > to filter by category",
+  "resource_files": "Files",
+  "resource_sessions": "Sessions",
 
   "categories": {
     "navigation": "Navigation",

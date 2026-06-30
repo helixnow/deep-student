@@ -47,7 +47,9 @@ describe('PracticeLauncher runtime restoration', () => {
     storeState.mockExamScoreCard = null;
   });
 
-  it('keeps the timed practice entry open when there is an active timed session for the current exam', async () => {
+  // 首个用例承担 PracticeLauncher 模块图（phosphor-icons 等 barrel 依赖）的一次性
+  // 动态导入/求值成本，高负载机器上可超过默认 5s，放宽超时避免环境性假失败
+  it('keeps the timed practice entry open when there is an active timed session for the current exam', { timeout: 30_000 }, async () => {
     storeState.timedSession = {
       id: 'timed_1',
       exam_id: 'exam_1',

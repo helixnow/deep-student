@@ -318,16 +318,16 @@ Yjs 和 Automerge 都适合协同编辑、离线编辑、自动合并。Yjs 提�
 
 ## 外部样本对照：三个成熟实现
 
-本轮对照基于本地 clone 的官方仓库：
+本轮对照基于各官方仓库（撰写时 2026-05 的版本；Cherry Studio 链接锚定 commit，LiveSync 核心逻辑在子库 livesync-commonlib）：
 
-- [Cherry Studio backup / restore](/Volumes/cipan/deep-student/cipan/example/cherry-studio/src/main/services/BackupManager.ts:168)
-- [SiYuan sync entry](/Volumes/cipan/deep-student/cipan/example/siyuan/kernel/model/sync.go:174)
-- [SiYuan repository flow](/Volumes/cipan/deep-student/cipan/example/siyuan/kernel/model/repository.go:1510)
-- [LiveSync data structures](/Volumes/cipan/deep-student/cipan/example/obsidian-livesync/src/lib/src/common/models/db.definition.ts:66)
-- [LiveSync journal sync](/Volumes/cipan/deep-student/cipan/example/obsidian-livesync/src/lib/src/replication/journal/JournalSyncAbstract.ts:1)
-- [LiveSync replicator](/Volumes/cipan/deep-student/cipan/example/obsidian-livesync/src/lib/src/replication/journal/LiveSyncJournalReplicator.ts:1)
+- [Cherry Studio backup / restore](https://github.com/CherryHQ/cherry-studio/blob/101904d0/src/main/services/BackupManager.ts)
+- [SiYuan sync entry](https://github.com/siyuan-note/siyuan/blob/master/kernel/model/sync.go)
+- [SiYuan repository flow](https://github.com/siyuan-note/siyuan/blob/master/kernel/model/repository.go)
+- [LiveSync data structures](https://github.com/vrtmrz/livesync-commonlib/blob/main/src/common/models/db.definition.ts)
+- [LiveSync journal sync](https://github.com/vrtmrz/livesync-commonlib/blob/main/src/replication/journal/JournalSyncAbstract.ts)
+- [LiveSync replicator](https://github.com/vrtmrz/livesync-commonlib/blob/main/src/replication/journal/LiveSyncJournalReplicator.ts)
 
-也可直接看官方仓库：
+官方仓库主页：
 
 - [Cherry Studio](https://github.com/CherryHQ/cherry-studio)
 - [SiYuan](https://github.com/siyuan-note/siyuan)
