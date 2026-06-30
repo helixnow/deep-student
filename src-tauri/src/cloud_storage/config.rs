@@ -222,16 +222,6 @@ impl CloudStorageConfig {
                 if config.password.trim().is_empty() {
                     return Err("WebDAV 密码不能为空".into());
                 }
-                let is_local = Self::is_local_endpoint(&config.endpoint);
-                if !is_local
-                    && !config
-                        .endpoint
-                        .trim()
-                        .to_lowercase()
-                        .starts_with("https://")
-                {
-                    return Err("WebDAV endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into());
-                }
                 Ok(())
             }
             StorageProvider::S3 => {
@@ -323,6 +313,7 @@ mod tests {
 
     #[test]
     fn test_https_enforcement_webdav() {
+        // HTTP 非 localhost 现已允许（与 FTP 行为一致，前端会弹不安全警告）
         let config = CloudStorageConfig {
             provider: StorageProvider::WebDav,
             webdav: Some(WebDavConfig {
@@ -332,7 +323,7 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert!(config.validate().is_err(), "HTTP WebDAV should be rejected");
+        assert!(config.validate().is_ok(), "HTTP WebDAV should now be allowed");
 
         let config = CloudStorageConfig {
             provider: StorageProvider::WebDav,
@@ -477,8 +468,8 @@ mod tests {
             ..Default::default()
         };
         assert!(
-            config.validate().is_err(),
-            "http://localhost.evil.com should be rejected as non-local HTTP"
+            config.validate().is_ok(),
+            "http://localhost.evil.com should now be allowed (frontend shows warning)"
         );
 
         let config = CloudStorageConfig {

@@ -1037,6 +1037,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vl_embedding_model_config_id: null,
       vl_reranker_model_config_id: null,
       memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
+      review_analysis_model_config_id: null,
       voice_input_asr_model_config_id: mapping[t('settings:mapping_keys.voice_input_asr_configured')] || null,
       image_generation_model_config_id: mapping[t('settings:mapping_keys.image_generation_configured')] || null,
       // 显示模式不属于供应商映射，保持现状不变（持久化层 #[serde(default)] 兜底为 null）

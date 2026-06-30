@@ -400,6 +400,7 @@ export interface ModelAssignments {
   vl_embedding_model_config_id: string | null;  // 多模态嵌入模型（Qwen3-VL-Embedding）
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
   memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
+  review_analysis_model_config_id: string | null; // 复习分析模型
   voice_input_asr_model_config_id: string | null; // 语音输入 ASR 模型
   image_generation_model_config_id: string | null; // 生图模型
   /** 聊天内翻译弹窗显示模式：'aligned' = 短语对照（默认），'streaming' = 流式纯译文 */

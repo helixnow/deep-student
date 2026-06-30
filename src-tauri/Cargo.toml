@@ -127,10 +127,11 @@ urlencoding = "2.1.3"
 roxmltree = "0.20"
 argon2 = "0.5"
 zeroize = { version = "1", features = ["derive"] }
-# FTP/FTPS 支持
-suppaftp = { version = "6", default-features = false, features = ["async", "async-native-tls"] }
-# suppaftp v6 的 async Read/Write traits 依赖 async-std
-async-std = { version = "1", default-features = false, features = ["std"] }
+# FTP/FTPS 支持（v7+ 支持 tokio + rustls，不再需要 async-std/openssl）
+suppaftp = { version = "7", default-features = false, features = ["tokio", "tokio-rustls"] }
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+webpki-roots = "0.26"
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
 aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }

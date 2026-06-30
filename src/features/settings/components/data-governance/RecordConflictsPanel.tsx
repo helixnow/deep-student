@@ -147,7 +147,34 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             两端同时编辑同一条记录时产生的冲突。落败方保留在此表，供手动决策。
           </CardDescription>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              pairs.forEach((p) => {
+                if (p.local) void handleResolve(p, 'keep_local');
+              });
+            }}
+            disabled={loading || pairs.length === 0}
+            className="h-8"
+          >
+            全部保留本地
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              pairs.forEach((p) => {
+                const latest = p.clouds[p.clouds.length - 1];
+                if (latest) void handleResolve(p, 'keep_cloud');
+              });
+            }}
+            disabled={loading || pairs.length === 0}
+            className="h-8"
+          >
+            全部采用云端
+          </NotionButton>
           <NotionButton
             variant="ghost"
             size="sm"

@@ -123,6 +123,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
   const [showInsecureWebdavWarning, setShowInsecureWebdavWarning] = useState(false);
   const [showInsecureS3Warning, setShowInsecureS3Warning] = useState(false);
+  // 记录当前不安全警告的上下文（保存还是测试连接）
+  const [insecureWarningAction, setInsecureWarningAction] = useState<'save' | 'test' | null>(null);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
   useEffect(() => {
@@ -389,18 +391,21 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
     // FTP 明文连接警告：如果 endpoint 以 ftp:// 开头（非 ftps://），弹窗确认
     if (config.provider === 'ftp' && ftpConfig.endpoint.trim().toLowerCase().startsWith('ftp://')) {
+      setInsecureWarningAction('save');
       setShowInsecureFtpWarning(true);
       return;
     }
 
     // WebDAV HTTP 连接警告：如果 endpoint 以 http:// 开头（非 https://），弹窗确认
     if (config.provider === 'webdav' && webdavConfig.endpoint.trim().toLowerCase().startsWith('http://')) {
+      setInsecureWarningAction('save');
       setShowInsecureWebdavWarning(true);
       return;
     }
 
     // S3 HTTP 连接警告：如果 endpoint 以 http:// 开头（非 https://），弹窗确认
     if (config.provider === 's3' && s3Config.endpoint.trim().toLowerCase().startsWith('http://')) {
+      setInsecureWarningAction('save');
       setShowInsecureS3Warning(true);
       return;
     }
@@ -408,23 +413,63 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     await doSaveConfig();
   }, [buildConfig, webdavConfig.password, webdavConfig.endpoint, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, encryptionPassword, t, doSaveConfig]);
 
-  // 确认保存不安全 FTP 配置
+  // 实际执行测试连接逻辑
+  const doTestConnection = useCallback(async () => {
+    setTesting(true);
+    setConnectionStatus('unknown');
+    try {
+      const config = buildConfig();
+      await cloudApi.checkConnection(config);
+      setConnectionStatus('connected');
+      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+      
+      // 获取同步状态
+      const status = await cloudApi.getSyncStatus(config);
+      setSyncStatus(status);
+      
+      // 获取版本列表
+      const versionList = await cloudApi.listVersions(config);
+      setVersions(versionList);
+    } catch (e: unknown) {
+      setConnectionStatus('failed');
+      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${getErrorMessage(e)}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [buildConfig, t]);
+
+  // 确认保存不安全 FTP/WebDAV/S3 配置
   const handleConfirmInsecureFtpSave = useCallback(async () => {
     setShowInsecureFtpWarning(false);
-    await doSaveConfig();
-  }, [doSaveConfig]);
+    if (insecureWarningAction === 'test') {
+      await doTestConnection();
+    } else {
+      await doSaveConfig();
+    }
+    setInsecureWarningAction(null);
+  }, [insecureWarningAction, doSaveConfig, doTestConnection]);
 
   // 确认保存不安全 WebDAV 配置
   const handleConfirmInsecureWebdavSave = useCallback(async () => {
     setShowInsecureWebdavWarning(false);
-    await doSaveConfig();
-  }, [doSaveConfig]);
+    if (insecureWarningAction === 'test') {
+      await doTestConnection();
+    } else {
+      await doSaveConfig();
+    }
+    setInsecureWarningAction(null);
+  }, [insecureWarningAction, doSaveConfig, doTestConnection]);
 
   // 确认保存不安全 S3 配置
   const handleConfirmInsecureS3Save = useCallback(async () => {
     setShowInsecureS3Warning(false);
-    await doSaveConfig();
-  }, [doSaveConfig]);
+    if (insecureWarningAction === 'test') {
+      await doTestConnection();
+    } else {
+      await doSaveConfig();
+    }
+    setInsecureWarningAction(null);
+  }, [insecureWarningAction, doSaveConfig, doTestConnection]);
 
   // 清除配置
   const clearConfig = useCallback(async () => {
@@ -453,30 +498,31 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   const shouldShowFtpOption = FTP_STORAGE_EXPERIMENTAL_ENABLED || hasStoredFtpConfig || provider === 'ftp';
 
-  // 测试连接
+  // 测试连接（先检查不安全连接）
   const testConnection = useCallback(async () => {
-    setTesting(true);
-    setConnectionStatus('unknown');
-    try {
-      const config = buildConfig();
-      await cloudApi.checkConnection(config);
-      setConnectionStatus('connected');
-      showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
-      
-      // 获取同步状态
-      const status = await cloudApi.getSyncStatus(config);
-      setSyncStatus(status);
-      
-      // 获取版本列表
-      const versionList = await cloudApi.listVersions(config);
-      setVersions(versionList);
-    } catch (e: unknown) {
-      setConnectionStatus('failed');
-      showGlobalNotification('error', `${t('cloudStorage:errors.connectionFailed')}: ${getErrorMessage(e)}`);
-    } finally {
-      setTesting(false);
+    // FTP 明文连接警告
+    if (provider === 'ftp' && ftpConfig.endpoint.trim().toLowerCase().startsWith('ftp://')) {
+      setInsecureWarningAction('test');
+      setShowInsecureFtpWarning(true);
+      return;
     }
-  }, [buildConfig, t]);
+
+    // WebDAV HTTP 连接警告
+    if (provider === 'webdav' && webdavConfig.endpoint.trim().toLowerCase().startsWith('http://')) {
+      setInsecureWarningAction('test');
+      setShowInsecureWebdavWarning(true);
+      return;
+    }
+
+    // S3 HTTP 连接警告
+    if (provider === 's3' && s3Config.endpoint.trim().toLowerCase().startsWith('http://')) {
+      setInsecureWarningAction('test');
+      setShowInsecureS3Warning(true);
+      return;
+    }
+
+    await doTestConnection();
+  }, [provider, ftpConfig.endpoint, webdavConfig.endpoint, s3Config.endpoint, doTestConnection]);
 
   // 刷新状态
   const refreshStatus = useCallback(async () => {
@@ -798,7 +844,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             </div>
           )}
           <span className="font-medium">{t('cloudStorage:provider.webdav')}</span>
-          <span className="text-xs text-muted-foreground line-clamp-2">
+          <span className="text-xs text-muted-foreground line-clamp-2 whitespace-normal">
             {t('cloudStorage:provider.webdavDesc')}
           </span>
         </NotionButton>
@@ -823,7 +869,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <span className={`font-medium ${s3Enabled === false ? 'line-through' : ''}`}>
             {t('cloudStorage:provider.s3')}
           </span>
-          <span className={`text-xs line-clamp-2 ${s3Enabled === false ? 'text-destructive/70' : 'text-muted-foreground'}`}>
+          <span className={`text-xs line-clamp-2 whitespace-normal ${s3Enabled === false ? 'text-destructive/70' : 'text-muted-foreground'}`}>
             {s3Enabled === false 
               ? t('cloudStorage:provider.s3Disabled')
               : t('cloudStorage:provider.s3Desc')}
@@ -846,7 +892,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </div>
             )}
             <span className="font-medium">{t('cloudStorage:provider.ftp')}</span>
-            <span className="text-xs text-warning line-clamp-2">
+            <span className="text-xs text-warning line-clamp-2 whitespace-normal">
               {t('cloudStorage:provider.ftpDescExperimental')}
             </span>
           </NotionButton>
@@ -1074,7 +1120,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <NotionButton onClick={saveConfig} disabled={!isConfigValid()}>
             {t('cloudStorage:actions.save')}
           </NotionButton>
-          <NotionButton variant="ghost" onClick={clearConfig}>
+          <NotionButton variant="danger" onClick={clearConfig}>
             {t('cloudStorage:actions.clearConfig')}
           </NotionButton>
         </div>

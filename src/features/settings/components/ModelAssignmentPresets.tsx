@@ -47,6 +47,7 @@ const BUILTIN_PRESET_CONFIG: ModelAssignments = {
   vl_embedding_model_config_id: null, // 多模态嵌入模型（已废弃）
   vl_reranker_model_config_id: null, // 多模态重排序模型
   memory_decision_model_config_id: null, // 记忆决策模型
+  review_analysis_model_config_id: null, // 复习分析模型
   voice_input_asr_model_config_id: null, // 语音输入 ASR 模型
   image_generation_model_config_id: null, // 生图模型
   translation_display_mode: null, // 聊天翻译显示模式（aligned 默认 / streaming）

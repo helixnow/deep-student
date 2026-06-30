@@ -43,17 +43,6 @@ impl WebDavStorage {
         let url = Url::parse(config.endpoint.trim())
             .map_err(|e| AppError::configuration(format!("无效的 WebDAV endpoint: {e}")))?;
 
-        let is_local = url
-            .host_str()
-            .map(|h| matches!(h.to_lowercase().as_str(), "localhost" | "127.0.0.1" | "::1"))
-            .unwrap_or(false);
-        if !is_local && url.scheme() != "https" {
-            return Err(AppError::configuration(
-                "WebDAV endpoint 必须使用 HTTPS 以保护 Basic Auth 凭据（仅 localhost 允许 HTTP）"
-                    .to_string(),
-            ));
-        }
-
         let http = Client::builder()
             .connect_timeout(Duration::from_secs(30))
             // 死连接保护：reqwest 0.11 没有 read_timeout，依靠 TCP keepalive
