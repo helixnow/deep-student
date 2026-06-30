@@ -818,17 +818,7 @@ function App() {
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
-  const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
-  const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
-    setDesktopPageSidebarTarget(node);
-  }, []);
-  const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
-  const usesDesktopPageShellSidebar =
-    currentView === 'learning-hub' || currentView === 'template-management';
-  const shouldShowDesktopPageBackButton =
-    currentView === 'learning-hub' ||
-    (currentView === 'template-management' && templateManagementShellBackVisible);
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
   const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;
@@ -1828,11 +1818,6 @@ function App() {
     : currentView === 'learning-hub' || currentView === 'template-management'
     ? desktopPageShellSidebarElement
     : sidebarElement;
-
-  const desktopShellSidebarPortalValue = useMemo(() => ({
-    target: desktopPageSidebarTarget,
-    currentView,
-  }), [desktopPageSidebarTarget, currentView]);
 
   const syncSessionSidebarContext = useCallback(() => {
     setSessionSidebarViewContext({
