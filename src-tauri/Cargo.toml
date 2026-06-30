@@ -127,10 +127,6 @@ urlencoding = "2.1.3"
 roxmltree = "0.20"
 argon2 = "0.5"
 zeroize = { version = "1", features = ["derive"] }
-# FTP/FTPS 支持
-suppaftp = { version = "6", default-features = false, features = ["async", "async-native-tls"] }
-# suppaftp v6 的 async Read/Write traits 依赖 async-std
-async-std = { version = "1", default-features = false, features = ["std"] }
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
 aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
@@ -152,6 +148,8 @@ tauri-plugin-process = "2"
 [target.'cfg(not(target_os = "android"))'.dependencies]
 oauth2 = "4.4"
 pkce = "0.2"
+suppaftp = { version = "6", default-features = false, features = ["async", "async-native-tls"] }
+async-std = { version = "1", default-features = false, features = ["std"] }
 # MCP客户端库
 
 

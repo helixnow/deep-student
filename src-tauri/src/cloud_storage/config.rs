@@ -260,6 +260,9 @@ impl CloudStorageConfig {
                 }
                 Ok(())
             }
+            #[cfg(target_os = "android")]
+            StorageProvider::Ftp => Err("FTP/FTPS storage is not available on Android.".into()),
+            #[cfg(not(target_os = "android"))]
             StorageProvider::Ftp => {
                 let config = self.ftp.as_ref().ok_or("缺少 FTP 配置")?;
                 if config.host.trim().is_empty() {
@@ -498,6 +501,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_os = "android"))]
     #[test]
     fn test_ftp_config_validation() {
         // FTP 配置验证
