@@ -1,4 +1,13 @@
+use std::path::PathBuf;
+
+const ANDROID_RECORD_AUDIO_PERMISSION: &str = "android.permission.RECORD_AUDIO";
+const ANDROID_MODIFY_AUDIO_SETTINGS_PERMISSION: &str = "android.permission.MODIFY_AUDIO_SETTINGS";
+
 fn main() {
+    println!("cargo:rerun-if-env-changed=TAURI_ANDROID_PROJECT_PATH");
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_OS");
+    println!("cargo:rerun-if-changed=gen/android/app/src/main/AndroidManifest.xml");
+
     // 使用 vendored protoc，自动设置环境变量
     std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path().unwrap());
     std::env::set_var(
@@ -41,5 +50,86 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/");
 
-    tauri_build::build()
+    ensure_android_microphone_permissions();
+    tauri_build::build();
+    ensure_android_microphone_permissions();
+}
+
+fn ensure_android_microphone_permissions() {
+    if std::env::var("CARGO_CFG_TARGET_OS").ok().as_deref() != Some("android") {
+        return;
+    }
+
+    let manifest_path = android_manifest_path();
+    if !manifest_path.exists() {
+        println!(
+            "cargo:warning=Android manifest not found at {}, skipping microphone permission injection",
+            manifest_path.display()
+        );
+        return;
+    }
+
+    let Ok(mut manifest) = std::fs::read_to_string(&manifest_path) else {
+        println!(
+            "cargo:warning=Failed to read Android manifest at {}, skipping microphone permission injection",
+            manifest_path.display()
+        );
+        return;
+    };
+
+    let mut changed = false;
+    changed |= inject_android_permission(&mut manifest, ANDROID_RECORD_AUDIO_PERMISSION);
+    changed |= inject_android_permission(&mut manifest, ANDROID_MODIFY_AUDIO_SETTINGS_PERMISSION);
+
+    if !changed {
+        return;
+    }
+
+    if let Err(error) = std::fs::write(&manifest_path, manifest) {
+        println!(
+            "cargo:warning=Failed to update Android manifest at {}: {}",
+            manifest_path.display(),
+            error
+        );
+        return;
+    }
+
+    println!("cargo:rerun-if-changed={}", manifest_path.display());
+    println!(
+        "cargo:warning=Injected Android microphone permissions into {}",
+        manifest_path.display()
+    );
+}
+
+fn android_manifest_path() -> PathBuf {
+    if let Some(project_path) = std::env::var_os("TAURI_ANDROID_PROJECT_PATH") {
+        return PathBuf::from(project_path).join("app/src/main/AndroidManifest.xml");
+    }
+
+    PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
+        .join("gen/android/app/src/main/AndroidManifest.xml")
+}
+
+fn inject_android_permission(manifest: &mut String, permission: &str) -> bool {
+    if manifest.contains(permission) {
+        return false;
+    }
+
+    let permission_line = format!("    <uses-permission android:name=\"{permission}\" />\n");
+    let insert_at = manifest
+        .find("<manifest")
+        .and_then(|start| manifest[start..].find('>').map(|offset| start + offset + 1));
+
+    if let Some(index) = insert_at {
+        manifest.insert_str(index, &format!("\n{permission_line}"));
+    } else if let Some(index) = manifest.find("</manifest>") {
+        manifest.insert_str(index, &permission_line);
+    } else {
+        if !manifest.ends_with('\n') {
+            manifest.push('\n');
+        }
+        manifest.push_str(&permission_line);
+    }
+
+    true
 }

@@ -169,21 +169,83 @@ ensure_android_project() {
 inject_android_permissions() {
     local MANIFEST="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
     if [[ ! -f "$MANIFEST" ]]; then
-        warn "未找到 AndroidManifest.xml，跳过权限注入"
+        warn "AndroidManifest.xml not found; microphone permission injection skipped"
         return
     fi
-    local PERM="<uses-permission android:name=\"android.permission.RECORD_AUDIO\" />"
-    if grep -qF "$PERM" "$MANIFEST" 2>/dev/null; then
-        return
+
+    local PERMISSIONS=(
+        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+    )
+    local changed=false
+
+    for PERMISSION in "${PERMISSIONS[@]}"; do
+        local PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
+        if grep -qF "$PERMISSION" "$MANIFEST" 2>/dev/null; then
+            continue
+        fi
+
+        say "Injecting Android permission: $PERMISSION"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "/<manifest/a\\
+    $PERM_LINE" "$MANIFEST"
+        else
+            sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"
+        fi
+        changed=true
+    done
+
+    if [[ "$changed" == true ]]; then
+        info "✓ Android microphone permissions injected"
     fi
-    say "向 AndroidManifest.xml 注入 RECORD_AUDIO 权限..."
-    if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '' "/<manifest/a\\
-    $PERM" "$MANIFEST"
-    else
-        sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
+}
+
+assert_android_permissions_in_apk() {
+    local APK="$1"
+    local REQUIRED_PERMISSIONS=(
+        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+    )
+    local DUMP=""
+
+    if [[ -n "$AAPT_CMD" ]]; then
+        DUMP="$("$AAPT_CMD" dump permissions "$APK" 2>/dev/null || true)"
     fi
-    info "✓ 已注入 RECORD_AUDIO 权限"
+
+    if [[ -z "$DUMP" && -n "$AAPT2_CMD" ]]; then
+        DUMP="$("$AAPT2_CMD" dump permissions "$APK" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$DUMP" ]]; then
+        die "Unable to inspect APK permissions with aapt/aapt2"
+    fi
+
+    for PERMISSION in "${REQUIRED_PERMISSIONS[@]}"; do
+        if ! grep -qF "$PERMISSION" <<<"$DUMP"; then
+            error "APK is missing Android permission: $PERMISSION"
+            echo "$DUMP" >&2
+            die "Android APK permission verification failed"
+        fi
+    done
+
+    info "✓ APK declares microphone permissions: ${REQUIRED_PERMISSIONS[*]}"
+}
+
+normalize_android_sdk_path() {
+  local path="$1"
+  if [[ -d "$path" ]]; then
+    echo "$path"
+    return 0
+  fi
+  if command -v cygpath >/dev/null 2>&1; then
+    local converted
+    converted="$(cygpath -u "$path" 2>/dev/null || true)"
+    if [[ -n "$converted" && -d "$converted" ]]; then
+      echo "$converted"
+      return 0
+    fi
+  fi
+  echo "$path"
 }
 
 apply_android_version_code() {
@@ -284,22 +346,34 @@ find_build_tools_cmd() {
     command -v "$cmd"
     return 0
   fi
+  for ext in .exe .bat .cmd; do
+    if command -v "${cmd}${ext}" >/dev/null 2>&1; then
+      command -v "${cmd}${ext}"
+      return 0
+    fi
+  done
 
   local search_dirs=()
-  if [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/build-tools" ]]; then
-    if [[ -n "${ANDROID_BUILD_TOOLS_VERSION:-}" && -d "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION" ]]; then
-      search_dirs+=("$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION")
+  local android_home=""
+  if [[ -n "${ANDROID_HOME:-}" ]]; then
+    android_home="$(normalize_android_sdk_path "$ANDROID_HOME")"
+  fi
+  if [[ -n "$android_home" && -d "$android_home/build-tools" ]]; then
+    if [[ -n "${ANDROID_BUILD_TOOLS_VERSION:-}" && -d "$android_home/build-tools/$ANDROID_BUILD_TOOLS_VERSION" ]]; then
+      search_dirs+=("$android_home/build-tools/$ANDROID_BUILD_TOOLS_VERSION")
     fi
     while IFS= read -r dir; do
       search_dirs+=("$dir")
-    done < <(find "$ANDROID_HOME/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V)
+    done < <(find "$android_home/build-tools" -maxdepth 1 -mindepth 1 -type d | sort -V)
   fi
 
   for dir in "${search_dirs[@]}"; do
-    if [[ -x "$dir/$cmd" ]]; then
-      echo "$dir/$cmd"
-      return 0
-    fi
+    for candidate in "$dir/$cmd" "$dir/$cmd.exe" "$dir/$cmd.bat" "$dir/$cmd.cmd"; do
+      if [[ -x "$candidate" || -f "$candidate" ]]; then
+        echo "$candidate"
+        return 0
+      fi
+    done
   done
 
   return 1
@@ -311,6 +385,8 @@ require_cmd keytool
 
 APKSIGNER_CMD="$(find_build_tools_cmd apksigner)" || true
 ZIPALIGN_CMD="$(find_build_tools_cmd zipalign)" || true
+AAPT_CMD="$(find_build_tools_cmd aapt)" || true
+AAPT2_CMD="$(find_build_tools_cmd aapt2)" || true
 
 if ! command -v jarsigner >/dev/null 2>&1; then
   die "缺少必需命令: jarsigner"
@@ -742,6 +818,8 @@ fi
 #     "$jarsigner_cmd" -verify -verbose -certs "$FINAL_APK" || die "APK 签名验证失败"
 #     say "✓ APK V1 签名验证通过（未检测 V2/V3，请确保目标设备接受 V1 签名）"
 # fi
+
+assert_android_permissions_in_apk "$FINAL_APK"
 
 # FINAL_APK="$SIGNED_APK"
 

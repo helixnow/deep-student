@@ -21,6 +21,33 @@ warn() { echo -e "${YELLOW}[warn]${RESET} $*"; }
 die()  { echo -e "${RED}[error]${RESET} $*" >&2; exit 1; }
 info() { echo -e "${CYAN}[info]${RESET} $*"; }
 
+inject_android_permissions() {
+    local manifest="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$manifest" ]]; then
+        warn "AndroidManifest.xml not found; microphone permission injection skipped"
+        return
+    fi
+
+    local permissions=(
+        "android.permission.RECORD_AUDIO"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+    )
+
+    for permission in "${permissions[@]}"; do
+        local permission_line="<uses-permission android:name=\"$permission\" />"
+        if grep -qF "$permission" "$manifest" 2>/dev/null; then
+            continue
+        fi
+        say "Injecting Android permission: $permission"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "/<manifest/a\\
+    $permission_line" "$manifest"
+        else
+            sed -i "/<manifest/a\\    $permission_line" "$manifest"
+        fi
+    done
+}
+
 # ── 环境检查 ──
 if [[ -z "${ANDROID_HOME:-}" ]]; then
     for candidate in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do
@@ -52,6 +79,7 @@ if [[ ! -d "$REPO_ROOT/src-tauri/gen/android" ]]; then
     (cd "$REPO_ROOT" && npx tauri android init) || die "tauri android init 失败"
     say "✓ Android 项目初始化完成"
 fi
+inject_android_permissions
 
 # ── 选择 AVD ──
 AVD_NAME="${1:-}"
