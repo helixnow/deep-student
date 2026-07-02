@@ -3017,7 +3017,7 @@ dependencies = [
 
 [[package]]
 name = "deep-student"
-version = "0.9.41"
+version = "0.9.42"
 dependencies = [
  "aes-gcm",
  "anyhow",

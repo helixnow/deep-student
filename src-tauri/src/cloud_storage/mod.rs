@@ -21,6 +21,7 @@
 //! ```
 
 mod config;
+#[cfg(not(target_os = "android"))]
 mod ftp;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
@@ -39,6 +40,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::AppError;
+#[cfg(not(target_os = "android"))]
 use ftp::FtpStorage;
 #[cfg(feature = "cloud_storage_s3")]
 use s3::S3Storage;
@@ -103,6 +105,7 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
         StorageProvider::S3 => Err(AppError::configuration(
             "S3 存储支持未启用，请在编译时启用 cloud_storage_s3 feature".to_string(),
         )),
+        #[cfg(not(target_os = "android"))]
         StorageProvider::Ftp => {
             let ftp_config = config
                 .ftp
@@ -111,6 +114,10 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
             let storage = FtpStorage::new(ftp_config, root)?;
             Ok(Box::new(storage))
         }
+        #[cfg(target_os = "android")]
+        StorageProvider::Ftp => Err(AppError::configuration(
+            "FTP/FTPS storage is not available on Android.".to_string(),
+        )),
     }
 }
 
