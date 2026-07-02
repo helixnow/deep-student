@@ -811,7 +811,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         ) : (
         <CustomScrollArea
           className="flex-1 min-h-0"
-          viewportClassName={isSmallScreen ? 'py-2 px-0 pb-20' : 'p-4'}
+          viewportClassName={isSmallScreen ? 'py-2 px-0 pb-0' : 'p-4'}
           trackOffsetRight={isSmallScreen ? 0 : 6}
         >
         {(isSelectingMode || activeTab === 'browse') && (

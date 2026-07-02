@@ -461,10 +461,22 @@ const BRIDGE_COMPLETION_REASONS = new Set([
 /** 始终保活的视图（不参与 LRU 淘汰） */
 const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
 /** 最大保活视图数量（含 pinned）
- *  用户常用 6-7 个视图，设为 8 避免频繁驱逐导致的重新挂载开销。
+ *  桌面用户常用 6-7 个视图，设为 8 避免频繁驱逐导致的重新挂载开销；
  *  搭配 useMemo 缓存子树后，保活视图的 re-render 成本接近零。
+ *  触屏设备（PERF-1）：低端 Android 同时保活 8 棵完整视图子树内存压力大，降为 4。
+ *  取值在每次淘汰时动态读取，旋转/分屏后自然收敛，无需监听。
  */
-const MAX_ALIVE_VIEWS = 8;
+const MAX_ALIVE_VIEWS_DESKTOP = 8;
+const MAX_ALIVE_VIEWS_TOUCH = 4;
+const getMaxAliveViews = (): number => {
+  try {
+    return window.matchMedia?.('(pointer: coarse)').matches
+      ? MAX_ALIVE_VIEWS_TOUCH
+      : MAX_ALIVE_VIEWS_DESKTOP;
+  } catch {
+    return MAX_ALIVE_VIEWS_DESKTOP;
+  }
+};
 
 /**
  * 学习资源顶栏面包屑导航
@@ -926,7 +938,7 @@ function App() {
         next.set(targetView, now);
 
         // 淘汰逻辑：仅在超出上限时移除最旧的非 pinned 视图
-        if (next.size > MAX_ALIVE_VIEWS) {
+        if (next.size > getMaxAliveViews()) {
           let oldestView: CurrentView | null = null;
           let oldestTime = Infinity;
           for (const [view, ts] of next) {

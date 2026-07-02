@@ -224,7 +224,8 @@
    ============================================ */
 @media (max-width: 767.98px) {
   .template-json-preview-page {
-    padding-bottom: 80px; /* 为 BottomTabBar 留出空间 */
+    /* 底部手势导航安全区（BottomTabBar 已移除，勿再按 80px 预留） */
+    padding-bottom: calc(1rem + var(--mobile-safe-area-bottom, 0px));
   }
 
   .template-json-preview-viewport {

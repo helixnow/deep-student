@@ -131,6 +131,7 @@ setup_dev_package() {
         info "✓ Android 项目已重新初始化"
         inject_android_permissions
         inject_android_soft_input_mode
+        sync_main_activity
     fi
 }
 
@@ -198,6 +199,26 @@ inject_android_permissions() {
 
     if [[ "$changed" == true ]]; then
         info "✓ Android microphone permissions injected"
+    fi
+}
+
+# 同步受控 MainActivity.kt（含 A-5 返回键接管 + SA-1 真实安全区注入）到生成工程。
+# tauri android init 会生成裸模板 MainActivity，缺失这两段逻辑会导致
+# 返回手势直接退出 App、安全区退回猜测值。受控副本是单一事实源。
+sync_main_activity() {
+    local SRC="$REPO_ROOT/src-tauri/mobile/android/MainActivity.kt"
+    local DST="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+    if [[ ! -f "$SRC" ]]; then
+        warn "受控 MainActivity.kt 不存在: $SRC"
+        return
+    fi
+    if [[ ! -d "$(dirname "$DST")" ]]; then
+        warn "Android 工程 java 目录不存在; MainActivity 同步跳过"
+        return
+    fi
+    if ! cmp -s "$SRC" "$DST" 2>/dev/null; then
+        cp "$SRC" "$DST"
+        info "✓ MainActivity.kt 已从受控副本同步"
     fi
 }
 
@@ -613,6 +634,7 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     ensure_android_project
     inject_android_permissions
     inject_android_soft_input_mode
+    sync_main_activity
     JNILIBS_DIR="$REPO_ROOT/src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     PDFIUM_ANDROID_SO="$REPO_ROOT/src-tauri/resources/pdfium/libpdfium_android_arm64.so"

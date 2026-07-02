@@ -68,6 +68,19 @@ inject_android_soft_input_mode() {
     fi
 }
 
+# 同步受控 MainActivity.kt（A-5 返回键接管 + SA-1 安全区注入），与 scripts/build_android.sh 同逻辑
+sync_main_activity() {
+    local src="$REPO_ROOT/src-tauri/mobile/android/MainActivity.kt"
+    local dst="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+    if [[ ! -f "$src" || ! -d "$(dirname "$dst")" ]]; then
+        return
+    fi
+    if ! cmp -s "$src" "$dst" 2>/dev/null; then
+        cp "$src" "$dst"
+        say "MainActivity.kt synced from controlled copy"
+    fi
+}
+
 # ── 环境检查 ──
 if [[ -z "${ANDROID_HOME:-}" ]]; then
     for candidate in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do
@@ -101,6 +114,7 @@ if [[ ! -d "$REPO_ROOT/src-tauri/gen/android" ]]; then
 fi
 inject_android_permissions
 inject_android_soft_input_mode
+sync_main_activity
 
 # ── 选择 AVD ──
 AVD_NAME="${1:-}"

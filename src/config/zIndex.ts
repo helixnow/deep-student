@@ -6,7 +6,7 @@
  *
  * 层级规范（从低到高）：
  *   base (1-50)            → 普通内容层
- *   navbar (50-70)         → 底部导航栏、全屏内容层
+ *   fullscreen (70)        → 全屏内容层
  *   inputBar (100-300)     → 输入栏及其子元素
  *   header (1000-1200)     → 顶部导航栏
  *   overlay (2000)         → 侧边栏/抽屉遮罩
@@ -22,9 +22,6 @@
  */
 
 export const Z_INDEX = {
-  /** 底部导航栏 */
-  bottomTabBar: 50,
-
   /** 全屏内容层（覆盖主内容，低于输入栏） */
   fullscreenContent: 70,
 

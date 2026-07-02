@@ -988,7 +988,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             sheetMode
               ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
               : "px-6 pb-6 pt-4 sm:px-8 sm:pb-7 sm:pt-5",
-            effectiveMobilePanelMode && !sheetMode && "px-4 py-3 pb-20"
+            effectiveMobilePanelMode && !sheetMode && "px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
           )}
           trackOffsetTop={16}
           trackOffsetBottom={16}

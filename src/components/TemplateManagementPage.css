@@ -391,17 +391,15 @@
 
 /* ============================================
    移动端布局样式（通过 .mobile-layout 类控制）
+   底部留手势导航安全区 + 少量呼吸空间（BottomTabBar 已移除，勿再按 80px 预留）
    ============================================ */
 .template-browser.mobile-layout {
   padding: 0;
-  /* 为 BottomTabBar 留出空间 */
-  padding-bottom: 80px;
+  padding-bottom: calc(1rem + var(--mobile-safe-area-bottom, 0px));
 }
 
 .template-browser.mobile-layout .masonry-grid {
   gap: 0;
-  /* 为 BottomTabBar 留出空间 */
-  padding-bottom: 100px;
 }
 
 .template-browser.mobile-layout .masonry-column {
