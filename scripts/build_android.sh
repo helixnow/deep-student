@@ -130,6 +130,7 @@ setup_dev_package() {
         npx @tauri-apps/cli android init || die "Android 项目初始化失败"
         info "✓ Android 项目已重新初始化"
         inject_android_permissions
+        inject_android_soft_input_mode
     fi
 }
 
@@ -197,6 +198,33 @@ inject_android_permissions() {
 
     if [[ "$changed" == true ]]; then
         info "✓ Android microphone permissions injected"
+    fi
+}
+
+# 显式声明键盘 softInputMode（tauri android init 重新生成工程后仍能保住该配置）。
+# adjustResize 是前端键盘适配（useKeyboardHeight/Dialog 键盘避让）依赖的确定性行为，
+# 避免不同 ROM 对未声明时的默认策略（adjustUnspecified）各自为政。
+inject_android_soft_input_mode() {
+    local MANIFEST="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$MANIFEST" ]]; then
+        warn "AndroidManifest.xml not found; windowSoftInputMode injection skipped"
+        return
+    fi
+    if grep -qF 'android:windowSoftInputMode' "$MANIFEST" 2>/dev/null; then
+        return
+    fi
+
+    say "Injecting android:windowSoftInputMode=\"adjustResize\""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
+    else
+        sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
+    fi
+
+    if grep -qF 'android:windowSoftInputMode' "$MANIFEST" 2>/dev/null; then
+        info "✓ windowSoftInputMode injected"
+    else
+        warn "windowSoftInputMode injection failed; please check $MANIFEST"
     fi
 }
 
@@ -584,6 +612,7 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     say "打包 pdfium 动态库..."
     ensure_android_project
     inject_android_permissions
+    inject_android_soft_input_mode
     JNILIBS_DIR="$REPO_ROOT/src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a"
     mkdir -p "$JNILIBS_DIR"
     PDFIUM_ANDROID_SO="$REPO_ROOT/src-tauri/resources/pdfium/libpdfium_android_arm64.so"

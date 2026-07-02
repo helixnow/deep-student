@@ -1981,8 +1981,10 @@ pub struct LLMManager {
         Arc<TokioMutex<std::collections::HashMap<String, std::sync::Arc<dyn LLMStreamHooks>>>>,
 }
 
+// pub：被 model2_pipeline 的 pub 方法（call_model2_raw_prompt / call_ocr_model_raw_prompt）
+// 作为参数类型暴露，pub(crate) 会触发 private_interfaces 警告
 #[derive(Debug, Clone)]
-pub(crate) struct ImagePayload {
+pub struct ImagePayload {
     pub mime: String,
     pub base64: String,
 }

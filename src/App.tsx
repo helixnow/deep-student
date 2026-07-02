@@ -78,6 +78,7 @@ import { settingsMobileSheetCloseButtonClassName } from '@/features/settings/com
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
+import { shouldBlockMobileNavigation } from './hooks/useKeyboardHeight';
 import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
 import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
@@ -1603,6 +1604,9 @@ function App() {
     const handleMobileSidebarNavigate = (event: Event) => {
       const view = (event as CustomEvent<{ view?: CurrentView }>).detail?.view;
       if (!view) return;
+      // Android 键盘弹出/输入框聚焦期间屏蔽侧边栏导航事件，防止键盘引发的
+      // resize/blur 连锁误触发"输入中被跳转"（社区 #113 bug 1/3）。
+      if (shouldBlockMobileNavigation()) return;
       handleViewChange(view);
     };
 

@@ -8,6 +8,7 @@ import { NotionButton, type NotionButtonVariant, type NotionButtonSize } from '.
 import { CustomScrollArea } from '../custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
 
 /**
  * Android 系统返回键接入：NotionDialog 是 framer-motion 自绘弹窗（非 Radix），
@@ -126,6 +127,12 @@ export function NotionDialog({
   // 视觉规格对齐全局移动设置 Sheet（rounded-t-[24px] + 顶部把手 + 贴底全宽）
   const isMobileSheet = useIsMobile();
 
+  // Android 键盘避让（#113 bug 2）：键盘弹出时居中形态改为顶部对齐防压缩，
+  // sheet 形态补偿非 adjustResize 模式下被键盘遮挡的布局高度。
+  // 非 Android 平台 keyboardHeight 恒为 0，无行为变化。
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardAvoid = keyboardHeight > 0;
+
   return (
     <ModalPortal open={open}>
       <motion.div
@@ -135,7 +142,16 @@ export function NotionDialog({
           'pointer-events-auto fixed inset-0 flex',
           isMobileSheet ? 'items-end justify-center p-0' : 'items-center justify-center p-4 sm:p-6',
         )}
-        style={{ zIndex: Z_INDEX.modal }}
+        style={{
+          zIndex: Z_INDEX.modal,
+          ...(keyboardAvoid
+            ? {
+                ...(isMobileSheet ? {} : { alignItems: 'flex-start', paddingTop: '12px' }),
+                // adjustResize 下为 0；非 resize 模式下补偿键盘遮挡区域
+                paddingBottom: `${getLayoutViewportObscuredHeight()}px`,
+              }
+            : {}),
+        }}
         initial="hidden"
         animate="visible"
         exit="exit"

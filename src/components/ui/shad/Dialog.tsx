@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../../lib/utils';
 import { Slot } from '@radix-ui/react-slot';
 import { Z_INDEX } from '@/config/zIndex';
+import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useKeyboardHeight';
 
 type DialogContextValue = {
   open: boolean;
@@ -149,6 +150,11 @@ export function DialogContent({
   ...rest
 }: DialogContentProps) {
   const ctx = React.useContext(DialogContext);
+  // Android 键盘避让（#113 bug 2）：adjustResize 下键盘弹出会压缩 WebView，
+  // 居中布局会把 Dialog 压到极小。键盘弹出时改为顶部对齐 + 限高滚动。
+  // hook 仅在 Android 返回非 0，其他平台恒为 0、无行为变化。
+  const keyboardHeight = useKeyboardHeight();
+  const keyboardAvoid = keyboardHeight > 0;
   if (!ctx) return null;
 
   // 如果指定了容器，使用 absolute 定位；否则使用 fixed 定位
@@ -172,13 +178,24 @@ export function DialogContent({
           if (closeOnOverlayClick) ctx.setOpen(false);
         }}
       />
-      {/* Content wrapper - 居中容器 */}
+      {/* Content wrapper - 居中容器；键盘弹出时顶部对齐并补偿被遮挡区域 */}
       <motion.div
         className={cn(
           "inset-0 flex items-center justify-center p-4 sm:p-6 pointer-events-none",
           positionClass
         )}
-        style={{ zIndex: Z_INDEX.modal + 1 }}
+        style={{
+          zIndex: Z_INDEX.modal + 1,
+          ...(keyboardAvoid
+            ? {
+                alignItems: 'flex-start',
+                paddingTop: '12px',
+                // adjustResize 下布局视口已随键盘缩小、该值为 0；
+                // 非 resize 模式下补偿被键盘遮挡的布局高度
+                paddingBottom: `${getLayoutViewportObscuredHeight()}px`,
+              }
+            : {}),
+        }}
         initial="hidden"
         animate="visible"
         exit="exit"
@@ -190,6 +207,7 @@ export function DialogContent({
           variants={contentVariants}
           className={cn(
             'pointer-events-auto w-full max-w-lg rounded-xl border border-border/40 bg-background p-5 text-foreground shadow-none',
+            keyboardAvoid && 'max-h-full overflow-y-auto',
             className
           )}
           onClick={(e) => {

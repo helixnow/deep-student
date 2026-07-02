@@ -20,6 +20,9 @@ pub(crate) struct CanonicalExternalToolConfig<'a> {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CanonicalExternalTool {
+    /// 规范化前的桥接名。生产路径当前只消费 api_name/internal_tool_name，
+    /// 该字段是规范化契约的一部分，由单元测试断言，保留以便诊断与回溯。
+    #[allow(dead_code)]
     pub bridge_name: String,
     pub internal_tool_name: String,
     pub api_name: String,

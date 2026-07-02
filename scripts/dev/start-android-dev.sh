@@ -48,6 +48,26 @@ inject_android_permissions() {
     done
 }
 
+# 显式声明键盘 softInputMode（与 scripts/build_android.sh 同步逻辑）：
+# 前端键盘适配（useKeyboardHeight/Dialog 键盘避让）依赖 adjustResize 的确定性行为
+inject_android_soft_input_mode() {
+    local manifest="$REPO_ROOT/src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+    if [[ ! -f "$manifest" ]]; then
+        warn "AndroidManifest.xml not found; windowSoftInputMode injection skipped"
+        return
+    fi
+    if grep -qF 'android:windowSoftInputMode' "$manifest" 2>/dev/null; then
+        return
+    fi
+
+    say "Injecting android:windowSoftInputMode=\"adjustResize\""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        sed -i '' 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$manifest"
+    else
+        sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$manifest"
+    fi
+}
+
 # ── 环境检查 ──
 if [[ -z "${ANDROID_HOME:-}" ]]; then
     for candidate in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do
@@ -80,6 +100,7 @@ if [[ ! -d "$REPO_ROOT/src-tauri/gen/android" ]]; then
     say "✓ Android 项目初始化完成"
 fi
 inject_android_permissions
+inject_android_soft_input_mode
 
 # ── 选择 AVD ──
 AVD_NAME="${1:-}"
