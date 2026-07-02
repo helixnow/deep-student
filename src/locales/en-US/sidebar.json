@@ -32,7 +32,8 @@
     "learning_hub": "Learning Hub",
     "extensions": "Extensions",
     "chat_v2": "Smart Chat",
-    "skills_management": "Skills Management"
+    "skills_management": "Skills Management",
+    "command_palette": "Search & Commands"
   },
   "aria": {
     "sidebar_navigation": "Main navigation",

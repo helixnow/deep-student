@@ -940,7 +940,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   );
 
   const renderSettingsSheetTabRail = () => (
-    <div className="shrink-0 border-b border-border bg-background py-2">
+    <div className="relative shrink-0 border-b border-border bg-background py-2">
+      {/* S-4: 右缘渐隐提示——暗示 chip rail 可横向滚动、后面还有更多 tab */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-10 bg-gradient-to-l from-background to-transparent"
+      />
       <div className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {sidebarNavItems.map((item) => {
           const Icon = item.icon;

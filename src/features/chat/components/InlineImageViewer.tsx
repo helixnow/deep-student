@@ -5,7 +5,7 @@
  * 避免被聊天分栏限制在局部区域内。
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
@@ -71,6 +71,22 @@ function useImageViewerPortal() {
 }
 
 // ============================================================================
+// 缩放/手势常量（IMG-1）
+// ============================================================================
+
+const MIN_SCALE = 0.5;
+const MAX_SCALE = 6;
+/** 双击/双触缩放的目标倍率 */
+const DOUBLE_TAP_SCALE = 2.5;
+/** 判定为"点击"而非拖拽的最大位移（px） */
+const TAP_MOVE_TOLERANCE = 12;
+/** 双触间隔上限（ms）与两次落点距离上限（px） */
+const DOUBLE_TAP_INTERVAL_MS = 300;
+const DOUBLE_TAP_DISTANCE = 32;
+
+const clampScale = (value: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
+
+// ============================================================================
 // 组件实现
 // ============================================================================
 
@@ -89,16 +105,199 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
   // 获取全屏 portal 容器
   const { container } = useImageViewerPortal();
 
-  // 状态
-  const [scale, setScale] = useState(1);
+  // 视图状态：缩放 + 平移（IMG-1：offset 供捏合/拖拽平移使用）
+  const [view, setView] = useState({ scale: 1, offsetX: 0, offsetY: 0 });
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [rotation, setRotation] = useState(0);
+  const scale = view.scale;
   const canNavigatePrev = images.length > 1 && currentIndex > 0 && typeof onPrev === 'function';
   const canNavigateNext = images.length > 1 && currentIndex < images.length - 1 && typeof onNext === 'function';
 
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
   const handleResetView = useCallback(() => {
-    setScale(1);
+    setView({ scale: 1, offsetX: 0, offsetY: 0 });
     setRotation(0);
   }, []);
+
+  /**
+   * 以视口某点为锚缩放：保持锚点下的图像内容不动（transform 为 translate→scale）。
+   * 参考原点取视口中心——浮层为 inset:0 全屏、舞台上下留白对称，
+   * 未缩放时图像中心即视口中心，无需测量任何容器尺寸。
+   */
+  const zoomAt = useCallback((clientX: number, clientY: number, nextScaleRaw: number) => {
+    const nextScale = clampScale(nextScaleRaw);
+    setView((prev) => {
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const k = nextScale / prev.scale;
+      if (nextScale <= 1) {
+        // 回到 1x 及以下时复位平移，避免图像"丢在"视口外
+        return { scale: nextScale, offsetX: 0, offsetY: 0 };
+      }
+      return {
+        scale: nextScale,
+        offsetX: (clientX - cx) - k * ((clientX - cx) - prev.offsetX),
+        offsetY: (clientY - cy) - k * ((clientY - cy) - prev.offsetY),
+      };
+    });
+  }, []);
+
+  /** 以视口中心为锚按倍率缩放（底部托盘按钮 / 键盘 +- 使用） */
+  const zoomBy = useCallback((factor: number) => {
+    zoomAt(window.innerWidth / 2, window.innerHeight / 2, viewRef.current.scale * factor);
+  }, [zoomAt]);
+
+  // ── 指针手势（捏合缩放 / 平移 / 双触缩放 / 背景轻点关闭）──
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const gestureRef = useRef({
+    moved: false,
+    targetIsImage: false,
+    pointerType: 'touch' as string,
+    // 单指平移
+    panStartX: 0,
+    panStartY: 0,
+    panStartOffsetX: 0,
+    panStartOffsetY: 0,
+    // 双指捏合
+    pinchStartDist: 0,
+    pinchStartScale: 1,
+    pinchStartMidX: 0,
+    pinchStartMidY: 0,
+    pinchStartOffsetX: 0,
+    pinchStartOffsetY: 0,
+    // 双触检测
+    lastTapTime: 0,
+    lastTapX: 0,
+    lastTapY: 0,
+  });
+  const beginPan = useCallback((x: number, y: number) => {
+    const g = gestureRef.current;
+    g.panStartX = x;
+    g.panStartY = y;
+    g.panStartOffsetX = viewRef.current.offsetX;
+    g.panStartOffsetY = viewRef.current.offsetY;
+  }, []);
+
+  const handleStagePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const g = gestureRef.current;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    g.pointerType = e.pointerType;
+
+    if (pointersRef.current.size === 1) {
+      g.moved = false;
+      g.targetIsImage = !!(imageRef.current && e.target instanceof Node && imageRef.current.contains(e.target));
+      beginPan(e.clientX, e.clientY);
+    } else if (pointersRef.current.size === 2) {
+      const [p1, p2] = Array.from(pointersRef.current.values());
+      g.pinchStartDist = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      g.pinchStartScale = viewRef.current.scale;
+      g.pinchStartMidX = (p1.x + p2.x) / 2;
+      g.pinchStartMidY = (p1.y + p2.y) / 2;
+      g.pinchStartOffsetX = viewRef.current.offsetX;
+      g.pinchStartOffsetY = viewRef.current.offsetY;
+      g.moved = true;
+    }
+  }, [beginPan]);
+
+  const handleStagePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const g = gestureRef.current;
+    const tracked = pointersRef.current.get(e.pointerId);
+    if (!tracked) return;
+    tracked.x = e.clientX;
+    tracked.y = e.clientY;
+
+    if (pointersRef.current.size >= 2) {
+      // 捏合：缩放锚定捏合起始中点，并叠加中点位移实现同步平移
+      const [p1, p2] = Array.from(pointersRef.current.values());
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y) || 1;
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+      const cx = window.innerWidth / 2;
+      const cy = window.innerHeight / 2;
+      const nextScale = clampScale(g.pinchStartScale * (dist / g.pinchStartDist));
+      const k = nextScale / g.pinchStartScale;
+      const anchoredX = (g.pinchStartMidX - cx) - k * ((g.pinchStartMidX - cx) - g.pinchStartOffsetX);
+      const anchoredY = (g.pinchStartMidY - cy) - k * ((g.pinchStartMidY - cy) - g.pinchStartOffsetY);
+      setView({
+        scale: nextScale,
+        offsetX: anchoredX + (midX - g.pinchStartMidX),
+        offsetY: anchoredY + (midY - g.pinchStartMidY),
+      });
+      return;
+    }
+
+    // 单指：放大状态下平移图像
+    const dx = e.clientX - g.panStartX;
+    const dy = e.clientY - g.panStartY;
+    if (!g.moved && Math.hypot(dx, dy) > TAP_MOVE_TOLERANCE) {
+      g.moved = true;
+    }
+    if (viewRef.current.scale > 1 && g.moved) {
+      setView((prev) => ({
+        ...prev,
+        offsetX: g.panStartOffsetX + dx,
+        offsetY: g.panStartOffsetY + dy,
+      }));
+    }
+  }, []);
+
+  const handleStagePointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    const g = gestureRef.current;
+    if (!pointersRef.current.delete(e.pointerId)) return;
+
+    if (pointersRef.current.size === 1) {
+      // 捏合 → 单指：重锚剩余手指，避免平移跳变
+      const [rest] = Array.from(pointersRef.current.values());
+      beginPan(rest.x, rest.y);
+      return;
+    }
+    if (pointersRef.current.size > 0) return;
+
+    // 手势完全结束（背景轻点关闭交由 click 事件处理，此处只管缩放/双触）
+    if (viewRef.current.scale < 1) {
+      setView({ scale: 1, offsetX: 0, offsetY: 0 });
+    }
+    if (e.type === 'pointercancel' || g.moved) return;
+
+    // 触屏双触缩放（鼠标走原生 dblclick，避免两条路径重复触发相互抵消）
+    if (!g.targetIsImage || g.pointerType === 'mouse') return;
+    const now = Date.now();
+    const isDoubleTap =
+      now - g.lastTapTime < DOUBLE_TAP_INTERVAL_MS
+      && Math.hypot(e.clientX - g.lastTapX, e.clientY - g.lastTapY) < DOUBLE_TAP_DISTANCE;
+    if (isDoubleTap) {
+      g.lastTapTime = 0;
+      if (viewRef.current.scale > 1.01) {
+        setView({ scale: 1, offsetX: 0, offsetY: 0 });
+      } else {
+        zoomAt(e.clientX, e.clientY, DOUBLE_TAP_SCALE);
+      }
+    } else {
+      g.lastTapTime = now;
+      g.lastTapX = e.clientX;
+      g.lastTapY = e.clientY;
+    }
+  }, [beginPan, zoomAt]);
+
+  const handleStageClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // 拖拽/捏合结束后浏览器仍会派发 click，靠 moved 标记区分真实轻点
+    if (e.target === e.currentTarget && !gestureRef.current.moved) {
+      onClose();
+    }
+  }, [onClose]);
+
+  const handleImageDoubleClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+    // 触屏双触已由 pointerup 检测处理；此处只响应鼠标双击
+    if (gestureRef.current.pointerType !== 'mouse') return;
+    if (viewRef.current.scale > 1.01) {
+      setView({ scale: 1, offsetX: 0, offsetY: 0 });
+    } else {
+      zoomAt(e.clientX, e.clientY, DOUBLE_TAP_SCALE);
+    }
+  }, [zoomAt]);
 
   const stopSurfaceGesture = useCallback((e: React.PointerEvent<HTMLElement>) => {
     e.stopPropagation();
@@ -148,10 +347,10 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
           break;
         case '+':
         case '=':
-          setScale((prev) => Math.min(prev * 1.2, 5));
+          zoomBy(1.2);
           break;
         case '-':
-          setScale((prev) => Math.max(prev / 1.2, 0.1));
+          zoomBy(1 / 1.2);
           break;
         case 'r':
         case 'R':
@@ -165,7 +364,7 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, onNext, onPrev, canNavigateNext, canNavigatePrev, handleResetView]);
+  }, [isOpen, onClose, onNext, onPrev, canNavigateNext, canNavigatePrev, handleResetView, zoomBy]);
 
   // 全局视图切换离开 chat-v2 时，强制关闭预览
   useEffect(() => {
@@ -270,29 +469,37 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
         </div>
       </div>
 
-      {/* 图片容器 */}
+      {/* 图片容器（IMG-1：捏合缩放 / 放大后单指平移 / 双击与双触缩放 / 滚轮缩放） */}
       <div
         className={cn(
           'relative flex flex-1 items-center justify-center overflow-hidden px-4 sm:px-8',
           stageTopPaddingClassName,
           'pb-24 sm:pb-28'
         )}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            onClose();
-          }
-        }}
+        style={{ touchAction: 'none', cursor: scale > 1 ? 'grab' : undefined }}
+        onClick={handleStageClick}
+        onPointerDown={handleStagePointerDown}
+        onPointerMove={handleStagePointerMove}
+        onPointerUp={handleStagePointerUp}
+        onPointerCancel={handleStagePointerUp}
         onWheel={(e) => {
           e.preventDefault();
+          // 触控板捏合在桌面表现为 ctrl+wheel（标准检测方式），据此缩放；
+          // 普通滚轮保持不缩放（见 fullscreen 契约测试）
+          if (e.ctrlKey || e.metaKey) {
+            zoomAt(e.clientX, e.clientY, viewRef.current.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+          }
         }}
       >
         <img
+          ref={imageRef}
           src={currentImage}
           alt={t('chatV2:imageViewer.imageAlt', { index: currentIndex + 1 })}
           className="max-h-full max-w-full object-contain select-none"
           style={{
-            transform: `scale(${scale}) rotate(${rotation}deg)`,
+            transform: `translate(${view.offsetX}px, ${view.offsetY}px) scale(${scale}) rotate(${rotation}deg)`,
           }}
+          onDoubleClick={handleImageDoubleClick}
           draggable={false}
         />
 
@@ -333,13 +540,13 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
                 color: 'var(--text-secondary)',
               }}
             >
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setScale((prev) => Math.max(prev / 1.2, 0.1))} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1 / 1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
                 <MagnifyingGlassMinus size={16} />
               </NotionButton>
               <span className="min-w-[44px] px-2 py-1 text-center text-[11px] font-medium tracking-[0.02em] text-[color:var(--text-secondary)]">
                 {Math.round(scale * 100)}%
               </span>
-              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setScale((prev) => Math.min(prev * 1.2, 5))} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => zoomBy(1.2)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
                 <MagnifyingGlassPlus size={16} />
               </NotionButton>
               <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />

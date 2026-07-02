@@ -32,7 +32,8 @@
     "learning_hub": "学习资源",
     "extensions": "扩展功能",
     "chat_v2": "新会话",
-    "skills_management": "技能管理"
+    "skills_management": "技能管理",
+    "command_palette": "搜索与命令"
   },
   "aria": {
     "sidebar_navigation": "主导航",

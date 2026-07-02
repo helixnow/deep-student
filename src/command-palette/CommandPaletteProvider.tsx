@@ -291,5 +291,13 @@ export function useCommandPalette() {
   return context;
 }
 
+/**
+ * 安全版本：Provider 外返回 null 而非抛错。
+ * 供布局层共享组件（如移动端抽屉导航）使用，避免其单测/隔离渲染时崩溃。
+ */
+export function useCommandPaletteSafe() {
+  return useContext(CommandPaletteContext);
+}
+
 // ==================== 辅助函数 ====================
 // buildShortcutString / normalizeShortcut 等已统一到 shortcutUtils.ts

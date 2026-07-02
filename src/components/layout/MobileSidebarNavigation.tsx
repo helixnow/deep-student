@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretRight } from '@phosphor-icons/react';
+import { CaretRight, MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { createNavItems } from '@/config/navigation';
 import type { CurrentView } from '@/types/navigation';
@@ -8,6 +8,7 @@ import { useViewStore } from '@/stores/viewStore';
 import { canonicalizeView } from '@/app/navigation/canonicalView';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { shellNavButtonClassName } from '@/components/ui/buttonPrimitiveContract';
+import { useCommandPaletteSafe } from '@/command-palette';
 
 export const MOBILE_APP_NAVIGATE_EVENT = 'deepstudent:mobile-sidebar-navigate';
 
@@ -24,11 +25,19 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   const currentView = useViewStore((state) => state.currentView);
   // 与桌面侧边栏同源同序（A-2/A-3 修复）：移动端不再白名单裁剪导航项
   const navItems = useMemo(() => createNavItems(t), [t]);
+  // CP-1: 命令面板移动端入口（桌面靠 Cmd/Ctrl+K 与顶栏按钮，移动端此前完全不可达）
+  const commandPalette = useCommandPaletteSafe();
 
   const handleNavigate = useCallback((view: CurrentView) => {
     window.dispatchEvent(new CustomEvent(MOBILE_APP_NAVIGATE_EVENT, { detail: { view } }));
     onNavigate?.();
   }, [onNavigate]);
+
+  const handleOpenCommandPalette = useCallback(() => {
+    // 先收起抽屉再打开面板，避免面板叠在抽屉动画上
+    onNavigate?.();
+    commandPalette?.open();
+  }, [commandPalette, onNavigate]);
 
   return (
     <div
@@ -39,6 +48,23 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       )}
     >
       <nav aria-label={t('common:navigation_label', 'Navigation')} className="space-y-0.5">
+        {commandPalette && (
+          <NotionButton
+            type="button"
+            variant="nav"
+            size="sm"
+            onClick={handleOpenCommandPalette}
+            className={cn(
+              shellNavButtonClassName,
+              'group px-3 text-[15px] font-medium text-foreground/82 hover:bg-[var(--sidebar-study-hover)] hover:text-foreground'
+            )}
+          >
+            <MagnifyingGlass className="h-[18px] w-[18px] shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+            <span className="min-w-0 flex-1 truncate">
+              {t('sidebar:navigation.command_palette', '搜索与命令')}
+            </span>
+          </NotionButton>
+        )}
         {navItems.map(({ view, icon: Icon, name }) => {
           const isActive = canonicalizeView(currentView) === view;
 
