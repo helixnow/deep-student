@@ -1597,7 +1597,7 @@ impl VfsIndexingService {
     /// - 正确格式：`emb_xxxxxxxxxx`（由 `VfsEmbedding::generate_id()` 生成）
     /// - 此废弃方法使用 `placeholder_no_lance_xxxxxxxxxx` 表示未写入 Lance
     #[deprecated(
-        since = "2026-02",
+        since = "0.9.2",
         note = "Use VfsFullIndexingService::index_resource instead. This method does not write to LanceDB."
     )]
     pub fn index_resource(&self, resource_id: &str, embedding_dim: i32) -> VfsResult<usize> {

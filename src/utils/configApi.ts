@@ -45,7 +45,7 @@ export async function getImageAsBase64(relativePath: string): Promise<string> {
 export async function saveImageFromBase64(base64Data: string, originalPath: string): Promise<string> {
   try {
     // 从原路径中提取文件名，兼容不同操作系统的路径分隔符
-    const pathSeparators = /[\/\\]/;
+    const pathSeparators = /[/\\]/;
     const pathParts = originalPath.split(pathSeparators);
     let fileName = pathParts[pathParts.length - 1];
     

@@ -209,7 +209,7 @@ pub async fn data_governance_restore_with_assets(
     // 解密，且需要主恢复路径（commands_restore.rs）同款的 .pre_restore 快照 + 回滚保护
     // （见 F2），否则跨设备恢复一旦失败/放弃会让旧密文永久无法解密。因此跨设备恢复请走
     // 主恢复路径（data_governance_restore）。本命令前端当前未使用；补齐密钥恢复的方案见
-    // docs/6.13/status/agent-7-status.md F5 条目。
+    // docs/archive/6.13/status/agent-7-status.md F5 条目（内部归档，不随仓库分发）。
     let result = manager.restore_with_assets_to_dir(manifest, restore_assets, &inactive_dir);
     let duration_ms = start.elapsed().as_millis() as u64;
 

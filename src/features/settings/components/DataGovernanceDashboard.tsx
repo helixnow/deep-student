@@ -1186,6 +1186,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
                 `继续同步将遗漏中间变更。建议改用"版本历史 → 恢复"进行全量恢复。是否仍要继续？`,
             });
             // 用 window.confirm 作为最简阻塞式确认；项目里没有通用 confirm hook
+            // eslint-disable-next-line no-alert -- 同步流程中途需要阻塞式确认，待统一 confirm 组件落地后替换
             if (typeof window !== 'undefined' && !window.confirm(warnMsg)) {
               setSyncProgress(null);
               return;

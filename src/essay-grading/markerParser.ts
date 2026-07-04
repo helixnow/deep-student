@@ -133,7 +133,7 @@ export function removeScoreTag(text: string): string {
  */
 export function parseMarkers(text: string): ParsedMarker[] {
   const markers: ParsedMarker[] = [];
-  let remaining = text;
+  const remaining = text;
   let lastIndex = 0;
   
   // 正则表达式匹配所有标记

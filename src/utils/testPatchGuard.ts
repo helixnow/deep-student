@@ -65,7 +65,7 @@ export class PatchGuard {
         if (onCall) {
           onCall(args, undefined as any, err);
         }
-        // eslint-disable-next-line no-console
+
         console.error(`[PatchGuard] ${property} failed: ${getErrorMessage(err)} (duration=${duration}ms)`);
         throw error;
       }

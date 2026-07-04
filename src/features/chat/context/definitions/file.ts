@@ -237,13 +237,13 @@ export const fileDefinition: ContextTypeDefinition = {
         // 空数组视为未设置，使用默认值
         const hasPdfModes = pdfModes && pdfModes.length > 0;
         const isMultimodal = options?.isMultimodal !== false;
-        let includeImage = isMultimodal
+        const includeImage = isMultimodal
           ? (hasPdfModes ? pdfModes.includes('image') : true) // ★ P0-2 修复：默认注入 image（与后端 SSOT 对齐）
           : false; // 纯文本模型：绝不注入 image 块
-        let includeOcr = !isMultimodal
+        const includeOcr = !isMultimodal
           ? true // 纯文本模型：始终注入 OCR 文本作为回退
           : (hasPdfModes ? pdfModes.includes('ocr') : true); // ★ P0-2 修复：默认注入 OCR（与后端 SSOT 对齐）
-        let includeText = hasPdfModes ? pdfModes.includes('text') : true; // 默认包含文本
+        const includeText = hasPdfModes ? pdfModes.includes('text') : true; // 默认包含文本
         
         console.debug('[FileDef] PDF:', sourceId, { isMultimodal, includeImage, includeOcr, includeText });
         

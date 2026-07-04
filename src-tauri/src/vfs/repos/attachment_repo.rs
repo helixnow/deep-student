@@ -2377,7 +2377,7 @@ impl VfsAttachmentRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     pub fn get_mm_index_state(db: &VfsDatabase, attachment_id: &str) -> VfsResult<Option<String>> {
@@ -2387,7 +2387,7 @@ impl VfsAttachmentRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -2409,7 +2409,7 @@ impl VfsAttachmentRepo {
     /// 设置附件的多模态索引状态
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService` 替代
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     pub fn set_mm_index_state(
         db: &VfsDatabase,
         attachment_id: &str,
@@ -2421,7 +2421,7 @@ impl VfsAttachmentRepo {
     }
 
     /// ⚠️ 已废弃
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     #[allow(deprecated)]
     pub fn set_mm_index_state_with_conn(
         conn: &Connection,
@@ -2456,7 +2456,7 @@ impl VfsAttachmentRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::sync_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     pub fn save_mm_indexed_pages(
@@ -2470,7 +2470,7 @@ impl VfsAttachmentRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     #[allow(deprecated)]

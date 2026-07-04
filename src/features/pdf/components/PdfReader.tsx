@@ -21,9 +21,7 @@ import '../styles/pdf-reader.css';
 import { EnhancedPdfViewer } from './EnhancedPdfViewer';
 import { usePdfRenderTracker } from '@/utils/pdfDebug';
 
-interface PdfReaderProps {}
-
-export const PdfReader: React.FC<PdfReaderProps> = () => {
+export const PdfReader: React.FC = () => {
   const { t } = useTranslation(['pdf', 'common']);
   const { isDarkMode } = useTheme();
   
@@ -263,7 +261,7 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
       } catch (err: unknown) {
         console.error('OPEN_PDF_FILE 处理失败:', err);
         setError(t('pdf:errors.load_failed'));
-      } finally {}
+      }
     };
     try { window.addEventListener('OPEN_PDF_FILE' as any, handler as any); } catch {}
     return () => { try { window.removeEventListener('OPEN_PDF_FILE' as any, handler as any); } catch {} };

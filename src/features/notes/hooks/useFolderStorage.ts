@@ -74,7 +74,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
         const title = t ? t('notes:sidebar.actions.new_folder') : 'New Folder';
         const newFolder = { title, children: [] };
         
-        let newFolders = { ...folders, [id]: newFolder };
+        const newFolders = { ...folders, [id]: newFolder };
         let newRoot = [...rootChildren];
 
         if (parentId && newFolders[parentId]) {
@@ -93,7 +93,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
     }, [folders, rootChildren, saveFoldersToPref]);
 
     const addToStructure = useCallback((noteId: string, parentId?: string) => {
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
 
         if (parentId && folders[parentId]) {
@@ -112,9 +112,9 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
 
     const removeFromStructure = useCallback((ids: string[]) => {
         // Separate folders and notes logic handled in parent usually, but here we just remove IDs from structure
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
-        let newReferences = { ...references };
+        const newReferences = { ...references };
 
         // We need to remove these IDs from their parents
         // And if any ID is a folder, we remove the folder entry (and maybe move its children to root?)
@@ -177,7 +177,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
     }, [folders, rootChildren, references, saveStructureToPref]);
 
     const moveItem = useCallback(async (dragIds: string[], parentId: string | null, index: number) => {
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
 
         // 1. Remove all dragIds from their current parents
@@ -242,7 +242,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
                 const refIds = new Set(Object.keys(loadedReferences));
                 
                 // 扩展过滤逻辑：笔记 ID、文件夹 ID、引用 ID 都保留
-                let cleanRoot = loadedRoot.filter((id: string) => 
+                const cleanRoot = loadedRoot.filter((id: string) => 
                     noteIds.has(id) || cleanFolders[id] || refIds.has(id)
                 );
                 
@@ -304,7 +304,7 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
         const newReferences = { ...references, [refId]: newRef };
         
         // 更新结构（添加到文件夹或根级别）
-        let newFolders = { ...folders };
+        const newFolders = { ...folders };
         let newRoot = [...rootChildren];
         
         if (parentId && folders[parentId]) {
@@ -339,8 +339,8 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
         delete newReferences[refId];
 
         // 从结构中移除
-        let newFolders = { ...folders };
-        let newRoot = rootChildren.filter(id => id !== refId);
+        const newFolders = { ...folders };
+        const newRoot = rootChildren.filter(id => id !== refId);
         
         // 从所有文件夹的 children 中移除
         Object.keys(newFolders).forEach(fid => {

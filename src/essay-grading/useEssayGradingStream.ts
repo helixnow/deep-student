@@ -132,7 +132,8 @@ export function useEssayGradingStream() {
    * ★ F-6 修复：添加超时机制
    */
   const startGrading = useCallback((request: GradingRequest) => {
-    return new Promise<'completed' | 'cancelled'>(async (resolve, reject) => {
+    return new Promise<'completed' | 'cancelled'>((resolve, reject) => {
+      void (async () => {
       // 防止重复调用
       if (isStartingRef.current || isActiveRef.current) {
         console.warn('[EssayGrading] 批改已在进行中');
@@ -307,6 +308,7 @@ export function useEssayGradingStream() {
         currentStreamSessionIdRef.current = null;
         fail(error);
       }
+      })().catch(reject);
     });
   }, [cleanup, t]);
 

@@ -1622,7 +1622,7 @@ impl VfsTextbookRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::sync_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     pub fn save_page_mm_index(
@@ -1638,7 +1638,7 @@ impl VfsTextbookRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::sync_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -1695,7 +1695,7 @@ impl VfsTextbookRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     pub fn get_mm_indexed_pages(
@@ -1710,7 +1710,7 @@ impl VfsTextbookRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -1739,7 +1739,7 @@ impl VfsTextbookRepo {
     /// 获取已索引页面的 blob_hash 映射（用于增量索引检测）
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService` 替代
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     #[allow(deprecated)]
     pub fn get_mm_indexed_blob_hashes(
         db: &VfsDatabase,
@@ -1757,7 +1757,7 @@ impl VfsTextbookRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::delete_resource_index` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::delete_resource_index 替代"
     )]
     pub fn clear_mm_index(db: &VfsDatabase, textbook_id: &str) -> VfsResult<()> {
@@ -1786,7 +1786,7 @@ impl VfsTextbookRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     pub fn get_mm_index_state(db: &VfsDatabase, textbook_id: &str) -> VfsResult<Option<String>> {
@@ -1796,7 +1796,7 @@ impl VfsTextbookRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -1818,7 +1818,7 @@ impl VfsTextbookRepo {
     /// 设置教材的多模态索引状态
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService` 替代
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     pub fn set_mm_index_state(
         db: &VfsDatabase,
         textbook_id: &str,
@@ -1830,7 +1830,7 @@ impl VfsTextbookRepo {
     }
 
     /// ⚠️ 已废弃
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     #[allow(deprecated)]
     pub fn set_mm_index_state_with_conn(
         conn: &Connection,

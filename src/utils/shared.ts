@@ -311,7 +311,8 @@ export function stripNullsDeep<T>(input: T): T {
 
 // 工具函数：将File对象转换为Base64字符串
 export const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
+      void (async () => {
         tauriDebugLog(`[Base64] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
 
         let fileToProcess = file;
@@ -443,6 +444,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
             console.error(`[Base64] FileReader error:`, error);
             reject(error);
         };
+      })().catch(reject);
     });
 };
 

@@ -125,7 +125,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
     try {
       const bytes = await TauriAPI.readFileAsBytes(path);
       const name = path.split('/').pop() || path.split('\\').pop() || 'file';
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       return new File([bytes as any], name, { type: mimeType, lastModified: Date.now() });
     } catch (err) {
       console.warn('[PipelineTest] 无法从路径加载文件:', path, err);

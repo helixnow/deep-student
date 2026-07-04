@@ -65,18 +65,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
   const mode = useStore(store, (s) => s.mode);
   const modeState = useStore(store, (s) => s.modeState as unknown as TextbookModeState | null);
 
-  // 如果不是 textbook 模式或没有 modeState，不渲染
-  if (!modeState || mode !== 'textbook') {
-    return null;
-  }
-
-  const {
-    loadingStatus,
-    loadingError,
-    currentPage,
-    totalPages,
-    pages,
-  } = modeState;
+  // hooks 必须在 early return 之前，因此这里用可选值兜底
+  const currentPage = modeState?.currentPage ?? 1;
+  const totalPages = modeState?.totalPages ?? 0;
+  const pages = modeState?.pages ?? [];
 
   // 获取当前页数据
   const currentPageData = useMemo(
@@ -110,6 +102,13 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
   const handleRetry = useCallback(() => {
     reloadTextbook(store.getState()).catch(console.error);
   }, [store]);
+
+  // 如果不是 textbook 模式或没有 modeState，不渲染
+  if (!modeState || mode !== 'textbook') {
+    return null;
+  }
+
+  const { loadingStatus, loadingError } = modeState;
 
   // 加载中状态
   if (loadingStatus === 'loading') {

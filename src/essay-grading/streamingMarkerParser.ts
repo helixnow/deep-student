@@ -123,7 +123,7 @@ function findIncompleteMarkerStart(text: string): number {
 function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remaining: string } {
   const markers: StreamingMarker[] = [];
   let remaining = text;
-  let lastIndex = 0;
+  const lastIndex = 0;
   
   // 收集所有匹配
   interface MatchInfo {

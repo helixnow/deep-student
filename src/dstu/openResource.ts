@@ -281,7 +281,7 @@ export async function openResource(
     case 'modal':
       handler.openInModal(path, node, mode);
       break;
-    default:
+    default: {
       const error = new VfsError(
         VfsErrorCode.VALIDATION,
         `未知的打开位置: ${location}`,
@@ -291,6 +291,7 @@ export async function openResource(
       console.warn('[DSTU] Unknown location:', location);
       reportError(error, '打开资源');
       return err(error);
+    }
   }
 
   return ok(undefined);

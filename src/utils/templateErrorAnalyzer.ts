@@ -28,7 +28,7 @@ export function analyzeTemplateError(rawContent: string, backendError?: string):
     } catch (e: any) {
       reasons.push(`JSON 语法错误: ${e?.message || String(e)}`);
       // 特例：未转义的双引号
-      if (/preview_data_json/.test(candidate) && /\"/.test(candidate) === false) {
+      if (/preview_data_json/.test(candidate) && /"/.test(candidate) === false) {
         reasons.push('preview_data_json 可能未转义内层引号，应为字符串且内部双引号需转义');
       }
       return format(reasons, backendError);

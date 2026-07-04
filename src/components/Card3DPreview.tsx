@@ -387,13 +387,14 @@ export const Card3DPreview: React.FC<Card3DPreviewProps> = ({ cards, template, t
       case '6':
       case '7':
       case '8':
-      case '9':
+      case '9': {
         e.preventDefault();
         const num = parseInt(e.key);
         if (num <= cards.length) {
           setCurrentIndex(num - 1);
         }
         break;
+      }
     }
   };
 

@@ -309,9 +309,11 @@ const preprocessContent = (content: string, isStreaming = false): string => {
     },
   );
 
-  // 还原数学块占位符
+  // 还原数学块占位符（占位符有意使用 NUL 字节避免与正文冲突）
+  // eslint-disable-next-line no-control-regex
   processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
 
+  // eslint-disable-next-line no-control-regex
   processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
 
   // 专门处理 bmatrix 环境

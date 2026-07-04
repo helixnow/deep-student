@@ -170,17 +170,34 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
-      - name: Inject Android permissions
+      # 与 release.yml 的同名步骤保持一致（源头：scripts/build_android.sh）。
+      - name: Prepare Android project (permissions / soft input / MainActivity)
         run: |
           MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
-          PERM='<uses-permission android:name="android.permission.RECORD_AUDIO" />'
-          if grep -qF "$PERM" "$MANIFEST"; then
-            echo "RECORD_AUDIO permission already present"
-          else
-            echo "Injecting RECORD_AUDIO permission..."
-            sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
-            echo "RECORD_AUDIO permission injected"
+          test -f "$MANIFEST" || { echo "::error::AndroidManifest.xml not found at $MANIFEST"; exit 1; }
+
+          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS; do
+            PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
+            if ! grep -qF "$PERMISSION" "$MANIFEST"; then
+              sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"
+            fi
+            grep -qF "$PERMISSION" "$MANIFEST" || { echo "::error::failed to inject $PERMISSION"; exit 1; }
+            echo "✅ permission present: $PERMISSION"
+          done
+
+          if ! grep -qF 'android:windowSoftInputMode' "$MANIFEST"; then
+            sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
           fi
+          grep -qF 'android:windowSoftInputMode="adjustResize"' "$MANIFEST" || { echo "::error::failed to inject windowSoftInputMode=adjustResize"; exit 1; }
+          echo "✅ windowSoftInputMode=adjustResize present"
+
+          SRC="src-tauri/mobile/android/MainActivity.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+          test -f "$SRC" || { echo "::error::managed MainActivity.kt missing at $SRC"; exit 1; }
+          test -d "$(dirname "$DST")" || { echo "::error::generated Android java dir missing at $(dirname "$DST")"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::MainActivity.kt sync verification failed"; exit 1; }
+          echo "✅ MainActivity.kt synced from managed copy"
 
       - name: Copy custom Android icons
         run: |

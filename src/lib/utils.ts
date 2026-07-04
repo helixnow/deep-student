@@ -1,7 +1,7 @@
 // 轻量 cn 实现，避免依赖外部包
 export type ClassValue = string | number | null | false | undefined | ClassDictionary | ClassArray;
 export interface ClassDictionary { [id: string]: any }
-export interface ClassArray extends Array<ClassValue> {}
+export type ClassArray = ClassValue[];
 
 function toVal(mix: ClassValue): string {
   let k: any, y: any, str='';
@@ -10,14 +10,20 @@ function toVal(mix: ClassValue): string {
     for (k = 0; k < mix.length; k++) {
       if (mix[k]) {
         y = toVal(mix[k]);
-        if (y) str && (str += ' '), str += y;
+        if (y) {
+          if (str) str += ' ';
+          str += y;
+        }
       }
     }
     return str;
   }
   if (mix && typeof mix === 'object') {
     for (k in mix) {
-      if (mix[k]) str && (str += ' '), str += k;
+      if (mix[k]) {
+        if (str) str += ' ';
+        str += k;
+      }
     }
   }
   return str;

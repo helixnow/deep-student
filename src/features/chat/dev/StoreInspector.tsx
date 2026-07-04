@@ -75,7 +75,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, name, depth = 0 }) => {
       return <span className="text-muted-foreground">Object({Object.keys(data).length})</span>;
     }
     if (typeof data === 'function') {
-      return <span className="text-yellow-600 dark:text-yellow-400">ƒ {(data as Function).name || 'anonymous'}()</span>;
+      return <span className="text-yellow-600 dark:text-yellow-400">ƒ {(data as (...args: any[]) => any).name || 'anonymous'}()</span>;
     }
 
     return <span>{String(data)}</span>;

@@ -37,56 +37,14 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
   const { t } = useTranslation('common');
   const [copied, setCopied] = useState(false);
 
-  if (!isOpen || !source) return null;
-
-  const handleCopyContent = async () => {
-    try {
-      await copyTextToClipboard(source.chunk_text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-      console.log('📋 [来源预览] 已复制内容到剪贴板');
-    } catch (e: unknown) {
-      console.warn('复制失败:', e);
-    }
-  };
-
-  const handleOpenInKnowledgeBase = () => {
-    if (onOpenInKnowledgeBase) {
-      onOpenInKnowledgeBase(source.document_id, source.file_name);
-    } else {
-      console.log('🔍 [来源预览] 在学习资源中打开:', source.file_name);
-      // 默认行为：尝试导航到学习资源页面
-      try {
-        window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', {
-          detail: { documentId: source.document_id, fileName: source.file_name }
-        }));
-      } catch {}
-    }
-  };
-
-  const handleDownload = async () => {
-    try {
-      const defaultName = `${source.file_name}_chunk_${source.chunk_index}.txt`;
-      await fileManager.saveTextFile({
-        title: defaultName,
-        defaultFileName: defaultName,
-        content: source.chunk_text,
-        filters: [{ name: 'Text', extensions: ['txt'] }],
-      });
-      console.log('💾 [来源预览] 已下载片段内容');
-    } catch (e: unknown) {
-      console.warn('下载失败:', e);
-    }
-  };
-
-  // 来源类型提示文案
+  // 来源类型提示文案（hooks 必须在任何 early return 之前调用）
   const variant = useMemo(() => {
-    if (source.source_type === 'memory') return 'info';
-    if (source.source_type === 'rag') return 'success';
-    if (source.source_type === 'web_search') return 'warning';
-    if (source.source_type === 'multimodal') return 'info';
+    if (source?.source_type === 'memory') return 'info';
+    if (source?.source_type === 'rag') return 'success';
+    if (source?.source_type === 'web_search') return 'warning';
+    if (source?.source_type === 'multimodal') return 'info';
     return 'muted';
-  }, [source.source_type]);
+  }, [source?.source_type]);
 
   const badgeStyles = useMemo(() => {
     switch (variant) {
@@ -145,6 +103,48 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
         };
     }
   }, [variant]);
+
+  if (!isOpen || !source) return null;
+
+  const handleCopyContent = async () => {
+    try {
+      await copyTextToClipboard(source.chunk_text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      console.log('📋 [来源预览] 已复制内容到剪贴板');
+    } catch (e: unknown) {
+      console.warn('复制失败:', e);
+    }
+  };
+
+  const handleOpenInKnowledgeBase = () => {
+    if (onOpenInKnowledgeBase) {
+      onOpenInKnowledgeBase(source.document_id, source.file_name);
+    } else {
+      console.log('🔍 [来源预览] 在学习资源中打开:', source.file_name);
+      // 默认行为：尝试导航到学习资源页面
+      try {
+        window.dispatchEvent(new CustomEvent('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', {
+          detail: { documentId: source.document_id, fileName: source.file_name }
+        }));
+      } catch {}
+    }
+  };
+
+  const handleDownload = async () => {
+    try {
+      const defaultName = `${source.file_name}_chunk_${source.chunk_index}.txt`;
+      await fileManager.saveTextFile({
+        title: defaultName,
+        defaultFileName: defaultName,
+        content: source.chunk_text,
+        filters: [{ name: 'Text', extensions: ['txt'] }],
+      });
+      console.log('💾 [来源预览] 已下载片段内容');
+    } catch (e: unknown) {
+      console.warn('下载失败:', e);
+    }
+  };
 
   const copyButtonState = copied ? 'success' : 'idle';
 

@@ -417,6 +417,13 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
     });
   };
 
+  const statusDescriptionId = useId();
+
+  // 判断是否为引用节点（hooks 必须在 early return 之前）
+  const isReference = useMemo(() => {
+    return node.nodeType === 'reference' || isReferenceId(id);
+  }, [node.nodeType, id]);
+
   // 不渲染 root 节点本身，只渲染其子节点
   // 注意: root 节点不应该通过 TreeNode 组件渲染
   if (id === 'root') {
@@ -429,17 +436,11 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
       : status === 'pending'
         ? t('notes:tree.vectorStatus.pending')
         : t('notes:tree.vectorStatus.none');
-  const statusDescriptionId = useId();
   const isFavorite = !node.isFolder && !!node.data?.note?.is_favorite;
 
   // ============================================================================
   // 引用节点支持
   // ============================================================================
-
-  // 判断是否为引用节点
-  const isReference = useMemo(() => {
-    return node.nodeType === 'reference' || isReferenceId(id);
-  }, [node.nodeType, id]);
 
   // 引用节点数据
   const referenceData = node.referenceData;

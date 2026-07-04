@@ -206,7 +206,7 @@ async function fetchReferenceContent(
         },
       };
 
-    case 'pdf':
+    case 'pdf': {
       // PDF 内容可能是文件路径或 base64
       let pdfPath = '';
       if (typeof content === 'string') {
@@ -230,8 +230,9 @@ async function fetchReferenceContent(
           fileSize,
         },
       };
+    }
 
-    case 'image':
+    case 'image': {
       // 图片内容：如果是 Blob 转为 data URL，否则假设是路径或 base64
       let imageUrl = '';
       if (content instanceof Blob) {
@@ -257,6 +258,7 @@ async function fetchReferenceContent(
           imageUrl,
         },
       };
+    }
 
     default:
       return {

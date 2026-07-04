@@ -6,9 +6,9 @@
 
 // Simple EventEmitter implementation for browser environment
 class EventEmitter {
-  private events: { [key: string]: Function[] } = {};
+  private events: { [key: string]: Array<(...args: any[]) => void> } = {};
 
-  on(event: string, listener: Function): void {
+  on(event: string, listener: (...args: any[]) => void): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }

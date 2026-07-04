@@ -1761,7 +1761,7 @@ impl VfsExamRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::get_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     pub fn get_mm_index_state(db: &VfsDatabase, exam_id: &str) -> VfsResult<Option<String>> {
@@ -1771,7 +1771,7 @@ impl VfsExamRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::get_resource_units 替代"
     )]
     #[allow(deprecated)]
@@ -1793,7 +1793,7 @@ impl VfsExamRepo {
     /// 设置题目集的多模态索引状态
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService` 替代
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     pub fn set_mm_index_state(
         db: &VfsDatabase,
         exam_id: &str,
@@ -1805,7 +1805,7 @@ impl VfsExamRepo {
     }
 
     /// ⚠️ 已废弃
-    #[deprecated(since = "2026.1", note = "使用 VfsIndexService 替代")]
+    #[deprecated(since = "0.9.2", note = "使用 VfsIndexService 替代")]
     #[allow(deprecated)]
     pub fn set_mm_index_state_with_conn(
         conn: &Connection,
@@ -1840,7 +1840,7 @@ impl VfsExamRepo {
     ///
     /// ⚠️ 已废弃：请使用 `VfsIndexService::sync_resource_units` 替代
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     pub fn save_mm_index_metadata(
@@ -1862,7 +1862,7 @@ impl VfsExamRepo {
 
     /// ⚠️ 已废弃
     #[deprecated(
-        since = "2026.1",
+        since = "0.9.2",
         note = "使用 VfsIndexService::sync_resource_units 替代"
     )]
     #[allow(deprecated)]

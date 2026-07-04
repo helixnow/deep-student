@@ -135,8 +135,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         const crepe = crepeRef.current;
         if (!crepe) return;
         try {
-          // @ts-ignore Milkdown 版本类型差异，运行时兼容
-          crepe.editor.action(replaceAll(markdown));
+          // Milkdown 版本类型差异，运行时兼容
+          (crepe.editor as any).action(replaceAll(markdown));
         } catch (e) {
           debugLog.error('[CrepeEditor] setMarkdown failed:', e);
         }
@@ -1042,7 +1042,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
 
         // 创建 Crepe 实例
-        let crepe = new Crepe({
+        const crepe = new Crepe({
           root: container,
           defaultValue: processedDefaultValue,
           features: {

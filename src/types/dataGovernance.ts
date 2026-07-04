@@ -327,7 +327,7 @@ export interface RestoreResultResponse {
 export type BackupTier = 'core' | 'important' | 'rebuildable' | 'large_assets';
 
 /** Translation function type for i18n integration — uses i18next TFunction for compatibility */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export type DataGovernanceTFn = (...args: any[]) => any;
 
 /** 获取备份层级显示名称（i18n） */

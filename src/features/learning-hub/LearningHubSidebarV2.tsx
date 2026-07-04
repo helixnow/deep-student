@@ -121,7 +121,7 @@ export function LearningHubSidebarV2({
   // ★ 2026-01-15: 完全移除 finderStore → navContext 的同步
   // 原因：setCurrentFolderId 会调用 realPathNavigateTo，触发 useFolderNavigationHistory 的 useEffect
   // 向历史栈添加新条目，形成循环。LearningHubSidebar 已经处理了 navContext → finderStore 的单向同步。
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   const _navContext = useLearningHubNavigationSafe(); // 保留引用但不使用同步逻辑
 
   const activeQuickAccess = useMemo(() => {

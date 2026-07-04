@@ -1745,6 +1745,7 @@ function ToolPermissionsSection({ toolsByServer }: {
 
   /** 清除所有历史审批记录（DB + 内存） */
   const handleClearHistory = useCallback(async () => {
+    // eslint-disable-next-line no-alert -- 破坏性操作需要阻塞式确认，待统一 confirm 组件落地后替换
     if (!window.confirm(t('settings:tool_permissions.clear_history_confirm'))) return;
     try {
       // 🔧 R2-H2 修复：调用统一命令，同时清内存 + DB。

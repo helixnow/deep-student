@@ -78,7 +78,7 @@ export function useResourceSearch(query: string, enabled: boolean): ResourceSear
           .slice(0, FILE_LIMIT);
       }
 
-      let sessionResults: SessionSearchItem[] = [];
+      const sessionResults: SessionSearchItem[] = [];
       if (sessionSettled.status === 'fulfilled' && Array.isArray(sessionSettled.value)) {
         const seen = new Set<string>();
         for (const item of sessionSettled.value) {

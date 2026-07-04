@@ -211,7 +211,7 @@ export async function runStreamCompleteTest(
 /**
  * 获取流式完成场景的测试步骤
  */
-export function getStreamCompleteScenarioSteps(t: Function): TestStep[] {
+export function getStreamCompleteScenarioSteps(t: (...args: any[]) => any): TestStep[] {
   return [
     { id: 'preflight', name: t('dev:save_test.steps.preflight_check'), status: 'pending' },
     { id: 'load', name: t('dev:save_test.steps.load_data'), status: 'pending' },

@@ -675,6 +675,39 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
+      # 与 scripts/build_android.sh 的 inject_android_permissions /
+      # inject_android_soft_input_mode / sync_main_activity 保持一致。
+      # tauri android init 生成的是裸模板：缺麦克风权限（语音输入不可用）、
+      # 缺 adjustResize（键盘避让行为随 ROM 漂移）、缺受控 MainActivity
+      # （A-5 返回键接管 + SA-1 安全区注入）。CI 里缺失即硬失败，防止官方 APK 静默回归。
+      - name: Prepare Android project (permissions / soft input / MainActivity)
+        run: |
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          test -f "$MANIFEST" || { echo "::error::AndroidManifest.xml not found at $MANIFEST"; exit 1; }
+
+          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS; do
+            PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
+            if ! grep -qF "$PERMISSION" "$MANIFEST"; then
+              sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"
+            fi
+            grep -qF "$PERMISSION" "$MANIFEST" || { echo "::error::failed to inject $PERMISSION"; exit 1; }
+            echo "✅ permission present: $PERMISSION"
+          done
+
+          if ! grep -qF 'android:windowSoftInputMode' "$MANIFEST"; then
+            sed -i 's|android:launchMode="singleTask"|android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"|' "$MANIFEST"
+          fi
+          grep -qF 'android:windowSoftInputMode="adjustResize"' "$MANIFEST" || { echo "::error::failed to inject windowSoftInputMode=adjustResize"; exit 1; }
+          echo "✅ windowSoftInputMode=adjustResize present"
+
+          SRC="src-tauri/mobile/android/MainActivity.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
+          test -f "$SRC" || { echo "::error::managed MainActivity.kt missing at $SRC"; exit 1; }
+          test -d "$(dirname "$DST")" || { echo "::error::generated Android java dir missing at $(dirname "$DST")"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::MainActivity.kt sync verification failed"; exit 1; }
+          echo "✅ MainActivity.kt synced from managed copy"
+
       - name: Copy custom Android icons
         run: |
           ICONS_SRC="src-tauri/icons/android"

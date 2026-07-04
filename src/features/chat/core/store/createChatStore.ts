@@ -182,7 +182,7 @@ export function createBlockInternal(
   // 这样后续的 chunk 事件才能被正确渲染
   const doUpdate = () => {
     set((s) => {
-      let message = s.messageMap.get(messageId);
+      const message = s.messageMap.get(messageId);
 
       // 先添加 block
       const blocksUpdate = updateMultipleBlocks((draft) => {

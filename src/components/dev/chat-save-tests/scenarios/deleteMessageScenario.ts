@@ -266,7 +266,7 @@ export async function runDeleteMessageTest(
 /**
  * 获取删除场景的测试步骤
  */
-export function getDeleteScenarioSteps(t: Function): TestStep[] {
+export function getDeleteScenarioSteps(t: (...args: any[]) => any): TestStep[] {
   return [
     { id: 'preflight', name: t('dev:save_test.steps.preflight_check'), status: 'pending' },
     { id: 'load', name: t('dev:save_test.steps.load_data'), status: 'pending' },

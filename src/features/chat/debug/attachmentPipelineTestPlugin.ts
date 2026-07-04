@@ -421,7 +421,7 @@ async function createAndSwitchSession(
  *  因此捕获第一个请求体（包含附件内容），同时记录总请求数。
  */
 async function createRequestBodyCapture(sessionId: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let firstBody: any = null;
   let requestCount = 0;
   const unlisten = await listen<{ streamEvent: string; model: string; url: string; requestBody: unknown }>(
@@ -463,7 +463,7 @@ async function waitFor(cond: () => boolean, timeoutMs: number, pollMs = 300, _la
 interface VerifyOpts {
   skipSend: boolean;
   hasContextRef: boolean;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   requestBody?: any;
   responseContent?: string;
 }
@@ -518,7 +518,7 @@ function verifyTestCase(tc: TestCase, consoleLogs: CapturedConsoleEntry[], opts:
 }
 
 /** 验证后端实际发给 LLM 的请求体内容 */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 function verifyRequestBody(tc: TestCase, body: any): VerificationCheck[] {
   const checks: VerificationCheck[] = [];
   if (!body) {
@@ -555,11 +555,11 @@ function verifyRequestBody(tc: TestCase, body: any): VerificationCheck[] {
   if (Array.isArray(content)) {
     // content 是数组 — 多模态 + image 模式
     checks.push({ name: 'content 格式', passed: true, detail: `数组: ${content.length} 个内容块` });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const blocks = content as any[];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const hasImageUrl = blocks.some((b: any) => b.type === 'image_url');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const textLen = blocks.filter((b: any) => b.type === 'text').reduce((sum: number, b: any) => sum + (b.text?.length || 0), 0);
 
     if (tc.modelType === 'text') {
@@ -614,7 +614,7 @@ function verifyRequestBody(tc: TestCase, body: any): VerificationCheck[] {
   // ★ 内容质量检查：检测占位符注入
   const contentStr = typeof content === 'string' ? content
     : Array.isArray(content)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       ? content.filter((b: any) => b.type === 'text').map((b: any) => b.text || '').join('\n')
       : '';
   if (contentStr) {
@@ -983,7 +983,7 @@ export async function runSingleTestCase(
           log('info', 'requestBody', `已捕获 (共${totalReqs}轮LLM请求)`);
           // 完整 dump 请求体：去掉 base64 图片数据 + system prompt（与注入无关），只保留关键内容
           try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
             const sanitized = JSON.parse(JSON.stringify(reqCapture.body, (key: string, val: any) => {
               if (key === 'url' && typeof val === 'string' && val.startsWith('data:')) {
                 return `[base64:${val.length}bytes]`;
@@ -992,7 +992,7 @@ export async function runSingleTestCase(
             }));
             // 去掉 system 消息的 content（太长且与附件注入无关）
             if (Array.isArray(sanitized.messages)) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
               sanitized.messages = sanitized.messages.map((m: any) => {
                 if (m.role === 'system') {
                   return { role: 'system', content: `[system prompt: ${(m.content?.length || 0)}字符, 已省略]` };
@@ -1160,7 +1160,7 @@ export async function cleanupTestData(
 
   for (const status of ['active', 'archived', 'deleted'] as const) {
     let offset = 0;
-    // eslint-disable-next-line no-constant-condition
+
     while (true) {
       const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
         status, limit: PAGE, offset,

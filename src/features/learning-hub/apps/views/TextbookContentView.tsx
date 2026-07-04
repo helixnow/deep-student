@@ -355,7 +355,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       isMounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [needsFileContent, effectiveFilePath, effectiveFileSize, node.id, node.size, t, contentRetryCount]);
   
   // 从 node.metadata 提取阅读进度

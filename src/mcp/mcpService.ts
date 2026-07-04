@@ -29,6 +29,7 @@ function sanitizeToolResultContent(content: any): any {
     // 清洗 text 类型内容
     if (sanitized.type === 'text' && typeof sanitized.text === 'string') {
       // 移除 NUL 字节和其他不可见控制字符（保留换行、制表符）
+      // eslint-disable-next-line no-control-regex
       sanitized.text = sanitized.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
       // 截断过长文本
       if (sanitized.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
@@ -44,6 +45,7 @@ function sanitizeToolResultContent(content: any): any {
     if (sanitized.type === 'resource' && sanitized.resource) {
       if (typeof sanitized.resource.text === 'string') {
         sanitized.resource = { ...sanitized.resource };
+        // eslint-disable-next-line no-control-regex
         sanitized.resource.text = sanitized.resource.text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
         if (sanitized.resource.text.length > MCP_RESULT_MAX_TEXT_LENGTH) {
           sanitized.resource.text = sanitized.resource.text.slice(0, MCP_RESULT_MAX_TEXT_LENGTH) + '\n[...truncated]';
@@ -351,7 +353,7 @@ class McpServiceImpl {
       }
       // 每次连接都创建新 Client，确保 Protocol 状态干净
       // MCP SDK v2: 启用 listChanged autoRefresh，当服务器发送 notifications/tools/list_changed 等通知时自动刷新
-      const self = this;
+      // onChanged 回调均为箭头函数，直接沿用词法 this，无需 self 别名
       const serverId = rt.cfg.id;
       rt.client = new Client(
         { name: 'dstu-frontend-mcp', version: '1.0.0' },
@@ -368,13 +370,13 @@ class McpServiceImpl {
                 if (error) { console.warn(`[MCP] listChanged tools refresh error for ${serverId}:`, error); }
                 if (tools && Array.isArray(tools)) {
                   const toolsForServer: ToolInfo[] = tools.map((t: any) => ({
-                    name: self.withNamespace(t.name, rt.cfg.namespace),
+                    name: this.withNamespace(t.name, rt.cfg.namespace),
                     description: t.description || '',
                     input_schema: t.inputSchema,
                   }));
-                  self.toolCacheByServer.set(serverId, { at: Date.now(), tools: toolsForServer });
-                  self.saveCacheToStorage();
-                  self.emitStatus();
+                  this.toolCacheByServer.set(serverId, { at: Date.now(), tools: toolsForServer });
+                  this.saveCacheToStorage();
+                  this.emitStatus();
                 }
               },
             },
@@ -385,13 +387,13 @@ class McpServiceImpl {
                 if (error) { console.warn(`[MCP] listChanged prompts refresh error for ${serverId}:`, error); }
                 if (prompts && Array.isArray(prompts)) {
                   const promptsForServer: PromptInfo[] = prompts.map((p: any) => ({
-                    name: self.withNamespace(p.name, rt.cfg.namespace),
+                    name: this.withNamespace(p.name, rt.cfg.namespace),
                     description: p.description || '',
                     arguments: p.arguments,
                   }));
-                  self.promptCacheByServer.set(serverId, { at: Date.now(), prompts: promptsForServer });
-                  self.saveCacheToStorage();
-                  self.emitStatus();
+                  this.promptCacheByServer.set(serverId, { at: Date.now(), prompts: promptsForServer });
+                  this.saveCacheToStorage();
+                  this.emitStatus();
                 }
               },
             },
@@ -403,13 +405,13 @@ class McpServiceImpl {
                 if (resources && Array.isArray(resources)) {
                   const resourcesForServer: ResourceInfo[] = resources.map((r: any) => ({
                     uri: r.uri || r.id || '',
-                    name: r.name ? self.withNamespace(r.name, rt.cfg.namespace) : undefined,
+                    name: r.name ? this.withNamespace(r.name, rt.cfg.namespace) : undefined,
                     description: r.description,
                     mime_type: r.mimeType || r.mime_type,
                   }));
-                  self.resourceCacheByServer.set(serverId, { at: Date.now(), resources: resourcesForServer });
-                  self.saveCacheToStorage();
-                  self.emitStatus();
+                  this.resourceCacheByServer.set(serverId, { at: Date.now(), resources: resourcesForServer });
+                  this.saveCacheToStorage();
+                  this.emitStatus();
                 }
               },
             },

@@ -65,9 +65,9 @@ export const PALETTE_PREVIEW_COLORS: Record<string, string> = {
 function hexToHsl(hex: string): [number, number, number] {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return [217, 91, 40];
-  let r = parseInt(result[1], 16) / 255;
-  let g = parseInt(result[2], 16) / 255;
-  let b = parseInt(result[3], 16) / 255;
+  const r = parseInt(result[1], 16) / 255;
+  const g = parseInt(result[2], 16) / 255;
+  const b = parseInt(result[3], 16) / 255;
   const max = Math.max(r, g, b), min = Math.min(r, g, b);
   let h = 0, s = 0;
   const l = (max + min) / 2;
@@ -253,9 +253,17 @@ export const useTheme = () => {
       setThemeState(prev => ({ ...prev, isSystemDark: e.matches }));
     };
 
-    mediaQuery.addEventListener?.('change', handler) ?? mediaQuery.addListener?.(handler);
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handler);
+    } else {
+      mediaQuery.addListener?.(handler);
+    }
     return () => {
-      mediaQuery.removeEventListener?.('change', handler) ?? mediaQuery.removeListener?.(handler);
+      if (typeof mediaQuery.removeEventListener === 'function') {
+        mediaQuery.removeEventListener('change', handler);
+      } else {
+        mediaQuery.removeListener?.(handler);
+      }
     };
   }, []);
 

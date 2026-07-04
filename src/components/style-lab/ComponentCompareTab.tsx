@@ -26,9 +26,9 @@ import {
   TooltipProvider as ShadTooltipProvider,
   TooltipTrigger as ShadTooltipTrigger,
 } from '@/components/ui/shad/Tooltip';
-// eslint-disable-next-line no-restricted-imports
+
 import { Popover as ShadPopover, PopoverTrigger as ShadPopoverTrigger, PopoverContent as ShadPopoverContent } from '@/components/ui/shad/Popover';
-// eslint-disable-next-line no-restricted-imports
+
 import {
   Dialog as ShadDialog,
   DialogTrigger as ShadDialogTrigger,
@@ -38,7 +38,7 @@ import {
   DialogDescription as ShadDialogDescription,
   DialogFooter as ShadDialogFooter,
 } from '@/components/ui/shad/Dialog';
-// eslint-disable-next-line no-restricted-imports
+
 import {
   Sheet as ShadSheet,
   SheetTrigger as ShadSheetTrigger,

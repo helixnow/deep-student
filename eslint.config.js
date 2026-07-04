@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
+import reactHooks from 'eslint-plugin-react-hooks';
 import noNativeButton from './eslint-rules/no-native-button.js';
 
 export default tseslint.config(
@@ -23,9 +24,19 @@ export default tseslint.config(
         rules: {
           'no-native-button': noNativeButton
         }
-      }
+      },
+      'react-hooks': reactHooks
     },
     rules: {
+      // React Hooks 正确性检查：rules-of-hooks 违规是真实 bug 来源，直接 error；
+      // exhaustive-deps 历史欠账较多，先 warn 逐步清理（与 no-console 同策略）。
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+
+      // 空 catch 是本代码库的既有降级风格（try { … } catch {}），允许；
+      // 其余空块（if/finally/loop）仍然报错。
+      'no-empty': ['error', { allowEmptyCatch: true }],
+
       // ============================================================
       // AGENTS.md 组件规范检查规则
       // 参见: AGENTS.md

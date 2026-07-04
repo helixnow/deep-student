@@ -654,7 +654,7 @@ async function stepAdapterTransform(ctx: StepContext): Promise<StepResult> {
       const blocks: Block[] = [
         makeSyntheticBlock({
           id: 'b10', type: 'rag', messageId: 'm1',
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           citations: [{ title: 'No Type', snippet: 'test' } as any],
         }),
       ];
@@ -836,7 +836,7 @@ async function stepPersistRoundtrip(ctx: StepContext): Promise<StepResult> {
 
     // 3. 从后端重新加载
     const { invoke } = await import('@tauri-apps/api/core');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const loaded = await invoke<any>('chat_v2_load_session', { sessionId });
     const loadedMessages = loaded?.messages || [];
     log('info', 'load', `从 DB 加载: ${loadedMessages.length} 条消息`);
@@ -1080,7 +1080,7 @@ export async function cleanupCitationTestData(
 
   for (const status of ['active', 'archived', 'deleted'] as const) {
     offset = 0;
-    // eslint-disable-next-line no-constant-condition
+
     while (true) {
       const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
         status, limit: PAGE, offset,

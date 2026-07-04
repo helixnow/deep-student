@@ -50,7 +50,7 @@ export function sanitizeCssForPreview(css: string, _mode: HtmlSandboxMode): stri
 
 export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): string {
   if (!html) return '';
-  const isFullDoc = /^\s*(<\!doctype|<html[\s>])/i.test(html.trim());
+  const isFullDoc = /^\s*(<!doctype|<html[\s>])/i.test(html.trim());
   const forbidTags =
     mode === 'chat-safe'
       ? ['script', 'iframe', 'embed', 'object', 'form', 'base', 'link']

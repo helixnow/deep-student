@@ -235,6 +235,14 @@ export default defineConfig(({ command, mode }) => ({
           if (id.includes('mermaid')) {
             return 'vendor-mermaid';
           }
+          // KaTeX（chat markdown / mindmap LaTeX 渲染共用，~270KB）
+          if (id.includes('node_modules/katex') || id.includes('rehype-katex')) {
+            return 'vendor-katex';
+          }
+          // Milkdown 编辑器全家桶（仅笔记编辑场景加载）
+          if (id.includes('@milkdown') || id.includes('milkdown') || id.includes('prosemirror')) {
+            return 'vendor-milkdown';
+          }
         },
       }
     }

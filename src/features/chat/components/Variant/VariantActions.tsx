@@ -90,11 +90,6 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
   const showRetry = canRetryVariant(variant.status) && onRetry;
   const showDelete = !isLastVariant && onDelete;
 
-  // 如果没有任何可用操作，不显示菜单
-  if (!showCancel && !showRetry && !showDelete) {
-    return null;
-  }
-
   // 处理取消
   const handleCancel = useCallback(async () => {
     if (!onCancel || isLoading) return;
@@ -142,6 +137,11 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
       setIsLoading(false);
     }
   }, [onDelete, messageId, variant.id, isLoading, t]);
+
+  // 如果没有任何可用操作，不显示菜单（early return 必须在所有 hooks 之后）
+  if (!showCancel && !showRetry && !showDelete) {
+    return null;
+  }
 
   return (
     <AppMenu>

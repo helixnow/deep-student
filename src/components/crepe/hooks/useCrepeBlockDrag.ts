@@ -334,7 +334,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     }
 
     // 获取被拖拽的 DOM 元素
-    let draggedElement: HTMLElement | null = null;
+    const draggedElement: HTMLElement | null = null;
     const container = containerRef.current;
     if (container) {
       // 需要等待 DOM 更新

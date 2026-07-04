@@ -34,7 +34,7 @@ export function makeUncertaintyHighlightPlugin(
   defaultReason: string = '不确定'
 ) {
   const len = typeof fullText === 'string' ? fullText.length : 0;
-  let ranges = (spans || [])
+  const ranges = (spans || [])
     .map(s => ({
       start: Math.max(0, Math.min(len, Number(s.start))),
       end: Math.max(0, Math.min(len, Number(s.end))),

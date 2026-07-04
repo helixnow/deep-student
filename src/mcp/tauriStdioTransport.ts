@@ -279,7 +279,7 @@ export class TauriStdioClientTransport {
     while (this.unlistenFns.length) {
       const dispose = this.unlistenFns.pop();
       try {
-        dispose && dispose();
+        dispose?.();
       } catch (e: unknown) {
         console.warn('[MCP][stdio] Failed to remove event listener', e);
       }

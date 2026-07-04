@@ -507,7 +507,7 @@ function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
         return true;
       });
       
-    case 'content':
+    case 'content': {
       const searchValue = filter.value?.toLowerCase() || '';
       return cards.filter(card => {
         const content = (card.front + ' ' + card.back).toLowerCase();
@@ -518,6 +518,7 @@ function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
         }
         return true;
       });
+    }
       
     case 'has_image':
       return cards.filter(card => card.images && card.images.length > 0);
@@ -525,13 +526,14 @@ function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
     case 'no_tags':
       return cards.filter(card => !card.tags || card.tags.length === 0);
       
-    case 'created_today':
+    case 'created_today': {
       const today = new Date().toDateString();
       return cards.filter(card => {
         const created = (card as any).created_at || (card as any).createdAt;
         if (!created) return false;
         return new Date(created).toDateString() === today;
       });
+    }
       
     default:
       return cards;
@@ -547,7 +549,7 @@ function applyBatchChanges(
     const cardId = card.id || card.front;
     if (!selectedIds.has(cardId)) return card;
     
-    let updatedCard = { ...card };
+    const updatedCard = { ...card };
     
     // 应用正面修改
     if (changes.front?.enabled) {

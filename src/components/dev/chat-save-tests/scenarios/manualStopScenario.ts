@@ -187,7 +187,7 @@ export async function runManualStopTest(
 /**
  * 获取手动停止场景的测试步骤
  */
-export function getManualStopScenarioSteps(t: Function): TestStep[] {
+export function getManualStopScenarioSteps(t: (...args: any[]) => any): TestStep[] {
   return [
     { id: 'preflight', name: t('dev:save_test.steps.preflight_check'), status: 'pending' },
     { id: 'load', name: t('dev:save_test.steps.load_data'), status: 'pending' },

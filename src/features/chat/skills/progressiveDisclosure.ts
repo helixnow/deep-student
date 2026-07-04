@@ -538,7 +538,7 @@ export const DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG: ProgressiveDisclosureConfig 
   preloadAllTools: false,
 };
 
-let currentConfig: ProgressiveDisclosureConfig = { ...DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG };
+const currentConfig: ProgressiveDisclosureConfig = { ...DEFAULT_PROGRESSIVE_DISCLOSURE_CONFIG };
 
 /**
  * 获取当前配置

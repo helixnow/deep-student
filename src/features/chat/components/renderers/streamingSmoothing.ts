@@ -295,7 +295,7 @@ function createRafScheduler(): RafScheduler {
         task(ts, dt);
       } catch (err) {
         // 单个任务异常不污染整个 tick
-        // eslint-disable-next-line no-console
+
         console.warn('[stream-smoothing] task error', err);
       }
       if (performance.now() - start > TICK_BUDGET_MS) break;

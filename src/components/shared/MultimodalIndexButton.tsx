@@ -69,11 +69,6 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const [status, setStatus] = useState<IndexStatus>('idle');
   const [lastResult, setLastResult] = useState<VfsMultimodalIndexResourceOutput | null>(null);
 
-  // ★ 多模态索引已禁用，不渲染按钮。恢复 MULTIMODAL_INDEX_ENABLED = true 后自动显示
-  if (!MULTIMODAL_INDEX_ENABLED) {
-    return null;
-  }
-
   // 执行索引
   const handleIndex = useCallback(async () => {
     if (status === 'indexing') return;
@@ -194,6 +189,12 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
     }
     return t('common:multimodal.indexTooltip');
   };
+
+  // ★ 多模态索引已禁用，不渲染按钮。恢复 MULTIMODAL_INDEX_ENABLED = true 后自动显示
+  // （early return 放在所有 hooks 之后，遵守 rules-of-hooks）
+  if (!MULTIMODAL_INDEX_ENABLED) {
+    return null;
+  }
 
   return (
     <div className={cn('inline-flex items-center gap-1', className)}>

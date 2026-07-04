@@ -73,27 +73,30 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
       case 'text':
         return marker.content;
       
-      case 'del':
+      case 'del': {
         // 删除：~~text~~
         const delReason = marker.reason ? `^${et('delete_reason')}${marker.reason}` : '';
         return `~~${marker.content}~~${delReason ? `(${delReason})` : ''}`;
-      
+      }
+
       case 'ins':
         // 插入：**text**
         return `**${marker.content}**`;
-      
-      case 'replace':
+
+      case 'replace': {
         // 替换：~~old~~ -> **new**
         const replaceReason = marker.reason ? ` (${marker.reason})` : '';
         return `~~${marker.oldText}~~ → **${marker.newText}**${replaceReason}`;
-      
-      case 'err':
+      }
+
+      case 'err': {
         // 错误：text (错误: explanation)
         const errInfo = [];
         if (marker.errorType) errInfo.push(marker.errorType);
         if (marker.explanation) errInfo.push(marker.explanation);
         const errDesc = errInfo.length > 0 ? `(❌ ${errInfo.join(': ')})` : '';
         return `${marker.content}${errDesc}`;
+      }
       
       case 'note':
         // 批注：text (注: comment)

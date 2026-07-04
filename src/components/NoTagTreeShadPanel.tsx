@@ -283,7 +283,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
         
         // 刷新图谱
         window.dispatchEvent(new Event('irec-tag-updated'));
-        onImported && onImported();
+        onImported?.();
         showGlobalNotification('success', t('knowledge_graph.tag_tree.import_success'));
       });
       cleanupListeners.push(un4);

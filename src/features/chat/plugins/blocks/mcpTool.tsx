@@ -509,6 +509,64 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     return { canRetry: true };
   }, [store, block.messageId, t]);
 
+  // 🔧 P1-24: 重试回调 - 通过 store.retryMessage 重试整个消息
+  // （以下 hooks 必须在专用渲染分支的 early return 之前，遵守 rules-of-hooks）
+  const handleRetry = useCallback(() => {
+    console.log('[McpToolBlock] Retry tool:', toolName, 'messageId:', block.messageId);
+
+    if (!store) {
+      console.warn('[McpToolBlock] No store available for retry');
+      return;
+    }
+
+    if (!block.messageId) {
+      console.warn('[McpToolBlock] No messageId available for retry');
+      return;
+    }
+
+    // 调用 store 的 retryMessage 重试整个消息
+    const state = store.getState();
+    if (state.retryMessage) {
+      state.retryMessage(block.messageId).catch((error) => {
+        console.error('[McpToolBlock] Retry failed:', error);
+      });
+    } else {
+      console.warn('[McpToolBlock] retryMessage not available in store');
+    }
+  }, [toolName, store, block.messageId]);
+
+  // 根据状态展开/折叠输入
+  React.useEffect(() => {
+    // 执行中或错误时自动展开输入
+    if (block.status === 'running' || block.status === 'error') {
+      setInputCollapsed(false);
+    } else if (block.status === 'success') {
+      setInputCollapsed(true);
+    }
+  }, [block.status]);
+
+  const templateDebugSignatureRef = React.useRef<string>('');
+  React.useEffect(() => {
+    if (!isTemplateDesignerToolName(toolName)) return;
+
+    const signature = `${block.status}|${toolOutput !== undefined ? '1' : '0'}`;
+    if (templateDebugSignatureRef.current === signature) return;
+    templateDebugSignatureRef.current = signature;
+
+    emitTemplateDesignerLifecycle({
+      level: block.status === 'error' ? 'error' : 'info',
+      phase: 'block:state',
+      summary: `tool=${normalizeToolName(toolName)} status=${block.status}`,
+      detail: {
+        toolName,
+        status: block.status,
+        hasInput: Object.keys(toolInput).length > 0,
+        hasOutput: toolOutput !== undefined,
+      },
+      blockId: block.id,
+    });
+  }, [block.id, block.status, toolInput, toolName, toolOutput]);
+
   // 🆕 文档 29 P1-4：检测 attempt_completion 工具
   const isAttemptCompletion = toolName === ATTEMPT_COMPLETION_TOOL;
 
@@ -570,63 +628,6 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     block.startedAt && block.endedAt
       ? block.endedAt - block.startedAt
       : undefined;
-
-  // 🔧 P1-24: 重试回调 - 通过 store.retryMessage 重试整个消息
-  const handleRetry = useCallback(() => {
-    console.log('[McpToolBlock] Retry tool:', toolName, 'messageId:', block.messageId);
-
-    if (!store) {
-      console.warn('[McpToolBlock] No store available for retry');
-      return;
-    }
-
-    if (!block.messageId) {
-      console.warn('[McpToolBlock] No messageId available for retry');
-      return;
-    }
-
-    // 调用 store 的 retryMessage 重试整个消息
-    const state = store.getState();
-    if (state.retryMessage) {
-      state.retryMessage(block.messageId).catch((error) => {
-        console.error('[McpToolBlock] Retry failed:', error);
-      });
-    } else {
-      console.warn('[McpToolBlock] retryMessage not available in store');
-    }
-  }, [toolName, store, block.messageId]);
-
-  // 根据状态展开/折叠输入
-  React.useEffect(() => {
-    // 执行中或错误时自动展开输入
-    if (block.status === 'running' || block.status === 'error') {
-      setInputCollapsed(false);
-    } else if (block.status === 'success') {
-      setInputCollapsed(true);
-    }
-  }, [block.status]);
-
-  const templateDebugSignatureRef = React.useRef<string>('');
-  React.useEffect(() => {
-    if (!isTemplateDesignerToolName(toolName)) return;
-
-    const signature = `${block.status}|${toolOutput !== undefined ? '1' : '0'}`;
-    if (templateDebugSignatureRef.current === signature) return;
-    templateDebugSignatureRef.current = signature;
-
-    emitTemplateDesignerLifecycle({
-      level: block.status === 'error' ? 'error' : 'info',
-      phase: 'block:state',
-      summary: `tool=${normalizeToolName(toolName)} status=${block.status}`,
-      detail: {
-        toolName,
-        status: block.status,
-        hasInput: Object.keys(toolInput).length > 0,
-        hasOutput: toolOutput !== undefined,
-      },
-      blockId: block.id,
-    });
-  }, [block.id, block.status, toolInput, toolName, toolOutput]);
 
   return (
     <div

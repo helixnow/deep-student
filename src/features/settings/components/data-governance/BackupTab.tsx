@@ -291,7 +291,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         pendingConfigRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   /** 备份层级选项 */

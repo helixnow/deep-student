@@ -382,10 +382,6 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     return t('common:chat.sources.total', { count: data?.total ?? 0 });
   }, [t, data?.total]);
 
-  if (!groups.length) {
-    return null;
-  }
-
   const handleOpenLink = (item: UnifiedSourceItem) => {
     if (item.link && isHttpUrl(item.link)) {
       openUrl(item.link);
@@ -504,6 +500,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       }
     };
   }, [open]);
+
+  // 无来源时不渲染（early return 必须在所有 hooks 之后）
+  if (!groups.length) {
+    return null;
+  }
 
   // 移动端：渲染来源列表项（垂直布局）
   const renderMobileSourceItem = (entry: { type: 'item'; key: string; item: UnifiedSourceItem; globalIndex: number }) => {

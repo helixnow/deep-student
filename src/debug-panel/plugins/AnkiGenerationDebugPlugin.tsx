@@ -73,10 +73,6 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     el.scrollTop = el.scrollHeight;
   }, [logs, autoScroll, isActivated]);
 
-  if (!isActivated) {
-    return null;
-  }
-
   const filtered = React.useMemo(() => {
     return logs.filter((item) => {
       if (level !== 'all' && item.level !== level) return false;
@@ -88,6 +84,10 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       return true;
     });
   }, [logs, level, keyword]);
+
+  if (!isActivated) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col h-full bg-slate-950/90 text-slate-100">

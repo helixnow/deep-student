@@ -109,7 +109,8 @@ export function useTranslationStream() {
    * @param request 翻译请求参数
    */
   const startTranslation = useCallback((request: TranslationRequest) => {
-    return new Promise<'completed' | 'cancelled'>(async (resolve, reject) => {
+    return new Promise<'completed' | 'cancelled'>((resolve, reject) => {
+      void (async () => {
       // 防止重复调用
       if (isStartingRef.current || isActiveRef.current) {
         console.warn(t('translation:toast.translating_already'));
@@ -289,6 +290,7 @@ export function useTranslationStream() {
         cleanup();
         fail(error);
       }
+      })().catch(reject);
     });
   }, [cleanup]);
 

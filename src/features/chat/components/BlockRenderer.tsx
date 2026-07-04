@@ -215,14 +215,14 @@ export const BlockRenderer: React.FC<BlockRendererProps> = ({
 }) => {
   // 📊 细粒度打点：BlockRenderer render
   sessionSwitchPerf.mark('br_render', { blockType: block.type });
-  
+
+  // 从注册表获取渲染插件（禁止 switch/case）；hooks 必须在 early return 之前
+  const plugin = useMemo(() => blockRegistry.get(block.type), [block.type]);
+
   // 跳过来源类型块，这些块只在 SourcePanelV2 中统一展示
   if (SOURCE_BLOCK_TYPES.has(block.type)) {
     return null;
   }
-
-  // 从注册表获取渲染插件（禁止 switch/case）
-  const plugin = useMemo(() => blockRegistry.get(block.type), [block.type]);
 
   // 获取渲染组件，未注册则使用 GenericBlock
   const Component = plugin?.component ?? GenericBlock;

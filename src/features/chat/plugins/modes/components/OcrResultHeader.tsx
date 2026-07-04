@@ -54,18 +54,6 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
   const mode = useStore(store, (s) => s.mode);
   const modeState = useStore(store, (s) => s.modeState as unknown as AnalysisModeState | null);
 
-  // 如果不是 analysis 模式或没有 modeState，不渲染
-  if (!modeState || mode !== 'analysis') {
-    return null;
-  }
-
-  const { ocrStatus, ocrMeta, ocrError } = modeState;
-
-  // 只在 success 或 error 状态时显示结果
-  if (ocrStatus !== 'success' && ocrStatus !== 'error') {
-    return null;
-  }
-
   const toggleExpanded = useCallback(() => {
     setIsExpanded((prev) => !prev);
   }, []);
@@ -80,6 +68,18 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
       console.error('[OcrResultHeader] Retry OCR failed:', error);
     }
   }, [store]);
+
+  // 如果不是 analysis 模式或没有 modeState，不渲染
+  if (!modeState || mode !== 'analysis') {
+    return null;
+  }
+
+  const { ocrStatus, ocrMeta, ocrError } = modeState;
+
+  // 只在 success 或 error 状态时显示结果
+  if (ocrStatus !== 'success' && ocrStatus !== 'error') {
+    return null;
+  }
 
   return (
     <div

@@ -960,36 +960,41 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
       const ctx = buildTestContext();
       
       switch (selectedScenario) {
-        case 'delete':
+        case 'delete': {
           const deleteSteps = getDeleteScenarioSteps(t);
           setTestSteps(deleteSteps);
           stepsRef.current = deleteSteps;
           await runDeleteMessageTest(ctx, updateStep, updateTestResult, testDataRef, stepsRef);
           break;
-        case 'stream-complete':
+        }
+        case 'stream-complete': {
           const streamSteps = getStreamCompleteScenarioSteps(t);
           setTestSteps(streamSteps);
           stepsRef.current = streamSteps;
           await runStreamCompleteTest(ctx, updateStep, updateTestResult, testDataRef, stepsRef);
           break;
-        case 'manual-stop':
+        }
+        case 'manual-stop': {
           const stopSteps = getManualStopScenarioSteps(t);
           setTestSteps(stopSteps);
           stepsRef.current = stopSteps;
           await runManualStopTest(ctx, updateStep, updateTestResult, testDataRef, stepsRef);
           break;
-        case 'edit-resend':
+        }
+        case 'edit-resend': {
           const editSteps = getEditResendScenarioSteps(t);
           setTestSteps(editSteps);
           stepsRef.current = editSteps;
           await runEditResendTest(ctx, updateStep, updateTestResult, testDataRef, stepsRef);
           break;
-        case 'manual-save':
+        }
+        case 'manual-save': {
           const saveSteps = getManualSaveScenarioSteps(t);
           setTestSteps(saveSteps);
           stepsRef.current = saveSteps;
           await runManualSaveTest(ctx, updateStep, updateTestResult, testDataRef, stepsRef);
           break;
+        }
         case 'complete-flow':
           await runCompleteFlowTest();
           break;

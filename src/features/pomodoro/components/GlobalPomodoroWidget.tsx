@@ -86,7 +86,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
           case 'resume': doResume(); break;
           case 'stop': doStop(true); break;
         }
-      }).then((fn) => { disposed ? fn() : unlisteners.push(fn); });
+      }).then((fn) => { if (disposed) fn(); else unlisteners.push(fn); });
 
       listen(EVT_MINI_READY, () => {
         const s = usePomodoroStore.getState();
@@ -97,7 +97,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
           taskTitle: s.currentTaskTitle,
           strictMode: s.settings.strictMode,
         });
-      }).then((fn) => { disposed ? fn() : unlisteners.push(fn); });
+      }).then((fn) => { if (disposed) fn(); else unlisteners.push(fn); });
     });
 
     return () => {
@@ -140,7 +140,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
 
   const handleTogglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    status === 'running' ? pause() : resume();
+    if (status === 'running') pause(); else resume();
   };
 
   // 悬浮药丸：仅在有活跃会话 + 不在 Todo 页面时显示

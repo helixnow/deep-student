@@ -61,12 +61,12 @@ export async function waitForSaveCompletion(
   expectedOperation: 'delete' | 'update' | 'create',
   beforeSnapshot?: { count: number; timestamp?: string },
   addLog?: (level: string, message: string, data?: any, errorType?: ErrorType) => void,
-  t?: Function
+  t?: (...args: any[]) => any
 ): Promise<boolean> {
   const startTime = Date.now();
   const maxDuration = TIMEOUTS.SAVE_COMPLETION;
   let pollCount = 0;
-  let interval = POLLING.INITIAL_INTERVAL;
+  const interval = POLLING.INITIAL_INTERVAL;
   
   if (addLog) {
     addLog('info', `⏳ 等待保存完成（${expectedOperation}）...`, {
@@ -150,7 +150,7 @@ export function verifyDataIntegrity(
     deletedStableId?: string;
     mode?: 'strict' | 'lenient';
     addLog?: (level: string, message: string, data?: any) => void;
-    t?: Function;
+    t?: (...args: any[]) => any;
   } = {}
 ): { passed: boolean; issues: string[] } {
   const { deletedStableId, mode = 'strict', addLog, t } = options;
@@ -290,7 +290,7 @@ export async function waitForElementEnabled(testid: string, timeout = 5000): Pro
   throw new Error(`元素在可用状态前超时: ${testid} (${timeout}ms)`);
 }
 
-export async function clickElement(testid: string, addLog?: Function): Promise<void> {
+export async function clickElement(testid: string, addLog?: (...args: any[]) => void): Promise<void> {
   let el = await waitForElement(testid, 5000);
   if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
     if (el.disabled) {
@@ -310,7 +310,7 @@ export async function clickElement(testid: string, addLog?: Function): Promise<v
 /**
  * 程序化输入
  */
-export async function fillInput(testid: string, value: string, addLog?: Function): Promise<void> {
+export async function fillInput(testid: string, value: string, addLog?: (...args: any[]) => void): Promise<void> {
   const el = await waitForElement(testid, 5000) as HTMLTextAreaElement | HTMLInputElement;
 
   const setNativeValue = (element: HTMLInputElement | HTMLTextAreaElement, next: string) => {

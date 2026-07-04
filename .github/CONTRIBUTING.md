@@ -44,10 +44,13 @@ npm run lint
 本项目配置了 GitHub Actions CI 流水线，PR 提交时会自动运行：
 - **CLA 签署检查**（`.github/workflows/cla.yml`）— 首次贡献需签署 CLA
 - TypeScript 类型检查（`tsc --noEmit`）
+- ESLint 检查（`npm run lint`，error 级别问题会阻塞合并）
+- 前端单元测试（`npx vitest run`，约 1.7k 条用例）
 - Rust 编译检查（`cargo check`）
+- 同步模块回归测试（`cargo test --test sync_*`）
 - 供应链安全审计（`cargo audit`）
 
-请确保 PR 提交前本地通过 `npm run build` 和相关测试。
+请确保 PR 提交前本地通过 `npm run lint`、`npm run test` 和 `npm run build`。
 
 ### PR 指南
 - 描述变更与测试方式；关联 Issue（如有）

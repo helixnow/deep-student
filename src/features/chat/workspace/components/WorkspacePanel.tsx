@@ -104,6 +104,18 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
     };
   }, [handleRefresh, t]);
 
+  // 🔧 P21 修复：按 workspaceId 过滤 agents / messages
+  // （hooks 必须在 loading/error/empty 的 early return 之前）
+  const filteredAgents = useMemo(() => {
+    if (!workspace?.id) return [];
+    return agents.filter((a) => a.workspaceId === workspace.id);
+  }, [agents, workspace?.id]);
+
+  const filteredMessages = useMemo(() => {
+    if (!workspace?.id) return [];
+    return messages.filter((m) => m.workspaceId === workspace.id);
+  }, [messages, workspace?.id]);
+
   // 🔧 修复：显示 loading 状态
   if (isLoading) {
     return (
@@ -147,18 +159,6 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       </div>
     );
   }
-
-  // 🔧 P21 修复：按 workspaceId 过滤 agents
-  const filteredAgents = useMemo(() => {
-    if (!workspace?.id) return [];
-    return agents.filter((a) => a.workspaceId === workspace.id);
-  }, [agents, workspace?.id]);
-
-  // 🔧 P21 修复：按 workspaceId 过滤 messages
-  const filteredMessages = useMemo(() => {
-    if (!workspace?.id) return [];
-    return messages.filter((m) => m.workspaceId === workspace.id);
-  }, [messages, workspace?.id]);
 
   // 🆕 2026-01-20: 分离 Coordinator 和 Worker
   const coordinatorAgents = filteredAgents.filter(a => a.role === 'coordinator');

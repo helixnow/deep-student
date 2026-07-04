@@ -130,7 +130,7 @@ function getConflictSeverity(type: DatabaseConflictType): 'low' | 'medium' | 'hi
 /** 获取冲突类型的显示信息 */
 function getConflictTypeInfo(
   type: DatabaseConflictType,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   t: (...args: any[]) => any
 ): {
   label: string;
@@ -194,7 +194,7 @@ function getConflictTypeInfo(
 /** 获取策略信息 */
 function getStrategyInfo(
   strategy: MergeStrategy,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   t: (...args: any[]) => any
 ): {
   label: string;

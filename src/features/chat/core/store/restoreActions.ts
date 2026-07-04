@@ -701,7 +701,7 @@ export function createRestoreActions(
                     // 否则从资源元数据推断
                     try {
                       const resource = await resourceStoreApi.get(skillRef.resourceId);
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
                       const skillId = (resource?.metadata as any)?.skillId as string | undefined;
                       if (skillId && !inferredIds.includes(skillId)) {
                         inferredIds.push(skillId);
@@ -755,9 +755,9 @@ export function createRestoreActions(
           });
 
           // 🔧 Canvas 笔记引用恢复：始终发射事件以确保会话切换时状态正确同步
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const canvasNoteId = (modeState as any)?.canvasNoteId as string | undefined;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
           const canvasNoteHistory = (modeState as any)?.canvasNoteHistory as string[] | undefined;
           
           // 始终发射事件，即使没有 Canvas 状态（用于清理上一个会话的状态）

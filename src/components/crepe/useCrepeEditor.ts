@@ -244,9 +244,9 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
               // 移除前缀
               const tr = state.tr.delete(lineStart, lineStart + prefixWithSpace.length);
               dispatch(tr);
-            } else if (lineText.match(/^(#{1,6}|>|-|\*|\d+\.|\- \[[ x]\])\s/)) {
+            } else if (lineText.match(/^(#{1,6}|>|-|\*|\d+\.|- \[[ x]\])\s/)) {
               // 当前行有其他块级前缀，替换它
-              const match = lineText.match(/^(#{1,6}|>|-|\*|\d+\.|\- \[[ x]\])\s/);
+              const match = lineText.match(/^(#{1,6}|>|-|\*|\d+\.|- \[[ x]\])\s/);
               if (match) {
                 const tr = state.tr.replaceWith(
                   lineStart, 

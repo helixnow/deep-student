@@ -244,7 +244,7 @@ export async function runEditResendTest(
 /**
  * 获取编辑重发场景的测试步骤
  */
-export function getEditResendScenarioSteps(t: Function): TestStep[] {
+export function getEditResendScenarioSteps(t: (...args: any[]) => any): TestStep[] {
   return [
     { id: 'preflight', name: t('dev:save_test.steps.preflight_check'), status: 'pending' },
     { id: 'load', name: t('dev:save_test.steps.load_data'), status: 'pending' },

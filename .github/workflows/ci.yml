@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, nightly]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, nightly]
 
 # 取消同一分支上的重复运行
 concurrency:
@@ -34,8 +34,45 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Lint (ESLint, errors block merge)
+        run: npm run lint
+
       - name: Security audit
         run: npm audit --omit=dev --audit-level=high || true
+
+  # ============================================
+  # 前端单元测试（Vitest）
+  #
+  # 战略审计 2026-07-04 P0 接入：此前 ~1.7k 条 vitest 用例只在本地跑，
+  # CI 完全没有前端测试信号。维护者转入兼职模式后，这是外部贡献者 PR
+  # 的第一道回归防线。
+  #
+  # vitest.config.ts 为规避 Node22 tinypool 崩溃使用 forks+singleFork
+  # （单进程串行），全量约需 30-60 分钟，因此按 4 路分片并行跑。
+  # ============================================
+  frontend-tests:
+    name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci --legacy-peer-deps
+
+      - name: Generate version info
+        run: node scripts/generate-version.mjs
+
+      - name: Run vitest shard
+        run: npx vitest run --shard=${{ matrix.shard }}/4
 
   # ============================================
   # 后端编译检查

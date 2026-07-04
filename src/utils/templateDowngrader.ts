@@ -200,8 +200,10 @@ export class TemplateDowngrader {
    */
   private static hasProblematicCharacters(obj: any): boolean {
     const problematicPatterns = [
+      // eslint-disable-next-line no-control-regex
       /[\x00-\x08\x0B\x0C\x0E-\x1F]/, // 控制字符
       /{{[^}]*}}/,                     // Mustache模板语法
+      // eslint-disable-next-line no-control-regex
       /\x1F/                           // Anki字段分隔符
     ];
 
@@ -347,7 +349,9 @@ export class TemplateDowngrader {
   private static cleanSpecialCharacters(data: any): any {
     const clean = (str: string): string => {
       return str
+        // eslint-disable-next-line no-control-regex
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // 移除控制字符
+        // eslint-disable-next-line no-control-regex
         .replace(/\x1F/g, ' ')                         // 替换Anki分隔符
         .replace(/{{([^}]*)}}/g, '[$1]');             // 替换Mustache语法
     };
