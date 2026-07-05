@@ -4,6 +4,10 @@
 
 // 移动端布局组件
 export {
+  MobileUnifiedDrawerProvider,
+  useMobileUnifiedDrawer,
+} from './MobileDrawerContext';
+export {
   MobileSidebarNavigation,
   MOBILE_APP_NAVIGATE_EVENT,
 } from './MobileSidebarNavigation';

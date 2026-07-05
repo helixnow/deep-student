@@ -3430,6 +3430,21 @@
       "prompt_unsupported": "当前环境不支持输入弹窗，请改用其他输入方式。"
     }
   },
+  "welcome_onboarding": {
+    "title": "欢迎使用 DeepStudent",
+    "subtitle": "本地优先的 AI 学习工作台，数据保存在你自己的设备上。",
+    "language_label": "界面语言 / Language",
+    "feature_hub_title": "学习资料库",
+    "feature_hub_desc": "导入 PDF、教材与笔记，统一管理你的学习材料。",
+    "feature_chat_title": "AI 对话与解题",
+    "feature_chat_desc": "多模型对话、题目分析、知识库检索一站完成。",
+    "feature_anki_title": "制卡与复习",
+    "feature_anki_desc": "AI 生成 Anki 卡片，内置 FSRS 复习闭环。",
+    "ai_setup_title": "连接一个 AI 服务后即可开始",
+    "ai_setup_desc": "支持 SiliconFlow 一键配置全部模型，也可接入 OpenAI、Claude、Gemini、Ollama 等任意兼容服务。",
+    "cta_configure": "去配置 AI 服务",
+    "cta_skip": "先随便看看"
+  },
   "onboarding": {
     "analysis_intro": "点击左侧的【学习工作台】图标进入首页，这里汇集题目分析的全部功能。建议先用示例题体验完整流程，并记得保存结果。",
     "analysis_input_textarea": "在输入框中输入题目内容，支持直接粘贴或手动输入。输入框会自动调整高度，Enter 键发送，Shift+Enter 换行。",

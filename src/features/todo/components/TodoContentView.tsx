@@ -92,7 +92,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
       >
         <MobileSlidingLayout
           sidebar={
-            <div className="study-shell-sidebar-frame flex h-full flex-col">
+            <div className="min-h-0">
               <TodoSidebar onItemSelect={() => setSidebarOpen(false)} />
             </div>
           }

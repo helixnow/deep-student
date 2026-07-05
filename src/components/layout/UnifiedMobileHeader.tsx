@@ -55,8 +55,8 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       className={cn(
         // 基础布局
         "flex w-full flex-shrink-0 items-center gap-2 px-3",
-        // 样式
-        "border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)]/95 backdrop-blur-md",
+        // 样式 — 不用 backdrop-blur，避免与下方工具栏/遮罩叠出「顶栏阴影」
+        "border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)] shadow-none",
         className
       )}
       style={{
@@ -66,7 +66,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       }}
     >
       {/* 左侧：返回箭头、菜单按钮或全局返回按钮 */}
-      <div className="flex min-w-[var(--touch-target-size)] items-center lg:min-w-10">
+      <div className="flex min-w-[var(--touch-target-size)] items-center lg:min-w-10" data-no-drag>
         {showBackArrowButton && (
           <NotionButton
             variant="ghost"
@@ -120,7 +120,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       </div>
 
       {/* 右侧：操作按钮 */}
-      <div className="flex min-w-[var(--touch-target-size)] items-center justify-end gap-1">
+      <div className="flex min-w-[var(--touch-target-size)] items-center justify-end gap-1" data-no-drag>
         {config.rightActions}
       </div>
     </header>

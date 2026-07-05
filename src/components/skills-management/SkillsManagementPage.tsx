@@ -662,23 +662,23 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   useMobileHeader('skills-management', {
     title: headerTitle,
     subtitle: headerSubtitle,
-    showBackArrow: true,
-    suppressGlobalBackButton: true,
+    showMenu: !isEditorView,
+    showBackArrow: isEditorView,
     onMenuClick: isEditorView
       ? () => {
           setEditorOpen(false);
           setRightPanelOpen(false);
           setScreenPosition('center');
         }
-      : () => {
-          window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'chat-v2' } }));
-        },
+      : screenPosition === 'left'
+        ? () => setScreenPosition('center')
+        : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label={t('skills:management.create', '新建技能')}>
         <Plus size={20} />
       </NotionButton>
     ) : undefined,
-  }, [headerTitle, headerSubtitle, isEditorView, handleCreate, t]);
+  }, [headerTitle, headerSubtitle, isEditorView, screenPosition, handleCreate, t]);
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
@@ -870,11 +870,17 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     return (
       <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         <MobileSlidingLayout
-          sidebar={null}
+          sidebar={
+            // 本页无页内工具，抽屉只承载统一应用导航；
+            // 不再渲染与顶栏标题重复的孤立分区标签
+            <div aria-hidden className="h-0" />
+          }
           rightPanel={renderRightPanel()}
           screenPosition={screenPosition}
           onScreenPositionChange={setScreenPosition}
           rightPanelEnabled={true}
+          showSidebarAppNavigation
+          showContentOverlay
           enableGesture={true}
           threshold={0.3}
           className="flex-1"

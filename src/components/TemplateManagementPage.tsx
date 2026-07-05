@@ -34,6 +34,13 @@ import { CustomScrollArea } from './custom-scroll-area';
 import { fileManager } from '../utils/fileManager';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { cn } from '@/lib/utils';
+import {
+  mobileDrawerNavRowClassName,
+  mobileDrawerRowIconWrapClassName,
+  mobileDrawerRowTitleClassName,
+  mobileDrawerSectionLabelClassName,
+} from '@/components/layout/mobileDrawerStyles';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from './UnifiedNotification';
@@ -99,7 +106,8 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
     // 正常模式：显示面包屑导航
     return (
       <div className="flex items-center justify-center gap-1 text-base font-semibold whitespace-nowrap min-w-0">
-        <NotionButton variant="ghost" size="sm" onClick={() => onBackToAnki?.()} className="hover:text-primary !p-0 !h-auto truncate max-w-[100px]">
+        {/* TM-2: 触屏无 hover，用颜色差标记面包屑父级可点击（当前页保持前景色形成对比） */}
+        <NotionButton variant="ghost" size="sm" onClick={() => onBackToAnki?.()} className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary">
           {tAnki('page_title')}
         </NotionButton>
         <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
@@ -906,18 +914,134 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           ? createPortal(sidebarContent, desktopShellSidebarTarget)
           : null;
 
+        // ===== 移动端统一抽屉侧栏 =====
+        // 不复用桌面 UnifiedSidebar（自带头部/卡片行会破坏统一抽屉视觉），
+        // 改用 mobileDrawerStyles 契约，与 Chat/学习资源/待办抽屉同构
+        const closeMobileDrawer = () => setScreenPosition('center');
+        const isEditingMode = (activeTab === 'edit' || activeTab === 'create') && !!editingTemplate;
+        const mobileEditorTabs: Array<{ id: EditorTabType; icon: React.ElementType; label: string; selected: boolean }> = [
+          { id: 'basic', icon: FileText, label: t('basic_info'), selected: editorTab === 'basic' },
+          { id: 'templates', icon: Code, label: t('template_code'), selected: editorTab === 'templates' || editorTab === 'styles' },
+          { id: 'data', icon: Database, label: t('preview_data'), selected: editorTab === 'data' },
+          { id: 'rules', icon: Gear, label: t('extraction_rules'), selected: editorTab === 'rules' },
+          { id: 'advanced', icon: Gear, label: t('advanced_settings'), selected: editorTab === 'advanced' },
+        ];
+        const renderMobileDrawerRow = (
+          key: string,
+          Icon: React.ElementType,
+          label: string,
+          onClick: () => void,
+          active = false,
+        ) => (
+          <button
+            key={key}
+            type="button"
+            onClick={onClick}
+            className={mobileDrawerNavRowClassName(active, 'group gap-2.5')}
+          >
+            <span className={mobileDrawerRowIconWrapClassName}>
+              <Icon size={18} />
+            </span>
+            <span className={mobileDrawerRowTitleClassName}>{label}</span>
+          </button>
+        );
+        const mobileDrawerContent = (
+          <div className="min-h-0 space-y-0.5 pb-1 pt-1 text-foreground">
+            {/* 工具行：刷新 / 搜索 / 新建 —— 与学习资源抽屉同构 */}
+            <div className="mb-2 flex items-center gap-1.5 px-1">
+              <NotionButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={loadTemplates}
+                disabled={isLoading}
+                className="shrink-0"
+                title={t('refresh')}
+                aria-label={t('refresh')}
+              >
+                <ArrowClockwise size={18} className={cn(isLoading && 'animate-spin')} />
+              </NotionButton>
+              <div className="group relative min-w-0 flex-1">
+                <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" size={16} />
+                <ShadInput
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder={t('search_placeholder')}
+                  className="sidebar-shell-search h-9 w-full pl-9 text-sm"
+                />
+              </div>
+              {!isSelectingMode && (
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => {
+                    handleTabChange('create');
+                    closeMobileDrawer();
+                  }}
+                  className="shrink-0"
+                  title={t('tab_create')}
+                  aria-label={t('tab_create')}
+                >
+                  <Plus size={18} />
+                </NotionButton>
+              )}
+            </div>
+
+            {isEditingMode ? (
+              <>
+                {renderMobileDrawerRow('back-to-browse', ArrowLeft, t('back_to_browse'), () => {
+                  setActiveTab('browse');
+                  setEditingTemplate(null);
+                  setEditorTab('basic');
+                  closeMobileDrawer();
+                })}
+                <span className={mobileDrawerSectionLabelClassName}>
+                  {activeTab === 'create' ? t('tab_create') : t('tab_edit')}
+                </span>
+                {mobileEditorTabs.map(({ id, icon, label, selected }) =>
+                  renderMobileDrawerRow(`editor-${id}`, icon, label, () => {
+                    setEditorTab(id);
+                    closeMobileDrawer();
+                  }, selected),
+                )}
+              </>
+            ) : (
+              <>
+                <span className={mobileDrawerSectionLabelClassName}>{t('manager_title')}</span>
+                {renderMobileDrawerRow('browse', BookOpen, t('tab_browse'), () => {
+                  setActiveTab('browse');
+                  closeMobileDrawer();
+                }, activeTab === 'browse')}
+                {!isSelectingMode && (
+                  <>
+                    <span className={mobileDrawerSectionLabelClassName}>{t('import_section')}</span>
+                    {renderMobileDrawerRow('import-builtin', Download, isImporting ? t('importing') : t('import_builtin_templates'), () => {
+                      handleImportBuiltinTemplates();
+                      closeMobileDrawer();
+                    })}
+                    {renderMobileDrawerRow('import-external', Upload, t('import_external_templates'), () => {
+                      handleImportExternalClick();
+                      closeMobileDrawer();
+                    })}
+                    {renderMobileDrawerRow('export', Download, t('export_templates_sidebar'), () => {
+                      handleOpenBatchExportDialog();
+                      closeMobileDrawer();
+                    })}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        );
+
         // ===== 移动端布局：MobileSlidingLayout =====
         if (isSmallScreen) {
           return (
             <div className="study-shell-page w-full h-full flex flex-col overflow-hidden">
               <MobileSlidingLayout
-                sidebar={
-                  <div
-                    className="study-shell-sidebar-frame h-full flex flex-col"
-                  >
-                    {sidebarContent}
-                  </div>
-                }
+                sidebar={mobileDrawerContent}
                 rightPanel={
                   isCodeMode ? (
                     <div ref={setEditorPortalTarget} className="h-full w-full" />
@@ -930,6 +1054,8 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 onScreenPositionChange={setScreenPosition}
                 enableGesture={true}
                 threshold={0.3}
+                showSidebarAppNavigation
+                showContentOverlay
                 className="flex-1"
               >
                 {mainContent}

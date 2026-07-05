@@ -70,5 +70,4 @@ export interface SystemConfig {
 
 export interface SettingsProps {
   onBack: () => void;
-  mobilePresentation?: 'page' | 'sheet';
 }

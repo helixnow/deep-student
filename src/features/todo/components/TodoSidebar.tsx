@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useMobileUnifiedDrawer } from '@/components/layout/MobileDrawerContext';
 import { useTodoStore } from '../stores/useTodoStore';
 import { TodoTrashDialog } from './TodoTrashDialog';
 import type { TodoList, TodoViewFilter } from '../types';
@@ -74,11 +75,14 @@ const NavRow: React.FC<NavRowProps> = ({
   children,
   className,
   ...rest
-}) => (
+}) => {
+  // 统一抽屉内行高对齐 mobileDrawerNavRowClassName 的 44px 触控标准
+  const unifiedDrawer = useMobileUnifiedDrawer();
+  return (
   <NotionButton
     variant="nav"
     size="md"
-    className={getNavRowClassName(isActive, className)}
+    className={getNavRowClassName(isActive, cn(unifiedDrawer && 'min-h-[2.75rem]', className))}
     {...rest}
   >
     <span className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -95,7 +99,8 @@ const NavRow: React.FC<NavRowProps> = ({
       )}
     </span>
   </NotionButton>
-);
+  );
+};
 
 // ============================================================================
 // TodoSidebar
@@ -109,6 +114,7 @@ interface TodoSidebarProps {
 export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { isSmallScreen } = useBreakpoint();
+  const unifiedDrawer = useMobileUnifiedDrawer();
   const {
     lists,
     activeListId,
@@ -224,9 +230,12 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
   return (
     <aside
       role="navigation"
-      data-shell-layer="navigation"
+      // 统一抽屉内不挂 navigation 层背景：抽屉整体是 bg-background，
+      // 再叠 --shell-navigation-surface 会形成"页内工具灰底 + 应用导航白底"的割裂色带
+      data-shell-layer={unifiedDrawer ? undefined : 'navigation'}
       className={cn(
-        'font-sidebar-study-ui relative flex h-full min-h-0 min-w-0 flex-shrink-0 flex-col overflow-hidden',
+        'font-sidebar-study-ui relative flex min-h-0 min-w-0 flex-shrink-0 flex-col',
+        unifiedDrawer ? 'overflow-visible' : 'h-full overflow-hidden',
         'text-[color:var(--shell-navigation-foreground)]',
         'transition-colors duration-300',
         widthClass,
@@ -299,7 +308,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
       </div>
 
       {/* 列表 */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2">
+      <div className={cn('flex min-h-0 flex-col px-2 pb-2', unifiedDrawer ? '' : 'flex-1 overflow-hidden')}>
         <div className="group/list-header flex items-center justify-between px-2 py-1">
           <span className="desktop-shell-nav-section-label min-w-0 truncate">
             {t('todo:sections.lists')}
@@ -320,7 +329,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className={cn(unifiedDrawer ? '' : 'min-h-0 flex-1 overflow-y-auto')}>
           {/* 新建列表输入 */}
           {isCreating && (
             <div className="px-0.5 pb-1">
@@ -392,80 +401,78 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                       )
                     }
                     rightSlot={
-                      <>
-                        {list.isFavorite && (
-                          <Star
-                            size={14}
-                            className="fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]"
-                            aria-hidden
-                          />
-                        )}
-                        <span
-                          className={cn(
-                            'ml-0.5 flex items-center gap-0.5 opacity-0 transition-opacity',
-                            'group-hover/list-item:opacity-100 focus-within:opacity-100',
-                          )}
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleListFavorite(list.id);
-                            }}
-                            aria-label={
-                              list.isFavorite
-                                ? t('todo:actions.unfavorite')
-                                : t('todo:actions.favorite')
-                            }
-                            title={
-                              list.isFavorite
-                                ? t('todo:actions.unfavorite')
-                                : t('todo:actions.favorite')
-                            }
-                            className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
-                          >
-                            <Star
-                              size={12}
-                              className={cn(
-                                list.isFavorite &&
-                                  'fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]',
-                              )}
-                            />
-                          </button>
-                          {!list.isDefault && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  startRename(list);
-                                }}
-                                aria-label={t('todo:actions.renameList')}
-                                title={t('todo:actions.renameList')}
-                                className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
-                              >
-                                <PencilSimple size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setPendingDeleteList(list);
-                                }}
-                                aria-label={t('common:actions.delete')}
-                                title={t('common:actions.delete')}
-                                className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:hsl(var(--destructive))]"
-                              >
-                                <Trash size={12} />
-                              </button>
-                            </>
-                          )}
-                        </span>
-                      </>
+                      list.isFavorite ? (
+                        <Star
+                          size={14}
+                          className="fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]"
+                          aria-hidden
+                        />
+                      ) : undefined
                     }
                   >
                     {list.title}
                   </NavRow>
+                  <div
+                    className={cn(
+                      'pointer-events-none absolute inset-y-0 right-1.5 z-[1] flex items-center gap-0.5 opacity-0 transition-opacity',
+                      'group-hover/list-item:pointer-events-auto group-hover/list-item:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100',
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleListFavorite(list.id);
+                      }}
+                      aria-label={
+                        list.isFavorite
+                          ? t('todo:actions.unfavorite')
+                          : t('todo:actions.favorite')
+                      }
+                      title={
+                        list.isFavorite
+                          ? t('todo:actions.unfavorite')
+                          : t('todo:actions.favorite')
+                      }
+                      className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+                    >
+                      <Star
+                        size={12}
+                        className={cn(
+                          list.isFavorite &&
+                            'fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]',
+                        )}
+                      />
+                    </button>
+                    {!list.isDefault && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startRename(list);
+                          }}
+                          aria-label={t('todo:actions.renameList')}
+                          title={t('todo:actions.renameList')}
+                          className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+                        >
+                          <PencilSimple size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPendingDeleteList(list);
+                          }}
+                          aria-label={t('common:actions.delete')}
+                          title={t('common:actions.delete')}
+                          className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:hsl(var(--destructive))]"
+                        >
+                          <Trash size={12} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -481,8 +488,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
         </div>
       </div>
 
-      {/* 底部：回收站入口 */}
-      <div className="shrink-0 border-t border-[color:var(--shell-navigation-border)] px-2 py-1.5">
+      {/* 底部：回收站入口（统一抽屉内不加分割线，与其他页抽屉保持一致的纯分区节奏） */}
+      <div className={cn('shrink-0 px-2 py-1.5', !unifiedDrawer && 'border-t border-[color:var(--shell-navigation-border)]')}>
         <NavRow
           isActive={false}
           onClick={() => setTrashOpen(true)}

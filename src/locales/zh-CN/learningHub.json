@@ -441,6 +441,7 @@
       "noNotes": "还没有笔记",
       "noTextbooks": "还没有教材",
       "dropHint": "点击上方按钮或右键新建",
+      "dropHintTouch": "点击上方按钮新建",
       "rightClick": "右键",
       "contextMenuHint": "新建文件"
     },
@@ -642,6 +643,7 @@
     "title": "桌面",
     "empty": "桌面为空",
     "rightClickHint": "右键点击添加快捷方式",
+    "touchHint": "点击下方按钮添加快捷方式",
     "addFirst": "添加第一个快捷方式",
     "add": "添加",
     "addShortcut": "添加快捷方式",

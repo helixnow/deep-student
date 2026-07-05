@@ -101,6 +101,19 @@ pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::ne
 )
 .idempotent();
 
+/// V20260705: 为 document_tasks 补充 source_session_id
+///
+/// 该列此前由 legacy 运行时代码动态添加（database/mod.rs 的 ALTER TABLE），
+/// 未纳入治理迁移，导致 schema 指纹漂移。此迁移将其正式声明。
+/// 旧库已存在该列时由 make_alter_columns_safe 幂等跳过。
+pub const V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID: MigrationDef = MigrationDef::new(
+    20260705,
+    "add_document_tasks_source_session_id",
+    include_str!("../../../migrations/mistakes/V20260705__add_document_tasks_source_session_id.sql"),
+)
+.with_expected_columns(&[("document_tasks", "source_session_id")])
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -227,6 +240,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260209_ANKI_CARD_DEDUP_UNIQUE,
         V20260523_ADD_MISSING_SYNC_COVERAGE,
         V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
+        V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID,
     ],
 };
 
@@ -368,9 +382,15 @@ mod tests {
         assert_eq!(field_deltas.name, "add_change_log_field_deltas");
         assert!(field_deltas.idempotent);
 
+        let source_session = MISTAKES_MIGRATIONS
+            .get(20260705)
+            .expect("V20260705 should exist");
+        assert_eq!(source_session.name, "add_document_tasks_source_session_id");
+        assert!(source_session.idempotent);
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260524,
+            20260705,
             "Latest version should track the newest published mistakes migration"
         );
     }

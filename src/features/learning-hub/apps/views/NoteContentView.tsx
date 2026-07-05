@@ -541,27 +541,28 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full bg-primary animate-[indeterminate_1.5s_infinite_linear]" />
         </div>
       )}
-      {/* 右侧栏开关按钮 - 置于 PanelGroup 之上，避免被编辑器 sticky header 遮挡
-          移动端改为打开底部 Sheet（大纲/标签在小屏可达） */}
-      <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
-        <CommonTooltip
-          content={rightPanelVisible ? t('notes:context.collapse_panel', '收起侧边栏') : t('notes:context.expand_panel', '展开侧边栏')}
-          position="bottom"
-        >
-          <NotionButton
-            variant="ghost"
-            iconOnly
-            size="sm"
-            className={cn(
-              "h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors",
-              !rightPanelVisible && "text-muted-foreground/70"
-            )}
-            onClick={isSmallScreen ? () => setMobilePanelOpen(true) : toggleRightPanel}
+      {/* 桌面端：右侧栏开关；移动端依赖统一顶栏+抽屉，不再单独放侧栏按钮 */}
+      {!isSmallScreen && (
+        <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
+          <CommonTooltip
+            content={rightPanelVisible ? t('notes:context.collapse_panel', '收起侧边栏') : t('notes:context.expand_panel', '展开侧边栏')}
+            position="bottom"
           >
-            <SidebarSimple size={14} />
-          </NotionButton>
-        </CommonTooltip>
-      </div>
+            <NotionButton
+              variant="ghost"
+              iconOnly
+              size="sm"
+              className={cn(
+                'h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors',
+                !rightPanelVisible && 'text-muted-foreground/70',
+              )}
+              onClick={toggleRightPanel}
+            >
+              <SidebarSimple size={14} />
+            </NotionButton>
+          </CommonTooltip>
+        </div>
+      )}
       <PanelGroup direction="horizontal" autoSaveId="learning-hub-note-layout" className="flex-1 min-h-0">
         <Panel
           defaultSize={80}

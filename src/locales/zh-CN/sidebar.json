@@ -10,6 +10,11 @@
     "emptyGroup": "暂无对话"
   },
   "theme": "主题",
+  "mobile_drawer": {
+    "section_app": "应用",
+    "section_chat": "会话",
+    "section_learning": "学习资源"
+  },
   "navigation": {
     "batch": "批量分析",
     "textbook_library": "教材库",

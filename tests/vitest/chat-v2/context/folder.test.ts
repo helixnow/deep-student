@@ -8,7 +8,9 @@
  * 参考文档: 23-VFS文件夹架构与上下文注入改造任务分配.md - Prompt 8
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
+import i18n from '@/i18n';
+import chatV2En from '@/locales/en-US/chatV2.json';
 import type { Resource } from '@/features/chat/context/types';
 import { isTextContentBlock } from '@/features/chat/context/types';
 import {
@@ -23,6 +25,12 @@ import {
 // ============================================================================
 // 测试数据构造
 // ============================================================================
+
+beforeAll(async () => {
+  // chatV2 在 i18n 初始化后异步加载；单测进程需显式注入，避免跨文件加载顺序影响断言
+  i18n.addResourceBundle('en-US', 'chatV2', chatV2En, true, true);
+  await i18n.changeLanguage('en-US');
+});
 
 /**
  * 创建 Mock 资源

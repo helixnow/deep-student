@@ -19,7 +19,7 @@ describe('modern sidebar icon contract', () => {
 
     expect(sidebarSource).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");
     expect(sidebarSource).toContain('StudyComposeIcon');
-    expect(conversationSectionAction).toContain('<CommonTooltip content={newConversationLabel} position="right">');
+    expect(conversationSectionAction).toContain('<CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut(\'mod+n\')}>');
     expect(conversationSectionAction).toContain('className="flex shrink-0 items-center gap-1"');
     expect(conversationSectionAction).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
     expect(conversationSectionAction).not.toContain('title={newConversationLabel}');
@@ -48,8 +48,8 @@ describe('modern sidebar icon contract', () => {
       /const renderRecentSessionRow = useCallback\([\s\S]*?<AppMenuContent align="end" width=\{180\}>/
     )?.[0] ?? '';
 
-    expect(recentSessionRow).toContain("<CommonTooltip content={isConfirmingArchive ? '确认归档会话' : '归档会话'} position=\"right\">");
-    expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? '确认归档会话' : '归档会话'}");
+    expect(recentSessionRow).toContain("content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')}");
+    expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')}");
     expect(recentSessionRow).toContain('className="w-3.5 h-3.5 t-icon-swap"');
     expect(recentSessionRow).toContain("data-state={isConfirmingArchive ? 'b' : 'a'}");
     expect(recentSessionRow).toContain('<Archive size={14} />');

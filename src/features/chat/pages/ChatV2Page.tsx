@@ -1012,8 +1012,8 @@ export const ChatV2Page: React.FC = () => {
         <MobileSlidingLayout
           className="flex-1"
           sidebar={
-            <div className="study-shell-sidebar-frame font-sidebar-study-ui h-full flex flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]">
-              {renderSessionSidebarContent()}
+            <div className="min-h-0">
+              {renderSessionSidebarContent({ unifiedMobileDrawer: true })}
             </div>
           }
           rightPanel={
@@ -1073,7 +1073,7 @@ export const ChatV2Page: React.FC = () => {
             setMobileResourcePanelOpen(pos === 'right');
           }}
           rightPanelEnabled={true}
-          sidebarWidth={304}
+          sidebarWidth="auto"
           showSidebarAppNavigation
           showContentOverlay
           enableGesture={true}

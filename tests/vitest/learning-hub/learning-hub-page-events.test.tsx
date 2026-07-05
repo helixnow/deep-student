@@ -44,7 +44,10 @@ vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.
 vi.mock('@/utils/pendingMemoryLocate', () => ({ setPendingMemoryLocate: pageMocks.setPendingMemoryLocate }));
 vi.mock('@/features/learning-hub/LearningHubSidebar', () => ({ LearningHubSidebar: () => <div>sidebar</div> }));
 vi.mock('@/stores/uiStore', () => ({ useUIStore: (selector: (state: { leftPanelCollapsed: boolean; setLeftPanelCollapsed: () => void }) => unknown) => selector({ leftPanelCollapsed: false, setLeftPanelCollapsed: vi.fn() }) }));
-vi.mock('@/components/layout', () => ({ useMobileHeader: vi.fn() }));
+vi.mock('@/components/layout', () => ({
+  useMobileHeader: vi.fn(),
+  DEFAULT_GESTURE_IGNORE_SELECTOR: '[data-no-gesture]',
+}));
 vi.mock('@/hooks/useBreakpoint', () => ({ useBreakpoint: () => ({ isSmallScreen: false }) }));
 vi.mock('@/features/learning-hub/stores/finderStore', () => ({
   useFinderStore: (selector: (state: typeof finderState) => unknown) => selector(finderState),

@@ -30,6 +30,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -100,6 +101,8 @@ type ViewMode = 'search' | 'recent' | 'favorites';
 
 export function CommandPalette() {
   const { t } = useTranslation(['command_palette', 'common']);
+  // 移动端没有物理键盘：快捷键徽章与键盘操作提示只在桌面显示
+  const { isSmallScreen } = useBreakpoint();
   const { isOpen, close, searchCommands, executeCommand, deps, currentView } = useCommandPalette();
   
   const [query, setQuery] = useState('');
@@ -509,7 +512,7 @@ export function CommandPalette() {
                           </button>
                         )}
                         {/* 显示有效快捷键（优先使用自定义快捷键） */}
-                        {!isResource && (() => {
+                        {!isResource && !isSmallScreen && (() => {
                           const effectiveShortcut = shortcutManager.getShortcut(command.id);
                           return effectiveShortcut ? (
                             <div className="command-palette-item-shortcut">
@@ -526,7 +529,8 @@ export function CommandPalette() {
           )}
         </CustomScrollArea>
         
-        {/* 底部提示 */}
+        {/* 底部提示（键盘操作提示，仅桌面显示） */}
+        {!isSmallScreen && (
         <div className="command-palette-footer">
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">↑↓</span>
@@ -543,6 +547,7 @@ export function CommandPalette() {
             <span>{t('command_palette:hint_close', '关闭')}</span>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

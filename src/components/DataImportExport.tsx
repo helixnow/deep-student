@@ -7,6 +7,8 @@ import { fileManager, extractFileName } from '../utils/fileManager';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
   FileZip, X, FloppyDisk, FileText, ChartBar, BookOpen, Brain, Database,
@@ -241,6 +243,27 @@ const StatCard = ({
 
 export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, embedded = false, mode = 'all' }) => {
   const { t } = useTranslation(['data', 'common']);
+  const { isSmallScreen } = useBreakpoint();
+
+  // 供 useMobileHeader rightActions 调用（handleExport 在下方定义）
+  const handleExportRef = useRef<() => void>(() => {});
+
+  // D-1: 移动端顶栏标题（data-management 视图直挂本组件）
+  // 移动端设计哲学：页内不再渲染桌面 HeaderTemplate，导出操作收进统一顶栏
+  useMobileHeader('data-management', {
+    title: t('common:navigation.data_management', '数据管理'),
+    rightActions: (
+      <NotionButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={t('common:header.export', '导出')}
+        onClick={() => handleExportRef.current()}
+      >
+        <DownloadSimple size={18} />
+      </NotionButton>
+    ),
+  }, [t]);
   const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -780,6 +803,7 @@ ${resolvedPath}`);
       exitMaintenanceMode();
     }
   };
+  handleExportRef.current = handleExport;
 
   // 手动备份（仅创建治理系统备份，不导出 ZIP）
   const handleAutoBackup = async () => {
@@ -1594,6 +1618,11 @@ ${resolvedPath}`);
             padding: 1rem 2rem 2rem 2rem;
             min-height: 0;
           }
+          @media (max-width: 767.98px) {
+            .data-management-content {
+              padding: 1rem 1rem 2rem 1rem;
+            }
+          }
           .data-management-container.embedded .data-management-content {
             overflow: visible;
             padding: 0;
@@ -1631,7 +1660,8 @@ ${resolvedPath}`);
         `}
       </style>
       <div className={`data-management-container ${embedded ? 'embedded' : ''}`}>
-        {!embedded && (
+        {/* 移动端：标题与导出统一走顶栏（useMobileHeader），不渲染桌面 HeaderTemplate，避免双标题 */}
+        {!embedded && !isSmallScreen && (
           <HeaderTemplate
             icon={FileZip}
             title={t('data:header.title')}
@@ -1673,7 +1703,7 @@ ${resolvedPath}`);
           ) : (
             // all 模式：使用原有的标题样式
             <div className="mb-8">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground mb-1">{t('data:statistics_section_title')}</h2>
                   <p className="text-sm text-muted-foreground">{t('data:statistics_section_subtitle')}</p>

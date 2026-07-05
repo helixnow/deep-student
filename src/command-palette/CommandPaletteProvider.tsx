@@ -210,14 +210,14 @@ export function CommandPaletteProvider({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement;
+      const target = e.target;
       const isInput =
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable;
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable);
 
       // 检查是否在富文本编辑器内部
-      const isInRichEditor = target.closest(
+      const isInRichEditor = target instanceof Element && !!target.closest(
         '.milkdown, .ProseMirror, .crepe-editor-wrapper, [data-rich-editor]',
       );
 

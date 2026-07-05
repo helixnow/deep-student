@@ -865,12 +865,7 @@ impl Database {
                 "CREATE INDEX IF NOT EXISTS idx_anki_cards_source ON anki_cards(source_type, source_id)",
                 [],
             );
-
-            // 🔧 Phase 1: document_tasks 增加 source_session_id 字段（用于跳转到聊天上下文）
-            let _ = conn.execute(
-                "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-                [],
-            );
+            // source_session_id 由治理迁移 V20260705 声明，禁止在此 runtime ALTER 以免 schema 指纹漂移
         }
 
         let _current_version: u32 = conn
@@ -3825,11 +3820,6 @@ impl Database {
     /// 🔧 Phase 1: 为指定 document_id 的所有任务设置 source_session_id
     pub fn set_document_session_source(&self, document_id: &str, session_id: &str) -> Result<()> {
         let conn = self.get_conn_safe()?;
-        // 确保列存在
-        let _ = conn.execute(
-            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-            [],
-        );
         conn.execute(
             "UPDATE document_tasks SET source_session_id = ?1 WHERE document_id = ?2 AND source_session_id IS NULL",
             params![session_id, document_id],
@@ -3840,11 +3830,6 @@ impl Database {
     /// 读取 document_id 对应的 source_session_id（如果有）
     pub fn get_document_session_source(&self, document_id: &str) -> Result<Option<String>> {
         let conn = self.get_conn_safe()?;
-        // 兼容旧库：列不存在时先补齐
-        let _ = conn.execute(
-            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-            [],
-        );
         let source = conn
             .query_row(
                 "SELECT source_session_id FROM document_tasks WHERE document_id = ?1 AND source_session_id IS NOT NULL LIMIT 1",
@@ -5558,11 +5543,6 @@ impl Database {
     /// 🔧 Phase 1: 按 document_id 分组汇总任务信息（用于任务管理页面）
     pub fn list_document_sessions(&self, limit: u32) -> Result<Vec<serde_json::Value>> {
         let conn = self.get_conn_safe()?;
-        // 确保 source_session_id 列存在（兼容旧数据库）
-        let _ = conn.execute(
-            "ALTER TABLE document_tasks ADD COLUMN source_session_id TEXT",
-            [],
-        );
         // 使用 LEFT JOIN + COUNT(DISTINCT) 代替关联子查询，提升大数据量下的性能
         let mut stmt = conn.prepare(
             r#"SELECT

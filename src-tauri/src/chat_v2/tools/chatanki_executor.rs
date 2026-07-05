@@ -3981,7 +3981,8 @@ fn build_import_prompt(goal: &str) -> String {
    [SUMMARY]: 50字以内摘要\n\
    [CHUNK_END]\n\
 3) 不要输出任何多余解释，只输出 Markdown。\n\
-4) 遇到图表/流程图必须用 [IMAGE_DESC: ...] 条目式还原关键逻辑。\n"
+4) 遇到图表/流程图必须用 [IMAGE_DESC: ...] 条目式还原关键逻辑。\n\
+5) 输出语言与文档原文语言一致（英文文档输出英文，不要翻译）。\n"
     )
 }
 

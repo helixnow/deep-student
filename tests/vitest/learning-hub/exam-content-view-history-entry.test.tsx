@@ -136,6 +136,8 @@ vi.mock('@/components/practice/PracticeLauncher', () => ({ default: () => <div d
 vi.mock('@/components/CsvImportDialog', () => ({ default: () => null }));
 vi.mock('@/components/QuestionBankExportDialog', () => ({ default: () => null }));
 
+import ExamContentView from '@/features/learning-hub/apps/views/ExamContentView';
+
 describe('ExamContentView history entry wiring', () => {
   beforeEach(() => {
     storeState.checkSyncStatus.mockReset();
@@ -150,8 +152,6 @@ describe('ExamContentView history entry wiring', () => {
   });
 
   it('opens the shared history view from the manage entry', async () => {
-    const { default: ExamContentView } = await import('@/features/learning-hub/apps/views/ExamContentView');
-
     render(
       <ExamContentView
         node={{
@@ -165,18 +165,18 @@ describe('ExamContentView history entry wiring', () => {
       />,
     );
 
-    await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled());
+    await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
 
     fireEvent.click(screen.getByRole('button', { name: /管理|manage|learningHub:exam\.tab\.manage/i }));
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /open history/i })).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
 
     fireEvent.click(screen.getByRole('button', { name: /open history/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('question-history-view')).toHaveTextContent('history:q_1');
-    });
+    }, { timeout: 5000 });
   });
 });

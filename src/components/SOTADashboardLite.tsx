@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
@@ -19,6 +19,8 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { TodayCommandCenter } from './dashboard/TodayCommandCenter';
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
+import { useMobileHeader } from '@/components/layout';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { fileManager } from '../utils/fileManager';
 import { 
   AreaChart, 
@@ -127,6 +129,27 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
   });
   const { t } = useTranslation('data');
   const { t: tCommon } = useTranslation('common');
+  const { isSmallScreen } = useBreakpoint();
+
+  // 供 useMobileHeader rightActions 调用（exportData 在下方定义）
+  const exportDataRef = useRef<() => void>(() => {});
+
+  // D-1: 移动端顶栏标题（独立视图形态时生效；embedded 形态由宿主视图管理顶栏）
+  // 移动端设计哲学：页内不再放返回/导出按钮，操作统一收进顶栏
+  useMobileHeader('dashboard', {
+    title: tCommon('navigation.dashboard', '总览'),
+    rightActions: (
+      <NotionButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={t('export_stats_button')}
+        onClick={() => exportDataRef.current()}
+      >
+        <DownloadSimple size={18} />
+      </NotionButton>
+    ),
+  }, [tCommon, t]);
 
   // 导出数据
   const exportData = useCallback(async () => {
@@ -164,6 +187,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
       URL.revokeObjectURL(url);
     }
   }, [data, t]);
+  exportDataRef.current = exportData;
 
   // 格式化数字
   const formatNumber = useCallback((num: number) => {
@@ -313,6 +337,8 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
 
     return (
       <div className="sota-unified-content">
+        {/* 移动端：返回/导出统一走顶栏（useMobileHeader），页内不再渲染工具行 */}
+        {!isSmallScreen && (
         <div className="mb-4 flex items-center gap-2">
           {typeof onBack === 'function' && (
             <NotionButton variant="ghost" size="sm" onClick={onBack} className="flex items-center gap-1 text-muted-foreground">
@@ -345,6 +371,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             </NotionButton>
           </div>
         </div>
+        )}
 
         {/* ★ 5.1 今日指挥中心：可行动入口置顶，统计下沉 */}
         <TodayCommandCenter onNavigate={onNavigate} />

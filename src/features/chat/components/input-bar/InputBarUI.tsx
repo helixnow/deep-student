@@ -1475,6 +1475,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [isMobile, hasAnyPanelOpen]);
 
+  // 组合面板 portal 在 body 上，宿主视图被切走（visibility:hidden）时不会随之隐藏；
+  // 监听全局视图切换事件，切离 Chat 时收起所有面板，避免面板悬浮在新视图上方
+  useEffect(() => {
+    if (!hasAnyPanelOpen) return;
+    const handleViewSwitched = () => closeAllPanelsRef.current();
+    window.addEventListener('app:view-switched', handleViewSwitched);
+    return () => window.removeEventListener('app:view-switched', handleViewSwitched);
+  }, [hasAnyPanelOpen]);
+
   // 统一的面板切换函数，自动处理互斥逻辑
   const togglePanel = useCallback((panelName: keyof PanelStates) => {
     const currentState = panelStates[panelName];
@@ -1593,14 +1602,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 注册在 document 上，处理后 stopPropagation 防止与命令系统双重执行
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isEditableTarget = !!target && (
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.isContentEditable ||
+      const target = e.target;
+      const isEditableTarget = target instanceof Element && (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable) ||
         !!target.closest('[contenteditable="true"]')
       );
-      const inModal = !!target?.closest('[role="dialog"], [role="alertdialog"]');
+      const inModal = target instanceof Element && !!target.closest('[role="dialog"], [role="alertdialog"]');
       if (isEditableTarget || inModal) return;
 
       // ⌘⇧T / Ctrl+Shift+T: 切换推理模式（覆盖全局 toggle-theme）

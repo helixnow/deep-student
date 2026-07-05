@@ -2279,7 +2279,17 @@ export function LearningHubSidebar({
   ) : null;
 
   return (
-    <div ref={containerRef} className={cn("study-shell-sidebar-frame relative flex h-full", className)} tabIndex={-1}>
+    <div
+      ref={containerRef}
+      className={cn(
+        'relative flex h-full',
+        isSmallScreen && mode === 'fullscreen'
+          ? 'bg-background'
+          : 'study-shell-sidebar-frame',
+        className,
+      )}
+      tabIndex={-1}
+    >
       {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
       {quickAccessPortalTarget && quickAccessNode
         ? createPortal(quickAccessNode, quickAccessPortalTarget)
@@ -2299,9 +2309,8 @@ export function LearningHubSidebar({
       >
         {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站） */}
         {isSmallScreen && !hideToolbarAndNav && (
-          <div 
-            className="study-shell-toolbar study-shell-toolbar--floating flex items-center gap-1 px-2 pb-1.5 border-b backdrop-blur-lg shrink-0"
-            style={{ marginTop: 3, paddingTop: 9 }}
+          <div
+            className="flex shrink-0 items-center gap-1 border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)] px-2 py-1.5"
           >
             {mobileSearchExpanded ? (
               // 搜索框展开态
@@ -2328,7 +2337,7 @@ export function LearningHubSidebar({
                 </NotionButton>
               </div>
             ) : (
-              // 工具栏按钮（N-5: 移动端触控目标 ≥40px）
+              // 工具栏按钮（N-5: 移动端触控目标 ≥40px；刷新在顶栏，此处仅搜索/新建）
               <>
                 <NotionButton
                   variant="ghost"

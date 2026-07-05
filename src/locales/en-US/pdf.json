@@ -19,7 +19,8 @@
   "loading_reading_simple": "Reading file…",
   "empty": {
     "title": "No file selected",
-    "description": "Click the button above to choose a PDF file"
+    "description": "Choose a PDF file to start reading",
+    "select_button": "Choose PDF file"
   },
   "errors": {
     "invalid_file": "Please choose a valid PDF file",

@@ -209,7 +209,13 @@ class DebugLogger {
     await this.addLog(logEntry);
 
     if (level === 'ERROR') {
-      console.error(`🚨 [${module}_ERROR]`, logEntry);
+      const summary =
+        typeof data?.message === 'string'
+          ? data.message
+          : typeof data === 'string'
+            ? data
+            : operation;
+      console.error(`🚨 [${module}_ERROR]`, summary, data);
       await this.flushLogs();
     }
   }

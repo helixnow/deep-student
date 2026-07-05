@@ -9,6 +9,8 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu/AppMenu';
+import { formatTokenCount } from '../TokenUsageDisplay';
+import type { TokenUsage } from '../../core/types';
 
 export interface MessageActionsProps {
   messageId: string;
@@ -29,6 +31,8 @@ export interface MessageActionsProps {
   onBranchSession?: () => Promise<void>;
   /** 移动端紧凑模式：仅展示主操作，其余进入更多菜单 */
   compactMobile?: boolean;
+  /** M-1: 移动端 Token 用量入口——桌面在操作行内联展示，移动端放进更多菜单 */
+  tokenUsage?: TokenUsage;
   className?: string;
 }
 
@@ -48,6 +52,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onSaveAsNote,
   onBranchSession,
   compactMobile = false,
+  tokenUsage,
   className,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -195,6 +200,20 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         >
           {t('messageItem.actions.delete')}
         </AppMenuItem>
+        {/* M-1: 移动端 Token 用量只读入口（桌面在操作行有内联展示，无需重复） */}
+        {compactMobile && tokenUsage && tokenUsage.totalTokens > 0 && (
+          <>
+            <AppMenuSeparator />
+            <div
+              className="px-2.5 py-1.5 text-[11px] font-mono text-muted-foreground select-none"
+              aria-label={t('tokenUsage.title', 'Token 用量')}
+            >
+              <span className="font-medium text-foreground/70">{formatTokenCount(tokenUsage.totalTokens)}</span>
+              <span className="text-primary/80"> ↑{formatTokenCount(tokenUsage.promptTokens)}</span>
+              <span className="text-info/80"> ↓{formatTokenCount(tokenUsage.completionTokens)}</span>
+            </div>
+          </>
+        )}
       </AppMenuContent>
     </AppMenu>
   );

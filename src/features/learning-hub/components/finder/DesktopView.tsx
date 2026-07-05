@@ -16,6 +16,7 @@ import { Z_INDEX } from '@/config/zIndex';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash, PencilSimple, Check, X, ArrowClockwise, ArrowSquareOut, Gear, FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   NoteIcon,
   TextbookIcon,
@@ -473,6 +474,7 @@ export function DesktopView({
   onCreateInDesktopRoot,
 }: DesktopViewProps) {
   const { t } = useTranslation('learningHub');
+  const { isSmallScreen } = useBreakpoint();
   const {
     getSortedShortcuts,
     removeShortcut,
@@ -616,7 +618,7 @@ export function DesktopView({
               </div>
               <p className="text-sm mb-4">{t('desktop.empty', '桌面为空')}</p>
               <p className="text-xs text-muted-foreground/60 mb-4">
-                {t('desktop.rightClickHint', '右键点击添加快捷方式')}
+                {t(isSmallScreen ? 'desktop.touchHint' : 'desktop.rightClickHint', isSmallScreen ? '点击下方按钮添加快捷方式' : '右键点击添加快捷方式')}
               </p>
               <NotionButton
                 variant="default"

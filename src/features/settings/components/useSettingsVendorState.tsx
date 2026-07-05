@@ -542,6 +542,13 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           headers: vendor.headers,
         };
     setModelEditor({ vendor, profile, api: draftApi });
+    // 移动端：同步切到三屏右侧面板（不依赖 useEffect 时序，避免 Sheet/Dialog 抢层）
+    if (isSmallScreen) {
+      setInlineEditState(null);
+      setIsAddingNewModel(false);
+      setRightPanelType('modelEditor');
+      setScreenPosition('right');
+    }
   };
 
   const handleSaveModelProfile = async (api: ApiConfig) => {
@@ -579,6 +586,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
   // 桌面端内联新增模型
   const handleAddModelInline = (vendor: VendorConfig) => {
+    // 移动端：新增模型走统一三屏右侧面板，而非桌面 inline Sheet
+    if (isSmallScreen) {
+      handleOpenModelEditor(vendor);
+      return;
+    }
     const baseAdapter = providerTypeFromConfig(vendor.providerType, vendor.providerType);
     const isGeneralAdapter = baseAdapter === 'general';
     const tempId = `new_model_${Date.now()}`;

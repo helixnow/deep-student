@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { GeneralTab } from '../GeneralTab';
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
     t: (key: string, fallback?: string) => fallback ?? key,
     i18n: {

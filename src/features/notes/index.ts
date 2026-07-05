@@ -4,7 +4,6 @@
 
 // Main components
 export { default as NotesHome } from './NotesHome';
-export { NoteEditorPortal } from './NoteEditorPortal';
 export { NotesCrepeEditor } from './NotesCrepeEditor';
 export { NotesContextPanel } from './NotesContextPanel';
 export { NotesHeader } from './NotesHeader';

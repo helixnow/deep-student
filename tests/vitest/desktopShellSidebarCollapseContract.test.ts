@@ -119,7 +119,7 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('renders the settings custom left rail in the global desktop shell nav slot', () => {
-    expect(appSource).toContain("import { SettingsShellSidebar } from '@/features/settings';");
+    expect(appSource).toContain("import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';");
     expect(appSource).toContain('const settingsShellSidebarElement = useMemo(() => (');
     expect(appSource).toContain('<SettingsShellSidebar');
     expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
@@ -129,7 +129,9 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('keeps desktop settings content inside the shared workspace boundary instead of drawing its own shell', () => {
-    expect(settingsSource).toContain("import { SettingsShellSidebar } from './SettingsShellSidebar';");
+    // 桌面左栏由 App 的 desktopShellSidebarElement 承载；Settings 本体不再渲染任何自有侧栏
+    // （移动端分区导航为 chip rail），因此不应再引入 SettingsShellSidebar
+    expect(settingsSource).not.toContain("import { SettingsShellSidebar } from './SettingsShellSidebar';");
     expect(settingsSource).toContain("import { useSettingsNavigation } from './useSettingsNavigation';");
     expect(settingsSource).toContain("import { useSettingsShellStore } from '@/stores/settingsShellStore';");
     expect(settingsSource).not.toContain("const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;");

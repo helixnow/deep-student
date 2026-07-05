@@ -43,7 +43,6 @@ import { GeneralTab } from './GeneralTab';
 import { ApisTab } from './ApisTab';
 import { ParamsTab } from './ParamsTab';
 import { ExternalSearchTab } from './ExternalSearchTab';
-import { SettingsShellSidebar } from './SettingsShellSidebar';
 import { useSettingsNavigation } from './useSettingsNavigation';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
@@ -114,7 +113,6 @@ import {
   ArrowCounterClockwise,
   Info as InfoIcon,
   Stack,
-  CaretRight,
 } from '@phosphor-icons/react';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
@@ -142,11 +140,11 @@ const invoke = isTauri ? tauriInvoke : null;
 
 
 
-export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation = 'page' }) => {
+export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
   const { isSmallScreen } = useBreakpoint();
-  const isMobileSheetPresentation = isSmallScreen && mobilePresentation === 'sheet';
-  const effectiveMobilePanelMode = isSmallScreen && !isMobileSheetPresentation;
+  // 移动端设置作为普通视图页呈现：统一顶栏 + chip rail 分区导航（不再有 Sheet 浮层形态）
+  const effectiveMobilePanelMode = isSmallScreen;
   const {
     mode: themeMode,
     isDarkMode,
@@ -172,94 +170,21 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   const dataGovernanceTabTarget = useSettingsShellStore((state) => state.dataGovernanceTabTarget);
   const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   
-  // 标签页名称映射（用于面包屑显示）
-  const getActiveTabLabel = useCallback(() => {
-    const tabLabels: Record<string, string> = {
-      'app': t('settings:tabs.app'),
-      'general': t('settings:tabs.general'),
-      'appearance': t('settings:tabs.appearance'),
-      // UI 文案已统一为“模型服务”，内部 tab id 仍保持 apis 以最小化改动面
-      'apis': t('settings:tabs.api_config'),
-      'models': t('settings:tabs.model_assignment'),
-      'mcp': t('settings:tabs.mcp_tools'),
-      'search': t('settings:tabs.external_search'),
-      'statistics': t('settings:tabs.statistics'),
-      'data-governance': t('settings:tabs.data_governance'),
-      'params': t('settings:tabs.params'),
-      'shortcuts': t('settings:tabs.shortcuts'),
-      'about': t('settings:tabs.about'),
-    };
-    return tabLabels[activeTab] || activeTab;
-  }, [activeTab, t]);
-
-  const activeTabDescription = useMemo(() => {
-    const descriptions: Record<string, string> = {
-      general: t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。'),
-      appearance: t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。'),
-      app: t('settings:study_ui_descriptions.app', '管理主题、语言、界面缩放和工作区外观。'),
-      apis: t('settings:study_ui_descriptions.apis', '配置模型服务、供应商和连接方式。'),
-      models: t('settings:study_ui_descriptions.models', '把不同任务分配到合适的模型。'),
-      mcp: t('settings:study_ui_descriptions.mcp', '管理工具连接、服务器和可用能力。'),
-      search: t('settings:study_ui_descriptions.search', '设置联网搜索、外部检索和知识来源。'),
-      statistics: t('settings:study_ui_descriptions.statistics', '查看学习、对话和使用统计。'),
-      'data-governance': t('settings:study_ui_descriptions.data_governance', '处理备份、恢复、导入导出与数据治理。'),
-      params: t('settings:study_ui_descriptions.params', '调整生成参数和默认行为。'),
-      shortcuts: t('settings:study_ui_descriptions.shortcuts', '查看和整理快捷键入口。'),
-      about: t('settings:study_ui_descriptions.about', '查看版本、协议和应用说明。'),
-    };
-    return descriptions[activeTab] || t('settings:study_ui_descriptions.default', '在这里整理应用偏好与工作流设置。');
-  }, [activeTab, t]);
-
-  // 面包屑导航组件（内联）
+  // 顶栏标题：与其他页面一致的单一标题（当前分区由 chip rail 高亮表达，不再用面包屑双标题）
   const SettingsBreadcrumb = useMemo(() => {
     if (screenPosition === 'right') {
-      // 右侧面板时显示简单标题
       return (
         <h1 className="text-base font-semibold truncate">
           {t('settings:title_edit')}
         </h1>
       );
     }
-    // 中间视图：显示面包屑 "系统设置 > 当前标签"
     return (
-      <div className="flex items-center justify-center gap-1 text-base font-semibold whitespace-nowrap">
-        <span className="truncate max-w-[80px]">
-          {t('settings:title')}
-        </span>
-        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
-        <span className="truncate max-w-[120px]">
-          {getActiveTabLabel()}
-        </span>
-      </div>
+      <h1 className="text-base font-semibold truncate">
+        {t('settings:title')}
+      </h1>
     );
-  }, [screenPosition, t, getActiveTabLabel]);
-
-  // 移动端顶栏右侧操作按钮
-  const settingsHeaderRightActions = useMemo(() => {
-    // 供应商配置面板：显示保存按钮
-    if (screenPosition === 'right' && rightPanelType === 'vendorConfig') {
-      return (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label="save" className="text-primary">
-          <Check size={20} />
-        </NotionButton>
-      );
-    }
-    return undefined;
-  }, [screenPosition, rightPanelType, t]);
-
-  useMobileHeader('settings', {
-    // 使用 titleNode 渲染面包屑导航
-    titleNode: SettingsBreadcrumb,
-    showMenu: true,
-    // 右侧面板时，左上角按钮返回主视图；其他情况切换左侧栏
-    onMenuClick: screenPosition === 'right'
-      ? () => setScreenPosition('center')
-      : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
-    // 右侧面板时显示返回箭头
-    showBackArrow: screenPosition === 'right',
-    // 右侧操作按钮
-    rightActions: settingsHeaderRightActions,
-  }, [SettingsBreadcrumb, screenPosition, settingsHeaderRightActions]);
+  }, [screenPosition, t]);
 
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
   const [uiZoom, setUiZoom] = useState<number>(DEFAULT_UI_ZOOM);
@@ -502,6 +427,18 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const tabButtonsContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // 移动端 chip rail：activeTab 变化（含程序化跳转）时把激活 chip 滚到可视区。
+  // 不能用 scrollIntoView：它会横向滚动 MobileSlidingLayout 的 overflow-hidden 祖先，
+  // 在 translate3d 布局上叠加 scrollLeft 偏移，导致整个内容窗格错位
+  useEffect(() => {
+    if (!isSmallScreen || !activeTab) return;
+    const chip = tabsRef.current.get(activeTab);
+    const rail = chip?.parentElement;
+    if (!chip || !rail) return;
+    const target = chip.offsetLeft - (rail.clientWidth - chip.offsetWidth) / 2;
+    rail.scrollTo({ left: Math.max(0, target), behavior: 'smooth' });
+  }, [isSmallScreen, activeTab]);
+
   // MCP 状态
   const [mcpStatusInfo, setMcpStatusInfo] = useState<McpStatusInfo | null>(null);
 
@@ -531,7 +468,81 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   );
 
   const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen: effectiveMobilePanelMode, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo });
-  const { mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
+  const { mcpToolModal, setMcpToolModal, mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
+
+  const handleMobileSettingsBack = useCallback(() => {
+    if (screenPosition !== 'right') {
+      setScreenPosition(prev => (prev === 'left' ? 'center' : 'left'));
+      return;
+    }
+    switch (rightPanelType) {
+      case 'modelEditor':
+        handleCloseModelEditor();
+        break;
+      case 'vendorConfig':
+        setVendorModalOpen(false);
+        setEditingVendor(null);
+        closeRightPanel();
+        break;
+      case 'mcpTool':
+        setMcpToolModal(prev => ({ ...prev, open: false, error: null }));
+        closeRightPanel();
+        break;
+      case 'mcpPolicy':
+        setMcpPolicyModal(prev => ({ ...prev, open: false }));
+        closeRightPanel();
+        break;
+      default:
+        closeRightPanel();
+    }
+  }, [
+    screenPosition,
+    rightPanelType,
+    handleCloseModelEditor,
+    setVendorModalOpen,
+    setEditingVendor,
+    closeRightPanel,
+    setMcpToolModal,
+    setMcpPolicyModal,
+  ]);
+
+  const settingsHeaderRightActions = useMemo(() => {
+    if (screenPosition !== 'right') return undefined;
+    if (rightPanelType === 'vendorConfig') {
+      return (
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label="save" className="text-primary">
+          <Check size={20} />
+        </NotionButton>
+      );
+    }
+    if (rightPanelType === 'modelEditor') {
+      return (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={() => {
+            const form = document.getElementById('settings-model-editor-form');
+            if (form instanceof HTMLFormElement) form.requestSubmit();
+          }}
+          title={t('common:actions.save')}
+          aria-label="save"
+          className="text-primary"
+        >
+          <Check size={20} />
+        </NotionButton>
+      );
+    }
+    return undefined;
+  }, [screenPosition, rightPanelType, t]);
+
+  useMobileHeader('settings', {
+    titleNode: SettingsBreadcrumb,
+    showMenu: true,
+    onMenuClick: handleMobileSettingsBack,
+    showBackArrow: screenPosition === 'right',
+    rightActions: settingsHeaderRightActions,
+  }, [SettingsBreadcrumb, screenPosition, settingsHeaderRightActions, handleMobileSettingsBack]);
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
     const raw = String(extra?.chatStreamTimeoutSeconds ?? '').trim();
@@ -876,13 +887,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   ]);
 
   if (loading) {
-    if (isMobileSheetPresentation) {
+    if (isSmallScreen) {
       return (
-        <div
-          data-slot="mobile-settings-sheet-real-content"
-          className="flex min-h-0 flex-1 flex-col bg-background text-foreground"
-        >
-          <div className="flex gap-2 overflow-hidden border-b border-border px-5 py-3">
+        <div className="absolute inset-0 flex flex-col overflow-hidden bg-background text-foreground">
+          <div className="flex gap-2 overflow-hidden border-b border-border px-4 py-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="h-11 w-24 shrink-0 rounded-[14px] bg-muted animate-pulse" />
             ))}
@@ -894,51 +902,16 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       );
     }
 
-    if (!isSmallScreen) {
-      return (
-        <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-muted-foreground">{t('settings:loading')}</div>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="settings absolute inset-0 flex flex-row overflow-hidden bg-background">
-        <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
-        <div className="h-full flex flex-col bg-background pt-[5px] border-r border-border/40 w-52">
-          <nav className="flex-1 overflow-y-auto py-2 px-2">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg">
-                <div className="w-4 h-4 rounded bg-muted animate-pulse" />
-                <div className="h-4 rounded bg-muted animate-pulse flex-1" />
-              </div>
-            ))}
-          </nav>
-          <div className="shrink-0 h-11 flex items-center justify-center px-2 border-t border-border">
-            <div className="w-4 h-4 rounded bg-muted/50 animate-pulse" />
-          </div>
-        </div>
-        <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden bg-background">
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-muted-foreground">{t('settings:loading')}</div>
-          </div>
+      <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-muted-foreground">{t('settings:loading')}</div>
         </div>
       </div>
     );
   }
 
-  // 渲染侧边栏内容 - 提取为独立组件
-  const renderSettingsSidebar = () => (
-    <SettingsShellSidebar
-      isSmallScreen={effectiveMobilePanelMode}
-      globalLeftPanelCollapsed={false}
-      setSidebarOpen={(open) => setScreenPosition(open ? 'left' : 'center')}
-      onBack={handleBack}
-    />
-  );
-
+  // 移动端分区导航：chip rail（横向滚动 tab 条，替代旧的抽屉内设置侧栏）
   const renderSettingsSheetTabRail = () => (
     <div className="relative shrink-0 border-b border-border bg-background py-2">
       {/* S-4: 右缘渐隐提示——暗示 chip rail 可横向滚动、后面还有更多 tab */}
@@ -977,23 +950,23 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     </div>
   );
 
-  // 渲染主内容区域
-  const renderSettingsMainContent = ({ sheetMode = false }: { sheetMode?: boolean } = {}) => (
+  // 渲染主内容区域（mobilePageMode：移动端普通视图页形态，配合 chip rail）
+  const renderSettingsMainContent = ({ mobilePageMode = false }: { mobilePageMode?: boolean } = {}) => (
     <div
       id="settings-main-content"
       className={cn(
         'flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative bg-[color:var(--shell-workspace-panel)]',
-        sheetMode && "bg-background text-foreground"
+        mobilePageMode && "bg-background text-foreground"
       )}
-      data-slot={sheetMode ? 'mobile-settings-sheet-content' : undefined}
+      data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
     >
         <CustomScrollArea
           className="flex-1 w-full max-w-full overflow-x-hidden"
           viewportClassName={cn(
-            sheetMode
+            mobilePageMode
               ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
               : "px-6 pb-6 pt-4 sm:px-8 sm:pb-7 sm:pt-5",
-            effectiveMobilePanelMode && !sheetMode && "px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+            effectiveMobilePanelMode && !mobilePageMode && "px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
           )}
           trackOffsetTop={16}
           trackOffsetBottom={16}
@@ -1474,6 +1447,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             }}
           >
             <ShadApiEditModal
+              // 表单内部状态在挂载时初始化：切换编辑目标必须重挂载，否则残留上一个模型的值
+              key={modelEditor.api.id}
               api={modelEditor.api}
               onSave={handleSaveModelProfileAndClose}
               onCancel={handleCloseModelEditor}
@@ -1484,6 +1459,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
                 providerType: modelEditor.vendor.providerType,
               }}
               embeddedMode={true}
+              mobilePanelMode={true}
             />
           </div>
         );
@@ -1506,91 +1482,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     }
   };
 
-  if (isMobileSheetPresentation) {
-    return (
-      <div
-        data-slot="mobile-settings-sheet-real-content"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground"
-      >
-        <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
-        {renderSettingsSheetTabRail()}
-        {renderSettingsMainContent({ sheetMode: true })}
-
-        {modelEditor && (
-          <ShadApiEditModal
-            api={modelEditor.api}
-            onSave={handleSaveModelProfile}
-            onCancel={() => setModelEditor(null)}
-            hideConnectionFields
-            lockedVendorInfo={{
-              name: modelEditor.vendor.name,
-              baseUrl: modelEditor.vendor.baseUrl,
-              providerType: modelEditor.vendor.providerType,
-            }}
-          />
-        )}
-        <VendorConfigModal
-          open={vendorModalOpen}
-          vendor={editingVendor}
-          onClose={() => {
-            setVendorModalOpen(false);
-            setEditingVendor(null);
-          }}
-          onSave={handleSaveVendorModal}
-        />
-        <NotionAlertDialog
-          open={Boolean(modelDeleteDialog)}
-          onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
-          title={t('settings:vendor_panel.delete_model_title')}
-          description={t('settings:vendor_panel.delete_model_desc')}
-          confirmText={t('common:actions.delete')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="danger"
-          onConfirm={confirmDeleteModelProfile}
-        >
-          {modelDeleteDialog?.referencingKeys.length ? (
-            <p className="text-sm text-muted-foreground">
-              {t('settings:common_labels.confirm_delete_api_with_assignments', {
-                count: modelDeleteDialog.referencingKeys.length,
-              })}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
-          )}
-        </NotionAlertDialog>
-        <NotionAlertDialog
-          open={Boolean(vendorDeleteDialog)}
-          onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
-          title={t('settings:vendor_panel.delete_vendor_title')}
-          description={t('settings:vendor_panel.delete_vendor_desc')}
-          confirmText={t('common:actions.delete')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="danger"
-          onConfirm={confirmDeleteVendor}
-        >
-          {vendorDeleteDialog && (
-            <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
-          )}
-        </NotionAlertDialog>
-
-        <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
-          <NotionDialogHeader>
-            <NotionDialogTitle className="flex items-center gap-2">
-              <Stack size={20} />
-              {t('acknowledgements.ui_components.app_menu')}
-            </NotionDialogTitle>
-            <NotionDialogDescription>
-              {t('acknowledgements.ui_components.app_menu_desc')}
-            </NotionDialogDescription>
-          </NotionDialogHeader>
-          <NotionDialogBody>
-            <AppMenuDemo />
-          </NotionDialogBody>
-        </NotionDialog>
-      </div>
-    );
-  }
-
   if (isSmallScreen) {
     return (
       <div className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden">
@@ -1599,26 +1490,26 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
         <MobileSlidingLayout
           sidebar={
-            <div
-              className="h-full flex flex-col bg-background"
-              style={{
-                paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-              }}
-            >
-              {renderSettingsSidebar()}
-            </div>
+            // 设置分区导航由 chip rail 承载；抽屉只保留统一应用导航，与其他页面同构
+            <div aria-hidden className="h-0" />
           }
           rightPanel={renderRightPanel()}
           screenPosition={screenPosition}
           onScreenPositionChange={setScreenPosition}
-          sidebarWidth="half"
+          sidebarWidth="auto"
           rightPanelEnabled={rightPanelType !== 'none'}
           enableGesture={true}
           threshold={0.3}
+          showSidebarAppNavigation
+          showContentOverlay
           className="flex-1"
         >
-          {renderSettingsMainContent()}
+          <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+            {renderSettingsSheetTabRail()}
+            {renderSettingsMainContent({ mobilePageMode: true })}
+          </div>
         </MobileSlidingLayout>
+        {/* VendorConfigModal 在移动端已通过右侧滑动面板渲染，这里不再重复渲染 */}
         {/* VendorConfigModal 在移动端已通过右侧滑动面板渲染，这里不再重复渲染 */}
         <NotionAlertDialog
           open={Boolean(modelDeleteDialog)}

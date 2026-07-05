@@ -17,8 +17,8 @@ export const useTranslation = () => ({
 });
 
 export const initReactI18next = {
-  type: '3rdParty',
-  init: () => undefined,
+  type: '3rdParty' as const,
+  init: () => {},
 };
 
 export default {

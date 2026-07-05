@@ -47,8 +47,9 @@ jobs:
   # CI 完全没有前端测试信号。维护者转入兼职模式后，这是外部贡献者 PR
   # 的第一道回归防线。
   #
-  # vitest.config.ts 为规避 Node22 tinypool 崩溃使用 forks+singleFork
-  # （单进程串行），全量约需 30-60 分钟，因此按 4 路分片并行跑。
+  # vitest.config.ts 为规避 Node22 tinypool 崩溃使用 forks 多进程池
+  # （不要改回 singleFork：单进程串行会因 jsdom 内存跨文件累积触发
+  # GC 抖动近似死锁，分片会卡死直到 45 分钟超时）。4 路分片并行跑。
   # ============================================
   frontend-tests:
     name: Frontend Tests (Vitest ${{ matrix.shard }}/4)

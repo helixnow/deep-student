@@ -1,0 +1,302 @@
+/**
+ * WelcomeOnboardingDialog - 首次启动欢迎引导
+ *
+ * 触发时机：用户协议同意之后（同一会话或后续启动），且尚未配置任何 AI 服务。
+ * 目标：把"空白首屏"变成一个有方向的起点——
+ *   1. 选择界面语言（中/英）
+ *   2. 30 秒了解三大核心能力
+ *   3. 一键跳转到"模型服务"设置页完成 AI 接入（支持 SiliconFlow 一键配置）
+ *
+ * 已配置过模型的老用户会被静默跳过（写入完成标记，不再查询）。
+ * 完成状态存 localStorage（onboarding_completed_flows，随备份同步）。
+ *
+ * 样式：纯 Notion 风格，与 UserAgreementDialog 保持一致。
+ */
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
+import { Books, ChatCircleText, Cards, Sparkle } from '@phosphor-icons/react';
+
+import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Z_INDEX } from '@/config/zIndex';
+import type { ApiConfig } from '@/types';
+
+// ============================================================================
+// 完成状态存取
+// ============================================================================
+const WELCOME_FLOW_ID = 'welcome-v1';
+const FLOWS_KEY = 'onboarding_completed_flows';
+const LEGACY_SKIP_KEY = 'onboarding_skipped';
+
+function readCompletedFlows(): string[] {
+  try {
+    const raw = localStorage.getItem(FLOWS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function markWelcomeFlowDone(): void {
+  try {
+    const flows = readCompletedFlows();
+    if (!flows.includes(WELCOME_FLOW_ID)) {
+      flows.push(WELCOME_FLOW_ID);
+    }
+    localStorage.setItem(FLOWS_KEY, JSON.stringify(flows));
+  } catch {
+    // localStorage 不可用时静默失败：最坏情况是下次启动再展示一次
+  }
+}
+
+// ============================================================================
+// Hook: useWelcomeOnboarding
+// ============================================================================
+/**
+ * @param agreementReady 用户协议已同意（needsAgreement === false）
+ */
+export function useWelcomeOnboarding(agreementReady: boolean) {
+  const [open, setOpen] = useState(false);
+  const checkedRef = useRef(false);
+
+  useEffect(() => {
+    if (!agreementReady || checkedRef.current) return;
+    checkedRef.current = true;
+
+    // 已完成或旧版跳过标记 → 不再展示
+    if (
+      readCompletedFlows().includes(WELCOME_FLOW_ID) ||
+      localStorage.getItem(LEGACY_SKIP_KEY) === 'true'
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      // 已配置过 AI 服务的用户（含升级用户）静默跳过并落标记。
+      // 注意：内置（isBuiltin）配置出厂自带中转 key，不能把"有 key"当作用户配置过；
+      // 只有「用户自己添加的带 key 配置」或「任一已启用的配置」才算真实接入。
+      const configs = await invoke<ApiConfig[]>('get_api_configurations').catch(
+        () => [] as ApiConfig[],
+      );
+      const hasRealConfig = configs.some(
+        (c) => c.enabled || (!c.isBuiltin && !!c.apiKey && c.apiKey.trim().length > 0),
+      );
+      if (hasRealConfig) {
+        markWelcomeFlowDone();
+        return;
+      }
+      if (!cancelled) setOpen(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [agreementReady]);
+
+  const dismiss = useCallback(() => {
+    markWelcomeFlowDone();
+    setOpen(false);
+  }, []);
+
+  return { open, dismiss };
+}
+
+// ============================================================================
+// 主组件
+// ============================================================================
+interface WelcomeOnboardingDialogProps {
+  /** 点击"去配置 AI 服务"：调用方负责导航到设置页 apis 标签 */
+  onConfigure: () => void;
+  /** 点击"先随便看看" */
+  onSkip: () => void;
+}
+
+interface FeatureRow {
+  icon: React.ReactNode;
+  titleKey: string;
+  titleFallback: string;
+  descKey: string;
+  descFallback: string;
+}
+
+export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = ({
+  onConfigure,
+  onSkip,
+}) => {
+  const { t, i18n } = useTranslation('common');
+
+  // 入场动画
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    requestAnimationFrame(() => setMounted(true));
+  }, []);
+
+  // 锁定 body 滚动
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  const currentLanguage = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US';
+
+  const features: FeatureRow[] = [
+    {
+      icon: <Books size={18} weight="duotone" className="text-blue-500/80" />,
+      titleKey: 'welcome_onboarding.feature_hub_title',
+      titleFallback: '学习资料库',
+      descKey: 'welcome_onboarding.feature_hub_desc',
+      descFallback: '导入 PDF、教材与笔记，统一管理你的学习材料。',
+    },
+    {
+      icon: <ChatCircleText size={18} weight="duotone" className="text-emerald-500/80" />,
+      titleKey: 'welcome_onboarding.feature_chat_title',
+      titleFallback: 'AI 对话与解题',
+      descKey: 'welcome_onboarding.feature_chat_desc',
+      descFallback: '多模型对话、题目分析、知识库检索一站完成。',
+    },
+    {
+      icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
+      titleKey: 'welcome_onboarding.feature_anki_title',
+      titleFallback: '制卡与复习',
+      descKey: 'welcome_onboarding.feature_anki_desc',
+      descFallback: 'AI 生成 Anki 卡片，内置 FSRS 复习闭环。',
+    },
+  ];
+
+  const dialog = (
+    <div
+      className={cn(
+        'fixed inset-0 flex items-center justify-center',
+        'transition-opacity duration-200 ease-out',
+        mounted ? 'opacity-100' : 'opacity-0',
+      )}
+      style={{ zIndex: Z_INDEX.modal }}
+    >
+      {/* 遮罩层 */}
+      <div className="absolute inset-0 bg-black/25" />
+
+      {/* 面板 */}
+      <div
+        className={cn(
+          'relative flex flex-col overflow-hidden',
+          'w-[94vw] max-w-[520px] max-h-[85vh]',
+          'bg-background rounded-lg',
+          'shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)]',
+          'dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.3)]',
+          'transition-all duration-200 ease-out',
+          mounted
+            ? 'opacity-100 scale-100 translate-y-0'
+            : 'opacity-0 scale-[0.97] translate-y-2',
+        )}
+      >
+        {/* 标题区 */}
+        <div className="px-6 pt-6 pb-4 flex-shrink-0">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
+                {t('welcome_onboarding.title', '欢迎使用 DeepStudent')}
+              </h1>
+              <p className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed">
+                {t('welcome_onboarding.subtitle', '本地优先的 AI 学习工作台，数据保存在你自己的设备上。')}
+              </p>
+            </div>
+          </div>
+
+          {/* 语言切换（即时生效，i18next 自动持久化） */}
+          <div className="mt-4">
+            <SegmentedControl
+              ariaLabel={t('welcome_onboarding.language_label', '界面语言 / Language')}
+              value={currentLanguage}
+              onValueChange={(next) => {
+                void i18n.changeLanguage(next);
+              }}
+              size="compact"
+              stretch
+              options={[
+                { value: 'zh-CN', label: '简体中文' },
+                { value: 'en-US', label: 'English' },
+              ]}
+            />
+          </div>
+        </div>
+
+        <div className="mx-6 h-px bg-foreground/[0.06]" />
+
+        {/* 内容区 */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-4 scroll-area--native">
+          {/* 三大能力速览 */}
+          <div className="space-y-3">
+            {features.map((f) => (
+              <div key={f.titleKey} className="flex items-start gap-3">
+                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-foreground/[0.04]">
+                  {f.icon}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-foreground/85 leading-snug">
+                    {t(f.titleKey, f.titleFallback)}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-foreground/50 leading-[1.55]">
+                    {t(f.descKey, f.descFallback)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* AI 接入提示卡 */}
+          <div className="mt-4 rounded-md bg-foreground/[0.03] px-3.5 py-3">
+            <div className="flex items-start gap-2">
+              <Sparkle size={15} weight="fill" className="mt-[2px] flex-shrink-0 text-primary/70" />
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-foreground/85 leading-snug">
+                  {t('welcome_onboarding.ai_setup_title', '连接一个 AI 服务后即可开始')}
+                </p>
+                <p className="mt-1 text-[12px] text-foreground/50 leading-[1.6]">
+                  {t(
+                    'welcome_onboarding.ai_setup_desc',
+                    '支持 SiliconFlow 一键配置全部模型，也可接入 OpenAI、Claude、Gemini、Ollama 等任意兼容服务。',
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mx-6 h-px bg-foreground/[0.06]" />
+
+        {/* 底部操作栏 */}
+        <div className="px-6 py-4 flex-shrink-0 space-y-2">
+          <NotionButton
+            variant="primary"
+            size="lg"
+            className="w-full justify-center text-[13px] font-medium"
+            onClick={onConfigure}
+          >
+            {t('welcome_onboarding.cta_configure', '去配置 AI 服务')}
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="lg"
+            className="w-full justify-center text-[13px] text-foreground/55"
+            onClick={onSkip}
+          >
+            {t('welcome_onboarding.cta_skip', '先随便看看')}
+          </NotionButton>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(dialog, document.body);
+};
+
+export default WelcomeOnboardingDialog;

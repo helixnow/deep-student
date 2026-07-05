@@ -36,6 +36,8 @@ export interface TabPanelContainerProps {
   onClose: (tabId: string) => void;
   onTitleChange: (tabId: string, title: string) => void;
   onCloseSplitView?: () => void;
+  /** 各标签页重载计数，用于强制 remount UnifiedAppPanel */
+  tabReloadKeys?: Record<string, number>;
   className?: string;
 }
 
@@ -55,7 +57,7 @@ const PanelLoading: React.FC<{ label?: string }> = ({ label }) => (
 // ============================================================================
 
 export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
-  tabs, activeTabId, splitView, onClose, onTitleChange, onCloseSplitView, className,
+  tabs, activeTabId, splitView, onClose, onTitleChange, onCloseSplitView, tabReloadKeys, className,
 }) => {
   const { t } = useTranslation('common');
 
@@ -100,6 +102,7 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
           onClose={() => handleClose(tab.tabId)}
           onTitleChange={(title) => handleTitleChange(tab.tabId, title)}
           isActive={visible}
+          reloadNonce={tabReloadKeys?.[tab.tabId] ?? 0}
           className="h-full w-full"
         />
       </Suspense>

@@ -10,8 +10,9 @@
 
 import React, { useRef, useState, useCallback, useEffect, useId, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
-import { Z_INDEX } from '@/config/zIndex';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
@@ -518,29 +519,51 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       style={{
         touchAction: 'pan-y pinch-zoom',
         cursor: isDragging ? 'grabbing' : 'default',
-        zIndex: Z_INDEX.drawer,
       }}
     >
       <div
-        className="flex h-full"
+        className="flex h-full motion-reduce:transition-none"
         style={{
           width: totalWidth || `calc(100% + ${sidebarWidth}px)`,
-          transform: `translateX(${translateX}px)`,
-          transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transform: `translate3d(${translateX}px, 0, 0)`,
+          // WebView 下 transform 过渡会卡在起点，导致汉堡菜单点了抽屉不动；手势拖拽期间本就不过渡
+          transition: 'none',
         }}
       >
-        {/* 侧边栏 */}
-        <div
-          className="relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col bg-background"
-          style={{ width: sidebarWidth }}
-        >
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {sidebar}
+        {/* 侧边栏：页内工具 + 全局导航 统一滚动（融合双栏） */}
+        <MobileUnifiedDrawerProvider value={isMobileLayout && hasSidebar}>
+          <div
+            data-mobile-unified-drawer={isMobileLayout && hasSidebar ? '' : undefined}
+            className={cn(
+              'relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col font-sidebar-study-ui',
+              isMobileLayout && hasSidebar
+                ? 'bg-background text-foreground'
+                : 'bg-background',
+            )}
+            style={{ width: sidebarWidth }}
+          >
+            {hasSidebar ? (
+              isMobileLayout ? (
+                <CustomScrollArea
+                  className="min-h-0 flex-1"
+                  viewportClassName="px-2 py-1 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
+                >
+                  <div data-mobile-drawer-page className="min-h-0">
+                    {sidebar}
+                  </div>
+                  {showSidebarAppNavigation && (
+                    <MobileSidebarNavigation
+                      embedded
+                      onNavigate={closeSidebarAfterAppNavigation}
+                    />
+                  )}
+                </CustomScrollArea>
+              ) : (
+                <div className="min-h-0 flex-1 overflow-hidden">{sidebar}</div>
+              )
+            ) : null}
           </div>
-          {hasSidebar && isMobileLayout && showSidebarAppNavigation && (
-            <MobileSidebarNavigation onNavigate={closeSidebarAfterAppNavigation} />
-          )}
-        </div>
+        </MobileUnifiedDrawerProvider>
 
         {/* 主内容区域 - 宽度等于外层容器宽度（视口宽度） */}
         <div
@@ -555,7 +578,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
               tabIndex={isSidebarOverlayInteractive ? 0 : -1}
               onClick={closeSidebarAfterAppNavigation}
               data-mobile-sidebar-mask
-              className="absolute inset-0 z-[60] appearance-none border-0 bg-[color:var(--overlay)] p-0 backdrop-blur-[2px] transition-opacity duration-300 ease-out motion-reduce:transition-none"
+              className="absolute inset-0 z-[60] appearance-none border-0 bg-[color:var(--overlay)] p-0 transition-opacity duration-300 ease-out motion-reduce:transition-none"
               style={{
                 opacity: sidebarRevealProgress,
                 pointerEvents: isSidebarOverlayInteractive ? 'auto' : 'none',

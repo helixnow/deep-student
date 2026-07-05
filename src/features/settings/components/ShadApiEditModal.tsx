@@ -127,6 +127,8 @@ interface ApiEditModalProps {
   };
   /** 嵌入模式：不使用 Dialog 包裹，直接渲染内容（用于移动端三屏布局） */
   embeddedMode?: boolean;
+  /** 移动端右侧面板：取消/标题由统一顶栏承担，隐藏底部「取消」 */
+  mobilePanelMode?: boolean;
 }
 
 export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
@@ -136,6 +138,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   hideConnectionFields = false,
   lockedVendorInfo,
   embeddedMode = false,
+  mobilePanelMode = false,
 }) => {
   const { t } = useTranslation(['common', 'settings']);
   const [connectionTest, setConnectionTest] = useState<
@@ -750,7 +753,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
   // 嵌入模式的内容渲染
   const formContent = (
-    <form onSubmit={handleSubmit} className={cn(
+    <form
+      id={mobilePanelMode ? 'settings-model-editor-form' : undefined}
+      onSubmit={handleSubmit}
+      className={cn(
       "flex flex-col flex-1 min-h-0 overflow-hidden",
       embeddedMode && "h-full"
     )}>
@@ -1865,9 +1871,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               )}
             </NotionButton>
             <div className="flex-1" />
-            <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
-              {t('common:actions.cancel')}
-            </NotionButton>
+            {!mobilePanelMode && (
+              <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
+                {t('common:actions.cancel')}
+              </NotionButton>
+            )}
             <NotionButton type="submit" variant="primary" className="min-w-[100px]">
               {t('common:actions.save')}
             </NotionButton>

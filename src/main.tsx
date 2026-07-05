@@ -111,6 +111,11 @@ import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
 
+// Dev-only：UI 自动化桥（本地 UI 审查用，生产构建不包含）
+if (import.meta.env.DEV && import.meta.env.VITE_DS_UI_BRIDGE === '1') {
+  void import('./dev/uiAutomationBridge');
+}
+
 // 注册 OverlayScrollbars ClickScrollPlugin — 点击轨道时平滑滚动到目标位置
 OverlayScrollbars.plugin(ClickScrollPlugin);
 
@@ -345,7 +350,26 @@ const TopLevelFallback: React.FC<{ error?: any; componentStack?: string }> = ({ 
       backgroundColor: '#fafafa',
       color: '#1a1a1a',
     }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
+      {/* 内联 SVG，保持致命错误页零依赖（图标库可能正是加载失败的一部分） */}
+      <div
+        aria-hidden
+        style={{
+          width: 64,
+          height: 64,
+          marginBottom: 16,
+          borderRadius: '50%',
+          backgroundColor: 'rgba(220, 38, 38, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9" stroke="#dc2626" strokeOpacity="0.75" strokeWidth="1.6" />
+          <path d="M12 7.4v5.4" stroke="#dc2626" strokeOpacity="0.9" strokeWidth="1.8" strokeLinecap="round" />
+          <circle cx="12" cy="16.4" r="1.05" fill="#dc2626" fillOpacity="0.9" />
+        </svg>
+      </div>
       <h1 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>
         {safeT('common:error_boundary.title', '应用遇到严重错误')}
       </h1>

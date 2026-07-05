@@ -15,7 +15,7 @@
  * - 打开资源时自动切换到右侧应用视图
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { registerOpenResourceHandler, type OpenResourceHandler } from '@/dstu/openResource';
@@ -27,12 +27,13 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
-import { DotsSixVertical, SquaresFour, Gear } from '@phosphor-icons/react';
+import { DotsSixVertical, SquaresFour, Gear, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useUIStore } from '@/stores/uiStore';
 import { useMobileHeader, MobileSlidingLayout, DEFAULT_GESTURE_IGNORE_SELECTOR, type ScreenPosition } from '@/components/layout';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
+import { LEARNING_HUB_MOBILE_RESET_EVENT } from '@/dev/DevMobileRecoveryFab';
 import { useVfsContextInject, useLearningHubEvents } from './hooks';
 import type {
   OpenExamEventDetail,
@@ -346,6 +347,8 @@ export const LearningHubPage: React.FC = () => {
   // A-8 归一：手势/动画/返回键统一由 MobileSlidingLayout 承载，本页只管理屏幕位置状态
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [activeAppType, setActiveAppType] = useState<string>('all');
+  const [tabReloadKeys, setTabReloadKeys] = useState<Record<string, number>>({});
+  const [isFinderRefreshing, setIsFinderRefreshing] = useState(false);
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
@@ -405,10 +408,95 @@ export const LearningHubPage: React.FC = () => {
   // 根目录标题
   const rootTitle = t('learningHub:title');
 
-  // 移动端统一顶栏配置 - 根据屏幕位置、activeTab 和文件夹层级动态变化
+  const refreshFinder = useCallback(async () => {
+    setIsFinderRefreshing(true);
+    try {
+      await finderRefresh();
+    } finally {
+      setIsFinderRefreshing(false);
+    }
+  }, [finderRefresh]);
+
+  const reloadActiveTab = useCallback(() => {
+    if (!activeTabId) return;
+    setTabReloadKeys((prev) => ({
+      ...prev,
+      [activeTabId]: (prev[activeTabId] ?? 0) + 1,
+    }));
+  }, [activeTabId]);
+
+  useEffect(() => {
+    const handleMobileReset = () => {
+      setScreenPosition('center');
+      void refreshFinder();
+    };
+    window.addEventListener(LEARNING_HUB_MOBILE_RESET_EVENT, handleMobileReset);
+    return () => window.removeEventListener(LEARNING_HUB_MOBILE_RESET_EVENT, handleMobileReset);
+  }, [refreshFinder]);
+
+  const mobileHeaderRightActions = useMemo(() => {
+    if (screenPosition === 'center') {
+      return (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          onClick={() => void refreshFinder()}
+          disabled={isFinderRefreshing}
+          className="h-9 w-9"
+          aria-label={t('common:refresh', '刷新')}
+          title={t('common:refresh', '刷新')}
+        >
+          <ArrowClockwise size={20} className={isFinderRefreshing ? 'animate-spin' : undefined} />
+        </NotionButton>
+      );
+    }
+
+    if (screenPosition !== 'right' || !activeTab) {
+      return undefined;
+    }
+
+    const settingsButton = (activeTab.type === 'translation' || activeTab.type === 'essay' || activeTab.type === 'exam') ? (
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={() => {
+          const eventName = activeTab.type === 'translation'
+            ? 'translation:openSettings'
+            : activeTab.type === 'essay'
+              ? 'essay:openSettings'
+              : 'exam:openSettings';
+          window.dispatchEvent(new CustomEvent(eventName, {
+            detail: { targetResourceId: activeTab.resourceId },
+          }));
+        }}
+        className="h-9 w-9"
+        aria-label={t('common:settings', '设置')}
+      >
+        <Gear size={20} />
+      </NotionButton>
+    ) : null;
+
+    return (
+      <>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          onClick={reloadActiveTab}
+          className="h-9 w-9"
+          aria-label={t('common:reload', '重新加载')}
+          title={t('common:reload', '重新加载')}
+        >
+          <ArrowClockwise size={20} />
+        </NotionButton>
+        {settingsButton}
+      </>
+    );
+  }, [screenPosition, activeTab, isFinderRefreshing, refreshFinder, reloadActiveTab, t]);
+
+  // 移动端统一顶栏配置 - 抽屉打开时保持顶栏可见，便于一次点击关闭（避免 hidden 后点击穿透叠层）
   useMobileHeader('learning-hub', {
     title: screenPosition === 'left'
-      ? t('learningHub:apps.title')
+      ? rootTitle
       : screenPosition === 'right' && activeTab
         ? (activeTab.title || t('common:untitled'))
         : undefined,
@@ -419,35 +507,17 @@ export const LearningHubPage: React.FC = () => {
         onNavigate={handleBreadcrumbNavigate}
       />
     ) : undefined,
-    showMenu: true,
+    showMenu: screenPosition !== 'right' && !(screenPosition === 'center' && isInSubfolder),
     onMenuClick: screenPosition === 'right'
       ? () => setScreenPosition('center')
       : screenPosition === 'center' && isInSubfolder
         ? () => finderGoUp()
-        : () => setScreenPosition(prev => prev === 'left' ? 'center' : 'left'),
+        : screenPosition === 'left'
+          ? () => setScreenPosition('center')
+          : () => setScreenPosition('left'),
     showBackArrow: screenPosition === 'right' || (screenPosition === 'center' && isInSubfolder),
-    rightActions: screenPosition === 'right' && (activeTab?.type === 'translation' || activeTab?.type === 'essay' || activeTab?.type === 'exam') ? (
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={() => {
-          const eventName = activeTab?.type === 'translation' 
-            ? 'translation:openSettings' 
-            : activeTab?.type === 'essay'
-              ? 'essay:openSettings'
-              : 'exam:openSettings';
-          // ★ 标签页修复：统一使用带 targetResourceId 的事件派发，
-          //   确保只影响当前活跃标签页（而非通过全局 store 影响所有实例）
-          window.dispatchEvent(new CustomEvent(eventName, {
-            detail: { targetResourceId: activeTab?.resourceId },
-          }));
-        }}
-        className="h-9 w-9"
-      >
-        <Gear size={20} />
-      </NotionButton>
-    ) : undefined,
-  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, handleBreadcrumbNavigate]);
+    rightActions: mobileHeaderRightActions,
+  }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, handleBreadcrumbNavigate, mobileHeaderRightActions]);
 
   // ========== 侧边栏收缩状态 ==========
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
@@ -840,22 +910,24 @@ export const LearningHubPage: React.FC = () => {
   if (isSmallScreen) {
     return (
       <div
-        className="study-shell-page absolute inset-0 flex flex-col overflow-hidden"
+        className="study-shell-page relative flex h-full w-full flex-col overflow-hidden"
         style={{
           bottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         <MobileSlidingLayout
           className="flex-1"
-          sidebarWidth={0.575}
+          sidebarWidth="auto"
           screenPosition={screenPosition}
           onScreenPositionChange={setScreenPosition}
           rightPanelEnabled={!!activeTab}
+          showContentOverlay
+          showSidebarAppNavigation
           gestureIgnoreSelector={mobileGestureIgnoreSelector}
           sidebar={
-            <div className="study-shell-pane h-full">
-              <DstuAppLauncher
-                activeType={activeAppType}
+            <DstuAppLauncher
+              embedded
+              activeType={activeAppType}
                 onSelectApp={(type) => {
                   setActiveAppType(type);
                   // ★ 2026-01-19: 调用 finderStore 进行实际导航
@@ -865,10 +937,11 @@ export const LearningHubPage: React.FC = () => {
                 }}
                 onCreateAndOpen={handleCreateAndOpen}
                 onClose={() => setScreenPosition('center')}
+                onRefresh={refreshFinder}
+                isRefreshing={isFinderRefreshing}
                 createDisabled={!finderViewCapabilities.canCreate}
                 searchDisabled={!finderViewCapabilities.canSearch}
               />
-            </div>
           }
           rightPanel={
             <div className="study-shell-panel h-full overflow-hidden">
@@ -888,6 +961,7 @@ export const LearningHubPage: React.FC = () => {
                       activeTabId={activeTabId}
                       onClose={closeTab}
                       onTitleChange={updateTabTitle}
+                      tabReloadKeys={tabReloadKeys}
                       className="h-full"
                     />
                   </div>
@@ -903,8 +977,13 @@ export const LearningHubPage: React.FC = () => {
             </div>
           }
         >
-          {/* 中间：文件视图 */}
-          <div className="study-shell-pane h-full overflow-hidden">
+          {/* 中间：文件视图 — 移动端与顶栏无缝衔接，不用 desktop pane 边框/阴影 */}
+          <div
+            className={cn(
+              'h-full overflow-hidden',
+              isSmallScreen ? 'bg-background' : 'study-shell-pane h-full',
+            )}
+          >
             <LearningHubSidebar
               mode="fullscreen"
               onOpenPreview={handleOpenApp}
@@ -912,6 +991,7 @@ export const LearningHubPage: React.FC = () => {
               className="h-full overflow-hidden"
               isCollapsed={false}
               activeFileId={activeTab?.resourceId}
+              hideToolbarAndNav={screenPosition !== 'center'}
             />
           </div>
         </MobileSlidingLayout>

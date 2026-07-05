@@ -10,6 +10,11 @@
     "emptyGroup": "No conversations yet"
   },
   "theme": "Theme",
+  "mobile_drawer": {
+    "section_app": "App",
+    "section_chat": "Chats",
+    "section_learning": "Learning Resources"
+  },
   "navigation": {
     "batch": "Batch Analysis",
     "textbook_library": "Textbook Library",

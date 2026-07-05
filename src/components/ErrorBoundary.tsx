@@ -1,4 +1,5 @@
 import React from 'react';
+import { WarningCircle } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import i18n from '@/i18n';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -101,7 +102,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
 
       return this.props.fallback ?? (
         <div className="flex flex-col items-center justify-center p-8 text-center">
-          <div className="text-destructive text-lg mb-2">⚠️</div>
+          <div
+            aria-hidden
+            className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10"
+          >
+            <WarningCircle size={22} weight="duotone" className="text-destructive/80" />
+          </div>
           <p className="text-sm text-muted-foreground mb-3">
             {i18n.t('common:errorBoundary.title', 'Something went wrong')}
           </p>

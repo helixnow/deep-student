@@ -8,14 +8,20 @@ describe('chat v2 mobile sidebar layer contract', () => {
   const layoutHookSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/useChatPageLayout.tsx'), 'utf-8');
   const mobileHeaderSource = readFileSync(resolve(process.cwd(), 'src/components/layout/UnifiedMobileHeader.tsx'), 'utf-8');
 
-  it('hides the shared mobile header while the chat session sidebar is open', () => {
+  it('keeps the shared mobile header visible and lets the menu button toggle the session drawer', () => {
     expect(chatPageSource).toContain('viewMode, sessionSheetOpen, t, sessionCount: sessions.length,');
-    expect(layoutHookSource).toContain('hidden: sessionSheetOpen,');
+    // 统一抽屉设计：抽屉在顶栏下方滑出，顶栏保持可见，汉堡按钮承担开/关切换
+    expect(layoutHookSource).toContain('? () => setSessionSheetOpen(false)');
+    expect(layoutHookSource).toContain(': () => setSessionSheetOpen(true)');
+    expect(layoutHookSource).not.toContain('hidden: sessionSheetOpen,');
     expect(mobileHeaderSource).toContain('if (config.hidden) {');
   });
 
-  it('keeps the mobile sliding shell on the shared drawer layer', () => {
-    expect(mobileLayoutSource).toContain('zIndex: Z_INDEX.drawer');
-    expect(mobileLayoutSource).toContain('relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col');
+  it('uses a unified scroll drawer for page sidebar and app navigation on mobile', () => {
+    expect(mobileLayoutSource).toContain('data-mobile-unified-drawer');
+    expect(mobileLayoutSource).toContain('MobileUnifiedDrawerProvider');
+    expect(mobileLayoutSource).toContain('embedded');
+    expect(mobileLayoutSource).toContain('data-mobile-drawer-page');
+    expect(mobileLayoutSource).not.toContain('zIndex: Z_INDEX.drawer');
   });
 });

@@ -14,7 +14,7 @@
 
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { dstu } from '@/dstu';
 import { reportError } from '@/shared/result';
@@ -55,6 +55,8 @@ export interface UnifiedAppPanelProps {
   readOnly?: boolean;
   /** ★ 标签页：当前面板是否为活跃面板 */
   isActive?: boolean;
+  /** 递增时强制重新加载资源（移动端「重载标签页」） */
+  reloadNonce?: number;
   /** 自定义类名 */
   className?: string;
 }
@@ -87,6 +89,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   onTitleChange,
   readOnly,
   isActive,
+  reloadNonce = 0,
   className,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
@@ -95,6 +98,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [node, setNode] = useState<DstuNode | null>(null);
+  const [localReloadNonce, setLocalReloadNonce] = useState(0);
 
   // ★ 标签页修复：用 ref 持有 onTitleChange，避免其引用变化导致 useEffect 重新触发 dstu.get()
   //   TabPanelContainer 在 tab 增删时会重建闭包，如果 onTitleChange 在 deps 中会导致所有已有 tab 重新加载
@@ -132,7 +136,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     };
 
     void loadResource();
-  }, [dstuPath, resourceId, t, type]);
+  }, [dstuPath, resourceId, t, type, reloadNonce, localReloadNonce]);
 
   // 加载状态
   if (isLoading) {
@@ -152,11 +156,22 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       <div className={cn('flex flex-col items-center justify-center h-full gap-4', className)}>
         <WarningCircle size={48} className="text-destructive" />
         <p className="text-destructive text-center">{error || t('error.resourceNotFound')}</p>
-        {onClose && (
-          <NotionButton variant="ghost" size="sm" onClick={onClose}>
-            {t('common:close', '关闭')}
+        <div className="flex items-center gap-2">
+          <NotionButton
+            variant="outline"
+            size="sm"
+            onClick={() => setLocalReloadNonce((n) => n + 1)}
+            className="gap-1.5"
+          >
+            <ArrowClockwise size={14} />
+            {t('common:reload', '重新加载')}
           </NotionButton>
-        )}
+          {onClose && (
+            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+              {t('common:close', '关闭')}
+            </NotionButton>
+          )}
+        </div>
       </div>
     );
   }

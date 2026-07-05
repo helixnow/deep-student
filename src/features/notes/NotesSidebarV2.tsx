@@ -687,6 +687,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const { refreshNotes, setTrashOpen } = useNotes();
+  const { isSmallScreen } = useBreakpoint();
 
   return (
     <UnifiedSidebar
@@ -707,7 +708,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
         showRefresh
         refreshTitle={t('notes:sidebar.actions.refresh')}
         onRefreshClick={() => refreshNotes()}
-        showCollapse
+        showCollapse={!isSmallScreen}
         rightActions={
           <NotionButton
             variant="utility"

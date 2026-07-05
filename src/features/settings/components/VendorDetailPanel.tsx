@@ -220,6 +220,14 @@ export const VendorDetailPanel: React.FC = () => {
     const isEditing = inlineEditState?.profileId === profile.id;
 
     const handleEditClick = () => {
+      // 移动端：编辑走统一三屏右侧面板（顶栏返回箭头），
+      // 不再弹 PC 风格的右侧 Sheet 浮层（自带标题/X/遮罩，违反统一顶栏原则）
+      if (isSmallScreen) {
+        if (isAddingNewModel) handleCancelAddModel();
+        setInlineEditState(null);
+        handleOpenModelEditor(selectedVendor, profile);
+        return;
+      }
       if (isEditing) {
         setInlineEditState(null);
       } else {
@@ -257,14 +265,15 @@ export const VendorDetailPanel: React.FC = () => {
                   isReranker={profile.isReranker}
                   supportsTools={profile.supportsTools}
                   size="xs"
+                  className="shrink-0 !flex-nowrap"
                 />
               </div>
             </div>
 
             {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* 次要操作：hover 时显示 */}
-              <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
+              {/* 次要操作：hover 时显示；移动端无 hover 且空间有限，整组隐藏（收藏/测试/删除可在编辑态完成） */}
+              <div className="max-md:hidden flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
                 <NotionButton
                   size="sm"
                   variant="ghost"
@@ -636,7 +645,8 @@ export const VendorDetailPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* 模型编辑器 Sheet */}
+      {/* 桌面端：内联编辑用右侧 Sheet；移动端走 Settings 三屏右侧面板 + 统一顶栏 */}
+      {!isSmallScreen && (
       <Sheet
         open={!!(inlineEditState || isAddingNewModel)}
         onOpenChange={(open) => {
@@ -684,6 +694,7 @@ export const VendorDetailPanel: React.FC = () => {
           </CustomScrollArea>
         </SheetContent>
       </Sheet>
+      )}
 
       {/* 获取模型列表 Dialog */}
       {onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (

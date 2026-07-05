@@ -5,6 +5,7 @@ import React from 'react';
 import type { Block } from '@/features/chat/core/types';
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty' as const, init: () => {} },
   useTranslation: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
       const translations: Record<string, string> = {

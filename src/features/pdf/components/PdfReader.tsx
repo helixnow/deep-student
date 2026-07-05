@@ -13,6 +13,8 @@ import {
   X
 } from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
+import { useMobileHeader } from '@/components/layout';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { TauriAPI } from '@/utils/tauriApi';
 import { fileManager } from '@/utils/fileManager';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -24,6 +26,11 @@ import { usePdfRenderTracker } from '@/utils/pdfDebug';
 export const PdfReader: React.FC = () => {
   const { t } = useTranslation(['pdf', 'common']);
   const { isDarkMode } = useTheme();
+
+  // D-1: 移动端顶栏标题（pdf-reader 视图直挂本组件）
+  useMobileHeader('pdf-reader', {
+    title: t('common:navigation.pdf_reader', 'PDF 阅读器'),
+  }, [t]);
   
   const [file, setFile] = useState<File | null>(null);
   const [externalUrl, setExternalUrl] = useState<string | null>(null);
@@ -316,6 +323,10 @@ export const PdfReader: React.FC = () => {
           <UploadSimple size={64} className="empty-icon" />
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
+          <NotionButton variant="primary" size="sm" onClick={handleSelectFile} className="mt-4 gap-1.5">
+            <UploadSimple size={16} />
+            {t('pdf:empty.select_button')}
+          </NotionButton>
         </div>
       )}
 

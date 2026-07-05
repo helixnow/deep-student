@@ -12,7 +12,6 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TextSwap } from '@/components/ui/TextSwap';
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/shad/Sheet';
 import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
@@ -35,8 +34,7 @@ import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS } from './utils/platform';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
-// 🚀 P0-1 性能优化：NoteEditorPortal 改为懒加载，避免 CrepeEditor → mermaid (~1.6MB) 进入首屏 bundle
-const LazyNoteEditorPortal = React.lazy(() => import('./features/notes/NoteEditorPortal').then(m => ({ default: m.NoteEditorPortal })));
+// NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
 import {
   LearningHubNavigationProvider,
@@ -64,6 +62,7 @@ import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
 import { useAppUpdater } from './hooks/useAppUpdater';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
+import { WelcomeOnboardingDialog, useWelcomeOnboarding } from './components/onboarding/WelcomeOnboardingDialog';
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
 import useTheme from './hooks/useTheme';
 import { emitDebug, getDebugEnabled } from './utils/emitDebug';
@@ -74,7 +73,6 @@ import { MigrationStatusBanner } from './components/system-status/MigrationStatu
 import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
 import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
-import { settingsMobileSheetCloseButtonClassName } from '@/features/settings/components/SettingsCommon';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
@@ -131,6 +129,7 @@ import {
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
+const LazyDevMobileRecoveryFab = React.lazy(() => import('./dev/DevMobileRecoveryFab'));
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
 const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor';
 
@@ -576,6 +575,10 @@ function App() {
   const { needsAgreement, checkAgreement, acceptAgreement } = useUserAgreement();
   useEffect(() => { checkAgreement(); }, [checkAgreement]);
 
+  // 🆕 首启欢迎引导：协议同意后、且未配置任何 AI 服务时展示一次
+  const { open: welcomeOnboardingOpen, dismiss: dismissWelcomeOnboarding } =
+    useWelcomeOnboarding(needsAgreement === false);
+
   // 🌍 国际化支持（提前至此处，后续 useEffect 依赖 t）
   const { t, i18n } = useTranslation(['common', 'analysis', 'sidebar', 'command_palette', 'settings']);
   const updater = useAppUpdater();
@@ -885,7 +888,6 @@ function App() {
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   const isSmallScreenRef = useRef(isSmallScreen);
-  const [mobileSettingsSheetOpen, setMobileSettingsSheetOpen] = useState(false);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
   
   // 🚀 性能优化：追踪已访问的页面，只渲染访问过的页面
@@ -896,9 +898,6 @@ function App() {
 
   useEffect(() => {
     isSmallScreenRef.current = isSmallScreen;
-    if (!isSmallScreen) {
-      setMobileSettingsSheetOpen(false);
-    }
   }, [isSmallScreen]);
 
   // 包装 setCurrentView，添加视图切换追踪 + LRU 淘汰
@@ -906,15 +905,6 @@ function App() {
     const prevView = currentViewRef.current;
     const rawTargetView = typeof newView === 'function' ? newView(prevView) : newView;
     const targetView = canonicalizeView(rawTargetView);
-
-    if (isSmallScreenRef.current && targetView === 'settings') {
-      setMobileSettingsSheetOpen(true);
-      return;
-    }
-
-    if (isSmallScreenRef.current) {
-      setMobileSettingsSheetOpen(false);
-    }
 
     if (targetView !== prevView) {
       const startTime = performance.now();
@@ -926,6 +916,12 @@ function App() {
         'view_switch', 
         `${prevView} → ${targetView}`
       );
+
+      // 视图切换广播：让 portal 到 body 的浮层（如输入栏组合面板）在宿主视图被隐藏时自行关闭，
+      // 避免命令面板/程序化导航等无 pointerdown 的切换路径留下悬浮残影
+      window.dispatchEvent(new CustomEvent('app:view-switched', {
+        detail: { from: prevView, to: targetView },
+      }));
     }
 
     // 使用 startTransition 将 LRU 更新 + 视图切换 打包在同一个 transition 中。
@@ -1617,7 +1613,7 @@ function App() {
       const view = (event as CustomEvent<{ view?: CurrentView }>).detail?.view;
       if (!view) return;
       // Android 键盘弹出/输入框聚焦期间屏蔽侧边栏导航事件，防止键盘引发的
-      // resize/blur 连锁误触发"输入中被跳转"（社区 #113 bug 1/3）。
+      // resize/blur 连锁误触发"输入中被跳转"（社区 issue 113 bug 1/3）。
       if (shouldBlockMobileNavigation()) return;
       handleViewChange(view);
     };
@@ -2180,16 +2176,6 @@ function App() {
     </Suspense>
   ), [setCurrentView]);
 
-  const closeMobileSettingsSheet = useCallback(() => {
-    setMobileSettingsSheetOpen(false);
-  }, []);
-
-  const mobileSettingsSheetContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <LazySettings onBack={closeMobileSettingsSheet} mobilePresentation="sheet" />
-    </Suspense>
-  ), [closeMobileSettingsSheet]);
-
   const taskDashboardContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <TaskDashboardPage
@@ -2525,7 +2511,7 @@ function App() {
 
               {renderViewLayer('dashboard', dashboardContent, 'overflow-hidden')}
 
-              {!isSmallScreen && renderViewLayer('settings', settingsContent, 'overflow-hidden')}
+              {renderViewLayer('settings', settingsContent, 'overflow-hidden')}
 
               {/* 🎯 Phase 5 清理：mistake-detail 视图已移除，统一由 ChatViewWithSidebar 处理 */}
               {/* 🎯 2026-01: llm-usage-stats 视图已移除，统计数据已整合到 DataStats 页面 */}
@@ -2578,42 +2564,6 @@ function App() {
           </main>
         </div>
 
-        {isSmallScreen && (
-          <Sheet open={mobileSettingsSheetOpen} onOpenChange={setMobileSettingsSheetOpen}>
-            <SheetContent
-              side="bottom"
-              data-slot="mobile-settings-sheet"
-              overlayClassName="bg-[color:var(--mobile-sheet-scrim)]"
-              hideCloseButton
-              className="flex h-[min(86dvh,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[color:var(--mobile-sheet-border)] bg-[color:var(--mobile-sheet-surface)] p-0 text-[color:var(--mobile-sheet-foreground)] shadow-[var(--mobile-sheet-shadow)] duration-200 ease-out"
-            >
-              <div className="flex h-7 shrink-0 items-center justify-center">
-                <div className="h-1 w-12 rounded-full bg-[color:var(--mobile-sheet-handle)]" />
-              </div>
-              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[color:var(--mobile-sheet-header-border)] px-5 pb-3 pt-1">
-                <div className="min-w-0">
-                  <SheetTitle className="text-[18px] font-semibold leading-6 text-[color:var(--mobile-sheet-foreground)]">
-                    {t('settings:title', '系统设置')}
-                  </SheetTitle>
-                  <SheetDescription className="mt-1 text-[13px] leading-5 text-[color:var(--mobile-sheet-muted-foreground)]">
-                    {t('settings:study_ui_descriptions.default', '应用偏好与数据选项')}
-                  </SheetDescription>
-                </div>
-                <SheetClose asChild>
-                  <button
-                    type="button"
-                    className={settingsMobileSheetCloseButtonClassName}
-                    aria-label={t('common:actions.close', '关闭')}
-                  >
-                    <X size={20} />
-                  </button>
-                </SheetClose>
-              </div>
-              {mobileSettingsSheetContent}
-            </SheetContent>
-          </Sheet>
-        )}
-
       </div>
       {/* CmdK 由 Notes 模块内部管理 */}
       {/* 全局通知容器 */}
@@ -2632,18 +2582,31 @@ function App() {
         </Suspense>
       )}
 
+      {import.meta.env.DEV && isSmallScreen && (
+        <Suspense fallback={null}>
+          <LazyDevMobileRecoveryFab />
+        </Suspense>
+      )}
+
       {/* 命令面板 */}
       <CommandPalette />
 
       {/* Global Pomodoro Timer */}
       <GlobalPomodoroWidget />
 
+      {/* 🆕 首启欢迎引导（协议同意后、未配置 AI 服务时展示一次） */}
+      {welcomeOnboardingOpen && (
+        <WelcomeOnboardingDialog
+          onConfigure={() => {
+            dismissWelcomeOnboarding();
+            setPendingSettingsTab('apis');
+            setCurrentView('settings');
+          }}
+          onSkip={dismissWelcomeOnboarding}
+        />
+      )}
+
       {/* 调试面板入口由全局悬浮按钮统一控制 */}
-      
-      {/* 笔记编辑器 Portal - 用于白板远程桌面模式（已改造为 useNotesOptional，无需 NotesProvider） */}
-      <Suspense fallback={null}>
-        <LazyNoteEditorPortal />
-      </Suspense>
       </DesktopShellSidebarPortalProvider>
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>

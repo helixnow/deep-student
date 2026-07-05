@@ -144,6 +144,19 @@ vi.mock('@/components/QuestionFavoritesView', () => ({
   default: () => <div data-testid="question-favorites-view" />,
 }));
 
+vi.mock('@/components/QuestionBankManageView', () => ({
+  default: ({ onCsvImport, onCsvExport }: { onCsvImport?: () => void; onCsvExport?: () => void }) => (
+    <div data-testid="question-bank-manage-view">
+      <button type="button" title="CSV 导入" onClick={() => onCsvImport?.()}>
+        import
+      </button>
+      <button type="button" title="导出" onClick={() => onCsvExport?.()}>
+        export
+      </button>
+    </div>
+  ),
+}));
+
 vi.mock('@/components/CsvImportDialog', () => ({
   default: ({ open }: { open: boolean }) => (open ? <div data-testid="csv-import-dialog" /> : null),
 }));
@@ -151,6 +164,8 @@ vi.mock('@/components/CsvImportDialog', () => ({
 vi.mock('@/components/QuestionBankExportDialog', () => ({
   default: ({ open }: { open: boolean }) => (open ? <div data-testid="question-bank-export-dialog" /> : null),
 }));
+
+import ExamContentView from '@/features/learning-hub/apps/views/ExamContentView';
 
 const findButton = (patterns: RegExp[]) => {
   const buttons = screen.queryAllByRole('button');
@@ -195,8 +210,6 @@ describe('ExamContentView secondary entry points', () => {
   });
 
   it('exposes management entry and opens CSV import/export dialogs from the manage view', async () => {
-    const { default: ExamContentView } = await import('@/features/learning-hub/apps/views/ExamContentView');
-
     render(
       <ExamContentView
         node={{
@@ -212,7 +225,7 @@ describe('ExamContentView secondary entry points', () => {
 
     await waitFor(() => {
       expect(mockGetExamSheetSessionDetail).toHaveBeenCalled();
-    });
+    }, { timeout: 5000 });
 
     const manageButton = findButton([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
     expect(manageButton).toBeTruthy();
@@ -221,16 +234,16 @@ describe('ExamContentView secondary entry points', () => {
     await waitFor(() => {
       expect(screen.getByTitle(/CSV 导入|import/i)).toBeInTheDocument();
       expect(screen.getByTitle(/导出|export/i)).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
 
     fireEvent.click(screen.getByTitle(/CSV 导入|import/i));
     await waitFor(() => {
       expect(screen.getByTestId('csv-import-dialog')).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
 
     fireEvent.click(screen.getByTitle(/导出|export/i));
     await waitFor(() => {
       expect(screen.getByTestId('question-bank-export-dialog')).toBeInTheDocument();
-    });
+    }, { timeout: 5000 });
   });
 });

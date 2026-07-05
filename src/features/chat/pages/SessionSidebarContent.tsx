@@ -8,6 +8,13 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import {
+  mobileDrawerNavRowClassName,
+  mobileDrawerRowIconWrapClassName,
+  mobileDrawerRowTitleClassName,
+  mobileDrawerSectionLabelClassName,
+  mobileDrawerThreadRowClassName,
+} from '@/components/layout/mobileDrawerStyles';
 import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
@@ -125,38 +132,55 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     Icon: React.ElementType,
     active: boolean,
     onClick: () => void,
+    unified = false,
   ) => (
     <button
       key={id}
       type="button"
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
-      className={cn(
-        'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit',
-        active
-          ? 'bg-[color:var(--interactive-selected)] text-[color:var(--sidebar-foreground)]'
-          : 'text-[color:var(--sidebar-foreground)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)]'
-      )}
+      className={
+        unified
+          ? mobileDrawerNavRowClassName(active, 'group gap-2.5')
+          : cn(
+              'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit',
+              active
+                ? 'bg-[color:var(--interactive-selected)] text-[color:var(--sidebar-foreground)]'
+                : 'text-[color:var(--sidebar-foreground)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)]',
+            )
+      }
     >
-      <Icon
-        size={18}
-        weight="regular"
-        className={cn(
-          'h-[18px] w-[18px] shrink-0',
-          active
-            ? 'text-[color:var(--sidebar-foreground)]'
-            : 'text-[color:var(--sidebar-muted)] group-hover:text-[color:var(--sidebar-foreground)]'
-        )}
-      />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
+        <Icon
+          size={18}
+          weight="regular"
+          className={unified ? undefined : cn(
+            'h-[18px] w-[18px] shrink-0',
+            active
+              ? 'text-[color:var(--sidebar-foreground)]'
+              : 'text-[color:var(--sidebar-muted)] group-hover:text-[color:var(--sidebar-foreground)]',
+          )}
+        />
+      </span>
+      <span className={unified ? mobileDrawerRowTitleClassName : 'min-w-0 flex-1 truncate'}>{label}</span>
     </button>
   );
+
+  const renderSectionLabel = (label: string, unified: boolean) =>
+    unified ? (
+      <span className={mobileDrawerSectionLabelClassName}>{label}</span>
+    ) : (
+      <div className="px-3">
+        <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{label}</p>
+      </div>
+    );
 
   const renderFolderRow = (
     id: string,
     label: string,
     sessionsForFolder: ChatSession[],
     active: boolean,
+    unified = false,
   ) => {
     const isExpanded = expandedGroupIds.has(id);
     const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session));
@@ -167,16 +191,22 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           type="button"
           aria-expanded={isExpanded}
           onClick={() => toggleGroup(id)}
-          className={cn(
-            'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit',
-            active
-              ? 'bg-[color:var(--interactive-selected)] text-[color:var(--sidebar-foreground)]'
-              : 'text-[color:var(--sidebar-foreground)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)]'
-          )}
+          className={
+            unified
+              ? mobileDrawerThreadRowClassName(active, 'group gap-2.5')
+              : cn(
+                  'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit',
+                  active
+                    ? 'bg-[color:var(--interactive-selected)] text-[color:var(--sidebar-foreground)]'
+                    : 'text-[color:var(--sidebar-foreground)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)]',
+                )
+          }
         >
-          <Folder size={18} className="h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-muted)] group-hover:text-[color:var(--sidebar-foreground)]" />
+          <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
+            <Folder size={18} className={unified ? undefined : 'h-[18px] w-[18px] shrink-0 text-[color:var(--sidebar-muted)] group-hover:text-[color:var(--sidebar-foreground)]'} />
+          </span>
           <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-            <span className="truncate">{label}</span>
+            <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
             <span className="flex items-center gap-1.5 text-[color:var(--sidebar-muted)]">
               <span
                 aria-hidden="true"
@@ -209,7 +239,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     );
   };
 
-  const renderStudySidebarContent = () => {
+  const renderStudySidebarContent = (unified = false) => {
     if (isInitialLoading) {
       return null;
     }
@@ -220,7 +250,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       : (!currentSession?.groupId && currentSession ? 'ungrouped' : null);
 
     return (
-      <div className="space-y-3 pb-2 pt-1">
+      <div className={cn('space-y-3', unified ? 'pb-0' : 'pb-2 pt-1')}>
         {pinnedSessions.length > 0 && (
           <section className="space-y-0.5">
             <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions', '置顶会话')}>
@@ -230,9 +260,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         )}
 
         <section className="space-y-0.5" aria-label={t('page.studySessions', '课题')}>
-          <div className="px-3">
-            <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{t('page.studySessions', '课题')}</p>
-          </div>
+          {renderSectionLabel(t('page.studySessions', '课题'), unified)}
           <div className="space-y-0.5">
             {visibleGroups.length > 0 ? (
               visibleGroups.map((group) =>
@@ -240,11 +268,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   group.id,
                   group.name,
                   sessionsByGroup.get(group.id) ?? [],
-                  activeGroupId === group.id
+                  activeGroupId === group.id,
+                  unified,
                 )
               )
             ) : (
-              <div className="px-3 py-2 text-[13px] text-[color:var(--sidebar-muted)] opacity-80">
+              <div className="px-3 py-2 text-[13px] text-muted-foreground opacity-80">
                 {t('page.studySessionsEmpty', '暂无课题')}
               </div>
             )}
@@ -253,15 +282,14 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
         {(visibleGroups.length > 0 || ungroupedNonPinned.length > 0) && (
           <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
-            <div className="px-3">
-              <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{t('page.recentSessions', '最近')}</p>
-            </div>
+            {renderSectionLabel(t('page.recentSessions', '最近'), unified)}
             <div className="space-y-0.5">
               {ungroupedNonPinned.length > 0 && renderFolderRow(
                 'ungrouped',
                 t('page.ungrouped', '未分组'),
                 ungroupedNonPinned,
-                activeGroupId === 'ungrouped'
+                activeGroupId === 'ungrouped',
+                unified,
               )}
             </div>
           </section>
@@ -272,32 +300,60 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <button
             type="button"
             onClick={openArchivedSessionsSettings}
-            className="group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-[13px] font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none"
+            className={
+              unified
+                ? mobileDrawerThreadRowClassName(false, 'group gap-2.5 text-muted-foreground')
+                : 'group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-[13px] font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none'
+            }
           >
-            <Archive size={15} className="h-[15px] w-[15px] shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{t('page.archivedSessionsEntry', '已归档会话')}</span>
+            <span className={unified ? mobileDrawerRowIconWrapClassName : undefined}>
+              <Archive size={unified ? 18 : 15} className={unified ? undefined : 'h-[15px] w-[15px] shrink-0'} />
+            </span>
+            <span className={unified ? mobileDrawerRowTitleClassName : 'min-w-0 flex-1 truncate'}>{t('page.archivedSessionsEntry', '已归档会话')}</span>
           </button>
         </section>
       </div>
     );
   };
 
+  const buildSessionSidebarBody = (unified: boolean) => (
+    <div className="space-y-3 pb-1 pt-1">
+      {unified && (
+        <span className={mobileDrawerSectionLabelClassName}>
+          {t('sidebar:mobile_drawer.section_chat', '会话')}
+        </span>
+      )}
+      <nav aria-label={t('page.primaryNavigation', '主入口')} className="space-y-0.5">
+        {renderPrimaryItem('new-chat', t('page.newChat', '新对话'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
+      </nav>
+      {renderStudySidebarContent(unified)}
+    </div>
+  );
+
   // 渲染会话侧边栏内容（复用于移动端推拉布局和桌面端面板）
-  const renderSessionSidebarContent = () => (
+  const renderSessionSidebarContent = (options?: { unifiedMobileDrawer?: boolean }) => {
+    const unified = options?.unifiedMobileDrawer ?? false;
+    return (
     <ChatErrorBoundary>
-    <div className="font-sidebar-study-ui flex h-full min-h-0 flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--sidebar-foreground)]">
-      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-1">
-        <div className="space-y-3 pb-2 pt-1">
-          {/* 主导航统一由 MobileSlidingLayout 注入的 MobileSidebarNavigation 提供（A-7 修复）；此处仅保留聊天特有操作 */}
-          <nav aria-label={t('page.primaryNavigation', '主入口')} className="space-y-0.5">
-            {renderPrimaryItem('new-chat', t('page.newChat', '新对话'), ChatCenteredText, !currentSessionId, handleCreateSession)}
-          </nav>
-          {renderStudySidebarContent()}
+    <div className={cn(
+      'font-sidebar-study-ui flex min-h-0 flex-col',
+      unified
+        ? 'text-foreground'
+        : 'text-[color:var(--sidebar-foreground)]',
+    )}>
+      {unified ? (
+        buildSessionSidebarBody(true)
+      ) : (
+        <div className="flex h-full min-h-0 flex-col bg-[color:var(--shell-navigation-surface)]">
+          <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-1">
+            {buildSessionSidebarBody(false)}
+          </CustomScrollArea>
         </div>
-      </CustomScrollArea>
+      )}
     </div>
     </ChatErrorBoundary>
-  );
+    );
+  };
 
   return { renderSessionSidebarContent };
 }

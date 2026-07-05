@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, FolderOpen, Plus, FileText, ArrowClockwise } from '@phosphor-icons/react';
+import { CircleNotch, FolderOpen, Plus, FileText, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -22,6 +22,7 @@ import type { DstuNode } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { FinderFileItem, SortableFinderFileItem } from './FinderFileItem';
 import { cn } from '@/lib/utils';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useSelectionBox, getSelectionBoxStyle, SelectionBoxRect } from './useSelectionBox';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -148,6 +149,7 @@ export function FinderFileList({
   onRequestRename,
 }: FinderFileListProps) {
   const { t } = useTranslation('learningHub');
+  const { isSmallScreen } = useBreakpoint();
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -508,7 +510,7 @@ export function FinderFileList({
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-background px-4">
         <div className="w-14 h-14 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
-          <span className="text-2xl">⚠️</span>
+          <WarningCircle size={26} weight="duotone" className="text-destructive/80" aria-hidden />
         </div>
         <p className="text-sm font-medium text-destructive mb-1">{t('finder.error.title', '加载失败')}</p>
         <p className="text-xs text-muted-foreground/70 text-center max-w-[280px] mb-4">{error}</p>
@@ -543,14 +545,16 @@ export function FinderFileList({
           {emptyMessage || t('finder.empty.folder')}
         </p>
         <p className="text-[13px] text-muted-foreground/60 text-center max-w-[240px]">
-          {t('finder.empty.dropHint')}
+          {t(isSmallScreen ? 'finder.empty.dropHintTouch' : 'finder.empty.dropHint')}
         </p>
         
-        {/* 快捷操作提示 */}
+        {/* 快捷操作提示（桌面端） */}
+        {!isSmallScreen && (
         <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground/40">
           <kbd className="px-1.5 py-0.5 rounded bg-muted/60 font-mono">{t('finder.empty.rightClick')}</kbd>
           <span>{t('finder.empty.contextMenuHint', '新建文件')}</span>
         </div>
+        )}
       </div>
     );
   }

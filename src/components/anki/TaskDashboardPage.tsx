@@ -27,7 +27,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { useMobileHeader } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
   ArrowsClockwise, CaretDown, CaretRight, Play, Pause, ArrowCounterClockwise,
@@ -576,13 +576,13 @@ const SessionRow: React.FC<{
           {session.documentName || session.documentId.slice(0, 12)}
         </span>
 
-        {/* 状态 */}
-        <div className="w-[72px] flex-shrink-0">
+        {/* 状态（T-2: 宽度与表头 60/72px 对齐，避免小屏列错位） */}
+        <div className="w-[60px] sm:w-[72px] flex-shrink-0">
           <StatusTag group={group} />
         </div>
 
         {/* 卡片数 */}
-        <div className="w-[48px] flex-shrink-0 text-right">
+        <div className="w-[40px] sm:w-[48px] flex-shrink-0 text-right">
           <span className="text-xs text-muted-foreground tabular-nums">
             {session.totalCards}
           </span>
@@ -839,6 +839,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 }) => {
   const { t } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sessions, setSessions] = useState<DocumentSession[]>([]);
   const [stats, setStats] = useState<AnkiStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1076,30 +1077,53 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   useMobileHeader('task-dashboard', {
     title: t('taskDashboard.title'),
-    subtitle: t('taskDashboard.subtitle'),
-    showBackArrow: true,
-    suppressGlobalBackButton: true,
-    onMenuClick: () => {
-      window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'chat-v2' } }));
-    },
-  }, [t]);
+    subtitle: isSmallScreen ? undefined : t('taskDashboard.subtitle'),
+    showMenu: true,
+    onMenuClick: sidebarOpen
+      ? () => setSidebarOpen(false)
+      : () => setSidebarOpen(true),
+  }, [t, isSmallScreen, sidebarOpen]);
+
+  const renderMobileShell = (body: React.ReactNode) => {
+    if (!isSmallScreen) {
+      return <div className="study-shell-page h-full">{body}</div>;
+    }
+    return (
+      <div className="study-shell-page absolute inset-0 flex h-full flex-col overflow-hidden">
+        <MobileSlidingLayout
+          sidebar={
+            // 本页无页内工具，抽屉只承载统一应用导航；
+            // 不再渲染与顶栏标题重复的孤立分区标签
+            <div aria-hidden className="h-0" />
+          }
+          sidebarOpen={sidebarOpen}
+          onSidebarOpenChange={setSidebarOpen}
+          sidebarWidth="auto"
+          showSidebarAppNavigation
+          showContentOverlay
+          className="flex-1"
+        >
+          {body}
+        </MobileSlidingLayout>
+      </div>
+    );
+  };
 
   // ======== 渲染 ========
 
   if (loading) {
-    return (
-      <div className="study-shell-page flex h-full items-center justify-center">
+    return renderMobileShell(
+      <div className="flex h-full items-center justify-center">
         <div className="study-shell-panel flex items-center gap-2 px-4 py-3 text-muted-foreground">
           <CircleNotch size={20} className="animate-spin" />
           <span className="text-sm">{t('taskDashboard.loading')}</span>
         </div>
-      </div>
+      </div>,
     );
   }
 
-  return (
-    <div className="study-shell-page h-full">
-      <CustomScrollArea className="h-full">
+  const dashboardBody = (
+    <CustomScrollArea className="h-full">
         <div className="study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* ======== 页面标题 ======== */}
         {!isSmallScreen && (
@@ -1164,9 +1188,12 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             </PropRow>
             <PropRow icon={<FileText size={14} />} label={t('taskDashboard.propTemplates')}>
               <span className="tabular-nums">{stats?.templateCount ?? 0}</span>
-              <NotionButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
-                {t('taskDashboard.openTemplateLib')}
-              </NotionButton>
+              {/* 移动端已有整行"打开模板库"入口，避免重复渲染小号链接 */}
+              {!isSmallScreen && (
+                <NotionButton size="sm" variant="ghost" onClick={onOpenTemplateManagement} className="ml-2 h-6 text-[12px]">
+                  {t('taskDashboard.openTemplateLib')}
+                </NotionButton>
+              )}
             </PropRow>
             <PropRow icon={<ChartBar size={14} />} label={t('taskDashboard.todayCards')}>
               <span className="tabular-nums font-medium">{metrics.todayCards}</span>
@@ -1233,9 +1260,12 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
           {/* 标题 + 操作 */}
           <div className="study-shell-toolbar flex items-center justify-between gap-3 px-4 py-3">
             <div className="flex items-center gap-3">
-              <h2 className="text-[15px] font-semibold text-foreground">
-                {t('taskDashboard.title')}
-              </h2>
+              {/* 移动端顶栏已展示页面标题，此处不再重复渲染同名标题 */}
+              {!isSmallScreen && (
+                <h2 className="text-[15px] font-semibold text-foreground">
+                  {t('taskDashboard.title')}
+                </h2>
+              )}
               <span className="text-xs text-muted-foreground/40 tabular-nums">
                 {t('taskDashboard.totalSessions', { count: sessions.length })}
               </span>
@@ -1396,8 +1426,9 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
         </div>
         </div>
       </CustomScrollArea>
-    </div>
   );
+
+  return renderMobileShell(dashboardBody);
 };
 
 export default TaskDashboardPage;

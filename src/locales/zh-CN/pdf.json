@@ -19,7 +19,8 @@
   "loading_reading_simple": "正在读取文件…",
   "empty": {
     "title": "未选择文件",
-    "description": "请点击上方按钮选择要查看的 PDF 文件"
+    "description": "选择一个 PDF 文件开始阅读",
+    "select_button": "选择 PDF 文件"
   },
   "errors": {
     "invalid_file": "请选择有效的 PDF 文件",

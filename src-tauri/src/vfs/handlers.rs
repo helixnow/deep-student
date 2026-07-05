@@ -821,11 +821,13 @@ pub async fn vfs_search_all(
     let types = params.types.as_ref();
     let search_limit = params.limit.min(50); // 每种类型最多搜索 50 条
 
-    // 根据 types 过滤要搜索的类型
-    let search_notes = types.is_none() || types.unwrap().iter().any(|t| t == "note");
-    let search_exams = types.is_none() || types.unwrap().iter().any(|t| t == "exam");
-    let search_translations = types.is_none() || types.unwrap().iter().any(|t| t == "translation");
-    let search_essays = types.is_none() || types.unwrap().iter().any(|t| t == "essay");
+    // 根据 types 过滤要搜索的类型（None = 不过滤，搜索全部类型）
+    let type_enabled =
+        |name: &str| types.is_none_or(|list| list.iter().any(|t| t == name));
+    let search_notes = type_enabled("note");
+    let search_exams = type_enabled("exam");
+    let search_translations = type_enabled("translation");
+    let search_essays = type_enabled("essay");
 
     // ★ 2026-01 优化：并行搜索多种类型，提升响应速度
     let vfs_db_clone = Arc::clone(&vfs_db);
@@ -3791,8 +3793,7 @@ pub async fn vfs_get_all_index_status(
     }
 
     // 文件夹过滤（通过 folder_items 表）
-    let folder_join = if folder_id.is_some() {
-        let fid = folder_id.clone().unwrap();
+    let folder_join = if let Some(fid) = folder_id.clone() {
         stats_conditions.push("fi.folder_id = ?".to_string());
         stats_params.push(Box::new(fid.clone()));
         list_conditions.push("fi.folder_id = ?".to_string());

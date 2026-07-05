@@ -108,7 +108,6 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     showBackArrow: true,
     onMenuClick: () => setMobileResourcePanelOpen(false),
   } : {
-    hidden: sessionSheetOpen,
     title: headerTitle,
     showMenu: viewMode !== 'browser',
     showBackArrow: viewMode === 'browser',
@@ -117,7 +116,9 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           setViewMode('sidebar');
           setSessionSheetOpen(true);
         }
-      : () => setSessionSheetOpen(prev => !prev),
+      : sessionSheetOpen
+        ? () => setSessionSheetOpen(false)
+        : () => setSessionSheetOpen(true),
     rightActions: headerRightActions,
   }, [headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, sessionSheetOpen, finderBreadcrumbs, handleFinderBreadcrumbNavigate, t]);
 

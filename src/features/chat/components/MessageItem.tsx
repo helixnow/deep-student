@@ -1633,6 +1633,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onBranchSession={handleBranch}
                         compactMobile
+                        tokenUsage={!isUser ? (hasMultipleVariants ? aggregateVariantUsage(variants) : singleVariantUsage) : undefined}
                       />
                     )}
                     {/* 移动端用户消息的时间显示 */}

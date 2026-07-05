@@ -441,6 +441,7 @@
       "noNotes": "No notes yet",
       "noTextbooks": "No textbooks yet",
       "dropHint": "Use toolbar buttons or right-click to create",
+      "dropHintTouch": "Use the toolbar buttons above to create",
       "rightClick": "Right-click",
       "contextMenuHint": "Create new file"
     },
@@ -642,6 +643,7 @@
     "title": "Desktop",
     "empty": "Desktop is empty",
     "rightClickHint": "Right-click to add shortcuts",
+    "touchHint": "Use the button below to add a shortcut",
     "addFirst": "Add your first shortcut",
     "add": "Add",
     "addShortcut": "Add Shortcut",

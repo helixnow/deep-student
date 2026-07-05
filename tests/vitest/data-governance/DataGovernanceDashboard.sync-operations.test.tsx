@@ -527,12 +527,10 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
       ).toBeInTheDocument();
     });
 
-    // 点击"保留本地"解决策略
-    const keepLocalBtns = screen.getAllByRole('button', {
-      name: /保留本地|data:governance\.keep_local/i,
+    // 点击 SyncTab 冲突解决区域的策略按钮（精确匹配 i18n key，避免误点 RecordConflictsPanel 的「全部保留本地」）
+    const conflictKeepLocalBtn = screen.getByRole('button', {
+      name: /^data:governance\.keep_local$/i,
     });
-    // 冲突解决区域中的"保留本地"按钮
-    const conflictKeepLocalBtn = keepLocalBtns[keepLocalBtns.length - 1];
 
     await act(async () => {
       fireEvent.click(conflictKeepLocalBtn);
@@ -570,10 +568,9 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
       fireEvent.click(detectBtn);
     });
 
-    const keepLocalBtns = screen.getAllByRole('button', {
-      name: /保留本地|data:governance\.keep_local/i,
+    const conflictKeepLocalBtn = screen.getByRole('button', {
+      name: /^data:governance\.keep_local$/i,
     });
-    const conflictKeepLocalBtn = keepLocalBtns[keepLocalBtns.length - 1];
 
     await act(async () => {
       fireEvent.click(conflictKeepLocalBtn);
@@ -617,10 +614,9 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
       fireEvent.click(detectBtn);
     });
 
-    const keepLocalBtns = screen.getAllByRole('button', {
-      name: /保留本地|data:governance\.keep_local/i,
+    const conflictKeepLocalBtn = screen.getByRole('button', {
+      name: /^data:governance\.keep_local$/i,
     });
-    const conflictKeepLocalBtn = keepLocalBtns[keepLocalBtns.length - 1];
     expect(conflictKeepLocalBtn).toBeDisabled();
   });
 });

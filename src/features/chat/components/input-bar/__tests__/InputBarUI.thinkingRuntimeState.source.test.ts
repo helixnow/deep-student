@@ -123,18 +123,22 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).toContain('width: `${usage.usedPercent}%`');
   });
 
-  it('keeps the context window usage meter monochrome and minimal', () => {
+  it('uses tiered context usage colors at high-water thresholds', () => {
     const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
     const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
     const ringSource = inputBarSource.slice(ringStart, ringEnd);
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
-    expect(ringSource).toContain("const contextUsageColor = 'var(--text-primary)'");
+    expect(ringSource).toContain('const contextUsageColor =');
+    expect(ringSource).toContain("usage.usedPercent >= 90");
+    expect(ringSource).toContain("usage.usedPercent >= 75");
+    expect(ringSource).toContain("'hsl(var(--danger))'");
+    expect(ringSource).toContain("'hsl(var(--warning))'");
+    expect(ringSource).toContain("'var(--text-primary)'");
     expect(ringSource).toContain('background: contextUsageColor');
+    expect(ringSource).toContain('stroke={contextUsageColor}');
     expect(ringSource).not.toContain('getContextUsageTone');
-    expect(ringSource).not.toContain('hsl(var(--warning))');
-    expect(ringSource).not.toContain('hsl(var(--destructive))');
   });
 
   it('keeps tooltip support without adding a hover state to the ring control', () => {

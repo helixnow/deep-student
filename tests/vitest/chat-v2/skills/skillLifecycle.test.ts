@@ -13,6 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../../../src/features/chat/skills/types';
 import { collectSchemaToolIds } from '../../../../src/features/chat/tools/collector';
 import type { ContextRef } from '../../../../src/features/chat/context/types';
+import * as contextHelper from '../../../../src/features/chat/adapters/contextHelper';
 
 // ============================================================================
 // Mock 设置
@@ -107,10 +108,7 @@ describe('P0 修复：发送后 sticky skill refs 保留', () => {
 // ============================================================================
 
 describe('P1-A：clearPendingContextRefs helper 已移除', () => {
-  it('contextHelper 不应导出 clearPendingContextRefs', async () => {
-    const contextHelper = await import('../../../../src/features/chat/adapters/contextHelper');
-    
-    // 验证 clearPendingContextRefs 不再导出
+  it('contextHelper 不应导出 clearPendingContextRefs', () => {
     expect('clearPendingContextRefs' in contextHelper).toBe(false);
   });
 });

@@ -945,7 +945,7 @@ const TodoItemDetail: React.FC<{
         {/* 属性面板 — 扁平列表，不用卡片包裹 */}
         <div className="space-y-1">
           <div className="flex items-center gap-3 py-1">
-            <span className="w-16 flex-shrink-0 text-xs text-muted-foreground">
+            <span className="w-[4.75rem] flex-shrink-0 text-xs text-muted-foreground">
               {t('todo:fields.priority')}
             </span>
             <SegmentedControl<TodoPriority>
@@ -974,7 +974,7 @@ const TodoItemDetail: React.FC<{
           </div>
 
           <div className="flex items-center gap-3 py-1">
-            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <Calendar size={14} />
               {t('todo:fields.dueDate')}
             </span>
@@ -989,7 +989,7 @@ const TodoItemDetail: React.FC<{
 
           {dueDate && (
             <div className="flex items-center gap-3 py-1">
-              <span className="w-16 flex-shrink-0 text-xs text-muted-foreground">
+              <span className="w-[4.75rem] flex-shrink-0 text-xs text-muted-foreground">
                 {t('todo:fields.dueTime')}
               </span>
               <Input
@@ -1003,7 +1003,7 @@ const TodoItemDetail: React.FC<{
           )}
 
           <div className="flex items-center gap-3 py-1">
-            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <Bell size={14} />
               {t('todo:fields.reminder')}
             </span>
@@ -1034,7 +1034,7 @@ const TodoItemDetail: React.FC<{
           </div>
 
           <div className="flex items-center gap-3 py-1">
-            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <Repeat size={14} />
               {t('todo:fields.repeat')}
             </span>
@@ -1054,7 +1054,7 @@ const TodoItemDetail: React.FC<{
           </div>
 
           <div className="flex items-start gap-3 py-1">
-            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 pt-1.5 text-xs text-muted-foreground">
+            <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 pt-1.5 text-xs text-muted-foreground">
               <Tag size={14} />
               {t('todo:fields.tags')}
             </span>
@@ -1097,7 +1097,7 @@ const TodoItemDetail: React.FC<{
           {/* weekly：多选星期（如「每周一、三、五」） */}
           {repeatRule?.freq === 'weekly' && (
             <div className="flex items-center gap-3 py-1">
-              <span className="w-16 flex-shrink-0" />
+              <span className="w-[4.75rem] flex-shrink-0" />
               <div
                 className="flex flex-wrap items-center gap-1"
                 role="group"
@@ -1128,7 +1128,7 @@ const TodoItemDetail: React.FC<{
 
           {repeatRule && (repeatRule.interval > 1 || (repeatRule.byWeekday?.length ?? 0) > 0) && (
             <div className="flex items-center gap-3 py-1">
-              <span className="w-16 flex-shrink-0" />
+              <span className="w-[4.75rem] flex-shrink-0" />
               <span className="text-[11px] text-muted-foreground">
                 {repeatRuleLabel(repeatRule, t)}
               </span>
@@ -1138,7 +1138,7 @@ const TodoItemDetail: React.FC<{
           {/* 重复任务：下次出现预览（完成当前后将滚动到该日期） */}
           {repeatRule && nextOccurrence && (
             <div className="flex items-center gap-3 py-1">
-              <span className="w-16 flex-shrink-0" />
+              <span className="w-[4.75rem] flex-shrink-0" />
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/80">
                 <ArrowRight size={11} />
                 {t('todo:repeat.nextOccurrence', { date: nextOccurrence })}
@@ -1147,7 +1147,7 @@ const TodoItemDetail: React.FC<{
           )}
 
           <div className="flex items-center gap-3 py-1">
-            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+            <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <Brain size={14} />
               {t('todo:fields.pomodoros', '番茄')}
             </span>
@@ -1173,7 +1173,7 @@ const TodoItemDetail: React.FC<{
           {/* 番茄进度条 */}
           {Boolean(estimatedPomodoros) && (
             <div className="flex items-center gap-3 py-1">
-              <span className="w-16 flex-shrink-0" />
+              <span className="w-[4.75rem] flex-shrink-0" />
               <div className="flex flex-1 items-center gap-1">
                 {Array.from({ length: Math.min(estimatedPomodoros, 20) }).map((_, i) => (
                   <span
@@ -1652,7 +1652,9 @@ export const TodoMainPanel: React.FC = () => {
   }, [filter.view, items]);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-row overflow-hidden">
+    // h-full：MobileSlidingLayout 的内容窗格是普通块级容器（非 flex），flex-1 在其中不生效，
+    // 高度会塌缩成内容高度，导致移动端详情覆盖层（absolute inset-0）跟着变矮
+    <div className="flex h-full min-w-0 flex-1 flex-row overflow-hidden">
       {/* 主列 */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* 顶部工具栏 */}
@@ -1663,7 +1665,7 @@ export const TodoMainPanel: React.FC = () => {
                 {viewTitle}
               </h2>
             )}
-            <span className="text-xs tabular-nums text-muted-foreground/40">
+            <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground/40">
               {pendingCount}&nbsp;{t('todo:stats.pending')}
               {completedCount > 0 && (
                 <>
@@ -1691,17 +1693,18 @@ export const TodoMainPanel: React.FC = () => {
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('todo:actions.search')}
                 data-todo-search
-                className="h-8 w-44 pl-8 pr-3 text-xs sm:w-56"
+                className="h-8 w-28 pl-8 pr-3 text-xs sm:w-56"
               />
             </div>
 
             <Select value={filter.sortBy} onValueChange={(v) => setSortBy(v as TodoSortBy)}>
               <SelectTrigger
                 aria-label={t('todo:sort.label')}
-                className="!h-8 !min-h-0 w-auto gap-1 !px-2.5 !py-0 text-xs"
+                className="!h-8 !min-h-0 !w-auto gap-1 !px-2.5 !py-0 text-xs"
               >
                 <SortAscending size={14} className="text-muted-foreground" />
-                <span className="hidden sm:inline">
+                {/* !hidden：对抗 SelectTrigger 基类的 [&>span]:line-clamp-1（会把 span 重置为 -webkit-box） */}
+                <span className="!hidden sm:!inline">
                   {t(`todo:sort.${filter.sortBy}`)}
                 </span>
               </SelectTrigger>
