@@ -1,0 +1,442 @@
+{
+  "appName": "Study Desktop",
+  "agent": {
+    "core": {
+      "operating": "AI is working: {{label}}",
+      "pausedLabel": "Paused: {{label}}",
+      "pause": "Pause",
+      "paused": "Paused",
+      "stop": "Stop",
+      "stopped": "Stopped",
+      "cancelled": "Cancelled",
+      "revert": "Undo",
+      "acting": "Working",
+      "reviewing": "Awaiting confirmation",
+      "done": "Done",
+      "stripRegion": "AI desktop control",
+      "actions": "Control actions",
+      "progressPaused": "Paused: user input detected",
+      "announceStarted": "AI started: {{label}}",
+      "announcePaused": "AI paused: {{label}}",
+      "announceDone": "AI finished",
+      "announceStopped": "AI stopped"
+    },
+    "errors": {
+      "controlOff": "Agent desktop control is off (desktop.workbenchAgentControl=off)",
+      "controlOffHint": "Set AI assistant control to Background or Follow; domain tools can still write data",
+      "osDisabled": "Study desktop mode is off",
+      "osDisabledHint": "Enable OS/desktop mode first; use domain tools for data writes",
+      "launchFailed": "Could not open the app window",
+      "launchFailedHint": "Desktop mode is not ready or the app is not registered",
+      "abortedByControlOff": "Control turned off; operation aborted",
+      "abortedByOsOff": "Desktop mode turned off; operation aborted"
+    },
+    "apps": {
+      "reserved": "-",
+      "flashcards": {
+        "appended": "AI added {{count}} cards"
+      }
+    }
+  },
+  "menubar": {
+    "label": "Study status bar",
+    "appName": "Study Desktop",
+    "flashcardsDue": "{{count}} flashcards due",
+    "tasksRunning": "{{count}} card tasks running",
+    "pomodoroFocus": "Focus remaining {{time}}",
+    "pomodoroIdle": "Not started",
+    "pomodoroWork": "Focusing",
+    "pomodoroBreak": "On break",
+    "openCenter": "Open Study Center",
+    "centerShort": "Center",
+    "centerTitle": "Study Center",
+    "moduleFlashcards": "Today's review",
+    "moduleTasks": "Card tasks",
+    "moduleFocus": "Focus",
+    "moduleDesktop": "Desktop",
+    "desktopHint": "All apps and window overview",
+    "flashcardsDueShort": "{{count}} due",
+    "tasksRunningShort": "{{count}} running",
+    "startReview": "Start review",
+    "openTasks": "Open",
+    "openPomodoro": "Open Pomodoro",
+    "allApps": "All apps",
+    "expose": "Window overview"
+  },
+  "apps": {
+    "chat": {
+      "name": "Chat",
+      "untitledSession": "New Chat",
+      "preparing": "Preparing session…",
+      "createFailed": "Failed to create session",
+      "retry": "Retry",
+      "loading": "Loading session…"
+    },
+    "system": {
+      "todoNav": "Todo navigation",
+      "settingsNav": "Settings navigation",
+      "showNav": "Show navigation",
+      "hideNav": "Hide navigation",
+      "tasksRunning": "{{count}} card tasks in progress",
+      "paused": "Paused",
+      "idleHint": "Start a focus session below"
+    },
+    "note": "Note",
+    "textbook": "Textbook",
+    "exam": "Exam Set",
+    "translation": "Translation",
+    "essay": "Essay Review",
+    "image": "Image",
+    "file": "File",
+    "mindmap": "Mind Map",
+    "files": "Files",
+    "todo": "Todo",
+    "skills": "Skills",
+    "templates": "Templates",
+    "taskDashboard": "Card Tasks",
+    "flashcards": "Flashcards",
+    "settings": "Settings",
+    "sandbox": "Sandbox",
+    "pomodoro": "Pomodoro",
+    "browser": "Browser"
+  },
+  "dock": {
+    "label": "Dock",
+    "open": "Open",
+    "pin": "Pin to Dock",
+    "unpin": "Remove from Dock",
+    "closeAll": "Close All Windows",
+    "closeWindow": "Close window",
+    "windows": "Windows",
+    "minimized": "Minimized",
+    "newWindow": "New Window",
+    "noWindows": "No windows",
+    "running": "Running",
+    "apps": "All Apps"
+  },
+  "appsPanel": {
+    "title": "All Apps",
+    "searchPlaceholder": "Search apps",
+    "empty": "No matching apps",
+    "close": "Close",
+    "view": "View",
+    "gridView": "Grid",
+    "listView": "List",
+    "hint": "↑↓ to select · Enter to open · Esc to close"
+  },
+  "window": {
+    "close": "Close",
+    "minimize": "Minimize",
+    "zoom": "Zoom",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "center": "Center",
+    "tileMenu": "Tiling Options",
+    "loading": "Loading…",
+    "frozenTitle": "Window Suspended",
+    "frozenHint": "This window was paused to save memory. Click to wake it.",
+    "frozenWakeAria": "Click to wake suspended window",
+    "unknownApp": "Unknown app type: {{typeId}}",
+    "crashTitle": "Something went wrong in this window",
+    "crashUnknown": "Unknown error",
+    "reload": "Reload"
+  },
+  "tile": {
+    "left": "Tile to Left Half",
+    "right": "Tile to Right Half",
+    "topLeft": "Tile to Top Left",
+    "topRight": "Tile to Top Right",
+    "bottomLeft": "Tile to Bottom Left",
+    "bottomRight": "Tile to Bottom Right",
+    "fill": "Fill",
+    "center": "Center",
+    "restore": "Restore"
+  },
+  "expose": {
+    "title": "Window Overview",
+    "hint": "Click a window to focus, press Esc to exit",
+    "empty": "No open windows",
+    "untitled": "Untitled Window",
+    "closeWindow": "Close window"
+  },
+  "switcher": {
+    "title": "Window Switcher",
+    "hint": "Hold Ctrl to cycle, release to switch",
+    "minimized": "Minimized"
+  },
+  "emptyDesktop": {
+    "title": "Your Study Desktop",
+    "hint": "Open apps from the Dock below to get started — windows can be freely arranged, tiled and compared side by side.",
+    "actionsLabel": "Quick start",
+    "actionFiles": "Open Files",
+    "actionFilesDesc": "Browse notes, textbooks, and all resources",
+    "actionApps": "All apps",
+    "actionFlashcards": "Flashcards",
+    "actionChat": "New chat",
+    "actionChatDesc": "Open an AI chat window",
+    "actionTodo": "View todos",
+    "actionTodoDesc": "Plan today's study tasks",
+    "tipsTitle": "Tips",
+    "tipsDismiss": "Got it",
+    "tipTile": "Drag a window to the screen edge to tile",
+    "tipSwitch": "Quickly switch between windows",
+    "tipExpose": "Overview all open windows"
+  },
+  "desktopMenu": {
+    "label": "Desktop menu",
+    "newChat": "New chat",
+    "openFiles": "Open Files",
+    "allApps": "All Apps…",
+    "arrange": "Arrange windows",
+    "tileAll": "Tile all windows",
+    "expose": "Window overview",
+    "wallpaper": "Desktop wallpaper",
+    "materialTier": "Visual material",
+    "parallax": "Wallpaper parallax",
+    "showDesktop": "Show desktop",
+    "restoreWindows": "Restore windows",
+    "settings": "Desktop settings…"
+  },
+  "cheatsheet": {
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "hint": "Press ? or Esc to close · Hold Ctrl+Alt to peek",
+    "groups": {
+      "layout": "Tiling & layout",
+      "movement": "Move & snap",
+      "navigation": "Switch & navigate",
+      "management": "Window management",
+      "help": "Help"
+    }
+  },
+  "wallpaper": {
+    "aurora": "Aurora",
+    "horizon": "Horizon",
+    "graphite": "Graphite",
+    "meadow": "Meadow",
+    "lagoon": "Lagoon",
+    "dusk": "Dusk",
+    "sakura": "Sakura",
+    "sand": "Sand",
+    "nebula": "Nebula",
+    "auroraFlow": "Aurora Flow",
+    "duskFlow": "Dusk Flow"
+  },
+  "content": {
+    "loading": "Loading content…",
+    "missingResource": "Missing resource identifier; this window cannot be opened",
+    "missingResourceHint": "Reopen from Files, or check that the resource still exists.",
+    "confirmCloseUnsaved": "This content has unsaved changes. Close the window anyway?"
+  },
+  "mindmap": {
+    "loading": "Loading mind map…",
+    "missingResourceHint": "Reopen the mind map from Files, or check that it still exists."
+  },
+  "files": {
+    "dragOut": {
+      "openOnDesktop": "Drop on desktop to open"
+    },
+    "preview": {
+      "type": {
+        "note": "Note",
+        "textbook": "Textbook",
+        "exam": "Exam",
+        "translation": "Translation",
+        "essay": "Essay",
+        "image": "Image",
+        "file": "File",
+        "mindmap": "Mind map",
+        "folder": "Folder",
+        "generic": "Resource"
+      }
+    }
+  },
+  "a11y": {
+    "windowRole": "Window",
+    "close": "Close window",
+    "minimize": "Minimize window",
+    "zoom": "Zoom window",
+    "expose": "Window overview",
+    "tilingDivider": "Tiling divider",
+    "windowOpened": "Opened {{title}}",
+    "windowClosed": "Closed {{title}}",
+    "windowMinimized": "{{title}} minimized",
+    "windowTiled": "{{title}} tiled to {{zone}}",
+    "zoomed": "{{title}} maximized",
+    "restored": "{{title}} restored",
+    "exposeOpened": "Overview opened, {{count}} windows",
+    "exposeClosed": "Overview closed",
+    "dropOpened": "Opened {{title}}",
+    "appCrashed": "{{name}} crashed and can be reloaded",
+    "showDesktop": "Desktop shown",
+    "previewFailed": "Unable to open preview",
+    "pdfRefOpenFailed": "Unable to open PDF reference: missing source"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "tileLeft": "Tile to left half",
+    "tileRight": "Tile to right half",
+    "tileTopLeft": "Tile to top-left",
+    "tileTopRight": "Tile to top-right",
+    "tileBottomLeft": "Tile to bottom-left",
+    "tileBottomRight": "Tile to bottom-right",
+    "moveLeft": "Snap to left edge (keep size)",
+    "moveRight": "Snap to right edge (keep size)",
+    "moveUp": "Snap to top edge (keep size)",
+    "moveDown": "Snap to bottom edge (keep size)",
+    "maximize": "Maximize (fill desktop)",
+    "restoreOrMinimize": "Restore / minimize",
+    "center": "Center window",
+    "cycleNext": "Cycle to next window",
+    "cyclePrev": "Cycle to previous window",
+    "cycleAppNext": "Next window of same app",
+    "cycleAppPrev": "Previous window of same app",
+    "minimize": "Minimize focused window",
+    "showDesktop": "Show desktop (minimize all / press again to restore)",
+    "expose": "Window overview",
+    "closeWindow": "Close focused window",
+    "closeAll": "Close all windows",
+    "cheatsheet": "Shortcut cheatsheet"
+  },
+  "settings": {
+    "sectionTitle": "Study Desktop (Experimental)",
+    "sectionDesc": "Turns the main content area into a windowed study desktop (Workbench). Experimental — you can switch back anytime.",
+    "mode": {
+      "title": "Enable Study Desktop",
+      "desc": "Switches the main content area to the windowed desktop mode. Turning it off restores the current layout; the desktop snapshot is kept."
+    },
+    "performanceProfile": {
+      "title": "Performance Profile",
+      "desc": "Balance visuals and smoothness in one step. Presets sync material, wallpaper parallax, and Dock magnification; changing any lever switches to Custom.",
+      "quality": "Quality",
+      "balanced": "Balanced",
+      "performance": "Performance",
+      "custom": "Custom"
+    },
+    "materialTier": {
+      "title": "Visual Material",
+      "desc": "Glass material tier. Also driven by the Performance Profile above; changing it alone switches to Custom.",
+      "auto": "Auto",
+      "full": "Full",
+      "reduced": "Reduced",
+      "minimal": "Minimal"
+    },
+    "parallax": {
+      "title": "Wallpaper Parallax",
+      "desc": "Slightly shifts the wallpaper with the pointer. Turn off to reduce desktop compositing cost (off by default)."
+    },
+    "dockMagnification": {
+      "title": "Dock Magnification",
+      "desc": "Enlarges Dock icons under the pointer. Turn off to reduce hover layout measurement and compositing cost."
+    },
+
+    "wallpaper": {
+      "title": "Desktop Wallpaper",
+      "desc": "Pick a theme gradient preset, or use a custom image.",
+      "kindTheme": "Theme Gradient",
+      "kindImage": "Custom Image",
+      "imagePath": "Image path",
+      "imagePlaceholder": "Enter a local image path…"
+    },
+    "tileMargins": {
+      "title": "Tiled Window Margins",
+      "desc": "Keeps a gap between tiled windows. When off, tiled windows sit edge to edge.",
+      "px": "Margin (px)"
+    },
+    "dockAutohide": {
+      "title": "Automatically Hide Dock",
+      "desc": "Hides the Dock when not in use. Move the pointer to the bottom edge to reveal it."
+    },
+    "devPanel": {
+      "title": "Diagnostics Panel",
+      "desc": "Shows scheduler diagnostics on the desktop: window lifecycles, memory budget and frame timing (for development)."
+    },
+    "browserEnabled": {
+      "title": "Built-in Browser",
+      "desc": "Open a dedicated browser window on the study desktop (pages run in an isolated WebView). Study Desktop must be enabled first.",
+      "needWorkbench": "Enable Study Desktop first to change built-in browser options."
+    },
+    "browserNetworkMode": {
+      "title": "Network Scope",
+      "desc": "Limit which addresses the browser may open.",
+      "local_whitelist": "Local & whitelist",
+      "full": "Full internet (confirm)",
+      "fullConfirm": "Full internet access allows public URLs. Continue only if you understand the risk."
+    },
+    "browserAgentControl": {
+      "title": "Allow assistant browser control",
+      "desc": "The assistant may navigate and act in the shared session; sensitive actions still require confirmation."
+    },
+    "agentControl": {
+      "title": "AI assistant desktop control",
+      "desc": "Controls whether Chat can open windows, follow focus, and stage actions on the study desktop. Destructive actions still require confirmation.",
+      "off": "Off",
+      "background": "Background",
+      "follow": "Follow",
+      "offDesc": "Read-only list/query still allowed; open, close, commands, and staging are blocked. Data writes may still go through the backend without opening windows or staging.",
+      "backgroundDesc": "Allows control without stealing focus: stage in open windows, or apply final state with a Dock hint.",
+      "followDesc": "Auto-opens and focuses target windows so the assistant's actions play in the foreground."
+    },
+    "agentPacing": {
+      "title": "Control pacing",
+      "desc": "Visual pacing when the assistant applies operations in desktop windows. Fast = instant + highlight; Normal = default; Demo = slower for walkthroughs.",
+      "fast": "Fast",
+      "normal": "Normal",
+      "demo": "Demo"
+    },
+    "browserCdpWindows": {
+      "title": "Windows CDP acceleration (advanced)",
+      "desc": "Windows only. Opens a remote debugging port for stronger automation; extra attack surface — off by default."
+    },
+    "browserAdvanced": "Advanced (Browser)",
+    "browserPolicyDisabled": "Built-in browser is disabled by policy."
+  },
+  "browser": {
+    "addressPlaceholder": "Enter a URL or search",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "stop": "Stop",
+    "agentActive": "Assistant is controlling this page",
+    "blockedScheme": "This link cannot be opened for security reasons",
+    "needWorkbench": "Enable Study Desktop first",
+    "needBrowserEnabled": "Enable the built-in browser in Settings",
+    "contentCrashed": "The page process exited. You can retry.",
+    "approveNavigate": "Allow the assistant to open: {{url}}",
+    "approveClick": "Allow the assistant to click a page element",
+    "approveType": "Allow the assistant to type on the page"
+  },
+  "devPanel": {
+    "title": "Workbench Diagnostics",
+    "expand": "Expand panel",
+    "collapse": "Collapse panel",
+    "windows": "Windows",
+    "noWindows": "No windows",
+    "lifecycle": {
+      "focused": "Focused",
+      "visible": "Visible",
+      "background": "Background",
+      "frozen": "Frozen"
+    },
+    "budget": "Memory Budget",
+    "focusStack": "Focus Stack",
+    "emptyFocusStack": "(empty)",
+    "lastSnapshot": "Last Snapshot",
+    "never": "Never saved",
+    "frameTime": "Frame Time",
+    "avg": "Avg",
+    "max": "Max",
+    "sampling": "Sampling…",
+    "dropped": "Dropped frames",
+    "gestureDropped": "Gesture drops",
+    "longTasks": "Long tasks",
+    "source": "Data source",
+    "interactions": "Recent interactions",
+    "interactionsEmpty": "Drag or resize a window to see latency",
+    "copyTrace": "Copy JSON",
+    "clearTrace": "Clear",
+    "distribution": "Lifecycle distribution",
+    "minimizedTag": "Minimized",
+    "close": "Close panel"
+  }
+}
