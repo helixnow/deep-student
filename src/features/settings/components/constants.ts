@@ -8,29 +8,42 @@ export const isWindowsPlatform = () => {
   return /windows/i.test(navigator.userAgent);
 };
 
-// SECURITY: Restrict default MCP filesystem access to the current user's home
-// directory instead of the entire /Users (macOS) or C:\Users (Windows) tree,
-// which would expose ALL user home directories on the system.
-export const DEFAULT_STDIO_ARGS: string[] = [
+/**
+ * MCP stdio args 示例（仅 UI placeholder）。
+ * 禁止静默写入配置：空 args 应保持为空，由用户显式填写。
+ * 示例仍限制为用户主目录示意，避免暗示开放整个 Users 树。
+ */
+const STDIO_ARGS_PLACEHOLDER_PARTS: string[] = [
   '@modelcontextprotocol/server-filesystem',
   isWindowsPlatform() ? 'C:\\Users\\Default' : '/tmp',
 ];
 
-// Eagerly resolve the real home directory via Tauri path API and patch the
-// mutable fallback above. By the time Settings UI is interacted with the
-// promise will have settled.
 (async () => {
   try {
     const { homeDir } = await import('@tauri-apps/api/path');
     const home = await homeDir();
-    if (home) DEFAULT_STDIO_ARGS[1] = home;
+    if (home) STDIO_ARGS_PLACEHOLDER_PARTS[1] = home;
   } catch {
     // Non-Tauri environment or API unavailable – safe fallback remains.
   }
 })();
 
-export const DEFAULT_STDIO_ARGS_STORAGE = DEFAULT_STDIO_ARGS.join(',');
-export const DEFAULT_STDIO_ARGS_PLACEHOLDER = DEFAULT_STDIO_ARGS.join(', ');
+/** @deprecated 勿再用于注入；保留空数组以兼容旧 import。 */
+export const DEFAULT_STDIO_ARGS: string[] = [];
+export const DEFAULT_STDIO_ARGS_STORAGE = '';
+export const DEFAULT_STDIO_ARGS_PLACEHOLDER = STDIO_ARGS_PLACEHOLDER_PARTS.join(', ');
+
+/** 解析 Settings 草稿/已存 framing：仅显式 CL 变体保留 content_length，缺省/未知 → jsonl。 */
+export function resolveSettingsStdioFraming(
+  framing?: string | null,
+): 'jsonl' | 'content_length' {
+  if (!framing) return 'jsonl';
+  const normalized = String(framing).toLowerCase().replace(/-/g, '');
+  if (normalized === 'content_length' || normalized === 'contentlength') {
+    return 'content_length';
+  }
+  return 'jsonl';
+}
 
 export const DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS = 180;
 export const CHAT_STREAM_SETTINGS_EVENT = 'DSTU_CHAT_STREAM_SETTINGS_UPDATED';

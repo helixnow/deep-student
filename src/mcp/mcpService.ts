@@ -75,35 +75,22 @@ function clampJsonDepth(obj: any, maxDepth: number, currentDepth = 0): any {
   return result;
 }
 
-const isWindowsPlatform = () => {
-  if (typeof navigator === 'undefined') return false;
-  return /windows/i.test(navigator.userAgent);
-};
-
-// SECURITY: Restrict default MCP filesystem access to the current user's home
-// directory instead of the entire /Users (macOS) or C:\Users (Windows) tree,
-// which would expose ALL user home directories on the system.
-const DEFAULT_STDIO_ARGS: string[] = [
-  '@modelcontextprotocol/server-filesystem',
-  isWindowsPlatform() ? 'C:\\Users\\Default' : '/tmp',
-];
-
-// Eagerly resolve the real home directory via Tauri path API and patch the
-// mutable fallback above. By the time a user actually triggers an MCP stdio
-// connection the promise will have settled.
-(async () => {
-  try {
-    const { homeDir } = await import('@tauri-apps/api/path');
-    const home = await homeDir();
-    if (home) DEFAULT_STDIO_ARGS[1] = home;
-  } catch {
-    // Non-Tauri environment or API unavailable – safe fallback remains.
-  }
-})();
-
 const isTauriEnvironment =
   typeof window !== 'undefined'
   && Boolean((window as any).__TAURI_INTERNALS__);
+
+/**
+ * 解析 stdio 分帧：与后端 framing_from_str / McpFraming::default 对齐。
+ * 仅显式 content_length / content-length / contentlength 走 CL，其余（含缺省）一律 JSONL。
+ */
+function resolveStdioFraming(framing?: string | null): 'jsonl' | 'content_length' {
+  if (!framing) return 'jsonl';
+  const normalized = String(framing).toLowerCase().replace(/-/g, '');
+  if (normalized === 'content_length' || normalized === 'contentlength') {
+    return 'content_length';
+  }
+  return 'jsonl';
+}
 
 export interface McpServerConfig {
   id: string;
@@ -559,7 +546,7 @@ class McpServiceImpl {
             args: Array.isArray(cfg.args) ? cfg.args : [],
             env: cfg.env || {},
             cwd: cfg.cwd,
-            framing: cfg.framing ?? 'content_length',
+            framing: resolveStdioFraming(cfg.framing),
           }, cfg.id); // 传入 serverId 用于调试
           break;
         }
@@ -1711,21 +1698,14 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
         if (argsArray.length === 0 && inline.args.length > 0) {
           argsArray = inline.args;
         }
-        const execLower = executable.toLowerCase();
-        const shouldApplyDefaultArgs =
-          argsArray.length === 0 &&
-          inline.args.length === 0 &&
-          (execLower === 'npx' || execLower === 'npx.cmd' || execLower === 'npx.exe');
-        if (shouldApplyDefaultArgs) {
-          argsArray = [...DEFAULT_STDIO_ARGS];
-        }
+        // 不再对裸 npx 隐式注入默认 args：后端 validate_stdio_start_against_entries
+        // 要求 (command, args) 与已审批条目完全匹配，隐式扩展会被拒。
         const envObj = (() => {
           if (item.env && typeof item.env === 'object') return item.env as Record<string, string>;
           if (item?.fetch?.env && typeof item.fetch.env === 'object') return item.fetch.env as Record<string, string>;
           return {};
         })();
         const framingRaw = item.framing || item.framingMode || item?.fetch?.framing;
-        const framing = framingRaw ? String(framingRaw).toLowerCase() : undefined;
         const cwd = typeof item.cwd === 'string' ? item.cwd : (typeof item.workingDir === 'string' ? item.workingDir : undefined);
         servers.push({
           id: item.id || item.name || executable,
@@ -1734,7 +1714,7 @@ function toServerConfigs(list: any[]): McpConfig['servers'] {
           args: argsArray,
           env: envObj,
           cwd,
-          framing: framing === 'jsonl' ? 'jsonl' : 'content_length',
+          framing: resolveStdioFraming(framingRaw),
           namespace,
         });
       }

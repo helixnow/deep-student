@@ -35,6 +35,8 @@ import {
   Check,
   Shield,
   ShieldCheck,
+  FolderOpen,
+  Warning,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
@@ -53,6 +55,7 @@ import {
   CATEGORY_LABELS,
   type PresetMcpServer 
 } from '@/mcp/presetMcpServers';
+import { assessAuthorizedRootRisk, type AuthorizedRootRisk } from './runtimeRootRisk';
 
 // Types
 interface McpServer {
@@ -1437,7 +1440,7 @@ function ActionMenu({
             className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in">
             <NotionButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
               <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.reconnect')}
@@ -1514,7 +1517,7 @@ function PresetServerSelector({
             className="fixed inset-0 z-40"
             onClick={() => setIsOpen(false)}
           />
-          <div className="absolute top-full right-0 mt-1 z-50 w-[360px] max-h-[480px] overflow-y-auto p-2 bg-popover border border-border rounded-lg shadow-lg animate-in fade-in zoom-in-95 duration-100">
+          <div className="absolute top-full right-0 mt-1 z-50 w-[360px] max-w-[calc(100vw-3rem)] max-h-[480px] overflow-y-auto p-2 bg-popover border border-border rounded-lg shadow-lg ui-zoom-fade-in">
             <div className="px-2 py-1.5 mb-2">
               <div className="text-sm font-medium text-foreground">{t('settings:mcp_presets.title')}</div>
               <div className="text-xs text-muted-foreground">{t('settings:mcp_presets.description')}</div>
@@ -1602,6 +1605,17 @@ function PresetServerSelector({
 
 type SensitivityLevel = 'low' | 'medium' | 'high';
 
+interface RuntimeRootEntry {
+  id: string;
+  kind: string;
+  path: string;
+  access: 'read_only' | 'read_write' | string;
+  label: string;
+  description?: string;
+  session_scoped?: boolean;
+  configured?: boolean;
+}
+
 interface ToolOverrideEntry {
   toolName: string;
   displayName: string;
@@ -1636,6 +1650,12 @@ function ToolPermissionsSection({ toolsByServer }: {
   const [globalBypass, setGlobalBypass] = useState(false);
   const [toolOverrides, setToolOverrides] = useState<ToolOverrideEntry[]>([]);
   const [historyCount, setHistoryCount] = useState(0);
+  const [runtimeRoots, setRuntimeRoots] = useState<RuntimeRootEntry[]>([]);
+  const [newRuntimeRootPath, setNewRuntimeRootPath] = useState('');
+  const [isSavingRuntimeRoot, setIsSavingRuntimeRoot] = useState(false);
+  /** 待确认的高风险授权（两步确认：第一次点添加只显示警示，再点才真正授权） */
+  const [pendingRootRisk, setPendingRootRisk] = useState<Exclude<AuthorizedRootRisk, 'safe'> | null>(null);
+  const runtimeRootInputRef = useRef<HTMLInputElement>(null);
 
   /** 获取所有已注册工具的完整列表（去重） */
   const allTools = useMemo(() => {
@@ -1656,6 +1676,10 @@ function ToolPermissionsSection({ toolsByServer }: {
     try {
       const results = await invoke<[string, string, string][]>('get_settings_by_prefix', {
         prefix: 'tool_approval.',
+      });
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_list_runtime_roots').catch((err) => {
+        console.error('[ToolPermissions] Failed to load runtime roots:', err);
+        return [] as RuntimeRootEntry[];
       });
 
       let bypass = false;
@@ -1681,6 +1705,7 @@ function ToolPermissionsSection({ toolsByServer }: {
       setGlobalBypass(bypass);
       setToolOverrides(overrides);
       setHistoryCount(histCount);
+      setRuntimeRoots(roots);
     } catch (err) {
       console.error('[ToolPermissions] Failed to load config:', err);
     } finally {
@@ -1762,6 +1787,102 @@ function ToolPermissionsSection({ toolsByServer }: {
       showGlobalNotification('error', t('settings:tool_permissions.clear_all_failed'));
     }
   }, [t]);
+
+  const handleAuthorizeRuntimeRoot = useCallback(async () => {
+    const path = newRuntimeRootPath.trim();
+    if (!path || isSavingRuntimeRoot) return;
+    // 高风险目录两步确认：第一次提交只展示内联警示（不阻止授权），再次提交才真正执行
+    const risk = assessAuthorizedRootRisk(path);
+    if (risk !== 'safe' && pendingRootRisk === null) {
+      setPendingRootRisk(risk);
+      return;
+    }
+    setIsSavingRuntimeRoot(true);
+    try {
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_authorize_runtime_root', { path });
+      setRuntimeRoots(roots);
+      setNewRuntimeRootPath('');
+      setPendingRootRisk(null);
+      showGlobalNotification('success', t('settings:tool_permissions.runtime_root_added'));
+    } catch (err) {
+      console.error('[ToolPermissions] Authorize runtime root failed:', err);
+      showGlobalNotification('error', t('settings:tool_permissions.runtime_root_add_failed'));
+    } finally {
+      setIsSavingRuntimeRoot(false);
+    }
+  }, [isSavingRuntimeRoot, newRuntimeRootPath, pendingRootRisk, t]);
+
+  const handleSetWorkspaceRoot = useCallback(async () => {
+    const path = newRuntimeRootPath.trim();
+    if (!path || isSavingRuntimeRoot) return;
+    setIsSavingRuntimeRoot(true);
+    try {
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_set_workspace_root', { path });
+      setRuntimeRoots(roots);
+      setNewRuntimeRootPath('');
+      showGlobalNotification('success', t('settings:tool_permissions.runtime_root_workspace_set'));
+    } catch (err) {
+      console.error('[ToolPermissions] Set workspace root failed:', err);
+      showGlobalNotification('error', t('settings:tool_permissions.runtime_root_workspace_set_failed'));
+    } finally {
+      setIsSavingRuntimeRoot(false);
+    }
+  }, [isSavingRuntimeRoot, newRuntimeRootPath, t]);
+
+  const handleResetWorkspaceRoot = useCallback(async () => {
+    try {
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_reset_workspace_root');
+      setRuntimeRoots(roots);
+      showGlobalNotification('success', t('settings:tool_permissions.runtime_root_workspace_reset_done'));
+    } catch (err) {
+      console.error('[ToolPermissions] Reset workspace root failed:', err);
+      showGlobalNotification('error', t('settings:tool_permissions.runtime_root_workspace_reset_failed'));
+    }
+  }, [t]);
+
+  const handleRevokeRuntimeRoot = useCallback(async (rootId: string) => {
+    try {
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_revoke_runtime_root', { rootId });
+      setRuntimeRoots(roots);
+      showGlobalNotification('success', t('settings:tool_permissions.runtime_root_removed'));
+    } catch (err) {
+      console.error('[ToolPermissions] Revoke runtime root failed:', err);
+      showGlobalNotification('error', t('settings:tool_permissions.runtime_root_remove_failed'));
+    }
+  }, [t]);
+
+  /** 「立即设置」引导：滚动并聚焦到已有的路径输入框（旁边就是浏览按钮） */
+  const handleFocusRuntimeRootInput = useCallback(() => {
+    const input = runtimeRootInputRef.current;
+    if (!input) return;
+    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input.focus({ preventScroll: true });
+  }, []);
+
+  /** 打开系统目录选择器，把选中的目录填入路径输入框 */
+  const handleBrowseRuntimeRoot = useCallback(async () => {
+    try {
+      const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
+      const selected = await dialogOpen({
+        directory: true,
+        multiple: false,
+        title: t('settings:tool_permissions.runtime_root_browse_title'),
+      });
+      if (typeof selected === 'string' && selected.trim()) {
+        setNewRuntimeRootPath(selected);
+        setPendingRootRisk(null);
+      }
+    } catch (err) {
+      console.error('[ToolPermissions] Browse runtime root failed:', err);
+    }
+  }, [t]);
+
+  /** 高风险警示的「重新选择」：清空输入并重开目录选择器 */
+  const handleReselectRuntimeRoot = useCallback(() => {
+    setPendingRootRisk(null);
+    setNewRuntimeRootPath('');
+    void handleBrowseRuntimeRoot();
+  }, [handleBrowseRuntimeRoot]);
 
   /** 获取工具已设定的覆盖等级（如果有） */
   const getOverrideLevel = useCallback((toolName: string): SensitivityLevel | null => {
@@ -1855,6 +1976,240 @@ function ToolPermissionsSection({ toolsByServer }: {
                 className="data-[state=unchecked]:bg-[color:var(--surface-panel-strong)] data-[state=unchecked]:ring-1 data-[state=unchecked]:ring-[color:var(--button-utility-border)] data-[state=checked]:shadow-[0_0_0_1px_var(--button-primary-border)]"
               />
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Lock className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  {t('settings:tool_permissions.runtime_roots_title')}
+                </h4>
+                <span className="text-xs text-muted-foreground">
+                  ({runtimeRoots.length})
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-3">
+              {t('settings:tool_permissions.runtime_roots_desc')}
+            </p>
+
+            <div className="mb-3 flex flex-col sm:flex-row gap-2">
+              <Input
+                ref={runtimeRootInputRef}
+                value={newRuntimeRootPath}
+                onChange={(event) => {
+                  setNewRuntimeRootPath(event.target.value);
+                  setPendingRootRisk(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    void handleAuthorizeRuntimeRoot();
+                  }
+                }}
+                placeholder={t('settings:tool_permissions.runtime_root_path_placeholder')}
+                className="h-8 text-xs font-mono sm:flex-1"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBrowseRuntimeRoot}
+                  disabled={isSavingRuntimeRoot}
+                  className="text-xs flex-shrink-0"
+                >
+                  <FolderOpen className="h-3 w-3 mr-1" />
+                  {t('settings:tool_permissions.runtime_root_browse')}
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleSetWorkspaceRoot}
+                  disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
+                  className="text-xs flex-shrink-0"
+                >
+                  <Check className="h-3 w-3 mr-1" />
+                  {t('settings:tool_permissions.runtime_root_set_workspace')}
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAuthorizeRuntimeRoot}
+                  disabled={!newRuntimeRootPath.trim() || isSavingRuntimeRoot}
+                  className={cn(
+                    'text-xs flex-shrink-0',
+                    pendingRootRisk && 'text-amber-700 dark:text-amber-300'
+                  )}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  {t(pendingRootRisk
+                    ? 'settings:tool_permissions.runtime_root_confirm_add'
+                    : 'settings:tool_permissions.runtime_root_add')}
+                </NotionButton>
+              </div>
+            </div>
+
+            {pendingRootRisk && (
+              <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+                <div className="flex items-start gap-2">
+                  <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span>
+                      {pendingRootRisk === 'critical'
+                        ? t('settings:tool_permissions.runtime_root_risk_critical', { path: newRuntimeRootPath.trim() })
+                        : t('settings:tool_permissions.runtime_root_risk_broad', {
+                            folder: newRuntimeRootPath.trim().replace(/\\/g, '/').split('/').filter(Boolean).pop()
+                              ?? newRuntimeRootPath.trim(),
+                          })}
+                    </span>
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleReselectRuntimeRoot}
+                      className="!h-auto !px-1 !py-0 ml-1 align-baseline text-xs font-medium text-primary hover:underline"
+                    >
+                      {t('settings:tool_permissions.runtime_root_reselect')}
+                    </NotionButton>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {runtimeRoots.length === 0 ? (
+              <div className="text-center py-5 rounded-lg border border-dashed border-border/60 bg-muted/5">
+                <Lock className="h-5 w-5 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">
+                  {t('settings:tool_permissions.runtime_roots_empty')}
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed px-4">
+                  {t('settings:tool_permissions.runtime_roots_authorized_empty_hint')}
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border/30 bg-muted/5 overflow-hidden">
+                <div className="divide-y divide-border/30">
+                  {runtimeRoots.map((root) => {
+                    const isReadWrite = root.access === 'read_write';
+                    const canRevoke = root.kind === 'authorized';
+                    const canResetWorkspace = root.kind === 'workspace' && root.configured;
+                    const displayKind = t(
+                      `settings:tool_permissions.runtime_root_kind.${root.kind}`,
+                      root.kind.replace(/_/g, ' '),
+                    );
+                    return (
+                      <div key={root.id} className="px-3 py-2.5 flex items-start gap-3">
+                        <div className="mt-0.5 h-7 w-7 rounded-md bg-muted/40 border border-border/30 flex items-center justify-center flex-shrink-0">
+                          {root.kind === 'artifact' || root.kind === 'temp' ? (
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                          ) : (
+                            <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-medium text-foreground truncate">
+                              {root.label || root.id}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground border border-border/40 capitalize">
+                              {displayKind}
+                            </span>
+                            <span
+                              className="inline-block max-w-[12rem] truncate text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground border border-border/30 font-mono normal-case"
+                              title={root.id}
+                            >
+                              {root.id}
+                            </span>
+                            <span
+                              className={cn(
+                                'text-[10px] px-1.5 py-0.5 rounded border',
+                                isReadWrite
+                                  ? 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-900/50'
+                                  : 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-900/50'
+                              )}
+                            >
+                              {t(isReadWrite
+                                ? 'settings:tool_permissions.runtime_root_read_write'
+                                : 'settings:tool_permissions.runtime_root_read_only')}
+                            </span>
+                            {root.session_scoped && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                {t('settings:tool_permissions.runtime_root_session_scoped')}
+                              </span>
+                            )}
+                            {root.kind === 'workspace' && root.configured && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                                {t('settings:tool_permissions.runtime_root_configured')}
+                              </span>
+                            )}
+                            {root.kind === 'workspace' && !root.configured && (
+                              <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-900/50">
+                                <Warning className="h-3 w-3" />
+                                {t('settings:tool_permissions.runtime_root_not_configured')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground font-mono truncate" title={root.path}>
+                            {root.path}
+                          </div>
+                          {root.description && (
+                            <div className="mt-1 text-[11px] text-muted-foreground/80 leading-relaxed">
+                              {root.description}
+                            </div>
+                          )}
+                          {root.kind === 'workspace' && !root.configured && (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-relaxed text-yellow-700 dark:text-yellow-400">
+                              <span>{t('settings:tool_permissions.runtime_root_not_configured_hint')}</span>
+                              <NotionButton
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleFocusRuntimeRootInput}
+                                className="!h-auto !px-1 !py-0 text-[11px] font-medium text-primary hover:underline"
+                              >
+                                {t('settings:tool_permissions.runtime_root_configure_now')}
+                              </NotionButton>
+                            </div>
+                          )}
+                        </div>
+                        {canRevoke && (
+                          <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            iconOnly
+                            onClick={() => handleRevokeRuntimeRoot(root.id)}
+                            className="!h-7 !w-7 text-muted-foreground hover:text-destructive flex-shrink-0"
+                            title={t('settings:tool_permissions.runtime_root_remove')}
+                            aria-label={t('settings:tool_permissions.runtime_root_remove')}
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </NotionButton>
+                        )}
+                        {canResetWorkspace && (
+                          <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            iconOnly
+                            onClick={handleResetWorkspaceRoot}
+                            className="!h-7 !w-7 text-muted-foreground flex-shrink-0"
+                            title={t('settings:tool_permissions.runtime_root_workspace_reset')}
+                            aria-label={t('settings:tool_permissions.runtime_root_workspace_reset')}
+                          >
+                            <ArrowClockwise className="h-3.5 w-3.5" />
+                          </NotionButton>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {runtimeRoots.length > 0 && !runtimeRoots.some((root) => root.kind === 'authorized') && (
+              <p className="mt-2 text-[11px] text-muted-foreground/80 leading-relaxed">
+                {t('settings:tool_permissions.runtime_roots_authorized_empty_hint')}
+              </p>
+            )}
           </div>
 
           {/* 2. 单工具等级覆盖 */}

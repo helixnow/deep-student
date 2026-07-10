@@ -198,7 +198,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
           size="sm"
           onClick={addTool}
           disabled={disabled}
-          className="h-7 text-xs"
+          className="max-lg:!h-11 h-7 text-xs"
         >
           <Plus size={14} className="mr-1" />
           {t('skills:editor.add_tool', '添加工具')}
@@ -264,7 +264,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         removeTool(toolIndex);
                       }}
                       disabled={disabled}
- className="w-6 h-6 text-muted-foreground hover:text-destructive"
+ className="w-6 h-6 max-lg:!h-10 max-lg:!w-10 max-lg:-my-2 text-muted-foreground hover:text-destructive"
                     >
                       <Trash size={12} />
                     </NotionButton>
@@ -317,7 +317,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                           size="sm"
                           onClick={() => addProperty(toolIndex)}
                           disabled={disabled}
-                          className="h-6 text-xs"
+                          className="max-lg:!h-9 h-6 text-xs"
                         >
                           <Plus size={12} className="mr-1" />
                           {t('skills:editor.add_param', '添加')}
@@ -376,7 +376,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="sm"
                                   onClick={() => toggleRequired(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="h-7 text-[10px] px-2"
+                                  className="max-lg:!h-9 h-7 text-[10px] px-2"
                                   title={isRequired ? t('skills:editor.required', '必填') : t('skills:editor.optional', '可选')}
                                 >
                                   {isRequired ? '*' : '?'}
@@ -387,7 +387,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   size="icon"
                                   onClick={() => removeProperty(toolIndex, propName)}
                                   disabled={disabled}
-                                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                  className="h-7 w-7 max-lg:!h-9 max-lg:!w-9 text-muted-foreground hover:text-destructive"
                                 >
                                   <Trash size={12} />
                                 </NotionButton>

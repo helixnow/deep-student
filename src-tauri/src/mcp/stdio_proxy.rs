@@ -22,9 +22,12 @@ static STDIO_SESSIONS: LazyLock<Mutex<HashMap<String, StdioTransportHandle>>> =
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn framing_from_str(value: Option<&str>) -> McpFraming {
+    // 默认 JSONL（MCP 规范）；Content-Length 仅在显式请求时启用。
     match value.map(|v| v.to_lowercase()).as_deref() {
-        Some("jsonl") | Some("json_lines") | Some("json-lines") => McpFraming::JsonLines,
-        _ => McpFraming::ContentLength,
+        Some("content_length") | Some("content-length") | Some("contentlength") => {
+            McpFraming::ContentLength
+        }
+        _ => McpFraming::JsonLines,
     }
 }
 

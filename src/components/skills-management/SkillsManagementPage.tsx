@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { LayoutGroup } from 'framer-motion';
 import {
   Upload,
@@ -69,6 +70,33 @@ interface SkillsManagementPageProps {
 /** 全局技能目录路径 */
 const GLOBAL_SKILLS_PATH = '~/.deep-student/skills';
 
+interface SkillImportZipResult {
+  skill_id: string;
+  path: string;
+  files_extracted: number;
+  scripts_count: number;
+  references_count: number;
+  allowed_tools_count: number;
+  package_sha256: string;
+  risk_level: string;
+  risk_signals: string[];
+  requires?: SkillRequiresProbeResult;
+}
+
+interface SkillRequiresProbeResult {
+  bins: Array<{ name: string; found: boolean }>;
+  env: Array<{ name: string; set: boolean }>;
+  invalid: string[];
+  missing_count: number;
+}
+
+/** 风险分级徽章配色（对齐 McpToolsSection 敏感等级徽章风格） */
+const RISK_BADGE_CLASSES: Record<string, string> = {
+  low: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  high: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+};
+
 // ============================================================================
 // 组件
 // ============================================================================
@@ -109,9 +137,27 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const [importOverwriteOpen, setImportOverwriteOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState<{ content: string; skill: SkillDefinition } | null>(null);
 
+  // zip 技能包导入覆盖确认状态（复用 pendingImport 的确认交互模式）
+  const [zipOverwriteOpen, setZipOverwriteOpen] = useState(false);
+  const [pendingZipImport, setPendingZipImport] = useState<{ zipPath: string; name: string } | null>(null);
+
+  // zip 导入装前确认状态：dry_run 扫描结果（含风险分级）先行展示，用户确认后才真正安装
+  const [zipConfirmOpen, setZipConfirmOpen] = useState(false);
+  const [pendingZipConfirm, setPendingZipConfirm] = useState<{
+    zipPath: string;
+    fileName: string;
+    scan: SkillImportZipResult;
+    overwrite: boolean;
+  } | null>(null);
+  const [zipInstalling, setZipInstalling] = useState(false);
+
   // 卡片位置（用于全屏编辑器动画）
   const [editOriginRect, setEditOriginRect] = useState<DOMRect | null>(null);
   const cardRefsMap = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // 移动端编辑器子屏的「带脏检查关闭」入口：由嵌入式编辑器填充，
+  // 顶栏返回箭头走此入口以复用未保存更改的二次确认（与表单内取消一致）
+  const editorRequestCloseRef = useRef<(() => void) | null>(null);
 
   // 检测主题（通过 MutationObserver 监听 DOM class 变化，确保跨组件主题切换实时响应）
   const [isDarkMode, setIsDarkMode] = useState(() =>
@@ -132,6 +178,14 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       setRegistryVersion((v) => v + 1);
     });
     return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const onTrustChanged = () => {
+      void reloadSkills().then(() => setRegistryVersion((v) => v + 1));
+    };
+    window.addEventListener('SKILL_TRUST_CHANGED', onTrustChanged);
+    return () => window.removeEventListener('SKILL_TRUST_CHANGED', onTrustChanged);
   }, []);
 
   // ========== 监听 screenPosition 变化，同步编辑器状态 ==========
@@ -490,6 +544,115 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     fileInputRef.current?.click();
   }, []);
 
+  // 执行 zip 导入并展示装前扫描摘要（首次导入与覆盖确认后共用）
+  const runZipImport = useCallback(async (zipPath: string, overwrite: boolean) => {
+    const result = await invoke<SkillImportZipResult>('skill_import_zip', {
+      zipPath,
+      basePath: GLOBAL_SKILLS_PATH,
+      overwrite,
+    });
+
+    await reloadSkills();
+
+    const scanParts: string[] = [];
+    if (result.scripts_count > 0) {
+      scanParts.push(t('skills:management.import_scan_scripts', '{{count}} 脚本', { count: result.scripts_count }));
+    }
+    if (result.allowed_tools_count > 0) {
+      scanParts.push(t('skills:management.import_scan_tools', '{{count}} allowed-tools', { count: result.allowed_tools_count }));
+    }
+    if (result.references_count > 0) {
+      scanParts.push(t('skills:management.import_scan_refs', '{{count}} 引用', { count: result.references_count }));
+    }
+    if (result.package_sha256) {
+      scanParts.push(`sha256:${result.package_sha256.slice(0, 12)}`);
+    }
+
+    showGlobalNotification(
+      'success',
+      overwrite
+        ? t('skills:management.import_zip_overwrite_success', '技能包 "{{name}}" 已覆盖安装', { name: result.skill_id })
+        : t('skills:management.import_zip_success', '技能包 "{{name}}" 已安装', { name: result.skill_id }),
+      scanParts.length > 0
+        ? t('skills:management.import_scan_summary', '装前扫描：{{summary}}', { summary: scanParts.join(' · ') })
+        : undefined,
+    );
+  }, [t]);
+
+  const handleImportZipClick = useCallback(async () => {
+    try {
+      const { open: dialogOpen } = await import('@tauri-apps/plugin-dialog');
+      const picked = await dialogOpen({
+        multiple: false,
+        filters: [{ name: 'Skill Package', extensions: ['zip'] }],
+        title: t('skills:management.import_zip_title', '导入技能包 (.zip)'),
+      });
+      if (!picked || typeof picked !== 'string') return;
+
+      // 扫描先行：dry_run 只做装前扫描（含启发式风险分级），不写盘
+      const scan = await invoke<SkillImportZipResult>('skill_import_zip', {
+        zipPath: picked,
+        basePath: GLOBAL_SKILLS_PATH,
+        overwrite: false,
+        dryRun: true,
+      });
+
+      const fileName = picked
+        .replace(/\\/g, '/')
+        .split('/')
+        .filter(Boolean)
+        .pop() || picked;
+      // 同名已存在时，该确认对话框兼任覆盖确认（标题/按钮文案区分）
+      const overwrite = Boolean(skillRegistry.get(scan.skill_id));
+      setPendingZipConfirm({ zipPath: picked, fileName, scan, overwrite });
+      setZipConfirmOpen(true);
+    } catch (error: unknown) {
+      showGlobalNotification(
+        'error',
+        t('skills:management.import_zip_failed', '技能包导入失败'),
+        String(error),
+      );
+    }
+  }, [t]);
+
+  // 装前确认通过后真正安装（dry_run: false）
+  const handleConfirmZipInstall = useCallback(async () => {
+    if (!pendingZipConfirm) return;
+    setZipInstalling(true);
+    try {
+      await runZipImport(pendingZipConfirm.zipPath, pendingZipConfirm.overwrite);
+      setPendingZipConfirm(null);
+      setZipConfirmOpen(false);
+    } catch (error: unknown) {
+      const message = String(error);
+      if (!pendingZipConfirm.overwrite && message.includes('already exists')) {
+        // registry 未收录但磁盘目录已存在：转入既有覆盖确认对话框兜底
+        setPendingZipImport({
+          zipPath: pendingZipConfirm.zipPath,
+          name: pendingZipConfirm.scan.skill_id,
+        });
+        setPendingZipConfirm(null);
+        setZipConfirmOpen(false);
+        setZipOverwriteOpen(true);
+      } else {
+        showGlobalNotification(
+          'error',
+          t('skills:management.import_zip_failed', '技能包导入失败'),
+          message,
+        );
+        setPendingZipConfirm(null);
+        setZipConfirmOpen(false);
+      }
+    } finally {
+      setZipInstalling(false);
+    }
+  }, [pendingZipConfirm, runZipImport, t]);
+
+  const handleCancelZipInstall = useCallback(() => {
+    setPendingZipConfirm(null);
+    setZipConfirmOpen(false);
+  }, []);
+
 const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -619,6 +782,28 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     }
   }, []);
 
+  const handleConfirmZipOverwrite = useCallback(async () => {
+    if (!pendingZipImport) return;
+
+    try {
+      await runZipImport(pendingZipImport.zipPath, true);
+    } catch (error) {
+      showGlobalNotification(
+        'error',
+        t('skills:management.import_zip_failed', '技能包导入失败'),
+        String(error),
+      );
+    } finally {
+      setPendingZipImport(null);
+      setZipOverwriteOpen(false);
+    }
+  }, [pendingZipImport, runZipImport, t]);
+
+  const handleCancelZipOverwrite = useCallback(() => {
+    setPendingZipImport(null);
+    setZipOverwriteOpen(false);
+  }, []);
+
   // ========== 移动端统一顶栏配置 ==========
   const headerTitle = useMemo(() => {
     if (isSmallScreen && !(screenPosition === 'right' && (editorOpen || rightPanelOpen))) {
@@ -666,6 +851,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     showBackArrow: isEditorView,
     onMenuClick: isEditorView
       ? () => {
+          // 优先走编辑器的脏检查关闭（有未保存更改时先二次确认）；
+          // 编辑器未挂载时兜底直接关闭
+          if (editorRequestCloseRef.current) {
+            editorRequestCloseRef.current();
+            return;
+          }
           setEditorOpen(false);
           setRightPanelOpen(false);
           setScreenPosition('center');
@@ -752,8 +943,18 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             <NotionButton
               variant="utility"
               size="sm"
+              onClick={handleImportZipClick}
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
+            >
+              <Package size={14} className="mr-1" />
+              {t('skills:management.import_zip', '导入包')}
+            </NotionButton>
+
+            <NotionButton
+              variant="utility"
+              size="sm"
               onClick={handleImportClick}
-              className="h-7 text-xs px-2 text-muted-foreground"
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
             >
               <Upload size={14} className="mr-1" />
               {t('skills:management.import', '导入')}
@@ -764,7 +965,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               size="sm"
               onClick={handleExportAll}
               disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-              className="h-7 text-xs px-2 text-muted-foreground"
+              className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
             >
               <Download size={14} className="mr-1" />
               {t('skills:management.export_all_short', '导出')}
@@ -824,7 +1025,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         </div>
       </div>
 
-      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-4 sm:p-6">
+      <CustomScrollArea
+        className="flex-1 min-h-0"
+        viewportClassName="p-4 sm:p-6 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
+      >
         <SkillsList
           skills={filteredSkills}
           selectedSkillId={selectedSkillId}
@@ -860,10 +1064,142 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           location={editorLocation}
           onSave={handleSave}
           embeddedMode={true}
+          requestCloseRef={editorRequestCloseRef}
 />
       )}
     </div>
   );
+
+  // ========== 渲染 zip 导入装前确认对话框（扫描先行：分级可见后再安装） ==========
+  const renderZipImportConfirm = () => {
+    if (!pendingZipConfirm) return null;
+    const { scan, fileName, overwrite } = pendingZipConfirm;
+    const riskLevel = RISK_BADGE_CLASSES[scan.risk_level] ? scan.risk_level : 'low';
+    const isHighRisk = riskLevel === 'high';
+
+    return (
+      <NotionAlertDialog
+        open={zipConfirmOpen}
+        onOpenChange={setZipConfirmOpen}
+        title={overwrite
+          ? t('skills:management.import_confirm_overwrite_title', '覆盖安装技能包')
+          : t('skills:management.import_confirm_title', '安装技能包')}
+        description={t(
+          'skills:management.import_confirm_source',
+          '技能 "{{name}}"，来源文件 {{file}}',
+          { name: scan.skill_id, file: fileName }
+        )}
+        confirmText={overwrite
+          ? t('skills:management.import_confirm_overwrite_install', '覆盖安装')
+          : t('skills:management.import_confirm_install', '安装')}
+        cancelText={t('common:actions.cancel', '取消')}
+        confirmVariant={isHighRisk ? 'danger' : overwrite ? 'warning' : 'primary'}
+        loading={zipInstalling}
+        onConfirm={handleConfirmZipInstall}
+        onCancel={handleCancelZipInstall}
+        // 扫描摘要（chips + 依赖 + 风险信号）内容可变长，小屏防溢出可滚动
+        className="max-h-[85dvh] overflow-y-auto"
+      >
+        <div className="space-y-3">
+          {/* 能力摘要 chips：文件 / 脚本 / allowed-tools / sha256 */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+              {t('skills:package.permission_files', '{{count}} 文件', { count: scan.files_extracted })}
+            </span>
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+              {t('skills:management.import_scan_scripts', '{{count}} 脚本', { count: scan.scripts_count })}
+            </span>
+            <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
+              {t('skills:management.import_scan_tools', '{{count}} allowed-tools', { count: scan.allowed_tools_count })}
+            </span>
+            {scan.package_sha256 && (
+              <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]">
+                sha256:{scan.package_sha256.slice(0, 12)}
+              </span>
+            )}
+          </div>
+
+          {scan.requires && (scan.requires.bins.length > 0 || scan.requires.env.length > 0) && (
+            <div className="space-y-1">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                {t('skills:management.requires_heading', 'Runtime dependencies')}
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {scan.requires.bins.map((bin) => (
+                  <span
+                    key={`bin-${bin.name}`}
+                    className={cn(
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]',
+                      !bin.found && 'study-shell-badge--warning',
+                    )}
+                  >
+                    {t('skills:management.requires_bin', 'bin {{name}}', { name: bin.name })}
+                    {!bin.found && (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {t('skills:management.requires_missing', 'missing')}
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {scan.requires.env.map((env) => (
+                  <span
+                    key={`env-${env.name}`}
+                    className={cn(
+                      'study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]',
+                      !env.set && 'study-shell-badge--warning',
+                    )}
+                  >
+                    {t('skills:management.requires_env', 'env {{name}}', { name: env.name })}
+                    {!env.set && (
+                      <span className="text-amber-600 dark:text-amber-400">
+                        {t('skills:management.requires_missing', 'missing')}
+                      </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 风险分级 + 信号列表（只提示不拦截） */}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">
+                {t('skills:management.risk_heading', '风险分级')}
+              </span>
+              <span
+                className={cn(
+                  'rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                  RISK_BADGE_CLASSES[riskLevel]
+                )}
+              >
+                {t(`skills:management.risk_${riskLevel}`, scan.risk_level)}
+              </span>
+            </div>
+            {riskLevel !== 'low' && scan.risk_signals.length > 0 && (
+              <ul className="space-y-0.5">
+                {scan.risk_signals.map((signal) => (
+                  <li key={signal} className="text-[11px] leading-relaxed text-muted-foreground">
+                    · {t(`skills:management.risk_signal_${signal}`, signal)}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {isHighRisk && (
+              <p className="text-[11px] leading-relaxed text-red-600 dark:text-red-400">
+                {t('skills:management.risk_high_warning', '该技能包存在高风险信号，请确认来源可信后再安装。')}
+              </p>
+            )}
+            {overwrite && (
+              <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
+                {t('skills:management.import_confirm_overwrite_hint', '同名技能已存在，安装将替换该技能目录的全部文件（含脚本与引用）。')}
+              </p>
+            )}
+          </div>
+        </div>
+      </NotionAlertDialog>
+    );
+  };
 
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
@@ -877,8 +1213,23 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           }
           rightPanel={renderRightPanel()}
           screenPosition={screenPosition}
-          onScreenPositionChange={setScreenPosition}
-          rightPanelEnabled={true}
+          onScreenPositionChange={(next) => {
+            // 手势从编辑器右屏滑回时，走编辑器的脏检查关闭入口：
+            // 有未保存更改先二次确认，拒绝本次位置切换（不更新 state 即回弹），
+            // 确认/无脏数据时由编辑器 onClose 收敛状态。与顶栏返回箭头同一条路径。
+            if (
+              screenPosition === 'right' &&
+              next !== 'right' &&
+              (editorOpen || rightPanelOpen) &&
+              editorRequestCloseRef.current
+            ) {
+              editorRequestCloseRef.current();
+              return;
+            }
+            setScreenPosition(next);
+          }}
+          // 仅编辑器打开时允许手势滑入右屏：否则左滑会滑到一块空白面板（死胡同）
+          rightPanelEnabled={editorOpen || rightPanelOpen}
           showSidebarAppNavigation
           showContentOverlay
           enableGesture={true}
@@ -910,6 +1261,24 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
 />
+
+        <NotionAlertDialog
+          open={zipOverwriteOpen}
+          onOpenChange={setZipOverwriteOpen}
+          title={t('skills:management.import_zip_overwrite_title', '技能包已存在')}
+          description={t(
+            'skills:management.import_zip_overwrite_confirm',
+            '技能 "{{name}}" 已存在，覆盖将替换该技能目录的全部文件（含脚本与引用），是否继续？',
+            { name: pendingZipImport?.name }
+          )}
+          confirmText={t('skills:management.import_overwrite', '覆盖')}
+          cancelText={t('common:actions.cancel', '取消')}
+          confirmVariant="warning"
+          onConfirm={handleConfirmZipOverwrite}
+          onCancel={handleCancelZipOverwrite}
+/>
+
+        {renderZipImportConfirm()}
       </div>
     );
   }
@@ -952,6 +1321,24 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
 />
+
+        <NotionAlertDialog
+          open={zipOverwriteOpen}
+          onOpenChange={setZipOverwriteOpen}
+          title={t('skills:management.import_zip_overwrite_title', '技能包已存在')}
+          description={t(
+            'skills:management.import_zip_overwrite_confirm',
+            '技能 "{{name}}" 已存在，覆盖将替换该技能目录的全部文件（含脚本与引用），是否继续？',
+            { name: pendingZipImport?.name }
+          )}
+          confirmText={t('skills:management.import_overwrite', '覆盖')}
+          cancelText={t('common:actions.cancel', '取消')}
+          confirmVariant="warning"
+          onConfirm={handleConfirmZipOverwrite}
+          onCancel={handleCancelZipOverwrite}
+/>
+
+        {renderZipImportConfirm()}
       </div>
     </LayoutGroup>
   );

@@ -19,9 +19,12 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { FileText, Gear, X, Wrench } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { showGlobalNotification } from '../UnifiedNotification';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
+import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
 // 类型定义
@@ -40,6 +43,11 @@ export interface SkillEditorModalProps {
   onSave: (data: SkillFormData) => Promise<void>;
   /** 嵌入模式：不使用 Dialog 包裹（用于移动端） */
   embeddedMode?: boolean;
+  /**
+   * 嵌入模式下暴露「带脏检查的关闭」入口（供页面顶栏返回箭头调用）。
+   * 挂载时填充、卸载时清空。
+   */
+  requestCloseRef?: React.MutableRefObject<(() => void) | null>;
 }
 
 export interface SkillFormData {
@@ -158,6 +166,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   location,
   onSave,
   embeddedMode = false,
+  requestCloseRef,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
   const isEdit = Boolean(skill);
@@ -287,6 +296,12 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       onOpenChange(false);
     } catch (error) {
       console.error('[SkillEditor] 保存失败:', error);
+      // 操作闭环：保存失败必须有可见反馈（成功通知由 onSave 内部发出）
+      showGlobalNotification(
+        'error',
+        t('skills:management.save_failed', '技能保存失败'),
+        String(error),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -299,6 +314,32 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
     }
     onOpenChange(false);
   }, [isDirty, onOpenChange, t]);
+
+  // 保持最新的取消逻辑，供返回键 / 页面顶栏返回箭头调用（注册保持稳定）
+  const handleCancelRef = useRef(handleCancel);
+  handleCancelRef.current = handleCancel;
+
+  // 嵌入模式（移动端子屏）：
+  // 1. Android 返回键 = 带脏检查的取消。注册在 MobileSlidingLayout 的
+  //    overlay handler 之后（同优先级后注册者先执行），否则滑动布局会先
+  //    收回右屏、绕过未保存更改确认。
+  // 2. 向页面暴露 requestCloseRef，顶栏返回箭头复用同一取消逻辑。
+  useEffect(() => {
+    if (!embeddedMode || !open) return;
+    const unregister = registerBackHandler(() => {
+      handleCancelRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+    if (requestCloseRef) {
+      requestCloseRef.current = () => handleCancelRef.current();
+    }
+    return () => {
+      unregister();
+      if (requestCloseRef) {
+        requestCloseRef.current = null;
+      }
+    };
+  }, [embeddedMode, open, requestCloseRef]);
 
   const handleModalOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen && isDirty && !unifiedConfirm(t('common:unsaved_changes_confirm', '有未保存的更改，确定要放弃吗？'))) {
@@ -359,21 +400,21 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           <TabsList className="bg-muted/20 border border-border/30 rounded-xl px-1.5 py-1 h-auto gap-2 shadow-sm">
             <TabsTrigger
               value="basic"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Gear size={14} className="mr-1.5" />
               {t('skills:editor.tab_basic', '基本信息')}
             </TabsTrigger>
             <TabsTrigger
               value="content"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <FileText size={14} className="mr-1.5" />
               {t('skills:editor.tab_content', '技能内容')}
             </TabsTrigger>
             <TabsTrigger
               value="tools"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="max-lg:min-h-11 data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Wrench size={14} className="mr-1.5" />
               {t('skills:editor.tab_tools', '绑定工具')}
@@ -422,6 +463,9 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
                   {t('skills:editor.name', '名称')} *
                 </Label>
+                {skill && (
+                  <SkillPackageSummary skill={skill} variant="editor" />
+                )}
                 <Input
                   value={formData.name}
                   onChange={(e) => updateField('name', (e.target as HTMLInputElement).value)}
@@ -581,7 +625,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
 />
                 <p className="text-[10px] text-muted-foreground/60">
-                  {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
+                  {t('skills:editor.allowed_tools_hint', '运行时工具约束：激活此技能后，后端仅允许调用这里列出的工具；留空表示不允许业务工具')}
                 </p>
               </div>
 

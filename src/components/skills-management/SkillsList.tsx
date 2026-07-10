@@ -7,7 +7,7 @@
 import React, { type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Lightning, Pencil, Trash, Globe, FolderOpen, Package, Check, ArrowCounterClockwise, Wrench, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
+import { Lightning, Pencil, Trash, Check, ArrowCounterClockwise, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   AppMenu,
@@ -18,9 +18,15 @@ import {
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
+import type { SkillDefinition } from '@/features/chat/skills/types';
 import { useSkillFavorites } from '@/features/chat/skills/hooks/useSkillFavorites';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
+import {
+  isSkillDisabled,
+  setSkillDisabled,
+  SKILL_ENABLED_CHANGED_EVENT,
+} from '@/features/chat/skills/skillEnableStorage';
+import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
 // 类型定义
@@ -64,19 +70,6 @@ export interface SkillsListProps {
 // ============================================================================
 
 /** 位置图标映射 */
-const LocationIcon: React.FC<{ location: SkillLocation }> = ({ location }) => {
-  switch (location) {
-    case 'global':
-      return <Globe size={12} />;
-    case 'project':
-      return <FolderOpen size={12} />;
-    case 'builtin':
-      return <Package size={12} />;
-    default:
-      return <Lightning size={12} />;
-  }
-};
-
 // ============================================================================
 // 组件
 // ============================================================================
@@ -103,6 +96,14 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   const { isFavorite, toggleFavorite } = useSkillFavorites();
   // 触屏无 hover:收藏星标/「启用」标签需常显
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+
+  // 停用覆盖存在 localStorage，变更后靠 tick 强制重算 isSkillDisabled（仿 trustTick 模式）
+  const [, setEnableTick] = React.useState(0);
+  React.useEffect(() => {
+    const handleEnabledChanged = () => setEnableTick((v) => v + 1);
+    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, handleEnabledChanged);
+    return () => window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, handleEnabledChanged);
+  }, []);
 
   // 选中卡片时自动滚动到可视区域
   React.useEffect(() => {
@@ -136,6 +137,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
         const isSelected = selectedSkillId === skill.id;
         const isBuiltin = skill.isBuiltin === true;
         const isCustomized = skill.isCustomized === true;
+        const isDisabledSkill = isSkillDisabled(skill.id);
 
         // 当前卡片是否正在编辑（用于隐藏）
         const isEditing = editingSkillId === skill.id;
@@ -168,15 +170,15 @@ export const SkillsList: React.FC<SkillsListProps> = ({
           >
             {/* 顶部区域：标题与操作 */}
             <div className="flex items-start justify-between gap-3 mb-2">
-              <div className="min-w-0 flex-1 flex flex-col gap-1">
+              <div className={cn('min-w-0 flex-1 flex flex-col gap-1', isDisabledSkill && 'opacity-60')}>
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-medium text-sm text-foreground truncate leading-tight">
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
-                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显 */}
+                  {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
                   <NotionButton variant="utility" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
-                    className={cn('!h-auto !w-auto !p-0 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
+                    className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
                     aria-label="favorite"
                   >
                     <Star size={14} className={isFavorite(skill.id) ? 'fill-current' : ''} />
@@ -206,6 +208,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     }}
                     className={cn(
                       "flex items-center justify-center px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer border select-none",
+                      // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
+                      "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
                       isDefaultEnabled 
                         ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-[color:var(--button-primary-border)]"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
@@ -218,7 +222,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             </div>
 
             {/* 内容描述 */}
-            <div className="flex-1 min-h-[3rem]">
+            <div className={cn('flex-1 min-h-[3rem]', isDisabledSkill && 'opacity-60')}>
               <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-3">
                 {getLocalizedSkillDescription(skill.id, skill.description, t) || t('skills:management.no_description', '暂无描述')}
               </p>
@@ -226,26 +230,20 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
             {/* 底部标签栏 */}
             <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[color:var(--shell-workspace-border)]">
-              <div className="flex items-center gap-2">
+              <div className={cn('flex min-w-0 items-center gap-2', isDisabledSkill && 'opacity-60')}>
                 {/* 位置标签 */}
-                <div className={cn(
-                  "study-shell-badge flex items-center gap-1 text-[10px] px-1.5 py-0.5 select-none",
-                  skill.location === 'builtin' 
-                    ? ""
-                    : "study-shell-badge--primary"
-                )}>
-                  <LocationIcon location={skill.location} />
-                  <span>{t(`skills:location.${skill.location}`, skill.location)}</span>
-                </div>
+                <SkillPackageSummary skill={skill} variant="card" />
 
-                {/* 工具数量 */}
-                {skill.embeddedTools && skill.embeddedTools.length > 0 && (
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground/70 px-1.5 py-0.5">
-                    <Wrench size={10} />
-                    <span>{skill.embeddedTools.length}</span>
+                {/* 停用标记 */}
+                {isDisabledSkill && (
+                  <div
+                    className="study-shell-badge text-[10px]"
+                    title={t('skills:package.disabled_hint', '已停用：不参与对话，可随时重新启用')}
+                  >
+                    {t('skills:package.disabled_badge', '已停用')}
                   </div>
                 )}
-                
+
                 {/* 自定义标记 */}
                 {isBuiltin && isCustomized && (
                   <div className="study-shell-badge study-shell-badge--warning text-[10px]">
@@ -256,6 +254,23 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
               {/* 右下角操作按钮 */}
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                {/* 停用/启用开关（即时生效，无确认框） */}
+                <NotionButton
+                  variant="utility"
+                  size="sm"
+                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+                  onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
+                  title={
+                    isDisabledSkill
+                      ? t('skills:package.enable', '启用')
+                      : t('skills:package.disable', '停用')
+                  }
+                  aria-label={isDisabledSkill ? 'enable-skill' : 'disable-skill'}
+                >
+                  {isDisabledSkill
+                    ? t('skills:package.enable', '启用')
+                    : t('skills:package.disable', '停用')}
+                </NotionButton>
                 <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
                   <Pencil size={14} />
                 </NotionButton>

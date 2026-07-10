@@ -24,10 +24,12 @@ import { HorizontalResizable } from '../shared/Resizable';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
 import { CodeMirrorScrollOverlay } from './CodeMirrorScrollOverlay';
+import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
 // 类型定义
@@ -287,6 +289,12 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
       onClose();
     } catch (error) {
       console.error('[SkillFullscreenEditor] 保存失败:', error);
+      // 操作闭环：保存失败必须有可见反馈（成功通知由 onSave 内部发出）
+      showGlobalNotification(
+        'error',
+        t('skills:management.save_failed', '技能保存失败'),
+        String(error),
+      );
     } finally {
       setIsSaving(false);
     }
@@ -408,6 +416,9 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
                         {t('skills:editor.name', '名称')} *
                       </Label>
+                      {skill && (
+                        <SkillPackageSummary skill={skill} variant="editor" />
+                      )}
                       <Input
                         value={formData.name}
                         onChange={(e) => updateField('name', (e.target as HTMLInputElement).value)}
@@ -562,7 +573,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
 />
                       <p className="text-[10px] text-muted-foreground/60">
-                        {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
+                        {t('skills:editor.allowed_tools_hint', '运行时工具约束：激活此技能后，后端仅允许调用这里列出的工具；留空表示不允许业务工具')}
                       </p>
                     </div>
 

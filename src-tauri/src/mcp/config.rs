@@ -16,7 +16,9 @@ pub enum McpFraming {
 
 impl Default for McpFraming {
     fn default() -> Self {
-        Self::ContentLength
+        // MCP 规范的 stdio 传输是换行分隔 JSON（JSONL）；
+        // Content-Length 头分帧是 LSP 的做法，仅作为显式 opt-in 供私有 server 使用。
+        Self::JsonLines
     }
 }
 

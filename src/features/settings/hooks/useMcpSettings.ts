@@ -13,10 +13,9 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
 
-const DEFAULT_STDIO_ARGS = (() => {
-  const isWin = typeof navigator !== 'undefined' && /win/i.test(navigator.platform);
-  return isWin ? ['-y', '@anthropic-ai/server-everything'] : ['-y', '@anthropic-ai/server-everything'];
-})();
+/** 仅作表单 placeholder 提示，禁止静默写入配置 args。 */
+const DEFAULT_STDIO_ARGS_PLACEHOLDER = ['-y', '@modelcontextprotocol/server-everything'];
+const DEFAULT_STDIO_ARGS: string[] = [];
 
 const MCP_BACKEND_DISABLED_CODE = 'backend_mcp_disabled';
 const MCP_BACKEND_DISABLED_HINT = '当前构建未启用后端 MCP 测试命令，请在 Cargo.toml 中开启 mcp 特性后重试。';
@@ -102,8 +101,9 @@ export interface McpSettingsState {
     resourceSnap?: Record<string, { at: number; resources: Array<{ uri: string; name?: string; description?: string; mime_type?: string }> }>
   ) => void;
   
-  // 常量
+  // 常量（DEFAULT_STDIO_ARGS 为空：禁止隐式注入；PLACEHOLDER 仅供 UI 提示）
   DEFAULT_STDIO_ARGS: string[];
+  DEFAULT_STDIO_ARGS_PLACEHOLDER: string[];
   MCP_BACKEND_DISABLED_CODE: string;
   MCP_BACKEND_DISABLED_HINT: string;
 }
@@ -122,10 +122,10 @@ export function useMcpSettings(): McpSettingsState {
       name: '',
       transportType: 'stdio',
       command: 'npx',
-      args: [...DEFAULT_STDIO_ARGS],
+      args: [],
       env: {},
       cwd: '',
-      framing: 'content_length'
+      framing: 'jsonl'
     },
     error: null
   });
@@ -277,6 +277,7 @@ export function useMcpSettings(): McpSettingsState {
     handleMcpTestError,
     rebuildCachedDetailsFromSnapshots,
     DEFAULT_STDIO_ARGS,
+    DEFAULT_STDIO_ARGS_PLACEHOLDER,
     MCP_BACKEND_DISABLED_CODE,
     MCP_BACKEND_DISABLED_HINT,
   };

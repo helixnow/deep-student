@@ -18,7 +18,11 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert'
 import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
-import { DEFAULT_STDIO_ARGS, DEFAULT_STDIO_ARGS_PLACEHOLDER, CHAT_STREAM_SETTINGS_EVENT } from './constants';
+import {
+  DEFAULT_STDIO_ARGS_PLACEHOLDER,
+  CHAT_STREAM_SETTINGS_EVENT,
+  resolveSettingsStdioFraming,
+} from './constants';
 import { Info as InfoIcon, Plus, Trash, X, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -96,7 +100,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       namespace?: string;
     };
     error?: string | null;
-  }>({ open: false, index: null, mode: 'json', jsonInput: '', draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [...DEFAULT_STDIO_ARGS], env: {}, cwd: '', framing: 'content_length' }, error: null });
+  }>({ open: false, index: null, mode: 'json', jsonInput: '', draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [], env: {}, cwd: '', framing: 'jsonl' }, error: null });
   // MCP 全局策略模态（白/黑名单等）
   const [mcpPolicyModal, setMcpPolicyModal] = useState<{ open: boolean; advertiseAll: boolean; whitelist: string; blacklist: string; timeoutMs: number; rateLimit: number; cacheMax: number; cacheTtlMs: number }>({
     open: false,
@@ -429,9 +433,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           normalizedArgs = pieces;
         }
       }
-      if (!normalizedArgs || normalizedArgs.length === 0) {
-        normalizedArgs = [...DEFAULT_STDIO_ARGS];
-      }
+      // 空 args 保持为空：仅 UI placeholder 提示，不隐式注入默认 filesystem args
     }
 
     setMcpToolModal({
@@ -456,7 +458,10 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         mcpServers: tool.mcpServers as Record<string, unknown> | undefined,
         namespace: (tool['namespace'] as string) || '',
         cwd: (tool['cwd'] as string) || '',
-        framing: typeof tool['framing'] === 'string' && tool['framing'].toLowerCase() === 'jsonl' ? 'jsonl' : 'content_length',
+        // 已存显式 CL 保留；缺省/未知 → jsonl（不迁移存量显式值）
+        framing: resolveSettingsStdioFraming(
+          typeof tool['framing'] === 'string' ? tool['framing'] : null,
+        ),
       },
       error: null,
     });
@@ -614,8 +619,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
           : typeof argsSource === 'string'
             ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
             : [];
-        server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-        server.framing = draft.framing || 'content_length';
+        server.args = normalizedArgs;
+        server.framing = resolveSettingsStdioFraming(draft.framing);
         if (draft.cwd) server.cwd = draft.cwd;
       }
       if (draft.apiKey) server.apiKey = draft.apiKey;
@@ -815,9 +820,9 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
               : typeof argsSource === 'string'
                 ? argsSource.split(',').map(segment => segment.trim()).filter(Boolean)
                 : [];
-            if (!Array.isArray(normalizedDraft.args) || normalizedDraft.args.length === 0) {
-              normalizedDraft.args = [...DEFAULT_STDIO_ARGS];
-            }
+            normalizedDraft.framing = resolveSettingsStdioFraming(
+              typeof draft.framing === 'string' ? draft.framing : null,
+            );
           }
           toolToSave = normalizedDraft as McpToolConfig;
         }
@@ -982,7 +987,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                     {renderInfoPopover(t('settings:mcp_descriptions.framing_label'), t('settings:mcp_descriptions.framing_hint'))}
                   </div>
                   <AppSelect
-                    value={draft.framing || 'content_length'}
+                    value={resolveSettingsStdioFraming(draft.framing)}
                     onValueChange={value => updateDraft({ framing: value as 'jsonl' | 'content_length' })}
                     options={[
                       { value: 'jsonl', label: t('settings:mcp.framing.json_lines') },
@@ -1127,8 +1132,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             : typeof argsSource === 'string'
               ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
               : [];
-          server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-          server.framing = draft.framing || 'content_length';
+          server.args = normalizedArgs;
+          server.framing = resolveSettingsStdioFraming(draft.framing);
           if (draft.cwd) server.cwd = draft.cwd;
         }
         if (draft.apiKey) server.apiKey = draft.apiKey;
@@ -1163,13 +1168,22 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
               };
               if (serverConfig?.namespace) toolToSave['namespace'] = serverConfig.namespace;
               if (serverConfig?.cwd) toolToSave['cwd'] = serverConfig.cwd;
-              if (serverConfig?.framing) toolToSave['framing'] = serverConfig.framing;
+              if (serverConfig?.framing != null) {
+                toolToSave['framing'] = resolveSettingsStdioFraming(String(serverConfig.framing));
+              } else if (transport === 'stdio' || toolToSave.transportType === 'stdio') {
+                toolToSave['framing'] = 'jsonl';
+              }
             } else {
               toolToSave = {
                 id: draft.id || `mcp_${Date.now()}`,
                 name: (jsonConfig.name as string) || draft.name || t('common:unnamed_mcp_tool'),
                 ...jsonConfig,
               } as McpToolConfig;
+              if (toolToSave.transportType === 'stdio' || toolToSave.command) {
+                toolToSave['framing'] = resolveSettingsStdioFraming(
+                  typeof toolToSave['framing'] === 'string' ? String(toolToSave['framing']) : null,
+                );
+              }
             }
           } catch (err) {
             setMcpToolModal(prev => ({ ...prev, error: t('settings:mcp_errors.json_format_error') + (err as Error).message }));
@@ -1187,7 +1201,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             name: draft.name,
             transportType: transport,
             command: transport === 'stdio' ? draft.command : undefined,
-            args: transport === 'stdio' ? (normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS]) : undefined,
+            args: transport === 'stdio' ? normalizedArgs : undefined,
             env: draft.env,
             url: transport === 'websocket' ? draft.url : undefined,
             endpoint: (transport === 'sse' || transport === 'streamable_http') ? (draft.endpoint || draft.fetch?.url) : undefined,
@@ -1195,7 +1209,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             apiKey: draft.apiKey,
             namespace: draft.namespace,
             cwd: draft.cwd,
-            framing: draft.framing,
+            framing: transport === 'stdio' ? resolveSettingsStdioFraming(draft.framing) : draft.framing,
           };
         }
 

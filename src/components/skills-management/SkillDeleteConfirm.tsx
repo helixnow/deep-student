@@ -6,6 +6,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash, Warning } from '@phosphor-icons/react';
 import { NotionAlertDialog } from '../ui/NotionDialog';
+import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
@@ -44,10 +45,16 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
       onOpenChange(false);
     } catch (error) {
       console.error('[SkillDeleteConfirm] 删除失败:', error);
+      // 操作闭环：删除失败必须有可见反馈（成功通知由 onConfirm 内部发出）
+      showGlobalNotification(
+        'error',
+        t('skills:management.delete_failed', '技能删除失败'),
+        String(error),
+      );
     } finally {
       setIsDeleting(false);
     }
-  }, [onConfirm, onOpenChange]);
+  }, [onConfirm, onOpenChange, t]);
 
   if (!skill) return null;
 

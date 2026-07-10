@@ -18,8 +18,7 @@ import { cn } from '@/lib/utils';
 import type { McpToolModalState, McpToolDraft } from '../hooks/useMcpSettings';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-
-const DEFAULT_STDIO_ARGS = ['-y', '@modelcontextprotocol/server-everything'];
+import { DEFAULT_STDIO_ARGS_PLACEHOLDER, resolveSettingsStdioFraming } from './constants';
 
 export interface McpToolEditorModalProps {
   mcpToolModal: McpToolModalState;
@@ -80,8 +79,8 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
         : typeof argsSource === 'string'
           ? argsSource.split(',').map(item => item.trim()).filter(Boolean)
           : [];
-      server.args = normalizedArgs.length > 0 ? normalizedArgs : [...DEFAULT_STDIO_ARGS];
-      server.framing = draft.framing || 'content_length';
+      server.args = normalizedArgs;
+      server.framing = resolveSettingsStdioFraming(draft.framing);
       if (draft.cwd) server.cwd = draft.cwd;
     }
     if (draft.apiKey) server.apiKey = draft.apiKey;
@@ -231,7 +230,20 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
                     <Input
                       value={argsInput}
                       onChange={(e) => updateDraft({ args: e.target.value })}
-                      placeholder="-y, @anthropic-ai/server-everything"
+                      placeholder={DEFAULT_STDIO_ARGS_PLACEHOLDER}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>{t('settings:mcp_descriptions.framing_label', '分帧')}</Label>
+                    <AppSelect
+                      value={resolveSettingsStdioFraming(draft.framing)}
+                      onValueChange={(v) => updateDraft({ framing: v as 'jsonl' | 'content_length' })}
+                      options={[
+                        { value: 'jsonl', label: t('settings:mcp.framing.json_lines') },
+                        { value: 'content_length', label: 'Content-Length' },
+                      ]}
+                      variant="outline"
+                      size="sm"
                     />
                   </div>
                 </>

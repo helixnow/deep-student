@@ -162,7 +162,8 @@ export class TauriStdioClientTransport {
         command: this.params.command,
         args: this.params.args ?? [],
         env: this.params.env ?? {},
-        framing: this.params.framing ?? 'content_length',
+        // MCP 规范默认 JSONL；仅调用方显式传入 content_length 时走 CL（与后端 McpFraming::default 对齐）
+        framing: this.params.framing ?? 'jsonl',
         cwd: this.params.cwd ?? null,
       });
 

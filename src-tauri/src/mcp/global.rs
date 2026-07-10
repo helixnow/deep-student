@@ -306,6 +306,40 @@ pub fn is_mcp_available_sync() -> bool {
     get_global_mcp_client_sync().is_some()
 }
 
+/// MCP 子进程允许继承的平台最小环境变量集合。
+/// 其余父进程环境（含各类密钥）一律不继承；额外变量须由已审批配置显式声明。
+fn minimal_child_env_keys() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &[
+            "PATH",
+            "Path",
+            "PATHEXT",
+            "SystemRoot",
+            "SYSTEMROOT",
+            "WINDIR",
+            "COMSPEC",
+            "TEMP",
+            "TMP",
+            "USERPROFILE",
+            "APPDATA",
+            "LOCALAPPDATA",
+            "HOMEDRIVE",
+            "HOMEPATH",
+            "PROGRAMFILES",
+            "NUMBER_OF_PROCESSORS",
+            "OS",
+        ]
+    }
+
+    #[cfg(not(windows))]
+    {
+        &[
+            "PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "SHELL",
+        ]
+    }
+}
+
 /// 创建实际的 stdio 传输实现
 pub async fn create_stdio_transport(
     command: &str,
@@ -333,7 +367,16 @@ pub async fn create_stdio_transport(
         cmd.current_dir(dir);
     }
 
-    // 添加环境变量
+    // 🔒 不继承完整父进程环境（父环境可能包含 OPENAI_API_KEY / TOKEN / SECRET 等）。
+    // 只注入平台最小必需变量 + 配置里显式声明的变量。
+    cmd.env_clear();
+    for key in minimal_child_env_keys() {
+        if let Some(value) = std::env::var_os(key) {
+            cmd.env(key, value);
+        }
+    }
+
+    // 添加显式环境变量（来自已审批的 MCP 配置 / Settings 中用户填写的值）
     for (key, value) in env {
         log::debug!("Setting MCP env var: {}=[REDACTED]", key);
         cmd.env(key, value);
@@ -438,22 +481,8 @@ pub async fn create_stdio_transport(
                                 if !first_ok {
                                     break;
                                 }
-                                // 后续消息正常 Content-Length 解帧
-                                loop {
-                                    match read_content_length_message(&mut reader).await {
-                                        Ok(Some(message)) => {
-                                            let _ = recv_tx_clone.send(message);
-                                        }
-                                        Ok(None) => break,
-                                        Err(e) => {
-                                            log::error!(
-                                                "Error reading (fallback) Content-Length: {}",
-                                                e
-                                            );
-                                            break;
-                                        }
-                                    }
-                                }
+                                // 后续消息正常 Content-Length 解帧（内部仍带 JSONL 兜底）
+                                run_content_length_read_loop(reader, recv_tx_clone.clone()).await;
                                 break;
                             } else {
                                 if recv_tx_clone.send(trimmed).is_err() {
@@ -469,21 +498,9 @@ pub async fn create_stdio_transport(
                 }
             }
             super::config::McpFraming::ContentLength => {
-                let mut reader = BufReader::new(stdout);
-                loop {
-                    match read_content_length_message(&mut reader).await {
-                        Ok(Some(message)) => {
-                            if recv_tx_clone.send(message).is_err() {
-                                break;
-                            }
-                        }
-                        Ok(None) => break,
-                        Err(e) => {
-                            log::error!("Error reading from MCP stdout (Content-Length): {}", e);
-                            break;
-                        }
-                    }
-                }
+                let reader = BufReader::new(stdout);
+                // 内部带「首行即 JSON → 回退 JSONL」兜底
+                run_content_length_read_loop(reader, recv_tx_clone.clone()).await;
             }
         }
         log::info!("MCP stdout reader terminated");
@@ -663,10 +680,20 @@ impl super::transport::Transport for ProcessStdioTransport {
     }
 }
 
-/// 读取 Content-Length 格式的消息
-async fn read_content_length_message(
-    reader: &mut BufReader<tokio::process::ChildStdout>,
-) -> Result<Option<String>, std::io::Error> {
+/// Content-Length 读取结果。
+/// `JsonLine` 是兜底分支：server 实际按 MCP 规范输出 JSONL（首行即 JSON），
+/// 调用方应把该行当作完整消息并切换到 JSONL 逐行读取。
+enum ContentLengthRead {
+    Frame(String),
+    JsonLine(String),
+    Eof,
+}
+
+/// 读取 Content-Length 格式的消息（含「首行即 JSON → 回退 JSONL」兜底）
+async fn read_content_length_message<R>(reader: &mut R) -> Result<ContentLengthRead, std::io::Error>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
     // 读取头部
     let mut headers = Vec::new();
     let mut line = String::new();
@@ -675,13 +702,18 @@ async fn read_content_length_message(
         line.clear();
         let bytes_read = reader.read_line(&mut line).await?;
         if bytes_read == 0 {
-            return Ok(None); // EOF
+            return Ok(ContentLengthRead::Eof); // EOF
         }
 
         let trimmed = line.trim();
         if trimmed.is_empty() {
             // 空行表示头部结束
             break;
+        }
+
+        // 兜底：期望头部却读到 JSON —— server 实为规范 JSONL 实现
+        if headers.is_empty() && (trimmed.starts_with('{') || trimmed.starts_with('[')) {
+            return Ok(ContentLengthRead::JsonLine(trimmed.to_string()));
         }
 
         headers.push(trimmed.to_string());
@@ -731,7 +763,65 @@ async fn read_content_length_message(
         )
     })?;
 
-    Ok(Some(message))
+    Ok(ContentLengthRead::Frame(message))
+}
+
+/// 纯 JSONL 逐行读取循环（Content-Length 模式回退 JSONL 后使用）。
+async fn run_jsonl_read_loop<R>(reader: &mut R, recv_tx: &mpsc::UnboundedSender<String>)
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    let mut buffer = String::new();
+    loop {
+        buffer.clear();
+        match reader.read_line(&mut buffer).await {
+            Ok(0) => break,
+            Ok(_) => {
+                let trimmed = buffer.trim_end().to_string();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if recv_tx.send(trimmed).is_err() {
+                    break;
+                }
+            }
+            Err(e) => {
+                log::error!("Error reading from MCP stdout (JSONL fallback): {}", e);
+                break;
+            }
+        }
+    }
+}
+
+/// Content-Length 读取循环，遇到「首行即 JSON」时自动回退为 JSONL 逐行读取。
+async fn run_content_length_read_loop<R>(mut reader: R, recv_tx: mpsc::UnboundedSender<String>)
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    loop {
+        match read_content_length_message(&mut reader).await {
+            Ok(ContentLengthRead::Frame(message)) => {
+                if recv_tx.send(message).is_err() {
+                    break;
+                }
+            }
+            Ok(ContentLengthRead::JsonLine(line)) => {
+                log::warn!(
+                    "MCP stdout emitted raw JSON while configured Content-Length → fallback to JSONL framing"
+                );
+                if recv_tx.send(line).is_err() {
+                    break;
+                }
+                run_jsonl_read_loop(&mut reader, &recv_tx).await;
+                break;
+            }
+            Ok(ContentLengthRead::Eof) => break,
+            Err(e) => {
+                log::error!("Error reading from MCP stdout (Content-Length): {}", e);
+                break;
+            }
+        }
+    }
 }
 
 /// 构造Content-Length格式的帧
@@ -778,5 +868,51 @@ mod tests {
         let frame = format_content_length_frame(message);
         let expected = format!("Content-Length: {}\r\n\r\n{}", message.len(), message);
         assert_eq!(frame, expected);
+    }
+
+    #[test]
+    fn test_default_framing_is_jsonl() {
+        // MCP 规范：stdio 传输默认换行分隔 JSON
+        assert!(matches!(
+            super::super::config::McpFraming::default(),
+            super::super::config::McpFraming::JsonLines
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_read_content_length_message_parses_frame() {
+        let payload = r#"{"jsonrpc":"2.0","id":1}"#;
+        let framed = format_content_length_frame(payload);
+        let mut reader = BufReader::new(framed.as_bytes());
+        match read_content_length_message(&mut reader).await.unwrap() {
+            ContentLengthRead::Frame(message) => assert_eq!(message, payload),
+            _ => panic!("expected a Content-Length frame"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_content_length_message_falls_back_on_json_first_line() {
+        // 规范 JSONL server：首行即 JSON → 兜底返回 JsonLine
+        let data = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}\n";
+        let mut reader = BufReader::new(data.as_bytes());
+        match read_content_length_message(&mut reader).await.unwrap() {
+            ContentLengthRead::JsonLine(line) => {
+                assert!(line.starts_with('{'));
+                assert!(line.contains("\"id\":1"));
+            }
+            _ => panic!("expected JSONL fallback"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_content_length_loop_switches_to_jsonl_after_fallback() {
+        let data = "{\"id\":1}\n{\"id\":2}\n{\"id\":3}\n";
+        let reader = BufReader::new(data.as_bytes());
+        let (tx, mut rx) = mpsc::unbounded_channel::<String>();
+        run_content_length_read_loop(reader, tx).await;
+        assert_eq!(rx.recv().await.as_deref(), Some("{\"id\":1}"));
+        assert_eq!(rx.recv().await.as_deref(), Some("{\"id\":2}"));
+        assert_eq!(rx.recv().await.as_deref(), Some("{\"id\":3}"));
+        assert!(rx.recv().await.is_none());
     }
 }
