@@ -1,0 +1,223 @@
+/**
+ * ACR 视觉原语样式 — R1-10 / R3-03
+ * 窗口光环 / AgentStrip / 实体 flash。见 docs/dev/acr/DESIGN.md §4.2。
+ * 纪律：光环呼吸只动 opacity；flash 用 ::before + opacity（DESIGN §7 / R3-02）。
+ * R3-03：时序 token 统一；光环不唯颜色（实线/虚线 + 圆点/方点）；reduced-motion 全路径。
+ */
+
+:root {
+  /* 光环 / Strip 点呼吸周期（与 Crepe AI caret 对齐） */
+  --acr-halo-breathe-ms: 1600ms;
+
+  /* 实体 flash：DESIGN §4.2 区间 600–900ms，取中位 */
+  --acr-flash-ms: 750ms;
+
+  /* reduced-motion 下静态高亮保留时长（JS 兜底清理对齐） */
+  --acr-flash-static-ms: 400ms;
+}
+
+/* ==========================================================================
+ * 窗口光环（伪元素，避免动画整窗 opacity）
+ * acting=实线主题色；paused=虚线琥珀（形态差，不唯颜色）
+ * ========================================================================== */
+
+.wb-window[data-agent-active]::after,
+.wb-window[data-agent-paused]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 40;
+  box-sizing: border-box;
+}
+
+.wb-window[data-agent-active]::after {
+  outline: 2px solid hsl(var(--primary) / 85%);
+  outline-offset: -2px;
+  box-shadow: 0 0 14px hsl(var(--primary) / 28%);
+  animation: acr-halo-breathe var(--acr-halo-breathe-ms) ease-in-out infinite;
+}
+
+.wb-window[data-agent-paused]::after {
+  outline: 2px dashed hsl(38deg 92% 50% / 95%);
+  outline-offset: -2px;
+  box-shadow: 0 0 10px hsl(38deg 92% 50% / 22%);
+  opacity: 1;
+  animation: none;
+}
+
+@keyframes acr-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.42;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+ * AgentStrip
+ * ========================================================================== */
+
+.acr-agent-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  background: hsl(var(--primary) / 10%);
+  font-size: 12px;
+  line-height: 1.2;
+  color: hsl(var(--foreground));
+  user-select: none;
+}
+
+.acr-agent-strip[data-status='pausedByUser'] {
+  background: hsl(38deg 92% 50% / 12%);
+  border-bottom: 1px dashed hsl(38deg 92% 50% / 55%);
+}
+
+.acr-agent-strip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acr-agent-strip-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+}
+
+.acr-agent-strip-dot[data-state='acting'] {
+  animation: acr-halo-breathe var(--acr-halo-breathe-ms) ease-in-out infinite;
+}
+
+.acr-agent-strip-dot[data-state='paused'] {
+  /* 方点 + 琥珀：形态与颜色双通道 */
+  border-radius: 1px;
+  background: hsl(38deg 92% 50%);
+  animation: none;
+  opacity: 1;
+}
+
+.acr-agent-strip-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.acr-agent-strip-actions .acr-agent-strip-btn {
+  height: 22px;
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  border-radius: 8px;
+}
+
+/* ==========================================================================
+ * 实体 flash（R3-02：::before + opacity，避免 background 整行重绘）
+ * ========================================================================== */
+
+[data-agent-flash] {
+  position: relative;
+  isolation: isolate;
+}
+
+[data-agent-flash]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  background-color: hsl(var(--primary) / 38%);
+  animation: acr-flash-fade var(--acr-flash-ms) ease-out forwards;
+}
+
+@keyframes acr-flash-fade {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+ * prefers-reduced-motion：禁用动画，保留静态描边 / 瞬时高亮
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-window[data-agent-active]::after,
+  .acr-agent-strip-dot[data-state='acting'] {
+    animation: none;
+    opacity: 1;
+  }
+
+  [data-agent-flash]::before {
+    animation: none;
+    opacity: 0.72;
+  }
+}
+
+/* ==========================================================================
+ * forced-colors：光环/条/flash 不依赖自定义色
+ * ========================================================================== */
+
+@media (forced-colors: active) {
+  .wb-window[data-agent-active]::after {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+    animation: none;
+    opacity: 1;
+  }
+
+  .wb-window[data-agent-paused]::after {
+    outline: 2px dashed GrayText;
+    box-shadow: none;
+  }
+
+  .acr-agent-strip {
+    forced-color-adjust: none;
+    background: Canvas;
+    border-bottom: 1px solid CanvasText;
+    color: CanvasText;
+  }
+
+  .acr-agent-strip[data-status='pausedByUser'] {
+    border-bottom: 1px dashed GrayText;
+  }
+
+  .acr-agent-strip-dot[data-state='acting'] {
+    background: Highlight;
+    animation: none;
+  }
+
+  .acr-agent-strip-dot[data-state='paused'] {
+    background: GrayText;
+  }
+
+  [data-agent-flash]::before {
+    animation: none;
+    opacity: 0;
+  }
+
+  [data-agent-flash] {
+    outline: 2px solid Highlight;
+  }
+}
