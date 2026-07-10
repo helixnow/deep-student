@@ -1,0 +1,242 @@
+import React from 'react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  TileMenuPopover,
+  TILE_MENU_GRID,
+  TILE_MENU_EXIT_FALLBACK_MS,
+} from '@/features/workbench/components/TileMenuPopover';
+import {
+  WindowTitleBar,
+  TILE_MENU_HOVER_DELAY,
+  TILE_MENU_CLOSE_GRACE,
+} from '@/features/workbench/components/WindowTitleBar';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+function renderPopover(overrides: Partial<React.ComponentProps<typeof TileMenuPopover>> = {}) {
+  const props = {
+    open: true,
+    currentMode: 'floating' as const,
+    onSelect: vi.fn(),
+    onRequestClose: vi.fn(),
+    ...overrides,
+  };
+  const utils = render(<TileMenuPopover {...props} />);
+  return { ...utils, props };
+}
+
+/** 退场：animationend 快路径，或超时兜底 */
+function flushTileMenuExit(menu: Element) {
+  fireEvent.animationEnd(menu);
+}
+
+describe('TileMenuPopover 九宫格', () => {
+  it('渲染 3×3 全部平铺选项', () => {
+    renderPopover();
+    const items = screen.getAllByRole('menuitem');
+    expect(items).toHaveLength(9);
+    for (const action of TILE_MENU_GRID.flat()) {
+      expect(
+        document.querySelector(`[data-wb-tile-action="${action}"]`),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it('打开后焦点进入网格中心，方向键可在网格内移动（含回卷）', async () => {
+    renderPopover();
+    const menu = screen.getByRole('menu');
+    await waitFor(() =>
+      expect(document.activeElement).toHaveAttribute('data-wb-tile-action', 'center'),
+    );
+
+    fireEvent.keyDown(menu, { key: 'ArrowLeft' });
+    expect(document.activeElement).toHaveAttribute('data-wb-tile-action', 'tiled-left');
+
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(document.activeElement).toHaveAttribute('data-wb-tile-action', 'tiled-tl');
+
+    // 列回卷：col 0 再向左 → col 2
+    fireEvent.keyDown(menu, { key: 'ArrowLeft' });
+    expect(document.activeElement).toHaveAttribute('data-wb-tile-action', 'tiled-tr');
+
+    // 行回卷：row 0 再向上 → row 2
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(document.activeElement).toHaveAttribute('data-wb-tile-action', 'tiled-br');
+  });
+
+  it('Enter 选择当前项，Esc 请求关闭', async () => {
+    const { props } = renderPopover();
+    const menu = screen.getByRole('menu');
+    await waitFor(() =>
+      expect(document.activeElement).toHaveAttribute('data-wb-tile-action', 'center'),
+    );
+    fireEvent.keyDown(menu, { key: 'ArrowRight' });
+    fireEvent.keyDown(menu, { key: 'Enter' });
+    expect(props.onSelect).toHaveBeenCalledWith('tiled-right');
+
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    expect(props.onRequestClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('点击任意项直接选择', () => {
+    const { props } = renderPopover();
+    fireEvent.click(screen.getByRole('menuitem', { name: '填满' }));
+    expect(props.onSelect).toHaveBeenCalledWith('maximized');
+  });
+
+  it('open=false 不渲染', () => {
+    renderPopover({ open: false });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('面板带 wb-glass / wb-tilemenu，入场 data-phase=open', () => {
+    renderPopover();
+    const menu = screen.getByRole('menu');
+    expect(menu).toHaveClass('wb-tilemenu');
+    expect(menu).toHaveClass('wb-glass');
+    expect(menu).toHaveAttribute('data-phase', 'open');
+    expect(menu).toHaveAttribute('data-wb-tile-menu');
+  });
+
+  it('微缩桌面 glyph：平铺项含高亮块与淡块，恢复项为图标', () => {
+    renderPopover();
+    const left = document.querySelector('[data-wb-tile-action="tiled-left"]');
+    expect(left?.querySelector('.wb-tilemenu-glyph-cell.is-active')).toBeTruthy();
+    expect(left?.querySelector('.wb-tilemenu-glyph-cell.is-dim')).toBeTruthy();
+
+    const restore = document.querySelector('[data-wb-tile-action="restore"]');
+    expect(restore?.querySelector('.wb-tilemenu-restore')).toBeTruthy();
+    expect(restore?.querySelector('.wb-tilemenu-glyph')).toBeNull();
+  });
+
+  it('open→false 进入 closing，animationend 后卸载', () => {
+    const { rerender, props } = renderPopover();
+    const menu = screen.getByRole('menu');
+    expect(menu).toHaveAttribute('data-phase', 'open');
+
+    rerender(
+      <TileMenuPopover
+        open={false}
+        currentMode={props.currentMode}
+        onSelect={props.onSelect}
+        onRequestClose={props.onRequestClose}
+      />,
+    );
+    expect(screen.getByRole('menu')).toHaveAttribute('data-phase', 'closing');
+
+    flushTileMenuExit(screen.getByRole('menu'));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('open→false 时超时兜底也可卸载', () => {
+    vi.useFakeTimers();
+    const { rerender, props } = renderPopover();
+    rerender(
+      <TileMenuPopover
+        open={false}
+        currentMode={props.currentMode}
+        onSelect={props.onSelect}
+        onRequestClose={props.onRequestClose}
+      />,
+    );
+    expect(screen.getByRole('menu')).toHaveAttribute('data-phase', 'closing');
+
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_EXIT_FALLBACK_MS + 10);
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});
+
+describe('缩放键 hover 350ms 弹出', () => {
+  function renderBar() {
+    const props = {
+      windowId: 'w1',
+      title: 't',
+      focused: true,
+      displayMode: 'floating' as const,
+      onClose: vi.fn(),
+      onMinimize: vi.fn(),
+      onZoom: vi.fn(),
+      onTileAction: vi.fn(),
+    };
+    const utils = render(<WindowTitleBar {...props} />);
+    return { ...utils, props };
+  }
+
+  it('悬停不足 350ms 不弹出，满 350ms 弹出，离开后宽限期关闭', () => {
+    vi.useFakeTimers();
+    renderBar();
+    const zoom = screen.getByRole('button', { name: '缩放窗口' });
+
+    fireEvent.pointerEnter(zoom);
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_HOVER_DELAY - 50);
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    act(() => {
+      vi.advanceTimersByTime(60);
+    });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.pointerLeave(zoom);
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_CLOSE_GRACE + 20);
+    });
+    // 宽限期后进入 closing；再走退场兜底才真正卸载
+    expect(screen.getByRole('menu')).toHaveAttribute('data-phase', 'closing');
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_EXIT_FALLBACK_MS + 10);
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('离开缩放键但进入菜单本体时保持打开', () => {
+    vi.useFakeTimers();
+    renderBar();
+    const zoom = screen.getByRole('button', { name: '缩放窗口' });
+
+    fireEvent.pointerEnter(zoom);
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_HOVER_DELAY + 10);
+    });
+    const menu = screen.getByRole('menu');
+
+    fireEvent.pointerLeave(zoom);
+    fireEvent.pointerEnter(menu);
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_CLOSE_GRACE + 100);
+    });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(screen.getByRole('menu')).toHaveAttribute('data-phase', 'open');
+  });
+
+  it('键盘 ArrowDown 立即打开菜单；选择后关闭并回调 onTileAction', () => {
+    vi.useFakeTimers();
+    const { props } = renderBar();
+    const zoom = screen.getByRole('button', { name: '缩放窗口' });
+    fireEvent.keyDown(zoom, { key: 'ArrowDown' });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: '平铺到左半屏' }));
+    expect(props.onTileAction).toHaveBeenCalledWith('tiled-left');
+    // 选择后 TitleBar 立刻把 open 置 false → closing，再兜底卸载
+    expect(screen.getByRole('menu')).toHaveAttribute('data-phase', 'closing');
+    act(() => {
+      vi.advanceTimersByTime(TILE_MENU_EXIT_FALLBACK_MS + 10);
+    });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('缩放键直接点击 = onZoom 且不弹菜单', () => {
+    const { props } = renderBar();
+    fireEvent.click(screen.getByRole('button', { name: '缩放窗口' }));
+    expect(props.onZoom).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+});

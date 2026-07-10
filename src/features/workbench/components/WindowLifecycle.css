@@ -1,0 +1,210 @@
+/**
+ * WindowLifecycle / WindowBody / WindowErrorBoundary（O9）
+ *
+ * 壳层进出场：`[data-wb-lifec='opening'|'closing'|'minimizing'|'restoring']`
+ * （由 useWindowLifecycleAnim 挂属性；不用 classList，避免 React className 覆写剥动画）。
+ * 内容区：wb-body-*（frozen 占位 / 唤醒淡入 / 崩溃卡）。
+ *
+ * 时长与曲线全部引用 O1 motion.css token；minimal 档与 prefers-reduced-motion
+ * 下 token 归零，0ms 动画仍走 animationend / 超时兜底收尾。
+ */
+
+/* ==========================================================================
+ * 壳层生命周期动画（仅 transform / opacity）
+ * ========================================================================== */
+
+/*
+ * 动画期间强制提升合成层：O2 在 WindowShell.css 用
+ * `.wb-window.wb-window-focused/.wb-window-idle { will-change: auto }` 中和了
+ * 契约类的常驻 will-change（省内存），但开窗瞬间主线程常被应用 chunk
+ * 加载占满——不预提升的话 transform/opacity 动画拿不到合成器线程，逐帧卡顿。
+ * 用 [data-wb-window-id][data-wb-lifec] 提高特异性，稳压中和规则。
+ */
+/*
+ * 选择器挂在 [data-wb-window-id][data-wb-lifec]：不依赖 React className。
+ * `.wb-window` 前缀仅用于抬高特异性，压过 WindowShell 的 will-change:auto。
+ */
+.wb-window[data-wb-window-id][data-wb-lifec],
+[data-wb-window-id][data-wb-lifec] {
+  will-change: transform, opacity;
+}
+
+[data-wb-window-id][data-wb-lifec='opening'] {
+  animation: wb-kf-pop-in var(--wb-motion-standard, 280ms) var(--wb-ease-spring, cubic-bezier(0.32, 1.12, 0.36, 1)) both;
+}
+
+[data-wb-window-id][data-wb-lifec='closing'] {
+  animation: wb-kf-pop-out var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4)) both;
+  pointer-events: none;
+}
+
+/* Exposé FLIP 期间关窗：pop-out 的 scale 会与 FLIP transform 复合 → 改纯 opacity */
+[data-wb-window-id][data-expose-transform][data-wb-lifec='closing'] {
+  animation: wb-kf-fade-out var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4)) both;
+}
+
+[data-wb-window-id][data-wb-lifec='minimizing'],
+[data-wb-window-id][data-wb-lifec='restoring'] {
+  transform-origin: var(--wb-minimize-origin-x, 50%) var(--wb-minimize-origin-y, 130%);
+  pointer-events: none;
+}
+
+/* genie 关键帧已内嵌逐段 linear 缓动（形状编码在密集采样点里），
+ * 此处的曲线仅作声明占位，不再参与实际插值 */
+[data-wb-window-id][data-wb-lifec='minimizing'] {
+  animation: wb-kf-genie-min var(--wb-motion-genie, 480ms) linear both;
+}
+
+[data-wb-window-id][data-wb-lifec='restoring'] {
+  animation: wb-kf-genie-restore var(--wb-motion-genie, 480ms) linear both;
+}
+
+/* ==========================================================================
+ * Frozen 休眠占位（玻璃卡）
+ * ========================================================================== */
+
+.wb-body-frozen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: center;
+  animation: wb-kf-fade-in var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) both;
+}
+
+.wb-body-frozen:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.wb-body-frozen-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;
+  max-width: 280px;
+  width: 100%;
+  padding: 1.5rem 1.25rem;
+  border-radius: 14px;
+  box-shadow: var(--wb-glass-edge, none), var(--wb-shadow-popover, 0 8px 28px rgba(0, 0, 0, 0.12));
+}
+
+.wb-body-frozen-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  opacity: 0.92;
+}
+
+.wb-body-frozen-icon > * {
+  width: 36px;
+  height: 36px;
+}
+
+.wb-body-frozen-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.wb-body-frozen-hint {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  opacity: 0.62;
+}
+
+/* ==========================================================================
+ * 唤醒后内容淡入
+ * ========================================================================== */
+
+.wb-body-wake-in {
+  animation: wb-kf-fade-in var(--wb-motion-standard, 230ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) both;
+}
+
+/* ==========================================================================
+ * 崩溃恢复卡
+ * ========================================================================== */
+
+.wb-body-crash {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 1.25rem;
+  box-sizing: border-box;
+  animation: wb-kf-fade-in var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) both;
+}
+
+.wb-body-crash-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 340px;
+  width: 100%;
+  padding: 1.5rem 1.25rem;
+  border-radius: 14px;
+  text-align: center;
+  box-shadow: var(--wb-glass-edge, none), var(--wb-shadow-popover, 0 8px 28px rgba(0, 0, 0, 0.12));
+}
+
+.wb-body-crash-icon {
+  display: flex;
+  opacity: 0.78;
+}
+
+.wb-body-crash-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.wb-body-crash-summary {
+  max-width: 100%;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  opacity: 0.62;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.wb-body-crash-reload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: var(--wb-glass-bg-strong, hsl(var(--card) / 0.72));
+  color: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: opacity var(--wb-motion-quick, 150ms) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, cubic-bezier(0.5, 0.05, 0.8, 0.4));
+}
+
+.wb-body-crash-reload:hover {
+  opacity: 0.88;
+}
+
+.wb-body-crash-reload:active {
+  transform: scale(0.97);
+}
+
+.wb-body-crash-reload:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}

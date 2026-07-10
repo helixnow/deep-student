@@ -1,0 +1,210 @@
+/**
+ * WindowTitleBar.css（O3 专属）— 标题栏与三键微交互层
+ * ---------------------------------------------------------------------------
+ * 叠加在 workbench.css 契约类之上（契约文件冻结，不改）。规则：
+ *   - 新类一律 wb-title- 前缀；
+ *   - 覆盖契约属性时用更高特异性（.wb-titlebar.wb-title-bar…），全部在
+ *     docs/dev/workbench-progress/O3.md 声明交 O20 reconcile；
+ *   - 动画仅 transform / opacity（焦点态的 color/font-weight transition
+ *     属一次性状态过渡，与契约中 box-shadow 档位切换同类）；
+ *   - 曲线引用 O1 token（--wb-ease / --wb-ease-out，motion.css 落地后
+ *     由 O20 统一换名）；时长走本组件 --wb-title-* 变量，minimal 档与
+ *     prefers-reduced-motion 下归零（0ms 动画仍同步触发 animationend，
+ *     涟漪收尾逻辑不受影响）。
+ */
+
+.wb-title-bar {
+  --wb-title-fade-duration: 40ms;
+  --wb-title-key-duration: 130ms;
+  --wb-title-ripple-duration: 460ms;
+}
+
+/* ==========================================================================
+ * 拖拽区光标：grab / 拖动中 grabbing
+ * （覆盖契约 .wb-titlebar 的 cursor:default —— O20 reconcile 事项 #1）
+ * ========================================================================== */
+
+.wb-titlebar.wb-title-bar[data-wb-title-draggable] {
+  cursor: grab;
+}
+
+/* 放在 grab 规则之后，等特异性靠源顺序取胜 */
+.wb-titlebar.wb-title-bar.wb-title-dragging {
+  cursor: grabbing;
+}
+
+/* ==========================================================================
+ * 三键微交互（尺寸/间距沿用 token：12px 直径 / 8px gap，与 macOS 一致）
+ * ========================================================================== */
+
+/* 按压凹陷：缩小 + 契约自带的 brightness(0.82) 变暗叠加 */
+.wb-title-key {
+  transition: transform var(--wb-title-key-duration)
+    var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-title-key:active {
+  transform: scale(0.88);
+}
+
+/* 逐键悬停微光：左上 specular 高光点（::before 画在符号之下；
+ * 契约的 > * 规则只命中真实子元素，伪元素不受影响） */
+.wb-title-key::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 32% 28%,
+    rgba(255, 255, 255, 0.85) 0%,
+    rgba(255, 255, 255, 0.28) 44%,
+    rgba(255, 255, 255, 0) 70%
+  );
+  opacity: 0;
+  transition: opacity var(--wb-title-key-duration)
+    var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  pointer-events: none;
+}
+
+.wb-title-key:hover::before {
+  opacity: 0.55;
+}
+
+.wb-title-key:active::before {
+  opacity: 0.22;
+}
+
+/* close / min / zoom 各自 hover 本色提亮一档
+ * （覆盖契约 .wb-traffic-* 的 background —— O20 reconcile 事项 #2） */
+.wb-title-key.wb-traffic-close:hover {
+  background: color-mix(in srgb, var(--wb-traffic-close, #ff5f57) 84%, #fff 16%);
+}
+
+.wb-title-key.wb-traffic-min:hover {
+  background: color-mix(in srgb, var(--wb-traffic-min, #febc2e) 84%, #fff 16%);
+}
+
+.wb-title-key.wb-traffic-zoom:hover {
+  background: color-mix(in srgb, var(--wb-traffic-zoom, #28c840) 84%, #fff 16%);
+}
+
+/* 绿灯外包层：与键同宽高，避免 relative 裸 div 把第三键抬偏 / 间距拉开 */
+.wb-traffic-zoom-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--wb-traffic-size, 12px);
+  height: var(--wb-traffic-size, 12px);
+}
+
+/* 键内符号（契约控制浮现 opacity；这里只保证铺满 8px 命中框） */
+.wb-title-glyph {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ==========================================================================
+ * 标题：焦点/非焦点 色与权重过渡 + 长标题渐隐省略
+ * ========================================================================== */
+
+.wb-title-text {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  color: var(--wb-titlebar-fg);
+  font-weight: 600;
+  opacity: 1;
+  transition:
+    color var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    opacity var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    font-weight var(--wb-title-fade-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-title-bar-idle .wb-title-text {
+  color: var(--wb-titlebar-fg-idle);
+  font-weight: 500;
+  opacity: 0.82;
+}
+
+/* 溢出时右缘 26px 渐隐（替代硬截断省略号），由组件测量后打标 */
+.wb-title-text[data-wb-title-overflow] {
+  -webkit-mask-image: linear-gradient(
+    90deg,
+    #000 0%,
+    #000 calc(100% - 26px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(90deg, #000 0%, #000 calc(100% - 26px), transparent 100%);
+}
+
+/* ==========================================================================
+ * 双击 maximize 涟漪（transform + opacity 双属性；裁剪在独立层内）
+ * ========================================================================== */
+
+.wb-title-ripple-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wb-title-ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: wb-title-ripple-in var(--wb-title-ripple-duration)
+    var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
+}
+
+@keyframes wb-title-ripple-in {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.16;
+  }
+  70% {
+    opacity: 0.08;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+
+/* ==========================================================================
+ * 右侧 App 自定义操作位（可选 slot）
+ * ========================================================================== */
+
+.wb-title-accessory {
+  position: relative;
+  z-index: 10;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+}
+
+/* ==========================================================================
+ * 降级：minimal 材质档 + 系统 reduced-motion（时长归零，事件链保留）
+ * ========================================================================== */
+
+:root[data-wb-material='minimal'] .wb-title-bar {
+  --wb-title-fade-duration: 0ms;
+  --wb-title-key-duration: 0ms;
+  --wb-title-ripple-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-title-bar {
+    --wb-title-fade-duration: 0ms;
+    --wb-title-key-duration: 0ms;
+    --wb-title-ripple-duration: 0ms;
+  }
+}

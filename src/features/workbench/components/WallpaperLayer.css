@@ -1,0 +1,352 @@
+/**
+ * WallpaperLayer.css（O14 专属）
+ * ---------------------------------------------------------------------------
+ * 契约基线 .wb-wallpaper / .wb-wallpaper-image / .wb-wallpaper-scrim 在
+ * workbench.css（冻结）；本文件只新增 wb-wallpaper- 细分前缀类：
+ * - 渐变绘制从根节点属性选择器移入 .wb-wallpaper-pane（交叉淡入需要双层）；
+ *   aurora/horizon/graphite 引用 tokens.css 的 --wb-wallpaper-*（O1 拥有），
+ *   新预设渐变承载在本文件私有变量 --wb-wallpaper-p-*，并留
+ *   var(--wb-wallpaper-<id>, …) 回退链——O1 未来若收编为正式 token 自动生效。
+ * - 动画仅 transform/opacity；prefers-reduced-motion 与 reduced/minimal 材质档下
+ *   流动层静止；minimal 另将切换淡入时长归零。流动层不常驻 will-change。
+ */
+
+/* ==== 根节点 ==== */
+.wb-wallpaper-root {
+  /* ANTI-REGRESSION：禁止任何 contain（paint/layout/strict）。
+   * WebView2 GPU 合成下，「containment 边界 + 视差 transform 祖先 + 子树大量
+   * transform/backdrop-filter」会算错 DirectComposition 脏区——表现为整个桌面
+   * 垂直错位：顶部整条黑、Dock 连同底栏画到窗框以下（2026-07-10 事故）。
+   * 裁切由 .wb-desk-parallax 的 overflow:hidden 承担，这里不需要 paint 隔离。
+   * CI：platformPerformanceConfig.test.ts */
+
+  --wb-wallpaper-fade-duration: 420ms;
+
+  /* -- 新预设（明亮主题调校）------------------------------------------ */
+  /* meadow — 春野：右上晨光洒向左下深绿坡地 */
+  --wb-wallpaper-p-meadow:
+    radial-gradient(70% 55% at 84% -8%, hsl(58 82% 82%) 0%, transparent 60%),
+    radial-gradient(60% 50% at 102% 58%, hsl(96 58% 78%) 0%, transparent 62%),
+    radial-gradient(80% 62% at 4% 106%, hsl(152 50% 66%) 0%, transparent 64%),
+    linear-gradient(140deg, hsl(84 52% 86%) 0%, hsl(118 42% 80%) 52%, hsl(148 42% 73%) 100%);
+  /* lagoon — 泻湖：浅滩亮青向深水湛蓝的纵向水深 */
+  --wb-wallpaper-p-lagoon:
+    radial-gradient(75% 60% at 28% -10%, hsl(178 76% 80%) 0%, transparent 58%),
+    radial-gradient(65% 55% at 90% 28%, hsl(195 82% 74%) 0%, transparent 62%),
+    radial-gradient(90% 60% at 50% 114%, hsl(216 68% 60%) 0%, transparent 66%),
+    linear-gradient(170deg, hsl(184 58% 84%) 0%, hsl(196 60% 74%) 55%, hsl(208 58% 66%) 100%);
+  /* dusk — 暮霭：紫罗兰夜幕自右上压来，左下角残留珊瑚橙余晖 */
+  --wb-wallpaper-p-dusk:
+    radial-gradient(72% 55% at 16% 112%, hsl(24 92% 66%) 0%, hsl(352 74% 68% / 0.6) 42%, transparent 74%),
+    radial-gradient(85% 65% at 90% -12%, hsl(260 58% 64%) 0%, transparent 64%),
+    linear-gradient(202deg, hsl(263 50% 70%) 0%, hsl(288 42% 71%) 38%, hsl(324 50% 72%) 68%, hsl(350 60% 72%) 100%);
+  /* sakura — 樱雾：暖白心光 + 四周花瓣粉晕 */
+  --wb-wallpaper-p-sakura:
+    radial-gradient(60% 48% at 50% 30%, hsl(28 85% 93% / 0.9) 0%, transparent 65%),
+    radial-gradient(55% 45% at 6% 10%, hsl(340 75% 84%) 0%, transparent 60%),
+    radial-gradient(60% 50% at 96% 80%, hsl(320 60% 83%) 0%, transparent 62%),
+    radial-gradient(50% 42% at 84% 2%, hsl(302 48% 86%) 0%, transparent 60%),
+    linear-gradient(165deg, hsl(348 66% 90%) 0%, hsl(334 52% 86%) 100%);
+  /* sand — 暖沙：奶油纸底 + 顶部琥珀光 + 陶土角影（长时间阅读低刺激） */
+  --wb-wallpaper-p-sand:
+    radial-gradient(90% 62% at 70% -12%, hsl(44 75% 88%) 0%, transparent 60%),
+    radial-gradient(70% 55% at -8% 72%, hsl(24 52% 80%) 0%, transparent 60%),
+    radial-gradient(75% 55% at 104% 98%, hsl(14 50% 75%) 0%, transparent 62%),
+    linear-gradient(160deg, hsl(38 52% 90%) 0%, hsl(28 42% 82%) 100%);
+  /* nebula — 星云：饱和靛紫深空 + 品红/青色星云团（明亮主题下也刻意最深一档） */
+  --wb-wallpaper-p-nebula:
+    radial-gradient(55% 45% at 30% 24%, hsl(320 72% 68% / 0.55) 0%, transparent 62%),
+    radial-gradient(60% 50% at 82% 68%, hsl(195 82% 66% / 0.5) 0%, transparent 62%),
+    radial-gradient(45% 38% at 68% 12%, hsl(265 76% 72% / 0.6) 0%, transparent 60%),
+    linear-gradient(150deg, hsl(238 56% 66%) 0%, hsl(255 52% 56%) 50%, hsl(268 52% 46%) 100%);
+
+  /* -- 流动预设的光斑层（明亮主题）------------------------------------ */
+  --wb-wallpaper-p-flow-a: none;
+  --wb-wallpaper-p-flow-b: none;
+  --wb-wallpaper-p-flow-c: none;
+}
+
+/* ==== 新预设（暗色主题调校，对齐 theme-colors.css 的 :root.dark 机制） */
+:root.dark .wb-wallpaper-root {
+  /* meadow — 夜森林：月光自右上洒入，松绿沉入墨色 */
+  --wb-wallpaper-p-meadow:
+    radial-gradient(70% 55% at 84% -8%, hsl(122 46% 32% / 0.6) 0%, transparent 60%),
+    radial-gradient(60% 50% at 102% 58%, hsl(150 42% 22% / 0.55) 0%, transparent 62%),
+    radial-gradient(80% 62% at 4% 106%, hsl(170 48% 14%) 0%, transparent 64%),
+    linear-gradient(140deg, hsl(132 30% 13%) 0%, hsl(146 30% 9%) 52%, hsl(162 32% 7%) 100%);
+  /* lagoon — 夜海：浅层微光沉入深海蓝黑 */
+  --wb-wallpaper-p-lagoon:
+    radial-gradient(75% 60% at 28% -10%, hsl(180 62% 26% / 0.75) 0%, transparent 58%),
+    radial-gradient(65% 55% at 90% 28%, hsl(196 66% 24% / 0.6) 0%, transparent 62%),
+    radial-gradient(90% 60% at 50% 114%, hsl(218 60% 16%) 0%, transparent 66%),
+    linear-gradient(170deg, hsl(190 48% 12%) 0%, hsl(202 46% 9%) 55%, hsl(214 44% 7%) 100%);
+  /* dusk — 夜暮：熄灭中的余烬压在紫黑夜幕下 */
+  --wb-wallpaper-p-dusk:
+    radial-gradient(70% 52% at 20% 108%, hsl(18 70% 30%) 0%, hsl(345 52% 22% / 0.55) 45%, transparent 74%),
+    radial-gradient(80% 60% at 88% -10%, hsl(262 46% 22% / 0.8) 0%, transparent 60%),
+    linear-gradient(200deg, hsl(266 38% 13%) 0%, hsl(294 34% 12%) 40%, hsl(330 40% 12%) 70%, hsl(354 44% 13%) 100%);
+  /* sakura — 夜樱：暖灯心光映照深酒红花影 */
+  --wb-wallpaper-p-sakura:
+    radial-gradient(60% 48% at 50% 30%, hsl(8 58% 30% / 0.45) 0%, transparent 65%),
+    radial-gradient(55% 45% at 6% 10%, hsl(342 52% 24% / 0.7) 0%, transparent 60%),
+    radial-gradient(60% 50% at 96% 80%, hsl(320 44% 20% / 0.6) 0%, transparent 62%),
+    linear-gradient(165deg, hsl(345 34% 12%) 0%, hsl(328 30% 8%) 100%);
+  /* sand — 夜沙：篝火余温的暗琥珀纸感 */
+  --wb-wallpaper-p-sand:
+    radial-gradient(90% 62% at 70% -12%, hsl(31 56% 24% / 0.8) 0%, transparent 60%),
+    radial-gradient(70% 55% at -8% 72%, hsl(20 44% 17% / 0.7) 0%, transparent 60%),
+    radial-gradient(75% 55% at 104% 98%, hsl(12 46% 15%) 0%, transparent 62%),
+    linear-gradient(160deg, hsl(28 30% 13%) 0%, hsl(22 26% 8%) 100%);
+  /* nebula — 深空星云：黑夜里发光的品红/青色气体云 */
+  --wb-wallpaper-p-nebula:
+    radial-gradient(55% 45% at 30% 24%, hsl(318 72% 38% / 0.5) 0%, transparent 62%),
+    radial-gradient(60% 50% at 82% 68%, hsl(196 80% 34% / 0.45) 0%, transparent 62%),
+    radial-gradient(45% 38% at 68% 12%, hsl(262 70% 40% / 0.55) 0%, transparent 60%),
+    linear-gradient(150deg, hsl(240 50% 15%) 0%, hsl(254 48% 11%) 50%, hsl(268 46% 8%) 100%);
+}
+
+/* ==== 交叉淡入 pane ==== */
+.wb-wallpaper-pane {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.wb-wallpaper-pane-enter {
+  animation: wb-wallpaper-pane-fade var(--wb-wallpaper-fade-duration)
+    var(--wb-ease-out, ease-out) both;
+}
+
+@keyframes wb-wallpaper-pane-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ==== 预设渐变（绘制在 pane 上；沿用 O1 token / 私有变量回退链） ==== */
+.wb-wallpaper-pane[data-wb-wallpaper-preset='aurora'] {
+  background-image: var(--wb-wallpaper-aurora);
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='horizon'] {
+  background-image: var(--wb-wallpaper-horizon);
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='graphite'] {
+  background-image: var(--wb-wallpaper-graphite);
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='meadow'] {
+  background-image: var(--wb-wallpaper-meadow, var(--wb-wallpaper-p-meadow));
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='lagoon'] {
+  background-image: var(--wb-wallpaper-lagoon, var(--wb-wallpaper-p-lagoon));
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='dusk'] {
+  background-image: var(--wb-wallpaper-dusk, var(--wb-wallpaper-p-dusk));
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='sakura'] {
+  background-image: var(--wb-wallpaper-sakura, var(--wb-wallpaper-p-sakura));
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='sand'] {
+  background-image: var(--wb-wallpaper-sand, var(--wb-wallpaper-p-sand));
+}
+.wb-wallpaper-pane[data-wb-wallpaper-preset='nebula'] {
+  background-image: var(--wb-wallpaper-nebula, var(--wb-wallpaper-p-nebula));
+}
+
+/* ==== 动态流动预设：基础渐变 + 每套自己的光斑配色 ==== */
+.wb-wallpaper-pane[data-wb-wallpaper-preset='aurora-flow'] {
+  background-image: var(--wb-wallpaper-aurora);
+  --wb-wallpaper-p-flow-a: radial-gradient(
+    42% 56% at 30% 28%,
+    hsl(190 92% 74% / 0.55) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-b: radial-gradient(
+    48% 54% at 72% 56%,
+    hsl(265 82% 78% / 0.5) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-c: radial-gradient(
+    40% 50% at 48% 86%,
+    hsl(160 76% 74% / 0.45) 0%,
+    transparent 72%
+  );
+}
+
+.wb-wallpaper-pane[data-wb-wallpaper-preset='dusk-flow'] {
+  background-image: var(--wb-wallpaper-dusk, var(--wb-wallpaper-p-dusk));
+  --wb-wallpaper-p-flow-a: radial-gradient(
+    44% 56% at 28% 26%,
+    hsl(288 68% 76% / 0.5) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-b: radial-gradient(
+    46% 52% at 74% 52%,
+    hsl(18 92% 72% / 0.48) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-c: radial-gradient(
+    40% 50% at 50% 88%,
+    hsl(338 78% 76% / 0.4) 0%,
+    transparent 72%
+  );
+}
+
+/* 暗色主题：光斑改为夜色低亮度低透明度版本 */
+:root.dark .wb-wallpaper-pane[data-wb-wallpaper-preset='aurora-flow'] {
+  --wb-wallpaper-p-flow-a: radial-gradient(
+    42% 56% at 30% 28%,
+    hsl(178 90% 44% / 0.34) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-b: radial-gradient(
+    48% 54% at 72% 56%,
+    hsl(262 72% 52% / 0.28) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-c: radial-gradient(
+    40% 50% at 48% 86%,
+    hsl(150 80% 42% / 0.26) 0%,
+    transparent 72%
+  );
+}
+
+:root.dark .wb-wallpaper-pane[data-wb-wallpaper-preset='dusk-flow'] {
+  --wb-wallpaper-p-flow-a: radial-gradient(
+    44% 56% at 28% 26%,
+    hsl(295 60% 46% / 0.3) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-b: radial-gradient(
+    46% 52% at 74% 52%,
+    hsl(20 80% 46% / 0.32) 0%,
+    transparent 72%
+  );
+  --wb-wallpaper-p-flow-c: radial-gradient(
+    40% 50% at 50% 88%,
+    hsl(340 64% 46% / 0.26) 0%,
+    transparent 72%
+  );
+}
+
+/* ==== 流动光斑层：超采样出血 + 超长周期 transform 漂移 ==== */
+.wb-wallpaper-flow {
+  position: absolute;
+  /* 光斑漂移永不露边 */
+  inset: -22%;
+  pointer-events: none;
+  /* 不常驻 will-change：长周期动画由浏览器按需提升；降级档显式 auto */
+}
+
+.wb-wallpaper-flow-a {
+  background-image: var(--wb-wallpaper-p-flow-a);
+  animation: wb-wallpaper-drift-a 52s ease-in-out infinite;
+}
+
+.wb-wallpaper-flow-b {
+  background-image: var(--wb-wallpaper-p-flow-b);
+  animation: wb-wallpaper-drift-b 66s ease-in-out infinite;
+}
+
+.wb-wallpaper-flow-c {
+  background-image: var(--wb-wallpaper-p-flow-c);
+  animation: wb-wallpaper-drift-c 78s ease-in-out infinite;
+}
+
+@keyframes wb-wallpaper-drift-a {
+  0%,
+  100% {
+    transform: translate3d(-3%, -2%, 0) rotate(0deg) scale(1);
+  }
+  50% {
+    transform: translate3d(4%, 3%, 0) rotate(6deg) scale(1.08);
+  }
+}
+
+@keyframes wb-wallpaper-drift-b {
+  0%,
+  100% {
+    transform: translate3d(3%, 2%, 0) rotate(0deg) scale(1.05);
+  }
+  50% {
+    transform: translate3d(-4%, -3%, 0) rotate(-7deg) scale(1);
+  }
+}
+
+@keyframes wb-wallpaper-drift-c {
+  0%,
+  100% {
+    transform: translate3d(-2%, 3%, 0) rotate(0deg) scale(1.02);
+  }
+  50% {
+    transform: translate3d(3%, -3%, 0) rotate(5deg) scale(1.1);
+  }
+}
+
+/* ==== 自定义图片适配层（scrim 契约层之上再叠两层） ==== */
+/* 额外压暗（imageDim 通过内联 opacity 控制强度） */
+.wb-wallpaper-dimmer {
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0);
+}
+
+/* 边缘暗角：中心透明、四周轻微收暗，聚焦窗口内容 */
+.wb-wallpaper-vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    135% 110% at 50% 42%,
+    transparent 58%,
+    hsl(var(--shadow-base, 0 0% 0%) / 0.18) 100%
+  );
+}
+
+:root.dark .wb-wallpaper-vignette {
+  background: radial-gradient(
+    135% 110% at 50% 42%,
+    transparent 55%,
+    hsl(var(--shadow-base, 0 0% 0%) / 0.34) 100%
+  );
+}
+
+/* ==== 拖窗 / 遮挡 / 后台：暂停壁纸流动层（长周期 transform 仍占合成带宽） ==== */
+:root[data-wb-dragging] .wb-wallpaper-flow,
+:root[data-wb-wallpaper-covered] .wb-wallpaper-flow {
+  animation-play-state: paused;
+}
+
+/* ==== 降级：reduced/minimal 材质档 / 系统减弱动态 ==== */
+/* reduced：关流动动画（blur 已关；壁纸漂移仍贵） */
+:root[data-wb-material='reduced'] .wb-wallpaper-flow {
+  animation: none;
+  will-change: auto;
+}
+
+:root[data-wb-material='minimal'] .wb-wallpaper-root {
+  --wb-wallpaper-fade-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] .wb-wallpaper-flow {
+  animation: none;
+  will-change: auto;
+}
+
+/* minimal 档与 scrim=none 策略一致：图片适配层全部关闭 */
+:root[data-wb-material='minimal'] .wb-wallpaper-vignette,
+:root[data-wb-material='minimal'] .wb-wallpaper-dimmer {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-wallpaper-root {
+    --wb-wallpaper-fade-duration: 0ms;
+  }
+
+  .wb-wallpaper-flow {
+    animation: none;
+    will-change: auto;
+  }
+}

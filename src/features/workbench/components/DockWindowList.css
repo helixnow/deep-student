@@ -1,0 +1,256 @@
+/**
+ * DockWindowList.css（O6）— 多实例窗口列表弹层
+ * ---------------------------------------------------------------------------
+ * 全部类名 wb-docklist- 前缀；不重定义 workbench.css 契约类。
+ * 动画仅 transform/opacity；时长/曲线引用 motion.css token；
+ * z-index 用 --wb-z-dock-flyout；reduced-motion / minimal 归零。
+ *
+ * 分层：外层 .wb-docklist 只负责定位 transform（居中 + 视口钳位），
+ * 内层 .wb-docklist-surface 跑入场/退场动画，避免 keyframes 覆盖定位。
+ */
+
+.wb-docklist {
+  --wb-docklist-shift-x: 0px;
+  --wb-docklist-arrow-x: 50%;
+
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  z-index: var(--wb-z-dock-flyout, 9200);
+  /* 仅定位：水平居中 + 钳位偏移；入场/退场绝不写在此层 */
+  transform: translateX(calc(-50% + var(--wb-docklist-shift-x)));
+  pointer-events: auto;
+}
+
+.wb-docklist-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 176px;
+  max-width: min(92vw, 520px);
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--wb-glass-border);
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-glass-blur);
+  backdrop-filter: var(--wb-glass-blur);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 12px 32px hsl(var(--shadow-base, 0 0% 0%) / 0.22);
+  transform-origin: var(--wb-docklist-arrow-x) 100%;
+  animation: wb-kf-rise-in var(--wb-motion-quick, 150ms)
+    var(--wb-ease-overshoot, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+
+/* 退场：下沉淡出（入场 overshoot 对应 --wb-ease-in） */
+.wb-docklist[data-phase='closing'] .wb-docklist-surface {
+  pointer-events: none;
+  animation: wb-kf-sink-out var(--wb-motion-quick, 150ms)
+    var(--wb-ease-in, cubic-bezier(0.5, 0.05, 0.8, 0.4)) both;
+}
+
+/* 指向 Dock 图标的箭头（旋转小方块；水平位置随钳位补偿） */
+.wb-docklist-arrow {
+  position: absolute;
+  left: var(--wb-docklist-arrow-x);
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  border-radius: 2px;
+  background-color: var(--wb-glass-bg-strong);
+  border-right: 1px solid var(--wb-glass-border);
+  border-bottom: 1px solid var(--wb-glass-border);
+  pointer-events: none;
+}
+
+.wb-docklist-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.wb-docklist-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 160px;
+  border-radius: 10px;
+  outline: none;
+}
+
+.wb-docklist-item-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 6px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: default;
+  outline: none;
+  transition: background-color var(--wb-motion-quick, 150ms) linear;
+}
+
+.wb-docklist-item:hover .wb-docklist-item-btn,
+.wb-docklist-item:focus-within .wb-docklist-item-btn,
+.wb-docklist-item--active .wb-docklist-item-btn,
+.wb-docklist-item-btn:focus-visible {
+  background: var(--wb-dock-item-hover-bg, hsl(var(--primary) / 0.12));
+}
+
+.wb-docklist-thumb {
+  position: relative;
+  width: 100%;
+  height: 100px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--wb-glass-border);
+  background: color-mix(in hsl, hsl(var(--background)) 88%, hsl(var(--foreground)) 12%);
+}
+
+.wb-docklist-thumb-host {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.wb-docklist-thumb-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  pointer-events: none;
+}
+
+.wb-docklist-thumb-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--wb-dock-item-hover-bg, hsl(var(--foreground) / 0.08));
+  font-size: 18px;
+}
+
+.wb-docklist-thumb-letter {
+  font-size: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.wb-docklist-thumb-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.wb-docklist-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.wb-docklist-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.wb-docklist-item-min {
+  flex: none;
+  font-size: 10px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+/* 关闭按钮：默认隐藏，hover / focus-within 浮现 */
+.wb-docklist-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: hsl(var(--background) / 0.82);
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 4px hsl(var(--shadow-base, 0 0% 0%) / 0.18);
+  opacity: 0;
+  transform: scale(0.85);
+  pointer-events: none;
+  transition:
+    opacity var(--wb-motion-quick, 150ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform var(--wb-motion-quick, 150ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  cursor: pointer;
+}
+
+.wb-docklist-item:hover .wb-docklist-close,
+.wb-docklist-item:focus-within .wb-docklist-close {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.wb-docklist-close:hover,
+.wb-docklist-close:focus-visible {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-docklist-surface {
+    animation: none;
+  }
+  .wb-docklist[data-phase='closing'] .wb-docklist-surface {
+    animation: none;
+    opacity: 0;
+  }
+  .wb-docklist-close {
+    transition: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-docklist-surface {
+  animation: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:root[data-wb-material='minimal'] .wb-docklist[data-phase='closing'] .wb-docklist-surface {
+  animation: none;
+  opacity: 0;
+}
+
+:root[data-wb-material='minimal'] .wb-docklist-close {
+  transition: none;
+}

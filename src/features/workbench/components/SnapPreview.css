@@ -1,0 +1,168 @@
+/**
+ * SnapPreview.css（O4 专属）— 吸附预览精修 + 平铺中缝交互皮肤
+ * ---------------------------------------------------------------------------
+ * 前缀纪律：新类一律 wb-snap-* / wb-tile-*。
+ *
+ * 覆盖声明（交 O20 reconcile）：
+ * 1. `.wb-snap-preview.wb-snap-skin` 用更高特异性覆盖 workbench.css 冻结契约类
+ *    `.wb-snap-preview` 的 `animation: wb-snap-fade-in ... both` 与描边/填充。
+ *    原因：该 keyframes 只含 scale/opacity 且 fill:both，动画期间与结束后都会
+ *    劫持元素的 transform（inline translate3d 定位失效 → 预览钉死在视口左上角）
+ *    和 opacity（fade-out 永远不可见）。淡入淡出与 morph 改由本文件接管。
+ * 2. `[data-wb-tiling-divider]` 的 hover 命中区加宽与 grip 高亮通过 data 属性
+ *    选择器作用在 WorkbenchDesktop（O13 名下）渲染的中缝元素上——O4 只经由
+ *    属性选择器 + 伪元素增强，不改其内联基础样式。
+ *
+ * 动效纪律：仅 transform / opacity 参与过渡；时长与曲线优先引用 O1 motion.css
+ * 变量（--wb-motion-snap-morph / --wb-ease-spring），未落地前走本地 fallback；
+ * reduced-motion 与 minimal 材质档全部归零。
+ */
+
+/* ==========================================================================
+ * 吸附预览 — 外层：纯几何载体（inline transform/width/height）
+ * ========================================================================== */
+
+.wb-snap-preview.wb-snap-skin {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: var(--wb-z-snap-preview);
+  pointer-events: none;
+  box-sizing: border-box;
+  /* 冻结类的 mount 动画会劫持 transform/opacity（见文件头声明）→ 关闭 */
+  animation: none;
+  /* 视觉全部移交内层：外层不留描边/填充，避免 morph 缩放时描边变形叠加 */
+  border: none;
+  background: none;
+  transform-origin: 0 0;
+  will-change: transform;
+  opacity: 1;
+  --wb-snap-morph-duration: var(--wb-motion-snap-morph, 200ms);
+  --wb-snap-morph-ease: var(--wb-ease-spring, cubic-bezier(0.3, 1.24, 0.32, 1));
+  --wb-snap-fade-duration: var(--wb-motion-quick, 150ms);
+  --wb-snap-fade-ease: var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  /* 仅 transform morph；opacity 淡入淡出也在外层，与 morph 解耦且不受 inline 覆写 */
+  transition:
+    transform var(--wb-snap-morph-duration) var(--wb-snap-morph-ease),
+    opacity var(--wb-snap-fade-duration) var(--wb-snap-fade-ease);
+}
+
+.wb-snap-preview.wb-snap-skin[data-wb-snap-visible='false'] {
+  opacity: 0;
+}
+
+/* ==========================================================================
+ * 吸附预览 — 内层：描边 + 玻璃填充 + 圆角随目标 + 淡入淡出
+ * ========================================================================== */
+
+.wb-snap-skin .wb-snap-inner {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 1.5px solid var(--wb-snap-stroke);
+  border-radius: var(--wb-snap-radius);
+  /* 拖窗热路径：不用 backdrop-filter（全屏采样极贵）；半透明填充 + sheen 足够辨识 */
+  background: color-mix(in hsl, var(--wb-snap-fill) 88%, hsl(var(--card)) 12%);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  /* 顶缘高光 + 内缘微光 + 柔和主题色投影（状态性，不逐帧动画） */
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    inset 0 0 0 1px hsl(var(--primary) / 0.08),
+    0 12px 36px hsl(var(--primary) / 0.12);
+  opacity: 0;
+  transform: scale(0.985);
+  transform-origin: 50% 50%;
+  transition:
+    opacity var(--wb-snap-fade-duration, 120ms) var(--wb-ease-out, ease-out),
+    transform var(--wb-snap-fade-duration, 120ms) var(--wb-ease-out, ease-out);
+  will-change: transform, opacity;
+}
+
+.wb-snap-skin[data-wb-snap-visible='true'] .wb-snap-inner {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* 圆角随目标：平铺间距关闭（margin=0）时目标窗口贴边，预览圆角收紧 */
+.wb-snap-skin[data-wb-snap-flush='true'] .wb-snap-inner {
+  border-radius: 3px;
+}
+
+/* ==========================================================================
+ * 平铺中缝（元素由 WorkbenchDesktop 渲染，交互由 useTilingDivider 驱动）
+ * --------------------------------------------------------------------------
+ * - ::before 把命中区在 8px 内联宽度基础上向两侧各扩 6px（共 20px），
+ *   伪元素参与命中测试，光标保持 col-resize；
+ * - ::after 是居中 grip 短棒：默认隐藏，hover / 拖动中淡入 + 纵向展开；
+ * - wb-tile-divider-active 由 useTilingDivider 在拖动会话期间挂到元素上
+ *   （指针捕获期间 :hover 不可靠）。
+ * ========================================================================== */
+
+[data-wb-tiling-divider]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -6px;
+  right: -6px;
+  cursor: col-resize;
+}
+
+[data-wb-tiling-divider]::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 44px;
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 44%, transparent 56%);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 1px 6px hsl(var(--shadow-base, 0 0% 0%) / 0.22);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scaleY(0.55);
+  transition:
+    opacity var(--wb-tile-divider-fade, 140ms) var(--wb-ease-out, ease-out),
+    transform var(--wb-tile-divider-fade, 140ms) var(--wb-ease-spring, cubic-bezier(0.3, 1.24, 0.32, 1));
+  will-change: transform, opacity;
+}
+
+[data-wb-tiling-divider]:hover::after,
+[data-wb-tiling-divider].wb-tile-divider-active::after {
+  opacity: 1;
+  transform: translate(-50%, -50%) scaleY(1);
+}
+
+[data-wb-tiling-divider].wb-tile-divider-active::after {
+  background: color-mix(in hsl, hsl(var(--primary)) 62%, transparent 38%);
+}
+
+/* ==========================================================================
+ * 降级：reduced-motion / minimal 材质档 → O4 动效全部归零
+ * （JS 侧 morph / settle / tween 亦通过 prefersInstantMotion 跳过）
+ * ========================================================================== */
+
+:root[data-wb-material='minimal'] .wb-snap-preview.wb-snap-skin {
+  --wb-snap-morph-duration: 0ms;
+  --wb-snap-fade-duration: 0ms;
+}
+
+:root[data-wb-material='minimal'] [data-wb-tiling-divider]::after {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-snap-preview.wb-snap-skin {
+    --wb-snap-morph-duration: 0ms;
+    --wb-snap-fade-duration: 0ms;
+  }
+
+  .wb-snap-skin .wb-snap-inner,
+  [data-wb-tiling-divider]::after {
+    transition: none;
+  }
+}

@@ -1,0 +1,238 @@
+/**
+ * EmptyDesktop.css（L5 克制化，原 O14）
+ * ---------------------------------------------------------------------------
+ * 契约基线 .wb-empty-desktop / .wb-empty-card / .wb-empty-icons / .wb-empty-title
+ * / .wb-empty-hint / .wb-empty-hint-arrow 在 workbench.css（冻结）。
+ * 本文件只新增 wb-empty- 细分前缀类；唯一的基线覆盖是
+ * `.wb-empty-card.wb-empty-card-pro`。动画仅 transform/opacity；
+ * prefers-reduced-motion / minimal 材质档下进场动画关停。
+ */
+
+/* ==== 卡片（单主 CTA，不必为三卡加宽） ==== */
+.wb-empty-card.wb-empty-card-pro {
+  max-width: 360px;
+  padding: 28px 32px 22px;
+}
+
+/* ==== 插画区：单图标，无光晕/星点 ==== */
+.wb-empty-scene {
+  display: grid;
+  place-items: center;
+  padding: 4px 0 0;
+}
+
+/* ==== 主 CTA + 次要文字链 ==== */
+.wb-empty-cta-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+  pointer-events: auto;
+}
+
+.wb-empty-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 168px;
+  padding: 9px 18px;
+  border: 1px solid color-mix(in hsl, hsl(var(--primary)) 42%, hsl(var(--border)) 58%);
+  border-radius: 10px;
+  background: color-mix(in hsl, hsl(var(--primary)) 14%, transparent 86%);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+  transition:
+    transform 160ms var(--wb-ease-out, ease-out),
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.wb-empty-cta:hover {
+  transform: translateY(-1px);
+  background: color-mix(in hsl, hsl(var(--primary)) 22%, transparent 78%);
+  border-color: color-mix(in hsl, hsl(var(--primary)) 55%, hsl(var(--border)) 45%);
+}
+
+.wb-empty-cta:active {
+  transform: translateY(0);
+}
+
+.wb-empty-cta:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: 1px;
+}
+
+.wb-empty-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 14px;
+}
+
+.wb-empty-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  color: hsl(var(--primary));
+  opacity: 0.88;
+  transition: opacity 140ms ease;
+}
+
+.wb-empty-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.wb-empty-link:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ==== 首次使用 onboarding ==== */
+.wb-empty-onboarding {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px 8px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+  border-radius: 10px;
+  background: color-mix(in hsl, hsl(var(--card)) 28%, transparent 72%);
+  text-align: left;
+  pointer-events: auto;
+}
+
+.wb-empty-onboarding-head {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+}
+
+.wb-empty-onboarding-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.wb-empty-onboarding-dismiss {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 140ms ease, transform 140ms var(--wb-ease-out, ease-out);
+}
+
+.wb-empty-onboarding-dismiss:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.wb-empty-onboarding-dismiss:focus-visible {
+  outline: 2px solid hsl(var(--primary) / 0.7);
+  outline-offset: 1px;
+}
+
+.wb-empty-onboarding-list {
+  margin: 7px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wb-empty-onboarding-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+}
+
+.wb-empty-kbd {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  min-width: 18px;
+  height: 17px;
+  justify-content: center;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 75%, transparent 25%);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: color-mix(in hsl, hsl(var(--card)) 70%, transparent 30%);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-empty-kbd-plus {
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+/* ==== 进场：整卡子元素错拍上浮 ==== */
+.wb-empty-rise {
+  animation: wb-empty-rise-in 380ms var(--wb-ease-out, ease-out) both;
+}
+
+.wb-empty-rise-2 {
+  animation-delay: 50ms;
+}
+
+.wb-empty-rise-3 {
+  animation-delay: 100ms;
+}
+
+.wb-empty-rise-4 {
+  animation-delay: 160ms;
+}
+
+.wb-empty-rise-5 {
+  animation-delay: 230ms;
+}
+
+@keyframes wb-empty-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-empty-rise {
+    animation-duration: 0ms;
+    animation-delay: 0ms;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-empty-rise {
+  animation-duration: 0ms;
+  animation-delay: 0ms;
+}

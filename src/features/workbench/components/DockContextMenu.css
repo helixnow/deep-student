@@ -1,0 +1,83 @@
+/**
+ * DockContextMenu.css（O6）— Dock 右键菜单玻璃外壳覆盖
+ * ---------------------------------------------------------------------------
+ * 用更高特异性选择器覆盖 app-menu 外壳（不重定义契约类）；
+ * 全部新类 wb-dockmenu- 前缀；动画仅 transform/opacity；
+ * z-index 用 --wb-z-dock-flyout；reduced-motion / minimal 归零。
+ */
+
+.app-menu-content.wb-dockmenu {
+  z-index: var(--wb-z-dock-flyout, 9200);
+  padding: 5px;
+  border-radius: var(--wb-menu-radius, 14px);
+  border: 1px solid var(--wb-glass-border);
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
+  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur));
+  box-shadow: var(--wb-glass-edge), var(--wb-dock-shadow);
+  color: var(--text-primary, hsl(var(--foreground)));
+  /* 升起入场：覆盖 app-menu 默认 scale 起点，改用 rise + overshoot */
+  transform-origin: bottom center;
+  transform: translateY(8px) scale(0.96);
+  opacity: 0;
+  transition:
+    transform var(--wb-motion-quick, 150ms)
+      var(--wb-ease-overshoot, cubic-bezier(0.34, 1.56, 0.64, 1)),
+    opacity var(--wb-motion-quick, 150ms)
+      var(--wb-ease-overshoot, cubic-bezier(0.34, 1.56, 0.64, 1));
+}
+
+.app-menu-content.wb-dockmenu.app-menu-open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+}
+
+.app-menu-content.wb-dockmenu.app-menu-closing {
+  transform: translateY(6px) scale(0.97);
+  opacity: 0;
+  transition:
+    transform var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.4, 0, 1, 1)),
+    opacity var(--wb-motion-quick, 150ms) var(--wb-ease-in, cubic-bezier(0.4, 0, 1, 1));
+}
+
+/* 危险项：关闭全部 — 强化 destructive 配色 */
+.app-menu-content.wb-dockmenu .wb-dockmenu-destructive,
+.app-menu-content.wb-dockmenu .app-menu-item-destructive {
+  color: hsl(var(--destructive));
+}
+
+.app-menu-content.wb-dockmenu .wb-dockmenu-destructive:hover,
+.app-menu-content.wb-dockmenu .wb-dockmenu-destructive:focus,
+.app-menu-content.wb-dockmenu .app-menu-item-destructive:hover,
+.app-menu-content.wb-dockmenu .app-menu-item-destructive:focus {
+  background-color: hsl(var(--destructive) / 0.14);
+  color: hsl(var(--destructive));
+}
+
+.wb-dockmenu-min-tag {
+  font-size: 10px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-menu-content.wb-dockmenu,
+  .app-menu-content.wb-dockmenu.app-menu-open,
+  .app-menu-content.wb-dockmenu.app-menu-closing {
+    transition: none !important;
+    transform: none;
+    opacity: 1;
+  }
+
+  .app-menu-content.wb-dockmenu.app-menu-closing {
+    opacity: 0;
+  }
+  /* 关闭卸载由 AppMenuContent 的 setTimeout 兜底，不依赖 transitionend */
+}
+
+:root[data-wb-material='minimal'] .app-menu-content.wb-dockmenu {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  transition: none;
+}

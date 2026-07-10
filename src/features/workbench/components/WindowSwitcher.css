@@ -1,0 +1,379 @@
+/**
+ * WindowSwitcher（O8 专属样式）
+ * ---------------------------------------------------------------------------
+ * 类名一律 wb-switcher- 前缀；不重定义 workbench.css 契约类
+ * （玻璃材质通过组合 .wb-glass / .wb-glass-highlight 获得）。
+ *
+ * 纪律：
+ *   - 所有动画仅 transform / opacity；
+ *   - 曲线引用 O1 token（--wb-ease / --wb-ease-out），带同值回退；
+ *   - z-index 走 O1 刻度变量 --wb-z-switcher（回退保持原内联值），交 O20 校验；
+ *   - 时长收敛为组件级变量，minimal 材质档与 prefers-reduced-motion 下归零。
+ *
+ * 结构：
+ *   .wb-switcher-root                overlay 定位层（居中、pointer-events 关）
+ *     .wb-switcher-bar               中央玻璃条（进出动画载体）
+ *       .wb-switcher-strip           图标条（wrap + 三行封顶纵向滚动）
+ *         .wb-switcher-frame         滑动玻璃焦点框（唯一元素，transform 过渡）
+ *         .wb-switcher-item          候选项（图标 tile 或缩略卡）
+ *       .wb-switcher-caption         选中标题 + 操作提示
+ */
+
+.wb-switcher-root {
+  z-index: var(--wb-z-switcher, 9600);
+
+  /* 组件级动效参数（O20 可依 O1 motion.css 统一重映射） */
+  --wb-switcher-ease: var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+  --wb-switcher-ease-out: var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+  --wb-switcher-in-duration: 170ms;
+  --wb-switcher-out-duration: 150ms;
+  --wb-switcher-slide-duration: 190ms;
+  --wb-switcher-tile-duration: 160ms;
+  --wb-switcher-title-duration: 130ms;
+  --wb-switcher-commit-duration: 150ms;
+
+  /* 候选格尺寸（图标模式；thumbnails 模式在下方覆写） */
+  --wb-switcher-cell-w: 64px;
+  --wb-switcher-cell-h: 64px;
+  --wb-switcher-gap: 6px;
+}
+
+.wb-switcher-root[data-thumbs='true'] {
+  --wb-switcher-cell-w: 96px;
+  --wb-switcher-cell-h: 68px;
+}
+
+/* ==========================================================================
+ * 中央玻璃条 + 进出动画
+ * ========================================================================== */
+
+.wb-switcher-bar {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: min(80%, 760px);
+  padding: 16px 20px 12px;
+  border-radius: 22px;
+  box-shadow: var(--wb-shadow-focused);
+  animation: wb-switcher-in var(--wb-switcher-in-duration) var(--wb-switcher-ease-out) both;
+}
+
+/* 退出阶段：淡出。cancel 微缩、commit 微放（"进入所选窗口"的方向感） */
+.wb-switcher-root[data-phase='closing'] .wb-switcher-bar {
+  pointer-events: none;
+  animation: wb-switcher-out var(--wb-switcher-out-duration) var(--wb-switcher-ease) both;
+}
+
+.wb-switcher-root[data-phase='closing'][data-commit='true'] .wb-switcher-bar {
+  animation-name: wb-switcher-out-commit;
+}
+
+@keyframes wb-switcher-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes wb-switcher-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+
+@keyframes wb-switcher-out-commit {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+
+/* ==========================================================================
+ * 图标条：换行 + 三行封顶纵向滚动（大量窗口）
+ * ========================================================================== */
+
+.wb-switcher-strip {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-content: flex-start;
+  gap: var(--wb-switcher-gap);
+  max-width: 100%;
+  max-height: calc(3 * (var(--wb-switcher-cell-h) + var(--wb-switcher-gap)) + 4px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  padding: 2px;
+  scrollbar-width: thin;
+}
+
+.wb-switcher-strip::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wb-switcher-strip::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 22%, transparent 78%);
+}
+
+/* ==========================================================================
+ * 滑动玻璃焦点框（唯一元素；transform 由组件直写 DOM，中途重定向自然平滑）
+ * ========================================================================== */
+
+.wb-switcher-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--wb-switcher-cell-w);
+  height: var(--wb-switcher-cell-h);
+  border-radius: 14px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 12%, transparent 88%);
+  border: 1px solid color-mix(in hsl, hsl(var(--foreground)) 22%, transparent 78%);
+  box-shadow: inset 0 1px 0 var(--wb-glass-highlight, rgba(255, 255, 255, 0.4));
+  pointer-events: none;
+  will-change: transform;
+  transition:
+    transform var(--wb-switcher-slide-duration) var(--wb-switcher-ease),
+    opacity 100ms linear;
+}
+
+/* ==========================================================================
+ * 候选项（在焦点框之上；局部 stacking，非全局 z 刻度）
+ * ========================================================================== */
+
+.wb-switcher-item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: var(--wb-switcher-cell-w);
+  height: var(--wb-switcher-cell-h);
+  padding: 0;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+.wb-switcher-item:focus-visible {
+  box-shadow: 0 0 0 2px var(--wb-snap-stroke);
+}
+
+/* 选中项放大（transform-only，与焦点框滑动同步） */
+.wb-switcher-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  transform: scale(1);
+  transition: transform var(--wb-switcher-tile-duration) var(--wb-switcher-ease-out);
+}
+
+.wb-switcher-item[aria-selected='true'] .wb-switcher-tile {
+  transform: scale(1.12);
+}
+
+/* 松开聚焦（commit）：选中 tile 短促外扩脉冲，随玻璃条一起淡出 */
+.wb-switcher-root[data-phase='closing'][data-commit='true']
+  .wb-switcher-item[aria-selected='true']
+  .wb-switcher-tile {
+  animation: wb-switcher-commit var(--wb-switcher-commit-duration) var(--wb-switcher-ease-out) both;
+}
+
+@keyframes wb-switcher-commit {
+  from {
+    transform: scale(1.12);
+  }
+  to {
+    transform: scale(1.24);
+  }
+}
+
+/* ==========================================================================
+ * 图标模式内容
+ * ========================================================================== */
+
+.wb-switcher-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.wb-switcher-icon > svg {
+  width: 32px;
+  height: 32px;
+}
+
+.wb-switcher-icon-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 14%, transparent 86%);
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* 最小化窗口：整体降透明 + 底部小圆点 */
+.wb-switcher-item[data-minimized='true'] .wb-switcher-tile {
+  opacity: 0.62;
+}
+
+.wb-switcher-min-dot {
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+ * 可选窗口内容缩略卡（占位式迷你窗口：标题条 + 内容面 + 应用图标）
+ * ========================================================================== */
+
+.wb-switcher-thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: calc(100% - 10px);
+  max-height: calc(100% - 12px);
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid var(--wb-window-border, hsl(var(--border)));
+  background: var(--wb-window-bg, hsl(var(--card)));
+  box-shadow: 0 2px 8px hsl(var(--shadow-base, 0 0% 0%) / 0.18);
+}
+
+.wb-switcher-thumb-bar {
+  flex: 0 0 22%;
+  min-height: 6px;
+  background: var(--wb-titlebar-bg, hsl(var(--muted)));
+  border-bottom: 1px solid var(--wb-titlebar-border, transparent);
+}
+
+.wb-switcher-thumb-body {
+  flex: 1 1 auto;
+  background-image: var(--wb-glass-sheen, none);
+}
+
+.wb-switcher-thumb-icon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.wb-switcher-thumb-icon > svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ==========================================================================
+ * 选中标题 + 提示
+ * ========================================================================== */
+
+.wb-switcher-caption {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-width: 380px;
+}
+
+/* key 随选中项变化重挂 → 每次切换轻微上浮淡入 */
+.wb-switcher-title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, hsl(var(--foreground)));
+  animation: wb-switcher-title-in var(--wb-switcher-title-duration) var(--wb-switcher-ease-out) both;
+}
+
+@keyframes wb-switcher-title-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wb-switcher-hint {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.85;
+}
+
+/* ==========================================================================
+ * 降级：minimal 材质档 / 系统 reduced-motion → 动效时长归零、滚动不平滑
+ * （0ms 动画仍会触发 animationend，退出阶段收尾逻辑不受影响）
+ * ========================================================================== */
+
+:root[data-wb-material='minimal'] .wb-switcher-root {
+  --wb-switcher-in-duration: 0ms;
+  --wb-switcher-out-duration: 0ms;
+  --wb-switcher-slide-duration: 0ms;
+  --wb-switcher-tile-duration: 0ms;
+  --wb-switcher-title-duration: 0ms;
+  --wb-switcher-commit-duration: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-switcher-root {
+    --wb-switcher-in-duration: 0ms;
+    --wb-switcher-out-duration: 0ms;
+    --wb-switcher-slide-duration: 0ms;
+    --wb-switcher-tile-duration: 0ms;
+    --wb-switcher-title-duration: 0ms;
+    --wb-switcher-commit-duration: 0ms;
+  }
+
+  .wb-switcher-strip {
+    scroll-behavior: auto;
+  }
+}
