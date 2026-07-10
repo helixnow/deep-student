@@ -5,7 +5,7 @@ export type DocumentId = string;
 
 export type WorkspaceStatus = 'active' | 'completed' | 'archived';
 export type AgentRole = 'coordinator' | 'worker';
-export type AgentStatus = 'idle' | 'running' | 'completed' | 'failed';
+export type AgentStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type MessageType = 'task' | 'progress' | 'result' | 'query' | 'correction' | 'broadcast';
 export type MessageStatus = 'pending' | 'delivered' | 'processed';
 export type InboxStatus = 'unread' | 'read' | 'processed';

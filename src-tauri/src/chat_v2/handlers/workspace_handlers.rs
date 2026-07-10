@@ -12,10 +12,173 @@ use crate::chat_v2::state::{ChatV2State, StreamGuard};
 use crate::chat_v2::types::{
     ChatMessage, SendMessageRequest as ChatSendMessageRequest, SendOptions,
 };
-use crate::chat_v2::workspace::{
-    AgentRole, AgentStatus, MessageType, SubagentTaskStatus, WorkspaceCoordinator,
-    MAX_AGENT_RETRY_ATTEMPTS,
+use crate::chat_v2::workspace::config::{
+    MAX_CONCURRENT_WORKERS, WORKER_PIPELINE_CANCEL_GRACE_SECS, WORKER_PIPELINE_TIMEOUT_SECS,
 };
+use crate::chat_v2::workspace::{
+    AgentRole, AgentStatus, MessageType, SubagentTaskData, SubagentTaskStatus,
+    WorkspaceCoordinator, MAX_AGENT_RETRY_ATTEMPTS,
+};
+
+// ============================================================
+// Worker 生命周期辅助（并发上限 / P38 重试计数 / 结果摘要）
+// ============================================================
+
+/// result_summary 最大字符数（按字符截断，非字节）
+const WORKER_RESULT_SUMMARY_MAX_CHARS: usize = 500;
+
+/// P38：子代理"完成但未发送结果消息"的最大重试次数
+const MAX_NO_MESSAGE_RETRIES: u32 = 2;
+
+/// P38：子代理"完成但未发送结果消息"的进程级重试计数。
+/// 条目在成功发送消息或进入终态（Completed/Failed/Cancelled）后必须清理，防止泄漏。
+static WORKER_NO_MESSAGE_RETRY_COUNTS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<String, u32>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+fn bump_no_message_retry_count(agent_session_id: &str) -> u32 {
+    let mut counts = WORKER_NO_MESSAGE_RETRY_COUNTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let count = counts.entry(agent_session_id.to_string()).or_insert(0);
+    *count += 1;
+    *count
+}
+
+fn clear_no_message_retry_count(agent_session_id: &str) {
+    let mut counts = WORKER_NO_MESSAGE_RETRY_COUNTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    counts.remove(agent_session_id);
+}
+
+/// 全局 worker 管线并发信号量（懒初始化，进程级）
+static WORKER_PIPELINE_SEMAPHORE: std::sync::OnceLock<tokio::sync::Semaphore> =
+    std::sync::OnceLock::new();
+
+fn worker_pipeline_semaphore() -> &'static tokio::sync::Semaphore {
+    WORKER_PIPELINE_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(MAX_CONCURRENT_WORKERS))
+}
+
+/// 按字符（非字节）截断文本，避免多字节字符边界 panic
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let truncated: String = text.chars().take(max_chars).collect();
+    format!("{}…", truncated)
+}
+
+/// 提取子代理最终 assistant 消息的 content 块文本并截断，供 result_summary 使用
+/// （逻辑参考 headless.rs 的 summarize_assistant_message）。
+fn summarize_worker_assistant_message(
+    db: &ChatV2Database,
+    assistant_message_id: &str,
+) -> Option<String> {
+    let blocks =
+        match crate::chat_v2::repo::ChatV2Repo::get_message_blocks_v2(db, assistant_message_id) {
+            Ok(blocks) => blocks,
+            Err(e) => {
+                log::warn!(
+                    "[Workspace::handlers] Failed to read assistant blocks for result_summary: message={}, err={}",
+                    assistant_message_id,
+                    e
+                );
+                return None;
+            }
+        };
+
+    let text = blocks
+        .iter()
+        .filter(|b| b.block_type == "content")
+        .filter_map(|b| b.content.as_deref())
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string();
+
+    if text.is_empty() {
+        None
+    } else {
+        Some(truncate_chars(&text, WORKER_RESULT_SUMMARY_MAX_CHARS))
+    }
+}
+
+/// 🆕 取消传播：workspace 关闭/删除前，取消该 workspace 内所有活跃 worker 的流，
+/// 并把 pending/running 任务置 Cancelled，防止重启后 restore 把它们当"中断任务"复活。
+fn cancel_workspace_active_workers(
+    coordinator: &WorkspaceCoordinator,
+    chat_v2_state: &ChatV2State,
+    workspace_id: &str,
+    reason: &str,
+) {
+    match coordinator.list_agents(workspace_id) {
+        Ok(agents) => {
+            for agent in agents
+                .iter()
+                .filter(|a| matches!(a.role, AgentRole::Worker))
+            {
+                let stream_cancelled = chat_v2_state.cancel_stream(&agent.session_id);
+                clear_no_message_retry_count(&agent.session_id);
+                if stream_cancelled || matches!(agent.status, AgentStatus::Running) {
+                    let _ = coordinator.update_agent_status(
+                        workspace_id,
+                        &agent.session_id,
+                        AgentStatus::Cancelled,
+                    );
+                    log::info!(
+                        "[Workspace::handlers] Cancelled worker on {}: agent={}, had_stream={}",
+                        reason,
+                        agent.session_id,
+                        stream_cancelled
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!(
+                "[Workspace::handlers] Failed to list agents for cancel propagation ({}): {}",
+                reason,
+                e
+            );
+        }
+    }
+
+    match coordinator.get_task_manager(workspace_id) {
+        Ok(task_manager) => match task_manager.get_tasks_to_restore() {
+            Ok(tasks) => {
+                for task in tasks {
+                    if let Err(e) = task_manager.update_status(
+                        &task.id,
+                        SubagentTaskStatus::Cancelled,
+                        Some(reason),
+                    ) {
+                        log::warn!(
+                            "[Workspace::handlers] Failed to cancel task {} on {}: {:?}",
+                            task.id,
+                            reason,
+                            e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "[Workspace::handlers] Failed to enumerate tasks for cancel propagation ({}): {:?}",
+                    reason,
+                    e
+                );
+            }
+        },
+        Err(e) => {
+            log::warn!(
+                "[Workspace::handlers] Failed to get task manager for cancel propagation ({}): {}",
+                reason,
+                e
+            );
+        }
+    }
+}
 
 // ============================================================
 // 请求/响应类型
@@ -189,10 +352,18 @@ pub async fn workspace_get(
 #[tauri::command]
 pub async fn workspace_close(
     coordinator: State<'_, Arc<WorkspaceCoordinator>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
     session_id: String,
     workspace_id: String,
 ) -> Result<(), String> {
     ensure_workspace_creator(coordinator.inner().as_ref(), &workspace_id, &session_id)?;
+    // 🆕 取消传播：关闭前先取消活跃 worker 流并把任务置 Cancelled
+    cancel_workspace_active_workers(
+        coordinator.inner().as_ref(),
+        chat_v2_state.inner().as_ref(),
+        &workspace_id,
+        "workspace closed",
+    );
     coordinator.close_workspace(&workspace_id)
 }
 
@@ -200,10 +371,18 @@ pub async fn workspace_close(
 #[tauri::command]
 pub async fn workspace_delete(
     coordinator: State<'_, Arc<WorkspaceCoordinator>>,
+    chat_v2_state: State<'_, Arc<ChatV2State>>,
     session_id: String,
     workspace_id: String,
 ) -> Result<(), String> {
     ensure_workspace_creator(coordinator.inner().as_ref(), &workspace_id, &session_id)?;
+    // 🆕 取消传播：删除前先取消活跃 worker 流并把任务置 Cancelled
+    cancel_workspace_active_workers(
+        coordinator.inner().as_ref(),
+        chat_v2_state.inner().as_ref(),
+        &workspace_id,
+        "workspace deleted",
+    );
     coordinator.delete_workspace(&workspace_id)
 }
 
@@ -212,6 +391,7 @@ pub async fn workspace_delete(
 pub async fn workspace_create_agent(
     coordinator: State<'_, Arc<WorkspaceCoordinator>>,
     db: State<'_, Arc<ChatV2Database>>,
+    window: Window,
     request: CreateAgentRequest,
 ) -> Result<CreateAgentResponse, String> {
     coordinator.ensure_member_or_creator(&request.workspace_id, &request.requester_session_id)?;
@@ -223,6 +403,7 @@ pub async fn workspace_create_agent(
         AgentRole::Coordinator => "coordinator",
         AgentRole::Worker => "worker",
     };
+    let is_worker = matches!(role, AgentRole::Worker);
 
     // 生成 Agent 会话 ID
     let agent_session_id = format!(
@@ -240,6 +421,18 @@ pub async fn workspace_create_agent(
     use crate::chat_v2::repo::ChatV2Repo;
     use crate::chat_v2::types::{ChatSession, PersistStatus};
 
+    // 🆕 子代理深度：从 requester 会话 metadata 继承 +1（与工具路径对齐），
+    // 使 UI 创建的 worker 也受 subagent 嵌套深度限制约束。
+    let requester_depth = ChatV2Repo::get_session_with_conn(&conn, &request.requester_session_id)
+        .map_err(|e| format!("Failed to query requester session for depth: {}", e))?
+        .and_then(|s| s.metadata)
+        .and_then(|m| m.get("subagent_depth").cloned())
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+
+    // 🔧 按字符截取前缀，避免多字节字符边界 panic
+    let workspace_id_prefix: String = request.workspace_id.chars().take(8).collect();
+
     let now = chrono::Utc::now();
     let session = ChatSession {
         id: agent_session_id.clone(),
@@ -248,10 +441,7 @@ pub async fn workspace_create_agent(
             "Agent: {}",
             request.skill_id.as_deref().unwrap_or("Worker")
         )),
-        description: Some(format!(
-            "工作区 {} 的 Agent",
-            &request.workspace_id[..8.min(request.workspace_id.len())]
-        )),
+        description: Some(format!("工作区 {} 的 Agent", workspace_id_prefix)),
         summary_hash: None,
         // Agent 标题是系统语义化命名，锁定避免被自动摘要覆盖
         title_locked: true,
@@ -264,6 +454,8 @@ pub async fn workspace_create_agent(
             "skill_id": request.skill_id,
             "system_prompt": request.system_prompt,
             "recommended_models": Vec::<String>::new(),
+            "parent_session_id": request.requester_session_id,
+            "subagent_depth": requester_depth + 1,
         })),
         group_id: None,
         tags_hash: None,
@@ -282,15 +474,74 @@ pub async fn workspace_create_agent(
         None, // metadata 已存储在 ChatSession 中
     )?;
 
-    // 如果有初始任务，发送任务消息
+    // 🔧 P0 修复：初始任务投递与工具路径对齐——sender 用 requester、target 指向新 agent。
+    // 旧实现 sender=新 agent 自己且广播，router 的 resolve_targets 排除 sender，
+    // 导致初始任务永远到不了新 worker 的 inbox。
+    let has_initial_task = request.initial_task.is_some();
     if let Some(task) = &request.initial_task {
         coordinator.send_message(
             &request.workspace_id,
-            &agent_session_id,
-            None,
+            &request.requester_session_id,
+            Some(&agent_session_id),
             MessageType::Task,
             task.clone(),
         )?;
+
+        // 🆕 Worker + 初始任务：持久化 subagent_task（与工具路径对齐，支持重启恢复）
+        if is_worker {
+            match coordinator.get_task_manager(&request.workspace_id) {
+                Ok(task_manager) => {
+                    let task_data = SubagentTaskData::new(
+                        request.workspace_id.clone(),
+                        agent_session_id.clone(),
+                        request.skill_id.clone(),
+                        Some(task.clone()),
+                    );
+                    if let Err(e) = task_manager.create_task(&task_data) {
+                        log::warn!(
+                            "[Workspace::handlers] Failed to persist worker task: {:?}",
+                            e
+                        );
+                    } else {
+                        log::info!(
+                            "[Workspace::handlers] Persisted worker task: task_id={}, agent={}",
+                            task_data.id,
+                            agent_session_id
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Workspace::handlers] Failed to get task manager for worker task: {}",
+                        e
+                    );
+                }
+            }
+        }
+    }
+
+    // 🆕 Worker + 初始任务：发射 worker_ready 事件触发自动执行（与工具路径对齐）
+    if is_worker && has_initial_task {
+        use tauri::Emitter;
+        let event_payload = serde_json::json!({
+            "workspace_id": request.workspace_id,
+            "agent_session_id": agent_session_id,
+            "skill_id": request.skill_id,
+        });
+        if let Err(e) = window.emit(
+            crate::chat_v2::tools::workspace_executor::WORKSPACE_WORKER_READY_EVENT,
+            &event_payload,
+        ) {
+            log::warn!(
+                "[Workspace::handlers] Failed to emit worker_ready for created agent: {}",
+                e
+            );
+        } else {
+            log::info!(
+                "[Workspace::handlers] Emitted worker_ready for created agent: {}",
+                agent_session_id
+            );
+        }
     }
 
     Ok(CreateAgentResponse {
@@ -762,6 +1013,15 @@ pub async fn workspace_run_agent(
         },
     ];
 
+    // 🆕 执行层工具白名单（fail-closed，参考 headless.rs 的双层防线）：
+    // schema 层只注入 workspace_send/query，但执行层若不设白名单则全放行——
+    // worker 模型输出 subagent_call / workspace_create_agent 等任意工具名都会被执行，
+    // 深度限制可被绕过。白名单直接取注入 schema 的工具集，保持单一事实来源。
+    let worker_allowed_tools: Vec<String> = workspace_tool_schemas
+        .iter()
+        .map(|schema| schema.name.clone())
+        .collect();
+
     let assistant_message_id = ChatMessage::generate_id();
     let send_request = ChatSendMessageRequest {
         session_id: agent_session_id.clone(),
@@ -779,6 +1039,8 @@ pub async fn workspace_run_agent(
             memory_enabled: Some(false),
             // 🔧 P18 补充：注入 workspace 工具让子代理可以返回结果
             mcp_tool_schemas: Some(workspace_tool_schemas),
+            // 🆕 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截
+            skill_allowed_tools: Some(worker_allowed_tools),
             ..Default::default()
         }),
         assistant_message_id: Some(assistant_message_id.clone()),
@@ -793,25 +1055,265 @@ pub async fn workspace_run_agent(
     let pipeline_clone = pipeline.inner().clone();
     let chat_v2_state_clone = chat_v2_state.inner().clone();
     let coordinator_clone = coordinator.inner().clone();
+    let db_clone = db.inner().clone();
+    let assistant_message_id_for_task = assistant_message_id.clone();
+    let agent_skill_id = agent.skill_id.clone();
 
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务
     chat_v2_state.spawn_tracked(async move {
+        use tauri::Emitter;
+
         // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let _stream_guard = StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let stream_guard = StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
 
-        let result = pipeline_clone
-            .execute(window_clone.clone(), send_request, cancel_token, Some(chat_v2_state_clone.clone()))
-            .await;
+        // 🆕 并发上限：全局信号量限制同时运行的 worker 管线数量。
+        // acquire 放在 spawn 内部避免阻塞命令返回；permit 持有到管线结束。
+        let permit = worker_pipeline_semaphore().acquire().await;
+        if permit.is_err() {
+            // Semaphore 从不 close，此分支仅为防御
+            log::error!(
+                "[Workspace::handlers] Worker semaphore closed unexpectedly, aborting pipeline: agent={}",
+                session_id_for_cleanup
+            );
+        }
 
-        // remove_stream 由 _stream_guard 自动调用，无需手动清理
+        // 🆕 整体超时：pipeline 包 wall-clock 上限（对齐 headless），
+        // 超时后触发取消并给管线一个收尾窗口保存部分结果。
+        let mut timed_out = false;
+        let result = if permit.is_ok() {
+            let pipeline_fut = pipeline_clone.execute(
+                window_clone.clone(),
+                send_request,
+                cancel_token.clone(),
+                Some(chat_v2_state_clone.clone()),
+            );
+            tokio::pin!(pipeline_fut);
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(WORKER_PIPELINE_TIMEOUT_SECS),
+                &mut pipeline_fut,
+            )
+            .await
+            {
+                Ok(res) => res,
+                Err(_) => {
+                    log::warn!(
+                        "[Workspace::handlers] Worker pipeline exceeded {}s timeout, cancelling: agent={}",
+                        WORKER_PIPELINE_TIMEOUT_SECS,
+                        session_id_for_cleanup
+                    );
+                    timed_out = true;
+                    cancel_token.cancel();
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(WORKER_PIPELINE_CANCEL_GRACE_SECS),
+                        &mut pipeline_fut,
+                    )
+                    .await;
+                    Err(crate::chat_v2::error::ChatV2Error::Other(format!(
+                        "Worker pipeline timed out after {}s",
+                        WORKER_PIPELINE_TIMEOUT_SECS
+                    )))
+                }
+            }
+        } else {
+            Err(crate::chat_v2::error::ChatV2Error::Other(
+                "Worker semaphore closed unexpectedly".to_string(),
+            ))
+        };
+        drop(permit);
 
-        // 🔧 P1-2 修复：执行失败时的重试机制
-        // 🔧 P1-3 修复：子代理执行成功后应为 Completed 而非 Idle（子代理是一次性任务）
-        // 🔧 P38 修复：子代理 session ID 实际是 agent_worker_ 前缀，不是 subagent_
-        let is_subagent = is_worker;
-        let final_status = match &result {
-            Ok(_) => if is_subagent { AgentStatus::Completed } else { AgentStatus::Idle },
-            Err(crate::chat_v2::error::ChatV2Error::Cancelled) => AgentStatus::Idle,
+        // 管线已结束：先释放流注册，避免下面 worker_ready 触发的下一轮 run_agent
+        // 与本次流注册冲突（run_agent 的 try_register_stream 会拒绝并回滚 drain）。
+        drop(stream_guard);
+
+        let task_manager = coordinator_clone.get_task_manager(&workspace_id_clone).ok();
+        // 当前 pending/running 任务（终态更新前查询一次，后续复用）
+        let current_task = task_manager
+            .as_ref()
+            .and_then(|tm| tm.get_agent_task(&session_id_for_cleanup).ok().flatten());
+
+        match &result {
+            Ok(msg_id) => {
+                log::info!(
+                    "[Workspace::handlers] Agent pipeline completed: agent={}, message_id={}",
+                    session_id,
+                    msg_id
+                );
+
+                if is_worker {
+                    // 🔧 P38 时序修复：先检查"是否发过消息"，再决定是否置 Completed。
+                    // 过早置 Completed 会立刻触发 coordinator 的 all-terminal 唤醒，
+                    // 主代理拿到"完成"信号但没有任何结果。
+                    let task_started_at = current_task
+                        .as_ref()
+                        .and_then(|t| t.started_at)
+                        .map(|t| t.to_rfc3339());
+                    let since = task_started_at.unwrap_or_else(|| {
+                        (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339()
+                    });
+                    let has_sent_message = coordinator_clone
+                        .has_agent_sent_message_since(&workspace_id_clone, &session_id_for_cleanup, &since)
+                        .unwrap_or(false);
+
+                    if has_sent_message {
+                        log::info!(
+                            "[Workspace::handlers] ✅ P38: Subagent {} completed and has sent message(s)",
+                            session_id_for_cleanup
+                        );
+                        // 🔧 泄漏修复：成功发消息后清理进程级重试计数
+                        clear_no_message_retry_count(&session_id_for_cleanup);
+                        let _ = coordinator_clone.update_agent_status(
+                            &workspace_id_clone,
+                            &session_id_for_cleanup,
+                            AgentStatus::Completed,
+                        );
+                        if let (Some(tm), Some(task)) = (task_manager.as_ref(), current_task.as_ref()) {
+                            // 🔧 result_summary：存最终 assistant 消息内容的截断摘要，而非占位符
+                            let summary = summarize_worker_assistant_message(
+                                &db_clone,
+                                &assistant_message_id_for_task,
+                            )
+                            .unwrap_or_else(|| "Task completed successfully".to_string());
+                            if let Err(e) = tm.mark_completed(&task.id, Some(&summary)) {
+                                log::warn!(
+                                    "[Workspace::handlers] Failed to mark task completed: {:?}",
+                                    e
+                                );
+                            }
+                        }
+                    } else {
+                        let retry_count = bump_no_message_retry_count(&session_id_for_cleanup);
+                        if retry_count > MAX_NO_MESSAGE_RETRIES {
+                            // 🔧 重试耗尽 → Failed（而非伪 Completed），并清理重试计数
+                            clear_no_message_retry_count(&session_id_for_cleanup);
+                            log::error!(
+                                "[Workspace::handlers] ❌ P38: Subagent {} exceeded max retries ({}) without sending message. Giving up.",
+                                session_id_for_cleanup, MAX_NO_MESSAGE_RETRIES
+                            );
+                            let fail_payload = serde_json::json!({
+                                "workspace_id": workspace_id_clone,
+                                "agent_session_id": session_id_for_cleanup,
+                                "reason": "max_retries_exceeded",
+                                "message": format!("子代理已重试 {} 次仍未发送结果，放弃重试", MAX_NO_MESSAGE_RETRIES),
+                            });
+                            let _ = window_clone.emit("workspace_subagent_retry", &fail_payload);
+                            let _ = coordinator_clone.update_agent_status(
+                                &workspace_id_clone,
+                                &session_id_for_cleanup,
+                                AgentStatus::Failed,
+                            );
+                            if let (Some(tm), Some(task)) = (task_manager.as_ref(), current_task.as_ref()) {
+                                let summary = format!(
+                                    "子代理执行了 {} 次均未发送结果消息，放弃重试",
+                                    MAX_NO_MESSAGE_RETRIES + 1
+                                );
+                                if let Err(e) = tm.mark_failed(&task.id, Some(&summary)) {
+                                    log::warn!(
+                                        "[Workspace::handlers] Failed to mark task failed: {:?}",
+                                        e
+                                    );
+                                }
+                            }
+                        } else {
+                            // 🔧 P38 时序修复：保持 Running（不发 Completed 信号），
+                            // task 保持 running，通过 worker_ready + reminder 走重试。
+                            log::warn!(
+                                "[Workspace::handlers] 🔔 P38: Subagent {} completed without sending message! Retry {}/{}",
+                                session_id_for_cleanup, retry_count, MAX_NO_MESSAGE_RETRIES
+                            );
+
+                            let retry_block_payload = serde_json::json!({
+                                "workspace_id": workspace_id_clone,
+                                "agent_session_id": session_id_for_cleanup,
+                                "reason": "no_message_sent",
+                                "message": format!("子代理完成任务但未发送结果消息，正在重试 ({}/{})", retry_count, MAX_NO_MESSAGE_RETRIES),
+                                "retry_count": retry_count,
+                            });
+                            if let Err(e) = window_clone.emit("workspace_subagent_retry", &retry_block_payload) {
+                                log::warn!("[Workspace::handlers] Failed to emit subagent_retry event: {}", e);
+                            }
+
+                            let _ = coordinator_clone.update_agent_status(
+                                &workspace_id_clone,
+                                &session_id_for_cleanup,
+                                AgentStatus::Running,
+                            );
+
+                            // 🔧 工具名修正：注入的工具是 builtin-workspace_send（不存在 workspace_send_message）
+                            let reminder_payload = serde_json::json!({
+                                "workspace_id": workspace_id_clone,
+                                "agent_session_id": session_id_for_cleanup,
+                                "skill_id": agent_skill_id,
+                                "reminder": format!("【重要提醒 - 第{}次】你之前没有发送任何消息就结束了任务。作为子代理，你必须在完成任务后调用 `builtin-workspace_send` 工具（message_type 设为 \"result\"）向主代理报告你的工作结果。请立即发送你的任务完成报告！", retry_count),
+                            });
+                            if let Err(e) = window_clone.emit(
+                                crate::chat_v2::tools::workspace_executor::WORKSPACE_WORKER_READY_EVENT,
+                                &reminder_payload,
+                            ) {
+                                log::warn!(
+                                    "[Workspace::handlers] Failed to emit worker_ready for reminder: {}",
+                                    e
+                                );
+                            } else {
+                                log::info!(
+                                    "[Workspace::handlers] 🔔 P38: Emitted worker_ready with reminder for subagent {} (retry {})",
+                                    session_id_for_cleanup, retry_count
+                                );
+                            }
+                        }
+                    }
+                } else {
+                    // 非 worker（当前不可达：coordinator 不允许 auto-run）：保持旧语义置 Idle，
+                    // 并在有待处理消息时触发继续执行
+                    let _ = coordinator_clone.update_agent_status(
+                        &workspace_id_clone,
+                        &session_id_for_cleanup,
+                        AgentStatus::Idle,
+                    );
+                    if coordinator_clone.has_pending_messages(&workspace_id_clone, &session_id_for_cleanup) {
+                        log::info!(
+                            "[Workspace::handlers] Agent has pending messages, triggering continue: agent={}",
+                            session_id_for_cleanup
+                        );
+                        let event_payload = serde_json::json!({
+                            "workspace_id": workspace_id_clone,
+                            "agent_session_id": session_id_for_cleanup,
+                            "skill_id": agent_skill_id,
+                        });
+                        if let Err(e) = window_clone.emit(
+                            crate::chat_v2::tools::workspace_executor::WORKSPACE_WORKER_READY_EVENT,
+                            &event_payload,
+                        ) {
+                            log::warn!("[Workspace::handlers] Failed to emit worker_ready for continue: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(crate::chat_v2::error::ChatV2Error::Cancelled) => {
+                // 🔧 P0 修复：取消必须落库。agent 与 task 都置 Cancelled（旧实现置 Idle
+                // 且不动 task，导致任务停留 running、重启后被 restore 当"中断任务"复活）。
+                log::info!(
+                    "[Workspace::handlers] Agent pipeline cancelled: agent={}",
+                    session_id_for_cleanup
+                );
+                clear_no_message_retry_count(&session_id_for_cleanup);
+                let _ = coordinator_clone.update_agent_status(
+                    &workspace_id_clone,
+                    &session_id_for_cleanup,
+                    AgentStatus::Cancelled,
+                );
+                if let (Some(tm), Some(task)) = (task_manager.as_ref(), current_task.as_ref()) {
+                    if let Err(e) = tm.update_status(
+                        &task.id,
+                        SubagentTaskStatus::Cancelled,
+                        Some("execution cancelled"),
+                    ) {
+                        log::warn!(
+                            "[Workspace::handlers] Failed to mark task cancelled: {:?}",
+                            e
+                        );
+                    }
+                }
+            }
             Err(e) => {
                 log::error!(
                     "[Workspace::handlers] Agent pipeline error: agent={}, error={}",
@@ -819,217 +1321,121 @@ pub async fn workspace_run_agent(
                     e
                 );
 
-                // 🔧 P1-2 修复：失败时将消息重新放回 inbox 以便重试（带重试上限）
-                // 注意：这里只是将消息 ID 重新加入 inbox，实际的消息内容仍在数据库中
+                // 🔧 P1-2 修复：失败时将消息重新放回 inbox 以便重试（带重试上限）。
+                // 超时失败不重试：整体超时任务重跑大概率再次超时，直接终态。
                 let mut exhausted: Vec<(String, u32)> = Vec::new();
-                for msg_id in &original_message_ids {
-                    let retry_count = coordinator_clone
-                        .increment_message_retry_count(&workspace_id_clone, msg_id)
-                        .unwrap_or(1);
-                    if retry_count > MAX_AGENT_RETRY_ATTEMPTS {
-                        exhausted.push((msg_id.clone(), retry_count));
-                        continue;
-                    }
-                    if let Err(re) = coordinator_clone.re_enqueue_message(
-                        &workspace_id_clone,
-                        &session_id_for_cleanup,
-                        msg_id,
-                    ) {
-                        log::warn!(
-                            "[Workspace::handlers] Failed to re-enqueue message {} for retry: {}",
-                            msg_id, re
-                        );
-                    }
-                }
-                let requeued_count = original_message_ids.len().saturating_sub(exhausted.len());
-                log::info!(
-                    "[Workspace::handlers] Re-enqueued {} messages for agent {} retry (exhausted: {})",
-                    requeued_count,
-                    session_id_for_cleanup,
-                    exhausted.len()
-                );
-
-                if !exhausted.is_empty() {
-                    for (msg_id, retry_count) in exhausted {
-                        coordinator_clone.emit_warning(crate::chat_v2::workspace::emitter::WorkspaceWarningEvent {
-                            workspace_id: workspace_id_clone.clone(),
-                            code: "retry_limit_exceeded".to_string(),
-                            message: format!(
-                                "Retry limit exceeded for message {} (count {})",
-                                msg_id, retry_count
-                            ),
-                            agent_session_id: Some(session_id_for_cleanup.clone()),
-                            message_id: Some(msg_id),
-                            retry_count: Some(retry_count),
-                            max_retries: Some(MAX_AGENT_RETRY_ATTEMPTS),
-                        });
-                    }
-                }
-
-                AgentStatus::Failed
-            }
-        };
-        let _ = coordinator_clone.update_agent_status(&workspace_id_clone, &session_id_for_cleanup, final_status.clone());
-
-        // 🆕 P1 修复：更新子代理任务完成状态
-        // 🔧 P38 修复：子代理 session ID 实际是 agent_worker_ 前缀
-        if is_worker {
-            if let Ok(task_manager) = coordinator_clone.get_task_manager(&workspace_id_clone) {
-                if let Ok(Some(task)) = task_manager.get_agent_task(&session_id_for_cleanup) {
-                    let task_result = match &final_status {
-                        AgentStatus::Completed => {
-                            task_manager.mark_completed(&task.id, Some("Task completed successfully"))
+                let mut requeued_count = 0usize;
+                if !timed_out {
+                    for msg_id in &original_message_ids {
+                        // 🔧 fail-closed：重试计数读取失败时按超限处理，
+                        // 避免 DB 故障下重试上限失效（旧实现 unwrap_or(1) 是 fail-open）
+                        let retry_count = match coordinator_clone
+                            .increment_message_retry_count(&workspace_id_clone, msg_id)
+                        {
+                            Ok(count) => count,
+                            Err(err) => {
+                                log::error!(
+                                    "[Workspace::handlers] Failed to read retry count for {} (fail-closed, treating as exhausted): {}",
+                                    msg_id, err
+                                );
+                                MAX_AGENT_RETRY_ATTEMPTS + 1
+                            }
+                        };
+                        if retry_count > MAX_AGENT_RETRY_ATTEMPTS {
+                            exhausted.push((msg_id.clone(), retry_count));
+                            continue;
                         }
-                        AgentStatus::Failed => {
-                            task_manager.mark_failed(&task.id, Some("Task execution failed"))
-                        }
-                        _ => Ok(()),
-                    };
-                    if let Err(e) = task_result {
-                        log::warn!("[Workspace::handlers] Failed to update task status: {:?}", e);
-                    } else if matches!(final_status, AgentStatus::Completed | AgentStatus::Failed) {
-                        log::info!(
-                            "[Workspace::handlers] Updated task {} status to {:?} for agent {}",
-                            task.id, final_status, session_id_for_cleanup
-                        );
-                    }
-                }
-            }
-
-            // 🆕 P38 修复：子代理完成后检查是否发送过消息
-            // 如果没有发送过消息，需要重新触发子代理执行，提醒它必须发送结果
-            // 🔧 P38 批判性修复：添加重试次数限制，检查任务开始后的消息
-            if matches!(final_status, AgentStatus::Completed) {
-                // 获取任务开始时间，只检查此时间之后的消息
-                let task_started_at = if let Ok(task_manager) = coordinator_clone.get_task_manager(&workspace_id_clone) {
-                    if let Ok(Some(task)) = task_manager.get_agent_task(&session_id_for_cleanup) {
-                        task.started_at.map(|t| t.to_rfc3339())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                // 使用任务开始时间检查消息，如果没有则使用默认值（1小时前）
-                let since = task_started_at.unwrap_or_else(|| {
-                    (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339()
-                });
-
-                let has_sent_message = coordinator_clone
-                    .has_agent_sent_message_since(&workspace_id_clone, &session_id_for_cleanup, &since)
-                    .unwrap_or(false);
-
-                if !has_sent_message {
-                    // 🔧 P38 批判性修复：限制最大重试次数为 2 次
-                    // 使用静态变量跟踪重试次数（简化实现）
-                    static RETRY_COUNTS: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, u32>>> =
-                        std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-
-                    let mut counts = RETRY_COUNTS.lock().unwrap_or_else(|e| e.into_inner());
-                    let retry_count = counts.entry(session_id_for_cleanup.clone()).or_insert(0);
-                    *retry_count += 1;
-
-                    const MAX_RETRIES: u32 = 2;
-                    if *retry_count > MAX_RETRIES {
-                        log::error!(
-                            "[Workspace::handlers] ❌ P38: Subagent {} exceeded max retries ({}) without sending message. Giving up.",
-                            session_id_for_cleanup, MAX_RETRIES
-                        );
-                        // 发射失败事件，通知前端
-                        use tauri::Emitter;
-                        let fail_payload = serde_json::json!({
-                            "workspace_id": workspace_id_clone,
-                            "agent_session_id": session_id_for_cleanup,
-                            "reason": "max_retries_exceeded",
-                            "message": format!("子代理已重试 {} 次仍未发送结果，放弃重试", MAX_RETRIES),
-                        });
-                        let _ = window_clone.emit("workspace_subagent_retry", &fail_payload);
-                        // 不再重试，保持 Completed 状态
-                    } else {
-                        log::warn!(
-                            "[Workspace::handlers] 🔔 P38: Subagent {} completed without sending message! Retry {}/{}",
-                            session_id_for_cleanup, retry_count, MAX_RETRIES
-                        );
-
-                        // 发射 subagent_retry 事件，让前端创建并持久化块
-                        use tauri::Emitter;
-                        let retry_block_payload = serde_json::json!({
-                            "workspace_id": workspace_id_clone,
-                            "agent_session_id": session_id_for_cleanup,
-                            "reason": "no_message_sent",
-                            "message": format!("子代理完成任务但未发送结果消息，正在重试 ({}/{})", retry_count, MAX_RETRIES),
-                            "retry_count": retry_count,
-                        });
-                        if let Err(e) = window_clone.emit("workspace_subagent_retry", &retry_block_payload) {
-                            log::warn!("[Workspace::handlers] Failed to emit subagent_retry event: {}", e);
-                        }
-
-                        // 重新将状态设为 Running，准备重新执行
-                        let _ = coordinator_clone.update_agent_status(
+                        match coordinator_clone.re_enqueue_message(
                             &workspace_id_clone,
                             &session_id_for_cleanup,
-                            AgentStatus::Running,
-                        );
-
-                        // 发射 worker_ready 事件，携带提醒消息
-                        let reminder_payload = serde_json::json!({
-                            "workspace_id": workspace_id_clone,
-                            "agent_session_id": session_id_for_cleanup,
-                            "skill_id": Option::<String>::None,
-                            "reminder": format!("【重要提醒 - 第{}次】你之前没有发送任何消息就结束了任务。作为子代理，你必须在完成任务后使用 workspace_send_message 工具向主代理报告你的工作结果。请立即发送你的任务完成报告！", retry_count),
-                        });
-                        if let Err(e) = window_clone.emit(
-                            crate::chat_v2::tools::workspace_executor::WORKSPACE_WORKER_READY_EVENT,
-                            &reminder_payload
+                            msg_id,
                         ) {
-                            log::warn!(
-                                "[Workspace::handlers] Failed to emit worker_ready for reminder: {}",
-                                e
-                            );
-                        } else {
-                            log::info!(
-                                "[Workspace::handlers] 🔔 P38: Emitted worker_ready with reminder for subagent {} (retry {})",
-                                session_id_for_cleanup, retry_count
-                            );
+                            Ok(()) => requeued_count += 1,
+                            Err(re) => {
+                                log::warn!(
+                                    "[Workspace::handlers] Failed to re-enqueue message {} for retry: {}",
+                                    msg_id, re
+                                );
+                            }
                         }
                     }
-                } else {
-                    log::info!(
-                        "[Workspace::handlers] ✅ P38: Subagent {} completed and has sent message(s)",
-                        session_id_for_cleanup
-                    );
                 }
-            }
-        }
-
-        if let Ok(msg_id) = &result {
-            log::info!(
-                "[Workspace::handlers] Agent pipeline completed: agent={}, message_id={}",
-                session_id,
-                msg_id
-            );
-        }
-
-        // Worker 完成后检查 inbox 是否有新消息，如果有则触发继续执行
-        if matches!(final_status, AgentStatus::Idle) {
-            if coordinator_clone.has_pending_messages(&workspace_id_clone, &session_id_for_cleanup) {
                 log::info!(
-                    "[Workspace::handlers] Worker has pending messages, triggering continue: agent={}",
-                    session_id_for_cleanup
+                    "[Workspace::handlers] Re-enqueued {} messages for agent {} retry (exhausted: {}, timed_out: {})",
+                    requeued_count,
+                    session_id_for_cleanup,
+                    exhausted.len(),
+                    timed_out
                 );
-                // 发射 worker_ready 事件触发继续执行
-                use tauri::Emitter;
-                let event_payload = serde_json::json!({
-                    "workspace_id": workspace_id_clone,
-                    "agent_session_id": session_id_for_cleanup,
-                    "skill_id": Option::<String>::None,
-                });
-                if let Err(e) = window_clone.emit(
-                    crate::chat_v2::tools::workspace_executor::WORKSPACE_WORKER_READY_EVENT,
-                    &event_payload
-                ) {
-                    log::warn!("[Workspace::handlers] Failed to emit worker_ready for continue: {}", e);
+
+                for (msg_id, retry_count) in exhausted {
+                    coordinator_clone.emit_warning(crate::chat_v2::workspace::emitter::WorkspaceWarningEvent {
+                        workspace_id: workspace_id_clone.clone(),
+                        code: "retry_limit_exceeded".to_string(),
+                        message: format!(
+                            "Retry limit exceeded for message {} (count {})",
+                            msg_id, retry_count
+                        ),
+                        agent_session_id: Some(session_id_for_cleanup.clone()),
+                        message_id: Some(msg_id),
+                        retry_count: Some(retry_count),
+                        max_retries: Some(MAX_AGENT_RETRY_ATTEMPTS),
+                    });
+                }
+
+                if requeued_count > 0 {
+                    // 🔧 P0 修复：重试链修复——回填的消息必须有人消费。
+                    // 保持 Running 并发 worker_ready（旧实现只在 Idle 时发 worker_ready，
+                    // Failed 不发，回填消息永远无人消费）。
+                    let _ = coordinator_clone.update_agent_status(
+                        &workspace_id_clone,
+                        &session_id_for_cleanup,
+                        AgentStatus::Running,
+                    );
+                    let retry_payload = serde_json::json!({
+                        "workspace_id": workspace_id_clone,
+                        "agent_session_id": session_id_for_cleanup,
+                        "skill_id": agent_skill_id,
+                        "reminder": format!(
+                            "上一次执行因错误中断（{}），任务消息已重新入队，请继续完成任务。",
+                            truncate_chars(&e.to_string(), 200)
+                        ),
+                    });
+                    if let Err(ee) = window_clone.emit(
+                        crate::chat_v2::tools::workspace_executor::WORKSPACE_WORKER_READY_EVENT,
+                        &retry_payload,
+                    ) {
+                        log::warn!(
+                            "[Workspace::handlers] Failed to emit worker_ready for failure retry: {}",
+                            ee
+                        );
+                    } else {
+                        log::info!(
+                            "[Workspace::handlers] Emitted worker_ready for failure retry: agent={}",
+                            session_id_for_cleanup
+                        );
+                    }
+                } else {
+                    // 重试额度耗尽（或超时/无消息可回填）→ 终态 Failed
+                    clear_no_message_retry_count(&session_id_for_cleanup);
+                    let _ = coordinator_clone.update_agent_status(
+                        &workspace_id_clone,
+                        &session_id_for_cleanup,
+                        AgentStatus::Failed,
+                    );
+                    if is_worker {
+                        if let (Some(tm), Some(task)) = (task_manager.as_ref(), current_task.as_ref()) {
+                            // 🔧 result_summary：存真实错误信息（截断），而非占位符
+                            let error_summary =
+                                truncate_chars(&e.to_string(), WORKER_RESULT_SUMMARY_MAX_CHARS);
+                            if let Err(te) = tm.mark_failed(&task.id, Some(&error_summary)) {
+                                log::warn!(
+                                    "[Workspace::handlers] Failed to mark task failed: {:?}",
+                                    te
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1053,10 +1459,61 @@ pub async fn workspace_cancel_agent(
 ) -> Result<bool, String> {
     coordinator.ensure_member_or_creator(&workspace_id, &session_id)?;
 
-    let cancelled = chat_v2_state.cancel_stream(&agent_session_id);
+    let stream_cancelled = chat_v2_state.cancel_stream(&agent_session_id);
+
+    // 🔧 P0 修复：取消必须落库。查该 agent 的 pending/running 任务并置 Cancelled，
+    // 否则任务停留 running，重启后被 workspace_restore_executions 当"中断任务"自动重跑。
+    let mut task_cancelled = false;
+    match coordinator.get_task_manager(&workspace_id) {
+        Ok(task_manager) => match task_manager.get_agent_task(&agent_session_id) {
+            Ok(Some(task)) => match task_manager.update_status(
+                &task.id,
+                SubagentTaskStatus::Cancelled,
+                Some("user cancelled"),
+            ) {
+                Ok(()) => {
+                    task_cancelled = true;
+                    log::info!(
+                        "[Workspace::handlers] Cancelled task {} for agent {}",
+                        task.id,
+                        agent_session_id
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Workspace::handlers] Failed to cancel task {} for agent {}: {:?}",
+                        task.id,
+                        agent_session_id,
+                        e
+                    );
+                }
+            },
+            Ok(None) => {}
+            Err(e) => {
+                log::warn!(
+                    "[Workspace::handlers] Failed to query task for cancel: agent={}, error={:?}",
+                    agent_session_id,
+                    e
+                );
+            }
+        },
+        Err(e) => {
+            log::warn!(
+                "[Workspace::handlers] Failed to get task manager for cancel: {}",
+                e
+            );
+        }
+    }
+
+    let cancelled = stream_cancelled || task_cancelled;
     if cancelled {
-        let _ =
-            coordinator.update_agent_status(&workspace_id, &agent_session_id, AgentStatus::Idle);
+        // 🔧 P0 修复：agent 状态用 Cancelled（而非 Idle），避免被当作可复用的空闲 agent
+        clear_no_message_retry_count(&agent_session_id);
+        let _ = coordinator.update_agent_status(
+            &workspace_id,
+            &agent_session_id,
+            AgentStatus::Cancelled,
+        );
         coordinator.emit_warning(crate::chat_v2::workspace::emitter::WorkspaceWarningEvent {
             workspace_id,
             code: "agent_cancelled".to_string(),

@@ -34,6 +34,8 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const handleCreate = async () => {
+    // 防重复提交：按钮 disabled 状态更新前的快速连击也要拦截
+    if (creating) return;
     if (!selectedSkillId) {
       setError(t('chatV2:workspace.createAgent.selectSkill'));
       return;
@@ -50,7 +52,7 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
       setCreating(true);
       setError(null);
 
-      const result = await createAgent({
+      await createAgent({
         workspace_id: workspaceId,
         requester_session_id: currentSessionId,
         skill_id: selectedSkillId,
@@ -59,8 +61,6 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
         // 传递技能的系统提示词（来自前端 skills 系统）
         system_prompt: selectedSkill?.content,
       });
-
-      console.log('[CreateAgentDialog] Agent created:', result);
 
       // 🔧 修复：创建成功后主动刷新 agents 列表，不依赖事件
       try {
@@ -83,7 +83,6 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
           );
         } else {
           useWorkspaceStore.getState().setAgents(convertedAgents);
-          console.log('[CreateAgentDialog] Agents list refreshed:', convertedAgents.length);
         }
       } catch (refreshErr: unknown) {
         console.warn('[CreateAgentDialog] Failed to refresh agents list:', refreshErr);
@@ -106,10 +105,10 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
     }
   };
 
+  // 关闭（Escape/遮罩/取消按钮）时保留已选技能与任务输入，避免误触丢失未提交内容；
+  // 仅清除错误提示。成功创建后才重置表单（见 handleCreate）。
   const handleClose = () => {
     if (!creating) {
-      setSelectedSkillId(null);
-      setInitialTask('');
       setError(null);
       onOpenChange(false);
     }

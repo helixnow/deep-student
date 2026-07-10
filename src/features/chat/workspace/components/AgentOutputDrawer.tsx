@@ -11,7 +11,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretDown, CaretUp, ArrowSquareOut, CircleNotch, Robot, ArrowsOut, ArrowsIn, PaperPlaneRight } from '@phosphor-icons/react';
+import { CaretDown, CaretRight, ArrowSquareOut, CircleNotch, Robot, ArrowsOut, ArrowsIn, PaperPlaneRight, Timer, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
@@ -23,6 +23,12 @@ import { sendMessage, runAgent, cancelAgent } from '../api';
 import { useWorkspaceStore } from '../workspaceStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getLocalizedSkillName } from '../utils';
+import {
+  useAgentTaskInfo,
+  truncateTaskTitle,
+  formatElapsedDuration,
+  useRunningElapsedMs,
+} from './AgentCard';
 
 interface AgentOutputDrawerProps {
   /** 所属工作区 ID */
@@ -73,12 +79,43 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
     state.agents.find((a) => a.workspaceId === workspaceId && a.role === 'coordinator')?.sessionId
   );
 
+  // 🆕 任务摘要 + 耗时指标
+  // lastActiveAt 由 updateAgentStatus 在每次状态变更时写入：
+  // - running 期间它近似等于"进入 running 的时刻"（store 无 startedAt 字段）
+  // - terminal 状态时它近似等于"结束时刻"
+  const agentLastActiveAt = useWorkspaceStore(
+    (state) => state.agents.find((a) => a.sessionId === agentSessionId)?.lastActiveAt ?? null
+  );
+  const { taskContent, taskCreatedAt } = useAgentTaskInfo(agentSessionId);
+  const taskSummary = taskContent ? truncateTaskTitle(taskContent) : null;
+
+  // 实时耗时：仅 running 时每秒 tick；起点优先取进入 running 的时刻，回退到 task 派发时刻
+  const runningStartIso = agentLastActiveAt || taskCreatedAt;
+  const runningElapsedMs = useRunningElapsedMs(status === 'running', runningStartIso);
+
+  // 终态耗时：task 派发时刻 → 最后一次状态变更时刻（近似值）
+  const isTerminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+  let finalElapsedMs: number | null = null;
+  if (isTerminal && taskCreatedAt && agentLastActiveAt) {
+    const delta = new Date(agentLastActiveAt).getTime() - new Date(taskCreatedAt).getTime();
+    if (Number.isFinite(delta) && delta > 0) {
+      finalElapsedMs = delta;
+    }
+  }
+  const elapsedLabel =
+    status === 'running' && runningElapsedMs !== null
+      ? formatElapsedDuration(runningElapsedMs)
+      : finalElapsedMs !== null
+        ? formatElapsedDuration(finalElapsedMs)
+        : null;
+
   // 状态颜色
   const statusColors: Record<AgentStatus, string> = {
     idle: 'text-gray-500',
     running: 'text-blue-500',
     completed: 'text-green-500',
     failed: 'text-red-500',
+    cancelled: 'text-gray-400',
   };
 
   // 状态文本
@@ -87,6 +124,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
     running: t('subagent.status.running'),
     completed: t('subagent.status.completed'),
     failed: t('subagent.status.failed'),
+    cancelled: t('subagent.status.cancelled'),
   }[status];
 
   const skillName = getLocalizedSkillName(
@@ -96,6 +134,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
   );
 
   const handleDispatch = async () => {
+    if (dispatching) return;
     const content = dispatchContent.trim();
     if (!content) {
       setDispatchError(t('chatV2:workspace.dispatch.empty'));
@@ -181,28 +220,59 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       "border rounded-lg overflow-hidden bg-card",
       status === 'running' && "ring-2 ring-blue-500/30"
     )}>
-      {/* 头部（可点击展开/收起） */}
-      <NotionButton
-        variant="ghost"
-        size="sm"
+      {/* 头部（可点击展开/收起；用 div 而非 button，避免内部操作按钮形成非法的 button 嵌套） */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         onClick={onToggle}
-        className="w-full !justify-between !p-2.5"
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className="flex w-full items-center justify-between p-2.5 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (
             <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
           ) : (
-            <CaretUp size={16} className="text-muted-foreground flex-shrink-0" />
+            <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
           )}
           <Robot size={16} className={cn('flex-shrink-0', statusColors[status])} />
-          <span className="text-sm font-medium truncate">
-            {skillName || t('subagent.title')}
+          <span
+            className="text-sm font-medium truncate"
+            title={taskContent ? truncateTaskTitle(taskContent, 300) : undefined}
+          >
+            {taskSummary || skillName || t('subagent.title')}
           </span>
+          {/* 任务摘要占用主标题时，技能名降级为次要标签 */}
+          {taskSummary && skillName && (
+            <span className="text-xs text-muted-foreground truncate flex-shrink-0 max-w-[120px]">
+              {skillName}
+            </span>
+          )}
           {status === 'running' && (
             <CircleNotch size={12} className="animate-spin text-blue-500" />
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {/* 耗时指标：running 时实时计时，终态显示最终耗时（近似值） */}
+          {elapsedLabel && (
+            <span
+              className="inline-flex items-center gap-0.5 text-xs text-muted-foreground tabular-nums"
+              title={
+                status === 'running'
+                  ? t('chatV2:workspace.elapsed.runningHint', { defaultValue: '运行耗时（实时）' })
+                  : t('chatV2:workspace.elapsed.finalHint', { defaultValue: '总耗时（近似）' })
+              }
+            >
+              <Timer size={12} />
+              {elapsedLabel}
+            </span>
+          )}
           <span className={cn('text-xs', statusColors[status])}>{statusText}</span>
           
           {/* 派发任务按钮 */}
@@ -259,7 +329,19 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             </NotionButton>
           )}
         </div>
-      </NotionButton>
+      </div>
+
+      {/* 🆕 失败提示行：store 无错误详情字段，显示通用失败文案并引导查看会话输出 */}
+      {status === 'failed' && (
+        <div className="flex items-start gap-1.5 px-2.5 py-1.5 border-t border-red-200/60 dark:border-red-900/40 bg-red-50/60 dark:bg-red-900/15">
+          <WarningCircle size={13} className="text-red-500 flex-shrink-0 mt-px" />
+          <span className="text-xs text-red-600 dark:text-red-400">
+            {t('chatV2:workspace.failedHint', {
+              defaultValue: '该代理执行失败。展开下方会话输出或点击"查看完整会话"了解失败原因。',
+            })}
+          </span>
+        </div>
+      )}
 
       {/* 🔧 核心修复：使用 ChatContainer 渲染完整聊天视图（与主代理完全相同） */}
       {isExpanded && (
@@ -283,7 +365,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
         <span className="font-mono">{agentSessionId.slice(-12)}</span>
       </div>
 
-      {/* 派发任务对话框 */}
+      {/* 派发任务对话框（关闭时保留已输入内容，避免误触遮罩/Escape 丢失输入；仅清除错误提示） */}
       <NotionDialog
         open={isDispatchOpen}
         onOpenChange={(open) => {
@@ -291,7 +373,6 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           setIsDispatchOpen(open);
           if (!open) {
             setDispatchError(null);
-            setDispatchContent('');
           }
         }}
         maxWidth="max-w-[520px]"
@@ -330,7 +411,11 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => setIsDispatchOpen(false)}
+              onClick={() => {
+                if (dispatching) return;
+                setIsDispatchOpen(false);
+                setDispatchError(null);
+              }}
               disabled={dispatching}
             >
               {t('chatV2:workspace.dispatch.cancel')}

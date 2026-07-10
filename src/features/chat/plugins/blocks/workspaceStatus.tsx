@@ -409,8 +409,17 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
     <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
       {/* 头部 */}
       <div
-        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
+        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={() => setIsExpanded(!isExpanded)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsExpanded(!isExpanded);
+          }
+        }}
       >
         <div className="flex items-center gap-2">
           <Buildings size={16} className="text-primary" />
@@ -478,10 +487,20 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             {recentMessages.length > 0 && (
               <div className="border-t border-border/50">
                 <div
-                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={showMessages}
+                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMessages(!showMessages);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowMessages(!showMessages);
+                    }
                   }}
                 >
                   <div className="flex items-center gap-1.5">

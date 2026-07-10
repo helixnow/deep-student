@@ -9,15 +9,17 @@ import {
   CheckCircle,
   CircleNotch,
   WarningCircle,
+  XCircle,
   Clock,
   ArrowsOut,
   ArrowsIn,
   ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import type { WorkspaceMessage, MessageType } from '../types';
+import type { WorkspaceMessage, MessageType, AgentStatus } from '../types';
 import { ChatContainer } from '../../components/ChatContainer';
 import { getAgentDisplayName } from '../utils';
+import { useWorkspaceStore } from '../workspaceStore';
 
 interface WorkspaceMessageItemProps {
   message: WorkspaceMessage;
@@ -73,37 +75,58 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
   // 🆕 P1 修复：子代理嵌入视图状态
   const [isSubagentCollapsed, setIsSubagentCollapsed] = useState(false);
   const [isSubagentFullHeight, setIsSubagentFullHeight] = useState(false);
-  const [subagentStatus, setSubagentStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
 
-  // 🆕 监听子代理会话事件（状态变化）
+  // 🆕 状态单一真相：从 workspaceStore.agents 订阅子代理状态（由 workspace 事件维护）
+  // 选择器直接返回目标 agent 的 status，未变更时引用相同，避免无关更新触发重渲染
+  const storeStatus = useWorkspaceStore((s) =>
+    subagentSessionId ? s.agents.find((a) => a.sessionId === subagentSessionId)?.status : undefined
+  );
+
+  // chat_v2_session_* 事件仅作为"流式进行中"的细粒度提示；终态判断以 store 为准
+  const [streamHint, setStreamHint] = useState<AgentStatus | undefined>(undefined);
+
+  // 🆕 监听子代理会话事件（细粒度流式提示）
   useEffect(() => {
     if (!isSubagentTask || !subagentSessionId) return;
 
+    // listen 是异步注册：若组件在注册完成前卸载，需在 resolve 后立即注销，避免监听器泄漏
+    let disposed = false;
     let unlisten: (() => void) | undefined;
 
-    const setup = async () => {
-      const eventChannel = `chat_v2_session_${subagentSessionId}`;
-      unlisten = await listen<{
-        sessionId: string;
-        eventType: string;
-      }>(eventChannel, (event) => {
-        const { eventType } = event.payload;
-        if (eventType === 'stream_start') {
-          setSubagentStatus('running');
-        } else if (eventType === 'stream_complete') {
-          setSubagentStatus('completed');
-        } else if (eventType === 'stream_error') {
-          setSubagentStatus('failed');
-        }
-      });
-    };
-
-    setup();
+    const eventChannel = `chat_v2_session_${subagentSessionId}`;
+    listen<{
+      sessionId: string;
+      eventType: string;
+    }>(eventChannel, (event) => {
+      const { eventType } = event.payload;
+      if (eventType === 'stream_start') {
+        setStreamHint('running');
+      } else if (eventType === 'stream_complete') {
+        setStreamHint('completed');
+      } else if (eventType === 'stream_error') {
+        setStreamHint('failed');
+      } else if (eventType === 'stream_cancelled') {
+        setStreamHint('cancelled');
+      }
+    }).then((fn) => {
+      if (disposed) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
+    }).catch((e: unknown) => {
+      console.error('[WorkspaceMessageItem] Failed to listen subagent events:', e);
+    });
 
     return () => {
+      disposed = true;
       unlisten?.();
     };
   }, [isSubagentTask, subagentSessionId]);
+
+  // 状态推导：store 单一真相优先；store 查不到该 agent 时（如历史会话）
+  // 回退到流式事件提示，仍无信息则视为已结束
+  const subagentStatus: AgentStatus = storeStatus ?? streamHint ?? 'completed';
 
   // 子代理状态图标
   const subagentStatusIcon = useMemo(() => {
@@ -114,6 +137,8 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
         return <CheckCircle size={16} className="text-green-500" />;
       case 'failed':
         return <WarningCircle size={16} className="text-red-500" />;
+      case 'cancelled':
+        return <XCircle size={16} className="text-amber-500" />;
       default:
         return <Clock size={16} className="text-muted-foreground" />;
     }
@@ -128,6 +153,8 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
         return t('subagent.status.completed');
       case 'failed':
         return t('subagent.status.failed');
+      case 'cancelled':
+        return t('subagent.status.cancelled');
       default:
         return t('subagent.status.idle');
     }
@@ -175,12 +202,20 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
           "mt-2 rounded-lg border border-border/50 bg-card overflow-hidden",
           subagentStatus === 'running' && "ring-2 ring-blue-500/30"
         )}>
-          {/* 头部：可点击折叠 */}
-          <NotionButton
-            variant="ghost"
-            size="sm"
+          {/* 头部：可点击折叠（用 div 而非 button，避免内部操作按钮形成非法的 button 嵌套） */}
+          <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={!isSubagentCollapsed}
             onClick={() => setIsSubagentCollapsed(!isSubagentCollapsed)}
-            className="w-full !justify-start gap-2 !p-2 text-left"
+            onKeyDown={(e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setIsSubagentCollapsed(!isSubagentCollapsed);
+              }
+            }}
+            className="flex w-full items-center gap-2 p-2 text-left cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
           >
             {isSubagentCollapsed ? (
               <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
@@ -235,7 +270,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                 )}
               </div>
             )}
-          </NotionButton>
+          </div>
 
           {/* 🆕 核心复用：使用 ChatContainer 渲染子代理的完整聊天视图 */}
           {!isSubagentCollapsed && (

@@ -18,7 +18,8 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 interface SubagentRetryInput {
   agentSessionId: string;
-  reason: string;
+  /** 兼容旧持久化块：reason 曾被误写入 toolInput，现统一写入 toolOutput */
+  reason?: string;
 }
 
 interface SubagentRetryOutput {
@@ -44,9 +45,13 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const agentId = input?.agentSessionId || 'unknown';
   const shortAgentId = agentId.slice(-8);
   const message = output?.message || t('chatV2:workspace.subagentRetryDefault');
-  const isResolved = output?.resolved || block.status === 'success';
-  const isRunning = block.status === 'running';
-  const isFailed = output?.reason === 'max_retries_exceeded' || block.status === 'error';
+  // 🔧 P1 修复：reason 现在写入 toolOutput（新块），旧块回退读 toolInput
+  const reason = output?.reason ?? input?.reason;
+  // max_retries_exceeded 是终局失败，必须渲染红色终态而非琥珀色"重试中"
+  const isExhausted = reason === 'max_retries_exceeded';
+  const isFailed = isExhausted || block.status === 'error';
+  const isResolved = !isFailed && (output?.resolved === true || block.status === 'success');
+  const isRunning = !isFailed && !isResolved && block.status === 'running';
 
   return (
     <div
@@ -97,7 +102,9 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
               )}
             >
               {isFailed
-                ? t('chatV2:workspace.subagentRetryFailed')
+                ? isExhausted
+                  ? t('chatV2:workspace.subagentRetryExhaustedTitle')
+                  : t('chatV2:workspace.subagentRetryFailed')
                 : isResolved
                   ? t('chatV2:workspace.subagentRetryResolved')
                   : t('chatV2:workspace.subagentRetryTitle')}

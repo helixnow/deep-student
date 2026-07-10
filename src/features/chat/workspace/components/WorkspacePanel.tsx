@@ -11,6 +11,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useWorkspaceStore } from '../workspaceStore';
 import { refreshWorkspaceSnapshot } from '../api';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 interface WorkspacePanelProps {
   currentAgentId?: string;
@@ -74,9 +75,11 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
       const msg = e instanceof Error ? e.message : String(e);
       useWorkspaceStore.getState().setError(msg);
       if (!opts?.silent) {
+        // refreshFailed 文案不含 {{message}} 插值，错误详情作为通知正文传递
         showGlobalNotification(
           'error',
-          t('chatV2:workspace.refreshFailed', { message: msg })
+          msg,
+          t('chatV2:workspace.refreshFailed', '刷新失败')
         );
       }
     } finally {
@@ -85,24 +88,29 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   }, [workspace?.id, currentAgentId, t]);
 
   useEffect(() => {
-    if (typeof navigator === 'undefined') return;
-    setIsOnline(navigator.onLine);
-    const handleOnline = () => {
-      setIsOnline(true);
-      showGlobalNotification('info', t('chatV2:workspace.online'));
-      void handleRefresh({ silent: true });
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      showGlobalNotification('warning', t('chatV2:workspace.offline'));
-    };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+    if (typeof navigator !== 'undefined') {
+      setIsOnline(navigator.onLine);
+    }
+  }, []);
+
+  const handleOnline = useCallback(() => {
+    setIsOnline(true);
+    showGlobalNotification('info', t('chatV2:workspace.online'));
+    void handleRefresh({ silent: true });
   }, [handleRefresh, t]);
+
+  const handleOffline = useCallback(() => {
+    setIsOnline(false);
+    showGlobalNotification('warning', t('chatV2:workspace.offline'));
+  }, [t]);
+
+  useEventRegistry(
+    [
+      { target: 'window', type: 'online', listener: handleOnline },
+      { target: 'window', type: 'offline', listener: handleOffline },
+    ],
+    [handleOnline, handleOffline]
+  );
 
   // 🔧 P21 修复：按 workspaceId 过滤 agents / messages
   // （hooks 必须在 loading/error/empty 的 early return 之前）
@@ -164,6 +172,49 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   const coordinatorAgents = filteredAgents.filter(a => a.role === 'coordinator');
   const workerAgents = filteredAgents.filter(a => a.role === 'worker');
 
+  // 🆕 Worker 聚合进度：completed/failed/cancelled 计入已结束
+  const workerTotal = workerAgents.length;
+  const workerRunning = workerAgents.filter((a) => a.status === 'running').length;
+  const workerFailed = workerAgents.filter((a) => a.status === 'failed').length;
+  const workerCancelled = workerAgents.filter((a) => a.status === 'cancelled').length;
+  const workerFinished =
+    workerAgents.filter((a) => a.status === 'completed').length + workerFailed + workerCancelled;
+  const workerSummarySegments: string[] = [];
+  if (workerTotal > 0) {
+    workerSummarySegments.push(
+      t('chatV2:workspace.summary.finished', {
+        done: workerFinished,
+        total: workerTotal,
+        defaultValue: '{{done}}/{{total}} 已完成',
+      })
+    );
+    // 全部结束时不显示运行中段
+    if (workerRunning > 0) {
+      workerSummarySegments.push(
+        t('chatV2:workspace.summary.running', {
+          count: workerRunning,
+          defaultValue: '{{count}} 运行中',
+        })
+      );
+    }
+    if (workerFailed > 0) {
+      workerSummarySegments.push(
+        t('chatV2:workspace.summary.failed', {
+          count: workerFailed,
+          defaultValue: '{{count}} 失败',
+        })
+      );
+    }
+    if (workerCancelled > 0) {
+      workerSummarySegments.push(
+        t('chatV2:workspace.summary.cancelled', {
+          count: workerCancelled,
+          defaultValue: '{{count}} 已取消',
+        })
+      );
+    }
+  }
+
   return (
     <div className="flex flex-col h-full">
       <div className="p-3 border-b">
@@ -199,6 +250,12 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             </NotionButton>
           </div>
         </div>
+        {/* 🆕 Worker 聚合状态行 */}
+        {workerSummarySegments.length > 0 && (
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {workerSummarySegments.join(' · ')}
+          </p>
+        )}
       </div>
 
       {/* Coordinator 区域 */}
@@ -263,19 +320,21 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
         </CustomScrollArea>
       </div>
 
-      {/* 消息时间线 */}
-      <div className="flex-1 min-h-0">
-        <div className="p-3 pb-1">
+      {/* 消息时间线（flex 布局：标题固定，列表占据剩余高度内滚动，避免 h-full 溢出容器） */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="p-3 pb-1 shrink-0">
           <h4 className="text-xs font-medium text-muted-foreground">
             {t('chatV2:workspace.messages', '消息')} ({filteredMessages.length})
           </h4>
         </div>
-        <WorkspaceTimeline 
-          messages={filteredMessages} 
-          agents={filteredAgents}
-          currentAgentId={currentAgentId} 
-          onViewFullSession={onViewAgentSession}
-        />
+        <div className="flex-1 min-h-0">
+          <WorkspaceTimeline 
+            messages={filteredMessages} 
+            agents={filteredAgents}
+            currentAgentId={currentAgentId} 
+            onViewFullSession={onViewAgentSession}
+          />
+        </div>
       </div>
 
       <CreateAgentDialog

@@ -271,7 +271,17 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
   useEffect(() => {
     if (!workspaceId) return;
 
+    // listen() 是异步的：组件可能在注册完成前卸载，
+    // 用 cancelled 标记确保晚到的 unlisten 也会被立即执行，避免监听器泄漏
+    let cancelled = false;
     const unlisteners: Array<() => void> = [];
+    const register = (unlisten: () => void) => {
+      if (cancelled) {
+        unlisten();
+      } else {
+        unlisteners.push(unlisten);
+      }
+    };
 
     const setupListeners = async () => {
       // Agent 状态变化
@@ -295,7 +305,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
           });
         }
       });
-      unlisteners.push(unlisten1);
+      register(unlisten1);
 
       // 消息接收
       const unlisten2 = await listen<{
@@ -322,7 +332,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
           });
         }
       });
-      unlisteners.push(unlisten2);
+      register(unlisten2);
       
       // 🆕 P33: 监听唤醒事件，实时更新睡眠块状态
       // 事件名与后端 emitter.rs 中的 COORDINATOR_AWAKENED 对应
@@ -343,12 +353,13 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
           }
         }
       });
-      unlisteners.push(unlisten3);
+      register(unlisten3);
     };
 
     setupListeners();
 
     return () => {
+      cancelled = true;
       unlisteners.forEach((fn) => fn());
     };
   }, [workspaceId, sleepId]);

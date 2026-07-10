@@ -204,13 +204,17 @@ impl SleepManager {
         }
     }
 
-    /// 创建睡眠，返回一个 Future 等待唤醒
-    pub async fn sleep(&self, data: SleepBlockData) -> Result<WakeUpPayload, SleepError> {
-        let sleep_id = data.id.clone();
-        let timeout_at = data.timeout_at;
-
+    /// 开始睡眠（同步阶段）：持久化、注册到 active_sleeps、启动超时任务。
+    ///
+    /// 返回等待唤醒的 Receiver，调用方在注册完成后、阻塞等待前
+    /// 可以先做一次初始唤醒条件检查（见 [`Self::check_initial_wake_conditions`]），
+    /// 避免"结果先到、睡眠后建"的竞态导致睡满超时。
+    pub fn begin_sleep(
+        &self,
+        data: &SleepBlockData,
+    ) -> Result<oneshot::Receiver<WakeUpPayload>, SleepError> {
         // 保存到数据库
-        self.save_sleep(&data)?;
+        self.save_sleep(data)?;
 
         // 创建 oneshot channel
         let (tx, rx) = oneshot::channel::<WakeUpPayload>();
@@ -221,15 +225,23 @@ impl SleepManager {
                 log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             });
-            sleeps.insert(sleep_id.clone(), tx);
+            sleeps.insert(data.id.clone(), tx);
         }
 
-        log::info!("[SleepManager] Sleep started: {}", sleep_id);
+        log::info!("[SleepManager] Sleep started: {}", data.id);
 
         // 如果有超时，设置超时任务
-        if let Some(timeout) = timeout_at {
-            self.spawn_timeout_task(sleep_id.clone(), timeout);
+        if let Some(timeout) = data.timeout_at {
+            self.spawn_timeout_task(data.id.clone(), timeout);
         }
+
+        Ok(rx)
+    }
+
+    /// 创建睡眠，返回一个 Future 等待唤醒
+    pub async fn sleep(&self, data: SleepBlockData) -> Result<WakeUpPayload, SleepError> {
+        let sleep_id = data.id.clone();
+        let rx = self.begin_sleep(&data)?;
 
         // 等待唤醒
         match rx.await {
@@ -414,7 +426,10 @@ impl SleepManager {
         agent_session_id: &str,
         status: &AgentStatus,
     ) -> Result<Vec<WakeResultInfo>, SleepError> {
-        if !matches!(status, AgentStatus::Completed | AgentStatus::Failed) {
+        if !matches!(
+            status,
+            AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+        ) {
             return Ok(Vec::new());
         }
 
@@ -481,6 +496,128 @@ impl SleepManager {
         }
 
         Ok(awakened)
+    }
+
+    /// 睡眠激活后的初始唤醒条件检查（修复"结果先到、睡眠后建"的竞态）
+    ///
+    /// check_and_wake_by_message / check_and_wake_by_agent_status 只在事件发生时
+    /// 扫描 active_sleeps；若子代理在睡眠注册之前就发出了 result 或进入终态，
+    /// 这些事件永远不会再触发，主代理只能睡到超时。
+    ///
+    /// 本方法在 begin_sleep 注册之后、阻塞等待之前调用，检查两类既成事实：
+    /// 1. coordinator 的 inbox 中已有满足唤醒条件的未读消息（走消息唤醒路径）；
+    /// 2. 所有被等待的 agent 已全部进入终态（走 all_completed 唤醒路径）。
+    ///
+    /// 任一满足则通过 try_wake 立即唤醒（与正常唤醒共用同一路径，
+    /// 保证 DB 状态更新与事件语义一致）。检查失败不影响正常睡眠，由调用方兜底。
+    pub fn check_initial_wake_conditions(
+        &self,
+        sleep_id: &str,
+    ) -> Result<Vec<WakeResultInfo>, SleepError> {
+        // 未注册（或已被并发唤醒）则无事可做
+        if !self.is_sleep_active(sleep_id) {
+            return Ok(Vec::new());
+        }
+        let Some(sleep_data) = self.get_sleep(sleep_id)? else {
+            return Ok(Vec::new());
+        };
+        if sleep_data.status != SleepStatus::Sleeping {
+            return Ok(Vec::new());
+        }
+
+        let mut awakened = Vec::new();
+
+        // 条件 1：inbox 中已有满足唤醒条件的未读消息。
+        // 优先于终态检查，与正常路径顺序一致（消息先于状态变更触发），
+        // 且能把消息内容带回给 coordinator。
+        if let Some(message) = self.find_pending_wake_message(&sleep_data)? {
+            log::info!(
+                "[SleepManager] Initial check: waking sleep {} due to pending inbox message {} from {}",
+                sleep_id,
+                message.id,
+                message.sender_session_id
+            );
+            let payload = WakeUpPayload {
+                sleep_id: sleep_id.to_string(),
+                awakened_by: message.sender_session_id.clone(),
+                message: Some(message.clone()),
+                reason: WakeReason::Message,
+            };
+            if self.try_wake(sleep_id, payload)? {
+                awakened.push(WakeResultInfo {
+                    sleep_id: sleep_id.to_string(),
+                    workspace_id: sleep_data.workspace_id.clone(),
+                    coordinator_session_id: sleep_data.coordinator_session_id.clone(),
+                    awakened_by: message.sender_session_id.clone(),
+                    awaken_message: Some(message.content.clone()),
+                    wake_reason: "message".to_string(),
+                });
+                return Ok(awakened);
+            }
+        }
+
+        // 条件 2：所有被等待的 agent 已全部终态（与 check_and_wake_by_agent_status 同款判定）
+        let all_terminal = match &sleep_data.wake_condition {
+            WakeCondition::AllCompleted | WakeCondition::ResultMessage => {
+                self.check_all_agents_terminal(&sleep_data)
+            }
+            WakeCondition::AnyMessage | WakeCondition::Timeout { .. } => false,
+        };
+        if all_terminal {
+            log::info!(
+                "[SleepManager] Initial check: waking sleep {} because all awaited agents are already terminal",
+                sleep_id
+            );
+            let payload = WakeUpPayload {
+                sleep_id: sleep_id.to_string(),
+                awakened_by: "system".to_string(),
+                message: None,
+                reason: WakeReason::AllCompleted,
+            };
+            if self.try_wake(sleep_id, payload)? {
+                awakened.push(WakeResultInfo {
+                    sleep_id: sleep_id.to_string(),
+                    workspace_id: sleep_data.workspace_id.clone(),
+                    coordinator_session_id: sleep_data.coordinator_session_id.clone(),
+                    awakened_by: "system".to_string(),
+                    awaken_message: None,
+                    wake_reason: "all_completed".to_string(),
+                });
+            }
+        }
+
+        Ok(awakened)
+    }
+
+    /// 在 coordinator 的未读 inbox 中查找第一条满足唤醒条件的消息
+    fn find_pending_wake_message(
+        &self,
+        sleep_data: &SleepBlockData,
+    ) -> Result<Option<WorkspaceMessage>, SleepError> {
+        let repo = super::repo::WorkspaceRepo::new(Arc::clone(&self.db));
+        let messages = repo
+            .get_unread_inbox_messages(&sleep_data.coordinator_session_id)
+            .map_err(SleepError::Database)?;
+
+        for message in messages {
+            if !self.is_message_relevant_to_sleep(&message, sleep_data) {
+                continue;
+            }
+            let should_wake = match &sleep_data.wake_condition {
+                WakeCondition::AnyMessage => true,
+                WakeCondition::ResultMessage => message.message_type == MessageType::Result,
+                WakeCondition::AllCompleted => {
+                    message.message_type == MessageType::Result
+                        && self.check_all_agents_completed(sleep_data, &message.sender_session_id)
+                }
+                WakeCondition::Timeout { .. } => false,
+            };
+            if should_wake {
+                return Ok(Some(message));
+            }
+        }
+
+        Ok(None)
     }
 
     /// 检查消息是否与睡眠相关
@@ -569,7 +706,7 @@ impl SleepManager {
         for agent in &sleep_data.awaiting_agents {
             let is_terminal = statuses
                 .get(agent)
-                .map(|s| s == "completed" || s == "failed")
+                .map(|s| s == "completed" || s == "failed" || s == "cancelled")
                 .unwrap_or(false);
 
             if !is_terminal {
@@ -792,12 +929,19 @@ impl SleepManager {
             // 创建 oneshot channel
             let (tx, rx) = oneshot::channel::<WakeUpPayload>();
 
-            // 注册到活跃睡眠
+            // 注册到活跃睡眠（幂等：已激活的 sleep 跳过，避免重复注册与重复超时任务）
             {
                 let mut active = self.active_sleeps.lock().unwrap_or_else(|poisoned| {
                     log::error!("[SleepManager] Mutex poisoned! Attempting recovery");
                     poisoned.into_inner()
                 });
+                if active.contains_key(&sleep_id) {
+                    log::debug!(
+                        "[SleepManager] Sleep {} already active, skipping re-activation",
+                        sleep_id
+                    );
+                    continue;
+                }
                 active.insert(sleep_id.clone(), tx);
             }
 
@@ -962,5 +1106,189 @@ impl SleepManager {
         ).map_err(|e| SleepError::Database(e.to_string()))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    const WS_ID: &str = "ws_test";
+    const COORD: &str = "coord_sess";
+    const WORKER: &str = "worker_sess";
+
+    fn setup_manager() -> (TempDir, SleepManager) {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let db = super::super::database::WorkspaceDatabase::new(temp_dir.path(), WS_ID)
+            .expect("workspace db");
+        {
+            let conn = db.get_connection().expect("conn");
+            let now = Utc::now().to_rfc3339();
+            conn.execute(
+                "INSERT INTO workspace (id, name, status, creator_session_id, created_at, updated_at) \
+                 VALUES (?1, 'test', 'active', ?2, ?3, ?3)",
+                rusqlite::params![WS_ID, COORD, now],
+            )
+            .expect("insert workspace");
+            for (session_id, role) in [(COORD, "coordinator"), (WORKER, "worker")] {
+                conn.execute(
+                    "INSERT INTO agent (session_id, workspace_id, role, status, joined_at, last_active_at) \
+                     VALUES (?1, ?2, ?3, 'idle', ?4, ?4)",
+                    rusqlite::params![session_id, WS_ID, role, now],
+                )
+                .expect("insert agent");
+            }
+        }
+        (temp_dir, SleepManager::new(Arc::new(db)))
+    }
+
+    fn set_agent_status(manager: &SleepManager, session_id: &str, status: &str) {
+        let conn = manager.db.get_connection().expect("conn");
+        conn.execute(
+            "UPDATE agent SET status = ?1 WHERE session_id = ?2",
+            rusqlite::params![status, session_id],
+        )
+        .expect("update agent status");
+    }
+
+    /// 向 coordinator 的 inbox 插入一条未读消息（模拟 worker 在睡眠创建前发出的消息）
+    fn insert_unread_inbox_message(manager: &SleepManager, message_type: &str, content: &str) {
+        let conn = manager.db.get_connection().expect("conn");
+        let now = Utc::now().to_rfc3339();
+        let msg_id = format!("wsmsg_{}", ulid::Ulid::new());
+        conn.execute(
+            "INSERT INTO message (id, workspace_id, sender_session_id, target_session_id, \
+             message_type, content, status, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'delivered', ?7)",
+            rusqlite::params![msg_id, WS_ID, WORKER, COORD, message_type, content, now],
+        )
+        .expect("insert message");
+        conn.execute(
+            "INSERT INTO inbox (session_id, message_id, priority, status, created_at) \
+             VALUES (?1, ?2, 0, 'unread', ?3)",
+            rusqlite::params![COORD, msg_id, now],
+        )
+        .expect("insert inbox item");
+    }
+
+    fn make_sleep_data(wake_condition: WakeCondition) -> SleepBlockData {
+        // 不设置 timeout_at，避免测试依赖 tokio runtime（spawn_timeout_task）
+        SleepBlockData::new(
+            WS_ID.to_string(),
+            COORD.to_string(),
+            vec![WORKER.to_string()],
+            wake_condition,
+        )
+    }
+
+    #[test]
+    fn initial_check_wakes_when_result_arrived_before_sleep() {
+        let (_dir, manager) = setup_manager();
+        insert_unread_inbox_message(&manager, "result", "早到的结果");
+
+        let data = make_sleep_data(WakeCondition::ResultMessage);
+        let mut rx = manager.begin_sleep(&data).expect("begin sleep");
+
+        let awakened = manager
+            .check_initial_wake_conditions(&data.id)
+            .expect("initial check");
+        assert_eq!(awakened.len(), 1);
+        assert_eq!(awakened[0].wake_reason, "message");
+        assert_eq!(awakened[0].awakened_by, WORKER);
+
+        let payload = rx.try_recv().expect("wake payload delivered");
+        assert_eq!(payload.reason, WakeReason::Message);
+        assert_eq!(
+            payload.message.as_ref().map(|m| m.content.as_str()),
+            Some("早到的结果")
+        );
+
+        // 与正常唤醒同路径：DB 状态被更新，active_sleeps 中已移除
+        let stored = manager.get_sleep(&data.id).unwrap().unwrap();
+        assert_eq!(stored.status, SleepStatus::Awakened);
+        assert!(!manager.is_sleep_active(&data.id));
+    }
+
+    #[test]
+    fn initial_check_wakes_when_agents_already_terminal() {
+        let (_dir, manager) = setup_manager();
+        // worker 在睡眠创建前就已进入终态（含新加入的 cancelled）
+        set_agent_status(&manager, WORKER, "cancelled");
+
+        let data = make_sleep_data(WakeCondition::ResultMessage);
+        let mut rx = manager.begin_sleep(&data).expect("begin sleep");
+
+        let awakened = manager
+            .check_initial_wake_conditions(&data.id)
+            .expect("initial check");
+        assert_eq!(awakened.len(), 1);
+        assert_eq!(awakened[0].wake_reason, "all_completed");
+
+        let payload = rx.try_recv().expect("wake payload delivered");
+        assert_eq!(payload.reason, WakeReason::AllCompleted);
+
+        let stored = manager.get_sleep(&data.id).unwrap().unwrap();
+        assert_eq!(stored.status, SleepStatus::Awakened);
+    }
+
+    #[test]
+    fn initial_check_does_not_wake_without_conditions() {
+        let (_dir, manager) = setup_manager();
+        set_agent_status(&manager, WORKER, "running");
+        // inbox 中只有 progress 消息，不满足 ResultMessage 条件
+        insert_unread_inbox_message(&manager, "progress", "进行中");
+
+        let data = make_sleep_data(WakeCondition::ResultMessage);
+        let mut rx = manager.begin_sleep(&data).expect("begin sleep");
+
+        let awakened = manager
+            .check_initial_wake_conditions(&data.id)
+            .expect("initial check");
+        assert!(awakened.is_empty());
+        assert!(rx.try_recv().is_err());
+
+        // 正常睡眠不受影响
+        assert!(manager.is_sleep_active(&data.id));
+        let stored = manager.get_sleep(&data.id).unwrap().unwrap();
+        assert_eq!(stored.status, SleepStatus::Sleeping);
+    }
+
+    #[test]
+    fn agent_status_wake_treats_cancelled_as_terminal() {
+        let (_dir, manager) = setup_manager();
+        let data = make_sleep_data(WakeCondition::ResultMessage);
+        let mut rx = manager.begin_sleep(&data).expect("begin sleep");
+
+        // worker 被取消 → 应触发 all-terminal 唤醒而不是睡到超时
+        set_agent_status(&manager, WORKER, "cancelled");
+        let awakened = manager
+            .check_and_wake_by_agent_status(WS_ID, WORKER, &AgentStatus::Cancelled)
+            .expect("wake by status");
+        assert_eq!(awakened.len(), 1);
+        assert_eq!(awakened[0].wake_reason, "all_completed");
+
+        let payload = rx.try_recv().expect("wake payload delivered");
+        assert_eq!(payload.reason, WakeReason::AllCompleted);
+    }
+
+    #[test]
+    fn restore_and_activate_sleeps_is_idempotent() {
+        let (_dir, manager) = setup_manager();
+        let data = make_sleep_data(WakeCondition::ResultMessage);
+        // 仅持久化（模拟重启前遗留的 sleeping 记录），不注册 active_sleeps
+        manager.save_sleep(&data).expect("save sleep");
+
+        let first = manager
+            .restore_and_activate_sleeps()
+            .expect("first restore");
+        assert_eq!(first.len(), 1);
+
+        // 第二次恢复（如 get_instance 并发重入）不应重复激活
+        let second = manager
+            .restore_and_activate_sleeps()
+            .expect("second restore");
+        assert!(second.is_empty());
+        assert!(manager.is_sleep_active(&data.id));
     }
 }

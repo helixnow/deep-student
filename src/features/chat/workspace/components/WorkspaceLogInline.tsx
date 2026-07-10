@@ -265,6 +265,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
       showGlobalNotification('success', t('debug.copySuccessDesc'), t('debug.copySuccess'));
       setTimeout(() => setDebugCopied(false), 2000);
     } catch (error: unknown) {
+      console.error('[WorkspaceLogInline] Copy debug info failed:', error);
       showGlobalNotification('error', t('debug.copyFailed'));
     }
   };
@@ -283,8 +284,18 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
     >
       {/* 头部 - 可折叠 */}
       <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={isExpanded}
         className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsExpanded(!isExpanded);
+          }
+        }}
       >
         <div className="flex items-center gap-2">
           <Chat size={16} className="text-primary" />

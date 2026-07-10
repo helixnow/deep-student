@@ -16,7 +16,7 @@ import type {
   AgentRole,
   MessageType,
 } from './types';
-import { useWorkspaceStore } from './workspaceStore';
+import { useWorkspaceStore, parseAgentStatus } from './workspaceStore';
 
 // ============================================================
 // 请求/响应类型
@@ -289,6 +289,10 @@ export async function listAllWorkspaces(sessionId: string): Promise<WorkspaceInf
 /**
  * 手动刷新工作区快照（agents/messages/documents）
  * 用于事件丢失或需要强制同步的场景
+ *
+ * 🔧 P1 修复：restoreExecutions 默认 false。
+ * 恢复执行会给运行中的任务补发 worker_ready(reminder)，触发误标 failed，
+ * 只有"冷启动恢复"路径（useWorkspaceRestore 首次恢复）才应显式传 true。
  */
 export async function refreshWorkspaceSnapshot(
   sessionId: string,
@@ -323,7 +327,7 @@ export async function refreshWorkspaceSnapshot(
     workspaceId,
     role: a.role as WorkspaceAgent['role'],
     skillId: a.skill_id,
-    status: a.status as WorkspaceAgent['status'],
+    status: parseAgentStatus(a.status),
     joinedAt: a.joined_at,
     lastActiveAt: a.last_active_at,
   }));
@@ -359,7 +363,7 @@ export async function refreshWorkspaceSnapshot(
   store.setMessages(convertedMessages);
   store.setDocuments(convertedDocuments);
 
-  if (options?.restoreExecutions !== false) {
+  if (options?.restoreExecutions === true) {
     try {
       await restoreExecutions(workspaceId, sessionId);
     } catch (e: unknown) {
@@ -368,6 +372,14 @@ export async function refreshWorkspaceSnapshot(
   }
 }
 
+/**
+ * 🔧 P1 修复：requester 必须是工作区成员，否则后端 ensure_member_or_creator 会拒绝。
+ * 用户切到无关会话时 getCurrentSessionId() 不是成员，因此解析顺序改为：
+ * 1. 显式传入的 requesterSessionId
+ * 2. store 中该 workspace 的 coordinator agent 的 sessionId
+ * 3. workspace.creatorSessionId
+ * 4. 最后才回退 getCurrentSessionId()
+ */
 function resolveWorkspaceRequesterSessionId(
   workspaceId: string,
   requesterSessionId?: string
@@ -376,15 +388,23 @@ function resolveWorkspaceRequesterSessionId(
     return requesterSessionId;
   }
 
-  const currentSessionId = sessionManager.getCurrentSessionId();
-  if (currentSessionId) {
-    return currentSessionId;
+  const state = useWorkspaceStore.getState();
+
+  const coordinator = state.agents.find(
+    (a) => a.role === 'coordinator' && a.workspaceId === workspaceId
+  );
+  if (coordinator) {
+    return coordinator.sessionId;
   }
 
-  const state = useWorkspaceStore.getState();
   const workspace = state.workspace;
   if (workspace?.id === workspaceId && workspace.creatorSessionId) {
     return workspace.creatorSessionId;
+  }
+
+  const currentSessionId = sessionManager.getCurrentSessionId();
+  if (currentSessionId) {
+    return currentSessionId;
   }
 
   throw new Error(i18n.t('chatV2:workspace.unableToResolveSessionId', 'Unable to resolve requester session ID for workspace command'));

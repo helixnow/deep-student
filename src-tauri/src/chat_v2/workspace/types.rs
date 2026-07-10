@@ -73,6 +73,7 @@ pub enum AgentStatus {
     Running,
     Completed,
     Failed,
+    Cancelled,
 }
 
 impl Default for AgentStatus {

@@ -310,6 +310,33 @@ impl WorkspaceRepo {
         Ok(())
     }
 
+    /// 获取指定会话未读 inbox 对应的完整消息（按到达顺序）
+    ///
+    /// 用于睡眠激活后的初始唤醒条件检查：判断 coordinator 的 inbox 中
+    /// 是否已有满足唤醒条件的消息（如 result）。
+    pub fn get_unread_inbox_messages(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<WorkspaceMessage>, String> {
+        let conn = self.db.get_connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.workspace_id, m.sender_session_id, m.target_session_id, \
+                 m.message_type, m.content, m.status, m.created_at, m.metadata_json \
+                 FROM inbox i JOIN message m ON m.id = i.message_id \
+                 WHERE i.session_id = ?1 AND i.status = 'unread' ORDER BY i.id ASC",
+            )
+            .map_err(|e| format!("Failed to prepare statement: {}", e))?;
+
+        let messages = stmt
+            .query_map([session_id], |row| Self::row_to_message(row))
+            .map_err(|e| format!("Failed to query unread inbox messages: {}", e))?
+            .filter_map(log_and_skip_err)
+            .collect();
+
+        Ok(messages)
+    }
+
     /// 获取所有 agent 的 unread inbox 项（用于恢复内存状态）
     pub fn get_all_unread_inbox(&self) -> Result<Vec<InboxItem>, String> {
         let conn = self.db.get_connection()?;

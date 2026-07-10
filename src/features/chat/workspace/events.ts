@@ -5,7 +5,7 @@
  */
 
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { useWorkspaceStore } from './workspaceStore';
+import { useWorkspaceStore, parseAgentStatus } from './workspaceStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 import type {
@@ -115,8 +115,10 @@ export interface CoordinatorAwakenedEvent {
 export interface SubagentRetryEvent {
   workspace_id: string;
   agent_session_id: string;
+  /** 'no_message_sent'（正在重试）或 'max_retries_exceeded'（终局失败） */
   reason: string;
   message: string;
+  retry_count?: number;
 }
 
 /** 🆕 工作区警告事件 payload */
@@ -141,6 +143,20 @@ const processedWorkerReadyEvents = new Set<string>();
 
 // 🔧 P34 修复：跟踪已处理的 COORDINATOR_AWAKENED 事件，防止重复恢复 pipeline
 const processedAwakenedEvents = new Set<string>();
+
+/**
+ * 🔧 识别后端"已有活跃流"语义的错误。
+ *
+ * 后端实际错误文案（workspace_handlers.rs / send_message.rs）：
+ * - "Agent has an active stream. Please wait for completion."
+ * - "Agent {id} has an active stream, and {n} drained message(s) failed to restore. ..."
+ * - "Session has an active stream. Please wait for completion or cancel first."
+ *
+ * 这类错误说明子代理正在健康运行，不应标记 failed 或弹错误通知。
+ */
+export function isActiveStreamError(message: string): boolean {
+  return /active stream/i.test(message);
+}
 
 /**
  * 🔧 P39 优化：Worker 启动处理逻辑（独立函数，支持并行调用）
@@ -250,13 +266,32 @@ async function handleWorkerReady(
       success: true,
     });
   } catch (error: unknown) {
-    console.error(`[Workspace Events] Failed to auto-start worker: ${agent_session_id}`, error);
-    
-    // 🔧 修复：Worker 自动启动失败时提供用户反馈
     const errorMsg = error instanceof Error ? error.message : String(error);
+
+    // 🔧 P1 修复：后端返回"已有活跃流"说明子代理正在健康运行，
+    // 不是启动失败——静默返回，不改状态也不弹错误通知
+    if (isActiveStreamError(errorMsg)) {
+      console.warn(
+        `[Workspace Events] [WORKER_READY] Agent ${agent_session_id} already has an active stream, treating as healthy running (no status change)`
+      );
+      addSubagentEventLog(
+        'worker_ready_dup',
+        agent_session_id,
+        'Active stream conflict, agent already running',
+        errorMsg,
+        workspace_id
+      );
+      return;
+    }
+
+    console.error(`[Workspace Events] Failed to auto-start worker: ${agent_session_id}`, error);
+
     // 🆕 P25: 记录错误
     addSubagentEventLog('error', agent_session_id, 'Worker auto-start failed', errorMsg, workspace_id);
-    
+
+    // 🔧 真正失败时清除去重条目，后端在重试额度内补发的 worker_ready 才能被处理
+    processedWorkerReadyEvents.delete(agent_session_id);
+
     const skillName = skill_id || agent_session_id.slice(-8);
     showGlobalNotification(
       'error',
@@ -321,7 +356,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
           workspaceId: workspace_id,
           role: agent.role as WorkspaceAgent['role'],
           skillId: agent.skill_id,
-          status: agent.status as WorkspaceAgent['status'],
+          status: parseAgentStatus(agent.status),
           joinedAt: agent.joined_at,
           lastActiveAt: agent.last_active_at,
         };
@@ -351,12 +386,17 @@ export async function initWorkspaceEventListeners(): Promise<void> {
     (event) => {
       const { workspace_id, session_id, status } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
-      
+      const parsedStatus = parseAgentStatus(status);
+
+      // 🔧 P2 修复：去重条目清理不能依赖 currentWorkspaceId 匹配，
+      // 否则背景工作区的 agent 完成后条目残留，后续同 agent 的 worker_ready 被永久吞掉。
+      // agent 进入非运行状态（idle/completed/failed/cancelled）时无条件清除。
+      if (parsedStatus !== 'running') {
+        processedWorkerReadyEvents.delete(session_id);
+      }
+
       if (currentWorkspaceId === workspace_id) {
-        store.updateAgentStatus(session_id, status as WorkspaceAgent['status']);
-        if (status !== 'running') {
-          processedWorkerReadyEvents.delete(session_id);
-        }
+        store.updateAgentStatus(session_id, parsedStatus);
       }
     }
   );
@@ -470,26 +510,30 @@ export async function initWorkspaceEventListeners(): Promise<void> {
   const unlistenSubagentRetry = await listen<SubagentRetryEvent>(
     WORKSPACE_EVENTS.SUBAGENT_RETRY,
     async (event) => {
-      const { workspace_id, agent_session_id, reason, message } = event.payload;
-      console.log(`[Workspace Events] [SUBAGENT_RETRY] agent=${agent_session_id}, reason=${reason}`);
+      const { workspace_id, agent_session_id, reason, message, retry_count } = event.payload;
+      console.log(`[Workspace Events] [SUBAGENT_RETRY] agent=${agent_session_id}, reason=${reason}, retry_count=${retry_count}`);
       addSubagentEventLog('worker_ready_retry', agent_session_id, `reason=${reason}: ${message}`, undefined, workspace_id);
       
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
         return;
       }
+
+      // 🔧 P1 修复：区分"正在重试"与"多次重试后终局失败"
+      const isExhausted = reason === 'max_retries_exceeded';
       
       // 🆕 P38: 直接通过后端持久化 subagent_retry 块
       // 由于前端 Store 访问较复杂，改为通过后端查询最后助手消息并创建块
       try {
         const { invoke } = await import('@tauri-apps/api/core');
+        // 🔧 复用项目统一的块 ID 生成工具（与 blockActions 的 generateId('blk') 一致）
+        const { generateId } = await import('../core/store/createChatStore');
         // 从 agents 中找到 coordinator 的 session ID
         const agents = useWorkspaceStore.getState().agents;
         const coordinator = agents.find(a => a.role === 'coordinator');
         if (coordinator) {
           const coordinatorSessionId = coordinator.sessionId;
-          // 使用 ulid 生成块 ID
-          const blockId = `blk_retry_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const blockId = generateId('blk_retry');
           
           // 查询最后的助手消息 ID（通过后端）
           const sessionData = await invoke<{ messages: Array<{ id: string; role: string }> }>(
@@ -507,10 +551,17 @@ export async function initWorkspaceEventListeners(): Promise<void> {
               sessionId: coordinatorSessionId,
               blockType: 'subagent_retry',
               content: message,
-              status: 'running',
+              // 🔧 终局失败落 error 状态，UI 才能渲染红色终态而非琥珀色"重试中"
+              status: isExhausted ? 'error' : 'running',
               toolName: 'subagent_retry',
-              toolInputJson: JSON.stringify({ agentSessionId: agent_session_id, reason }),
-              toolOutputJson: JSON.stringify({ message, timestamp: new Date().toISOString() }),
+              // 🔧 P1 修复：toolInput 只放任务上下文；reason/retry_count 属于结果语义，写入 toolOutput
+              toolInputJson: JSON.stringify({ agentSessionId: agent_session_id }),
+              toolOutputJson: JSON.stringify({
+                message,
+                reason,
+                retry_count,
+                timestamp: new Date().toISOString(),
+              }),
             });
             console.log(`[Workspace Events] [SUBAGENT_RETRY] Persisted block ${blockId} to message ${lastAssistantMsg.id}`);
           }
@@ -519,14 +570,24 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         console.error('[Workspace Events] Failed to create subagent_retry block:', e);
       }
       
-      // 显示通知
-      showGlobalNotification(
-        'warning',
-        i18n.t('chatV2:workspace.subagentRetry', {
-          agent: agent_session_id.slice(-8),
-          defaultValue: `子代理 ${agent_session_id.slice(-8)} 未发送结果，正在重新触发...`,
-        })
-      );
+      // 显示通知：终局失败用失败语义，而非"正在重新触发"
+      if (isExhausted) {
+        showGlobalNotification(
+          'error',
+          i18n.t('chatV2:workspace.subagentRetryExhausted', {
+            agent: agent_session_id.slice(-8),
+            defaultValue: `子代理 ${agent_session_id.slice(-8)} 多次重试后仍未产出结果`,
+          })
+        );
+      } else {
+        showGlobalNotification(
+          'warning',
+          i18n.t('chatV2:workspace.subagentRetry', {
+            agent: agent_session_id.slice(-8),
+            defaultValue: `子代理 ${agent_session_id.slice(-8)} 未发送结果，正在重新触发...`,
+          })
+        );
+      }
     }
   );
   unlistenFns.push(unlistenSubagentRetry);

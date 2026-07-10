@@ -299,10 +299,15 @@ impl WorkspaceCoordinator {
     ) -> Result<WorkspaceAgent, String> {
         let instance = self.get_instance(workspace_id)?;
 
+        // 配额只统计非终态（idle/running）agent：已完成/失败/取消的 worker 不再占用名额
         let agents = instance.repo.list_agents()?;
-        if agents.len() >= MAX_AGENTS_PER_WORKSPACE {
+        let active_agents = agents
+            .iter()
+            .filter(|a| matches!(a.status, AgentStatus::Idle | AgentStatus::Running))
+            .count();
+        if active_agents >= MAX_AGENTS_PER_WORKSPACE {
             return Err(format!(
-                "Workspace has reached maximum agent limit: {}",
+                "Workspace has reached maximum active agent limit: {}",
                 MAX_AGENTS_PER_WORKSPACE
             ));
         }
@@ -348,7 +353,10 @@ impl WorkspaceCoordinator {
         );
 
         // worker 进入终态时，尝试通过状态信号唤醒 coordinator，避免仅靠 timeout 恢复
-        if matches!(status, AgentStatus::Completed | AgentStatus::Failed) {
+        if matches!(
+            status,
+            AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+        ) {
             match instance.sleep_manager.check_and_wake_by_agent_status(
                 workspace_id,
                 session_id,
@@ -500,24 +508,19 @@ impl WorkspaceCoordinator {
             return Ok(Vec::new());
         }
 
+        // 以实际 drained 的 message_id 精确标记 processed，保证内存 FIFO 与 DB 一致。
+        // （旧实现按 priority DESC 取前 N 条做交集，混合优先级时会漏标已消费消息，
+        //  重启后 restore_from_db 会把这些消息重新投喂导致重复执行。）
         let mut messages = Vec::new();
-        let mut inbox_ids = Vec::new();
 
         for message_id in &message_ids {
             if let Some(message) = instance.repo.get_message(message_id)? {
                 messages.push(message);
             }
-        }
-
-        let inbox_items = instance.repo.get_unread_inbox(session_id, limit)?;
-        for item in inbox_items {
-            if message_ids.contains(&item.message_id) {
-                inbox_ids.push(item.id);
-            }
-        }
-
-        if !inbox_ids.is_empty() {
-            instance.repo.mark_inbox_processed(&inbox_ids)?;
+            // 即使消息体已不存在，也要把 inbox 记录标记为 processed，避免重启后重放悬空引用
+            instance
+                .repo
+                .mark_inbox_processed_by_message(session_id, message_id)?;
         }
 
         Ok(messages)
@@ -804,6 +807,7 @@ impl WorkspaceCoordinator {
     }
 
     fn get_instance(&self, workspace_id: &str) -> Result<Arc<WorkspaceInstance>, String> {
+        // 快路径：读锁命中缓存
         {
             let instances = self.instances.read().unwrap_or_else(|poisoned| {
                 log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
@@ -814,6 +818,28 @@ impl WorkspaceCoordinator {
             }
         }
 
+        // 慢路径（双检锁）：持有写锁做二次检查后再构建实例。
+        // 构建包含 inbox 恢复、restore_and_activate_sleeps 等副作用，
+        // 必须保证每个工作区只执行一次，否则会出现副作用重复与实例分裂
+        // （两个 SleepManager 各持一份 active_sleeps，超时任务互相干扰）。
+        // 构建只涉及本工作区 DB 与新建组件，不会回调 self.instances，无死锁风险。
+        let mut instances = self.instances.write().unwrap_or_else(|poisoned| {
+            log::error!("[WorkspaceCoordinator] RwLock poisoned (write)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        if let Some(instance) = instances.get(workspace_id) {
+            return Ok(Arc::clone(instance));
+        }
+
+        let instance = self.load_instance(workspace_id)?;
+        instances.insert(workspace_id.to_string(), Arc::clone(&instance));
+
+        Ok(instance)
+    }
+
+    /// 从磁盘加载并初始化工作区实例（含 inbox / sleep 恢复副作用）。
+    /// 仅应在 get_instance 的写锁临界区内调用。
+    fn load_instance(&self, workspace_id: &str) -> Result<Arc<WorkspaceInstance>, String> {
         let db = self.db_manager.get_or_create(workspace_id)?;
         let repo = Arc::new(WorkspaceRepo::new(Arc::clone(&db)));
 
@@ -886,7 +912,7 @@ impl WorkspaceCoordinator {
             }
         }
 
-        let instance = Arc::new(WorkspaceInstance {
+        Ok(Arc::new(WorkspaceInstance {
             workspace,
             db,
             repo,
@@ -894,15 +920,7 @@ impl WorkspaceCoordinator {
             router,
             sleep_manager,
             task_manager,
-        });
-
-        let mut instances = self.instances.write().unwrap_or_else(|poisoned| {
-            log::error!("[WorkspaceCoordinator] RwLock poisoned (write)! Attempting recovery");
-            poisoned.into_inner()
-        });
-        instances.insert(workspace_id.to_string(), Arc::clone(&instance));
-
-        Ok(instance)
+        }))
     }
 
     /// 获取子代理任务管理器
@@ -982,5 +1000,126 @@ impl WorkspaceCoordinator {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    const COORD: &str = "coord_sess";
+
+    fn setup_coordinator() -> (TempDir, WorkspaceCoordinator, Workspace) {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let coordinator = WorkspaceCoordinator::new(temp_dir.path().to_path_buf());
+        let workspace = coordinator
+            .create_workspace(COORD, Some("test".to_string()))
+            .expect("create workspace");
+        coordinator
+            .register_agent(&workspace.id, COORD, AgentRole::Coordinator, None, None)
+            .expect("register coordinator");
+        (temp_dir, coordinator, workspace)
+    }
+
+    #[test]
+    fn drain_inbox_marks_exact_drained_messages_processed() {
+        let (_dir, coordinator, ws) = setup_coordinator();
+        coordinator
+            .register_agent(&ws.id, "worker_1", AgentRole::Worker, None, None)
+            .expect("register worker");
+
+        // 先发低优先级 result（priority 0），再发高优先级 task（priority 1）：
+        // 内存 FIFO 按到达顺序先取 result，而 DB 按 priority DESC 排序时 task 在前，
+        // 旧实现的交集逻辑会漏标已消费的 result。
+        let result_msg = coordinator
+            .send_message(
+                &ws.id,
+                "worker_1",
+                Some(COORD),
+                MessageType::Result,
+                "result content".to_string(),
+            )
+            .expect("send result");
+        let task_msg = coordinator
+            .send_message(
+                &ws.id,
+                "worker_1",
+                Some(COORD),
+                MessageType::Task,
+                "task content".to_string(),
+            )
+            .expect("send task");
+
+        let drained = coordinator
+            .drain_inbox(&ws.id, COORD, 1)
+            .expect("drain inbox");
+        assert_eq!(drained.len(), 1);
+        assert_eq!(drained[0].id, result_msg.id);
+
+        // DB 中只有被实际消费的 result 标记 processed，task 仍 unread
+        let instance = coordinator.get_instance(&ws.id).expect("instance");
+        let unread = instance
+            .repo
+            .get_unread_inbox(COORD, 10)
+            .expect("unread inbox");
+        assert_eq!(unread.len(), 1);
+        assert_eq!(unread[0].message_id, task_msg.id);
+
+        // 再次 drain 取回 task 后收件箱清空（重启不会重复投喂）
+        let drained2 = coordinator
+            .drain_inbox(&ws.id, COORD, 10)
+            .expect("drain again");
+        assert_eq!(drained2.len(), 1);
+        assert_eq!(drained2[0].id, task_msg.id);
+        assert!(instance
+            .repo
+            .get_unread_inbox(COORD, 10)
+            .expect("unread inbox")
+            .is_empty());
+    }
+
+    #[test]
+    fn register_agent_quota_ignores_terminal_agents() {
+        let (_dir, coordinator, ws) = setup_coordinator();
+
+        // 已注册 1 个 coordinator，再补足到 MAX_AGENTS_PER_WORKSPACE 个非终态 agent
+        for i in 1..MAX_AGENTS_PER_WORKSPACE {
+            coordinator
+                .register_agent(
+                    &ws.id,
+                    &format!("worker_{}", i),
+                    AgentRole::Worker,
+                    None,
+                    None,
+                )
+                .expect("register worker");
+        }
+
+        // 全部非终态 → 达到上限，注册被拒绝
+        let err = coordinator
+            .register_agent(&ws.id, "worker_overflow", AgentRole::Worker, None, None)
+            .expect_err("quota exceeded");
+        assert!(err.contains("maximum active agent limit"));
+
+        // 部分 worker 进入终态（completed/cancelled）后应释放配额
+        coordinator
+            .update_agent_status(&ws.id, "worker_1", AgentStatus::Completed)
+            .expect("mark completed");
+        coordinator
+            .update_agent_status(&ws.id, "worker_2", AgentStatus::Cancelled)
+            .expect("mark cancelled");
+
+        coordinator
+            .register_agent(&ws.id, "worker_new_1", AgentRole::Worker, None, None)
+            .expect("register after completed freed quota");
+        coordinator
+            .register_agent(&ws.id, "worker_new_2", AgentRole::Worker, None, None)
+            .expect("register after cancelled freed quota");
+
+        // 配额重新占满后再次拒绝
+        assert!(coordinator
+            .register_agent(&ws.id, "worker_overflow_2", AgentRole::Worker, None, None)
+            .is_err());
     }
 }

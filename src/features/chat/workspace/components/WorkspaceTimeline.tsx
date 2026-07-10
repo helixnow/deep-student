@@ -26,9 +26,35 @@ export const WorkspaceTimeline: React.FC<WorkspaceTimelineProps> = ({
     }
     return map;
   }, [agents]);
-  const sortedMessages = [...messages].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  const sortedMessages = React.useMemo(
+    () =>
+      [...messages].sort(
+        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      ),
+    [messages]
   );
+
+  // 自动滚动：新消息到达时，若用户停留在底部附近则跟随滚动；用户上翻查看历史时不打扰
+  const [viewportEl, setViewportEl] = React.useState<HTMLDivElement | null>(null);
+  const pinnedToBottomRef = React.useRef(true);
+
+  React.useEffect(() => {
+    if (!viewportEl) return;
+    const handleScroll = () => {
+      pinnedToBottomRef.current =
+        viewportEl.scrollHeight - viewportEl.scrollTop - viewportEl.clientHeight < 48;
+    };
+    viewportEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => viewportEl.removeEventListener('scroll', handleScroll);
+  }, [viewportEl]);
+
+  const lastMessageId = sortedMessages.length > 0 ? sortedMessages[sortedMessages.length - 1].id : null;
+  React.useEffect(() => {
+    if (!viewportEl || !lastMessageId) return;
+    if (pinnedToBottomRef.current) {
+      viewportEl.scrollTop = viewportEl.scrollHeight;
+    }
+  }, [viewportEl, lastMessageId]);
 
   // 🔧 修复：空态文案 i18n
   if (sortedMessages.length === 0) {
@@ -40,7 +66,7 @@ export const WorkspaceTimeline: React.FC<WorkspaceTimelineProps> = ({
   }
 
   return (
-    <CustomScrollArea className="h-full">
+    <CustomScrollArea className="h-full" viewportRef={setViewportEl}>
       <div className="flex flex-col gap-2 p-2">
         {sortedMessages.map((message) => (
           <WorkspaceMessageItem
