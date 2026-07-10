@@ -512,6 +512,24 @@ impl VfsAttachmentRepo {
         Self::validate_upload_size(&params.mime_type, data.len())?;
         Self::validate_attachment_type(params.attachment_type.as_deref(), &params.mime_type)?;
 
+        // 1.6 PDF 专项校验：文件头 + 加密检测
+        let is_pdf_upload = params.mime_type == "application/pdf"
+            || params.name.to_lowercase().ends_with(".pdf");
+        if is_pdf_upload {
+            if data.len() < 5 || !data.starts_with(b"%PDF-") {
+                return Err(VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: "不是有效的 PDF 文档（缺少 PDF 文件头）".to_string(),
+                });
+            }
+            crate::document_parser::DocumentParser::new()
+                .check_pdf_encryption_bytes(&data, &params.name)
+                .map_err(|e| VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: format!("{}", e),
+                })?;
+        }
+
         // 2. 计算内容哈希
         let content_hash = Self::compute_hash(&data);
         debug!(

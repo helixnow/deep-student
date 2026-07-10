@@ -1034,6 +1034,12 @@ pub struct VfsUpdateTodoItemParams {
     /// 新已完成番茄数
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_pomodoros: Option<i32>,
+
+    /// 乐观锁：调用方上次读取时的 `updated_at`（可选；None 保持旧行为）
+    ///
+    /// R1-04 / docs/dev/acr：不匹配时返回含 `TODO_CONFLICT` 的错误。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_updated_at: Option<String>,
 }
 
 /// 活跃待办摘要（用于 System Prompt 注入）

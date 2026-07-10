@@ -114,6 +114,37 @@ pub const V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID: MigrationDef = Migrati
 .with_expected_columns(&[("document_tasks", "source_session_id")])
 .idempotent();
 
+/// V20260709: Flashcard FSRS schema（牌组 / 调度状态 / 复习日志）
+///
+/// 独立于 anki_cards 内容表，不向 anki_cards 添加调度列。
+pub const V20260709_FLASHCARD_FSRS: MigrationDef = MigrationDef::new(
+    20260709,
+    "flashcard_fsrs",
+    include_str!("../../../migrations/mistakes/V20260709__flashcard_fsrs.sql"),
+)
+.with_expected_tables(&["anki_decks", "fsrs_card_states", "fsrs_review_logs"])
+.with_expected_indexes(&["idx_fsrs_due", "idx_fsrs_logs_card"])
+.idempotent();
+
+/// V20260710: Anki 同步 Receipt 回写字段
+///
+/// Sync 成功后写回 anki_note_id / export_status / last_exported_at / content_hash。
+/// 与 V20260709 FSRS 迁移错开版本（Refinery 不支持 V20260709_1 后缀命名）。
+///
+/// TODO(sync classification): 新列尚未登记字段级 merge 策略，见 classification.rs。
+pub const V20260710_ANKI_EXPORT_RECEIPT: MigrationDef = MigrationDef::new(
+    20260710,
+    "anki_export_receipt",
+    include_str!("../../../migrations/mistakes/V20260710__anki_export_receipt.sql"),
+)
+.with_expected_columns(&[
+    ("anki_cards", "anki_note_id"),
+    ("anki_cards", "export_status"),
+    ("anki_cards", "last_exported_at"),
+    ("anki_cards", "content_hash"),
+])
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -241,6 +272,8 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260523_ADD_MISSING_SYNC_COVERAGE,
         V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
         V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID,
+        V20260709_FLASHCARD_FSRS,
+        V20260710_ANKI_EXPORT_RECEIPT,
     ],
 };
 
@@ -388,9 +421,27 @@ mod tests {
         assert_eq!(source_session.name, "add_document_tasks_source_session_id");
         assert!(source_session.idempotent);
 
+        let flashcard_fsrs = MISTAKES_MIGRATIONS
+            .get(20260709)
+            .expect("V20260709 should exist");
+        assert_eq!(flashcard_fsrs.name, "flashcard_fsrs");
+        assert!(flashcard_fsrs.idempotent);
+        assert!(flashcard_fsrs
+            .expected_tables
+            .contains(&"fsrs_card_states"));
+
+        let export_receipt = MISTAKES_MIGRATIONS
+            .get(20260710)
+            .expect("V20260710 should exist");
+        assert_eq!(export_receipt.name, "anki_export_receipt");
+        assert!(export_receipt.idempotent);
+        assert!(export_receipt
+            .expected_columns
+            .contains(&("anki_cards", "anki_note_id")));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260705,
+            20260710,
             "Latest version should track the newest published mistakes migration"
         );
     }

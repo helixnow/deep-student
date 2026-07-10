@@ -359,6 +359,19 @@ pub async fn textbooks_add(
                         .map_err(|e| AppError::file_system(format!("读取文件失败: {}", e)))?;
                 let size = file_bytes.len() as u64;
 
+                // ★ PDF 导入前校验：文件头 + 加密检测（避免无效/加密 PDF 进入 VFS 后预览必然失败）
+                if is_pdf {
+                    if file_bytes.len() < 5 || !file_bytes.starts_with(b"%PDF-") {
+                        return Err(AppError::validation(format!(
+                            "文件 '{}' 不是有效的 PDF 文档（缺少 PDF 文件头）",
+                            file_name_task
+                        )));
+                    }
+                    DocumentParser::new()
+                        .check_pdf_encryption_bytes(&file_bytes, &file_name_task)
+                        .map_err(|e| AppError::validation(format!("{}", e)))?;
+                }
+
                 let conn = vfs_db_task
                     .get_conn_safe()
                     .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;

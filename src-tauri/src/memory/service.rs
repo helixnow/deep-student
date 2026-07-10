@@ -604,7 +604,7 @@ impl MemoryService {
                 if should_refresh {
                     let cat_mgr = super::category_manager::MemoryCategoryManager::new(
                         vfs_db.clone(),
-                        llm_manager,
+                        llm_manager.clone(),
                     );
                     if let Err(e) = cat_mgr.refresh_all_categories(&svc).await {
                         warn!("[Memory] Post-write category refresh failed: {}", e);
@@ -614,6 +614,14 @@ impl MemoryService {
 
             let evolution = super::evolution::MemoryEvolution::new(vfs_db);
             evolution.run_throttled(&svc, frequency.evolution_interval_ms());
+
+            // 三层记忆：日志→画像晋升 pass（频率跟随现有 evolution 周期）
+            // 隐私模式下跳过——晋升需要把日志内容送入 LLM
+            if !privacy_mode {
+                evolution
+                    .run_promotion_throttled(&svc, llm_manager, frequency.evolution_interval_ms())
+                    .await;
+            }
         });
     }
 

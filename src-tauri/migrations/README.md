@@ -6,11 +6,20 @@
 
 ```
 migrations/
-├── vfs/           # VFS 虚拟文件系统数据库
-├── chat_v2/       # Chat V2 对话历史数据库
-├── mistakes/      # Mistakes 错题本数据库
-└── llm_usage/     # LLM Usage 使用统计数据库
+├── vfs/           # VFS 虚拟文件系统数据库（纳入数据治理）
+├── chat_v2/       # Chat V2 对话历史数据库（纳入数据治理）
+├── mistakes/      # Mistakes 错题本数据库（纳入数据治理）
+├── llm_usage/     # LLM Usage 使用统计数据库（纳入数据治理）
+└── browser/       # 内置浏览器独立库（一期豁免治理，见下）
 ```
+
+### `browser/`（一期豁免）
+
+- **文件**：`{active_slot}/browser.db`；配套 profile 目录 `{active_slot}/browser-profiles/default/`（不进本目录 SQL）
+- **迁移**：模块内 Refinery embed（`src-tauri/src/browser/`），**不**挂 `MigrationCoordinator::run_all()`，**不**进 `DatabaseId`
+- **懒加载**：仅当 workbench + browser 双闸开启且首次 `browser_open_session` 时建库迁移
+- **清除**：清历史 = DB；清 Cookie = profile；全部 = 两者；禁用浏览器 flag = **保留**文件
+- **规格**：`docs/dev/workbench-browser-design.md` §9
 
 ## 迁移文件命名规范
 

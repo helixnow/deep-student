@@ -627,6 +627,8 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
+            // TODO(anki export receipt): anki_note_id / export_status / last_exported_at /
+            // content_hash 已加列，字段级 merge 策略待登记（本地 AnkiConnect receipt，暂不参与双向进度同步）
             merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling",
         },
         // --- LocalRuntime ---

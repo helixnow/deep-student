@@ -202,6 +202,30 @@ pub async fn data_governance_restore_with_assets(
         }
     }
 
+    // ★ 审阅 15 P1-2 / S1 遗留：恢复写入前清空目标插槽
+    if let Some(slot) = inactive_slot {
+        if let Some(mgr) = crate::data_space::get_data_space_manager() {
+            match mgr.clear_slot_for_restore(slot) {
+                Ok(trash) => {
+                    if let Some(trash_path) = trash {
+                        info!(
+                            "[data_governance] 恢复前已清空插槽 {}，残留移至 {}",
+                            slot.name(),
+                            trash_path.display()
+                        );
+                    }
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "清空恢复目标插槽 {} 失败，已中止恢复（避免脏插槽混入）: {}",
+                        slot.name(),
+                        e
+                    ));
+                }
+            }
+        }
+    }
+
     // 执行恢复到非活跃插槽（不需要维护模式，不涉及活跃文件）
     //
     // F5 说明（已知差异，刻意保持）：本路径**不恢复加密密钥**（.master_key/.secure）。

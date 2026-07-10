@@ -101,6 +101,9 @@ pub struct UpdateTodoItemInput {
     pub estimated_pomodoros: Option<i32>,
     #[serde(default)]
     pub completed_pomodoros: Option<i32>,
+    /// R1-04：可选乐观锁基线（camelCase: expectedUpdatedAt）；缺省 None 兼容存量前端
+    #[serde(default)]
+    pub expected_updated_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -108,6 +111,9 @@ pub struct UpdateTodoItemInput {
 pub struct ReorderItemsInput {
     pub list_id: String,
     pub item_ids: Vec<String>,
+    /// R1-04：可选乐观锁基线（校验列表 updated_at）；缺省 None 兼容存量前端
+    #[serde(default)]
+    pub expected_updated_at: Option<String>,
 }
 
 // ============================================================================
@@ -289,14 +295,21 @@ pub fn todo_update_item(app: AppHandle, input: UpdateTodoItemInput) -> Result<Vf
         repeat_json: input.repeat_json,
         estimated_pomodoros: input.estimated_pomodoros,
         completed_pomodoros: input.completed_pomodoros,
+        expected_updated_at: input.expected_updated_at,
     };
     VfsTodoRepo::update_todo_item(&vfs_db, &input.id, params).map_err(|e| e.to_string())
 }
 
+/// R1-04：`expectedUpdatedAt` 为可选参数（serde 缺省 None，兼容存量 invoke）
 #[tauri::command]
-pub fn todo_toggle_item(app: AppHandle, item_id: String) -> Result<VfsTodoItem, String> {
+#[allow(non_snake_case)]
+pub fn todo_toggle_item(
+    app: AppHandle,
+    item_id: String,
+    expectedUpdatedAt: Option<String>,
+) -> Result<VfsTodoItem, String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::toggle_todo_item(&vfs_db, &item_id).map_err(|e| e.to_string())
+    VfsTodoRepo::toggle_todo_item(&vfs_db, &item_id, expectedUpdatedAt).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -308,7 +321,13 @@ pub fn todo_delete_item(app: AppHandle, item_id: String) -> Result<(), String> {
 #[tauri::command]
 pub fn todo_reorder_items(app: AppHandle, input: ReorderItemsInput) -> Result<(), String> {
     let vfs_db: State<Arc<VfsDatabase>> = app.state();
-    VfsTodoRepo::reorder_items(&vfs_db, &input.list_id, &input.item_ids).map_err(|e| e.to_string())
+    VfsTodoRepo::reorder_items(
+        &vfs_db,
+        &input.list_id,
+        &input.item_ids,
+        input.expected_updated_at.as_deref(),
+    )
+    .map_err(|e| e.to_string())
 }
 
 // ============================================================================

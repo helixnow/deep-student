@@ -369,6 +369,38 @@ async fn execute_restore_with_progress(
         }
     }
 
+    // ★ 审阅 15 P1-2 / S1 遗留：恢复写入前清空目标插槽，避免残留文件混入恢复结果
+    if let Some(slot) = inactive_slot {
+        if let Some(mgr) = crate::data_space::get_data_space_manager() {
+            match mgr.clear_slot_for_restore(slot) {
+                Ok(trash) => {
+                    if let Some(trash_path) = trash {
+                        info!(
+                            "[data_governance] 恢复前已清空插槽 {}，残留移至 {}",
+                            slot.name(),
+                            trash_path.display()
+                        );
+                    } else {
+                        info!(
+                            "[data_governance] 恢复前插槽 {} 已为空（或已重建）",
+                            slot.name()
+                        );
+                    }
+                }
+                Err(e) => {
+                    let msg = format!(
+                        "清空恢复目标插槽 {} 失败，已中止恢复（避免脏插槽混入）: {}",
+                        slot.name(),
+                        e
+                    );
+                    error!("[data_governance] {}", msg);
+                    job_ctx.fail(msg);
+                    return;
+                }
+            }
+        }
+    }
+
     // 确保目标目录存在
     if let Err(e) = std::fs::create_dir_all(&inactive_dir) {
         job_ctx.fail(format!("创建恢复目标目录失败: {}", e));

@@ -4,6 +4,10 @@
 //! 从每轮对话的用户消息和助手回复中自动提取候选记忆，
 //! 通过 write_smart 去重后写入。
 //!
+//! 三层记忆分流：提取结果分为两类——
+//! - 持久事实（关于用户本人）→ write_smart 普通记忆路径
+//! - 当日学习活动流水（做了什么题/错在哪）→ daily_log 追加（只可检索不注入）
+//!
 //! 触发点：ChatV2Pipeline::save_results_post_commit
 
 use std::collections::HashSet;
@@ -13,6 +17,7 @@ use anyhow::Result;
 use tracing::{debug, info, warn};
 
 use super::audit_log::{MemoryOpSource, OpTimer};
+use super::daily_log;
 use super::service::MemoryService;
 use crate::llm_manager::LLMManager;
 
@@ -23,6 +28,11 @@ pub struct CandidateMemory {
     pub content: String,
     pub folder: Option<String>,
 }
+
+/// 单条活动流水的最大字符数
+const ACTIVITY_MAX_CHARS: usize = 200;
+/// 单次提取的活动流水条数上限
+const MAX_ACTIVITIES: usize = 5;
 
 pub struct MemoryAutoExtractor {
     llm_manager: Arc<LLMManager>,
@@ -42,8 +52,21 @@ impl MemoryAutoExtractor {
         assistant_content: &str,
         existing_profile: Option<&str>,
     ) -> Result<Vec<CandidateMemory>> {
+        let (candidates, _activities) = self
+            .extract_candidates_and_activities(user_content, assistant_content, existing_profile)
+            .await?;
+        Ok(candidates)
+    }
+
+    /// 从对话内容中提取候选记忆 + 当日学习活动流水（三层记忆分流）
+    pub async fn extract_candidates_and_activities(
+        &self,
+        user_content: &str,
+        assistant_content: &str,
+        existing_profile: Option<&str>,
+    ) -> Result<(Vec<CandidateMemory>, Vec<String>)> {
         if user_content.chars().count() < 4 && assistant_content.chars().count() < 4 {
-            return Ok(vec![]);
+            return Ok((vec![], vec![]));
         }
 
         let user_truncated = Self::truncate_head_tail(user_content, 1500);
@@ -58,17 +81,22 @@ impl MemoryAutoExtractor {
             .await
             .map_err(|e| anyhow::anyhow!("LLM extraction call failed: {}", e))?;
 
-        let candidates = self.parse_extraction_response(&output.assistant_message)?;
+        let (candidates, activities) =
+            Self::parse_extraction_response_full(&output.assistant_message);
 
         debug!(
-            "[MemoryAutoExtractor] Extracted {} candidate memories from conversation",
-            candidates.len()
+            "[MemoryAutoExtractor] Extracted {} candidate memories, {} activities from conversation",
+            candidates.len(),
+            activities.len()
         );
 
-        Ok(candidates)
+        Ok((candidates, activities))
     }
 
     /// 提取并通过 write_smart 写入（完整 pipeline）
+    ///
+    /// 持久事实走 write_smart 去重写入；当日学习活动流水同时追加进 daily log
+    /// （区分：持久事实→普通 memory，活动流水→daily log）。
     pub async fn extract_and_store(
         &self,
         memory_service: &MemoryService,
@@ -78,9 +106,25 @@ impl MemoryAutoExtractor {
         let pipeline_timer = OpTimer::start();
 
         let existing_profile = memory_service.get_profile_summary().ok().flatten();
-        let candidates = self
-            .extract_candidates(user_content, assistant_content, existing_profile.as_deref())
+        let (candidates, activities) = self
+            .extract_candidates_and_activities(
+                user_content,
+                assistant_content,
+                existing_profile.as_deref(),
+            )
             .await?;
+
+        // 活动流水 → 当日学习日志（append-only，失败不影响事实写入）
+        if !activities.is_empty() {
+            let appended = daily_log::append_entries(memory_service, &activities);
+            if appended > 0 {
+                info!(
+                    "[MemoryAutoExtractor] Appended {}/{} activities to daily log",
+                    appended,
+                    activities.len()
+                );
+            }
+        }
 
         if candidates.is_empty() {
             debug!("[MemoryAutoExtractor] No candidate memories extracted, skipping");
@@ -194,9 +238,9 @@ impl MemoryAutoExtractor {
         };
 
         format!(
-            r#"你是一个用户记忆提取器。从以下对话中提取关于**用户本人**的原子事实。
+            r#"你是一个用户记忆提取器。从以下对话中提取两类信息：关于**用户本人**的原子事实（facts）与本轮对话中的**学习活动流水**（activities）。
 
-## 提取规则
+## facts 提取规则
 1. 每条记忆是关于用户的一个简短陈述句（≤50字）
 2. 只提取关于**用户本人**的事实，不提取通用知识
 3. 提取的类型：身份背景、学习状态、个人偏好、时间约束、目标计划
@@ -204,7 +248,14 @@ impl MemoryAutoExtractor {
 5. 判断标准：这条信息换一个用户还成立吗？如果是，就不要提取
 6. 最多提取 5 条，宁缺毋滥
 7. **跳过已有记忆中已记录的事实**——只提取新增或更新的信息
-8. 如果对话中没有关于用户的新事实，返回空数组
+8. 如果对话中没有关于用户的新事实，facts 返回空数组
+
+## activities 提取规则
+1. 每条概括本轮对话中一件"今天做了什么"的学习活动（≤80字），
+   如"做了 5 道二次函数题，错 2 道，均为符号错误"
+2. 只记录有实质学习内容的活动（做题、复习、批改、背诵、制卡等）；
+   闲聊/问答咨询不算活动
+3. 最多提取 5 条；没有实质学习活动时 activities 返回空数组
 {existing_section}
 ## 对话内容
 
@@ -212,7 +263,7 @@ impl MemoryAutoExtractor {
 
 助手: {assistant_content}
 
-## 分类指引
+## facts 分类指引
 - "偏好"：格式偏好、风格偏好、学习方式偏好
 - "偏好/个人背景"：年级、学校、专业、身份信息
 - "经历/学科状态"：强项弱项、成绩、学习进度
@@ -220,40 +271,87 @@ impl MemoryAutoExtractor {
 - "经历"：重要经历、计划、目标
 - 如果以上分类不合适，可以使用新的分类路径
 
-## 输出格式（JSON 数组）
-[
-  {{"title": "关键词概括", "content": "一个简短陈述句", "folder": "分类路径"}},
-  ...
-]
+## 输出格式（严格 JSON 对象）
+{{
+  "facts": [
+    {{"title": "关键词概括", "content": "一个简短陈述句", "folder": "分类路径"}}
+  ],
+  "activities": [
+    "学习活动概括一句话"
+  ]
+}}
 
-没有可提取的事实时输出空数组 []。请直接输出 JSON，不要添加其他内容。"#,
+没有可提取的内容时对应数组输出 []。请直接输出 JSON，不要添加其他内容。"#,
             existing_section = existing_section,
             user_content = user_content,
             assistant_content = assistant_content,
         )
     }
 
-    fn parse_extraction_response(&self, response: &str) -> Result<Vec<CandidateMemory>> {
+    /// 解析提取响应（facts + activities 双通道）
+    ///
+    /// 容错顺序：
+    /// 1. JSON 对象 `{"facts":[...],"activities":[...]}`（当前 prompt 格式）
+    /// 2. 裸 JSON 数组 `[...]`（旧格式兜底，视为 facts）
+    fn parse_extraction_response_full(response: &str) -> (Vec<CandidateMemory>, Vec<String>) {
         let cleaned = crate::llm_manager::parser::enhanced_clean_json_response(response);
 
-        if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&cleaned) {
-            return Ok(Self::values_to_candidates(&items));
+        // 1. 对象格式（facts + activities）
+        let object = serde_json::from_str::<serde_json::Value>(&cleaned)
+            .ok()
+            .filter(|v| v.is_object())
+            .or_else(|| {
+                super::compaction_flush::extract_json_object(&cleaned)
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            })
+            .or_else(|| {
+                super::compaction_flush::extract_json_object(response)
+                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            });
+        if let Some(obj) = object {
+            let facts = obj
+                .get("facts")
+                .and_then(|v| v.as_array())
+                .map(|items| Self::values_to_candidates(items))
+                .unwrap_or_default();
+            let activities = obj
+                .get("activities")
+                .and_then(|v| v.as_array())
+                .map(|items| Self::values_to_activities(items))
+                .unwrap_or_default();
+            return (facts, activities);
         }
 
+        // 2. 旧格式兜底：裸数组视为 facts
+        if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&cleaned) {
+            return (Self::values_to_candidates(&items), vec![]);
+        }
         if let Some(arr_str) = Self::extract_json_array(&cleaned) {
             if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&arr_str) {
-                return Ok(Self::values_to_candidates(&items));
+                return (Self::values_to_candidates(&items), vec![]);
             }
         }
-
         if let Some(arr_str) = Self::extract_json_array(response) {
             if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&arr_str) {
-                return Ok(Self::values_to_candidates(&items));
+                return (Self::values_to_candidates(&items), vec![]);
             }
         }
 
-        debug!("[MemoryAutoExtractor] No valid JSON array found in response, returning empty");
-        Ok(vec![])
+        debug!("[MemoryAutoExtractor] No valid JSON found in response, returning empty");
+        (vec![], vec![])
+    }
+
+    /// 过滤活动流水条目（长度/敏感信息）
+    fn values_to_activities(items: &[serde_json::Value]) -> Vec<String> {
+        items
+            .iter()
+            .filter_map(|item| item.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && s.chars().count() <= ACTIVITY_MAX_CHARS)
+            .filter(|s| !Self::contains_sensitive_pattern(s))
+            .map(|s| s.to_string())
+            .take(MAX_ACTIVITIES)
+            .collect()
     }
 
     fn values_to_candidates(items: &[serde_json::Value]) -> Vec<CandidateMemory> {
@@ -374,6 +472,43 @@ mod tests {
         let arr = MemoryAutoExtractor::extract_json_array(raw).unwrap();
         let items: Vec<serde_json::Value> = serde_json::from_str(&arr).unwrap();
         assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_parse_extraction_response_full_object_format() {
+        let raw = r#"{"facts":[{"title":"高三","content":"高三理科生","folder":"偏好/个人背景"}],"activities":["做了 5 道二次函数题，错 2 道"]}"#;
+        let (facts, activities) = MemoryAutoExtractor::parse_extraction_response_full(raw);
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].title, "高三");
+        assert_eq!(activities, vec!["做了 5 道二次函数题，错 2 道"]);
+    }
+
+    #[test]
+    fn test_parse_extraction_response_full_legacy_array_format() {
+        // 旧格式（裸数组）兜底：视为 facts，活动为空
+        let raw = r#"[{"title":"高三","content":"高三理科生","folder":"偏好/个人背景"}]"#;
+        let (facts, activities) = MemoryAutoExtractor::parse_extraction_response_full(raw);
+        assert_eq!(facts.len(), 1);
+        assert!(activities.is_empty());
+    }
+
+    #[test]
+    fn test_parse_extraction_response_full_garbage() {
+        let (facts, activities) =
+            MemoryAutoExtractor::parse_extraction_response_full("无法解析的输出");
+        assert!(facts.is_empty());
+        assert!(activities.is_empty());
+    }
+
+    #[test]
+    fn test_values_to_activities_filters() {
+        let items: Vec<serde_json::Value> = serde_json::from_str(&format!(
+            r#"["有效活动", "", "  ", "{}", "手机号13812345678相关"]"#,
+            "长".repeat(300)
+        ))
+        .unwrap();
+        let activities = MemoryAutoExtractor::values_to_activities(&items);
+        assert_eq!(activities, vec!["有效活动"]);
     }
 
     #[test]

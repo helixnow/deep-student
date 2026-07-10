@@ -940,6 +940,20 @@ impl VfsTodoRepo {
                 id: item_id.to_string(),
             })?;
 
+        // R1-04：乐观锁冲突检测（照抄 note_repo expected_updated_at 模板）
+        if let Some(ref expected) = params.expected_updated_at {
+            if !expected.is_empty() && *expected != current.updated_at {
+                warn!(
+                    "[VFS::TodoRepo] Optimistic lock conflict for todo item {}: expected updated_at='{}', actual='{}'",
+                    item_id, expected, current.updated_at
+                );
+                return Err(VfsError::Other(format!(
+                    "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                    expected, current.updated_at
+                )));
+            }
+        }
+
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
@@ -1294,7 +1308,13 @@ impl VfsTodoRepo {
     }
 
     /// 切换待办项完成状态
-    pub fn toggle_todo_item(db: &VfsDatabase, item_id: &str) -> VfsResult<VfsTodoItem> {
+    ///
+    /// R1-04：可选 `expected_updated_at`；None 时保持旧行为。
+    pub fn toggle_todo_item(
+        db: &VfsDatabase,
+        item_id: &str,
+        expected_updated_at: Option<String>,
+    ) -> VfsResult<VfsTodoItem> {
         let conn = db.get_conn_safe()?;
         let current =
             Self::get_todo_item_with_conn(&conn, item_id)?.ok_or_else(|| VfsError::NotFound {
@@ -1313,6 +1333,7 @@ impl VfsTodoRepo {
             item_id,
             VfsUpdateTodoItemParams {
                 status: Some(new_status.to_string()),
+                expected_updated_at,
                 ..Default::default()
             },
         )
@@ -1498,11 +1519,39 @@ impl VfsTodoRepo {
     }
 
     /// 批量重排序待办项（事务保护；id 必须属于指定列表，否则静默跳过）
-    pub fn reorder_items(db: &VfsDatabase, list_id: &str, item_ids: &[String]) -> VfsResult<()> {
+    ///
+    /// R1-04：可选 `expected_updated_at` 校验列表 `updated_at`；None 时保持旧行为。
+    pub fn reorder_items(
+        db: &VfsDatabase,
+        list_id: &str,
+        item_ids: &[String],
+        expected_updated_at: Option<&str>,
+    ) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
         let now = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
+
+        if let Some(expected) = expected_updated_at {
+            if !expected.is_empty() {
+                let list = Self::get_todo_list_with_conn(&conn, list_id)?.ok_or_else(|| {
+                    VfsError::NotFound {
+                        resource_type: "TodoList".to_string(),
+                        id: list_id.to_string(),
+                    }
+                })?;
+                if expected != list.updated_at {
+                    warn!(
+                        "[VFS::TodoRepo] Optimistic lock conflict for todo reorder list {}: expected updated_at='{}', actual='{}'",
+                        list_id, expected, list.updated_at
+                    );
+                    return Err(VfsError::Other(format!(
+                        "TODO_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                        expected, list.updated_at
+                    )));
+                }
+            }
+        }
 
         conn.execute("SAVEPOINT reorder_todo_items", [])?;
 
@@ -2269,6 +2318,7 @@ impl Default for VfsUpdateTodoItemParams {
             repeat_json: None,
             estimated_pomodoros: None,
             completed_pomodoros: None,
+            expected_updated_at: None,
         }
     }
 }
@@ -2694,7 +2744,8 @@ mod tests {
         );
 
         // 完成 → 生成明天到期的下一次实例
-        let completed = VfsTodoRepo::toggle_todo_item(&db, &item.id).expect("toggle complete");
+        let completed =
+            VfsTodoRepo::toggle_todo_item(&db, &item.id, None).expect("toggle complete");
         assert_eq!(completed.status, "completed");
 
         let items = VfsTodoRepo::list_items_by_list(&db, &list.id, true).expect("list items");
@@ -2716,8 +2767,8 @@ mod tests {
         );
 
         // 反复 取消完成→再完成 不应产生重复实例
-        VfsTodoRepo::toggle_todo_item(&db, &item.id).expect("un-complete");
-        VfsTodoRepo::toggle_todo_item(&db, &item.id).expect("re-complete");
+        VfsTodoRepo::toggle_todo_item(&db, &item.id, None).expect("un-complete");
+        VfsTodoRepo::toggle_todo_item(&db, &item.id, None).expect("re-complete");
         let items = VfsTodoRepo::list_items_by_list(&db, &list.id, true).expect("list again");
         assert_eq!(items.len(), 2, "dedup guard should prevent duplicates");
     }
@@ -2745,11 +2796,11 @@ mod tests {
             },
         )
         .expect("create");
-        VfsTodoRepo::toggle_todo_item(&db, &no_due.id).expect("complete");
+        VfsTodoRepo::toggle_todo_item(&db, &no_due.id, None).expect("complete");
 
         // 无规则 → 不生成
         let plain = create_item(&db, &list.id, "普通任务", Some("2026-01-01".into()), None);
-        VfsTodoRepo::toggle_todo_item(&db, &plain.id).expect("complete");
+        VfsTodoRepo::toggle_todo_item(&db, &plain.id, None).expect("complete");
 
         let items = VfsTodoRepo::list_items_by_list(&db, &list.id, true).expect("list");
         assert_eq!(items.len(), 2, "no extra items spawned");
