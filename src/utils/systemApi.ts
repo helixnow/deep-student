@@ -25,7 +25,7 @@ export async function llmGenerateAnswerWithContext(query: string, contextJson: s
     return response;
   } catch (error) {
     console.error('Failed to generate LLM answer:', error);
-    throw new Error(`Failed to generate LLM answer: ${error}`);
+    throw new Error(`Failed to generate LLM answer: ${getErrorMessage(error)}`);
   }
 }
 
@@ -37,7 +37,7 @@ export async function unifiedFixTagHierarchy(graphId: string = 'default'): Promi
     return response;
   } catch (error) {
     console.error('Failed to fix tag tree:', error);
-    throw new Error(`Failed to fix tag tree: ${error}`);
+    throw new Error(`Failed to fix tag tree: ${getErrorMessage(error)}`);
   }
 }
 
@@ -52,7 +52,7 @@ export async function initializeDefaultTagHierarchy(): Promise<string> {
     return response;
   } catch (error) {
     console.error('Failed to initialize default tag hierarchy:', error);
-    throw new Error(`Failed to initialize default tag hierarchy: ${error}`);
+    throw new Error(`Failed to initialize default tag hierarchy: ${getErrorMessage(error)}`);
   }
 }
 
@@ -78,7 +78,7 @@ export async function generateMissingTagVectors(graphId: string = 'default'): Pr
     return response.message;
   } catch (error) {
     console.error('Failed to trigger tag vector generation:', error);
-    throw new Error(`Failed to trigger tag vector generation: ${error}`);
+    throw new Error(`Failed to trigger tag vector generation: ${getErrorMessage(error)}`);
   }
 }
 
@@ -242,7 +242,7 @@ export async function purgeAllDatabaseFiles(): Promise<string> {
     return result;
   } catch (error) {
     console.error('Failed to purge database files:', error);
-    throw new Error(`Failed to purge database files: ${error}`);
+    throw new Error(`Failed to purge database files: ${getErrorMessage(error)}`);
   }
 }
 
@@ -252,7 +252,7 @@ export async function purgeActiveDataDirNow(): Promise<string> {
     return await invoke<string>('purge_active_data_dir_now');
   } catch (error) {
     console.error('Failed to purge data directory:', error);
-    throw new Error(`Failed to purge data directory: ${error}`);
+    throw new Error(`Failed to purge data directory: ${getErrorMessage(error)}`);
   }
 }
 
@@ -281,7 +281,7 @@ export async function getStorageInfo(): Promise<{
     return response;
   } catch (error: any) {
     console.error('Failed to get storage info:', error);
-    throw new Error(`Failed to get storage info: ${error}`);
+    throw new Error(`Failed to get storage info: ${getErrorMessage(error)}`);
   }
 }
 

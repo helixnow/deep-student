@@ -245,7 +245,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const userHasScrolledRef = useRef(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-  /** 检查当前是否在底部附近（阈值 50px，ChatGPT/Claude 同级灵敏度） */
+  /** 检查当前是否在底部附近（阈值 50px，主流聊天产品 同级灵敏度） */
   const isNearBottom = useCallback(() => {
     if (!viewportElement) return true;
     const { scrollTop, scrollHeight, clientHeight } = viewportElement;
@@ -320,7 +320,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
     };
   }, []);
 
-  // 🖱️ 平滑滚轮惯性 + 第一时间检测向上滚动意图（ChatGPT/Claude 同级手感）
+  // 🖱️ 平滑滚轮惯性 + 第一时间检测向上滚动意图（主流聊天产品 同级手感）
   useSmoothWheel(containerRef.current, {
     onUserScrollUp: () => {
       if (isAutoScrollingRef.current) {
@@ -389,7 +389,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
   const prevIsStreamingRef = useRef(isStreaming);
 
-  // 新消息定位：用户发送新消息时，以该消息在顶部开始（ChatGPT/Claude 同级体验）
+  // 新消息定位：用户发送新消息时，以该消息在顶部开始（主流聊天产品 同级体验）
   // 流式开始后由 rAF 循环接管滚动；非流式新增消息仍 scrollToBottom
   useEffect(() => {
     const wasStreaming = prevIsStreamingRef.current;

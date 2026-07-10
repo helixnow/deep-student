@@ -66,9 +66,24 @@ const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 
 const normalize = (value: unknown): string => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 
+/**
+ * DeepSeek legacy 别名：`deepseek-chat` / `deepseek-reasoner` 已于 2026-07-24 15:59 UTC 停用
+ * （当前映射到 deepseek-v4-flash 的非思考/思考模式，2026-07 调研 07 要点 1）。
+ * 仅保留识别以兼容存量配置；UI 应引导迁移到 `deepseek-v4-pro` / `deepseek-v4-flash`。
+ */
+export function isDeepSeekLegacyAliasModelId(modelId: string | undefined | null): boolean {
+  const lower = normalize(modelId);
+  return lower === 'deepseek-chat' || lower === 'deepseek-reasoner';
+}
+
+/**
+ * DeepSeek V4 一等模型：`deepseek-v4-pro` / `deepseek-v4-flash`（含 `[1m]` 等后缀变体与
+ * SiliconFlow 托管的 `deepseek-ai/DeepSeek-V4-*` 形态）；legacy 别名作为兼容识别保留。
+ */
 export function isDeepSeekV4ModelId(modelId: string | undefined | null): boolean {
   const lower = normalize(modelId);
-  return lower.includes('deepseek-v4') || lower === 'deepseek-chat' || lower === 'deepseek-reasoner';
+  if (lower.includes('deepseek-v4')) return true;
+  return isDeepSeekLegacyAliasModelId(lower);
 }
 
 export function isDeepSeekV32ModelId(modelId: string | undefined | null): boolean {

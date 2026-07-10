@@ -685,7 +685,8 @@ jobs:
           MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
           test -f "$MANIFEST" || { echo "::error::AndroidManifest.xml not found at $MANIFEST"; exit 1; }
 
-          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS; do
+          # POST_NOTIFICATIONS：Android 13+ 系统通知必需（审阅 33 P1-2，与 capabilities/mobile.json 的 notification:default 配套）
+          for PERMISSION in android.permission.RECORD_AUDIO android.permission.MODIFY_AUDIO_SETTINGS android.permission.POST_NOTIFICATIONS; do
             PERM_LINE="<uses-permission android:name=\"$PERMISSION\" />"
             if ! grep -qF "$PERMISSION" "$MANIFEST"; then
               sed -i "/<manifest/a\\    $PERM_LINE" "$MANIFEST"

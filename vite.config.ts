@@ -1,6 +1,7 @@
 import path from "node:path";
+import fs from "node:fs";
 import { createRequire } from "node:module";
-import { defineConfig, normalizePath } from "vite";
+import { defineConfig, normalizePath, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -12,6 +13,62 @@ import tailwindcss from "tailwindcss";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import autoprefixer from "autoprefixer";
+
+/**
+ * OS 模式交互延迟落盘：POST/GET `/__wb_interaction_trace`
+ * → 仓库 `.tmp/wb-interaction-trace.json`（人看 DevPanel，代理读文件）。
+ */
+function workbenchInteractionTracePlugin(): Plugin {
+  const dumpRel = path.join(".tmp", "wb-interaction-trace.json");
+  return {
+    name: "wb-interaction-trace",
+    configureServer(server) {
+      server.middlewares.use("/__wb_interaction_trace", (req, res, next) => {
+        const dumpPath = path.join(server.config.root, dumpRel);
+        if (req.method === "GET") {
+          try {
+            if (!fs.existsSync(dumpPath)) {
+              res.statusCode = 404;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.end(JSON.stringify({ error: "no_trace_yet", path: dumpRel }));
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "application/json; charset=utf-8");
+            res.end(fs.readFileSync(dumpPath, "utf8"));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(String(err));
+          }
+          return;
+        }
+        if (req.method === "POST" || req.method === "PUT") {
+          const chunks: Buffer[] = [];
+          req.on("data", (c) => {
+            chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c));
+          });
+          req.on("end", () => {
+            try {
+              fs.mkdirSync(path.dirname(dumpPath), { recursive: true });
+              const body = Buffer.concat(chunks).toString("utf8") || "{}";
+              // 校验 JSON，避免写坏文件
+              JSON.parse(body);
+              fs.writeFileSync(dumpPath, body, "utf8");
+              res.statusCode = 204;
+              res.end();
+            } catch (err) {
+              res.statusCode = 400;
+              res.setHeader("Content-Type", "application/json; charset=utf-8");
+              res.end(JSON.stringify({ error: String(err) }));
+            }
+          });
+          return;
+        }
+        next();
+      });
+    },
+  };
+}
 
 // PDF.js 资源路径配置（用于支持非拉丁字符、JPEG 2000 图片、标准字体）
 const require = createRequire(import.meta.url);
@@ -42,6 +99,7 @@ export default defineConfig(({ command, mode }) => ({
       },
     },
     react(),
+    workbenchInteractionTracePlugin(),
     viteStaticCopy({
       targets: [
         { src: cMapsDir, dest: '' },

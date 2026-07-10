@@ -59,7 +59,7 @@ export async function readFileAsText(path: string): Promise<string> {
     return await invoke<string>('read_file_text', { path });
   } catch (error) {
     console.error('Failed to read file:', error);
-    throw new Error(`Failed to read file: ${error}`);
+    throw new Error(`Failed to read file: ${getErrorMessage(error)}`);
   }
 }
 
@@ -72,7 +72,7 @@ export async function copyFile(sourcePath: string, destPath: string): Promise<vo
     await invoke<void>('copy_file', { sourcePath, destPath, source_path: sourcePath, dest_path: destPath });
   } catch (error) {
     console.error('Failed to copy file:', error);
-    throw new Error(`Failed to copy file: ${error}`);
+    throw new Error(`Failed to copy file: ${getErrorMessage(error)}`);
   }
 }
 
@@ -87,7 +87,7 @@ export async function readFileAsBytes(path: string): Promise<Uint8Array> {
     return new Uint8Array(buffer);
   } catch (error) {
     console.error('Failed to read binary file:', error);
-    throw new Error(`Failed to read binary file: ${error}`);
+    throw new Error(`Failed to read binary file: ${getErrorMessage(error)}`);
   }
 }
 

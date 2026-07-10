@@ -518,7 +518,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full bg-background/50', className)}>
-      {/* 顶部工具栏 - Notion 风格，响应式布局（嵌入模式下不显示） */}
+      {/* 顶部工具栏 - 简洁风格，响应式布局（嵌入模式下不显示） */}
       {!embeddedMode && (
         <div className="flex-shrink-0 border-b border-border/40 bg-background/95 backdrop-blur-sm px-3 sm:px-6 sticky top-0 z-20">
           {/* 主行：标题、操作按钮 */}
@@ -737,7 +737,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             ))}
           </div>
         ) : filteredCount === 0 ? (
-          // 空状态 - Notion 风格简洁设计
+          // 空状态 - 简洁风格简洁设计
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <Chat size={40} className="mb-3 opacity-40" />
             <span className="text-sm mb-2">

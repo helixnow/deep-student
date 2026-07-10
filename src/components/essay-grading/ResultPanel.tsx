@@ -53,10 +53,10 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
 
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 group/target">
-      {/* Toolbar - Notion 风格 */}
+      {/* Toolbar - 简洁风格 */}
       <div className="flex h-[41px] items-center justify-between px-4 border-b border-border/30">
         <div className="flex items-center gap-3">
-          {/* 标题 - Notion 风格简洁 */}
+          {/* 标题 - 简洁风格简洁 */}
           <div className="flex items-center gap-2 text-sm text-foreground/70">
             <Pen size={14} />
             <span>{t('essay_grading:result_section.title')}</span>
@@ -87,7 +87,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             </div>
           )}
           
-          {/* 流式状态指示 - Notion 风格 */}
+          {/* 流式状态指示 - 简洁风格 */}
           {isGrading && (
             <div className="flex items-center gap-1.5 text-xs text-primary/70">
               <CircleNotch size={12} className="animate-spin" />
@@ -95,7 +95,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           )}
         </div>
 
-        {/* 操作按钮 - Notion 风格悬浮显示 */}
+        {/* 操作按钮 - 简洁风格悬浮显示 */}
         <div className="flex items-center gap-1 opacity-0 group-hover/target:opacity-100 transition-opacity duration-200">
           {gradingResult && (
             <>
@@ -131,7 +131,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             </div>
           </div>
         )}
-        {/* 错误提示 - Notion 风格 */}
+        {/* 错误提示 - 简洁风格 */}
         {error && !isGrading && (
           <div className="mx-4 mt-4 p-4 bg-red-50/50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-800/30 rounded-md">
             <div className="flex items-start gap-3">
@@ -167,7 +167,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
 />
         </div>
 
-        {/* Floating Status Bar - Notion 风格 */}
+        {/* Floating Status Bar - 简洁风格 */}
         {gradingResult && (
           <div className="absolute bottom-3 right-4 flex items-center pointer-events-none opacity-0 group-hover/target:opacity-100 transition-opacity duration-200">
             <span className="text-xs text-muted-foreground/50 tabular-nums">

@@ -1,5 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { VendorConfig, ModelProfile, ApiConfig } from '../types';
+// ★ 2026-07-08（审计 30-P1-2）：错误重抛统一走 getErrorMessage，
+// 避免 `${error}` 对对象错误产生 "[object Object]"，且保留结构化 message 可解析性
+import { getErrorMessage } from './errorUtils';
 
 
 // 文件管理API
@@ -38,7 +41,7 @@ export async function getImageAsBase64(relativePath: string): Promise<string> {
     }
   } catch (error) {
     console.error('Failed to get image as base64:', error);
-    throw new Error(`Failed to get image: ${error}`);
+    throw new Error(`Failed to get image: ${getErrorMessage(error)}`);
   }
 }
 
@@ -71,7 +74,7 @@ export async function saveImageFromBase64(base64Data: string, originalPath: stri
     return response;
   } catch (error) {
     console.error('Failed to save image from base64:', error);
-    throw new Error(`Failed to save image: ${error}`);
+    throw new Error(`Failed to save image: ${getErrorMessage(error)}`);
   }
 }
 
@@ -81,7 +84,7 @@ export async function cleanupOrphanedImages(): Promise<string[]> {
     return response;
   } catch (error) {
     console.error('Failed to cleanup orphaned images:', error);
-    throw new Error(`Failed to cleanup orphaned images: ${error}`);
+    throw new Error(`Failed to cleanup orphaned images: ${getErrorMessage(error)}`);
   }
 }
 
@@ -92,7 +95,7 @@ export async function getApiConfigurations(): Promise<ApiConfig[]> {
     return response;
   } catch (error) {
     console.error('Failed to get API configurations:', error);
-    throw new Error(`Failed to get API configurations: ${error}`);
+    throw new Error(`Failed to get API configurations: ${getErrorMessage(error)}`);
   }
 }
 
@@ -105,7 +108,7 @@ export async function saveApiConfigurations(configs: ApiConfig[]): Promise<void>
     await invoke<void>('save_api_configurations', { configs: filtered });
   } catch (error) {
     console.error('Failed to save API configurations:', error);
-    throw new Error(`Failed to save API configurations: ${error}`);
+    throw new Error(`Failed to save API configurations: ${getErrorMessage(error)}`);
   }
 }
 
@@ -114,7 +117,7 @@ export async function getVendorConfigs(): Promise<VendorConfig[]> {
     return await invoke<VendorConfig[]>('get_vendor_configs');
   } catch (error) {
     console.error('Failed to get vendor configs:', error);
-    throw new Error(`Failed to get vendor configs: ${error}`);
+    throw new Error(`Failed to get vendor configs: ${getErrorMessage(error)}`);
   }
 }
 
@@ -123,7 +126,7 @@ export async function saveVendorConfigs(configs: VendorConfig[]): Promise<void> 
     await invoke<void>('save_vendor_configs', { configs });
   } catch (error) {
     console.error('Failed to save vendor configs:', error);
-    throw new Error(`Failed to save vendor configs: ${error}`);
+    throw new Error(`Failed to save vendor configs: ${getErrorMessage(error)}`);
   }
 }
 
@@ -132,7 +135,7 @@ export async function getModelProfiles(): Promise<ModelProfile[]> {
     return await invoke<ModelProfile[]>('get_model_profiles');
   } catch (error) {
     console.error('Failed to get model profiles:', error);
-    throw new Error(`Failed to get model profiles: ${error}`);
+    throw new Error(`Failed to get model profiles: ${getErrorMessage(error)}`);
   }
 }
 
@@ -141,7 +144,7 @@ export async function saveModelProfiles(profiles: ModelProfile[]): Promise<void>
     await invoke<void>('save_model_profiles', { profiles });
   } catch (error) {
     console.error('Failed to save model profiles:', error);
-    throw new Error(`Failed to save model profiles: ${error}`);
+    throw new Error(`Failed to save model profiles: ${getErrorMessage(error)}`);
   }
 }
 
@@ -151,7 +154,7 @@ export async function getModelAssignments(): Promise<any> {
     return response;
   } catch (error) {
     console.error('Failed to get model assignments:', error);
-    throw new Error(`Failed to get model assignments: ${error}`);
+    throw new Error(`Failed to get model assignments: ${getErrorMessage(error)}`);
   }
 }
 
@@ -160,7 +163,7 @@ export async function saveModelAssignments(assignments: any): Promise<void> {
     await invoke<void>('save_model_assignments', { assignments });
   } catch (error) {
     console.error('Failed to save model assignments:', error);
-    throw new Error(`Failed to save model assignments: ${error}`);
+    throw new Error(`Failed to save model assignments: ${getErrorMessage(error)}`);
   }
 }
 

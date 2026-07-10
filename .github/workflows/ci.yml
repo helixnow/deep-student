@@ -133,6 +133,12 @@ jobs:
           - sync_real_schema_tests
           - sync_regression_tests
           - sync_weird_tests
+          # 审阅 35 P0-2 补齐（2026-07-08）：此前矩阵漏掉的 5 个 sync 目标
+          - sync_comprehensive_tests
+          - sync_provider_contract_tests
+          - sync_realistic_scenarios
+          - sync_real_flow_smoke_tests
+          - sync_schema_coverage_tests
     env:
       CARGO_INCREMENTAL: 0
       # proptest 在 CI 里用随机种子；固定一下便于 reproduce
@@ -164,10 +170,18 @@ jobs:
         # 里编译/链接/执行时被 hosted runner 杀掉，同时能精确定位是哪一个目标失败。
         run: cargo test --test ${{ matrix.test-target }}
 
-  sync-module-unit-tests:
-    name: Sync Module Unit Tests
+  # ============================================
+  # 后端库内联单元测试（全量 #[cfg(test)]）
+  #
+  # 审阅 35 P0-1 接入（2026-07-08）：此前只跑 data_governance::sync 一个
+  # 模块的 inline 测试，chat_v2（770 条，含审批/shell 执行/技能安装等
+  # 安全关键路径）及其余 2100+ 条 lib 内联测试从不在 CI 运行。
+  # 改为全量 cargo test --lib（自然包含原 sync 模块过滤范围）。
+  # ============================================
+  lib-unit-tests:
+    name: Lib Unit Tests (cargo test --lib)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       CARGO_INCREMENTAL: 0
     steps:
@@ -190,10 +204,57 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
 
-      - name: Run sync module unit tests (in-module #[cfg(test)])
+      - name: Run all in-module unit tests (#[cfg(test)], incl. chat_v2)
         working-directory: src-tauri
-        # 覆盖 mod.rs / hlc.rs / tombstone.rs / conflict_resolver.rs 里的 inline 测试
-        run: cargo test --lib data_governance::sync
+        run: cargo test --lib
+
+  # ============================================
+  # 非 sync 集成测试（tests/ 下的独立 target）
+  #
+  # 审阅 35 P0-2 接入（2026-07-08）：migration_tests（数据库迁移，数据
+  # 丢失风险最高）、secure_store_tests（密钥存储）等 7 个 --test 目标
+  # 此前只写不跑。复用 sync-tests 的单 runner 单 target 模式。
+  # ============================================
+  integration-tests:
+    name: Integration Tests (${{ matrix.test-target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        test-target:
+          - migration_tests
+          - secure_store_tests
+          - tools_integration_tests
+          - tool_pack_integration_tests
+          - anki_export_integration
+          - mcpbench_integration
+          - error_details_tests
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: sync-tests
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+
+      - name: Run integration test target
+        working-directory: src-tauri
+        run: cargo test --test ${{ matrix.test-target }}
 
   # ============================================
   # 供应链安全审计

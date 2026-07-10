@@ -120,6 +120,7 @@ src-tauri/.target-local/
 
 # Temporary files
 /tmp/
+.tmp/
 temp_*/
 *_temp/
 temp_apkg/
@@ -282,3 +283,13 @@ mcp-feedback-enhanced/
 deep-agent-ref/
 # MCP 反馈工具会话接力文档（本机生成，不入库）
 .feed/
+
+# Workbench polish local artifacts (dev logs / check outputs / MSVC misdrops)
+tsc-out.txt
+vitest-contract-out.txt
+o13-test-out.txt
+.tsc-baseline-*.txt
+dev-server*.log
+tauri-dev*.log
+tc_agent*.log
+src-tauri/NONE

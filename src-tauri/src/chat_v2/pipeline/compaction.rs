@@ -3,7 +3,7 @@
 //! 触发条件：provider 返回的真实 usage 接近上下文上限（single-round）时设置
 //! `ctx.needs_compaction`；由外层 pipeline 循环在下一次 LLM 调用前执行本模块。
 //!
-//! ## 算法（参考 opencode compaction.ts）
+//! ## 算法（参考 参考实现 compaction.ts）
 //!
 //! ```
 //! ┌─ 首 2 user turn（逐字保留，作为任务锚点）
@@ -34,10 +34,10 @@ use log::{debug, info, warn};
 use std::collections::HashSet;
 
 // ============================================================================
-// 触发参数（参考 opencode overflow.ts + 2026 模型调研）
+// 触发参数（参考 参考实现 overflow.ts + 2026 模型调研）
 // ============================================================================
 
-/// 压缩预留缓冲（与 opencode `COMPACTION_BUFFER` 一致）
+/// 压缩预留缓冲（与 参考实现 `COMPACTION_BUFFER` 一致）
 pub const COMPACTION_BUFFER: u32 = 20_000;
 /// 触发比率：`used >= (usable) * ratio`
 pub const TRIGGER_RATIO: f64 = 0.85;
@@ -74,7 +74,7 @@ pub fn usable_tokens(config: Option<&ApiConfig>) -> u32 {
         .and_then(|c| c.max_tokens_limit)
         .filter(|&v| v > 0) // I8: 拒绝 Some(0)
         .unwrap_or(DEFAULT_MAX_OUTPUT);
-    // 与 opencode 一致：reserved = min(COMPACTION_BUFFER, max_output)
+    // 与 参考实现 一致：reserved = min(COMPACTION_BUFFER, max_output)
     let reserved = COMPACTION_BUFFER.min(max_output);
     context.saturating_sub(reserved)
 }
@@ -189,7 +189,7 @@ fn split_into_turns(messages: &[ChatMessage]) -> Vec<TurnRange> {
 /// 而不是 system 角色。理由：
 /// - Anthropic `/messages` 不接受 messages[] 里的 system 角色（必须走顶层 system 参数）
 /// - OpenAI 虽然允许中途 system 消息，但会 warning
-/// - OpenCode 本身也用 user 角色携带 `<compacted_context>` 标记
+/// - 参考实现 本身也用 user 角色携带 `<compacted_context>` 标记
 ///
 /// 🔧 R4-M1 修复：summary_text 来自 LLM，如果用户上游消息里含
 /// `</compacted_context>`（比如粘贴带标签的文本），summarizer 复述后

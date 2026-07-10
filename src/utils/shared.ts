@@ -36,7 +36,8 @@ export type Tag = { id: string; name: string; color?: string };
 export type ProblemCard = { id: string; content_problem: string; content_insight?: string; notes?: string };
 export type CreateTagRequest = { name: string; color?: string; parent_id?: string; tag_type?: string; description?: string };
 export type LegacyCreateTagRequest = CreateTagRequest & { parent_tag_id?: string };
-import heic2any from 'heic2any';
+// ★ 2026-07-08（审计 30-P1-4）：heic2any 体积可观且仅在用户上传 HEIC 图片时才需要，
+// 改为使用点动态 import()，避免经 tauriApi barrel 被静态拖入首屏 chunk
 import { getErrorMessage } from './errorUtils';
 import { debugLogger } from './debugLogger';
 import { DEBUG_TIMELINE_GLOBAL_KEYS } from '../config/debugPanel';
@@ -332,6 +333,7 @@ export const fileToBase64 = (file: File): Promise<string> => {
             tauriDebugLog(`[HEIC] Detected HEIC image: ${file.name}, converting to JPG...`);
             tauriDebugLog(`[HEIC] File details:`, { name: file.name, size: file.size, type: file.type });
             try {
+                const { default: heic2any } = await import('heic2any');
                 const conversionResult = await heic2any({
                     blob: file,
                     toType: "image/jpeg",

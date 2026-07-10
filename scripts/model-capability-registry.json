@@ -1,12 +1,62 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-05-22",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现",
+  "updated_at": "2026-07-08",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-07-08 刷新：新增 GPT-5.4/5.5、Claude Opus 4.7/4.8、Sonnet 5、Fable 5、DeepSeek V4、Qwen3.6/3.7、Kimi K2.6/K2.7、GLM-5.x、MiniMax M3、Grok 4.3、ERNIE 5.1/X1.1；移除已退役的 Hunyuan 2.0（老平台 2026-09-30 停服，TokenHub 新模型 ID 为 hy3 系）。",
   "records": [
     {
       "vendor": "OpenAI",
       "series": "GPT-5",
       "models": [
+        {
+          "model_id": "gpt-5.5",
+          "release_date": "2026-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 400000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "tools", "tool_choice", "response_format"],
+            "notes": "2026 主线旗舰；effort 全集 none/minimal/low/medium/high/xhigh（gpt-5.5-pro 仅 medium/high/xhigh，调研 01 要点 5）。"
+          },
+          "quirks": [
+            "Chat Completions 需用 max_completion_tokens（max_tokens 会 400，调研 01 要点 3）。"
+          ]
+        },
+        {
+          "model_id": "gpt-5.4",
+          "release_date": "2026-04",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 400000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": ["model", "input"],
+            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "tools", "tool_choice", "response_format"],
+            "notes": "gpt-5.5 之前的主线版本，参数形态与 5.5 一致。"
+          },
+          "quirks": [
+            "Chat Completions 需用 max_completion_tokens（max_tokens 会 400，调研 01 要点 3）。"
+          ]
+        },
         {
           "model_id": "gpt-5.3-codex",
           "release_date": "2026-02-05",
@@ -331,6 +381,113 @@
         "quirks": [
           "部分渠道对 4.1-nano 的工具返回格式最严格，建议单独加 `tool_choice` 白名单策略。"
         ]
+        }
+      ]
+    },
+    {
+      "vendor": "Anthropic",
+      "series": "Claude 2026 (Opus 4.7/4.8, Sonnet 5, Fable 5)",
+      "models": [
+        {
+          "model_id": "claude-fable-5",
+          "release_date": "2026-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "notes": "2026 旗舰；思考仅支持 thinking:{type:\"adaptive\"} + output_config.effort（low/medium/high/xhigh/max），thinking:{type:\"enabled\", budget_tokens} 直接 400（调研 02 要点 2）。"
+          },
+          "quirks": [
+            "非默认 temperature/top_p/top_k 一律 400（调研 02 要点 4），适配层不应下发采样参数。",
+            "stop_reason 可能为 refusal（HTTP 200 正常响应），需识别 stop_details.category。"
+          ]
+        },
+        {
+          "model_id": "claude-sonnet-5",
+          "release_date": "2026-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": 64000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "notes": "adaptive thinking + output_config.effort；enabled+budget_tokens 形状会 400（调研 02 要点 2）。"
+          },
+          "quirks": [
+            "非默认采样参数会 400（调研 02 要点 4）。"
+          ]
+        },
+        {
+          "model_id": "claude-opus-4-8",
+          "release_date": "2026-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "betas/header", "stream", "stop_sequences"],
+            "notes": "adaptive thinking + output_config.effort；enabled+budget_tokens 形状会 400（调研 02 要点 2）。"
+          },
+          "quirks": [
+            "旧式 extended thinking 子串判定（含 opus-4）会把该模型误判为支持 enabled 形状，注意区分代际。"
+          ]
+        },
+        {
+          "model_id": "claude-opus-4-7",
+          "release_date": "2026-03",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "anthropic_messages_native",
+            "required_fields": ["model", "messages", "max_tokens"],
+            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "betas/header", "stream", "stop_sequences"],
+            "notes": "adaptive thinking + output_config.effort；enabled+budget_tokens 形状会 400（调研 02 要点 2）。"
+          },
+          "quirks": [
+            "非默认采样参数会 400（调研 02 要点 4）。"
+          ]
         }
       ]
     },
@@ -747,11 +904,11 @@
     },
     {
       "vendor": "DeepSeek",
-      "series": "R1/V3.2",
+      "series": "V4",
       "models": [
         {
-          "model_id": "deepseek-reasoner",
-          "release_date": "2025-01-20",
+          "model_id": "deepseek-v4-pro",
+          "release_date": "2026-04-24",
           "status": "confirmed",
           "capabilities": {
             "text": true,
@@ -761,23 +918,24 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 128000,
-            "max_output_tokens": null
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 384000
           },
           "param_format": {
             "family": "deepseek_openai_compat",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking"],
-            "notes": "当前版本名 `deepseek-reasoner` 可指代 R1（含后续 0528/0528 优化版本能力）。"
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
+            "notes": "V4 旗舰（1.6T 总参）；thinking 默认 enabled，reasoning_effort 仅 high/max（low/medium→high、xhigh→max，调研 07 §1.4）。"
           },
-            "quirks": [
-            "R1-0528 在 2025-05-28 做了 benchmark 与前端增强，应在真实模型列表里按服务返回的能力优先于历史静态映射。",
-            "官方文档对 top_p/temperature/presence_penalty/frequency_penalty 标记为不生效或不支持，建议优先保留服务端默认行为。"
+          "quirks": [
+            "V4 为纯文本模型，无原生图像输入（调研 07 §1.2）。",
+            "reasoning_effort:max 时官方要求为推理预留 ≥384K token 预算。",
+            "含工具调用的轮次必须完整回传 reasoning_content，否则 400（调研 07 要点 4）。"
           ]
         },
         {
-          "model_id": "deepseek-chat",
-          "release_date": "2025-03-24",
+          "model_id": "deepseek-v4-flash",
+          "release_date": "2026-04-24",
           "status": "confirmed",
           "capabilities": {
             "text": true,
@@ -786,18 +944,77 @@
             "video": false,
             "function_calling": true,
             "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 384000
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
+            "notes": "高性价比默认档；legacy 别名 deepseek-chat/deepseek-reasoner 当前映射到本模型的非思考/思考模式。"
+          },
+          "quirks": [
+            "思考模式下 temperature/top_p 等采样参数被静默忽略（调研 07 §1.4）。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "DeepSeek",
+      "series": "R1/V3.2",
+      "models": [
+        {
+          "model_id": "deepseek-reasoner",
+          "release_date": "2025-01-20",
+          "status": "deprecated",
+          "alias_of": "deepseek-v4-flash",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "deepseek_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking"],
+            "notes": "legacy 别名：当前映射到 deepseek-v4-flash 思考模式，2026-07-24 15:59 UTC 彻底停用（调研 07 要点 1），请迁移到 deepseek-v4-pro/flash。"
+          },
+            "quirks": [
+            "2026-07-24 停用后请求将直接失败，UI 应提示迁移。",
+            "官方文档对 top_p/temperature/presence_penalty/frequency_penalty 标记为不生效或不支持，建议优先保留服务端默认行为。"
+          ]
+        },
+        {
+          "model_id": "deepseek-chat",
+          "release_date": "2025-03-24",
+          "status": "deprecated",
+          "alias_of": "deepseek-v4-flash",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
             "coding_agent": false,
-            "max_context_tokens": 128000,
+            "max_context_tokens": 1000000,
             "max_output_tokens": null
           },
           "param_format": {
             "family": "deepseek_openai_compat",
             "required_fields": ["model", "messages"],
             "optional_fields": ["tools", "tool_choice", "max_tokens", "temperature", "top_p", "stream", "presence_penalty", "frequency_penalty"],
-            "notes": "通常通过 `deepseek-chat` 作为非thinking入口，后续可平滑映射到 deepseek-chat/exp/3.2。"
+            "notes": "legacy 别名：当前映射到 deepseek-v4-flash 非思考模式，2026-07-24 15:59 UTC 彻底停用（调研 07 要点 1），请迁移到 deepseek-v4-pro/flash。"
           },
           "quirks": [
-            "不要将 `deepseek-chat` 的上下文能力硬编码为固定值，建议以当前接口返回为准。"
+            "2026-07-24 停用后请求将直接失败，UI 应提示迁移。"
           ]
         },
         {
@@ -873,6 +1090,88 @@
           },
           "quirks": [
             "注意官方端点可能是时效链接/临时可用形式，适配器需优先读取 live model id。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Qwen",
+      "series": "Qwen3.6/3.7",
+      "models": [
+        {
+          "model_id": "qwen3.7-max",
+          "release_date": "2026-05-20",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "qwen_dashscope_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["enable_thinking", "thinking_budget", "preserve_thinking", "enable_search", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "notes": "2026 旗舰（纯文本）；混合思考默认开（调研 05 §1.1/§3），max_tokens 即将废弃改用 max_completion_tokens。"
+          },
+          "quirks": [
+            "默认开思考 = 默认更贵更慢；不展示 reasoning 的场景应主动传 enable_thinking:false。",
+            "思考模式基本只支持流式输出。"
+          ]
+        },
+        {
+          "model_id": "qwen3.7-plus",
+          "release_date": "2026-06-01",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 32768
+          },
+          "param_format": {
+            "family": "qwen_dashscope_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["enable_thinking", "thinking_budget", "preserve_thinking", "enable_search", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "notes": "均衡多模态（文本+图像+视频输入）；混合思考默认开（调研 05 §1.1/§1.3）。"
+          },
+          "quirks": [
+            "官方默认推荐档；preserve_thinking 需要完整回传历史 reasoning_content。"
+          ]
+        },
+        {
+          "model_id": "qwen3.6-flash",
+          "release_date": "2026-04-16",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 16384
+          },
+          "param_format": {
+            "family": "qwen_dashscope_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["enable_thinking", "thinking_budget", "enable_search", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "notes": "轻量高并发多模态；混合思考默认开（调研 05 §1.1）。"
+          },
+          "quirks": [
+            "Responses API 为模型白名单制，本模型在支持列表内（调研 05 §2.2）。"
           ]
         }
       ]
@@ -1302,12 +1601,70 @@
     },
     {
       "vendor": "Kimi / Moonshot",
+      "series": "K2.6/K2.7",
+      "models": [
+        {
+          "model_id": "kimi-k2.6",
+          "release_date": "2026-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_completion_tokens", "tools", "tool_choice", "stream", "prompt_cache_key"],
+            "notes": "现役旗舰通用模型；原生多模态，思考/非思考双模式（默认思考，调研 07 §2.1）。max_tokens 已废弃改用 max_completion_tokens。"
+          },
+          "quirks": [
+            "采样参数锁死：temperature 固定 1.0（非思考 0.6）、top_p 0.95，传其他值直接报错（调研 07 要点 5）。",
+            "image_url/video_url 只接受 base64 data URI 或 ms://file_id，不支持 http(s) URL。",
+            "工具调用链内必须保留 reasoning_content，否则报错。"
+          ]
+        },
+        {
+          "model_id": "kimi-k2.7-code",
+          "release_date": "2026-06",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 256000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_compat_gateway_preferred",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "notes": "最强 coding 模型；强制思考（thinking.type 只接受 enabled）、强制 Preserved Thinking（keep 只接受 \"all\"，调研 07 §2.1）。"
+          },
+          "quirks": [
+            "采样参数锁死同 K2.6；max_completion_tokens 历史默认值很小，务必显式设置。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Kimi / Moonshot",
       "series": "K2",
       "models": [
         {
           "model_id": "kimi-k2",
           "release_date": "2025-07",
-          "status": "confirmed",
+          "status": "deprecated",
           "capabilities": {
             "text": true,
             "vision": true,
@@ -1332,7 +1689,7 @@
         {
           "model_id": "kimi-k2-thinking",
           "release_date": "2025-11-06",
-          "status": "confirmed",
+          "status": "deprecated",
           "capabilities": {
             "text": true,
             "vision": true,
@@ -1383,8 +1740,35 @@
     },
     {
       "vendor": "xAI",
-      "series": "Grok 4",
+      "series": "Grok 4.3",
       "models": [
+        {
+          "model_id": "grok-4.3",
+          "release_date": "2026-05",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "xai_openai_compat",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["reasoning_effort", "stream", "stream_options", "max_tokens", "tools", "tool_choice", "response_format", "search_parameters"],
+            "notes": "现役旗舰（别名 grok-4.3-latest/grok-latest）；reasoning_effort 取值 none/low(默认)/medium/high，仅本模型支持（调研 04 §1.3）。xAI 主推 Responses 协议，CC 已标 legacy。"
+          },
+          "quirks": [
+            "推理模型不支持 presence_penalty/frequency_penalty/stop。",
+            "grok-4.20 及更新模型不支持 logprobs/top_logprobs（静默忽略）。",
+            "旧 slug（grok-2/3、grok-4-0709）已于 2026-05-15 退役并自动重定向到 grok-4.3。"
+          ]
+        },
         {
           "model_id": "grok-4-0709",
           "release_date": "2025-07",
@@ -1627,6 +2011,88 @@
     },
     {
       "vendor": "百度文心",
+      "series": "ERNIE 5.1 / X1.1",
+      "models": [
+        {
+          "model_id": "ernie-5.1",
+          "release_date": "2026-05-08",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "reasoning_effort", "max_tokens", "max_completion_tokens", "web_search", "tools", "tool_choice", "stream", "response_format"],
+            "notes": "千帆 v2 现役旗舰（文本主打，调研 06 §2.1）；深度思考默认 disabled，ERNIE 系不支持 thinking_budget。"
+          },
+          "quirks": [
+            "发布初期为付费模型且需在控制台开通权限（403 = Key 有效但模型未开通）。",
+            "默认流控低（RPM 60），客户端应读取 X-Ratelimit-* 头做限速。"
+          ]
+        },
+        {
+          "model_id": "ernie-5.0",
+          "release_date": "2025-11-13",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": true,
+            "video": true,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 128000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "max_tokens", "web_search", "tools", "tool_choice", "stream"],
+            "notes": "原生全模态（文本/图像/音频/视频统一建模，调研 06 §2.1）。"
+          },
+          "quirks": [
+            "ERNIE 思考模型的 max_tokens 限制 reasoning+content 总和（与其他系列语义不同）。"
+          ]
+        },
+        {
+          "model_id": "ernie-x1.1",
+          "release_date": "2025-09-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 64000,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "baidu_openai_proxy_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["thinking", "thinking_strategy", "max_tokens", "web_search", "tools", "tool_choice", "stream"],
+            "notes": "深度推理模型（reasoning_content 输出，调研 06 §2.1/§2.3）；不支持 thinking_budget。"
+          },
+          "quirks": [
+            "web_search 不支持 search_mode: required。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "百度文心",
       "series": "ERNIE 4.5",
       "models": [
         {
@@ -1766,12 +2232,12 @@
       ]
     },
     {
-      "vendor": "腾讯混元",
-      "series": "Hunyuan 2.0",
+      "vendor": "MiniMax",
+      "series": "M3",
       "models": [
         {
-          "model_id": "hunyuan-2.0-think",
-          "release_date": "2025-11-09",
+          "model_id": "minimax-m3",
+          "release_date": "2026-05",
           "status": "confirmed",
           "capabilities": {
             "text": true,
@@ -1781,22 +2247,29 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 256000,
+            "max_context_tokens": 1000000,
             "max_output_tokens": null
           },
           "param_format": {
-            "family": "tencent_hunyuan_native_proxy",
+            "family": "minimax_openai_compat",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
-            "notes": "最新明确版本主要在 2025 末，2026 未见新独立代号。"
+            "optional_fields": ["thinking", "reasoning_split", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "notes": "现役旗舰（1M 上下文、多模态）；thinking:{type:\"adaptive\"|\"disabled\"}（M2.x 不可关思考，调研 08 §1.1/§1.3）。"
           },
           "quirks": [
-            "产品动态页更新到 2025-12，后续若有 2026 patch 先在此列表添加新条目。"
+            "国内主域名为 api.minimaxi.com、国际为 api.minimax.io，Key 不互通（调研 08 §1.2）。",
+            "官方推荐 Anthropic 协议接入，但本应用后端暂按 OpenAI 通道处理。"
           ]
-        },
+        }
+      ]
+    },
+    {
+      "vendor": "智谱",
+      "series": "GLM-5",
+      "models": [
         {
-          "model_id": "hunyuan-2.0-instruct",
-          "release_date": "2025-11-11",
+          "model_id": "glm-5.2",
+          "release_date": "2026-05",
           "status": "confirmed",
           "capabilities": {
             "text": true,
@@ -1805,18 +2278,43 @@
             "video": false,
             "function_calling": true,
             "reasoning": true,
-            "coding_agent": false,
-            "max_context_tokens": 256000,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
             "max_output_tokens": null
           },
           "param_format": {
-            "family": "tencent_hunyuan_native_proxy",
+            "family": "zhipu_openai_compat_or_native",
             "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
-            "notes": "偏指令跟随，作为 Instruct 侧替代。"
+            "optional_fields": ["enable_thinking", "reasoning_effort", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "notes": "现役旗舰；reasoning_effort 支持 max(默认)/xhigh/high/medium/low/minimal/none 七档（调研 07 §3.4）。Anthropic 端点用 glm-5.2[1m] 表示 1M 上下文变体。"
           },
           "quirks": [
-            "2026 若仅是版本微调，不要重命名为新型号。"
+            "多模态需用 glm-5v 系（GLM-5 系唯一多模态线）。"
+          ]
+        },
+        {
+          "model_id": "glm-5.1",
+          "release_date": "2026-03",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 200000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "zhipu_openai_compat_or_native",
+            "required_fields": ["model", "messages"],
+            "optional_fields": ["enable_thinking", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "notes": "上代旗舰，仍在服务（调研 07 §3.1）。"
+          },
+          "quirks": [
+            "与 glm-5.2 共享适配器逻辑。"
           ]
         }
       ]

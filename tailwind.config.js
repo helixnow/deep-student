@@ -138,64 +138,9 @@ module.exports = {
 					'50%': { transform: 'translateX(100%)' },
 					'100%': { transform: 'translateX(-30%)' },
 				},
-				dropzonePulse: {
-					'0%': { transform: 'scale(0.98)', boxShadow: '0 0 0 0 hsl(var(--primary) / 0.18)' },
-					'70%': { transform: 'scale(1)', boxShadow: '0 0 0 12px hsl(var(--primary) / 0)' },
-					'100%': { transform: 'scale(0.98)', boxShadow: '0 0 0 0 hsl(var(--primary) / 0)' },
-				},
-				cardPop: {
-					'0%': { transform: 'scale(0.97)', opacity: '0' },
-					'60%': { transform: 'scale(1.01)', opacity: '1' },
-					'100%': { transform: 'scale(1)', opacity: '1' },
-				},
-				marqueeY: {
-					'0%': { transform: 'translateY(0)' },
-					'100%': { transform: 'translateY(-50%)' },
-				},
-				fadeSlideUp: {
-					'0%': { opacity: '0', transform: 'translateY(12px)' },
-					'100%': { opacity: '1', transform: 'translateY(0)' },
-				},
-				blink: {
-					'0%,50%': { opacity: '1' },
-					'51%,100%': { opacity: '0' },
-				},
-				// Radix UI Sheet动画
-				'slide-in-from-left': {
-					'0%': { transform: 'translateX(-100%)' },
-					'100%': { transform: 'translateX(0)' },
-				},
-				'slide-out-to-left': {
-					'0%': { transform: 'translateX(0)' },
-					'100%': { transform: 'translateX(-100%)' },
-				},
-				'slide-in-from-right': {
-					'0%': { transform: 'translateX(100%)' },
-					'100%': { transform: 'translateX(0)' },
-				},
-				'slide-out-to-right': {
-					'0%': { transform: 'translateX(0)' },
-					'100%': { transform: 'translateX(100%)' },
-				},
-				'fade-in': {
-					'0%': { opacity: '0' },
-					'100%': { opacity: '1' },
-				},
-				'fade-out': {
-					'0%': { opacity: '1' },
-					'100%': { opacity: '0' },
-				},
 			},
 			animation: {
 				sweep: 'sweep 1.2s ease-in-out infinite',
-				dropzonePulse: 'dropzonePulse 1.5s ease-in-out infinite',
-				cardPop: 'cardPop 0.45s cubic-bezier(0.16, 1, 0.3, 1)',
-				marqueeY: 'marqueeY 6s linear infinite',
-				fadeSlideUp: 'fadeSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
-				blink: 'blink 1s steps(2, start) infinite',
-				// Radix UI Sheet动画
-				in: 'fade-in 200ms ease-out',
-				out: 'fade-out 200ms ease-in',
 			},
 		},
 	},

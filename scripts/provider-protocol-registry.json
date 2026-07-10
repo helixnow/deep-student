@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-05-20",
-  "purpose": "统一维护供应商协议能力、默认协议与 OpenAI-compatible Responses 支持声明，供前后端共享默认路由决策。",
+  "updated_at": "2026-07-08",
+  "purpose": "统一维护供应商协议能力、默认协议与 OpenAI-compatible Responses 支持声明，供前后端共享默认路由决策。约定：supports_openai_responses=true 仅解锁可选协议，默认路由由 default_protocol 决定（qwen/doubao 等 Responses 端点为模型白名单制，不应默认切换）。遗留说明：后端 build_provider_adapter 目前只按 model_adapter 路由、尚不消费供应商级 api_protocol=anthropic_messages，因此除 minimax 既有声明外暂不为 deepseek/zhipu/moonshot/qwen/siliconflow 等新增 anthropic_messages（避免「界面可选、后端无实现」，见 r5 §1.3）；待后端接入后再补充并配套「协议→base URL 路径」派生规则。",
   "providers": [
     {
       "provider_type": "openai",
@@ -40,22 +40,22 @@
     {
       "provider_type": "deepseek",
       "allowed_protocols": [
-        "openai_chat_completions",
-        "openai_responses"
+        "openai_chat_completions"
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "无 OpenAI Responses 端点（2026-07 调研 07），已从 allowed_protocols 移除以避免用户选中即 404。官方 Anthropic 端点 api.deepseek.com/anthropic 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "siliconflow",
       "allowed_protocols": [
-        "openai_chat_completions",
-        "openai_responses"
+        "openai_chat_completions"
       ],
       "default_protocol": "openai_chat_completions",
       "official": false,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "无 OpenAI Responses 端点（2026-07 调研 09 §2）。Anthropic 端点 /v1/messages 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "qwen",
@@ -65,17 +65,18 @@
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": true,
+      "notes": "百炼 /compatible-mode/v1/responses 已正式提供（2026-07 调研 05 §2.2），但为模型白名单制且不支持视频/语音输入，故仅解锁可选项、默认保持 chat_completions。"
     },
     {
       "provider_type": "zhipu",
       "allowed_protocols": [
-        "openai_chat_completions",
-        "openai_responses"
+        "openai_chat_completions"
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "无 OpenAI Responses 端点（2026-07 调研 07）。Anthropic 端点 open.bigmodel.cn/api/anthropic 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "doubao",
@@ -85,48 +86,92 @@
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": true,
+      "notes": "方舟 /api/v3/responses 已正式提供（联网/缓存/MCP 仅此通道，2026-07 调研 06 §1.3），但以 0615 之后模型为限，故仅解锁可选项、默认保持 chat_completions。"
     },
     {
       "provider_type": "minimax",
       "allowed_protocols": [
         "openai_chat_completions",
-        "openai_responses",
         "anthropic_messages"
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "无 OpenAI Responses 端点（2026-07 调研 08）。anthropic_messages 为既有遗留声明：后端 build_provider_adapter 尚不按 api_protocol 路由到 Anthropic 实现（r5 §1.3），选中后实际仍走 OpenAI 通道。"
     },
     {
       "provider_type": "moonshot",
       "allowed_protocols": [
-        "openai_chat_completions",
-        "openai_responses"
+        "openai_chat_completions"
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "无 OpenAI Responses 端点（2026-07 调研 07）。Anthropic 端点 api.moonshot.{ai,cn}/anthropic 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "nvidia",
       "allowed_protocols": [
-        "openai_chat_completions",
-        "openai_responses"
+        "openai_chat_completions"
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "NIM 托管端点无 Responses、无 Anthropic（2026-07 调研 09 §10）。"
     },
     {
       "provider_type": "mimo",
+      "allowed_protocols": [
+        "openai_chat_completions"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false,
+      "notes": "无 OpenAI Responses 端点（2026-07 调研 08 §5）。Anthropic 端点 api.xiaomimimo.com/anthropic 暂不声明，见顶部 purpose 遗留说明。"
+    },
+    {
+      "provider_type": "grok",
       "allowed_protocols": [
         "openai_chat_completions",
         "openai_responses"
       ],
       "default_protocol": "openai_chat_completions",
       "official": true,
-      "supports_openai_responses": false
+      "supports_openai_responses": true,
+      "notes": "xAI 主推 Responses（Chat Completions 已标 legacy，2026-07 调研 04 要点 1），但后端 grok 适配器暂未接入 Responses 通道，默认保持 chat_completions、Responses 作为可选项。Anthropic 端点已完全弃用（调研 04 要点 2），禁止声明 anthropic_messages。"
+    },
+    {
+      "provider_type": "xai",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": true,
+      "notes": "grok 的别名条目（后端 adapters 注册 xai 别名，前端 URL 推断归一为 grok），内容与 grok 保持一致。"
+    },
+    {
+      "provider_type": "ernie",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": true,
+      "notes": "百度千帆 v2：qianfan.baidubce.com/v2/responses 已上线（2026-07 调研 06 §2.2），默认保持 chat_completions、Responses 作为可选项。无 Anthropic 端点。"
+    },
+    {
+      "provider_type": "mistral",
+      "allowed_protocols": [
+        "openai_chat_completions"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false,
+      "notes": "仅 Chat Completions；无 Responses、无 Anthropic 端点（2026-07 调研 04 §3.2）。注意推理输出为 content 块数组（ThinkChunk/TextChunk）。"
     },
     {
       "provider_type": "openrouter",
@@ -136,7 +181,8 @@
       ],
       "default_protocol": "openai_chat_completions",
       "official": false,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "/api/v1/responses 已上线但为 Beta 且无状态实现（不支持 previous_response_id，2026-07 调研 09 要点 1），保持 supports=false、仅保留可选项，2026-07-08 复核。Anthropic 端点 /api/v1/messages 暂不声明，见顶部 purpose 遗留说明。"
     },
     {
       "provider_type": "ollama",
@@ -146,7 +192,8 @@
       ],
       "default_protocol": "openai_chat_completions",
       "official": false,
-      "supports_openai_responses": false
+      "supports_openai_responses": false,
+      "notes": "v0.13.3+ 支持 /v1/responses 但为无状态实现（不支持 previous_response_id，2026-07 调研 10 要点 1），保持 supports=false、仅保留可选项，2026-07-08 复核。"
     },
     {
       "provider_type": "custom",

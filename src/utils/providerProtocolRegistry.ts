@@ -7,6 +7,7 @@ export interface ProviderProtocolRecord {
   default_protocol: ApiProtocol;
   official?: boolean;
   supports_openai_responses?: boolean;
+  notes?: string;
 }
 
 interface ProviderProtocolRegistryDocument {
@@ -31,9 +32,16 @@ export const getProviderProtocolRecord = (providerType?: string | null): Provide
   return providers.find((record) => record.provider_type === normalized);
 };
 
+// 使用 URL host 精确匹配，避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
 const resolvesToOfficialOpenAi = (baseUrl?: string | null) => {
   const normalizedBaseUrl = normalizeBaseUrlForProtocolRegistry(baseUrl);
-  return normalizedBaseUrl.includes('api.openai.com');
+  if (!normalizedBaseUrl) return false;
+  const candidate = normalizedBaseUrl.includes('://') ? normalizedBaseUrl : `https://${normalizedBaseUrl}`;
+  try {
+    return new URL(candidate).hostname === 'api.openai.com';
+  } catch {
+    return false;
+  }
 };
 
 export const providerSupportsOpenAiResponses = (args: {
@@ -63,7 +71,13 @@ export const resolvePreferredProtocol = (args: {
   if (normalizedAdapter === 'google') return 'google_generate_content';
 
   const allowed = getAllowedProtocolsForProviderType(args.providerType);
-  if (providerSupportsOpenAiResponses(args) && allowed.includes('openai_responses')) {
+
+  // 仅「供应商级显式声明」或「官方 OpenAI 端点」才把默认路由切到 Responses。
+  // 注册表级 supports_openai_responses=true 只解锁可选项（如 qwen/doubao 的白名单制
+  // Responses 端点），默认路由仍由 default_protocol 决定。
+  const explicitlyPrefersResponses =
+    args.supportsOpenAIResponses === true || resolvesToOfficialOpenAi(args.baseUrl);
+  if (explicitlyPrefersResponses && allowed.includes('openai_responses')) {
     return 'openai_responses';
   }
 
@@ -80,5 +94,5 @@ export const resolvePreferredProtocol = (args: {
     return record.default_protocol;
   }
 
-  return allowed[0] ?? 'openai_chat_completions';
+  return allowed.find((protocol) => protocol === 'openai_chat_completions') ?? allowed[0] ?? 'openai_chat_completions';
 };
