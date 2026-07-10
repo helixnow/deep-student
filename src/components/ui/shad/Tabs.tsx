@@ -67,7 +67,8 @@ const TabsTrigger = React.forwardRef<
         ctx.setValue?.(value);
       }}
       className={cn(
-        'inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-[var(--radius-shell-control)] border border-transparent px-3 py-1.5 text-sm font-medium text-[color:var(--text-secondary)] ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:pointer-events-none disabled:opacity-50 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--text-primary)] data-[state=active]:border-[color:var(--button-utility-border)] data-[state=active]:bg-[color:var(--surface-panel-strong)] data-[state=active]:text-[color:var(--text-primary)] data-[state=active]:shadow-[var(--shadow-shell-soft)]',
+        // ui-state-colors：active/hover 切换时颜色/边框/阴影平滑过渡（transitions-dev token）
+        'inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-[var(--radius-shell-control)] border border-transparent px-3 py-1.5 text-sm font-medium text-[color:var(--text-secondary)] ring-offset-background ui-state-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:pointer-events-none disabled:opacity-50 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--text-primary)] data-[state=active]:border-[color:var(--button-utility-border)] data-[state=active]:bg-[color:var(--surface-panel-strong)] data-[state=active]:text-[color:var(--text-primary)] data-[state=active]:shadow-[var(--shadow-shell-soft)]',
         variant === 'bare' && 'border-transparent bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none',
         className
       )}
@@ -91,7 +92,8 @@ const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(({ classN
     <div
       ref={ref}
       role="tabpanel"
-      className={cn('mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]', className)}
+      // ui-rise-in：切换 tab 重挂载时播放 fade + 4px 上升入场（transitions-dev token）
+      className={cn('mt-4 ui-rise-in ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]', className)}
       {...props}
     />
   );

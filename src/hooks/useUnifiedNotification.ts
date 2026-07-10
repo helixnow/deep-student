@@ -23,6 +23,14 @@ export interface UnifiedNotificationItem {
   dedupeKey: string;
 }
 
+/**
+ * 同屏最多保留的通知条数。
+ * 批量操作失败等场景可能瞬间产生大量通知，无上限堆叠会在移动端小屏
+ * 占满整个视口（甚至盖住统一顶栏与输入栏）。超出上限时淘汰最旧的一条；
+ * 相同内容已经由 dedupeKey 聚合为 count 计数，不受此上限影响。
+ */
+const MAX_STACKED_NOTIFICATIONS = 4;
+
 const createNotificationDedupeKey = (
   type: GlobalNotificationType,
   message: string,
@@ -73,7 +81,11 @@ export const useUnifiedNotification = () => {
           : n);
       }
 
-      return [{ id, type, message, title, action, borderTone, icon, progress, count: 1, updatedAt, dedupeKey }, ...prev];
+      const next = [{ id, type, message, title, action, borderTone, icon, progress, count: 1, updatedAt, dedupeKey }, ...prev];
+      // 超出堆叠上限时淘汰最旧的通知（数组尾部）
+      return next.length > MAX_STACKED_NOTIFICATIONS
+        ? next.slice(0, MAX_STACKED_NOTIFICATIONS)
+        : next;
     });
     return id;
   }, []);

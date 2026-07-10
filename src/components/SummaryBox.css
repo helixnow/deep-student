@@ -71,7 +71,7 @@ html.dark .summary-box {
   align-items: center;
   justify-content: center;
   color: var(--sb-muted);
-  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--page-slide-dur, 200ms) var(--ease-material);
 }
 
 .summary-box.expanded .toggle-icon { transform: rotate(90deg); }

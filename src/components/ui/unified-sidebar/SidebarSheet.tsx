@@ -99,8 +99,8 @@ export const SidebarSheet: React.FC<SidebarSheetProps> = ({
       <SheetContent
         side="bottom"
         className={cn(
+          // 开闭滑入滑出由 SheetContent 的 ui-slide-in-bottom / ui-slide-out-bottom 提供
           'sidebar-shell-sheet p-0 max-h-[90vh] overflow-hidden',
-          'data-[state=open]:slide-in-from-bottom data-[state=closed]:slide-out-to-bottom',
           className
         )}
         style={{

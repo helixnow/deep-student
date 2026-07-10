@@ -320,7 +320,7 @@
     "notes.toggle-sidebar": "Show/hide notes sidebar",
     "notes.toggle-outline": "Show/hide document outline panel",
     "notes.export-current": "Export current note as file",
-    "notes.export-all": "Export all notes",
+    "notes.export-all": "Not available yet — use Export Current Note or the sidebar menu",
     "notes.ai-continue": "Let AI continue writing",
     "notes.insert-math": "Insert LaTeX math formula",
     "notes.insert-table": "Insert a table",

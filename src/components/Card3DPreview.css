@@ -113,7 +113,7 @@
   /* 将卡片固定在容器上方一定偏移，避免大卡片导致上方空白过大 */
   top: var(--card-top-offset, 120px);
   width: var(--card-width);
-  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  transition: all 0.5s var(--ease-standard);
   cursor: pointer;
   transform-style: preserve-3d;
   transform: translate(-50%, 0); /* 横向居中，纵向使用固定偏移 */
@@ -214,7 +214,7 @@
   height: 20px;
   transform: translateX(-50%); /* 使用transform确保阴影居中 */
   background: radial-gradient(ellipse at center, hsl(var(--shadow-base) / 0.2) 0%, transparent 70%);
-  transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+  transition: all 0.5s var(--ease-standard);
   opacity: 0.5;
   pointer-events: none; /* 确保阴影不影响交互 */
 }

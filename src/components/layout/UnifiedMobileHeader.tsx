@@ -8,7 +8,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { CaretLeft, List } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeaderContextSafe } from './MobileHeaderContext';
@@ -19,6 +19,10 @@ export interface UnifiedMobileHeaderProps {
   canGoBack?: boolean;
   /** 返回回调 */
   onBack?: () => void;
+  /** 是否可以前进（回退后产生的前向历史） */
+  canGoForward?: boolean;
+  /** 前进回调 */
+  onForward?: () => void;
   /** 额外的 className */
   className?: string;
   /** D-1: 当前视图未注册 useMobileHeader 时的兜底标题（取导航标签），避免顶栏空白 */
@@ -28,6 +32,8 @@ export interface UnifiedMobileHeaderProps {
 export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   canGoBack = false,
   onBack,
+  canGoForward = false,
+  onForward,
   className,
   fallbackTitle,
 }) => {
@@ -46,6 +52,9 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   const showBackArrowButton = config.showBackArrow && config.onMenuClick;
   const showMenuButton = !showBackArrowButton && config.showMenu && config.onMenuClick;
   const showBackButton = !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton && canGoBack;
+  // 前进按钮：仅在全局历史导航语境下出现（视图子层级的返回箭头/菜单模式不显示），
+  // 且确有前向历史时才占位，避免常态下挤占标题空间
+  const showForwardButton = !config.suppressGlobalBackButton && !showBackArrowButton && !showMenuButton && canGoForward && Boolean(onForward);
 
   return (
     <header
@@ -98,6 +107,17 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             aria-label={t('common:mobile_header.back')}
           >
             <CaretLeft size={20} weight="regular" />
+          </NotionButton>
+        )}
+        {showForwardButton && (
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            onClick={onForward}
+            className={cn(shellIconButtonClassName, showBackButton ? '-ml-0.5' : '-ml-1')}
+            aria-label={t('common:mobile_header.forward', '前进')}
+          >
+            <CaretRight size={20} weight="regular" />
           </NotionButton>
         )}
       </div>

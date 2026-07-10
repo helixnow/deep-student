@@ -571,10 +571,22 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
 
           .sota-stats-grid {
             grid-template-columns: 1fr;
+            gap: 0.75rem;
           }
 
           .sota-charts {
             grid-template-columns: 1fr;
+          }
+
+          /* 小屏图表卡收窄内边距，给 375px 视口下的图表留出绘图宽度 */
+          .sota-chart-card {
+            padding: 1.25rem 0.75rem 1rem;
+          }
+
+          .sota-chart-card h3 {
+            padding: 0 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 1rem;
           }
 
           /* cleaned: removed .sota-stat-value override */

@@ -891,9 +891,11 @@ describe('ModernSidebar shell navigation', () => {
       />
     );
 
-    const groupButton = await screen.findByRole('button', { name: '未命名会话' });
+    const topicsNav = await screen.findByRole('navigation', { name: '课题' });
+    const conversationsNav = await screen.findByRole('navigation', { name: '对话' });
+    const groupButton = within(topicsNav).getByRole('button', { name: '未命名会话' });
     const titledSessionButton = screen.getByRole('button', { name: '114514' });
-    const untitledSessionButton = screen.getByRole('button', { name: '未命名对话' });
+    const untitledSessionButton = within(conversationsNav).getByRole('button', { name: '未命名会话' });
 
     const groupRow = groupButton.querySelector('span.flex.min-w-0.flex-1.items-center.gap-2\\.5');
     const titledSessionLabel = titledSessionButton.querySelector('span.block.min-w-0.flex-1.truncate.leading-4');
@@ -998,14 +1000,14 @@ describe('ModernSidebar shell navigation', () => {
     const pinThreadButton = await screen.findByRole('button', { name: '会话 A' });
     await user.hover(pinThreadButton);
 
-    expect(screen.getByRole('button', { name: '置顶会话' })).toBeInTheDocument();
-    const archiveQuickAction = screen.getByRole('button', { name: '归档会话' });
+    expect(screen.getAllByRole('button', { name: '置顶会话' })[0]).toBeInTheDocument();
+    const archiveQuickAction = screen.getAllByRole('button', { name: '归档会话' })[0];
     expect(archiveQuickAction).toBeInTheDocument();
     expect(archiveQuickAction.querySelector('.t-icon-swap')).toHaveAttribute('data-state', 'a');
     expect(screen.queryByRole('button', { name: '归档线程' })).not.toBeInTheDocument();
     expect(screen.queryByText('刚刚')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '置顶会话' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '置顶会话' })[0]);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_update_session_settings', {
         sessionId: 'session-1',
@@ -1015,7 +1017,7 @@ describe('ModernSidebar shell navigation', () => {
 
     const archiveThreadButton = await screen.findByRole('button', { name: '会话 B' });
     await user.hover(archiveThreadButton);
-    fireEvent.click(screen.getByRole('button', { name: '归档会话' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '归档会话' })[0]);
 
     const confirmArchiveQuickAction = screen.getByRole('button', { name: '确认归档会话' });
     expect(confirmArchiveQuickAction).toBeInTheDocument();
@@ -1070,7 +1072,7 @@ describe('ModernSidebar shell navigation', () => {
 
     const activeSessionButton = await screen.findByRole('button', { name: '当前会话' });
     await user.hover(activeSessionButton);
-    fireEvent.click(screen.getByRole('button', { name: '归档会话' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '归档会话' })[0]);
     fireEvent.click(screen.getByRole('button', { name: '确认归档会话' }));
 
     await waitFor(() => {
@@ -1363,8 +1365,8 @@ describe('ModernSidebar shell navigation', () => {
       });
     });
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: '右键会话' }));
-    fireEvent.click(screen.getByText('归档线程'));
+    fireEvent.contextMenu(screen.getAllByRole('button', { name: '右键会话' })[0]);
+    fireEvent.click(screen.getAllByText('归档线程')[0]);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-1' });
     });
@@ -1442,13 +1444,14 @@ describe('ModernSidebar shell navigation', () => {
       />
     );
 
-    fireEvent.contextMenu(await screen.findByRole('button', { name: '未命名对话' }));
+    const conversationsNav = await screen.findByRole('navigation', { name: '对话' });
+    fireEvent.contextMenu(within(conversationsNav).getByRole('button', { name: '未命名会话' }));
     fireEvent.click(screen.getByText('重命名会话'));
 
     const renameDialog = await screen.findByRole('dialog');
     const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
     expect(input).toHaveValue('');
-    expect(input).toHaveAttribute('placeholder', '未命名对话');
+    expect(input).toHaveAttribute('placeholder', '未命名会话');
     expect(within(renameDialog).getByRole('button', { name: '确认' })).toBeDisabled();
   });
 });

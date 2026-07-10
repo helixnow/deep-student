@@ -12,17 +12,18 @@ describe('desktop shell sidebar collapse contract', () => {
 
   it('reads the shared left-panel collapsed state when computing desktop shell navigation width', () => {
     expect(appSource).toContain("const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);");
-    expect(appSource).toContain("const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;");
+    expect(appSource).toContain("const desktopNavigationWidth = workbenchActive");
+    expect(appSource).toContain(": !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;");
     expect(appSource).not.toContain("currentView !== 'settings' && leftPanelCollapsed ? 0 : shellSidebarWidth");
     expect(appSource).toContain("'--shell-navigation-width': `${desktopNavigationWidth}px`");
     expect(appSource).toContain('className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none"');
     expect(appSource).toContain('width: `${desktopNavigationWidth}px`');
-    expect(appSource).toContain('transition-[width,padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none');
+    expect(appSource).toContain('transition-[width,padding] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none');
   });
 
   it('declares currentView before using it to compute desktop shell navigation width', () => {
     const currentViewIndex = appSource.indexOf("const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');");
-    const desktopNavigationWidthIndex = appSource.indexOf("const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;");
+    const desktopNavigationWidthIndex = appSource.indexOf("const desktopNavigationWidth = workbenchActive");
 
     expect(currentViewIndex).toBeGreaterThanOrEqual(0);
     expect(desktopNavigationWidthIndex).toBeGreaterThan(currentViewIndex);
@@ -32,7 +33,7 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain('const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed');
     expect(appSource).not.toContain("const desktopTitlebarLeadingInset = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed");
     expect(appSource).toContain("style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}");
-    expect(appCssSource).toContain('transition: padding-left 200ms cubic-bezier(0.25, 0.1, 0.25, 1)');
+    expect(appCssSource).toContain('transition: padding-left var(--page-slide-dur, 200ms) var(--ease-shell)');
   });
 
   it('keeps the collapse affordance alive as a floating titlebar accessory instead of letting it disappear with the sidebar column', () => {
@@ -43,7 +44,7 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).not.toContain('const desktopFloatingAccessoryWidth = leftPanelCollapsed');
     expect(appSource).toContain('const desktopSidebarAccessoryContent = (');
     expect(appSource).toContain('<DesktopSidebarAccessory');
-    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none');
+    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none');
     expect(appSource).not.toContain('pointer-events-none absolute z-20 transition-[width,opacity]');
     expect(appSource).toContain('width: `${desktopFloatingAccessoryWidth}px`');
     expect(appSource).toContain('opacity: 1,');
@@ -77,25 +78,27 @@ describe('desktop shell sidebar collapse contract', () => {
 
   it('clips and animates the titlebar navigation cell with the same sidebar width rhythm as the body column', () => {
     expect(appSource).toContain(
-      "'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none'"
+      "'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none'"
     );
     expect(appSource).toContain("leftPanelCollapsed ? 'px-0' : 'px-4'");
     expect(appSource).toContain('width: `${desktopNavigationWidth}px`');
   });
 
   it('animates the accessory internals and back-forward rhythm with the same motion vocabulary as study-ui', () => {
-    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none');
-    expect(appSource).toContain('transition-[transform,opacity,margin-right] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none');
+    expect(appSource).toContain('transition-[opacity,transform] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none');
+    expect(appSource).toContain('transition-[transform,opacity,margin-right] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none');
   });
 
   it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', () => {
-    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings'");
+    expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
     expect(appSource).toContain(": currentView === 'todo'");
+    expect(appSource).toContain("const desktopShellSidebarElement = desktopShellSidebarKind === 'settings'");
+    expect(appSource).toContain(": desktopShellSidebarKind === 'todo'");
     expect(appSource).toContain('? todoShellSidebarElement');
     expect(appSource).toContain(': sidebarElement;');
-    expect(appSource).toContain('{!isSmallScreen ? (');
+    expect(appSource).toContain('{!isSmallScreen && !workbenchActive ? (');
     expect(appSource).not.toContain("{!isSmallScreen && currentView !== 'settings' ? (");
-    expect(appSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
+    expect(appSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[var(--panel-ease)]'");
     expect(appSource).toContain("leftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'");
     expect(appSource).toContain('{desktopShellSidebarElement}');
   });
@@ -109,7 +112,7 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('rounds the visible desktop workspace edge across the fixed titlebar and body', () => {
-    expect(appSource).toContain("const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;");
+    expect(appSource).toContain("const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed && !workbenchActive;");
     expect(appSource).toContain('data-sidebar-visible={isDesktopSidebarSurfaceVisible ? \'true\' : \'false\'}');
     expect(appCssSource).toContain('--shell-workspace-edge-radius: 24px;');
     expect(appCssSource).toMatch(/\[data-shell-role="app-shell"\]\[data-sidebar-visible="true"\]\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
@@ -124,7 +127,8 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain('<SettingsShellSidebar');
     expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
     expect(appSource).toContain("onBack={() => setCurrentView('chat-v2')}");
-    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings'");
+    expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
+    expect(appSource).toContain("const desktopShellSidebarElement = desktopShellSidebarKind === 'settings'");
     expect(appSource).toContain('? settingsShellSidebarElement');
   });
 

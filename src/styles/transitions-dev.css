@@ -11,18 +11,6 @@
   --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
   --digit-dir-x: 0;
   --digit-dir-y: 1;
-  /* Notification badge */
-  --badge-slide-dur: 260ms;
-  --badge-pop-dur: 500ms;
-  --badge-pop-close-dur: 180ms;
-  --badge-fade-dur: 400ms;
-  --badge-fade-close-dur: 180ms;
-  --badge-blur: 2px;
-  --badge-offset-x: -8.2px;
-  --badge-offset-y: 12.4px;
-  --badge-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --badge-pop-ease: cubic-bezier(0.34, 1.36, 0.64, 1);
-  --badge-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
   /* Text states swap */
   --text-swap-dur: 200ms;
   --text-swap-translate-y: 8px;
@@ -55,6 +43,10 @@
   --page-exit-enabled: 1;
   --page-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --page-fade-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 兼容别名：历史硬编码缓动收敛目标 */
+  --ease-standard: var(--dropdown-ease);
+  --ease-material: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-shell: cubic-bezier(0.25, 0.1, 0.25, 1);
   /* Icon swap */
   --icon-swap-dur: 200ms;
   --icon-swap-blur: 2px;

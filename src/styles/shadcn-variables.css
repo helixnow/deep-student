@@ -158,7 +158,7 @@
 /* 暗色模式基础灰度（纯中性灰，不带色相） */
 :root.dark {
   --titlebar-background: 0 0% 11%;
-  --nav-background: 0 0% 0%;
+  --nav-background: 0 0% 12%;
   --background: 0 0% 9%;
   --foreground: 0 0% 96%;
   --card: 0 0% 12%;

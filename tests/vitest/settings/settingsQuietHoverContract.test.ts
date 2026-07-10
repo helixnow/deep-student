@@ -39,10 +39,12 @@ describe('settings quiet hover contract', () => {
     expect(navigationSources).not.toContain('hover:bg-muted/30');
   });
 
-  it('uses tokenized quiet hover for the mobile settings sheet close control', () => {
+  it('keeps the app shell free of raw hover/focus hex overrides', () => {
+    // 旧版移动端设置 Sheet（settingsMobileSheetCloseButtonClassName）已随统一
+    // 移动壳（UnifiedMobileHeader + MobileSlidingLayout）移除，App.tsx 不再引用该 token；
+    // 仅保留“禁止裸色值”负向断言。
     const app = readSource('src/App.tsx');
 
-    expect(app).toContain('settingsMobileSheetCloseButtonClassName');
     expect(app).not.toContain('hover:bg-[#F1F3F6]');
     expect(app).not.toContain('hover:text-[#111111]');
     expect(app).not.toContain('focus-visible:ring-[#6AA5FF]');

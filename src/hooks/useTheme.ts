@@ -190,6 +190,39 @@ const isValidPalette = (value: unknown): value is ThemePalette =>
 
 const DARK_CLASS = 'dark';
 
+const THEME_TRANSITION_CLASS = 'theme-transitioning';
+const THEME_TRANSITION_FALLBACK_MS = 220;
+
+let themeTransitionTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** 读取 CSS 变量中的主题过渡时长（毫秒），解析失败时使用兜底值 */
+const readThemeTransitionDurationMs = (root: HTMLElement): number => {
+  const raw = getComputedStyle(root).getPropertyValue('--theme-transition-dur').trim();
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return THEME_TRANSITION_FALLBACK_MS;
+  // 兼容 "220ms" 与 "0.22s" 两种写法
+  return raw.endsWith('ms') ? parsed : raw.endsWith('s') ? parsed * 1000 : parsed;
+};
+
+/**
+ * 亮暗切换瞬间在 <html> 上挂临时 class（样式见 src/shared/styles/app.css），
+ * 让全局颜色属性短暂平滑过渡；过渡结束后移除，避免常驻 transition 拖慢其他交互。
+ * prefers-reduced-motion 下直接跳过。
+ */
+const runThemeSwitchTransition = (root: HTMLElement) => {
+  if (typeof window === 'undefined') return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  root.classList.add(THEME_TRANSITION_CLASS);
+  if (themeTransitionTimer !== null) {
+    clearTimeout(themeTransitionTimer);
+  }
+  themeTransitionTimer = setTimeout(() => {
+    root.classList.remove(THEME_TRANSITION_CLASS);
+    themeTransitionTimer = null;
+  }, readThemeTransitionDurationMs(root) + 50);
+};
+
 /**
  * 应用主题到 DOM
  * 只设置属性和类名，颜色由 CSS 规则匹配
@@ -197,6 +230,13 @@ const DARK_CLASS = 'dark';
  */
 const applyThemeToDom = (isDark: boolean, palette: ThemePalette, customColor?: string) => {
   const root = document.documentElement;
+
+  // 仅在初始化完成后（data-theme 已存在）且亮暗真正翻转时播放全局颜色过渡，
+  // 避免应用启动首次应用主题时出现无意义的整屏过渡
+  const previousTheme = root.getAttribute('data-theme');
+  if (previousTheme !== null && (previousTheme === 'dark') !== isDark) {
+    runThemeSwitchTransition(root);
+  }
 
   root.setAttribute('data-theme', isDark ? 'dark' : 'light');
   root.setAttribute('data-theme-palette', palette);

@@ -2178,7 +2178,8 @@
         },
         "pageLabel": "Page {{page}}",
         "viewOriginal": "View Original",
-        "noThumbnail": "No Thumbnail"
+        "noThumbnail": "No Thumbnail",
+        "noSnippet": "No text summary"
       }
     },
     "multimodal": {
@@ -3381,6 +3382,7 @@
   },
   "mobile_header": {
     "back": "Back",
+    "forward": "Forward",
     "open_menu": "Open menu",
     "open_sidebar": "Open sidebar",
     "menu": "Menu"
@@ -3496,7 +3498,7 @@
     "feature_chat_title": "AI Chat & Problem Solving",
     "feature_chat_desc": "Multi-model chat, question analysis and knowledge-base retrieval in one flow.",
     "feature_anki_title": "Flashcards & Review",
-    "feature_anki_desc": "Generate Anki cards with AI, with a built-in FSRS review loop.",
+    "feature_anki_desc": "Generate Anki cards with AI, with a built-in spaced-repetition review loop.",
     "ai_setup_title": "Connect an AI service to get started",
     "ai_setup_desc": "One-click setup with SiliconFlow, or connect OpenAI, Claude, Gemini, Ollama or any compatible provider.",
     "cta_configure": "Set up AI service",

@@ -134,7 +134,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
         return (
           <div
             key={error.id}
-            className={`${styles.bgColor} border rounded-lg shadow-lg animate-in slide-in-from-right-2 duration-300`}
+            className={`${styles.bgColor} border rounded-lg shadow-lg ui-slide-fade-in [--ui-enter-x:8px]`}
           >
             {/* 错误头部 */}
             <div className="p-4">

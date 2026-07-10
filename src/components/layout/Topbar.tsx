@@ -504,7 +504,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     el.style.overflow = 'hidden';
     // 使用GPU加速和更优的动画曲线
     el.style.willChange = 'transform, width, opacity';
-    el.style.transition = 'width 280ms cubic-bezier(0.33, 1, 0.68, 1), opacity 160ms ease-out';
+    el.style.transition = 'width 280ms var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)), opacity 160ms ease-out';
     el.style.backfaceVisibility = 'hidden';
     el.style.transform = 'translateZ(0)';
     el.style.contain = 'layout paint';  // 减少重绘区域
@@ -609,7 +609,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
 
   const itemBase =
     'relative z-10 inline-flex items-center justify-center gap-2 px-4 min-w-[44px] h-11 select-none touch-manipulation icon-ghost-btn' +
-    ' transition-[opacity,colors] duration-200 [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] active:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30';
+    ' transition-[opacity,colors] duration-200 [transition-timing-function:var(--dropdown-ease)] active:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30';
   const itemText = 'text-sm font-medium';
   const activeStyles = 'text-[hsl(var(--primary))]';
   const inactiveStyles = 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]';

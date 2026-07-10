@@ -20,6 +20,7 @@ import { Check as PhosphorCheck, CaretRight, MagnifyingGlass } from '@phosphor-i
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import { useNestedOverlayZ } from '../../shared/OverlayLayer';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -86,6 +87,17 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
     if (!actualOpen) return;
     return registerInteractiveOverlay();
   }, [actualOpen, registerInteractiveOverlay]);
+
+  // 📱 Android 返回键：AppMenu 是自绘浮层（非 Radix），协调器的 Escape 兜底
+  // 探测不到它；在根组件统一注册 overlay 级 handler，菜单打开时返回键先关菜单。
+  // 桌面端注册无副作用（handleAndroidBack 仅由 Android native 桥调用）。
+  React.useEffect(() => {
+    if (!actualOpen) return;
+    return registerBackHandler(() => {
+      setOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [actualOpen, setOpen]);
 
   React.useEffect(() => {
     if (!actualOpen) return;

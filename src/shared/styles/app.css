@@ -23,6 +23,9 @@ body {
   --shell-window-control-gap: var(--space-shell-control-gap);
   --shell-window-control-radius: var(--radius-shell-window-control);
   --shell-section-gap: var(--space-shell-section-gap);
+
+  /* 主题亮暗切换的全局颜色过渡时长（useTheme.ts 会读取该值来定时移除临时 class） */
+  --theme-transition-dur: 220ms;
 }
 
 [data-shell-role="app-shell"] {
@@ -33,7 +36,7 @@ body {
    * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
    */
   background: var(--shell-backdrop);
-  transition: background-color 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: background-color var(--page-slide-dur, 200ms) var(--ease-shell);
 }
 
 [data-shell-role="app-shell"][data-sidebar-visible="true"] {
@@ -56,6 +59,100 @@ body {
     );
 }
 
+/* 工作台：顶栏透明，只保留窗口控制命中区（Win 自绘三键 / Mac 系统红绿灯空隙） */
+.desktop-shell-titlebar.desktop-shell-titlebar--workbench-chrome,
+.desktop-shell-titlebar[data-workbench-chrome='controls-only'] {
+  background: transparent;
+  border-bottom: none;
+  pointer-events: none;
+}
+
+.desktop-shell-titlebar.desktop-shell-titlebar--workbench-chrome > *,
+.desktop-shell-titlebar[data-workbench-chrome='controls-only'] > * {
+  pointer-events: auto;
+}
+
+/* 工作台控制胶囊：拖拽空白 + Win 三键共用一块椭圆矩形 */
+.desktop-shell-workbench-chrome-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  margin-block: auto;
+  padding: 0 4px 0 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in hsl, var(--shell-chrome-border, hsl(var(--border))) 70%, transparent 30%);
+  background: color-mix(in hsl, var(--shell-toolbar-floating-surface, hsl(var(--background))) 88%, transparent 12%);
+  box-shadow:
+    0 1px 0 color-mix(in hsl, #fff 55%, transparent 45%) inset,
+    0 8px 20px hsl(var(--shadow-base, 0 0% 0%) / 0.10);
+  overflow: hidden;
+}
+
+/* 仅 full 材质档支付 backdrop-filter；reduced/minimal 用实色混色底即可 */
+:root[data-wb-material='full'] .desktop-shell-workbench-chrome-pill {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* macOS：系统红绿灯在外，胶囊只承载拖拽空白 */
+.desktop-shell-workbench-chrome-pill--drag-only {
+  padding: 0 12px;
+}
+
+.desktop-shell-workbench-drag-strip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  min-width: 56px;
+  min-height: 100%;
+  padding-inline: 10px;
+  cursor: grab;
+  /* 拖拽统一走 JS startDragging，避免与 -webkit-app-region 双通道竞态 */
+  user-select: none;
+}
+
+.desktop-shell-workbench-drag-strip:active {
+  cursor: grabbing;
+}
+
+.desktop-shell-workbench-app-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.desktop-shell-workbench-chrome-controls {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  padding-inline: 2px 4px;
+  border-left: 1px solid color-mix(in hsl, var(--shell-chrome-border, hsl(var(--border))) 55%, transparent 45%);
+}
+
+/* 压掉 WindowControls 自带的内层胶囊，避免双层叠套 */
+.desktop-shell-workbench-chrome-pill [data-shell-window-controls] {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desktop-shell-workbench-chrome-pill [data-shell-window-button] {
+  height: 28px !important;
+  width: 28px !important;
+  min-height: 28px !important;
+  min-width: 28px !important;
+  border-radius: 999px !important;
+}
+
 .desktop-shell-header-cell {
   min-width: 0;
   min-height: var(--shell-titlebar-height);
@@ -67,7 +164,7 @@ body {
 }
 
 .desktop-shell-header-hotzone:focus-visible {
-  outline: 2px solid var(--ring);
+  outline: 2px solid hsl(var(--ring));
   outline-offset: -2px;
 }
 
@@ -80,10 +177,10 @@ body {
   background: transparent;
   border: 0;
   box-shadow: none;
-  transition: padding-left 200ms cubic-bezier(0.25, 0.1, 0.25, 1),
-              background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
+  transition: padding-left var(--page-slide-dur, 200ms) var(--ease-shell),
+              background-color 400ms var(--ease-shell),
+              backdrop-filter 400ms var(--ease-shell),
+              -webkit-backdrop-filter 400ms var(--ease-shell);
 }
 
 .desktop-shell-toolbar-group {
@@ -173,6 +270,11 @@ body {
   box-shadow: none !important;
   font-size: 14px !important;
   font-weight: 400 !important;
+
+  /* active/hover 切换的颜色过渡（类选择器特异性覆盖 interaction.css 的 :where 默认值） */
+  transition:
+    background-color var(--dropdown-close-dur, 150ms) var(--ease-standard),
+    color var(--dropdown-close-dur, 150ms) var(--ease-standard);
 }
 
 .desktop-shell-thread-row {
@@ -198,6 +300,35 @@ body {
   background: var(--interactive-selected) !important;
   color: var(--shell-navigation-foreground) !important;
   font-weight: 400 !important;
+}
+
+.desktop-shell-nav-row--active::before,
+.desktop-shell-thread-row--active::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 50%;
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: hsl(var(--primary));
+  transform: translateY(-50%) scaleY(0.6);
+  opacity: 0;
+  animation: desktop-shell-nav-indicator-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
+  pointer-events: none;
+}
+
+@keyframes desktop-shell-nav-indicator-in {
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scaleY(1);
+  }
+}
+
+.desktop-shell-sidebar-row--active,
+.desktop-shell-nav-row--active,
+.desktop-shell-thread-row--active {
+  position: relative;
 }
 
 .desktop-shell-thread-row--active {
@@ -278,9 +409,9 @@ body {
 .desktop-shell-workspace {
   background: var(--shell-workspace-panel);
   box-shadow: none;
-  transition: background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
-              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
+  transition: background-color 400ms var(--ease-shell),
+              backdrop-filter 400ms var(--ease-shell),
+              -webkit-backdrop-filter 400ms var(--ease-shell);
 }
 
 .desktop-shell-workspace[data-sidebar-visible="true"] {
@@ -289,6 +420,51 @@ body {
 
 .desktop-shell-view-layer {
   isolation: isolate;
+}
+
+/*
+ * 桌面壳层内容入场动画（transitions-dev 观感语言，与标题栏 TextSwap 成组）：
+ * 淡入 + 上移 8px 归位 + blur 2px 聚焦，只动 opacity/transform/filter。
+ * 三处消费：视图层激活（ViewLayerRenderer 激活时挂类）、侧栏内容整体替换、
+ * 设置页 tab 切换（后两者靠 keyed 重挂载重触发）。
+ * 用 animation 而非 transition：激活/重挂载即重播；离场侧不做动画，
+ * visibility:hidden 同帧生效是刻意行为。
+ * 不设 fill-mode：动画结束回到元素静止样式，避免 filter 残留在视图层上
+ * 形成常驻 containing block，影响 fixed 定位后代。
+ */
+@keyframes desktop-shell-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--text-swap-translate-y, 8px));
+    filter: blur(var(--text-swap-blur, 2px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.desktop-shell-content-enter {
+  animation: desktop-shell-content-enter var(--text-swap-dur, 200ms) var(--page-slide-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+/*
+ * 主题亮暗切换过渡：切换瞬间由 useTheme.ts 在 <html> 上挂临时 class，
+ * 期间全局颜色属性平滑过渡，过渡结束后移除，避免常驻 transition 拖慢其他交互。
+ * 特异性 (0,2,0) 高于绝大多数单类/工具类的 transition 声明，可临时接管；
+ * 极少数更高特异性的组件过渡不受影响（表现为该元素瞬时换色，可接受）。
+ */
+:root.theme-transitioning,
+:root.theme-transitioning *,
+:root.theme-transitioning *::before,
+:root.theme-transitioning *::after {
+  transition:
+    background-color var(--theme-transition-dur, 220ms) var(--ease-standard),
+    color var(--theme-transition-dur, 220ms) var(--ease-standard),
+    border-color var(--theme-transition-dur, 220ms) var(--ease-standard),
+    fill var(--theme-transition-dur, 220ms) var(--ease-standard);
 }
 
 .sidebar-shell-surface {
@@ -1027,6 +1203,15 @@ main {
   /* 确保内容区域可以正确显示，避免被裁剪 */
   contain: layout style;
 }
+
+/*
+ * 学习桌面：关闭 layout containment。
+ * WebView2 在「祖先 contain:layout + 子树大量 transform/backdrop-filter」时
+ * 会算错合成脏区，出现水平撕裂、壁纸只铺半屏、Dock 视觉上漂到中部。
+ */
+.content-body.content-body--workbench {
+  contain: style;
+}
 @media (prefers-reduced-motion: no-preference) {
   @keyframes chatMessageEnter {
     from {
@@ -1109,5 +1294,26 @@ main {
   .desktop-shell-header-cell--workspace,
   .desktop-shell-workspace {
     transition: none;
+  }
+
+  .desktop-shell-sidebar-row,
+  .desktop-shell-nav-row,
+  .desktop-shell-thread-row,
+  :root.theme-transitioning,
+  :root.theme-transitioning *,
+  :root.theme-transitioning *::before,
+  :root.theme-transitioning *::after {
+    transition: none;
+  }
+
+  .desktop-shell-content-enter {
+    animation: none;
+  }
+
+  .desktop-shell-nav-row--active::before,
+  .desktop-shell-thread-row--active::before {
+    animation: none;
+    opacity: 1;
+    transform: translateY(-50%) scaleY(1);
   }
 }

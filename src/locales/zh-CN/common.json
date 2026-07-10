@@ -2246,7 +2246,8 @@
         },
         "pageLabel": "第 {{page}} 页",
         "viewOriginal": "查看原图",
-        "noThumbnail": "无缩略图"
+        "noThumbnail": "无缩略图",
+        "noSnippet": "暂无文本摘要"
       }
     },
     "multimodal": {
@@ -3324,6 +3325,7 @@
   },
   "mobile_header": {
     "back": "返回",
+    "forward": "前进",
     "open_menu": "打开菜单",
     "open_sidebar": "展开侧边栏",
     "menu": "菜单"
@@ -3439,7 +3441,7 @@
     "feature_chat_title": "AI 对话与解题",
     "feature_chat_desc": "多模型对话、题目分析、知识库检索一站完成。",
     "feature_anki_title": "制卡与复习",
-    "feature_anki_desc": "AI 生成 Anki 卡片，内置 FSRS 复习闭环。",
+    "feature_anki_desc": "AI 生成 Anki 卡片，内置间隔重复复习闭环。",
     "ai_setup_title": "连接一个 AI 服务后即可开始",
     "ai_setup_desc": "支持 SiliconFlow 一键配置全部模型，也可接入 OpenAI、Claude、Gemini、Ollama 等任意兼容服务。",
     "cta_configure": "去配置 AI 服务",

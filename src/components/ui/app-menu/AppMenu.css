@@ -506,3 +506,11 @@
     display: none;
   }
 }
+
+/* 触屏设备（无 hover）：菜单项触控目标 ≥40px（移动端契约），
+   用 pointer:coarse 而非视口宽度判定，覆盖 640-767px 触屏平板 */
+@media (hover: none) and (pointer: coarse) {
+  .app-menu-item {
+    min-height: 40px;
+  }
+}

@@ -92,7 +92,8 @@ const SelectContent = React.forwardRef<
       className={cn(
         'relative min-w-[var(--radix-select-trigger-width)] max-h-[min(24rem,var(--radix-select-content-available-height))]',
         'overflow-hidden rounded-lg border border-border/40 bg-popover text-sm text-foreground',
-        'animate-in fade-in-0 zoom-in-95',
+        // ui-motion 入场（transitions-dev token）；缩放原点跟随 Radix 计算的弹出方向
+        'ui-zoom-fade-in [--ui-zoom-origin:var(--radix-select-content-transform-origin)]',
         position === 'popper' &&
           'data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1',
         className

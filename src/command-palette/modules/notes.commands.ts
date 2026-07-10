@@ -12,7 +12,6 @@ import {
   SidebarSimple,
   List,
   FileArrowDown,
-  CopySimple,
   MagicWand,
   Calculator,
   Table,
@@ -124,19 +123,7 @@ export const notesCommands: Command[] = [
       window.dispatchEvent(new CustomEvent('NOTES_EXPORT_CURRENT'));
     },
   },
-  {
-    id: 'notes.export-all',
-    get name() { return i18next.t('command_palette:commands.notes.export-all', 'Export All Notes'); },
-    get description() { return i18next.t('command_palette:descriptions.notes.export-all', 'Export all notes'); },
-    category: 'notes',
-    icon: CopySimple,
-    get keywords() { return kw('notes.export-all'); },
-    priority: 79,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_EXPORT_ALL'));
-    },
-  },
+  // notes.export-all 未实现：不注册可点命令。遗留 NOTES_EXPORT_ALL 事件由 LearningHubPage 降级为导出当前。
   {
     id: 'notes.ai-continue',
     get name() { return i18next.t('command_palette:commands.notes.ai-continue', 'AI Continue Writing'); },

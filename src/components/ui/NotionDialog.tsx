@@ -382,7 +382,9 @@ export function NotionAlertDialog({
           aria-modal="true"
           variants={alertContentVariants}
           className={cn(
-            'relative w-[92vw] max-w-md rounded-[var(--radius-shell-dialog)] border p-5 text-foreground',
+            // 宽度对齐移动端契约上限 calc(100vw-32px)；内容可变长（如 zip 装前确认）时
+            // 整体限高 + 内容区滚动，防止小屏溢出导致按钮不可达
+            'relative flex max-h-[85dvh] w-[calc(100vw-32px)] max-w-md flex-col rounded-[var(--radius-shell-dialog)] border p-5 text-foreground',
             className,
           )}
           style={{
@@ -394,7 +396,7 @@ export function NotionAlertDialog({
           onClick={(e) => e.stopPropagation()}
         >
           {/* 标题行 */}
-          <div className="flex items-start gap-3">
+          <div className="flex shrink-0 items-start gap-3">
             {icon && <span className="flex-shrink-0 mt-0.5">{icon}</span>}
             <div className="flex-1 min-w-0 space-y-1.5">
               <h3 className="text-base font-semibold leading-tight text-foreground">{title}</h3>
@@ -405,10 +407,10 @@ export function NotionAlertDialog({
           </div>
 
           {/* 额外内容 */}
-          {children && <div className="mt-3">{children}</div>}
+          {children && <div className="mt-3 min-h-0 overflow-y-auto overscroll-contain">{children}</div>}
 
           {/* 按钮行 */}
-          <div className="mt-5 flex items-center justify-end gap-2">
+          <div className="mt-5 flex shrink-0 items-center justify-end gap-2">
             <NotionButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
               {cancelText}
             </NotionButton>

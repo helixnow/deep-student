@@ -68,8 +68,9 @@ interface TooltipContentProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 // 基础样式 - 最小化，让用户传递的类可以完全覆盖
+// ui-tooltip-in：ui-motion 入场（fade + scale 0.97 + 朝最终位置 2px 漂移，方向随 data-side）
 const getBaseClasses = () => {
-  return 'z-50 rounded-md px-2 py-1.5 text-[13px] shadow-none border border-border/40 bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 font-medium leading-none';
+  return 'z-50 rounded-md px-2 py-1.5 text-[13px] shadow-none border border-border/40 bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 font-medium leading-none ui-tooltip-in';
 };
 
 export const TooltipContent: React.FC<TooltipContentProps>
@@ -137,6 +138,7 @@ export const TooltipContent: React.FC<TooltipContentProps>
       <div
         className={className ? `${getBaseClasses()} ${className}` : getBaseClasses()}
         role="tooltip"
+        data-side={side}
         style={{
           position: 'fixed',
           top,

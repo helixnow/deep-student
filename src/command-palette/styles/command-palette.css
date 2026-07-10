@@ -378,9 +378,11 @@
 
 /* ==================== 响应式适配 ==================== */
 
-@media (max-width: 639.98px) {
+/* ★ 2026-07-08 移动端审计：断点从 640 对齐到 App shell 的移动端定义（<768），
+   避免 640–767px 区间面板仍按桌面窄卡片渲染 */
+@media (max-width: 767.98px) {
   .command-palette-backdrop {
-    padding-top: 10vh;
+    padding-top: 8vh;
   }
 
   .command-palette-container {
@@ -389,8 +391,9 @@
     border-radius: 16px;
   }
 
+  /* 软键盘弹出（adjustResize）时视口收缩，50vh 随之缩小仍可用 */
   .command-palette-scroll-area .command-palette-list {
-    max-height: 50vh;
+    max-height: 55vh;
   }
 
   .command-palette-footer {
@@ -414,6 +417,13 @@
   .command-palette-close-btn {
     width: 36px;
     height: 36px;
+  }
+
+  /* ★ 2026-07-08 移动端审计：结果项触控行高 ≥44px */
+  .command-palette-item {
+    min-height: 44px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 
   /* 键盘快捷键提示(↑↓/Enter/Esc)对触屏无意义,隐藏以释放纵向空间 */

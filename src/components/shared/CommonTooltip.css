@@ -2,7 +2,7 @@
 .common-tooltip {
   pointer-events: none;
   user-select: none;
-  animation: tooltip-fade-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: tooltip-fade-in var(--dropdown-close-dur, 150ms) var(--ease-standard);
   transform-origin: center;
 }
 

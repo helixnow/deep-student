@@ -52,8 +52,10 @@ function cleanCacheIfNeeded(newFileSize: number) {
  * PDF 加载状态
  */
 export interface PdfLoaderState {
-  /** PDF File 对象 */
+  /** PDF File 对象（无可用 stream 路径时从 base64 构建） */
   file: File | null;
+  /** pdfstream:// 可用的本地路径（优先于 file，避免大文件 base64 过 IPC） */
+  filePath: string | undefined;
   /** 是否正在加载 */
   loading: boolean;
   /** 错误信息 */
@@ -87,14 +89,36 @@ export interface UsePdfLoaderOptions {
  * 
  * 优先使用 filePath 加载本地文件，否则从数据库加载
  */
+async function resolveStreamableBlobPath(nodeId: string): Promise<string | undefined> {
+  try {
+    const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: nodeId });
+    if (!blobPath) return undefined;
+
+    const access = await invoke<{ available: boolean; reason?: string }>(
+      'pdfstream_check_access',
+      { path: blobPath }
+    );
+    if (access?.available) {
+      return blobPath;
+    }
+    debugLog.warn('[usePdfLoader] blob path not streamable:', blobPath, access?.reason);
+  } catch (err: unknown) {
+    debugLog.warn('[usePdfLoader] blob path resolution failed:', err);
+  }
+  return undefined;
+}
+
 export function usePdfLoader({
   nodeId,
   fileName,
-  filePath,
+  filePath: explicitFilePath,
   cacheKey,
   enabled = true,
 }: UsePdfLoaderOptions): PdfLoaderState {
   const [file, setFile] = useState<File | null>(null);
+  const [resolvedFilePath, setResolvedFilePath] = useState<string | undefined>(explicitFilePath);
+  /** 无显式 filePath 时，需等待 blob 路径探测完成再决定 stream / base64 */
+  const [streamPathReady, setStreamPathReady] = useState<boolean>(Boolean(explicitFilePath));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLargeFile, setIsLargeFile] = useState(false);
@@ -108,6 +132,34 @@ export function usePdfLoader({
   // ★ 用 ref 追踪当前 file，避免 useCallback 依赖循环
   const fileRef = useRef<File | null>(null);
 
+  // 解析 VFS blob 路径（file 附件 / 教材 fallback 共用）
+  useEffect(() => {
+    if (!enabled) {
+      setResolvedFilePath(undefined);
+      setStreamPathReady(false);
+      return;
+    }
+    if (explicitFilePath) {
+      setResolvedFilePath(explicitFilePath);
+      setStreamPathReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    setStreamPathReady(false);
+    setResolvedFilePath(undefined);
+    void resolveStreamableBlobPath(nodeId).then((path) => {
+      if (cancelled) return;
+      setResolvedFilePath(path);
+      setStreamPathReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, explicitFilePath, nodeId]);
+
+  const effectiveFilePath = resolvedFilePath;
+
   // 从缓存获取或加载
   const loadPdf = useCallback(async () => {
     const resolvedCacheKey = cacheKey || nodeId;
@@ -120,14 +172,21 @@ export function usePdfLoader({
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    // 如果有 filePath，不需要从数据库加载
-    if (filePath) {
+    // 如果有可流式读取的本地路径，不需要整文件 base64 过 IPC
+    if (effectiveFilePath) {
       abortControllerRef.current = null;
       setFile(null);
       setLoading(false);
       setError(null);
       setIsLargeFile(false);
-      setFileSize(0);
+      try {
+        const size = await invoke<number>('get_file_size', { path: effectiveFilePath });
+        setFileSize(size);
+        setIsLargeFile(size > LARGE_FILE_HINT_THRESHOLD);
+      } catch {
+        setFileSize(0);
+        setIsLargeFile(false);
+      }
       return;
     }
     
@@ -218,29 +277,35 @@ export function usePdfLoader({
       setError(err instanceof Error ? err.message : i18n.t('pdf:errors.load_pdf_failed', { defaultValue: 'Failed to load PDF' }));
       setLoading(false);
     }
-  }, [nodeId, fileName, filePath, cacheKey]);
+  }, [nodeId, fileName, effectiveFilePath, cacheKey]);
 
-  // 当参数变化时加载
+  // 当参数变化时加载（等待 blob 路径探测完成，避免误走 base64）
   useEffect(() => {
     if (!enabled) {
       setFile(null);
+      setResolvedFilePath(explicitFilePath);
+      setStreamPathReady(Boolean(explicitFilePath));
       setLoading(false);
       setError(null);
       setIsLargeFile(false);
       setFileSize(0);
       return;
     }
-    
+
+    if (!streamPathReady) {
+      setLoading(true);
+      return;
+    }
+
     void loadPdf();
-    
+
     return () => {
-      // 取消进行中的请求
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
     };
-  }, [enabled, loadPdf]);
+  }, [enabled, explicitFilePath, loadPdf, streamPathReady]);
 
   // 重试：清除上一次缓存 key 以允许重新加载
   const retry = useCallback(() => {
@@ -251,6 +316,7 @@ export function usePdfLoader({
 
   return {
     file,
+    filePath: effectiveFilePath,
     loading,
     error,
     isLargeFile,

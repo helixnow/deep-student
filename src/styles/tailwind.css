@@ -1,5 +1,5 @@
-@import './notion-animations.css';
 @import './transitions-dev.css';
+@import './ui-motion.css';
 
 /* Native-feel whitelist: re-enable text selection on real content surfaces. */
 @import './native-feel/selection.css';

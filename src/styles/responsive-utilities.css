@@ -43,7 +43,9 @@
 
 /* =================== 移动统一抽屉（页内 sidebar + 全局 nav 单滚动） =================== */
 
-@media (max-width: 767px) {
+/* 767.98px 与 useBreakpoint 的 not (min-width: 768px) 判定对齐：
+   Android 显示缩放/分屏下视口宽可能为 767.x 的小数，767px 整数上限会漏判 */
+@media (max-width: 767.98px) {
   /* 移动抽屉与主内容区同色（background），避免 navigation-surface 灰底露出 */
   [data-mobile-unified-drawer] {
     background: hsl(var(--background)) !important;

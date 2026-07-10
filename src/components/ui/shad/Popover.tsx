@@ -229,7 +229,7 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
         role="dialog"
         ref={assignContentRef}
           className={cn(
-            'fixed min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none animate-in fade-in-0 zoom-in-95 shadow-none',
+            'fixed min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none ui-zoom-fade-in shadow-none',
             className
           )}
         style={{
@@ -252,7 +252,7 @@ export function PopoverContent({ className, align = 'center', side = 'bottom', s
       role="dialog"
       ref={assignContentRef}
       className={cn(
-        'absolute mt-2 min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none animate-in fade-in-0 zoom-in-95 shadow-none',
+        'absolute mt-2 min-w-[200px] rounded-lg border border-border/40 bg-popover p-1.5 text-sm outline-none ui-zoom-fade-in shadow-none',
         alignmentClass,
         className
       )}

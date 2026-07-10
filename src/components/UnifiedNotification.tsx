@@ -160,6 +160,24 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     collapseRef.current = setTimeout(() => setIsHoverExpanded(false), 300);
   };
 
+  // ★ 2026-07-08（移动端审计 D-8）：展开长文本原来只有 hover 一条路，
+  // 触屏设备点按切换展开/收起；桌面（细指针）不改变行为。
+  const handleTapToggleExpand = (e: React.MouseEvent) => {
+    if (typeof window === 'undefined' || !window.matchMedia?.('(pointer: coarse)').matches) return;
+    if ((e.target as HTMLElement | null)?.closest('button')) return;
+    if (expandRef.current) { clearTimeout(expandRef.current); expandRef.current = null; }
+    if (collapseRef.current) { clearTimeout(collapseRef.current); collapseRef.current = null; }
+    setIsHoverExpanded((prev) => {
+      const next = !prev;
+      if (next) {
+        pauseTimer();
+      } else {
+        maybeResume();
+      }
+      return next;
+    });
+  };
+
   if (!notification.visible) return null;
 
   const isAssertive = notification.type === 'error' || notification.type === 'warning';
@@ -191,6 +209,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     <div
       className={`unified-notification ${typeClass} ${borderClass} ${isClosing ? 'hide' : 'show'} ${isHoverExpanded ? 'expanded' : ''}`}
       style={progressStyle}
+      onClick={handleTapToggleExpand}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocusCapture={() => { focusRef.current = true; pauseTimer(); }}

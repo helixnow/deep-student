@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { ApiConfig } from '@/types';
 
 // ============================================================================
@@ -146,6 +147,65 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     };
   }, []);
 
+  // 模态焦点管理：打开时把焦点移入面板，关闭时还原到触发前的元素
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    return () => {
+      previouslyFocused?.focus?.();
+    };
+  }, []);
+
+  // ★ 2026-07-08（移动端审计 D-9）：自绘弹窗无 Radix data-state，
+  // androidBackCoordinator 的 Escape 兜底覆盖不到 —— Android 返回键
+  // 等价于「先随便看看」（与 Esc 同语义），避免返回键穿透到底层导航。
+  const onSkipRef = useRef(onSkip);
+  onSkipRef.current = onSkip;
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onSkipRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, []);
+
+  // Esc 关闭（等价于"先随便看看"）+ Tab 焦点圈定在面板内
+  const handleKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onSkip();
+        return;
+      }
+      if (event.key !== 'Tab' || !panelRef.current) return;
+
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusables.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey) {
+        if (active === first || active === panelRef.current) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    [onSkip],
+  );
+
   const currentLanguage = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US';
 
   const features: FeatureRow[] = [
@@ -167,8 +227,9 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
       icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
       titleKey: 'welcome_onboarding.feature_anki_title',
       titleFallback: '制卡与复习',
+      // ★ 2026-07-08：修正文案——实际复习调度为 SM-2（reviewPlanStore），并非 FSRS
       descKey: 'welcome_onboarding.feature_anki_desc',
-      descFallback: 'AI 生成 Anki 卡片，内置 FSRS 复习闭环。',
+      descFallback: 'AI 生成 Anki 卡片，内置间隔重复复习闭环。',
     },
   ];
 
@@ -180,13 +241,20 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         mounted ? 'opacity-100' : 'opacity-0',
       )}
       style={{ zIndex: Z_INDEX.modal }}
+      onKeyDown={handleKeyDown}
     >
       {/* 遮罩层 */}
       <div className="absolute inset-0 bg-black/25" />
 
       {/* 面板 */}
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="welcome-onboarding-title"
+        tabIndex={-1}
         className={cn(
+          'outline-none',
           'relative flex flex-col overflow-hidden',
           'w-[94vw] max-w-[520px] max-h-[85vh]',
           'bg-background rounded-lg',
@@ -202,7 +270,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         <div className="px-6 pt-6 pb-4 flex-shrink-0">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h1 className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
+              <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
                 {t('welcome_onboarding.title', '欢迎使用 DeepStudent')}
               </h1>
               <p className="mt-1.5 text-[13px] text-foreground/50 leading-relaxed">

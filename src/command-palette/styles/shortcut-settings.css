@@ -268,3 +268,10 @@
     opacity: 1;
   }
 }
+
+/* ★ 2026-07-08 移动端审计：触屏设备（含 ≥640px 平板）无 hover，操作按钮常显 */
+@media (pointer: coarse) {
+  .shortcut-settings-item-actions {
+    opacity: 1;
+  }
+}

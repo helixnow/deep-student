@@ -12,10 +12,10 @@
   align-items: center !important;
   justify-content: center !important;
   box-shadow: 0 12px 32px hsl(var(--shadow-base) / 0.22) !important;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-              border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-              opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  transition: transform var(--page-slide-dur, 200ms) var(--ease-material),
+              box-shadow var(--page-slide-dur, 200ms) var(--ease-material),
+              border-color var(--page-slide-dur, 200ms) var(--ease-material),
+              opacity var(--page-slide-dur, 200ms) var(--ease-material) !important;
   cursor: grab !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -139,7 +139,7 @@
 
 /* 调试面板淡入淡出动画 */
 .dstu-dbg-root {
-  animation: dstu-debug-panel-fade-in 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: dstu-debug-panel-fade-in var(--page-slide-dur, 200ms) var(--ease-material);
   /* 🎯 关键：阻止 Tauri 窗口拖拽 */
   -webkit-app-region: no-drag !important;
 }

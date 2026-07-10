@@ -18,7 +18,8 @@ export {
   useMobileLayoutSafe,
   type SidebarType,
 } from './MobileLayoutContext';
-export { MobileHeader, type MobileHeaderProps } from './MobileHeader';
+// MobileHeader（旧版自绘顶栏）已废弃：全部视图统一走 useMobileHeader + UnifiedMobileHeader，
+// 不再从公共入口导出，防止新代码误用（文件保留仅为源码断言测试引用）。
 
 // 统一移动端顶栏
 export {

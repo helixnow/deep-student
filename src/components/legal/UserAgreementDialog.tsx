@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CaretRight } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 常量
@@ -198,6 +199,20 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [preview, shouldRender, onClose]);
+
+  // ★ 2026-07-08（移动端审计 D-9）：Android 返回键接入。
+  // 预览模式：返回键关闭弹窗（与 Esc 同语义）。
+  // 首启强制同意模式刻意不注册：返回键落到底层导航兜底
+  // （首启无历史 → 应用退到后台），符合 Android 同意页惯例。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!preview || !shouldRender) return;
+    return registerBackHandler(() => {
+      onCloseRef.current?.();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [preview, shouldRender]);
 
   // 锁定 body 滚动，防止弹窗打开时页面背后可滚动
   useEffect(() => {

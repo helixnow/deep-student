@@ -222,7 +222,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
   ];
 
   return (
-    <div className={cn('space-y-1 pb-10 text-left animate-in fade-in duration-500', className)}>
+    <div className={cn('space-y-1 pb-10 text-left ui-fade-in-slow', className)}>
       <SettingSection
         title=""
         hideHeader
@@ -304,7 +304,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
 
                       <div className="flex items-center gap-3 flex-shrink-0">
                         {isEditing ? (
-                          <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-200">
+                          <div className="flex items-center gap-2 ui-slide-fade-in [--ui-enter-x:8px]">
                             {editing.listening ? (
                               <div className="flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-md text-primary text-xs font-medium">
                                 <Keyboard size={13} className="animate-pulse" />

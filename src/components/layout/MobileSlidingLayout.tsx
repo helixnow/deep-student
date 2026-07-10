@@ -395,6 +395,13 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   }, [isThreeScreenMode, onScreenPositionChange, onSidebarOpenChange]);
 
   // Android 返回键（A-5）：侧栏/右面板展开时，返回键先收回到主视图
+  //
+  // ⚠️ 调用方契约：本 handler 在非中屏时无条件消费返回键并调用
+  // onScreenPositionChange('center')（或 onSidebarOpenChange(false)）。
+  // 调用方必须保证该回调真正把 screenPosition 派生回 'center'——若存在额外
+  // 状态把位置锁在 left/right（如"工作台打开时强制右屏"），返回键会被消费
+  // 但界面不动，形成死循环。此类场景调用方需在回调里同步重置锁定状态
+  // （参考 ChatV2Page 沙箱工作台的处理）。
   const backStateRef = useRef({ screenPosition, isActiveViewLayer, close: closeSidebarAfterAppNavigation });
   backStateRef.current = { screenPosition, isActiveViewLayer, close: closeSidebarAfterAppNavigation };
   useEffect(() => {
