@@ -4,7 +4,6 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { normalizeMcpToolList } from './mcpUtils';
-import { DEFAULT_STDIO_ARGS, DEFAULT_STDIO_ARGS_STORAGE } from './constants';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import type { UseSettingsConfigDeps } from './hookDepsTypes';
@@ -76,7 +75,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
 
           // MCP 工具协议设置（移除全局启用项）
           invoke('get_setting', { key: 'mcp.transport.command' }).catch(() => 'npx') as Promise<string>,
-          invoke('get_setting', { key: 'mcp.transport.args' }).catch(() => DEFAULT_STDIO_ARGS_STORAGE) as Promise<string>,
+          invoke('get_setting', { key: 'mcp.transport.args' }).catch(() => '') as Promise<string>,
           invoke('get_setting', { key: 'mcp.transport.type' }).catch(() => 'stdio') as Promise<string>,
           invoke('get_setting', { key: 'mcp.transport.url' }).catch(() => 'ws://localhost:8000') as Promise<string>,
           invoke('get_setting', { key: 'mcp.tools.advertise_all_tools' }).catch(() => 'false') as Promise<string>,
@@ -217,7 +216,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
               .filter(Boolean);
           }
           if (argsArray.length === 0) {
-            argsArray = [...DEFAULT_STDIO_ARGS];
+            // 空 args 保持为空：不隐式注入 DEFAULT_STDIO_ARGS
           }
           return argsArray.join(',');
         })();

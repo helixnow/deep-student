@@ -21,6 +21,7 @@ import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { cn } from '@/lib/utils';
 import { vfsUnifiedIndexApi } from '@/api/vfsUnifiedIndexApi';
 import { ApiKeyField } from './ApiKeyField';
+import { isPlausibleApiKey } from '../utils/apiKeyValidation';
 
 interface SiliconFlowModel {
   id: string;
@@ -250,8 +251,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
       }
       // Broadcast the change so other views refresh immediately.
+      // 安全修复（审阅 26 P1-1）：事件 detail 不再携带明文 Key（任何注入页面的
+      // 脚本挂监听器即可收割），仅广播 hasKey 状态；需要 Key 的监听方自行从
+      // 安全存储按需读取。
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('siliconflow-apikey-changed', { detail: { apiKey: trimmed } }));
+        window.dispatchEvent(
+          new CustomEvent('siliconflow-apikey-changed', { detail: { hasKey: Boolean(trimmed) } })
+        );
         window.dispatchEvent(new CustomEvent('api_configurations_changed'));
       }
     } catch (error: unknown) {
@@ -299,28 +305,38 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   }, [clearStatusTimer]);
 
   // 监听其他实例的API Key变化（修复多实例状态不同步问题）
+  // 安全修复（审阅 26 P1-1）：事件不再携带明文 Key，收到通知后从安全存储按需回读。
   React.useEffect(() => {
-    const handleApiKeyChanged = (event: Event) => {
-      const customEvent = event as CustomEvent<{ apiKey: string }>;
-      if (customEvent.detail?.apiKey !== undefined) {
-        setApiKey(customEvent.detail.apiKey);
-        lastSavedApiKeyRef.current = customEvent.detail.apiKey.trim();
+    let disposed = false;
+    const handleApiKeyChanged = () => {
+      void (async () => {
+        let latest = '';
+        try {
+          latest = (await TauriAPI.getSetting(siliconFlowVendorKey)) ?? '';
+        } catch (error: unknown) {
+          console.warn('同步 SiliconFlow API Key 失败:', error);
+          return;
+        }
+        if (disposed) return;
+        setApiKey(latest);
+        lastSavedApiKeyRef.current = latest.trim();
         setConfirmingClearApiKey(false);
         clearStatusTimer();
         setApiKeyStatus('idle');
-        if (!customEvent.detail.apiKey.trim()) {
+        if (!latest.trim()) {
           setShowApiKey(false);
         }
-      }
+      })();
     };
 
     if (typeof window !== 'undefined') {
       window.addEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
       return () => {
+        disposed = true;
         window.removeEventListener('siliconflow-apikey-changed', handleApiKeyChanged);
       };
     }
-  }, [clearStatusTimer]);
+  }, [clearStatusTimer, siliconFlowVendorKey]);
 
   React.useEffect(() => {
     return () => {
@@ -364,11 +380,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     const isDirty = value.trim() !== lastSavedApiKeyRef.current;
     setApiKeyStatus(isDirty ? 'dirty' : 'idle');
 
-    // 防抖自动保存：输入停止 800ms 后自动保存
+    // 防抖自动保存：输入停止 800ms 后自动保存。
+    // 安全校验（审阅 26 P1-2）：仅当内容形似完整 Key 时才自动保存，
+    // 避免半截 Key 被持久化并携带其向供应商发起真实请求。
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
-    if (isDirty) {
+    if (isDirty && isPlausibleApiKey(value)) {
       autoSaveTimerRef.current = setTimeout(() => {
         void handleSaveApiKey();
       }, 800);
@@ -376,13 +394,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   };
 
   const handleApiKeyBlur = () => {
-    // 失焦时取消防抖 timer 并立即保存（如果内容已变更）
+    // 失焦时取消防抖 timer 并立即保存（如果内容已变更且形似完整 Key）
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
     const trimmed = apiKey.trim();
-    if (trimmed && trimmed !== lastSavedApiKeyRef.current) {
+    if (trimmed && trimmed !== lastSavedApiKeyRef.current && isPlausibleApiKey(trimmed)) {
       void handleSaveApiKey();
     }
   };

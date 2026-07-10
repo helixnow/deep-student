@@ -117,25 +117,58 @@ describe('VendorConfigModal add vendor flow', () => {
     expect(await screen.findByRole('heading', { name: '添加供应商' })).toBeInTheDocument();
 
     const nameInput = screen.getByLabelText('供应商名称');
+    const [, protocolSelect] = screen.getAllByRole('combobox');
+    const baseUrlInput = screen.getByLabelText('接口地址');
+
+    await user.type(nameInput, 'Responses 代理');
+    await user.type(baseUrlInput, 'https://proxy.example.com/v1');
+    expect(screen.queryByLabelText('Supports OpenAI Responses')).not.toBeInTheDocument();
+    expect(protocolSelect).toHaveValue('openai_chat_completions');
+    await user.selectOptions(protocolSelect, 'openai_responses');
+    expect(protocolSelect).toHaveValue('openai_responses');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Responses 代理',
+      apiProtocol: 'openai_responses',
+      supportsOpenAIResponses: true,
+      baseUrl: 'https://proxy.example.com/v1',
+      apiKey: '',
+    }));
+  }, 15000);
+
+  it('does not offer the phantom responses protocol for DeepSeek and normalizes back to chat completions', async () => {
+    const user = userEvent.setup();
+    const handleSave = vi.fn();
+
+    render(
+      <VendorConfigModal
+        open
+        vendor={null}
+        onClose={vi.fn()}
+        onSave={handleSave}
+      />,
+    );
+
+    const nameInput = screen.getByLabelText('供应商名称');
     const [providerSelect, protocolSelect] = screen.getAllByRole('combobox');
     const baseUrlInput = screen.getByLabelText('接口地址');
 
     await user.type(nameInput, 'DeepSeek 镜像');
     await user.type(baseUrlInput, 'https://api.deepseek.com/v1');
-    expect(screen.queryByLabelText('Supports OpenAI Responses')).not.toBeInTheDocument();
-    expect(protocolSelect).toHaveValue('openai_chat_completions');
-    await user.selectOptions(protocolSelect, 'openai_responses');
-    expect(protocolSelect).toHaveValue('openai_responses');
     await user.selectOptions(providerSelect, 'deepseek');
+
+    // DeepSeek 无 Responses 端点（2026-07 调研 07）：协议下拉不得出现 openai_responses。
+    expect(screen.queryByRole('option', { name: 'OpenAI Responses' })).not.toBeInTheDocument();
+    expect(protocolSelect).toHaveValue('openai_chat_completions');
+
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({
-      name: 'DeepSeek 镜像',
       providerType: 'deepseek',
-      apiProtocol: 'openai_responses',
-      supportsOpenAIResponses: true,
+      apiProtocol: 'openai_chat_completions',
+      supportsOpenAIResponses: false,
       baseUrl: 'https://api.deepseek.com/v1',
-      apiKey: '',
     }));
   }, 15000);
 

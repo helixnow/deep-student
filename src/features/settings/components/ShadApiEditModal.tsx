@@ -63,6 +63,8 @@ const SUPPORTED_MODEL_ADAPTERS = [
   'grok',       // xAI Grok
   'minimax',    // MiniMax
   'mimo',       // Xiaomi MiMo
+  'ernie',      // 百度文心（千帆 v2）
+  'mistral',    // Mistral
 ] as const;
 
 const ADAPTER_DEFAULT_BASE_URL: Record<string, string> = {
@@ -77,6 +79,8 @@ const ADAPTER_DEFAULT_BASE_URL: Record<string, string> = {
   grok: 'https://api.x.ai/v1',
   minimax: 'https://api.minimax.io/v1',
   mimo: 'https://api.xiaomimimo.com/v1',
+  ernie: 'https://qianfan.baidubce.com/v2',
+  mistral: 'https://api.mistral.ai/v1',
 };
 
 export const GENERAL_DEFAULT_MIN_P = 0.05;
@@ -489,6 +493,16 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         value: 'mimo',
         label: t('common:api_config_modal.adapter_mimo', 'Xiaomi MiMo'),
         description: t('common:api_config_modal.adapter_mimo_desc', 'MiMo series, supports thinking.type and reasoning_content'),
+      },
+      {
+        value: 'ernie',
+        label: t('common:api_config_modal.adapter_ernie', 'Baidu ERNIE'),
+        description: t('common:api_config_modal.adapter_ernie_desc', 'ERNIE 5.x / X1.1 via Qianfan v2, reasoning_content compatible'),
+      },
+      {
+        value: 'mistral',
+        label: t('common:api_config_modal.adapter_mistral', 'Mistral'),
+        description: t('common:api_config_modal.adapter_mistral_desc', 'Mistral Large/Medium/Small, reasoning_effort support'),
       },
     ],
     [t]
@@ -964,7 +978,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 </TabsContent>
 
                 {/* Capabilities Tab */}
-                <TabsContent value="capabilities" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <TabsContent value="capabilities" className="mt-0 focus-visible:outline-none">
                   <div className="grid gap-2">
                     {capabilityOptions.map(option => {
                       const checked = !!(formData as any)[option.key];
@@ -1026,7 +1040,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 </TabsContent>
 
                 {/* Params Tab */}
-                <TabsContent value="params" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <TabsContent value="params" className="mt-0 focus-visible:outline-none">
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
                       <Label htmlFor={fieldIds.temperature} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
@@ -1203,7 +1217,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 </TabsContent>
 
                 {/* Reasoning Tab */}
-                <TabsContent value="reasoning" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
+                <TabsContent value="reasoning" className="mt-0 focus-visible:outline-none">
                   {formData.modelAdapter === 'general' && (
                     <div className="space-y-6">
                       <div className="grid gap-3 md:grid-cols-2">

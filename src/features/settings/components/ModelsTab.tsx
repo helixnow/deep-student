@@ -205,7 +205,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   const notify = (key: string) => t(`settings:save_notifications.${key}`);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="model-assignment">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="model-assignment">
       <SettingSection 
         title={t('settings:sections.model_assignment_title')} 
         description={t('settings:sections.model_assignment_desc')} 

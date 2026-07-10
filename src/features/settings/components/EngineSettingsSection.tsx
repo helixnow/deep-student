@@ -352,7 +352,7 @@ export const EngineSettingsSection: React.FC<{
 
         <div className="space-y-8 w-full min-w-0">
           {activeEngine === 'google_cse' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -389,7 +389,7 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'serpapi' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -415,7 +415,7 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'tavily' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -441,7 +441,7 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'brave' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -467,7 +467,7 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'searxng' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -504,7 +504,7 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'zhipu' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">
@@ -530,7 +530,7 @@ export const EngineSettingsSection: React.FC<{
           )}
 
           {activeEngine === 'bocha' && (
-            <div className="w-full animate-in fade-in duration-200">
+            <div className="w-full ui-rise-in">
               <div className="flex flex-col gap-2 mb-6">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2 min-w-0">

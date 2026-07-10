@@ -386,10 +386,11 @@ impl LLMManager {
         let body_size_estimate = serde_json::to_string(&preq.body)
             .map(|s| s.len())
             .unwrap_or(0);
+        // 🔒 P1-2 修复：Gemini 系引擎的 URL query 中含 API key，日志必须先脱敏
         info!(
             "[DeepSeek-OCR] 页面 {} 发送请求: url={}, body_size≈{}KB",
             page_index,
-            preq.url,
+            super::model2_pipeline::sanitize_url_for_log(&preq.url),
             body_size_estimate / 1024
         );
 

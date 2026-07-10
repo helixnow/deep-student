@@ -9,6 +9,7 @@ import { Check, FloppyDisk, Spinner, Trash, WarningCircle } from '@phosphor-icon
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { VendorConfig } from '@/types';
 import { ApiKeyField } from './ApiKeyField';
+import { isPlausibleApiKey } from '../utils/apiKeyValidation';
 
 interface VendorApiKeySectionProps {
   vendor: VendorConfig;
@@ -154,11 +155,13 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     const isDirty = trimmed && trimmed !== lastSavedKeyRef.current;
     setSaveStatus(isDirty ? 'dirty' : 'idle');
 
-    // 防抖自动保存：输入停止 800ms 后自动保存
+    // 防抖自动保存：输入停止 800ms 后自动保存。
+    // 安全校验（审阅 26 P1-2）：仅当内容形似完整 Key 时才自动保存，
+    // 避免半截 Key 被持久化并携带其向供应商发起真实请求。
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
     }
-    if (isDirty) {
+    if (isDirty && isPlausibleApiKey(trimmed)) {
       autoSaveTimerRef.current = setTimeout(() => {
         void handleSaveApiKey();
       }, 800);
@@ -166,13 +169,13 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   };
 
   const handleApiKeyBlur = () => {
-    // 失焦时取消防抖 timer 并立即保存（如果内容已变更）
+    // 失焦时取消防抖 timer 并立即保存（如果内容已变更且形似完整 Key）
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
     }
     const trimmed = apiKey.trim();
-    if (trimmed && trimmed !== lastSavedKeyRef.current) {
+    if (trimmed && trimmed !== lastSavedKeyRef.current && isPlausibleApiKey(trimmed)) {
       void handleSaveApiKey();
     }
   };

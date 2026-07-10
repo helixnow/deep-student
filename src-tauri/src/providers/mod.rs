@@ -1,3 +1,4 @@
+use crate::llm_manager::adapters::{claude_generation, map_budget_tokens_to_effort, ClaudeGeneration};
 use crate::utils::fetch::fetch_binary_with_cache;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -97,19 +98,81 @@ impl ProviderAdapter for OpenAIAdapter {
             }
 
             if let Ok(json_data) = serde_json::from_str::<Value>(data) {
+                // 流中错误注入：OpenRouter 等聚合网关会以 {"error":{...}} 数据行
+                // 报告中途错误（研报 09 §1），必须上报而非静默忽略
+                if let Some(error) = json_data.get("error") {
+                    if !error.is_null() {
+                        log::error!("[OpenAIAdapter] Stream error event: {}", error);
+                        events.push(StreamEvent::SafetyBlocked(json!({
+                            "type": "provider_error",
+                            "reason": "stream_error",
+                            "details": error.clone()
+                        })));
+                        events.push(StreamEvent::Done);
+                        return events;
+                    }
+                }
+
                 // OpenAI 走 choices[].delta 路径
                 if let Some(choices) = json_data["choices"].as_array() {
                     for choice in choices {
                         if let Some(delta) = choice["delta"].as_object() {
                             // 内容块（使用 get 避免缺键 panic）
-                            if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
-                                events.push(StreamEvent::ContentChunk(content.to_string()));
+                            match delta.get("content") {
+                                Some(Value::String(content)) => {
+                                    events.push(StreamEvent::ContentChunk(content.to_string()));
+                                }
+                                // Mistral 推理模式：delta.content 会在字符串与
+                                // ThinkChunk/TextChunk 块数组之间变形（研报 04 要点 4）
+                                Some(Value::Array(parts)) => {
+                                    push_openai_content_part_events(&mut events, parts);
+                                }
+                                _ => {}
                             }
-                            // DeepSeek-R1 推理内容
+                            // 推理内容：兼容多种字段形态（研报 09 要点 4）
+                            // (b) reasoning_content：DeepSeek/SiliconFlow/Fireworks 等
+                            let mut reasoning_seen = false;
                             if let Some(reasoning) =
                                 delta.get("reasoning_content").and_then(|v| v.as_str())
                             {
                                 events.push(StreamEvent::ReasoningChunk(reasoning.to_string()));
+                                reasoning_seen = true;
+                            }
+                            // (c) reasoning 字符串：Together/Groq(parsed)/Cerebras/阶跃
+                            if !reasoning_seen {
+                                if let Some(reasoning) =
+                                    delta.get("reasoning").and_then(|v| v.as_str())
+                                {
+                                    if !reasoning.is_empty() {
+                                        events.push(StreamEvent::ReasoningChunk(
+                                            reasoning.to_string(),
+                                        ));
+                                        reasoning_seen = true;
+                                    }
+                                }
+                            }
+                            // (a) reasoning_details 数组：OpenRouter（取 text/summary 文本；
+                            // reasoning.encrypted 无明文可展示，跳过）
+                            if !reasoning_seen {
+                                if let Some(details) =
+                                    delta.get("reasoning_details").and_then(|v| v.as_array())
+                                {
+                                    for detail in details {
+                                        let text = detail
+                                            .get("text")
+                                            .and_then(|v| v.as_str())
+                                            .or_else(|| {
+                                                detail.get("summary").and_then(|v| v.as_str())
+                                            });
+                                        if let Some(text) = text {
+                                            if !text.is_empty() {
+                                                events.push(StreamEvent::ReasoningChunk(
+                                                    text.to_string(),
+                                                ));
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             // 工具调用
                             if let Some(tool_calls) =
@@ -136,6 +199,55 @@ impl ProviderAdapter for OpenAIAdapter {
         }
 
         events
+    }
+}
+
+/// 处理 delta.content 为块数组的形态（Mistral ThinkChunk/TextChunk，研报 04 要点 4）：
+/// type:"text" 块拼接为正文，thinking/think 类块作为 reasoning 内容发送。
+fn push_openai_content_part_events(events: &mut Vec<StreamEvent>, parts: &[Value]) {
+    for part in parts {
+        // 极简形态：数组元素直接是字符串
+        if let Some(text) = part.as_str() {
+            if !text.is_empty() {
+                events.push(StreamEvent::ContentChunk(text.to_string()));
+            }
+            continue;
+        }
+
+        let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("text");
+        match part_type {
+            "thinking" | "think" | "reasoning" => {
+                // ThinkChunk 的 thinking 字段是 TextChunk 列表（也可能是字符串）
+                match part.get("thinking").or_else(|| part.get("text")) {
+                    Some(Value::String(text)) => {
+                        if !text.is_empty() {
+                            events.push(StreamEvent::ReasoningChunk(text.to_string()));
+                        }
+                    }
+                    Some(Value::Array(chunks)) => {
+                        for chunk in chunks {
+                            let text = chunk
+                                .as_str()
+                                .or_else(|| chunk.get("text").and_then(|v| v.as_str()));
+                            if let Some(text) = text {
+                                if !text.is_empty() {
+                                    events.push(StreamEvent::ReasoningChunk(text.to_string()));
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {
+                // text/output_text 及未知类型：有 text 字段就当正文
+                if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                    if !text.is_empty() {
+                        events.push(StreamEvent::ContentChunk(text.to_string()));
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -184,6 +296,17 @@ fn sanitize_openai_tools_array(tools: &[Value]) -> Vec<Value> {
     let mut sanitized = Vec::new();
 
     for tool in tools {
+        // 非 function 类型的工具（内置工具/服务端工具，如 web_search、openrouter:web_search）
+        // 原样透传，不做名称/参数归一化
+        let tool_type = tool
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("function");
+        if tool_type != "function" {
+            sanitized.push(tool.clone());
+            continue;
+        }
+
         let Some(function) = tool.get("function").and_then(|value| value.as_object()) else {
             continue;
         };
@@ -261,9 +384,11 @@ fn sanitize_openai_tool_choice(
         return None;
     }
 
+    // Chat Completions 协议要求嵌套形状 {"type":"function","function":{"name":...}}；
+    // Responses 路径由 convert_tool_call_to_response_tool_choice 再转成扁平形状
     Some(json!({
         "type": "function",
-        "name": name,
+        "function": { "name": name },
     }))
 }
 
@@ -306,9 +431,31 @@ fn sanitize_openai_request_body(body: &Value) -> Value {
     sanitized
 }
 
-pub struct OpenAIResponsesAdapter;
+pub struct OpenAIResponsesAdapter {
+    /// 是否已收到过 reasoning 增量（`.delta` 事件）。
+    /// `.done` 事件携带的是全量文本，仅在未收到任何增量时才作为兜底推送，
+    /// 否则思维链会被重复推送（研报 01 §1.4）。
+    saw_reasoning_delta: std::sync::atomic::AtomicBool,
+    /// 是否已推送过任何 reasoning 内容（增量或 .done 兜底）。
+    /// `response.completed` 中的 extract_reasoning_text 仅在此前完全没有
+    /// reasoning 输出时才兜底推送一次。
+    emitted_reasoning: std::sync::atomic::AtomicBool,
+}
+
+impl Default for OpenAIResponsesAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl OpenAIResponsesAdapter {
+    pub fn new() -> Self {
+        Self {
+            saw_reasoning_delta: std::sync::atomic::AtomicBool::new(false),
+            emitted_reasoning: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
     fn push_message_parts(parts: &mut Vec<Value>, role: &str, content: &Value) {
         match content {
             Value::String(text) => {
@@ -468,6 +615,63 @@ impl OpenAIResponsesAdapter {
         None
     }
 
+    /// Chat Completions 嵌套工具定义 {"type":"function","function":{...}} 转换为
+    /// Responses 扁平格式 {"type":"function","name","description","parameters","strict"}。
+    /// 非 function 类型（内置工具等）与已是扁平格式的定义原样透传（研报 01 要点 6）。
+    fn convert_tool_definition_to_responses(tool: &Value) -> Value {
+        let tool_type = tool
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("function");
+        if tool_type != "function" {
+            return tool.clone();
+        }
+
+        let Some(function) = tool.get("function").and_then(|v| v.as_object()) else {
+            // 无嵌套 function 对象：可能已经是扁平格式，原样透传
+            return tool.clone();
+        };
+
+        let mut flat = Map::new();
+        flat.insert("type".to_string(), json!("function"));
+        for key in ["name", "description", "parameters"] {
+            if let Some(value) = function.get(key) {
+                flat.insert(key.to_string(), value.clone());
+            }
+        }
+        // strict 语义差异：CC 缺省为非 strict，而 Responses 缺省会尝试服务端自动
+        // strict 化。为保持与调用方 CC 请求一致的语义，缺省时显式传 false；
+        // 显式指定时原样透传（研报 01 要点 6）
+        flat.insert(
+            "strict".to_string(),
+            function.get("strict").cloned().unwrap_or(json!(false)),
+        );
+        Value::Object(flat)
+    }
+
+    /// CC 的 response_format:{type:"json_schema",json_schema:{name,schema,strict}}
+    /// 需扁平化为 Responses 的 text.format:{type:"json_schema",name,schema,strict}；
+    /// json_object / text 等其他取值原样兼容（研报 01 要点 7）。
+    fn convert_response_format_to_text_format(response_format: &Value) -> Value {
+        let format_type = response_format
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if format_type == "json_schema" {
+            if let Some(nested) = response_format.get("json_schema").and_then(|v| v.as_object()) {
+                let mut flat = Map::new();
+                flat.insert("type".to_string(), json!("json_schema"));
+                for (key, value) in nested {
+                    if key != "type" {
+                        flat.insert(key.clone(), value.clone());
+                    }
+                }
+                return Value::Object(flat);
+            }
+        }
+        response_format.clone()
+    }
+
     fn convert_response_tool_call(item: &Value) -> Option<Value> {
         let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if item_type != "function_call" {
@@ -567,11 +771,21 @@ impl OpenAIResponsesAdapter {
             }));
         }
 
+        // 尊重调用方 body 中的 stream 值：非流式路径（标题生成/OCR 等）显式传
+        // stream:false 时必须透传，否则收到 SSE 流导致 JSON 解析失败；缺省仍为 true
+        let stream_enabled = body
+            .get("stream")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
         let mut payload = json!({
             "model": model,
             "input": input_blocks,
-            "stream": true,
+            "stream": stream_enabled,
         });
+
+        // Responses 服务端默认 store:true（保存 30 天）。桌面应用以隐私为先，
+        // 调用方未显式指定时默认关闭服务端留存（研报 01 要点 10）
+        payload["store"] = body.get("store").cloned().unwrap_or(json!(false));
 
         if !instructions.is_empty() {
             payload["instructions"] = json!(instructions.join("\n\n"));
@@ -619,7 +833,7 @@ impl OpenAIResponsesAdapter {
 
         if let Some(response_format) = body.get("response_format") {
             payload["text"] = json!({
-                "format": response_format.clone()
+                "format": Self::convert_response_format_to_text_format(response_format)
             });
         }
 
@@ -636,7 +850,11 @@ impl OpenAIResponsesAdapter {
 
         if let Some(tools) = body.get("tools").and_then(|v| v.as_array()) {
             if !tools.is_empty() {
-                payload["tools"] = Value::Array(tools.clone());
+                let converted: Vec<Value> = tools
+                    .iter()
+                    .map(Self::convert_tool_definition_to_responses)
+                    .collect();
+                payload["tools"] = Value::Array(converted);
             }
         }
 
@@ -752,17 +970,38 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                     }
                 }
             }
-            "response.reasoning_text.delta"
-            | "response.reasoning_summary_text.delta"
-            | "response.reasoning_text.done"
-            | "response.reasoning_summary_text.done" => {
+            "response.reasoning_text.delta" | "response.reasoning_summary_text.delta" => {
                 let text = parsed
                     .get("delta")
                     .and_then(|v| v.as_str())
                     .or_else(|| parsed.get("text").and_then(|v| v.as_str()));
                 if let Some(reasoning) = text {
                     if !reasoning.is_empty() {
+                        self.saw_reasoning_delta
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
+                        self.emitted_reasoning
+                            .store(true, std::sync::atomic::Ordering::Relaxed);
                         events.push(StreamEvent::ReasoningChunk(reasoning.to_string()));
+                    }
+                }
+            }
+            "response.reasoning_text.done" | "response.reasoning_summary_text.done" => {
+                // .done 事件的 text 是全量文本：仅在此前未收到任何 .delta 增量时
+                // 才兜底推送一次，避免思维链重复（研报 01 §1.4）
+                if !self
+                    .saw_reasoning_delta
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    let text = parsed
+                        .get("text")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| parsed.get("delta").and_then(|v| v.as_str()));
+                    if let Some(reasoning) = text {
+                        if !reasoning.is_empty() {
+                            self.emitted_reasoning
+                                .store(true, std::sync::atomic::Ordering::Relaxed);
+                            events.push(StreamEvent::ReasoningChunk(reasoning.to_string()));
+                        }
                     }
                 }
             }
@@ -792,10 +1031,17 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
                 }
             }
             "response.completed" => {
-                if let Some(response) = parsed.get("response") {
-                    if let Some(reasoning) = Self::extract_reasoning_text(response) {
-                        if !reasoning.is_empty() {
-                            events.push(StreamEvent::ReasoningChunk(reasoning));
+                // 仅在整个流中没有收到任何 reasoning 内容（.delta 增量或 .done 兜底）
+                // 时，才从最终 response.output 中兜底提取一次，避免重复推送
+                if !self
+                    .emitted_reasoning
+                    .load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    if let Some(response) = parsed.get("response") {
+                        if let Some(reasoning) = Self::extract_reasoning_text(response) {
+                            if !reasoning.is_empty() {
+                                events.push(StreamEvent::ReasoningChunk(reasoning));
+                            }
                         }
                     }
                 }
@@ -835,6 +1081,12 @@ impl ProviderAdapter for OpenAIResponsesAdapter {
 // Anthropic Claude 适配
 pub struct AnthropicAdapter {
     pending_tool_calls: Arc<Mutex<HashMap<i32, PartialToolCall>>>,
+    /// thinking 块的 signature_delta 累积缓冲（按 content block index）
+    /// content_block_stop 时以 StreamEvent::ThoughtSignature 上抛
+    pending_signatures: Arc<Mutex<HashMap<i32, String>>>,
+    /// message_start 中的 input_tokens（message_delta 的 usage 通常只有 output_tokens，
+    /// 需要合并后再上报，否则输入用量统计缺失）
+    input_tokens_from_start: Arc<Mutex<Option<i64>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -849,7 +1101,32 @@ impl AnthropicAdapter {
     pub fn new() -> Self {
         Self {
             pending_tool_calls: Arc::new(Mutex::new(HashMap::new())),
+            pending_signatures: Arc::new(Mutex::new(HashMap::new())),
+            input_tokens_from_start: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// 构建 usage 事件，若本次 usage 缺失 input_tokens 则合并 message_start 缓存值
+    fn build_merged_usage_event(&self, usage: &Value) -> Option<Value> {
+        let missing_input = usage
+            .get("input_tokens")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0)
+            == 0;
+        if missing_input {
+            if let Some(input_tokens) = self
+                .input_tokens_from_start
+                .lock()
+                .ok()
+                .and_then(|guard| *guard)
+            {
+                if let Value::Object(mut merged) = usage.clone() {
+                    merged.insert("input_tokens".to_string(), json!(input_tokens));
+                    return build_usage_event(&Value::Object(merged));
+                }
+            }
+        }
+        build_usage_event(usage)
     }
 
     fn convert_openai_to_anthropic(&self, model: &str, body: &Value) -> AnthropicRequest {
@@ -864,14 +1141,35 @@ impl AnthropicAdapter {
             .and_then(|v| v.as_i64())
             .unwrap_or(1024) as i32;
 
-        // 提取 thinking 配置
-        // 格式: { "type": "enabled", "budget_tokens": 10240 }
-        let thinking = body.get("thinking").cloned();
-        let has_thinking = thinking
-            .as_ref()
-            .and_then(|t| t.get("type"))
-            .and_then(|t| t.as_str())
-            == Some("enabled");
+        // thinking 请求形态按代际分叉（研报 02 §3.1）：
+        // - 旧代际 manual: { "type": "enabled", "budget_tokens": 10240 }
+        // - 新代际 adaptive: { "type": "adaptive"[, "display"] } + output_config.effort
+        //   （Opus 4.7/4.8、Sonnet 5、Fable 5 上传 enabled 会直接 400）
+        let generation = claude_generation(model);
+        let is_adaptive_generation = generation == ClaudeGeneration::Adaptive;
+
+        let mut thinking = body.get("thinking").cloned();
+        // 安全网：上游若仍以旧 manual 形态注入 thinking（绕过 RequestAdapter 的调用方），
+        // 对新代际改写为 adaptive，并把 budget_tokens 近似映射为 effort
+        let mut derived_effort: Option<String> = None;
+        if is_adaptive_generation {
+            if let Some(t) = thinking.as_mut() {
+                if t.get("type").and_then(|v| v.as_str()) == Some("enabled") {
+                    if let Some(budget) = t.get("budget_tokens").and_then(|v| v.as_i64()) {
+                        derived_effort =
+                            Some(map_budget_tokens_to_effort(budget as i32).to_string());
+                    }
+                    *t = json!({ "type": "adaptive" });
+                }
+            }
+        }
+        let has_thinking = matches!(
+            thinking
+                .as_ref()
+                .and_then(|t| t.get("type"))
+                .and_then(|t| t.as_str()),
+            Some("enabled") | Some("adaptive")
+        );
 
         // 当启用 extended thinking 时，Anthropic 要求 temperature 必须为 1 或不设置
         // 参考: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
@@ -883,8 +1181,10 @@ impl AnthropicAdapter {
             .map(|v| v as f32);
         let raw_top_p = body.get("top_p").and_then(|v| v.as_f64()).map(|v| v as f32);
 
-        let (temperature, top_p) = if has_thinking {
-            (None, None) // Extended thinking 不支持自定义采样参数
+        // 新代际（Fable 5 / Opus 4.7/4.8 / Sonnet 5）对非默认 temperature/top_p/top_k
+        // 一律 400（研报 02 要点 4，与 thinking 开关无关）→ 无条件剥离
+        let (temperature, top_p) = if has_thinking || is_adaptive_generation {
+            (None, None) // Extended thinking / 新代际不支持自定义采样参数
         } else {
             // Claude 4.5+ 不能同时使用 temperature 和 top_p，优先使用 temperature
             match (raw_temperature, raw_top_p) {
@@ -896,8 +1196,8 @@ impl AnthropicAdapter {
         };
         // Top-K 采样参数（仅考虑最可能的 K 个 token）
         // 参考: https://docs.anthropic.com/en/api/messages
-        let top_k = if has_thinking {
-            None // Extended thinking 不支持自定义 top_k
+        let top_k = if has_thinking || is_adaptive_generation {
+            None // Extended thinking / 新代际不支持自定义 top_k
         } else {
             body.get("top_k").and_then(|v| v.as_i64()).map(|v| v as i32)
         };
@@ -998,9 +1298,13 @@ impl AnthropicAdapter {
             .get("response_format")
             .and_then(convert_response_format_for_anthropic);
 
+        // output_config.effort：优先用 body 中的 effort，其次是从旧 manual thinking
+        // budget_tokens 派生的近似值（仅新代际安全网路径会产生 derived_effort）
         let mut output_config = body
             .get("effort")
             .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or(derived_effort)
             .map(|effort| json!({ "effort": effort }));
 
         if let Some(format) = response_format.clone() {
@@ -1069,34 +1373,36 @@ impl ProviderAdapter for AnthropicAdapter {
         let body_value = serde_json::to_value(&request)
             .map_err(|e| ProviderError::BuildFailed(format!("构建 Anthropic 请求体失败: {}", e)))?;
 
-        let mut beta_features: Vec<&'static str> = vec!["prompt-caching-2024-07-31"];
+        // beta 头清理（研报 02）：prompt caching / tool use / extended thinking 均已 GA，
+        // 不再发送 prompt-caching-2024-07-31 / tools-2024-04-04 / thinking-2024-07-31
+        // （官方端点对未知 beta 值可能 400）
+        let mut beta_features: Vec<&'static str> = Vec::new();
         let has_tools = body
             .get("tools")
             .and_then(|v| v.as_array())
             .map(|arr| !arr.is_empty())
             .unwrap_or(false);
-        if has_tools {
-            // 官方工具调用仍需启用 tools-2024-04-04 beta 标识
-            beta_features.push("tools-2024-04-04");
-        }
-        let has_thinking = body.get("thinking").is_some();
-        if has_thinking {
-            // Claude 扩展思维链目前要求 thinking-2024-07-31 beta 标识
-            beta_features.push("thinking-2024-07-31");
-
-            // Claude 4.x 支持交错思维（interleaved thinking）
-            // 允许在工具调用场景中保持思维链的连续性
-            // 参考文档：https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+        let generation = claude_generation(model);
+        let manual_thinking_enabled = body
+            .get("thinking")
+            .and_then(|t| t.get("type"))
+            .and_then(|v| v.as_str())
+            == Some("enabled");
+        // interleaved thinking：adaptive 一代自动启用无需 beta 头（研报 02 §3.3）；
+        // 仅对旧代际 Claude 4.x 的 manual thinking + 工具场景保留
+        if manual_thinking_enabled && has_tools && generation == ClaudeGeneration::Manual {
             let is_claude_4 = model.contains("claude-4")
                 || model.contains("claude-opus-4")
                 || model.contains("claude-sonnet-4");
-            if is_claude_4 && has_tools {
+            if is_claude_4 {
                 beta_features.push("interleaved-thinking-2025-05-14");
             }
         }
 
+        // effort 参数：新代际随 adaptive thinking GA 无需 beta 头；
+        // 旧代际（Opus 4.5 时期的 effort 通道）仍保留原 beta 标识
         let has_effort = body.get("effort").is_some();
-        if has_effort {
+        if has_effort && generation != ClaudeGeneration::Adaptive {
             beta_features.push("effort-2025-11-24");
         }
 
@@ -1146,6 +1452,18 @@ impl ProviderAdapter for AnthropicAdapter {
                         if let Some(text) = delta.get("thinking").and_then(|v| v.as_str()) {
                             if !text.is_empty() {
                                 events.push(StreamEvent::ReasoningChunk(text.to_string()));
+                            }
+                        }
+                    } else if delta.get("type").and_then(|v| v.as_str()) == Some("signature_delta")
+                    {
+                        // thinking 块加密签名，在 content_block_stop 前送达；
+                        // display:"omitted" 时思考块只有 signature_delta 没有 thinking_delta。
+                        // 按 index 累积，content_block_stop 时整体上抛
+                        let index =
+                            json_data.get("index").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        if let Some(fragment) = delta.get("signature").and_then(|v| v.as_str()) {
+                            if let Ok(mut guard) = self.pending_signatures.lock() {
+                                guard.entry(index).or_default().push_str(fragment);
                             }
                         }
                     } else if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
@@ -1200,6 +1518,15 @@ impl ProviderAdapter for AnthropicAdapter {
             }
             "content_block_stop" => {
                 let index = json_data.get("index").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                // thinking 块结束：上抛累积的加密签名（复用 Gemini 的 thought_signature 管道，
+                // 上层缓存后在当前工具循环轮内回传）
+                if let Ok(mut guard) = self.pending_signatures.lock() {
+                    if let Some(signature) = guard.remove(&index) {
+                        if !signature.is_empty() {
+                            events.push(StreamEvent::ThoughtSignature(signature));
+                        }
+                    }
+                }
                 if let Ok(mut guard) = self.pending_tool_calls.lock() {
                     if let Some(tool_call) = guard.remove(&index) {
                         let args_value = tool_call
@@ -1228,31 +1555,85 @@ impl ProviderAdapter for AnthropicAdapter {
                     }
                 }
             }
-            "message_delta" => {
-                if let Some(delta) = json_data.get("delta").and_then(|v| v.as_object()) {
-                    if let Some(usage) = delta.get("usage") {
-                        if let Some(usage_value) = build_usage_event(usage) {
-                            events.push(StreamEvent::Usage(usage_value));
-                        }
+            "message_start" => {
+                // message_start 含初始 usage（input_tokens）；message_delta 的 usage
+                // 通常只有 output_tokens，缓存 input_tokens 供后续合并（研报 02 §2.2）
+                if let Some(usage) = json_data.get("message").and_then(|m| m.get("usage")) {
+                    let input_tokens = usage.get("input_tokens").and_then(|v| v.as_i64());
+                    if let Ok(mut guard) = self.input_tokens_from_start.lock() {
+                        *guard = input_tokens;
                     }
-                    if let Some(stop_reason) = delta.get("stop_reason").and_then(|v| v.as_str()) {
-                        if stop_reason == "safety" {
-                            events.push(StreamEvent::SafetyBlocked(json!({
-                                "type": "content_blocked",
-                                "reason": stop_reason
-                            })));
-                        }
-                    }
-                }
-                if let Some(usage) = json_data.get("usage") {
                     if let Some(usage_value) = build_usage_event(usage) {
                         events.push(StreamEvent::Usage(usage_value));
                     }
                 }
             }
+            "message_delta" => {
+                if let Some(delta) = json_data.get("delta").and_then(|v| v.as_object()) {
+                    if let Some(usage) = delta.get("usage") {
+                        if let Some(usage_value) = self.build_merged_usage_event(usage) {
+                            events.push(StreamEvent::Usage(usage_value));
+                        }
+                    }
+                    if let Some(stop_reason) = delta.get("stop_reason").and_then(|v| v.as_str()) {
+                        match stop_reason {
+                            // Fable 5：安全分类器拒绝返回 HTTP 200 + stop_reason:"refusal"
+                            // （含 stop_details.category），需向用户提示（研报 02 要点 5）
+                            "safety" | "refusal" => {
+                                let mut payload = json!({
+                                    "type": "content_blocked",
+                                    "reason": stop_reason
+                                });
+                                if let Some(details) = delta.get("stop_details") {
+                                    payload["stop_details"] = details.clone();
+                                }
+                                events.push(StreamEvent::SafetyBlocked(payload));
+                            }
+                            // Claude 4.5+：输入+输出超过上下文窗口时生成到上限后停止，
+                            // 转成可见的结束原因（研报 02 §1.3）
+                            "model_context_window_exceeded" => {
+                                events.push(StreamEvent::SafetyBlocked(json!({
+                                    "type": "provider_error",
+                                    "reason": stop_reason,
+                                    "details": {
+                                        "message": "输出因达到模型上下文窗口上限而被截断 (model_context_window_exceeded)"
+                                    }
+                                })));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                if let Some(usage) = json_data.get("usage") {
+                    if let Some(usage_value) = self.build_merged_usage_event(usage) {
+                        events.push(StreamEvent::Usage(usage_value));
+                    }
+                }
+            }
+            "error" => {
+                // SSE error 事件（过载/内部错误等）：必须上报而非静默吞掉，
+                // 否则表现为"半截回复无任何提示"（研报 02 §2.2 第 5 条）
+                let error_detail = json_data
+                    .get("error")
+                    .cloned()
+                    .unwrap_or_else(|| json_data.clone());
+                log::error!("[AnthropicAdapter] Stream error event: {}", error_detail);
+                events.push(StreamEvent::SafetyBlocked(json!({
+                    "type": "provider_error",
+                    "reason": "stream_error",
+                    "details": error_detail
+                })));
+                events.push(StreamEvent::Done);
+            }
             "message_stop" => {
                 if let Ok(mut guard) = self.pending_tool_calls.lock() {
                     guard.clear();
+                }
+                if let Ok(mut guard) = self.pending_signatures.lock() {
+                    guard.clear();
+                }
+                if let Ok(mut guard) = self.input_tokens_from_start.lock() {
+                    *guard = None;
                 }
                 events.push(StreamEvent::Done);
             }
@@ -1316,11 +1697,21 @@ enum AnthropicContentBlock {
     Text { text: String },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
-    /// Anthropic Extended Thinking 内容块
+    /// Anthropic Extended/Adaptive Thinking 内容块
     /// 用于在多轮对话中传递历史 thinking 内容
-    /// 参考: https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking
+    /// 工具调用场景下必须带 signature 原样回传（否则 400），
+    /// 新代际 display:"omitted" 时 thinking 为空串、只有 signature
+    /// 参考: https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking
     #[serde(rename = "thinking")]
-    Thinking { thinking: String },
+    Thinking {
+        thinking: String,
+        /// 加密签名（signature_delta 累积所得）；为空时不序列化以兼容旧数据
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        signature: String,
+    },
+    /// 安全触发时替代明文思考的加密块，多轮回传时不可过滤（否则 400）
+    #[serde(rename = "redacted_thinking")]
+    RedactedThinking { data: String },
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -1462,14 +1853,32 @@ fn convert_assistant_message(message: &Value) -> Option<AnthropicMessage> {
                 for part in parts {
                     let part_type = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     match part_type {
-                        // 处理 thinking 块（Extended Thinking 多轮对话）
+                        // 处理 thinking 块（Extended/Adaptive Thinking 多轮对话）
+                        // 必须带 signature 原样回传；新代际 display:"omitted" 时
+                        // thinking 为空串但有 signature，同样不能丢弃（研报 02 §3.2）
                         "thinking" => {
-                            if let Some(thinking) = part.get("thinking").and_then(|v| v.as_str()) {
-                                if !thinking.is_empty() {
-                                    blocks.push(AnthropicContentBlock::Thinking {
-                                        thinking: thinking.to_string(),
-                                    });
-                                }
+                            let thinking = part
+                                .get("thinking")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            let signature = part
+                                .get("signature")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            if !thinking.is_empty() || !signature.is_empty() {
+                                blocks.push(AnthropicContentBlock::Thinking {
+                                    thinking: thinking.to_string(),
+                                    signature: signature.to_string(),
+                                });
+                            }
+                        }
+                        // redacted_thinking 块必须原样回传，过滤会触发 400
+                        // `thinking blocks ... cannot be modified`（研报 02 坑 3）
+                        "redacted_thinking" => {
+                            if let Some(data) = part.get("data").and_then(|v| v.as_str()) {
+                                blocks.push(AnthropicContentBlock::RedactedThinking {
+                                    data: data.to_string(),
+                                });
                             }
                         }
                         // 处理 text 块
@@ -1531,6 +1940,45 @@ fn convert_assistant_message(message: &Value) -> Option<AnthropicMessage> {
                     name,
                     input: parsed_args,
                 });
+            }
+        }
+    }
+
+    // 消息级 thought_signature（流解析捕获后经 thought_signature 管道注入）：
+    // 附加到 thinking 块回传。若消息只有 tool_use 而没有 thinking 块
+    // （新代际 display:"omitted" 思考文本为空被上游丢弃），需补一个
+    // 空文本 + signature 的 thinking 块且置于 tool_use 之前，否则 400
+    if let Some(signature) = message
+        .get("thought_signature")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        let mut attached = false;
+        for block in blocks.iter_mut() {
+            if let AnthropicContentBlock::Thinking {
+                signature: block_signature,
+                ..
+            } = block
+            {
+                if block_signature.is_empty() {
+                    *block_signature = signature.to_string();
+                }
+                attached = true;
+                break;
+            }
+        }
+        if !attached {
+            let has_tool_use = blocks
+                .iter()
+                .any(|b| matches!(b, AnthropicContentBlock::ToolUse { .. }));
+            if has_tool_use {
+                blocks.insert(
+                    0,
+                    AnthropicContentBlock::Thinking {
+                        thinking: String::new(),
+                        signature: signature.to_string(),
+                    },
+                );
             }
         }
     }
@@ -1768,8 +2216,15 @@ fn convert_response_format_for_anthropic(value: &Value) -> Option<Value> {
     match format_type {
         "json_object" => Some(json!({ "type": "json" })),
         "json_schema" => {
-            if let Some(schema) = obj.get("json_schema") {
-                Some(json!({ "type": "json_schema", "json_schema": schema }))
+            // GA 形态（研报 02 §3.5）：output_config.format = {type:"json_schema", schema:{...}}
+            // OpenAI CC 的 response_format.json_schema 是 {name, schema, strict} 包装，
+            // 需要提取内层 schema；字段名必须是 schema 而非 json_schema
+            if let Some(wrapper) = obj.get("json_schema") {
+                let schema = wrapper.get("schema").cloned().unwrap_or_else(|| {
+                    // 已经是裸 schema（无 OpenAI 包装）时直接使用
+                    wrapper.clone()
+                });
+                Some(json!({ "type": "json_schema", "schema": schema }))
             } else {
                 Some(json!({ "type": "json" }))
             }
@@ -2116,6 +2571,148 @@ mod tests {
     }
 
     #[test]
+    fn openai_adapter_parse_stream_handles_content_block_arrays() {
+        // Mistral 推理模式：delta.content 为 ThinkChunk/TextChunk 块数组（研报 04 要点 4）
+        let adapter = OpenAIAdapter;
+
+        let events = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":[{"type":"text","text":"let me think"}]},{"type":"text","text":"the answer"}]}}]}"#,
+        );
+
+        assert_eq!(events.len(), 2);
+        assert!(
+            matches!(&events[0], StreamEvent::ReasoningChunk(s) if s == "let me think"),
+            "thinking 块应作为 reasoning 发送"
+        );
+        assert!(
+            matches!(&events[1], StreamEvent::ContentChunk(s) if s == "the answer"),
+            "text 块应拼接为正文"
+        );
+
+        // ThinkChunk 的 thinking 字段为字符串的形态也要兼容
+        let string_thinking = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"content":[{"type":"thinking","thinking":"raw thought"}]}}]}"#,
+        );
+        assert!(
+            matches!(string_thinking.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "raw thought")
+        );
+    }
+
+    #[test]
+    fn openai_adapter_parse_stream_handles_reasoning_field_variants() {
+        let adapter = OpenAIAdapter;
+
+        // (c) delta.reasoning 字符串：Together/Groq(parsed)/Cerebras/阶跃
+        let reasoning = adapter
+            .parse_stream(r#"data: {"choices":[{"delta":{"reasoning":"thinking hard"}}]}"#);
+        assert!(
+            matches!(reasoning.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "thinking hard")
+        );
+
+        // (a) delta.reasoning_details 数组：OpenRouter（取 text 内容）
+        let details = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"reasoning_details":[{"type":"reasoning.text","text":"detail text","format":"anthropic-claude-v1"},{"type":"reasoning.encrypted","data":"opaque","format":"anthropic-claude-v1"}]}}]}"#,
+        );
+        assert_eq!(details.len(), 1, "encrypted 块无明文，只取 text 内容");
+        assert!(
+            matches!(details.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "detail text")
+        );
+
+        // reasoning_content 与 reasoning 同时出现时不重复推送
+        let both = adapter.parse_stream(
+            r#"data: {"choices":[{"delta":{"reasoning_content":"same text","reasoning":"same text"}}]}"#,
+        );
+        assert_eq!(both.len(), 1);
+        assert!(
+            matches!(both.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "same text")
+        );
+    }
+
+    #[test]
+    fn openai_adapter_parse_stream_reports_injected_error_objects() {
+        // OpenRouter 等平台会在流中注入 {"error":{...}}（研报 09 §1），不能静默忽略
+        let adapter = OpenAIAdapter;
+
+        let events = adapter.parse_stream(
+            r#"data: {"error":{"code":402,"message":"Insufficient credits"}}"#,
+        );
+
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::SafetyBlocked(v))
+                if v["type"] == json!("provider_error")
+                    && v["details"]["message"] == json!("Insufficient credits")
+        ));
+        assert!(matches!(events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_adapter_build_request_keeps_nested_tool_choice_shape() {
+        // CC 协议要求 tool_choice 指定函数时保持嵌套形状（r2 报告 P1-15）
+        let adapter = OpenAIAdapter;
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": "lookup_weather" }
+            }
+        });
+
+        let request = adapter
+            .build_request(
+                "https://api.openai.com/v1",
+                "test-key",
+                "gpt-4o-mini",
+                &body,
+            )
+            .expect("request should build");
+
+        assert_eq!(request.body["tool_choice"]["type"], json!("function"));
+        assert_eq!(
+            request.body["tool_choice"]["function"]["name"],
+            json!("lookup_weather")
+        );
+        assert!(request.body["tool_choice"].get("name").is_none());
+    }
+
+    #[test]
+    fn sanitize_openai_request_body_passes_through_non_function_tools() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                { "type": "web_search" },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ]
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        let tools = sanitized["tools"]
+            .as_array()
+            .expect("tools should be array");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0], json!({ "type": "web_search" }));
+        assert_eq!(tools[1]["function"]["name"], json!("lookup_weather"));
+    }
+
+    #[test]
     fn openai_responses_adapter_converts_messages_and_reasoning() {
         let body = json!({
             "messages": [
@@ -2165,6 +2762,66 @@ mod tests {
     }
 
     #[test]
+    fn openai_responses_adapter_respects_stream_and_store_from_body() {
+        // 显式 stream:false 必须透传（非流式路径依赖 JSON 响应）；
+        // store 显式指定时原样透传
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "stream": false,
+            "store": true
+        });
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        assert_eq!(payload["stream"], json!(false));
+        assert_eq!(payload["store"], json!(true));
+
+        // 缺省：stream 仍为 true；store 默认 false（桌面应用隐私，研报 01 要点 10）
+        let default_body = json!({
+            "messages": [{ "role": "user", "content": "hi" }]
+        });
+        let default_payload =
+            OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &default_body);
+        assert_eq!(default_payload["stream"], json!(true));
+        assert_eq!(default_payload["store"], json!(false));
+    }
+
+    #[test]
+    fn openai_responses_adapter_flattens_json_schema_response_format() {
+        // CC 的 response_format:{type:"json_schema",json_schema:{...}} 需扁平化为
+        // Responses 的 text.format:{type:"json_schema",name,schema,strict}（研报 01 要点 7）
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "weather",
+                    "schema": { "type": "object", "properties": {}, "additionalProperties": false },
+                    "strict": true
+                }
+            }
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let format = &payload["text"]["format"];
+        assert_eq!(format["type"], json!("json_schema"));
+        assert_eq!(format["name"], json!("weather"));
+        assert_eq!(format["schema"]["type"], json!("object"));
+        assert_eq!(format["strict"], json!(true));
+        assert!(format.get("json_schema").is_none());
+
+        // json_object 保持兼容，原样透传
+        let json_object_body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "response_format": { "type": "json_object" }
+        });
+        let json_object_payload =
+            OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &json_object_body);
+        assert_eq!(
+            json_object_payload["text"]["format"]["type"],
+            json!("json_object")
+        );
+    }
+
+    #[test]
     fn openai_responses_adapter_converts_tools_and_tool_choice() {
         let body = json!({
             "messages": [{ "role": "user", "content": "hi" }],
@@ -2186,13 +2843,44 @@ mod tests {
         });
 
         let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
-        assert_eq!(
-            payload["tools"][0]["function"]["name"],
-            json!("lookup_weather")
-        );
+        // Responses 要求扁平工具定义 {"type":"function","name",...}（研报 01 要点 6）
+        assert_eq!(payload["tools"][0]["type"], json!("function"));
+        assert_eq!(payload["tools"][0]["name"], json!("lookup_weather"));
+        assert_eq!(payload["tools"][0]["description"], json!("lookup"));
+        assert_eq!(payload["tools"][0]["parameters"]["type"], json!("object"));
+        // CC 缺省非 strict：转换时显式传 false，避免服务端自动 strict 化改变语义
+        assert_eq!(payload["tools"][0]["strict"], json!(false));
+        assert!(payload["tools"][0].get("function").is_none());
         assert_eq!(payload["tool_choice"]["type"], json!("function"));
         assert_eq!(payload["tool_choice"]["name"], json!("lookup_weather"));
         assert_eq!(payload["parallel_tool_calls"], json!(false));
+    }
+
+    #[test]
+    fn openai_responses_adapter_passes_through_strict_and_non_function_tools() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} },
+                        "strict": true
+                    }
+                },
+                { "type": "web_search" }
+            ]
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let tools = payload["tools"].as_array().expect("tools should be array");
+        assert_eq!(tools.len(), 2);
+        // 显式 strict 原样透传
+        assert_eq!(tools[0]["strict"], json!(true));
+        // 非 function 类型的内置工具原样透传
+        assert_eq!(tools[1], json!({ "type": "web_search" }));
     }
 
     #[test]
@@ -2238,7 +2926,13 @@ mod tests {
 
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0]["function"]["name"], json!("lookup_weather"));
-        assert_eq!(sanitized["tool_choice"]["name"], json!("lookup_weather"));
+        // CC 协议的 tool_choice 指定函数时必须保持嵌套形状（r2 报告 P1-15）
+        assert_eq!(sanitized["tool_choice"]["type"], json!("function"));
+        assert_eq!(
+            sanitized["tool_choice"]["function"]["name"],
+            json!("lookup_weather")
+        );
+        assert!(sanitized["tool_choice"].get("name").is_none());
     }
 
     #[test]
@@ -2340,7 +3034,7 @@ mod tests {
 
     #[test]
     fn openai_responses_adapter_build_request_sanitizes_invalid_tools() {
-        let adapter = OpenAIResponsesAdapter;
+        let adapter = OpenAIResponsesAdapter::new();
         let body = json!({
             "messages": [{ "role": "user", "content": "hi" }],
             "tools": [
@@ -2375,13 +3069,14 @@ mod tests {
             .as_array()
             .expect("tools should be present");
         assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0]["function"]["name"], json!("lookup_weather"));
+        // Responses 请求体中工具已是扁平格式
+        assert_eq!(tools[0]["name"], json!("lookup_weather"));
         assert!(request.body.get("tool_choice").is_none());
     }
 
     #[test]
     fn openai_responses_adapter_parses_stream_events() {
-        let adapter = OpenAIResponsesAdapter;
+        let adapter = OpenAIResponsesAdapter::new();
 
         let content =
             adapter.parse_stream(r#"data: {"type":"response.output_text.delta","delta":"hello"}"#);
@@ -2410,7 +3105,8 @@ mod tests {
 
     #[test]
     fn openai_responses_adapter_extracts_reasoning_from_completed_event() {
-        let adapter = OpenAIResponsesAdapter;
+        // 流中未出现任何 reasoning 事件时，response.completed 兜底提取一次
+        let adapter = OpenAIResponsesAdapter::new();
         let events = adapter.parse_stream(
             r#"data: {"type":"response.completed","response":{"output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"first"},{"type":"summary_text","text":"second"}]}],"usage":{"input_tokens":1}}}"#,
         );
@@ -2420,6 +3116,59 @@ mod tests {
         );
         assert!(matches!(events.get(1), Some(StreamEvent::Usage(_))));
         assert!(matches!(events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_responses_adapter_does_not_duplicate_reasoning_after_deltas() {
+        // 收到 .delta 增量后，.done（全量文本）与 response.completed 均不得重复推送
+        let adapter = OpenAIResponsesAdapter::new();
+
+        let delta_events = adapter.parse_stream(
+            r#"data: {"type":"response.reasoning_summary_text.delta","delta":"step one"}"#,
+        );
+        assert!(
+            matches!(delta_events.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "step one")
+        );
+
+        let done_events = adapter.parse_stream(
+            r#"data: {"type":"response.reasoning_summary_text.done","text":"step one and two"}"#,
+        );
+        assert!(done_events.is_empty(), ".done 全量文本不应重复推送");
+
+        let completed_events = adapter.parse_stream(
+            r#"data: {"type":"response.completed","response":{"output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"step one and two"}]}],"usage":{"input_tokens":1}}}"#,
+        );
+        assert!(
+            !completed_events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ReasoningChunk(_))),
+            "response.completed 不应再次提取 reasoning"
+        );
+        assert!(matches!(completed_events.first(), Some(StreamEvent::Usage(_))));
+        assert!(matches!(completed_events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn openai_responses_adapter_uses_done_event_as_fallback_without_deltas() {
+        // 未收到任何 .delta 时，.done 作为兜底推送一次；completed 不再重复
+        let adapter = OpenAIResponsesAdapter::new();
+
+        let done_events = adapter.parse_stream(
+            r#"data: {"type":"response.reasoning_text.done","text":"full reasoning"}"#,
+        );
+        assert!(
+            matches!(done_events.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "full reasoning")
+        );
+
+        let completed_events = adapter.parse_stream(
+            r#"data: {"type":"response.completed","response":{"output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"full reasoning"}]}],"usage":{"input_tokens":1}}}"#,
+        );
+        assert!(
+            !completed_events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::ReasoningChunk(_))),
+            ".done 兜底后 response.completed 不应再次提取 reasoning"
+        );
     }
 
     #[test]
@@ -2586,5 +3335,320 @@ mod tests {
 
         let event = build_usage_event(&usage).expect("usage event");
         assert_eq!(event["cached_tokens"], json!(30));
+    }
+
+    // ========== Anthropic 2026-07 修复回归测试 ==========
+
+    #[test]
+    fn anthropic_new_generation_strips_sampling_params_unconditionally() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "top_k": 40
+        });
+
+        // 新代际（未开 thinking）也必须剥离 temperature/top_p/top_k（研报 02 要点 4）
+        let request = adapter.convert_openai_to_anthropic("claude-opus-4-8", &body);
+        assert!(request.temperature.is_none());
+        assert!(request.top_p.is_none());
+        assert!(request.top_k.is_none());
+
+        // 旧代际保持现有互斥逻辑（优先 temperature、保留 top_k）
+        let legacy = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
+        assert_eq!(legacy.temperature, Some(0.7));
+        assert!(legacy.top_p.is_none());
+        assert_eq!(legacy.top_k, Some(40));
+    }
+
+    #[test]
+    fn anthropic_new_generation_rewrites_enabled_thinking_to_adaptive() {
+        // 安全网：新代际收到旧 manual 形态时改写为 adaptive（enabled 会直接 400），
+        // budget_tokens 近似映射为 output_config.effort
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "enabled", "budget_tokens": 10240 }
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let thinking = request.thinking.as_ref().expect("thinking should exist");
+        assert_eq!(thinking.get("type"), Some(&json!("adaptive")));
+        assert!(thinking.get("budget_tokens").is_none());
+        assert_eq!(
+            request
+                .output_config
+                .as_ref()
+                .and_then(|c| c.get("effort")),
+            Some(&json!("medium"))
+        );
+    }
+
+    #[test]
+    fn anthropic_old_generation_keeps_enabled_thinking_passthrough() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "enabled", "budget_tokens": 2048 }
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
+        let thinking = request.thinking.as_ref().expect("thinking should exist");
+        assert_eq!(thinking.get("type"), Some(&json!("enabled")));
+        assert_eq!(thinking.get("budget_tokens"), Some(&json!(2048)));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_accumulates_signature_delta() {
+        let adapter = AnthropicAdapter::new();
+
+        let start = adapter.parse_stream(
+            r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}"#,
+        );
+        assert!(start.is_empty());
+
+        // signature_delta 可能分片送达，需按 index 累积
+        let sig1 = adapter.parse_stream(
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EqQBCg"}}"#,
+        );
+        assert!(sig1.is_empty());
+        let sig2 = adapter.parse_stream(
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"XYZ123"}}"#,
+        );
+        assert!(sig2.is_empty());
+
+        let stop = adapter.parse_stream(r#"data: {"type":"content_block_stop","index":0}"#);
+        assert!(matches!(
+            stop.first(),
+            Some(StreamEvent::ThoughtSignature(sig)) if sig == "EqQBCgXYZ123"
+        ));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_merges_input_tokens_from_message_start() {
+        let adapter = AnthropicAdapter::new();
+
+        let start_events = adapter.parse_stream(
+            r#"data: {"type":"message_start","message":{"id":"msg_1","usage":{"input_tokens":123,"output_tokens":0}}}"#,
+        );
+        assert!(matches!(
+            start_events.first(),
+            Some(StreamEvent::Usage(u)) if u["input_tokens"] == json!(123)
+        ));
+
+        // message_delta 的 usage 通常只有 output_tokens，input 应从 message_start 合并
+        let delta_events = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":42}}"#,
+        );
+        assert!(matches!(
+            delta_events.first(),
+            Some(StreamEvent::Usage(u))
+                if u["input_tokens"] == json!(123) && u["output_tokens"] == json!(42)
+        ));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_surfaces_error_event() {
+        let adapter = AnthropicAdapter::new();
+        let events = adapter.parse_stream(
+            r#"data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+        );
+        assert!(matches!(
+            events.first(),
+            Some(StreamEvent::SafetyBlocked(v)) if v["type"] == json!("provider_error")
+        ));
+        assert!(matches!(events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn anthropic_parse_stream_maps_new_stop_reasons() {
+        let adapter = AnthropicAdapter::new();
+
+        // Fable 5 refusal：HTTP 200 + stop_details（研报 02 要点 5）
+        let refusal = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"category":"cyber"}}}"#,
+        );
+        assert!(matches!(
+            refusal.first(),
+            Some(StreamEvent::SafetyBlocked(v))
+                if v["type"] == json!("content_blocked")
+                    && v["reason"] == json!("refusal")
+                    && v["stop_details"]["category"] == json!("cyber")
+        ));
+
+        let exceeded = adapter.parse_stream(
+            r#"data: {"type":"message_delta","delta":{"stop_reason":"model_context_window_exceeded"}}"#,
+        );
+        assert!(matches!(
+            exceeded.first(),
+            Some(StreamEvent::SafetyBlocked(v))
+                if v["type"] == json!("provider_error")
+                    && v["reason"] == json!("model_context_window_exceeded")
+        ));
+    }
+
+    #[test]
+    fn anthropic_assistant_thinking_blocks_keep_signature_and_redacted() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    { "type": "thinking", "thinking": "reasoned", "signature": "sig_full" },
+                    { "type": "thinking", "thinking": "", "signature": "sig_omitted" },
+                    { "type": "redacted_thinking", "data": "opaque_payload" },
+                    { "type": "text", "text": "answer" }
+                ]
+            }]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-fable-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+        let content = request_json["messages"][0]["content"]
+            .as_array()
+            .expect("assistant content array");
+
+        assert_eq!(content[0]["type"], json!("thinking"));
+        assert_eq!(content[0]["thinking"], json!("reasoned"));
+        assert_eq!(content[0]["signature"], json!("sig_full"));
+        // 新代际 display:"omitted"：空文本但有 signature 的块不能丢弃
+        assert_eq!(content[1]["thinking"], json!(""));
+        assert_eq!(content[1]["signature"], json!("sig_omitted"));
+        // redacted_thinking 必须原样回传
+        assert_eq!(content[2]["type"], json!("redacted_thinking"));
+        assert_eq!(content[2]["data"], json!("opaque_payload"));
+    }
+
+    #[test]
+    fn anthropic_message_level_thought_signature_attaches_to_thinking_block() {
+        let adapter = AnthropicAdapter::new();
+
+        // 情形 1：已有 thinking 块（无签名）→ 签名附加到该块
+        let body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    { "type": "thinking", "thinking": "let me call a tool" },
+                    { "type": "tool_use", "id": "toolu_1", "name": "lookup", "input": {} }
+                ],
+                "thought_signature": "sig_round_1"
+            }]
+        });
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let request_json = serde_json::to_value(request).expect("serialize");
+        let content = request_json["messages"][0]["content"]
+            .as_array()
+            .expect("content array");
+        assert_eq!(content[0]["type"], json!("thinking"));
+        assert_eq!(content[0]["signature"], json!("sig_round_1"));
+
+        // 情形 2：只有 tool_use（omitted 空思考被上游丢弃）→
+        // 补空文本 + signature 的 thinking 块且置于 tool_use 之前
+        let body2 = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "toolu_2",
+                    "type": "function",
+                    "function": { "name": "lookup", "arguments": "{}" }
+                }],
+                "thought_signature": "sig_round_2"
+            }]
+        });
+        let request2 = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body2);
+        let request_json2 = serde_json::to_value(request2).expect("serialize");
+        let content2 = request_json2["messages"][0]["content"]
+            .as_array()
+            .expect("content array");
+        assert_eq!(content2[0]["type"], json!("thinking"));
+        assert_eq!(content2[0]["thinking"], json!(""));
+        assert_eq!(content2[0]["signature"], json!("sig_round_2"));
+        assert_eq!(content2[1]["type"], json!("tool_use"));
+    }
+
+    #[test]
+    fn anthropic_beta_headers_cleaned_up() {
+        let adapter = AnthropicAdapter::new();
+
+        // 旧代际 manual thinking + tools：仅保留 interleaved thinking beta 头
+        let legacy_body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "enabled", "budget_tokens": 2048 },
+            "tools": [{ "type": "function", "function": { "name": "lookup", "parameters": {} } }]
+        });
+        let legacy_request = adapter
+            .build_request(
+                "https://api.anthropic.com",
+                "key",
+                "claude-sonnet-4-5",
+                &legacy_body,
+            )
+            .expect("build legacy request");
+        let beta = legacy_request
+            .headers
+            .iter()
+            .find(|(k, _)| k == "anthropic-beta")
+            .map(|(_, v)| v.clone());
+        assert_eq!(beta.as_deref(), Some("interleaved-thinking-2025-05-14"));
+
+        // 新代际 adaptive：GA 后无需任何 beta 头（interleaved 自动启用）
+        let adaptive_body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "thinking": { "type": "adaptive" },
+            "effort": "high",
+            "tools": [{ "type": "function", "function": { "name": "lookup", "parameters": {} } }]
+        });
+        let adaptive_request = adapter
+            .build_request(
+                "https://api.anthropic.com",
+                "key",
+                "claude-opus-4-8",
+                &adaptive_body,
+            )
+            .expect("build adaptive request");
+        assert!(!adaptive_request
+            .headers
+            .iter()
+            .any(|(k, _)| k == "anthropic-beta"));
+
+        // 已 GA 的过时 beta 头绝不出现
+        for (_, value) in legacy_request.headers.iter() {
+            assert!(!value.contains("thinking-2024-07-31"));
+            assert!(!value.contains("tools-2024-04-04"));
+            assert!(!value.contains("prompt-caching-2024-07-31"));
+        }
+    }
+
+    #[test]
+    fn anthropic_json_schema_output_uses_ga_schema_field() {
+        // GA 形态（研报 02 §3.5）：output_config.format = {type:"json_schema", schema:{...}}
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "answer",
+                    "schema": {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": false
+                    },
+                    "strict": true
+                }
+            }
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-5", &body);
+        let format = request
+            .output_config
+            .as_ref()
+            .and_then(|c| c.get("format"))
+            .expect("output_config.format");
+        assert_eq!(format["type"], json!("json_schema"));
+        assert_eq!(format["schema"]["type"], json!("object"));
+        assert!(format.get("json_schema").is_none());
     }
 }

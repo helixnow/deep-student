@@ -42,6 +42,13 @@ interface GeminiModelItem {
   supportedGenerationMethods?: string[];
 }
 
+/** Anthropic API 返回的模型对象 */
+interface AnthropicModelItem {
+  id: string;
+  display_name?: string;
+  type?: string;
+}
+
 /** 统一的模型项 */
 interface FetchedModel {
   id: string;
@@ -141,7 +148,10 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const hasApiKey = resolvedApiKey !== null || !!vendor.noApiKey;
   const hasBaseUrl = !!(vendor.baseUrl && vendor.baseUrl.trim());
 
-  const isGemini = (vendor.providerType ?? '').toLowerCase() === GEMINI_PROVIDER;
+  const providerTypeLower = (vendor.providerType ?? '').toLowerCase();
+  // 「选 Google 类型获取模型 404」修复：google 与 gemini 均走 Gemini 原生列表接口
+  const isGemini = providerTypeLower === GEMINI_PROVIDER || providerTypeLower === 'google';
+  const isAnthropic = providerTypeLower === 'anthropic';
 
   // 缓存：加载
   const loadCache = useCallback(async (): Promise<boolean> => {
@@ -253,11 +263,15 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   /** 获取 Google Gemini API 的模型列表 */
   const fetchGemini = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
     const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
-    const url = resolvedApiKey
-      ? `${baseUrl}/v1beta/models?key=${resolvedApiKey}&pageSize=100`
-      : `${baseUrl}/v1beta/models?pageSize=100`;
-    const response = await doFetch(url, {
+    // 安全修复（审阅 26 P1-3）：Key 改用 x-goog-api-key 请求头传递，
+    // 避免进入代理/网关/供应商访问日志，且规避 URL 特殊字符导致的畸形请求。
+    const headers: Record<string, string> = {};
+    if (resolvedApiKey) {
+      headers['x-goog-api-key'] = resolvedApiKey;
+    }
+    const response = await doFetch(`${baseUrl}/v1beta/models?pageSize=100`, {
       method: 'GET',
+      headers,
     });
     if (!response.ok) {
       let detail: string;
@@ -289,6 +303,48 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
   };
 
+  /**
+   * 获取 Anthropic API 的模型列表。
+   * Anthropic 使用 GET {base}/v1/models + `x-api-key` + `anthropic-version` 头
+   * （Bearer 鉴权与不带 /v1 的路径都会失败，见 2026-07 审阅 r4 #10）。
+   */
+  const fetchAnthropic = async (doFetch: typeof fetch): Promise<FetchedModel[]> => {
+    const baseUrl = vendor.baseUrl.replace(/\/+$/, '');
+    // 默认 base URL 为 https://api.anthropic.com（不带版本段）；若用户已带 /v1 则不重复追加
+    const versionedBase = /\/v\d+$/.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
+    const headers: Record<string, string> = {
+      'anthropic-version': '2023-06-01',
+    };
+    if (resolvedApiKey) {
+      headers['x-api-key'] = resolvedApiKey;
+    }
+    const response = await doFetch(`${versionedBase}/models?limit=1000`, {
+      method: 'GET',
+      headers,
+    });
+    if (!response.ok) {
+      let detail: string;
+      try { detail = JSON.stringify(await response.json()); } catch { detail = response.statusText || `HTTP ${response.status}`; }
+      throw new Error(`${response.status}: ${detail}`);
+    }
+    let body: { data?: AnthropicModelItem[] };
+    try {
+      body = await response.json();
+    } catch (err: unknown) {
+      if (isStreamChannelError(err)) {
+        throw new Error('TAURI_HTTP_READ_BODY_FAILED');
+      }
+      throw err;
+    }
+    if (!body?.data || !Array.isArray(body.data)) {
+      throw new Error(t('settings:vendor_model_fetcher.invalid_response'));
+    }
+    return body.data
+      .filter((m: AnthropicModelItem) => !!m.id && (m.type === undefined || m.type === 'model'))
+      .map((m: AnthropicModelItem) => ({ id: m.id, label: m.display_name || m.id }))
+      .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
+  };
+
   const fetchModels = useCallback(async (forceRefresh = false) => {
     if (!hasBaseUrl) {
       showGlobalNotification('warning', t('settings:vendor_model_fetcher.need_base_url'));
@@ -309,7 +365,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     setIsFromCache(false);
 
     try {
-      const fetcher = isGemini ? fetchGemini : fetchOpenAICompatible;
+      const fetcher = isGemini ? fetchGemini : isAnthropic ? fetchAnthropic : fetchOpenAICompatible;
       let result: FetchedModel[];
       try {
         result = await fetcher(tauriFetch as typeof fetch);
@@ -331,7 +387,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [hasApiKey, hasBaseUrl, isGemini, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl]);
+  }, [hasApiKey, hasBaseUrl, isGemini, isAnthropic, loadCache, saveCache, t, vendor.id, resolvedApiKey, vendor.baseUrl]);
 
   // 过滤 + 分组
   const existingSet = useMemo(() => new Set(existingModelIds.map(id => id.toLowerCase())), [existingModelIds]);

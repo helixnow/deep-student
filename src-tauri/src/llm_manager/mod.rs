@@ -2,8 +2,13 @@ pub mod adapters;
 mod builtin_vendors;
 mod exam_engine;
 mod model2_pipeline;
+pub mod routing;
 pub(crate) mod parser;
 mod rag_extension;
+pub mod utf8_stream;
+
+// 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
+pub(crate) use model2_pipeline::sanitize_url_for_log;
 
 use crate::canonical_tools::{
     build_openai_function_tool_schema, prepare_external_tool, ApiNameSource, CanonicalExternalTool,
@@ -232,6 +237,7 @@ mod tests {
             )),
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: api_key.to_string(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -313,6 +319,103 @@ mod tests {
     }
 
     #[test]
+    fn registry_level_responses_support_only_unlocks_option_without_switching_default() {
+        // qwen/doubao：注册表 supports_openai_responses=true（白名单制端点），
+        // 默认路由必须保持 default_protocol = chat completions。
+        for (provider, base_url) in [
+            ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            ("doubao", "https://ark.cn-beijing.volces.com/api/v3"),
+            ("grok", "https://api.x.ai/v1"),
+            ("ernie", "https://qianfan.baidubce.com/v2"),
+        ] {
+            let record = get_provider_protocol_record(Some(provider))
+                .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
+            assert!(record.supports_openai_responses, "{provider} supports flag");
+            assert!(
+                record
+                    .allowed_protocols
+                    .iter()
+                    .any(|protocol| protocol == "openai_responses"),
+                "{provider} should keep responses selectable"
+            );
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(Some(provider), Some("general"), base_url, None),
+                "openai_chat_completions",
+                "{provider} default routing should stay on chat completions"
+            );
+            // 供应商级显式声明仍可切换到 Responses。
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    base_url,
+                    Some(true),
+                ),
+                "openai_responses",
+                "{provider} explicit opt-in should unlock responses"
+            );
+        }
+    }
+
+    #[test]
+    fn providers_without_responses_endpoint_no_longer_allow_openai_responses() {
+        for provider in [
+            "deepseek",
+            "zhipu",
+            "moonshot",
+            "minimax",
+            "mimo",
+            "nvidia",
+            "siliconflow",
+            "mistral",
+        ] {
+            let allowed = provider_allowed_protocols(Some(provider));
+            assert!(
+                !allowed.iter().any(|protocol| protocol == "openai_responses"),
+                "{provider} must not expose the phantom openai_responses protocol"
+            );
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(Some(provider), Some("general"), "", None),
+                "openai_chat_completions"
+            );
+        }
+    }
+
+    #[test]
+    fn new_2026_providers_are_registered_with_expected_defaults() {
+        for provider in ["grok", "xai", "ernie", "mistral"] {
+            let record = get_provider_protocol_record(Some(provider))
+                .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
+            assert_eq!(record.default_protocol, "openai_chat_completions");
+            assert!(
+                !record
+                    .allowed_protocols
+                    .iter()
+                    .any(|protocol| protocol == "anthropic_messages"),
+                "{provider} must not declare anthropic_messages (backend does not consume api_protocol yet)"
+            );
+        }
+    }
+
+    #[test]
+    fn official_openai_detection_uses_exact_host_match() {
+        assert!(resolves_to_official_openai(
+            Some("openai"),
+            "https://api.openai.com/v1"
+        ));
+        assert!(resolves_to_official_openai(Some("openai"), ""));
+        // 中转 URL 在 path 中携带官方域名时不得误判。
+        assert!(!resolves_to_official_openai(
+            Some("openai"),
+            "https://myproxy.com/api.openai.com/v1"
+        ));
+        assert!(!resolves_to_official_openai(
+            Some("openai"),
+            "https://api.openai.com.evil.example/v1"
+        ));
+    }
+
+    #[test]
     fn provider_protocol_registry_contract_is_well_formed() {
         let raw = include_str!("../../../scripts/provider-protocol-registry.json");
         let registry: ProviderProtocolRegistryDocument =
@@ -378,6 +481,7 @@ mod tests {
             supports_openai_responses: None,
             base_url: "https://api.qsl.fan/v1".to_string(),
             api_key: String::new(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -1443,6 +1547,10 @@ pub struct VendorConfig {
     pub supports_openai_responses: Option<bool>,
     pub base_url: String,
     pub api_key: String,
+    /// 🆕 Failover：同一供应商的额外 API key（api_key 之外的备用 key，
+    /// 可重试错误时按顺序轮换）。serde 默认空数组，旧配置向后兼容。
+    #[serde(default)]
+    pub api_keys: Vec<String>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
     #[serde(default)]
@@ -1485,6 +1593,7 @@ impl Default for VendorConfig {
             )),
             base_url: String::new(),
             api_key: String::new(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -1687,8 +1796,20 @@ fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
 fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
     let normalized_provider = normalize_provider_protocol_registry_value(provider_type);
     let normalized_base_url = normalize_base_url_for_provider_protocol_registry(base_url);
-    normalized_base_url.contains("api.openai.com")
-        || (normalized_provider == "openai" && normalized_base_url.is_empty())
+    if normalized_provider == "openai" && normalized_base_url.is_empty() {
+        return true;
+    }
+    // host 精确匹配，避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
+    let without_scheme = normalized_base_url
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(normalized_base_url.as_str());
+    let host_port = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    let host = host_port.split(':').next().unwrap_or_default();
+    host == "api.openai.com"
 }
 
 pub(crate) fn provider_supports_openai_responses(
@@ -1732,9 +1853,12 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
     }
 
     let allowed = provider_allowed_protocols(provider_type);
-    let supports_responses =
-        provider_supports_openai_responses(provider_type, base_url, supports_openai_responses);
-    if supports_responses
+    // 仅「供应商级显式声明」或「官方 OpenAI 端点」才把默认路由切到 Responses；
+    // 注册表级 supports_openai_responses=true 只解锁可选项（qwen/doubao 等白名单制端点），
+    // 默认路由仍由 default_protocol 决定（与前端 resolvePreferredProtocol 保持一致）。
+    let explicitly_prefers_responses = supports_openai_responses == Some(true)
+        || resolves_to_official_openai(provider_type, base_url);
+    if explicitly_prefers_responses
         && allowed
             .iter()
             .any(|protocol| protocol == "openai_responses")
@@ -1753,8 +1877,10 @@ pub(crate) fn resolve_preferred_protocol_for_provider(
     }
 
     allowed
-        .into_iter()
-        .find(|protocol| supports_responses || protocol != "openai_responses")
+        .iter()
+        .find(|protocol| protocol.as_str() != "openai_responses")
+        .cloned()
+        .or_else(|| allowed.first().cloned())
         .unwrap_or_else(|| "openai_chat_completions".to_string())
 }
 
@@ -1876,7 +2002,7 @@ pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdap
         );
     }
     if use_responses {
-        Box::new(crate::providers::OpenAIResponsesAdapter)
+        Box::new(crate::providers::OpenAIResponsesAdapter::new())
     } else {
         match config.model_adapter.as_str() {
             "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
@@ -3321,6 +3447,14 @@ impl LLMManager {
 
         // 容错处理：解密失败时清空 API 密钥而不是让整个配置加载失败
         for vendor in &mut vendors {
+            // 🆕 Failover：备用 key 列表逐个解密，解密失败/空值的条目丢弃
+            vendor.api_keys = vendor
+                .api_keys
+                .iter()
+                .filter_map(|k| self.decrypt_api_key_if_needed(k).ok())
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .collect();
             match self.decrypt_api_key_if_needed(&vendor.api_key) {
                 Ok(decrypted) => {
                     // 迁移逻辑：如果是内置供应商且成功解密了 API key，迁移到安全存储
@@ -3420,6 +3554,22 @@ impl LLMManager {
         for cfg in configs {
             let mut clone = cfg.clone();
             normalize_vendor_protocol_config(&mut clone);
+
+            // 🆕 Failover：备用 key 列表统一加密存储（内置/自建供应商一致），
+            // 过滤空值与占位符（前端回传的明文会被重新加密）
+            {
+                let mut encrypted_keys = Vec::new();
+                for key in &cfg.api_keys {
+                    let trimmed_key = key.trim();
+                    let is_placeholder = trimmed_key == "***"
+                        || (!trimmed_key.is_empty() && trimmed_key.chars().all(|c| c == '*'));
+                    if trimmed_key.is_empty() || is_placeholder {
+                        continue;
+                    }
+                    encrypted_keys.push(self.encrypt_api_key(trimmed_key)?);
+                }
+                clone.api_keys = encrypted_keys;
+            }
 
             let trimmed = cfg.api_key.trim();
             // “保留旧值”占位符：*** 或全 *（但不包含空字符串）
@@ -3839,6 +3989,11 @@ impl LLMManager {
                     supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
+                    api_keys: if cfg.api_key.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![cfg.api_key.clone()]
+                    },
                     headers: cfg.headers.clone().unwrap_or_default(),
                     rate_limit_per_minute: None,
                     default_timeout_ms: None,
@@ -4096,6 +4251,7 @@ impl LLMManager {
                     supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
+                    api_keys: Vec::new(),
                     headers: cfg.headers.clone().unwrap_or_default(),
                     rate_limit_per_minute: None,
                     default_timeout_ms: None,
@@ -4880,11 +5036,23 @@ impl LLMManager {
                     .ok_or_else(|| AppError::configuration("未配置回顾分析模型"))?;
                 (model_id, true) // 回顾分析通常需要CoT
             }
-            _ => {
-                return Err(AppError::configuration(format!(
-                    "不支持的任务类型: {}",
-                    task
-                )))
+            other => {
+                // 🆕 用途分模型路由（routing.rs）：compaction / memory_flush / utility 等
+                // 新用途可在 Failover 策略中配置专属（廉价）模型；未配置时回落 default 逻辑
+                let policy = self.get_failover_policy().await.unwrap_or_default();
+                if let Some(purpose_model_id) = routing::resolve_purpose_model_id(&policy, other) {
+                    (purpose_model_id, false)
+                } else if routing::is_known_utility_purpose(other) {
+                    let model_id = assignments
+                        .model2_config_id
+                        .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
+                    (model_id, false)
+                } else {
+                    return Err(AppError::configuration(format!(
+                        "不支持的任务类型: {}",
+                        task
+                    )));
+                }
             }
         };
 
@@ -5843,6 +6011,8 @@ impl LLMManager {
         // 流式解析
         let mut stream = response.bytes_stream();
         let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
+        // 增量 UTF-8 解码：保留跨 chunk 边界的不完整多字节字符，避免中文乱码
+        let mut utf8_decoder = crate::llm_manager::utf8_stream::Utf8StreamDecoder::new();
 
         // 根据 provider_type 选择适配器
         let provider = api_config.provider_type.as_deref().unwrap_or("openai");
@@ -5865,10 +6035,22 @@ impl LLMManager {
 
             let chunk = match next {
                 Ok(b) => b,
-                Err(e) => return Err(AppError::llm(format!("读取流式响应失败: {}", e))),
+                Err(e) => {
+                    // 已有部分内容时 break 到下方 utf8/sse flush，避免错误提前返回丢尾字节
+                    if !full_content.is_empty() {
+                        log::warn!(
+                            "[LLM] 流式读取错误但已有 {} 字符/{} 题，继续 flush: {}",
+                            full_content.len(),
+                            all_questions.len(),
+                            e
+                        );
+                        break;
+                    }
+                    return Err(AppError::llm(format!("读取流式响应失败: {}", e)));
+                }
             };
 
-            let text = String::from_utf8_lossy(&chunk);
+            let text = utf8_decoder.decode(&chunk);
             let lines = sse_buffer.process_chunk(&text);
 
             for line in lines {
@@ -5904,6 +6086,62 @@ impl LLMManager {
                 }
                 if stream_ended || aborted {
                     break;
+                }
+            }
+        }
+
+        // ★ S5 遗留：冲刷 UTF-8 解码器残留（流恰好在多字节字符中间截断时产生一个 U+FFFD）
+        if !aborted {
+            let tail = utf8_decoder.flush();
+            if !tail.is_empty() {
+                let lines = sse_buffer.process_chunk(&tail);
+                for line in lines {
+                    if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                        break;
+                    }
+                    let events = adapter.parse_stream(&line);
+                    for ev in events {
+                        if let crate::providers::StreamEvent::ContentChunk(s) = ev {
+                            full_content.push_str(&s);
+                            if let Some(questions) = json_parser.feed(&s) {
+                                for q in questions {
+                                    if !on_question(q.clone()) {
+                                        aborted = true;
+                                        break;
+                                    }
+                                    all_questions.push(q);
+                                }
+                            }
+                        }
+                        if aborted {
+                            break;
+                        }
+                    }
+                    if aborted {
+                        break;
+                    }
+                }
+            }
+            if let Some(remaining_line) = sse_buffer.flush() {
+                if !remaining_line.trim().is_empty() {
+                    let events = adapter.parse_stream(&remaining_line);
+                    for ev in events {
+                        if let crate::providers::StreamEvent::ContentChunk(s) = ev {
+                            full_content.push_str(&s);
+                            if let Some(questions) = json_parser.feed(&s) {
+                                for q in questions {
+                                    if !on_question(q.clone()) {
+                                        aborted = true;
+                                        break;
+                                    }
+                                    all_questions.push(q);
+                                }
+                            }
+                        }
+                        if aborted {
+                            break;
+                        }
+                    }
                 }
             }
         }

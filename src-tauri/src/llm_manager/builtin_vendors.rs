@@ -65,7 +65,9 @@ struct GeminiBuiltinModel {
     is_reasoning: bool,
     supports_tools: bool,
     max_output_tokens: u32,
-    temperature: f32,
+    /// 3.x 模型官方不建议设置采样参数，注册表可省略该字段（默认回退到 API 默认值 1.0）
+    #[serde(default)]
+    temperature: Option<f32>,
     #[serde(default)]
     reasoning_effort: Option<String>,
     #[serde(default)]
@@ -106,8 +108,8 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "DeepSeek",
         provider_type: "deepseek",
         base_url: "https://api.deepseek.com/v1",
-        notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro。兼容别名: deepseek-chat, deepseek-reasoner（官方计划于 2026-07-24 后逐步弃用）。根据 Thinking Mode 文档，当前请求层 max_tokens 默认 32K、最大 64K。",
-        max_tokens_limit: Some(65_536),
+        notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro（1M 上下文，最大输出 384K）。旧别名 deepseek-chat / deepseek-reasoner 于 2026-07-24 15:59 UTC 停用，已从内置列表移除。reasoning_effort=max 时官方建议预留 ≥384K token 输出预算。",
+        max_tokens_limit: Some(393_216),
         website_url: "https://deepseek.com",
     },
     // 通义千问 (Qwen / 阿里云百炼)
@@ -116,7 +118,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "通义千问",
         provider_type: "qwen",
         base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        notes: "阿里云百炼 API（兼容 OpenAI Chat；平台亦支持 Responses / DashScope 原生）。推荐模型: qwen3.5-plus, qwen3.5-flash, qwen3-max, qwen3.5-397b-a17b, qwen3.5-122b-a10b, qwq-plus",
+        notes: "阿里云百炼 API（兼容 OpenAI Chat；平台亦支持 Responses / DashScope 原生）。推荐模型: qwen3.7-max(旗舰), qwen3.7-plus(官方默认推荐/多模态), qwen3.6-flash, qwen3.5-plus, qwen3.5-flash, qwen3-max, qwen3.5-397b-a17b, qwen3.5-122b-a10b",
         max_tokens_limit: None,
         website_url: "https://bailian.console.aliyun.com",
     },
@@ -126,7 +128,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "智谱AI",
         provider_type: "zhipu",
         base_url: "https://open.bigmodel.cn/api/paas/v4",
-        notes: "智谱AI 开放平台。可用模型: glm-5(最新旗舰), glm-4.7, glm-4.6, glm-4.7-flash(免费)",
+        notes: "智谱AI 开放平台。可用模型: glm-5.2(当前旗舰, 1M 上下文, 支持 reasoning_effort), glm-5.1, glm-5, glm-4.7, glm-4.6, glm-4.7-flash(免费)",
         max_tokens_limit: None,
         website_url: "https://open.bigmodel.cn",
     },
@@ -136,7 +138,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "字节豆包",
         provider_type: "doubao",
         base_url: "https://ark.cn-beijing.volces.com/api/v3",
-        notes: "火山方舟大模型平台。推荐模型: Seed 2.0 Pro/Lite/Mini/Code (可直接用模型名调用), Seed 1.8",
+        notes: "火山方舟大模型平台。推荐模型: doubao-seed-2-1-pro-260628 / doubao-seed-2-1-turbo-260628 (2.1 旗舰, 256K 上下文), doubao-seed-evolving (滚动更新 ID), Seed 2.0 全系, Seed 1.8 (doubao-seed-1-8-251228)。可直接用模型名或 ep-* 接入点调用。",
         max_tokens_limit: None,
         website_url: "https://www.volcengine.com/product/doubao",
     },
@@ -146,7 +148,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "MiniMax",
         provider_type: "minimax",
         base_url: "https://api.minimax.io/v1",
-        notes: "MiniMax API。可用模型: MiniMax-M2.5(最新), M2.5-highspeed, M2.1, M2",
+        notes: "MiniMax API。可用模型: MiniMax-M3(最新旗舰, 1M 上下文/多模态), MiniMax-M2.7, MiniMax-M2.5, M2.5-highspeed, M2.1",
         max_tokens_limit: None,
         website_url: "https://platform.minimaxi.com",
     },
@@ -156,7 +158,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "月之暗面",
         provider_type: "moonshot",
         base_url: "https://api.moonshot.cn/v1",
-        notes: "Kimi API。可用模型: kimi-k2.5(多模态), kimi-k2, kimi-k2-thinking, kimi-latest",
+        notes: "Kimi API。可用模型: kimi-k2.6(旗舰/多模态), kimi-k2.7-code(编程/强制思考), kimi-k2.5(多模态), moonshot-v1 系列。kimi-k2 全系与 kimi-k2-thinking 已于 2026-05-25 停服、kimi-latest 已于 2026-01-28 停服。注意: K2.5/K2.6 采样参数锁定，自定义 temperature/top_p 会直接报错。",
         max_tokens_limit: None,
         website_url: "https://platform.moonshot.cn",
     },
@@ -166,7 +168,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "OpenAI",
         provider_type: "openai",
         base_url: "https://api.openai.com/v1",
-        notes: "OpenAI 官方 API。根据 OpenAI 官方模型文档，当前 GPT-5.x 家族可用模型包括: gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano；全部模型页仍列出 gpt-5.2, gpt-5.2-pro, gpt-5.1, gpt-5, gpt-5-pro, gpt-5-mini, gpt-5-nano，以及 o3-pro/o3/o4-mini。默认协议建议使用 Responses。",
+        notes: "OpenAI 官方 API。根据 OpenAI 官方模型文档，当前 GPT-5.x 家族可用模型包括: gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano；全部模型页仍列出 gpt-5.2, gpt-5.2-pro, gpt-5.1, gpt-5, gpt-5-pro, gpt-5-mini, gpt-5-nano，以及 o3-pro/o3/o4-mini。o 系列已进入退役期: o1/o3-mini/o4-mini 于 2026-10-23 关停，o3/o3-pro 于 2026-12-11 关停。默认协议建议使用 Responses。",
         max_tokens_limit: None,
         website_url: "https://platform.openai.com",
     },
@@ -217,33 +219,46 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 32_768,
         temperature: 0.6,
     },
+    // 注：兼容别名 deepseek-chat / deepseek-reasoner 已于 2026-07-24 15:59 UTC 停用，不再内置。
+    // ===== 通义千问模型 =====
+    // Qwen3.7 / 3.6 代（2026-04~06 发布，当前旗舰，混合思考默认开启）
     BuiltinModel {
-        id: "builtin-deepseek-chat",
-        vendor_id: "builtin-deepseek",
-        label: "DeepSeek Chat (兼容别名/非思考)",
-        model: "deepseek-chat",
-        is_multimodal: false,
-        is_reasoning: false,
-        supports_tools: true,
-        max_output_tokens: 32_768,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-deepseek-reasoner",
-        vendor_id: "builtin-deepseek",
-        label: "DeepSeek Reasoner (兼容别名/思考)",
-        model: "deepseek-reasoner",
+        id: "builtin-qwen3.7-max",
+        vendor_id: "builtin-qwen",
+        label: "Qwen3.7 Max (旗舰/混合思考)",
+        model: "qwen3.7-max",
         is_multimodal: false,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 32_768,
+        max_output_tokens: 65536,
         temperature: 0.7,
     },
-    // ===== 通义千问模型 =====
+    BuiltinModel {
+        id: "builtin-qwen3.7-plus",
+        vendor_id: "builtin-qwen",
+        label: "Qwen3.7 Plus (官方默认推荐/多模态)",
+        model: "qwen3.7-plus",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 32768,
+        temperature: 0.7,
+    },
+    BuiltinModel {
+        id: "builtin-qwen3.6-flash",
+        vendor_id: "builtin-qwen",
+        label: "Qwen3.6 Flash (轻量高并发/多模态)",
+        model: "qwen3.6-flash",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 16384,
+        temperature: 0.7,
+    },
     BuiltinModel {
         id: "builtin-qwen3-max",
         vendor_id: "builtin-qwen",
-        label: "Qwen3 Max (旗舰)",
+        label: "Qwen3 Max (上一代旗舰)",
         model: "qwen3-max",
         is_multimodal: false,
         is_reasoning: false,
@@ -287,7 +302,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-qwq-plus",
         vendor_id: "builtin-qwen",
-        label: "QwQ Plus (推理模型)",
+        label: "QwQ Plus (遗留推理模型)",
         model: "qwq-plus",
         is_multimodal: false,
         is_reasoning: true,
@@ -318,11 +333,35 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         temperature: 0.7,
     },
     // ===== 智谱AI模型 =====
-    // GLM-5（2026-02-11 发布，744B MoE 旗舰）
+    // GLM-5.2（当前旗舰，1M 上下文/最大输出 128K，唯一支持 reasoning_effort）
+    BuiltinModel {
+        id: "builtin-glm-5.2",
+        vendor_id: "builtin-zhipu",
+        label: "GLM-5.2 (当前旗舰)",
+        model: "glm-5.2",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 65536,
+        temperature: 0.7,
+    },
+    // GLM-5.1（2026-04-08 发布，200K 上下文/最大输出 128K）
+    BuiltinModel {
+        id: "builtin-glm-5.1",
+        vendor_id: "builtin-zhipu",
+        label: "GLM-5.1 (Coding/长程任务)",
+        model: "glm-5.1",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 65536,
+        temperature: 0.7,
+    },
+    // GLM-5（2026-02-12 发布，744B MoE 旗舰）
     BuiltinModel {
         id: "builtin-glm-5",
         vendor_id: "builtin-zhipu",
-        label: "GLM-5 (最新旗舰)",
+        label: "GLM-5 (上一代旗舰)",
         model: "glm-5",
         is_multimodal: false,
         is_reasoning: true,
@@ -364,7 +403,42 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         temperature: 0.7,
     },
     // ===== 字节豆包模型 =====
-    // Seed 2.0 系列（2026-02-14 发布，可直接用模型名调用）
+    // Seed 2.1 系列（2026-06-23 发布，当前旗舰，256K 上下文）
+    BuiltinModel {
+        id: "builtin-doubao-seed-2.1-pro",
+        vendor_id: "builtin-doubao",
+        label: "Seed 2.1 Pro (当前旗舰)",
+        model: "doubao-seed-2-1-pro-260628",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 131072,
+        temperature: 0.7,
+    },
+    BuiltinModel {
+        id: "builtin-doubao-seed-2.1-turbo",
+        vendor_id: "builtin-doubao",
+        label: "Seed 2.1 Turbo (低成本低时延)",
+        model: "doubao-seed-2-1-turbo-260628",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 65535,
+        temperature: 0.7,
+    },
+    // 滚动版（固定 ID，每月 2-4 次滚动更新）
+    BuiltinModel {
+        id: "builtin-doubao-seed-evolving",
+        vendor_id: "builtin-doubao",
+        label: "Seed Evolving (滚动更新)",
+        model: "doubao-seed-evolving",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 65535,
+        temperature: 0.7,
+    },
+    // Seed 2.0 系列（2026-02-15 发布，可直接用模型名调用）
     BuiltinModel {
         id: "builtin-doubao-seed-2.0-pro",
         vendor_id: "builtin-doubao",
@@ -409,12 +483,12 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 65535,
         temperature: 0.7,
     },
-    // Seed 1.8（上一代，保留供兼容）
+    // Seed 1.8（上一代，保留供兼容；官方快照为 251228，此前的 251215 为无效 ID）
     BuiltinModel {
         id: "builtin-doubao-1.8-pro",
         vendor_id: "builtin-doubao",
         label: "Seed 1.8 (上一代)",
-        model: "doubao-seed-1-8-251215",
+        model: "doubao-seed-1-8-251228",
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
@@ -422,11 +496,23 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         temperature: 0.7,
     },
     // ===== MiniMax 模型 =====
+    // M3（当前旗舰，1M 上下文，文本+图片+视频输入）
+    BuiltinModel {
+        id: "builtin-minimax-m3",
+        vendor_id: "builtin-minimax",
+        label: "MiniMax M3 (最新旗舰/多模态)",
+        model: "MiniMax-M3",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 16384,
+        temperature: 1.0,
+    },
     // M2.5 系列（2026-02-12 发布）
     BuiltinModel {
         id: "builtin-minimax-m2.5",
         vendor_id: "builtin-minimax",
-        label: "MiniMax M2.5 (最新旗舰)",
+        label: "MiniMax M2.5 (性价比主力)",
         model: "MiniMax-M2.5",
         is_multimodal: false,
         is_reasoning: true,
@@ -458,50 +544,42 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         temperature: 1.0,
     },
     // ===== 月之暗面模型 =====
-    // K2.5 多模态旗舰（2026-01新增）
+    // 注：kimi-k2 全系 / kimi-k2-thinking（2026-05-25 停服）与 kimi-latest（2026-01-28 停服）已移除。
+    // K2.6 通用旗舰（256K 上下文，原生多模态，思考/非思考双模式默认思考）
+    BuiltinModel {
+        id: "builtin-kimi-k2.6",
+        vendor_id: "builtin-moonshot",
+        label: "Kimi K2.6 (旗舰/多模态)",
+        model: "kimi-k2.6",
+        is_multimodal: true, // 原生多模态：文本+图像+视频输入
+        is_reasoning: true,  // 默认思考
+        supports_tools: true,
+        max_output_tokens: 32768,
+        temperature: 1.0, // K2.6 采样参数锁定（temperature 固定 1.0，传其他值报错）
+    },
+    // K2.7-Code 编程旗舰（256K 上下文，强制思考 + 强制 Preserved Thinking）
+    BuiltinModel {
+        id: "builtin-kimi-k2.7-code",
+        vendor_id: "builtin-moonshot",
+        label: "Kimi K2.7 Code (编程/强制思考)",
+        model: "kimi-k2.7-code",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 32768,
+        temperature: 1.0,
+    },
+    // K2.5 多模态旗舰（2026-01新增，仍在服务）
     BuiltinModel {
         id: "builtin-kimi-k2.5",
         vendor_id: "builtin-moonshot",
-        label: "Kimi K2.5 (多模态旗舰)",
+        label: "Kimi K2.5 (上一代多模态旗舰)",
         model: "kimi-k2.5",
         is_multimodal: true, // 原生多模态：支持图片+视频
         is_reasoning: true,  // 支持 thinking 模式
         supports_tools: true,
         max_output_tokens: 32768,
         temperature: 1.0, // K2.5 固定值
-    },
-    BuiltinModel {
-        id: "builtin-kimi-k2",
-        vendor_id: "builtin-moonshot",
-        label: "Kimi K2 (1T参数)",
-        model: "kimi-k2",
-        is_multimodal: false,
-        is_reasoning: false,
-        supports_tools: true,
-        max_output_tokens: 16384,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-kimi-k2-thinking",
-        vendor_id: "builtin-moonshot",
-        label: "Kimi K2 Thinking (推理)",
-        model: "kimi-k2-thinking",
-        is_multimodal: false,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 16384,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-kimi-latest",
-        vendor_id: "builtin-moonshot",
-        label: "Kimi Latest (自动更新)",
-        model: "kimi-latest",
-        is_multimodal: false,
-        is_reasoning: false,
-        supports_tools: true,
-        max_output_tokens: 8192,
-        temperature: 0.7,
     },
     BuiltinModel {
         id: "builtin-moonshot-v1-128k",
@@ -663,11 +741,11 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 128000,
         temperature: 1.0,
     },
-    // --- o 系列推理模型 ---
+    // --- o 系列推理模型（退役倒计时：o1/o3-mini/o4-mini 2026-10-23，o3/o3-pro 2026-12-11）---
     BuiltinModel {
         id: "builtin-o3-pro",
         vendor_id: "builtin-openai",
-        label: "o3-pro (深度推理)",
+        label: "o3-pro (深度推理, 2026-12 退役)",
         model: "o3-pro",
         is_multimodal: true,
         is_reasoning: true,
@@ -678,7 +756,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-o3",
         vendor_id: "builtin-openai",
-        label: "o3 (推理)",
+        label: "o3 (推理, 2026-12 退役)",
         model: "o3",
         is_multimodal: true,
         is_reasoning: true,
@@ -689,7 +767,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-o3-mini",
         vendor_id: "builtin-openai",
-        label: "o3-mini (推理轻量)",
+        label: "o3-mini (推理轻量, 2026-10 退役)",
         model: "o3-mini",
         is_multimodal: true,
         is_reasoning: true,
@@ -700,7 +778,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-o4-mini",
         vendor_id: "builtin-openai",
-        label: "o4-mini (最新推理)",
+        label: "o4-mini (推理, 2026-10 退役)",
         model: "o4-mini",
         is_multimodal: true,
         is_reasoning: true,
@@ -731,18 +809,9 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 8192,
         temperature: 0.7,
     },
-    BuiltinModel {
-        id: "builtin-nvidia-yi-large",
-        vendor_id: "builtin-nvidia",
-        label: "Yi Large",
-        model: "01-ai/yi-large",
-        is_multimodal: false,
-        is_reasoning: false,
-        supports_tools: false,
-        max_output_tokens: 8192,
-        temperature: 0.7,
-    },
+    // 注：01-ai/yi-large 已移除（零一万物已实质退出公有 API 市场）。
     // ===== Xiaomi MiMo 模型 =====
+    // 注：mimo-v2-pro / v2-omni / v2-flash 已于 2026-06-30 下线（模型名直接失效），已移除。
     BuiltinModel {
         id: "builtin-mimo-v2.5-pro",
         vendor_id: "builtin-mimo",
@@ -757,46 +826,13 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-mimo-v2.5",
         vendor_id: "builtin-mimo",
-        label: "MiMo V2.5",
+        label: "MiMo V2.5 (多模态)",
         model: "mimo-v2.5",
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 32768,
-        temperature: 1.0,
-    },
-    BuiltinModel {
-        id: "builtin-mimo-v2-pro",
-        vendor_id: "builtin-mimo",
-        label: "MiMo V2 Pro",
-        model: "mimo-v2-pro",
-        is_multimodal: false,
-        is_reasoning: true,
-        supports_tools: true,
         max_output_tokens: 131072,
         temperature: 1.0,
-    },
-    BuiltinModel {
-        id: "builtin-mimo-v2-omni",
-        vendor_id: "builtin-mimo",
-        label: "MiMo V2 Omni",
-        model: "mimo-v2-omni",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 32768,
-        temperature: 1.0,
-    },
-    BuiltinModel {
-        id: "builtin-mimo-v2-flash",
-        vendor_id: "builtin-mimo",
-        label: "MiMo V2 Flash",
-        model: "mimo-v2-flash",
-        is_multimodal: false,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.3,
     },
 ];
 
@@ -820,6 +856,7 @@ impl BuiltinVendor {
             )),
             base_url: self.base_url.to_string(),
             api_key: String::new(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -903,10 +940,7 @@ impl BuiltinModel {
         } else {
             None
         };
-        let use_reasoning_defaults = self.is_reasoning
-            && self.vendor_id != "builtin-nvidia"
-            && !(self.vendor_id == "builtin-mimo"
-                && matches!(self.model, "mimo-v2-flash" | "mimo-v2.5-flash"));
+        let use_reasoning_defaults = self.is_reasoning && self.vendor_id != "builtin-nvidia";
 
         ModelProfile {
             id: self.id.to_string(),
@@ -966,6 +1000,7 @@ impl GeminiBuiltinVendor {
             )),
             base_url: self.base_url.clone(),
             api_key: String::new(),
+            api_keys: Vec::new(),
             headers: HashMap::new(),
             rate_limit_per_minute: None,
             default_timeout_ms: None,
@@ -1011,7 +1046,7 @@ impl GeminiBuiltinModel {
             status: "enabled".to_string(),
             enabled: true,
             max_output_tokens: self.max_output_tokens,
-            temperature: self.temperature,
+            temperature: self.temperature.unwrap_or(1.0),
             reasoning_effort: self.reasoning_effort.clone(),
             thinking_enabled,
             thinking_budget: None,
@@ -1085,9 +1120,7 @@ pub fn load_all_builtins(
 
 pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
     let normalized = model.trim().to_lowercase();
-    if normalized.contains("deepseek-v4")
-        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
-    {
+    if normalized.contains("deepseek-v4") {
         Some(1_000_000)
     } else if normalized.contains("deepseek-v3.2") || normalized.contains("deepseek-v3.1") {
         Some(128_000)
@@ -1096,16 +1129,24 @@ pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
         || normalized.contains("nemotron-3-ultra")
     {
         Some(1_000_000)
-    } else if matches!(
-        normalized.as_str(),
-        "mimo-v2.5-pro" | "mimo-v2-pro" | "mimo-v2.5"
-    ) {
+    } else if matches!(normalized.as_str(), "mimo-v2.5-pro" | "mimo-v2.5") {
         Some(1_000_000)
     } else if matches!(
         normalized.as_str(),
-        "mimo-v2-flash" | "mimo-v2.5-flash" | "mimo-v2-omni"
+        "kimi-k2.6" | "kimi-k2.7-code" | "kimi-k2.7-code-highspeed" | "kimi-k2.5"
     ) {
-        Some(256_000)
+        // Kimi K2 系 256K 上下文
+        Some(262_144)
+    } else if normalized.starts_with("doubao-seed-2-1-") || normalized == "doubao-seed-evolving" {
+        // 豆包 Seed 2.1 / Evolving 256K 上下文
+        Some(262_144)
+    } else if matches!(
+        normalized.as_str(),
+        "glm-5.2" | "minimax-m3" | "qwen3.7-max" | "qwen3.7-plus" | "qwen3.6-flash"
+    ) {
+        Some(1_000_000)
+    } else if normalized == "glm-5.1" {
+        Some(200_000)
     } else {
         None
     }
@@ -1144,44 +1185,114 @@ mod tests {
     }
 
     #[test]
-    fn official_deepseek_vendor_advertises_v4_and_keeps_alias_notice() {
+    fn official_deepseek_vendor_advertises_v4_and_flags_alias_retirement() {
         let vendor = deepseek_vendor();
 
         assert!(vendor.notes.contains("deepseek-v4-flash"));
         assert!(vendor.notes.contains("deepseek-v4-pro"));
-        assert!(vendor.notes.contains("deepseek-chat"));
-        assert!(vendor.notes.contains("deepseek-reasoner"));
-        assert!(vendor.notes.contains("32K"));
-        assert!(vendor.notes.contains("64K"));
-        assert_eq!(vendor.max_tokens_limit, Some(65_536));
+        assert!(vendor.notes.contains("384K"));
+        assert!(vendor.notes.contains("停用"));
+        assert_eq!(vendor.max_tokens_limit, Some(393_216));
     }
 
     #[test]
-    fn official_deepseek_builtin_profiles_recommend_v4_and_preserve_aliases() {
+    fn official_deepseek_builtin_profiles_recommend_v4_only() {
         let v4_flash = builtin_model("builtin-deepseek-v4-flash").to_model_profile();
         let v4_pro = builtin_model("builtin-deepseek-v4-pro").to_model_profile();
-        let chat_alias = builtin_model("builtin-deepseek-chat").to_model_profile();
-        let reasoner_alias = builtin_model("builtin-deepseek-reasoner").to_model_profile();
 
         assert_eq!(v4_flash.model, "deepseek-v4-flash");
         assert_eq!(v4_pro.model, "deepseek-v4-pro");
         assert_eq!(v4_flash.provider_scope.as_deref(), Some("deepseek"));
         assert_eq!(v4_flash.model_adapter, "deepseek");
-        assert_eq!(v4_flash.max_tokens_limit, Some(65_536));
+        assert_eq!(v4_flash.max_tokens_limit, Some(393_216));
         assert_eq!(v4_flash.context_window, Some(1_000_000));
         assert_eq!(v4_pro.context_window, Some(1_000_000));
         assert_eq!(v4_flash.max_output_tokens, 32_768);
         assert_eq!(v4_flash.reasoning_effort.as_deref(), Some("high"));
 
-        assert_eq!(chat_alias.model, "deepseek-chat");
-        assert_eq!(chat_alias.model_adapter, "deepseek");
-        assert_eq!(chat_alias.context_window, Some(1_000_000));
-        assert!(!chat_alias.is_reasoning);
-        assert!(!chat_alias.thinking_enabled);
-        assert_eq!(reasoner_alias.model, "deepseek-reasoner");
-        assert_eq!(reasoner_alias.context_window, Some(1_000_000));
-        assert!(reasoner_alias.is_reasoning);
-        assert_eq!(reasoner_alias.reasoning_effort.as_deref(), Some("high"));
+        // 兼容别名 2026-07-24 停用，不再内置
+        assert!(!BUILTIN_MODELS
+            .iter()
+            .any(|m| matches!(m.model, "deepseek-chat" | "deepseek-reasoner")));
+    }
+
+    #[test]
+    fn retired_models_are_absent_from_builtin_catalog() {
+        const RETIRED_MODELS: &[&str] = &[
+            "kimi-k2",                 // 2026-05-25 停服
+            "kimi-k2-thinking",        // 2026-05-25 停服
+            "kimi-latest",             // 2026-01-28 停服
+            "mimo-v2-pro",             // 2026-06-30 下线
+            "mimo-v2-omni",            // 2026-06-30 下线
+            "mimo-v2-flash",           // 2026-06-30 下线
+            "deepseek-chat",           // 2026-07-24 停用
+            "deepseek-reasoner",       // 2026-07-24 停用
+            "01-ai/yi-large",          // 零一万物退出公有 API
+            "doubao-seed-1-8-251215",  // 无效快照 ID（正确为 251228）
+        ];
+
+        for model in RETIRED_MODELS {
+            assert!(
+                !BUILTIN_MODELS.iter().any(|m| m.model == *model),
+                "retired model `{model}` should not be in the builtin catalog"
+            );
+        }
+    }
+
+    #[test]
+    fn builtin_catalog_includes_2026_flagships() {
+        let k26 = builtin_model("builtin-kimi-k2.6").to_model_profile();
+        assert_eq!(k26.model, "kimi-k2.6");
+        assert!(k26.is_multimodal);
+        assert!(k26.is_reasoning);
+        assert_eq!(k26.context_window, Some(262_144));
+        assert!((k26.temperature - 1.0).abs() < f32::EPSILON);
+
+        let k27_code = builtin_model("builtin-kimi-k2.7-code").to_model_profile();
+        assert_eq!(k27_code.model, "kimi-k2.7-code");
+        assert!(k27_code.is_reasoning);
+        assert_eq!(k27_code.context_window, Some(262_144));
+
+        let glm52 = builtin_model("builtin-glm-5.2").to_model_profile();
+        assert_eq!(glm52.model, "glm-5.2");
+        assert!(glm52.is_reasoning);
+        assert_eq!(glm52.context_window, Some(1_000_000));
+
+        let glm51 = builtin_model("builtin-glm-5.1").to_model_profile();
+        assert_eq!(glm51.model, "glm-5.1");
+        assert_eq!(glm51.context_window, Some(200_000));
+
+        let m3 = builtin_model("builtin-minimax-m3").to_model_profile();
+        assert_eq!(m3.model, "MiniMax-M3");
+        assert!(m3.is_multimodal);
+        assert_eq!(m3.context_window, Some(1_000_000));
+
+        let qwen37_max = builtin_model("builtin-qwen3.7-max").to_model_profile();
+        assert_eq!(qwen37_max.model, "qwen3.7-max");
+        assert!(qwen37_max.is_reasoning);
+        assert_eq!(qwen37_max.context_window, Some(1_000_000));
+
+        let qwen37_plus = builtin_model("builtin-qwen3.7-plus").to_model_profile();
+        assert_eq!(qwen37_plus.model, "qwen3.7-plus");
+        assert!(qwen37_plus.is_multimodal);
+
+        let qwen36_flash = builtin_model("builtin-qwen3.6-flash").to_model_profile();
+        assert_eq!(qwen36_flash.model, "qwen3.6-flash");
+        assert!(qwen36_flash.is_multimodal);
+
+        let seed21_pro = builtin_model("builtin-doubao-seed-2.1-pro").to_model_profile();
+        assert_eq!(seed21_pro.model, "doubao-seed-2-1-pro-260628");
+        assert!(seed21_pro.is_reasoning);
+        assert_eq!(seed21_pro.context_window, Some(262_144));
+
+        let seed21_turbo = builtin_model("builtin-doubao-seed-2.1-turbo").to_model_profile();
+        assert_eq!(seed21_turbo.model, "doubao-seed-2-1-turbo-260628");
+
+        let evolving = builtin_model("builtin-doubao-seed-evolving").to_model_profile();
+        assert_eq!(evolving.model, "doubao-seed-evolving");
+
+        let seed18 = builtin_model("builtin-doubao-1.8-pro").to_model_profile();
+        assert_eq!(seed18.model, "doubao-seed-1-8-251228");
     }
 
     #[test]
@@ -1240,8 +1351,7 @@ mod tests {
     #[test]
     fn mimo_builtin_profiles_use_mimo_adapter_and_thinking_defaults() {
         let pro = builtin_model("builtin-mimo-v2.5-pro").to_model_profile();
-        let omni = builtin_model("builtin-mimo-v2.5").to_model_profile();
-        let flash = builtin_model("builtin-mimo-v2-flash").to_model_profile();
+        let multimodal = builtin_model("builtin-mimo-v2.5").to_model_profile();
 
         assert_eq!(pro.vendor_id, "builtin-mimo");
         assert_eq!(pro.provider_scope.as_deref(), Some("mimo"));
@@ -1253,13 +1363,10 @@ mod tests {
         assert_eq!(pro.max_output_tokens, 131_072);
         assert_eq!(pro.context_window, Some(1_000_000));
 
-        assert_eq!(omni.model, "mimo-v2.5");
-        assert!(omni.is_multimodal);
-        assert_eq!(omni.context_window, Some(1_000_000));
-
-        assert_eq!(flash.model, "mimo-v2-flash");
-        assert_eq!(flash.max_output_tokens, 65_536);
-        assert_eq!(flash.context_window, Some(256_000));
+        assert_eq!(multimodal.model, "mimo-v2.5");
+        assert!(multimodal.is_multimodal);
+        assert_eq!(multimodal.max_output_tokens, 131_072);
+        assert_eq!(multimodal.context_window, Some(1_000_000));
     }
 
     #[test]
@@ -1289,6 +1396,27 @@ mod tests {
         assert!(vendor.notes.contains("gemini-3.1-pro-preview"));
         assert!(vendor.notes.contains("gemini-3.1-flash-lite"));
         assert!(vendor.notes.contains("v1beta"));
+    }
+
+    #[test]
+    fn gemini_3x_models_do_not_pin_default_temperature() {
+        // 调研 03 要点 8：Gemini 3.x 官方不建议设置采样参数，注册表不应给 3.x 下发默认 temperature；
+        // 2.5 系（2026-10-16 关停前仍可用）保留原默认值。
+        for model in &GEMINI_BUILTIN_REGISTRY.models {
+            if model.model.starts_with("gemini-3") {
+                assert!(
+                    model.temperature.is_none(),
+                    "{} should not carry a default temperature",
+                    model.model
+                );
+            } else {
+                assert!(
+                    model.temperature.is_some(),
+                    "{} (2.5 series) should keep its default temperature",
+                    model.model
+                );
+            }
+        }
     }
 
     #[test]

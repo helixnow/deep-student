@@ -298,8 +298,18 @@ export const inferProviderTypeFromBaseUrl = (baseUrl?: string | null): string | 
   if (lowerBaseUrl.includes('api.anthropic.com')) {
     return 'anthropic';
   }
-  if (lowerBaseUrl.includes('api.minimax.io') || lowerBaseUrl.includes('api.minimax.chat')) {
+  if (
+    lowerBaseUrl.includes('api.minimax.io') ||
+    lowerBaseUrl.includes('api.minimaxi.com') ||
+    lowerBaseUrl.includes('api.minimax.chat')
+  ) {
     return 'minimax';
+  }
+  if (lowerBaseUrl.includes('qianfan.baidubce.com')) {
+    return 'ernie';
+  }
+  if (lowerBaseUrl.includes('api.mistral.ai')) {
+    return 'mistral';
   }
   if (lowerBaseUrl.includes('integrate.api.nvidia.com')) {
     return 'nvidia';

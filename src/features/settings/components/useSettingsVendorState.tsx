@@ -780,8 +780,11 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         ? defaults.enableThinking ?? (extCaps.supportsThinkingTokens || extCaps.supportsHybridReasoning || caps.isReasoning)
         : false;
 
-      const modelAdapter = vendor.providerType?.toLowerCase() === 'gemini' ? 'google' : caps.modelAdapter;
-      const geminiApiVersion = vendor.providerType?.toLowerCase() === 'gemini' ? 'v1beta' : undefined;
+      // 「选 Google 类型获取模型 404」修复：google 与 gemini 均按 Gemini 原生适配器处理
+      const vendorProviderTypeLower = vendor.providerType?.toLowerCase();
+      const isGoogleVendor = vendorProviderTypeLower === 'gemini' || vendorProviderTypeLower === 'google';
+      const modelAdapter = isGoogleVendor ? 'google' : caps.modelAdapter;
+      const geminiApiVersion = isGoogleVendor ? 'v1beta' : undefined;
 
       const profile: ModelProfile = {
         id: `vm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,

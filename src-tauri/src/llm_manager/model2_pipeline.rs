@@ -20,8 +20,8 @@ use uuid::Uuid;
 
 use super::{
     adapters::get_adapter, build_provider_adapter, normalize_nonstream_response_to_openai, parser,
-    should_use_openai_responses_for_config, ApiConfig, ImagePayload, LLMManager, MergedChatMessage,
-    Result,
+    routing, should_use_openai_responses_for_config, ApiConfig, ImagePayload, LLMManager,
+    MergedChatMessage, Result,
 };
 
 /// 流式请求的单请求超时上限（秒）
@@ -32,6 +32,15 @@ use super::{
 /// 真正的「挂起」防护由 Pipeline 层空闲超时（600s 无数据）负责。
 /// 非流式调用不受影响，仍走客户端默认 300s。
 const STREAMING_REQUEST_TIMEOUT_SECS: u64 = 7_200;
+
+/// 流式响应空闲超时（秒）：连接保持但持续无数据到达时主动结束流。
+///
+/// 🔧 P1-3 修复：此前取消信号只在 `stream.next()` 返回 chunk 后才被检查，
+/// 服务端停滞（上游挂起/代理黑洞）时 next() 一直阻塞，用户取消无效且请求
+/// 可挂起至 STREAMING_REQUEST_TIMEOUT_SECS（2 小时）。现在流循环用 select
+/// 同时等待「数据 / 取消信号 / 轮询计时」，并以本常量作为空闲上限
+/// （与 chat_v2 Pipeline 层的 600s 空闲超时对齐，覆盖其余旧调用方）。
+const STREAMING_IDLE_TIMEOUT_SECS: u64 = 600;
 
 #[inline]
 fn is_qwen_config(config: &ApiConfig) -> bool {
@@ -856,7 +865,31 @@ impl LLMManager {
         rand::thread_rng().gen_range(min_delay_ms..=max_delay_ms)
     }
 
+    /// 可取消等待：睡眠期间每 500ms 轮询取消 registry，被取消时返回 true。
+    ///
+    /// 🔧 P1-3 修复：429/5xx 重试等待期间此前完全不响应取消信号。
+    async fn sleep_checking_cancel(&self, stream_event: &str, wait_ms: u64) -> bool {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(wait_ms);
+        loop {
+            if self.take_cancellation_if_any(stream_event).await {
+                return true;
+            }
+            let now = tokio::time::Instant::now();
+            if now >= deadline {
+                return false;
+            }
+            let remaining = (deadline - now).as_millis() as u64;
+            tokio::time::sleep(std::time::Duration::from_millis(remaining.min(500))).await;
+        }
+    }
+
     // 统一AI接口层 - 模型二（核心解析/对话）- 流式版本
+    //
+    // 🆕 Failover 包装层（routing.rs）：模型选择后按策略驱动
+    // 「主模型 → 同 provider key 轮换（含冷却）→ fallback 模型」的尝试序列。
+    // 流式出口属于对话主链路：用户显式选择的模型（model_override_id）是严格的，
+    // 仅当用户开启 auto_degrade_chat 才允许模型级降级；key 轮换不受此限制。
+    #[allow(clippy::too_many_arguments)]
     pub async fn call_unified_model_2_stream(
         &self,
         context: &HashMap<String, Value>,
@@ -886,19 +919,13 @@ impl LLMManager {
             subject, enable_chain_of_thought, model_override_id
         );
 
-        // 记录开始时间和统计信息
-        let _start_instant = std::time::Instant::now();
-        let mut request_bytes = 0usize;
-        let _response_bytes = 0usize;
-        let _chunk_count = 0usize;
-
         // 获取模型配置（支持 override），根据任务上下文路由
         let task_key = match task_context {
             Some(tc) if tc.contains("review") => "review",
             Some(tc) if tc == "tag_generation" => "tag_generation",
             _ => "default",
         };
-        let (mut config, _cot_by_model) = self
+        let (primary_config, _cot_by_model) = self
             .select_model_for(
                 task_key,
                 model_override_id.clone(),
@@ -909,12 +936,88 @@ impl LLMManager {
                 max_output_tokens_override,
             )
             .await?;
-        apply_runtime_reasoning_overrides(
-            &mut config,
-            Some(enable_thinking),
-            reasoning_effort_override,
-            thinking_budget_override,
+
+        let run = routing::FailoverRun {
+            task: task_key.to_string(),
+            scenario: routing::FailoverScenario::ChatMain,
+            user_pinned: model_override_id.is_some(),
+            window: Some(window.clone()),
+            // 建立阶段的 429/5xx 退避重试由本函数内部循环完成
+            attempts_handle_429_internally: true,
+            param_overrides: routing::ParamOverrides {
+                temperature: temp_override,
+                top_p: top_p_override,
+                frequency_penalty: frequency_penalty_override,
+                presence_penalty: presence_penalty_override,
+                max_output_tokens: max_output_tokens_override,
+            },
+        };
+        self.run_with_failover(run, primary_config, |mut cfg, establish_retries| {
+            // fallback 模型需应用与主模型相同的运行期推理覆盖
+            apply_runtime_reasoning_overrides(
+                &mut cfg,
+                Some(enable_thinking),
+                reasoning_effort_override.clone(),
+                thinking_budget_override,
+            );
+            self.call_unified_model_2_stream_with_config(
+                cfg,
+                establish_retries,
+                context,
+                chat_history,
+                subject,
+                enable_chain_of_thought,
+                enable_thinking,
+                task_context,
+                window.clone(),
+                stream_event,
+                message_id,
+                _trace_id,
+                disable_tools,
+                _max_input_tokens_override,
+                system_prompt_override.clone(),
+            )
+        })
+        .await
+    }
+
+    /// 流式统一出口的单次尝试：用已解析的 config 完成「建立 + 流式读取」。
+    ///
+    /// 🆕 Failover：模型选择/参数覆盖上移到 `call_unified_model_2_stream` 包装层。
+    /// `establish_max_retries` 控制建立阶段（429/5xx）的内部重试次数——
+    /// 存在 fallback 候选时收紧为 1，尽快让位给 key 轮换/模型切换；
+    /// 流一旦建立，后续中断不做续传（错误不打 establish 标记，不触发 failover）。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) async fn call_unified_model_2_stream_with_config(
+        &self,
+        resolved_config: ApiConfig,
+        establish_max_retries: u32,
+        context: &HashMap<String, Value>,
+        chat_history: &[ChatMessage],
+        subject: &str,
+        enable_chain_of_thought: bool,
+        enable_thinking: bool,
+        task_context: Option<&str>,
+        window: Window,
+        stream_event: &str,
+        message_id: Option<&str>,
+        _trace_id: Option<&str>,
+        disable_tools: bool,
+        _max_input_tokens_override: Option<usize>,
+        system_prompt_override: Option<String>,
+    ) -> Result<StandardModel2Output> {
+        debug!(
+            "[model2_stream] 单次尝试: model={}, establish_max_retries={}",
+            resolved_config.model, establish_max_retries
         );
+
+        // 记录开始时间和统计信息
+        let _start_instant = std::time::Instant::now();
+        let mut request_bytes = 0usize;
+        let _response_bytes = 0usize;
+        let _chunk_count = 0usize;
+
+        let config = resolved_config;
 
         // P1修复：图片上下文严格控制 - 图片由消息级字段提供，禁用会话级回退
         let images_used_source = "per_message_only".to_string();
@@ -1759,7 +1862,9 @@ impl LLMManager {
         }
 
         // ERR-01 修复：HTTP 错误码区分处理与指数退避重试
-        const MAX_RETRIES: u32 = 5;
+        // 🆕 Failover：重试上限由包装层传入（无 fallback 候选时保持旧值 5，
+        // 有候选时收紧为 1，尽快让位给 key 轮换/模型切换）
+        let max_retries = establish_max_retries;
         const MIN_RETRY_DELAY_MS: u64 = 4000;
         const MAX_RETRY_DELAY_MS: u64 = 5000;
         let mut retry_count = 0u32;
@@ -1803,7 +1908,13 @@ impl LLMManager {
                 .send()
                 .await
                 // 🔒 without_url：reqwest 错误 Display 含完整 URL（Gemini 等 query 带 key），脱敏后再进错误消息
-                .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
+                // 🆕 建立阶段网络层失败：打标供 Failover 分类（可重试瞬态错误）
+                .map_err(|e| {
+                    routing::tag_establish_failure(
+                        AppError::network(format!("模型二API请求失败: {}", e.without_url())),
+                        None,
+                    )
+                })?;
 
             if resp.status().is_success() {
                 break resp;
@@ -1822,38 +1933,41 @@ impl LLMManager {
                         .and_then(|v| v.to_str().ok())
                         .and_then(|s| s.parse::<u64>().ok());
 
-                    let base_wait_ms = retry_after.map(|s| s * 1000).unwrap_or_else(|| {
+                    // 🔧 Retry-After clamp 到 120s：防止异常服务端返回超大值导致管线长时间 sleep
+                    let wait_ms = retry_after.map(|s| s.min(120) * 1000).unwrap_or_else(|| {
                         Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS)
                     });
-                    let wait_ms = if retry_after.is_some() {
-                        base_wait_ms
-                    } else {
-                        base_wait_ms
-                    };
 
-                    if retry_count < MAX_RETRIES {
+                    if retry_count < max_retries {
                         retry_count += 1;
                         warn!(
                             "[模型二API] 遇到速率限制(429)，等待 {}ms 后重试 ({}/{})",
-                            wait_ms, retry_count, MAX_RETRIES
+                            wait_ms, retry_count, max_retries
                         );
                         Self::emit_inner_retry_progress(
                             &window,
                             stream_event,
                             message_id,
                             retry_count,
-                            MAX_RETRIES,
+                            max_retries,
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
+                        if self.sleep_checking_cancel(stream_event, wait_ms).await {
+                            info!("[模型二API] 429 重试等待期间收到取消信号，中止请求");
+                            return Err(AppError::llm("请求已被用户取消"));
+                        }
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
                         let error_msg = format!(
                             "模型二API请求失败: 速率限制(429)，已重试{}次仍失败 - {}",
-                            MAX_RETRIES, error_text
+                            max_retries, error_text
                         );
                         error!("{}", error_msg);
-                        return Err(AppError::llm(error_msg));
+                        // 🆕 打标：429 → key 进冷却并轮换，耗尽后按策略切换 fallback 模型
+                        return Err(routing::tag_establish_failure(
+                            AppError::llm(error_msg),
+                            Some(429),
+                        ));
                     }
                 }
                 // 401/403 认证错误：直接返回明确错误
@@ -1864,35 +1978,46 @@ impl LLMManager {
                         status_code, error_text
                     );
                     error!("{}", error_msg);
-                    return Err(AppError::configuration(error_msg));
+                    // 🆕 打标：鉴权失败只允许同 provider 内换 key，不允许换模型
+                    return Err(routing::tag_establish_failure(
+                        AppError::configuration(error_msg),
+                        Some(status_code),
+                    ));
                 }
                 // 5xx 服务端错误：可重试
                 500..=599 => {
-                    if retry_count < MAX_RETRIES {
+                    if retry_count < max_retries {
                         retry_count += 1;
                         let wait_ms =
                             Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS);
                         warn!(
                             "[模型二API] 服务端错误({})，等待 {}ms 后重试 ({}/{})",
-                            status_code, wait_ms, retry_count, MAX_RETRIES
+                            status_code, wait_ms, retry_count, max_retries
                         );
                         Self::emit_inner_retry_progress(
                             &window,
                             stream_event,
                             message_id,
                             retry_count,
-                            MAX_RETRIES,
+                            max_retries,
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
+                        if self.sleep_checking_cancel(stream_event, wait_ms).await {
+                            info!("[模型二API] 5xx 重试等待期间收到取消信号，中止请求");
+                            return Err(AppError::llm("请求已被用户取消"));
+                        }
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
                         let error_msg = format!(
                             "模型二API服务端错误: HTTP {} - 已重试{}次仍失败 - {}",
-                            status_code, MAX_RETRIES, error_text
+                            status_code, max_retries, error_text
                         );
                         error!("{}", error_msg);
-                        return Err(AppError::llm(error_msg));
+                        // 🆕 打标：5xx → 可重试瞬态错误，允许 key 轮换与模型降级
+                        return Err(routing::tag_establish_failure(
+                            AppError::llm(error_msg),
+                            Some(status_code),
+                        ));
                     }
                 }
                 // 其他错误：直接返回
@@ -1901,7 +2026,11 @@ impl LLMManager {
                     let error_msg =
                         format!("模型二API请求失败: HTTP {} - {}", status_code, error_text);
                     error!("模型二API请求失败: {}", error_msg);
-                    return Err(AppError::llm(error_msg));
+                    // 🆕 打标：400/404 等参数类错误 → 不可重试，立即失败
+                    return Err(routing::tag_establish_failure(
+                        AppError::llm(error_msg),
+                        Some(status_code),
+                    ));
                 }
             }
         };
@@ -1987,7 +2116,67 @@ impl LLMManager {
                 .await;
         }
         let mut was_cancelled = false;
-        while let Some(chunk_result) = stream.next().await {
+        // 🔧 P1-1 修复：增量 UTF-8 解码器，保留跨 chunk 边界的不完整多字节字符（中文乱码修复）
+        let mut utf8_decoder = super::utf8_stream::Utf8StreamDecoder::new();
+        // 🔧 P1-3 修复：select 同时等待「数据 / 取消信号 / 轮询计时」，
+        // 流停滞时取消可即时生效，空闲超过 STREAMING_IDLE_TIMEOUT_SECS 主动结束流
+        let idle_timeout = std::time::Duration::from_secs(STREAMING_IDLE_TIMEOUT_SECS);
+        let mut last_activity = tokio::time::Instant::now();
+        let mut cancel_rx_wait = cancel_rx.clone();
+        // sender 被清理后 changed() 立即返回 Err，用标志关闭该分支避免 busy loop
+        let mut cancel_channel_open = true;
+        loop {
+            enum StreamWait<T> {
+                Chunk(T),
+                Ended,
+                CancelSignal,
+                Tick,
+            }
+            let waited = tokio::select! {
+                biased;
+                changed = cancel_rx_wait.changed(), if cancel_channel_open => {
+                    match changed {
+                        Ok(()) => {
+                            if *cancel_rx_wait.borrow() {
+                                StreamWait::CancelSignal
+                            } else {
+                                StreamWait::Tick
+                            }
+                        }
+                        Err(_) => {
+                            cancel_channel_open = false;
+                            StreamWait::Tick
+                        }
+                    }
+                }
+                item = stream.next() => match item {
+                    Some(r) => StreamWait::Chunk(r),
+                    None => StreamWait::Ended,
+                },
+                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => StreamWait::Tick,
+            };
+
+            let maybe_chunk = match waited {
+                StreamWait::Ended => break,
+                StreamWait::Chunk(r) => {
+                    last_activity = tokio::time::Instant::now();
+                    Some(r)
+                }
+                StreamWait::CancelSignal => None,
+                StreamWait::Tick => {
+                    if last_activity.elapsed() >= idle_timeout {
+                        warn!(
+                            "{}[Stream Loop] 空闲超时（{}s 无数据），主动结束流: {}",
+                            chat_timing::format_elapsed_prefix(stream_event),
+                            STREAMING_IDLE_TIMEOUT_SECS,
+                            stream_event
+                        );
+                        break;
+                    }
+                    None
+                }
+            };
+
             // Hard cancel check (best-effort): proactively drain registry then check channel
             let registry_cancelled = self.take_cancellation_if_any(stream_event).await;
             let cancel_flag = *cancel_rx.borrow();
@@ -2024,10 +2213,15 @@ impl LLMManager {
                 debug!("[Cancel] 流循环已中断，退出 while 循环");
                 break;
             }
+            // 非数据轮次（取消信号已在上方处理 / Tick 未超时）继续等待
+            let Some(chunk_result) = maybe_chunk else {
+                continue;
+            };
             match chunk_result {
                 Ok(chunk) => {
                     response_bytes += chunk.len();
-                    let chunk_str = String::from_utf8_lossy(&chunk);
+                    // 增量 UTF-8 解码：跨 chunk 的不完整多字节字符保留到下一个 chunk
+                    let chunk_str = utf8_decoder.decode(&chunk);
 
                     // 使用SSE缓冲器处理chunk，获取完整的行
                     let complete_lines = sse_buffer.process_chunk(&chunk_str);
@@ -2408,6 +2602,14 @@ impl LLMManager {
             // 如果流已结束，退出循环
             if stream_ended {
                 break;
+            }
+        }
+
+        // 冲刷 UTF-8 解码器残留（流恰好在多字节字符中间截断时产生一个 U+FFFD）
+        {
+            let tail = utf8_decoder.flush();
+            if !tail.is_empty() {
+                let _ = sse_buffer.process_chunk(&tail);
             }
         }
 
@@ -2796,28 +2998,67 @@ impl LLMManager {
         task_context: Option<&str>,
         max_input_tokens_override: Option<usize>,
     ) -> Result<StandardModel2Output> {
+        // 获取模型配置
+        // Model Router: choose model by task_context when possible
+        let task = match task_context {
+            Some(tc) if tc.contains("planner") => "review",
+            // 🚀 修复：添加tag_generation的路由支持
+            Some(tc) if tc == "tag_generation" || tc.contains("tag") => "tag_generation",
+            _ => "default",
+        };
+        let (config, _enable_cot) = self
+            .select_model_for(task, None, None, None, None, None, None)
+            .await
+            .unwrap_or((self.get_model2_config().await?, true));
+
+        // 🆕 Failover 包装层（routing.rs）：非流式出口属于后台/工具型任务，
+        // 允许 key 轮换与模型降级（无 window 上下文，仅日志通知）
+        let run = routing::FailoverRun {
+            task: task.to_string(),
+            scenario: routing::FailoverScenario::BackgroundTask,
+            user_pinned: false,
+            window: None,
+            attempts_handle_429_internally: false,
+            param_overrides: routing::ParamOverrides::default(),
+        };
+        let image_paths_ref = &image_paths;
+        self.run_with_failover(run, config, |cfg, _establish_retries| {
+            self.call_unified_model_2_with_config(
+                cfg,
+                context,
+                chat_history,
+                subject,
+                enable_chain_of_thought,
+                image_paths_ref.clone(),
+                task_context,
+                max_input_tokens_override,
+            )
+        })
+        .await
+    }
+
+    /// 非流式统一出口的单次尝试（Failover 由 `call_unified_model_2` 包装层驱动）
+    #[allow(clippy::too_many_arguments)]
+    async fn call_unified_model_2_with_config(
+        &self,
+        config: ApiConfig,
+        context: &HashMap<String, Value>,
+        chat_history: &[ChatMessage],
+        subject: &str,
+        enable_chain_of_thought: bool,
+        image_paths: Option<Vec<String>>,
+        task_context: Option<&str>,
+        max_input_tokens_override: Option<usize>,
+    ) -> Result<StandardModel2Output> {
         info!(
-            "调用统一模型二接口: 科目={}, 思维链={}, 图片数量={}",
+            "调用统一模型二接口: 科目={}, 思维链={}, 图片数量={}, model={}",
             subject,
             enable_chain_of_thought,
-            image_paths.as_ref().map(|p| p.len()).unwrap_or(0)
+            image_paths.as_ref().map(|p| p.len()).unwrap_or(0),
+            config.model
         );
 
         let _max_input_tokens_override = max_input_tokens_override;
-
-        // 获取模型配置
-        // Model Router: choose model by task_context when possible
-        let (config, _enable_cot) = {
-            let task = match task_context {
-                Some(tc) if tc.contains("planner") => "review",
-                // 🚀 修复：添加tag_generation的路由支持
-                Some(tc) if tc == "tag_generation" || tc.contains("tag") => "tag_generation",
-                _ => "default",
-            };
-            self.select_model_for(task, None, None, None, None, None, None)
-                .await
-                .unwrap_or((self.get_model2_config().await?, true))
-        };
 
         // 处理图片（如果模型支持多模态且提供了图片）
         // 移除会话级图片回退，不再从 image_paths 读取
@@ -3035,7 +3276,13 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("模型二API请求失败: {}", e.without_url())))?;
+            // 🆕 建立阶段网络层失败：打标供 Failover 分类
+            .map_err(|e| {
+                routing::tag_establish_failure(
+                    AppError::network(format!("模型二API请求失败: {}", e.without_url())),
+                    None,
+                )
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -3043,7 +3290,11 @@ impl LLMManager {
             let error_msg = format!("模型二API请求失败: {} - {}", status, error_text);
             // 非流式版本没有 stream_event/window 上下文，这里仅返回错误
             error!("模型二API请求失败(非流式): {}", error_msg);
-            return Err(AppError::llm(error_msg));
+            // 🆕 打标 HTTP 状态码：429/5xx 可轮换重试，401/403 仅换 key，400 直接失败
+            return Err(routing::tag_establish_failure(
+                AppError::llm(error_msg),
+                Some(status.as_u16()),
+            ));
         }
 
         let response_text = response
@@ -3138,6 +3389,85 @@ impl LLMManager {
         let (config, _) = self
             .select_model_for("chat_title", None, Some(0.1), None, None, None, None)
             .await?;
+
+        // 🆕 Failover 包装层（routing.rs）：标题/标签生成是典型后台任务，
+        // 允许 key 轮换与模型降级（chat_title 用途可在策略中配独立 fallback 链）
+        let run = routing::FailoverRun {
+            task: "chat_title".to_string(),
+            scenario: routing::FailoverScenario::BackgroundTask,
+            user_pinned: false,
+            window: None,
+            attempts_handle_429_internally: false,
+            param_overrides: routing::ParamOverrides {
+                temperature: Some(0.1),
+                ..Default::default()
+            },
+        };
+        let metadata_value = self
+            .run_with_failover(run, config, |cfg, _establish_retries| {
+                self.generate_chat_metadata_attempt(cfg, &system_prompt, &prompt_body)
+            })
+            .await?;
+
+        let mut title = metadata_value
+            .get("title")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| normalized_question.chars().take(20).collect());
+        if title.is_empty() {
+            title = normalized_question.chars().take(20).collect();
+        }
+
+        let summary = metadata_value
+            .get("summary")
+            .and_then(|v| v.as_str())
+            .map(|s| {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+            .flatten();
+
+        let tags: Vec<String> = metadata_value
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| item.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .take(3)
+                    .collect::<Vec<String>>()
+            })
+            .unwrap_or_else(Vec::new);
+
+        let attributes = metadata_value.get("attributes").and_then(|v| {
+            if v.is_object() {
+                Some(v.clone())
+            } else {
+                None
+            }
+        });
+
+        Ok(crate::models::ChatMetadata {
+            title,
+            summary,
+            tags,
+            attributes,
+            note: None,
+        })
+    }
+
+    /// 聊天元数据（标题/标签）生成的单次尝试（Failover 由 `generate_chat_metadata` 驱动）
+    async fn generate_chat_metadata_attempt(
+        &self,
+        config: ApiConfig,
+        system_prompt: &str,
+        prompt_body: &str,
+    ) -> Result<Value> {
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
         let request_body = json!({
@@ -3198,15 +3528,22 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("聊天元数据生成请求失败: {}", e.without_url())))?;
+            // 🆕 建立阶段网络层失败：打标供 Failover 分类
+            .map_err(|e| {
+                routing::tag_establish_failure(
+                    AppError::network(format!("聊天元数据生成请求失败: {}", e.without_url())),
+                    None,
+                )
+            })?;
 
         if !response.status().is_success() {
             let status = response.status();
             let error_body = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "聊天元数据生成失败: {} - {}",
-                status, error_body
-            )));
+            // 🆕 打标 HTTP 状态码供 Failover 分类
+            return Err(routing::tag_establish_failure(
+                AppError::llm(format!("聊天元数据生成失败: {} - {}", status, error_body)),
+                Some(status.as_u16()),
+            ));
         }
 
         let response_text = response
@@ -3255,59 +3592,8 @@ impl LLMManager {
         let json_block = extract_json_block(content)
             .ok_or_else(|| AppError::llm("未能从聊天元数据响应中提取JSON"))?;
 
-        let metadata_value: Value = serde_json::from_str(&json_block)
-            .map_err(|e| AppError::llm(format!("解析聊天元数据JSON失败: {}", e)))?;
-
-        let mut title = metadata_value
-            .get("title")
-            .and_then(|v| v.as_str())
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|| normalized_question.chars().take(20).collect());
-        if title.is_empty() {
-            title = normalized_question.chars().take(20).collect();
-        }
-
-        let summary = metadata_value
-            .get("summary")
-            .and_then(|v| v.as_str())
-            .map(|s| {
-                let trimmed = s.trim();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                }
-            })
-            .flatten();
-
-        let tags: Vec<String> = metadata_value
-            .get("tags")
-            .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|item| item.as_str())
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-                    .take(3)
-                    .collect::<Vec<String>>()
-            })
-            .unwrap_or_else(Vec::new);
-
-        let attributes = metadata_value.get("attributes").and_then(|v| {
-            if v.is_object() {
-                Some(v.clone())
-            } else {
-                None
-            }
-        });
-
-        Ok(crate::models::ChatMetadata {
-            title,
-            summary,
-            tags,
-            attributes,
-            note: None,
-        })
+        serde_json::from_str(&json_block)
+            .map_err(|e| AppError::llm(format!("解析聊天元数据JSON失败: {}", e)))
     }
 
     pub async fn test_connection(&self, api_key: &str, base_url: &str) -> Result<bool> {
@@ -3668,7 +3954,7 @@ impl LLMManager {
         caller_type: crate::llm_usage::CallerType,
     ) -> Result<StandardModel2Output> {
         let config = self.get_model2_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, image_payloads, caller_type)
+        self.call_raw_prompt_with_config(config, user_prompt, image_payloads, caller_type, "utility")
             .await
     }
 
@@ -3709,6 +3995,7 @@ impl LLMManager {
             None,
             RawPromptOptions { force_json: false },
             crate::llm_usage::CallerType::ChatV2,
+            "compaction",
         )
         .await
     }
@@ -3724,6 +4011,7 @@ impl LLMManager {
             user_prompt,
             None,
             crate::llm_usage::CallerType::Memory,
+            "memory_decision",
         )
         .await
     }
@@ -3739,6 +4027,7 @@ impl LLMManager {
             user_prompt,
             None,
             crate::llm_usage::CallerType::ChatV2,
+            "chat_title",
         )
         .await
     }
@@ -3750,6 +4039,7 @@ impl LLMManager {
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
         caller_type: crate::llm_usage::CallerType,
+        task: &str,
     ) -> Result<StandardModel2Output> {
         // 旧入口保留默认行为：GPT 启用 JSON 严格模式
         self.call_raw_prompt_with_config_opts(
@@ -3758,13 +4048,48 @@ impl LLMManager {
             image_payloads,
             RawPromptOptions { force_json: true },
             caller_type,
+            task,
         )
         .await
     }
 
     /// 带选项的 raw prompt 调用。`force_json=false` 供 compaction 等需要 Markdown
     /// 输出的调用方使用（CR-R2-01 修复）。
+    ///
+    /// 🆕 Failover 包装层（routing.rs）：raw prompt 出口均为后台/工具型任务
+    /// （标题、压缩、记忆决策、utility），允许 key 轮换与模型降级。
     async fn call_raw_prompt_with_config_opts(
+        &self,
+        config: ApiConfig,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+        opts: RawPromptOptions,
+        caller_type: crate::llm_usage::CallerType,
+        task: &str,
+    ) -> Result<StandardModel2Output> {
+        let run = routing::FailoverRun {
+            task: task.to_string(),
+            scenario: routing::FailoverScenario::BackgroundTask,
+            user_pinned: false,
+            window: None,
+            attempts_handle_429_internally: false,
+            param_overrides: routing::ParamOverrides::default(),
+        };
+        let image_payloads_ref = &image_payloads;
+        self.run_with_failover(run, config, |cfg, _establish_retries| {
+            self.call_raw_prompt_attempt(
+                cfg,
+                user_prompt,
+                image_payloads_ref.clone(),
+                opts,
+                caller_type.clone(),
+            )
+        })
+        .await
+    }
+
+    /// raw prompt 的单次尝试（Failover 由 `call_raw_prompt_with_config_opts` 驱动）
+    async fn call_raw_prompt_attempt(
         &self,
         config: ApiConfig,
         user_prompt: &str,
@@ -3904,16 +4229,26 @@ impl LLMManager {
             .json(&preq.body)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())))?;
+            // 🆕 建立阶段网络层失败：打标供 Failover 分类
+            .map_err(|e| {
+                routing::tag_establish_failure(
+                    AppError::network(format!("RAW_PROMPT API请求失败: {}", e.without_url())),
+                    None,
+                )
+            })?;
 
         // 6. 检查响应状态
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "RAW_PROMPT API请求失败: {} - {}",
-                status, error_text
-            )));
+            // 🆕 打标 HTTP 状态码供 Failover 分类
+            return Err(routing::tag_establish_failure(
+                AppError::llm(format!(
+                    "RAW_PROMPT API请求失败: {} - {}",
+                    status, error_text
+                )),
+                Some(status.as_u16()),
+            ));
         }
 
         // 7. 解析响应

@@ -63,6 +63,10 @@ const providerTypeOptions = [
   { value: 'moonshot', labelKey: 'settings:vendor_modal.providers.moonshot', defaultLabel: 'Moonshot' },
   { value: 'nvidia', labelKey: 'settings:vendor_modal.providers.nvidia', defaultLabel: 'NVIDIA' },
   { value: 'mimo', labelKey: 'settings:vendor_modal.providers.mimo', defaultLabel: 'Xiaomi MiMo' },
+  { value: 'grok', labelKey: 'settings:vendor_modal.providers.grok', defaultLabel: 'xAI (Grok)' },
+  { value: 'ernie', labelKey: 'settings:vendor_modal.providers.ernie', defaultLabel: 'Baidu ERNIE' },
+  { value: 'mistral', labelKey: 'settings:vendor_modal.providers.mistral', defaultLabel: 'Mistral' },
+  { value: 'openrouter', labelKey: 'settings:vendor_modal.providers.openrouter', defaultLabel: 'OpenRouter' },
   { value: 'ollama', labelKey: 'settings:vendor_modal.providers.ollama', defaultLabel: 'Ollama' },
 ];
 

@@ -12,9 +12,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Switch } from '@/components/ui/shad/Switch';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/shad/Sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/shad/Dialog';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -41,10 +39,63 @@ type SaveStatus = 'idle' | 'saving' | 'saved';
 const SaveIndicator: React.FC<{ status: SaveStatus }> = ({ status }) => {
   if (status === 'idle') return null;
   return (
-    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground animate-in fade-in duration-200">
+    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground ui-rise-in">
       {status === 'saving' && <Spinner className="h-3 w-3 animate-spin" />}
       {status === 'saved' && <Check className="h-3 w-3 text-green-500" />}
     </span>
+  );
+};
+
+// --- 内联编辑折叠容器 ---
+// grid-template-rows 0fr→1fr 做高度动画（样式见 settings.css .settings-inline-editor）。
+// 收起时缓存最后一次内容并延迟卸载，保证有完整退场动画；内容仅在打开后挂载，避免列表常驻 N 份表单。
+const INLINE_EDITOR_MOTION_MS = 400;
+
+const InlineEditorCollapse: React.FC<{
+  open: boolean;
+  children: React.ReactNode;
+}> = ({ open, children }) => {
+  const [shouldRender, setShouldRender] = useState(open);
+  const lastChildrenRef = useRef<React.ReactNode>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  const hasChildren = children != null && children !== false;
+  if (hasChildren) {
+    lastChildrenRef.current = children;
+  }
+  // render-phase update：展开的首帧就挂载内容，让高度动画从第一帧开始
+  if (open && !shouldRender) {
+    setShouldRender(true);
+  }
+
+  useEffect(() => {
+    if (open) {
+      // 展开完成后若编辑区超出视口，轻推滚动到可见位置
+      const timer = setTimeout(() => {
+        rootRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }, INLINE_EDITOR_MOTION_MS);
+      return () => clearTimeout(timer);
+    }
+    const timer = setTimeout(() => {
+      setShouldRender(false);
+      lastChildrenRef.current = null;
+    }, INLINE_EDITOR_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [open]);
+
+  return (
+    <div
+      ref={rootRef}
+      className="settings-inline-editor"
+      data-open={open ? 'true' : 'false'}
+      aria-hidden={!open}
+    >
+      <div className="settings-inline-editor-clip">
+        <div className="settings-inline-editor-body">
+          {shouldRender ? (hasChildren ? children : lastChildrenRef.current) : null}
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -143,6 +194,8 @@ export const VendorDetailPanel: React.FC = () => {
   const [connectionExpanded, setConnectionExpanded] = useState(false);
   const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
   const [isModelFetcherDialogOpen, setIsModelFetcherDialogOpen] = useState(false);
+  // 移动端不使用 Dialog（契约：移动端弹层禁承载列表流程），改为模型列表上方的内联卡片
+  const [isMobileFetcherOpen, setIsMobileFetcherOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 判断连接是否已配置（有 baseUrl 且有 apiKey，或 noApiKey 模式）
@@ -170,6 +223,7 @@ export const VendorDetailPanel: React.FC = () => {
     setConnectionExpanded(!isConnectionConfigured);
     // 切换供应商时折叠状态归零（默认全展开）
     setCollapsedFamilies(new Set());
+    setIsMobileFetcherOpen(false);
   }, [selectedVendor?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // baseUrl 变化时同步 draft（外部更新）
@@ -217,11 +271,10 @@ export const VendorDetailPanel: React.FC = () => {
   const vendorDisplayName = getVendorDisplayName(selectedVendor, providerLabel);
 
   const renderModelCard = ({ profile, api }: (typeof selectedVendorModels)[number]) => {
-    const isEditing = inlineEditState?.profileId === profile.id;
+    const isEditing = !isAddingNewModel && inlineEditState?.profileId === profile.id;
 
     const handleEditClick = () => {
-      // 移动端：编辑走统一三屏右侧面板（顶栏返回箭头），
-      // 不再弹 PC 风格的右侧 Sheet 浮层（自带标题/X/遮罩，违反统一顶栏原则）
+      // 移动端：编辑走统一三屏右侧面板（顶栏返回箭头）；桌面端在卡片内展开内联编辑
       if (isSmallScreen) {
         if (isAddingNewModel) handleCancelAddModel();
         setInlineEditState(null);
@@ -272,8 +325,9 @@ export const VendorDetailPanel: React.FC = () => {
 
             {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* 次要操作：hover 时显示；移动端无 hover 且空间有限，整组隐藏（收藏/测试/删除可在编辑态完成） */}
-              <div className="max-md:hidden flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
+              {/* 次要操作：桌面 hover 时显示；触屏/窄屏无 hover，常显（否则收藏/删除在移动端不可达）。
+                  测试连接在窄屏隐藏以节省宽度——编辑器底部已有「测试连接」入口 */}
+              <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 max-md:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-150">
                 <NotionButton
                   size="sm"
                   variant="ghost"
@@ -289,6 +343,7 @@ export const VendorDetailPanel: React.FC = () => {
                   size="sm"
                   variant="ghost"
                   iconOnly
+                  className="max-md:hidden"
                   onClick={() => void testApiConnection(api)}
                   disabled={testingApi === api.id || vendorBusy}
                   title={t('settings:api_config.test_button')}
@@ -310,8 +365,8 @@ export const VendorDetailPanel: React.FC = () => {
                     <Trash className="h-3.5 w-3.5" />
                   </NotionButton>
                 ) : (
-                  /* 占位：保持对齐 */
-                  <div className="h-7 w-7 shrink-0" />
+                  /* 占位：保持对齐（窄屏无需占位） */
+                  <div className="h-7 w-7 shrink-0 max-md:hidden" />
                 )}
               </div>
               {/* 编辑按钮 */}
@@ -321,9 +376,9 @@ export const VendorDetailPanel: React.FC = () => {
                 iconOnly
                 onClick={handleEditClick}
                 disabled={vendorBusy}
-                title={t('common:actions.edit')}
+                title={isEditing ? t('common:actions.close') : t('common:actions.edit')}
               >
-                <PencilSimple className="h-3.5 w-3.5" />
+                {isEditing ? <CaretUp className="h-3.5 w-3.5" /> : <PencilSimple className="h-3.5 w-3.5" />}
               </NotionButton>
               {/* 开关：最右 */}
               <Switch
@@ -334,6 +389,30 @@ export const VendorDetailPanel: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* 内联编辑区：桌面端在卡片内展开，带高度动画 */}
+        {!isSmallScreen && (
+          <InlineEditorCollapse open={isEditing}>
+            {isEditing && inlineEditState && (
+              <div className="px-3 pb-3 pt-1">
+                <ShadApiEditModal
+                  api={inlineEditState.api}
+                  onSave={async (editedApi) => {
+                    await handleSaveInlineEdit(editedApi);
+                  }}
+                  onCancel={() => setInlineEditState(null)}
+                  hideConnectionFields
+                  lockedVendorInfo={{
+                    name: selectedVendor.name,
+                    baseUrl: selectedVendor.baseUrl,
+                    providerType: selectedVendor.providerType,
+                  }}
+                  embeddedMode={true}
+                />
+              </div>
+            )}
+          </InlineEditorCollapse>
+        )}
       </div>
     );
   };
@@ -562,7 +641,13 @@ export const VendorDetailPanel: React.FC = () => {
                   <NotionButton
                     size="sm"
                     variant="ghost"
-                    onClick={() => setIsModelFetcherDialogOpen(true)}
+                    onClick={() => {
+                      if (isSmallScreen) {
+                        setIsMobileFetcherOpen(v => !v);
+                      } else {
+                        setIsModelFetcherDialogOpen(true);
+                      }
+                    }}
                   >
                     <DownloadSimple className="h-3.5 w-3.5" />
                     {t('settings:vendor_panel.fetch_models_button')}
@@ -582,6 +667,45 @@ export const VendorDetailPanel: React.FC = () => {
               <div className="mb-6">
                 <SiliconFlowSection variant="models" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
               </div>
+            )}
+            {/* 移动端：获取模型列表内联卡片（替代桌面 Dialog，遵循移动端无弹层契约） */}
+            {isSmallScreen && isMobileFetcherOpen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+              <div className="mb-4">
+                <VendorModelFetcher
+                  key={selectedVendor.id}
+                  vendor={selectedVendor}
+                  existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
+                  onAddModels={onAddVendorModels}
+                  embedded="card"
+                />
+              </div>
+            )}
+            {/* 内联新增模型：桌面端在列表顶部展开，带高度动画 */}
+            {!isSmallScreen && (
+              <InlineEditorCollapse open={!!(isAddingNewModel && inlineEditState)}>
+                {isAddingNewModel && inlineEditState && (
+                  <div className="pb-3">
+                    <div className={cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName, "border border-primary/20")}>
+                      <div className="px-3 pt-3 pb-3">
+                        <ShadApiEditModal
+                          api={inlineEditState.api}
+                          onSave={async (editedApi) => {
+                            await handleSaveInlineEdit(editedApi);
+                          }}
+                          onCancel={handleCancelAddModel}
+                          hideConnectionFields
+                          lockedVendorInfo={{
+                            name: selectedVendor.name,
+                            baseUrl: selectedVendor.baseUrl,
+                            providerType: selectedVendor.providerType,
+                          }}
+                          embeddedMode={true}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </InlineEditorCollapse>
             )}
             <div className="space-y-3">
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
@@ -645,59 +769,8 @@ export const VendorDetailPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* 桌面端：内联编辑用右侧 Sheet；移动端走 Settings 三屏右侧面板 + 统一顶栏 */}
-      {!isSmallScreen && (
-      <Sheet
-        open={!!(inlineEditState || isAddingNewModel)}
-        onOpenChange={(open) => {
-          if (!open) {
-            if (isAddingNewModel) handleCancelAddModel();
-            setInlineEditState(null);
-          }
-        }}
-      >
-        <SheetContent side="right" className="w-[min(92vw,32rem)] p-0 flex flex-col" overlayClassName="backdrop-blur-sm !z-[10000]" style={{ zIndex: 10000 }}>
-          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
-            <SheetTitle>
-              {isAddingNewModel
-                ? t('settings:vendor_panel.add_model_button')
-                : t('common:actions.edit')
-              }
-            </SheetTitle>
-            <SheetDescription>
-              {selectedVendor.name || providerLabel}
-            </SheetDescription>
-          </SheetHeader>
-          <CustomScrollArea className="flex-1 min-h-0">
-            <div className="p-6">
-              {inlineEditState && (
-                <ShadApiEditModal
-                  api={inlineEditState.api}
-                  onSave={async (editedApi) => {
-                    await handleSaveInlineEdit(editedApi);
-                    if (!isAddingNewModel) setInlineEditState(null);
-                  }}
-                  onCancel={() => {
-                    if (isAddingNewModel) handleCancelAddModel();
-                    setInlineEditState(null);
-                  }}
-                  hideConnectionFields
-                  lockedVendorInfo={{
-                    name: selectedVendor.name,
-                    baseUrl: selectedVendor.baseUrl,
-                    providerType: selectedVendor.providerType,
-                  }}
-                  embeddedMode={true}
-                />
-              )}
-            </div>
-          </CustomScrollArea>
-        </SheetContent>
-      </Sheet>
-      )}
-
-      {/* 获取模型列表 Dialog */}
-      {onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+      {/* 获取模型列表 Dialog（仅桌面端；移动端使用上方内联卡片） */}
+      {!isSmallScreen && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
         <Dialog open={isModelFetcherDialogOpen} onOpenChange={setIsModelFetcherDialogOpen}>
           <DialogContent className="w-full max-w-2xl p-0 overflow-hidden">
             <DialogHeader className="px-5 pt-5 pb-4 border-b border-border/40">

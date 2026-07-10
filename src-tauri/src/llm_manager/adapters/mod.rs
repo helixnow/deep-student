@@ -31,7 +31,9 @@ pub mod zhipu;
 #[cfg(test)]
 mod streaming_harness;
 
-pub use anthropic::AnthropicAdapter;
+pub use anthropic::{
+    claude_generation, map_budget_tokens_to_effort, AnthropicAdapter, ClaudeGeneration,
+};
 pub use deepseek::DeepSeekAdapter;
 pub use doubao::DoubaoAdapter;
 pub use ernie::ErnieAdapter;

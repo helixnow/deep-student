@@ -37,6 +37,13 @@ interface GeminiModelItem {
   supportedGenerationMethods?: string[];
 }
 
+/** Anthropic API 返回的模型对象 */
+interface AnthropicModelItem {
+  id: string;
+  display_name?: string;
+  type?: string;
+}
+
 export interface AutoPostSaveOptions {
   /** 该供应商已有的模型 ID 列表，用于去重 */
   existingModelIds: string[];
@@ -113,7 +120,8 @@ export async function resolveApiKey(vendor: VendorConfig): Promise<string | null
 
 /**
  * 从供应商 API 获取模型列表
- * Gemini → 使用 {baseUrl}/v1beta/models?key=...，过滤 generateContent
+ * Gemini/Google → 使用 {baseUrl}/v1beta/models，过滤 generateContent
+ * Anthropic → 使用 {baseUrl}/v1/models + x-api-key/anthropic-version 头
  * 其他 → 使用 {baseUrl}/models Bearer auth，过滤非文本模型
  */
 export async function fetchModelsFromVendor(
@@ -125,11 +133,17 @@ export async function fetchModelsFromVendor(
     throw new Error('Vendor base URL is empty');
   }
 
-  const isGemini = (vendor.providerType ?? '').toLowerCase() === 'gemini';
+  const providerTypeLower = (vendor.providerType ?? '').toLowerCase();
+  // 「选 Google 类型获取模型 404」修复：google 与 gemini 均走 Gemini 原生列表接口
+  const isGemini = providerTypeLower === 'gemini' || providerTypeLower === 'google';
+  const isAnthropic = providerTypeLower === 'anthropic';
 
   const doFetch = async (fetcher: typeof fetch): Promise<FetchedModel[]> => {
     if (isGemini) {
       return fetchGemini(fetcher, baseUrl, resolvedApiKey);
+    }
+    if (isAnthropic) {
+      return fetchAnthropic(fetcher, baseUrl, resolvedApiKey);
     }
     return fetchOpenAICompatible(fetcher, baseUrl, resolvedApiKey);
   };
@@ -204,8 +218,15 @@ async function fetchGemini(
   baseUrl: string,
   apiKey: string
 ): Promise<FetchedModel[]> {
-  const response = await doFetch(`${baseUrl}/v1beta/models?key=${apiKey}&pageSize=100`, {
+  // 安全修复（审阅 26 P1-3）：Key 改用 x-goog-api-key 请求头传递，
+  // 避免进入代理/网关/供应商访问日志，且规避 URL 特殊字符导致的畸形请求。
+  const headers: Record<string, string> = {};
+  if (apiKey) {
+    headers['x-goog-api-key'] = apiKey;
+  }
+  const response = await doFetch(`${baseUrl}/v1beta/models?pageSize=100`, {
     method: 'GET',
+    headers,
   });
 
   if (!response.ok) {
@@ -238,6 +259,59 @@ async function fetchGemini(
       const modelId = m.name.replace(/^models\//, '');
       return { id: modelId, label: m.displayName || modelId };
     })
+    .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
+}
+
+/**
+ * 获取 Anthropic API 的模型列表。
+ * Anthropic 使用 GET {base}/v1/models + `x-api-key` + `anthropic-version` 头
+ * （Bearer 鉴权与不带 /v1 的路径都会失败，见 2026-07 审阅 r4 #10）。
+ */
+async function fetchAnthropic(
+  doFetch: typeof fetch,
+  baseUrl: string,
+  apiKey: string
+): Promise<FetchedModel[]> {
+  // 默认 base URL 为 https://api.anthropic.com（不带版本段）；若用户已带 /v1 则不重复追加
+  const versionedBase = /\/v\d+$/.test(baseUrl) ? baseUrl : `${baseUrl}/v1`;
+  const headers: Record<string, string> = {
+    'anthropic-version': '2023-06-01',
+  };
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+  const response = await doFetch(`${versionedBase}/models?limit=1000`, {
+    method: 'GET',
+    headers,
+  });
+
+  if (!response.ok) {
+    let detail: string;
+    try {
+      detail = JSON.stringify(await response.json());
+    } catch {
+      detail = response.statusText || `HTTP ${response.status}`;
+    }
+    throw new Error(`${response.status}: ${detail}`);
+  }
+
+  let body: { data?: AnthropicModelItem[] };
+  try {
+    body = await response.json();
+  } catch (err: unknown) {
+    if (isStreamChannelError(err)) {
+      throw new Error('TAURI_HTTP_READ_BODY_FAILED');
+    }
+    throw err;
+  }
+
+  if (!body?.data || !Array.isArray(body.data)) {
+    throw new Error('Invalid Anthropic API response: missing data array');
+  }
+
+  return body.data
+    .filter((m: AnthropicModelItem) => !!m.id && (m.type === undefined || m.type === 'model'))
+    .map((m: AnthropicModelItem) => ({ id: m.id, label: m.display_name || m.id }))
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
 
