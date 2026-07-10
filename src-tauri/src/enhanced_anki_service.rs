@@ -1,3 +1,4 @@
+use crate::anki::AnkiCardRepository;
 use crate::database::Database;
 use crate::document_processing_service::DocumentProcessingService;
 use crate::llm_manager::LLMManager;
@@ -439,58 +440,41 @@ impl EnhancedAnkiService {
             }
         }
 
-        if !running_tasks.is_empty() {
-            for task in running_tasks {
-                let task_id = task.id.clone();
-                // 通过流服务发出取消信号（硬暂停：断开流）
-                if let Err(e) = self
-                    .streaming_service
-                    .cancel_streaming(task_id.clone())
-                    .await
-                {
-                    warn!("取消流失败: {}，尝试直接中止任务句柄", e);
-                    // 兜底：直接中止运行句柄（若存在）
-                    if let Some((_, h)) = RUNNING_HANDLES.remove(&task_id) {
-                        h.abort();
-                    }
-                }
-
-                // 更新状态
-                self.doc_processor
-                    .update_task_status(&task_id, TaskStatus::Paused, None)?;
-
-                // 派发状态事件
-                // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
-                let payload = StreamedCardPayload::TaskStatusUpdate {
-                    task_id: task_id.clone(),
-                    status: TaskStatus::Paused,
-                    message: None,
-                    segment_index: Some(task.segment_index),
-                    document_id: Some(task.document_id.clone()),
-                };
-                if let Err(e) = window.emit("anki_generation_event", &payload) {
-                    warn!("发送任务状态更新事件失败: {}", e);
-                }
-            }
-        } else {
-            // 无运行任务：将第一个待处理任务置为 Paused 以便前端感知
-            if let Some(t) = doc_tasks
-                .into_iter()
-                .find(|t| matches!(t.status, TaskStatus::Pending))
+        // Pending 保持 Pending；仅将 Processing/Streaming（及 current in-flight）标为 Paused
+        for task in running_tasks {
+            let task_id = task.id.clone();
+            // 通过流服务发出取消信号（硬暂停：断开流）
+            if let Err(e) = self
+                .streaming_service
+                .cancel_streaming(task_id.clone())
+                .await
             {
-                self.doc_processor
-                    .update_task_status(&t.id, TaskStatus::Paused, None)?;
-                // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
-                let payload = StreamedCardPayload::TaskStatusUpdate {
-                    task_id: t.id.clone(),
-                    status: TaskStatus::Paused,
-                    message: None,
-                    segment_index: Some(t.segment_index),
-                    document_id: Some(t.document_id.clone()),
-                };
-                if let Err(e) = window.emit("anki_generation_event", &payload) {
-                    warn!("发送任务状态更新事件失败: {}", e);
+                warn!("取消流失败: {}，尝试直接中止任务句柄", e);
+                // 兜底：直接中止运行句柄（若存在）
+                if let Some((_, h)) = RUNNING_HANDLES.remove(&task_id) {
+                    h.abort();
                 }
+                // abort 后清理可能残留的取消通道，避免泄漏
+                self.streaming_service
+                    .clear_cancel_sender(&task_id)
+                    .await;
+            }
+
+            // abort 兜底后仍写 DB 终态 Paused
+            self.doc_processor
+                .update_task_status(&task_id, TaskStatus::Paused, None)?;
+
+            // 派发状态事件
+            // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
+            let payload = StreamedCardPayload::TaskStatusUpdate {
+                task_id: task_id.clone(),
+                status: TaskStatus::Paused,
+                message: None,
+                segment_index: Some(task.segment_index),
+                document_id: Some(task.document_id.clone()),
+            };
+            if let Err(e) = window.emit("anki_generation_event", &payload) {
+                warn!("发送任务状态更新事件失败: {}", e);
             }
         }
 
@@ -616,22 +600,19 @@ impl EnhancedAnkiService {
 
     /// 获取任务的卡片列表
     pub fn get_task_cards(&self, task_id: String) -> Result<Vec<AnkiCard>, AppError> {
-        self.db
-            .get_cards_for_task(&task_id)
+        AnkiCardRepository::list_by_task(self.db.as_ref(), &task_id)
             .map_err(|e| AppError::database(format!("获取任务卡片失败: {}", e)))
     }
 
     /// 更新卡片
     pub fn update_anki_card(&self, card: AnkiCard) -> Result<(), AppError> {
-        self.db
-            .update_anki_card(&card)
+        AnkiCardRepository::update(self.db.as_ref(), &card)
             .map_err(|e| AppError::database(format!("更新卡片失败: {}", e)))
     }
 
     /// 删除卡片
     pub fn delete_anki_card(&self, card_id: String) -> Result<(), AppError> {
-        self.db
-            .delete_anki_card(&card_id)
+        AnkiCardRepository::delete(self.db.as_ref(), &card_id)
             .map_err(|e| AppError::database(format!("删除卡片失败: {}", e)))
     }
 
@@ -683,10 +664,13 @@ impl EnhancedAnkiService {
                     if let Some((_, h)) = RUNNING_HANDLES.remove(&task.id) {
                         h.abort();
                     }
+                    self.streaming_service
+                        .clear_cancel_sender(&task.id)
+                        .await;
                 }
             }
 
-            // 统一标记为 Cancelled（保留任务记录与已生成卡片）
+            // abort 后仍写 Cancelled 终态（保留任务记录与已生成卡片）
             self.doc_processor
                 .update_task_status(&task.id, TaskStatus::Cancelled, None)?;
 
@@ -702,13 +686,13 @@ impl EnhancedAnkiService {
             }
         }
 
-        // 清理运行状态并宣告文档处理结束（前端据此停止轮询/转入终态）
+        // 清理运行状态并宣告文档已取消（与 Completed 分离，前端保留卡片）
         DOCUMENT_STATES.remove(&document_id);
-        let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
+        let cancel_payload = StreamedCardPayload::DocumentProcessingCancelled {
             document_id: document_id.clone(),
         };
-        if let Err(e) = window.emit("anki_generation_event", &complete_payload) {
-            warn!("发送文档处理完成事件失败: {}", e);
+        if let Err(e) = window.emit("anki_generation_event", &cancel_payload) {
+            warn!("发送文档处理取消事件失败: {}", e);
         }
 
         Ok(())

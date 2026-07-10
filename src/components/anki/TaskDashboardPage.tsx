@@ -327,6 +327,9 @@ const SessionRow: React.FC<{
   onRefresh: () => void;
 }> = ({ session, expanded, onToggle, onJump, onRefresh }) => {
   const { t } = useTranslation('anki');
+  // 移动端：行内 24px 图标簇触控目标过小且会溢出 48px 容器，改为隐藏行内簇、
+  // 在展开区提供全套 44px 操作按钮（见下方展开区）
+  const { isSmallScreen } = useBreakpoint();
   const [cards, setCards] = useState<AnkiCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -558,9 +561,9 @@ const SessionRow: React.FC<{
     <div className="group/row">
       {/* ---- 主行 ---- */}
       <div
-        className="flex items-center gap-3 px-3 py-2 cursor-pointer
+        className={`flex items-center gap-3 px-3 py-2 cursor-pointer
           hover:bg-[var(--interactive-hover)]
-          transition-colors duration-100"
+          transition-colors duration-100${isSmallScreen ? ' min-h-[44px]' : ''}`}
         onClick={onToggle}
       >
         {/* 展开箭头 */}
@@ -598,9 +601,12 @@ const SessionRow: React.FC<{
           {timeAgo(session.lastUpdated, t)}
         </span>
 
-        {/* P1+P7: 操作按钮（触屏常驻低透明度，桌面 hover 加强） */}
+        {/* P1+P7: 操作按钮（触屏常驻低透明度，桌面 hover 加强）
+            移动端隐藏：24px 目标不满足 44px 触控标准且多按钮会溢出 48px 容器，
+            操作统一收入展开区的 44px 按钮（见下方） */}
+        {!isSmallScreen && (
         <div
-          className="flex items-center justify-end gap-0 flex-shrink-0 w-[48px] sm:w-[96px]
+          className="flex items-center justify-end gap-0 flex-shrink-0 w-[96px]
             opacity-40 group-hover/row:opacity-100
             transition-opacity duration-150"
           onClick={e => e.stopPropagation()}
@@ -657,6 +663,7 @@ const SessionRow: React.FC<{
             </NotionButton>
           </CommonTooltip>
         </div>
+        )}
       </div>
 
       {/* ---- 展开区域 ---- */}
@@ -686,7 +693,7 @@ const SessionRow: React.FC<{
             </PropRow>
           </div>
 
-          {/* 操作按钮 */}
+          {/* 操作按钮（移动端为唯一操作入口，补齐暂停/恢复/跳转聊天） */}
           <div className="flex flex-wrap gap-1.5 pt-1">
             {session.totalCards > 0 && (
               <NotionButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
@@ -696,6 +703,21 @@ const SessionRow: React.FC<{
             {group === 'attention' && (
               <NotionButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
                 <ArrowCounterClockwise size={14} />{t('taskDashboard.retryFailed')}
+              </NotionButton>
+            )}
+            {isSmallScreen && group === 'active' && session.activeTasks > 0 && (
+              <NotionButton size="sm" variant="default" onClick={() => act('pause')} disabled={!!busy}>
+                <Pause size={14} />{t('pause')}
+              </NotionButton>
+            )}
+            {isSmallScreen && session.pausedTasks > 0 && (
+              <NotionButton size="sm" variant="default" onClick={() => act('resume')} disabled={!!busy}>
+                <Play size={14} />{t('resume')}
+              </NotionButton>
+            )}
+            {isSmallScreen && session.sourceSessionId && (
+              <NotionButton size="sm" variant="default" onClick={onJump}>
+                <ArrowSquareOut size={14} />{t('taskDashboard.jumpToChat')}
               </NotionButton>
             )}
             <NotionButton
@@ -1124,7 +1146,12 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   const dashboardBody = (
     <CustomScrollArea className="h-full">
-        <div className="study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div
+          className={`study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8${
+            // 移动端：列表底部预留手势导航安全区（契约第 6 条）
+            isSmallScreen ? ' pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]' : ''
+          }`}
+        >
         {/* ======== 页面标题 ======== */}
         {!isSmallScreen && (
           <div className="mb-8">
@@ -1271,18 +1298,18 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-1">
-              {/* P2: 排序 */}
-              <NotionButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
+              {/* P2: 排序 — 移动端不压缩高度，保持 共享按钮组件 44px 触控目标 */}
+              <NotionButton size="sm" variant="utility" onClick={cycleSort} className={isSmallScreen ? undefined : 'h-7'}>
                 <ArrowsDownUp size={14} />
                 <span className="hidden sm:inline text-[11px]">{sortLabel}</span>
               </NotionButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
-                <NotionButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0">
+                <NotionButton size="sm" variant="utility" onClick={load} className={isSmallScreen ? 'w-11 p-0' : 'h-7 w-7 p-0'} aria-label={t('taskDashboard.refresh')}>
                   <ArrowsClockwise size={14} />
                 </NotionButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
-                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7">
+                <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className={isSmallScreen ? undefined : 'h-7'} aria-label={t('taskDashboard.recoverStuck')}>
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}
@@ -1300,7 +1327,10 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
               onValueChange={setFilter}
               size="compact"
               className="flex-shrink-0"
-              itemClassName="!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap"
+              itemClassName={isSmallScreen
+                // 移动端加大纵向点击区，接近触控目标标准
+                ? '!h-auto !px-3 !py-2 text-[12px] whitespace-nowrap'
+                : '!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap'}
               options={(['all', 'active', 'attention', 'completed'] as FilterTab[]).map((tab) => {
                 const labelText =
                   tab === 'all'
@@ -1393,7 +1423,8 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                     <span className="w-[40px] sm:w-[48px] flex-shrink-0 text-right">{t('taskDashboard.chartCards')}</span>
                     <span className="w-[140px] flex-shrink-0 hidden md:block">{t('taskDashboard.progressLabel')}</span>
                     <span className="w-[80px] flex-shrink-0 text-right hidden sm:block">{t('taskDashboard.colTime')}</span>
-                    <span className="w-[48px] sm:w-[96px] flex-shrink-0" />
+                    {/* 操作列占位：移动端行内操作簇已隐藏（操作收入展开区），无需占位 */}
+                    {!isSmallScreen && <span className="w-[96px] flex-shrink-0" />}
                   </div>
 
                   <div className="h-px bg-border/20" />

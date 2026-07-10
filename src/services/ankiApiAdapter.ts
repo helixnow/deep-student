@@ -17,9 +17,18 @@ type SaveAnkiCardsParams = {
   options?: AnkiGenerationOptions;
 };
 
-type SaveAnkiCardsResponse = {
+export type SaveAnkiCardFailure = {
+  id: string;
+  error: string;
+};
+
+/** 后端 save_anki_cards 诚实语义响应（serde camelCase；新字段带默认兼容旧前端） */
+export type SaveAnkiCardsResponse = {
   savedIds: string[];
   taskId: string;
+  skippedIds?: string[];
+  duplicatedIds?: string[];
+  failed?: SaveAnkiCardFailure[];
 };
 
 // 批量操作API适配器

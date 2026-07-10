@@ -1,0 +1,56 @@
+{
+  "tabs": {
+    "nav": "闪卡导航",
+    "today": "今日",
+    "library": "库",
+    "settings": "设置"
+  },
+  "card": {
+    "untitled": "无正面",
+    "noBack": "无背面"
+  },
+  "today": {
+    "title": "今日复习",
+    "loading": "正在加载到期卡片…",
+    "dueCount": "{{count}} 张待复习",
+    "demoMode": "演示模式",
+    "demoBanner": "当前为示例复习队列，便于预览流程。",
+    "startReview": "开始复习",
+    "empty": "今天没有到期卡片"
+  },
+  "library": {
+    "title": "卡片库",
+    "loading": "加载中…",
+    "total": "共 {{count}} 张",
+    "reviewPage": "复习本页",
+    "searchPlaceholder": "搜索正面 / 标签…",
+    "search": "搜索",
+    "loadFailed": "无法加载卡片库",
+    "retry": "重试",
+    "empty": "库中暂无卡片"
+  },
+  "session": {
+    "loading": "准备复习队列…",
+    "done": "本轮复习已完成",
+    "backToday": "返回今日",
+    "exit": "退出",
+    "progress": "{{current}} / {{total}}",
+    "mockHint": "演示模式",
+    "front": "正面",
+    "back": "背面",
+    "showFront": "显示正面",
+    "showBack": "显示背面",
+    "tapToFlip": "点击翻面",
+    "flipFirst": "请先翻面再评分",
+    "again": "重来",
+    "hard": "困难",
+    "good": "良好",
+    "easy": "简单"
+  },
+  "settings": {
+    "title": "闪卡设置",
+    "subtitle": "调度参数后续开放。",
+    "schedulingNote": "复习节奏由智能调度管理，高级参数将在后续版本开放调整。",
+    "demoNote": "若暂时无法加载真实复习队列，今日页会以演示模式展示示例卡片，便于预览流程。"
+  }
+}

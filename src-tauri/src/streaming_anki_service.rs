@@ -758,10 +758,13 @@ impl StreamingAnkiService {
         let mut buffer = String::new();
         let mut card_count = 0u32;
         let mut _last_activity = std::time::Instant::now(); // Prefixed to silence warning
-        const IDLE_TIMEOUT: Duration = Duration::from_secs(30); // 30秒无响应超时
+        const IDLE_TIMEOUT: Duration = Duration::from_secs(180); // 180秒无响应超时
         const LOG_STREAM_CHUNKS: bool = false; // 禁用逐chunk日志
                                                // 初始化SSE行缓冲器
         let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
+        // 🔧 P1-1 修复：增量 UTF-8 解码器，保留跨 chunk 边界的不完整多字节字符，
+        // 避免中文字符被 from_utf8_lossy 替换为 U+FFFD 污染卡片内容/破坏 JSON
+        let mut utf8_decoder = crate::llm_manager::utf8_stream::Utf8StreamDecoder::new();
         let mut chunk_counter: u32 = 0;
         let mut reached_card_limit = false;
 
@@ -784,7 +787,7 @@ impl StreamingAnkiService {
             let chunk =
                 chunk_result.map_err(|e| AppError::network(format!("读取AI响应流失败: {}", e)))?;
             _last_activity = std::time::Instant::now(); // Prefixed to silence warning
-            let chunk_str = String::from_utf8_lossy(&chunk);
+            let chunk_str = utf8_decoder.decode(&chunk);
             // 处理SSE格式 - 使用SSE缓冲器处理chunk，获取完整的行
             let complete_lines = sse_buffer.process_chunk(&chunk_str);
             for line in complete_lines {
@@ -928,6 +931,13 @@ impl StreamingAnkiService {
         }
 
         if !reached_card_limit {
+            // 冲刷 UTF-8 解码器残留（流恰好在多字节字符中间截断时产生一个 U+FFFD）
+            {
+                let tail = utf8_decoder.flush();
+                if !tail.is_empty() {
+                    let _ = sse_buffer.process_chunk(&tail);
+                }
+            }
             // 处理SSE缓冲器中剩余的不完整行
             if let Some(remaining_line) = sse_buffer.flush() {
                 if !remaining_line.trim().is_empty() {
@@ -1014,7 +1024,20 @@ impl StreamingAnkiService {
         Ok(card_count)
     }
 
+    /// 单卡缓冲的硬性安全上限（字节）。
+    ///
+    /// 🔧 P1-2 修复：旧实现的 10000 字节阈值会把"仍在传输中的合法长卡片"
+    /// （学术模板多字段、含代码块/解析的选择题在中文下仅约 3300 字即触发）
+    /// 误判为截断并清空缓冲，腰斩合法卡且让后续内容成为无头残片。
+    /// "缓冲过大即截断"只应作为最后防线（模型完全不输出分隔符时防止无界增长），
+    /// 上限须远大于单卡体积；流结束后的残留由收尾逻辑（E1）单独处理。
+    const CARD_BUFFER_HARD_LIMIT: usize = 1_000_000;
+
     /// 从缓冲区提取卡片
+    ///
+    /// 仅在检测到完整分隔符（标准或损坏变体）时切出卡片；
+    /// 分隔符未到达时缓冲继续增长属正常现象（分隔符可能在下一个 chunk 里），
+    /// 只有超过 CARD_BUFFER_HARD_LIMIT 的异常无界增长才判为截断。
     fn extract_card_from_buffer(&self, buffer: &mut String) -> Option<Result<String, String>> {
         const DELIMITER: &str = "<<<ANKI_CARD_JSON_END>>>";
 
@@ -1029,42 +1052,45 @@ impl StreamingAnkiService {
             } else {
                 None
             }
-        } else {
+        } else if let Some(pos) = buffer.find("ANKI_CARD_JSON_END>>>") {
             // 如果找不到标准分隔符，尝试查找可能损坏的分隔符模式
-            // 使用正则表达式匹配类似 <<<...ANKI_CARD_JSON_END>>> 的模式
-            if let Some(pos) = buffer.find("ANKI_CARD_JSON_END>>>") {
-                // 向前查找 "<<<" 的位置
-                let start_pos = buffer[..pos].rfind("<<<");
-                if let Some(start) = start_pos {
-                    let card_content = buffer[..start].trim().to_string();
-                    // 找到完整的损坏分隔符的结束位置
-                    let end_pos = pos + "ANKI_CARD_JSON_END>>>".len();
-                    let remaining = buffer[end_pos..].to_string();
-                    *buffer = remaining;
+            // 匹配类似 <<<...ANKI_CARD_JSON_END>>> 的模式
+            let start_pos = buffer[..pos].rfind("<<<");
+            if let Some(start) = start_pos {
+                let card_content = buffer[..start].trim().to_string();
+                // 找到完整的损坏分隔符的结束位置
+                let end_pos = pos + "ANKI_CARD_JSON_END>>>".len();
+                let remaining = buffer[end_pos..].to_string();
+                *buffer = remaining;
 
-                    warn!("[ANKI_CARD_DEBUG] 检测到损坏的分隔符，已自动修复");
+                warn!("[ANKI_CARD_DEBUG] 检测到损坏的分隔符，已自动修复");
 
-                    if !card_content.is_empty() {
-                        Some(Ok(card_content))
-                    } else {
-                        None
-                    }
-                } else if buffer.len() > 10000 {
-                    // 如果缓冲区过大，可能是截断
-                    let truncated = buffer.clone();
-                    buffer.clear();
-                    Some(Err(truncated))
+                if !card_content.is_empty() {
+                    Some(Ok(card_content))
                 } else {
                     None
                 }
-            } else if buffer.len() > 10000 {
-                // 如果缓冲区过大，可能是截断
-                let truncated = buffer.clone();
-                buffer.clear();
-                Some(Err(truncated))
             } else {
-                None
+                Self::check_buffer_hard_limit(buffer)
             }
+        } else {
+            Self::check_buffer_hard_limit(buffer)
+        }
+    }
+
+    /// 缓冲区硬上限检查：超限时判为截断并清空（仅防无界增长的最后防线）
+    fn check_buffer_hard_limit(buffer: &mut String) -> Option<Result<String, String>> {
+        if buffer.len() > Self::CARD_BUFFER_HARD_LIMIT {
+            warn!(
+                "[ANKI_CARD_DEBUG] 卡片缓冲超过硬上限 {} 字节（当前 {} 字节）仍未出现分隔符，判为异常截断",
+                Self::CARD_BUFFER_HARD_LIMIT,
+                buffer.len()
+            );
+            let truncated = buffer.clone();
+            buffer.clear();
+            Some(Err(truncated))
+        } else {
+            None
         }
     }
 
@@ -2195,13 +2221,18 @@ impl StreamingAnkiService {
 
     /// 取消当前流式制卡（用于硬暂停）
     pub async fn cancel_streaming(&self, task_id: String) -> Result<(), String> {
-        let senders = CANCEL_SENDERS.lock().await;
-        if let Some(tx) = senders.get(&task_id) {
+        let mut senders = CANCEL_SENDERS.lock().await;
+        if let Some(tx) = senders.remove(&task_id) {
             let _ = tx.send(true);
             Ok(())
         } else {
             Err(format!("任务 {} 未在运行状态", task_id))
         }
+    }
+
+    /// abort 兜底后清理可能残留的取消通道（避免 CANCEL_SENDERS 泄漏）
+    pub async fn clear_cancel_sender(&self, task_id: &str) {
+        CANCEL_SENDERS.lock().await.remove(task_id);
     }
 
     /// 基于当前文档内的失败/截断任务与错误卡片，构建一个“统一重试”任务并插入到该文档中。

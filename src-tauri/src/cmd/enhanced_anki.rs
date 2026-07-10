@@ -323,10 +323,11 @@ pub async fn get_document_cards(
 ) -> Result<Vec<crate::models::AnkiCard>> {
     println!("获取文档的所有卡片: {}", documentId);
 
-    let cards = state
-        .anki_database
-        .get_cards_for_document(&documentId)
-        .map_err(|e| AppError::database(format!("获取文档卡片失败: {}", e)))?;
+    let cards = crate::anki::AnkiCardRepository::list_by_document(
+        state.anki_database.as_ref(),
+        &documentId,
+    )
+    .map_err(|e| AppError::database(format!("获取文档卡片失败: {}", e)))?;
 
     println!("找到 {} 张卡片", cards.len());
     Ok(cards)

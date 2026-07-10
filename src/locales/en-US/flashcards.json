@@ -1,0 +1,56 @@
+{
+  "tabs": {
+    "nav": "Flashcards navigation",
+    "today": "Today",
+    "library": "Library",
+    "settings": "Settings"
+  },
+  "card": {
+    "untitled": "No front",
+    "noBack": "No back"
+  },
+  "today": {
+    "title": "Today's review",
+    "loading": "Loading due cards…",
+    "dueCount": "{{count}} due",
+    "demoMode": "Demo mode",
+    "demoBanner": "Showing a sample review queue so you can preview the flow.",
+    "startReview": "Start review",
+    "empty": "Nothing due today"
+  },
+  "library": {
+    "title": "Card library",
+    "loading": "Loading…",
+    "total": "{{count}} cards",
+    "reviewPage": "Review this page",
+    "searchPlaceholder": "Search front / tags…",
+    "search": "Search",
+    "loadFailed": "Failed to load library",
+    "retry": "Retry",
+    "empty": "No cards in library"
+  },
+  "session": {
+    "loading": "Preparing review queue…",
+    "done": "Session complete",
+    "backToday": "Back to Today",
+    "exit": "Exit",
+    "progress": "{{current}} / {{total}}",
+    "mockHint": "Demo mode",
+    "front": "Front",
+    "back": "Back",
+    "showFront": "Show front",
+    "showBack": "Show back",
+    "tapToFlip": "Tap to flip",
+    "flipFirst": "Flip the card before rating",
+    "again": "Again",
+    "hard": "Hard",
+    "good": "Good",
+    "easy": "Easy"
+  },
+  "settings": {
+    "title": "Flashcard settings",
+    "subtitle": "Scheduling options coming later.",
+    "schedulingNote": "Review pacing is managed by smart scheduling. Advanced options will open in a later release.",
+    "demoNote": "If a real review queue isn’t available yet, Today may show sample cards in demo mode so you can preview the flow."
+  }
+}

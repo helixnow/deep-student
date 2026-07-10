@@ -228,6 +228,9 @@ pub async fn add_cards_to_anki_connect(
         }
     }
 
+    // 保留卡片 id 顺序，供 Sync 成功后按位回写 anki_note_id receipt
+    let card_ids: Vec<String> = selected_cards.iter().map(|c| c.id.clone()).collect();
+
     // D1 修复：detailed 版本会自动创建缺失模型、用 canAddNotes 把重复与失败分开
     match crate::anki_connect_service::add_notes_to_anki_detailed(
         selected_cards,
@@ -259,6 +262,23 @@ pub async fn add_cards_to_anki_connect(
                 reason.push_str("。请检查 Anki 中是否存在对应笔记类型、卡片字段是否为空");
                 Err(AppError::validation(reason))
             } else {
+                // M4：按卡片回写 note id + export_status='synced'
+                if report.added > 0 {
+                    match state
+                        .database
+                        .write_anki_export_receipts(&card_ids, &report.note_ids)
+                    {
+                        Ok(n) => {
+                            if n > 0 {
+                                println!("✅ Anki export receipt 已回写 {} 张卡片", n);
+                            }
+                        }
+                        Err(e) => {
+                            // receipt 失败不阻断同步成功（Anki 侧已写入）
+                            log::warn!("[add_cards_to_anki_connect] receipt 回写失败: {}", e);
+                        }
+                    }
+                }
                 // 含"全部已存在"的幂等成功：duplicates 信息随报告返回前端展示
                 Ok(report)
             }
@@ -305,10 +325,85 @@ pub struct SaveAnkiCardsRequest {
     pub options: Option<AnkiGenerationOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAnkiCardFailure {
+    pub id: String,
+    pub error: String,
+}
+
+/// `save_anki_cards` 诚实语义响应：
+/// - `saved_ids`：本次真正新插入
+/// - `duplicated_ids`：已存在且 UPDATE 命中（按 id 更新）
+/// - `skipped_ids`：INSERT 被 IGNORE 且 UPDATE 0 行（内容去重/幽灵 id）
+/// - `failed`：单卡更新失败明细
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct SaveAnkiCardsResponse {
     pub saved_ids: Vec<String>,
     pub task_id: String,
+    #[serde(default)]
+    pub skipped_ids: Vec<String>,
+    #[serde(default)]
+    pub duplicated_ids: Vec<String>,
+    #[serde(default)]
+    pub failed: Vec<SaveAnkiCardFailure>,
+}
+
+impl Default for SaveAnkiCardsResponse {
+    fn default() -> Self {
+        Self {
+            saved_ids: Vec::new(),
+            task_id: String::new(),
+            skipped_ids: Vec::new(),
+            duplicated_ids: Vec::new(),
+            failed: Vec::new(),
+        }
+    }
+}
+
+/// 单卡 UPDATE 回退结果分类（可单测）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CardUpdateClassify {
+    Duplicated,
+    Skipped,
+}
+
+pub(crate) fn classify_update_rows_affected(rows_affected: usize) -> CardUpdateClassify {
+    if rows_affected > 0 {
+        CardUpdateClassify::Duplicated
+    } else {
+        CardUpdateClassify::Skipped
+    }
+}
+
+/// 将「未插入」卡片的 UPDATE 结果归入 duplicated / skipped / failed。
+pub(crate) fn apply_update_fallback_outcome(
+    card_id: &str,
+    update_result: std::result::Result<usize, String>,
+    duplicated_ids: &mut Vec<String>,
+    skipped_ids: &mut Vec<String>,
+    failed: &mut Vec<SaveAnkiCardFailure>,
+) {
+    match update_result {
+        Ok(rows) => match classify_update_rows_affected(rows) {
+            CardUpdateClassify::Duplicated => duplicated_ids.push(card_id.to_string()),
+            CardUpdateClassify::Skipped => skipped_ids.push(card_id.to_string()),
+        },
+        Err(error) => failed.push(SaveAnkiCardFailure {
+            id: card_id.to_string(),
+            error,
+        }),
+    }
+}
+
+/// 是否视为可接受的保存结果（含「全部已存在/跳过」幂等成功）。
+pub(crate) fn save_anki_cards_outcome_is_acceptable(response: &SaveAnkiCardsResponse) -> bool {
+    if !response.saved_ids.is_empty() || !response.duplicated_ids.is_empty() {
+        return true;
+    }
+    // 全部跳过且无失败：内容去重幂等成功
+    !response.skipped_ids.is_empty() && response.failed.is_empty()
 }
 
 #[tauri::command]
@@ -439,21 +534,53 @@ pub async fn save_anki_cards(
 
         let mut document_task = document_task;
         document_task.status = crate::models::TaskStatus::Completed;
-        let saved_ids =
-            match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
-                Ok(ids) => ids,
-                Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
-                    for card in &cards_to_insert {
-                        database.update_anki_card(card).map_err(|update_err| {
-                            AppError::database(format!("更新已有卡片失败: {}", update_err))
-                        })?;
+
+        let mut saved_ids = Vec::new();
+        let mut duplicated_ids = Vec::new();
+        let mut skipped_ids = Vec::new();
+        let mut failed = Vec::new();
+
+        match database.save_document_task_with_cards_atomic(&document_task, &cards_to_insert) {
+            Ok(inserted_ids) => {
+                saved_ids = inserted_ids;
+                let inserted_set: std::collections::HashSet<&str> =
+                    saved_ids.iter().map(|id| id.as_str()).collect();
+                // 部分 INSERT 被 IGNORE 的卡片：尝试按 id 更新；0 行记为 skipped
+                for card in &cards_to_insert {
+                    if inserted_set.contains(card.id.as_str()) {
+                        continue;
                     }
-                    cards_to_insert.iter().map(|card| card.id.clone()).collect()
+                    let update_result = database
+                        .update_anki_card_rows(card)
+                        .map_err(|e| format!("更新已有卡片失败: {}", e));
+                    apply_update_fallback_outcome(
+                        &card.id,
+                        update_result,
+                        &mut duplicated_ids,
+                        &mut skipped_ids,
+                        &mut failed,
+                    );
                 }
-                Err(e) => {
-                    return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
+            }
+            Err(e) if e.to_string().contains("no_cards_saved_in_atomic_insert") => {
+                // 全部 IGNORE：逐卡 UPDATE，禁止把 0 行当 saved
+                for card in &cards_to_insert {
+                    let update_result = database
+                        .update_anki_card_rows(card)
+                        .map_err(|e| format!("更新已有卡片失败: {}", e));
+                    apply_update_fallback_outcome(
+                        &card.id,
+                        update_result,
+                        &mut duplicated_ids,
+                        &mut skipped_ids,
+                        &mut failed,
+                    );
                 }
-            };
+            }
+            Err(e) => {
+                return Err(AppError::database(format!("保存卡片事务失败: {}", e)));
+            }
+        }
 
         if let Some(session_id) = request
             .business_session_id
@@ -465,13 +592,33 @@ pub async fn save_anki_cards(
                 .map_err(|e| AppError::database(format!("保存文档来源会话失败: {}", e)))?;
         }
 
-        if saved_ids.is_empty() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids,
+            task_id,
+            skipped_ids,
+            duplicated_ids,
+            failed,
+        };
+
+        if !save_anki_cards_outcome_is_acceptable(&response) {
+            if !response.failed.is_empty() {
+                let detail = response
+                    .failed
+                    .iter()
+                    .map(|f| format!("{}: {}", f.id, f.error))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return Err(AppError::validation(format!(
+                    "未能保存任何卡片：{}",
+                    detail
+                )));
+            }
             return Err(AppError::validation(
                 "未能保存任何卡片，请检查输入数据".to_string(),
             ));
         }
 
-        Ok(SaveAnkiCardsResponse { saved_ids, task_id })
+        Ok(response)
     })
     .await
     .map_err(|e| {
@@ -842,6 +989,106 @@ pub async fn batch_export_cards(
             "不支持的导出格式: {}",
             format
         ))),
+    }
+}
+
+#[cfg(test)]
+mod save_anki_cards_semantics_tests {
+    use super::*;
+
+    #[test]
+    fn classify_update_rows_affected_distinguishes_duplicated_and_skipped() {
+        assert_eq!(
+            classify_update_rows_affected(1),
+            CardUpdateClassify::Duplicated
+        );
+        assert_eq!(
+            classify_update_rows_affected(0),
+            CardUpdateClassify::Skipped
+        );
+    }
+
+    #[test]
+    fn apply_update_fallback_outcome_buckets_results() {
+        let mut duplicated = Vec::new();
+        let mut skipped = Vec::new();
+        let mut failed = Vec::new();
+
+        apply_update_fallback_outcome("a", Ok(1), &mut duplicated, &mut skipped, &mut failed);
+        apply_update_fallback_outcome("b", Ok(0), &mut duplicated, &mut skipped, &mut failed);
+        apply_update_fallback_outcome(
+            "c",
+            Err("UNIQUE constraint failed".into()),
+            &mut duplicated,
+            &mut skipped,
+            &mut failed,
+        );
+
+        assert_eq!(duplicated, vec!["a".to_string()]);
+        assert_eq!(skipped, vec!["b".to_string()]);
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].id, "c");
+        assert!(failed[0].error.contains("UNIQUE"));
+    }
+
+    #[test]
+    fn save_outcome_accepts_all_skipped_without_failures() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec![],
+            task_id: "t1".into(),
+            skipped_ids: vec!["ghost-1".into()],
+            duplicated_ids: vec![],
+            failed: vec![],
+        };
+        assert!(save_anki_cards_outcome_is_acceptable(&response));
+    }
+
+    #[test]
+    fn save_outcome_rejects_empty_with_failures_only() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec![],
+            task_id: "t1".into(),
+            skipped_ids: vec![],
+            duplicated_ids: vec![],
+            failed: vec![SaveAnkiCardFailure {
+                id: "x".into(),
+                error: "boom".into(),
+            }],
+        };
+        assert!(!save_anki_cards_outcome_is_acceptable(&response));
+    }
+
+    #[test]
+    fn save_response_serde_defaults_new_fields() {
+        let json = r#"{"savedIds":["a"],"taskId":"t1"}"#;
+        let parsed: SaveAnkiCardsResponse =
+            serde_json::from_str(json).expect("compat deserialize");
+        assert_eq!(parsed.saved_ids, vec!["a".to_string()]);
+        assert_eq!(parsed.task_id, "t1");
+        assert!(parsed.skipped_ids.is_empty());
+        assert!(parsed.duplicated_ids.is_empty());
+        assert!(parsed.failed.is_empty());
+    }
+
+    #[test]
+    fn save_response_serializes_camel_case() {
+        let response = SaveAnkiCardsResponse {
+            saved_ids: vec!["s1".into()],
+            task_id: "t1".into(),
+            skipped_ids: vec!["k1".into()],
+            duplicated_ids: vec!["d1".into()],
+            failed: vec![SaveAnkiCardFailure {
+                id: "f1".into(),
+                error: "err".into(),
+            }],
+        };
+        let value = serde_json::to_value(&response).expect("serialize");
+        assert_eq!(value["savedIds"][0], "s1");
+        assert_eq!(value["taskId"], "t1");
+        assert_eq!(value["skippedIds"][0], "k1");
+        assert_eq!(value["duplicatedIds"][0], "d1");
+        assert_eq!(value["failed"][0]["id"], "f1");
+        assert_eq!(value["failed"][0]["error"], "err");
     }
 }
 

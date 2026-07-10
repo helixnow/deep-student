@@ -1,0 +1,208 @@
+/**
+ * Flashcards（wb-fc-*）— 对齐 SystemWindowShared 表面，保持学习工具密度。
+ * 引用 workbench token；不引入大面积渐变 / 卡片墙。
+ */
+
+.wb-fc-host,
+.wb-fc-root {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--wb-window-bg, hsl(var(--card)));
+}
+
+.wb-fc-nav {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 92%, hsl(var(--muted)) 8%);
+}
+
+.wb-fc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: color 120ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-tab:hover {
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-tab[data-active='true'] {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  border-bottom-color: hsl(var(--foreground));
+}
+
+.wb-fc-tab:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: -2px;
+}
+
+.wb-fc-body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.wb-fc-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 14px 16px;
+}
+
+.wb-fc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wb-fc-header[data-align='end'] {
+  align-items: flex-end;
+}
+
+.wb-fc-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-subtitle {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-banner {
+  padding: 8px 10px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--muted)) 28%, transparent 72%);
+  font-size: 12px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-toolbar {
+  display: flex;
+  gap: 8px;
+}
+
+.wb-fc-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+}
+
+.wb-fc-list-ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-fc-row {
+  padding: 9px 12px;
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+}
+
+.wb-fc-row:last-child {
+  border-bottom: none;
+}
+
+.wb-fc-row-front {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+}
+
+.wb-fc-row-back {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.wb-fc-tag {
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+  font-size: 10px;
+  line-height: 1.4;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-empty,
+.wb-fc-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 8rem;
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fc-empty {
+  min-height: 10rem;
+}
+
+.wb-fc-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 6px;
+  background: color-mix(in hsl, hsl(var(--card)) 88%, transparent 12%);
+  font-size: 13px;
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
+}
+
+@media (min-width: 640px) {
+  .wb-fc-screen {
+    padding: 16px 18px;
+  }
+
+  .wb-fc-row {
+    padding: 9px 14px;
+  }
+}
