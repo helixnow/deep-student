@@ -1,0 +1,223 @@
+/**
+ * a11y-cursor.css（O19）— 全局光标形态 + 焦点环 + 拖放高亮 + 高对比适配
+ * ---------------------------------------------------------------------------
+ * 接线方式（O20 / O1 reconcile）：由 workbench.tokens.css `@import` 或
+ * WorkbenchDesktop 顶部 `import '../styles/a11y-cursor.css'` 引入一次。
+ * 未接线时各 hook 仍功能完整（公告区内联样式、光标退回元素级 cursor）。
+ *
+ * 命名纪律（编排 §1.2）：本文件只定义 `wb-cursor-*` / `wb-focus-*` 前缀类、
+ * `--wb-focus-*` / `--wb-cursor-*` 前缀 token、`data-wb-cursor` /
+ * `data-wb-drop-state` 属性选择器；不重定义 workbench.css 契约类。
+ *
+ * 消费方：
+ *   - lockWorkbenchCursor（useWorkbenchGestures.ts）→ :root[data-wb-cursor]
+ *   - useDesktopDrop → .wb-cursor-drop-over / .wb-cursor-drop-denied
+ *   - 各组件自愿挂 .wb-focus-ring（O20 统一落实到三键/Dock/菜单等）
+ */
+
+/* ==========================================================================
+ * Token（可被 O1 tokens 覆写：这里用 :where 降特异性 + 引用已有 token 兜底）
+ * ========================================================================== */
+
+:where(:root) {
+  /* 焦点环：颜色对齐吸附预览的主题色描边（P4 token），保证视觉语言一致 */
+  --wb-focus-ring-color: var(--wb-snap-stroke, hsl(var(--primary, 220 90% 56%) / 0.85));
+  --wb-focus-ring-width: 2px;
+  --wb-focus-ring-offset: 2px;
+
+  /* 拖放落点高亮 */
+  --wb-cursor-drop-stroke: var(--wb-snap-stroke, hsl(var(--primary, 220 90% 56%) / 0.72));
+  --wb-cursor-drop-fill: var(--wb-snap-fill, hsl(var(--primary, 220 90% 56%) / 0.08));
+  --wb-cursor-drop-denied-stroke: hsl(var(--destructive, 0 72% 51%) / 0.65);
+  --wb-cursor-drop-transition: 120ms;
+}
+
+/* ==========================================================================
+ * 1. 光标形态工具类（组件静态挂载：标题栏 grab、Dock item pointer 等）
+ * ========================================================================== */
+
+.wb-cursor-default { cursor: default; }
+.wb-cursor-pointer { cursor: pointer; }
+.wb-cursor-text { cursor: text; }
+.wb-cursor-grab { cursor: grab; }
+.wb-cursor-grabbing { cursor: grabbing; }
+.wb-cursor-move { cursor: move; }
+.wb-cursor-copy { cursor: copy; }
+.wb-cursor-not-allowed { cursor: not-allowed; }
+.wb-cursor-ns-resize { cursor: ns-resize; }
+.wb-cursor-ew-resize { cursor: ew-resize; }
+.wb-cursor-nesw-resize { cursor: nesw-resize; }
+.wb-cursor-nwse-resize { cursor: nwse-resize; }
+.wb-cursor-col-resize { cursor: col-resize; }
+.wb-cursor-row-resize { cursor: row-resize; }
+.wb-cursor-zoom-in { cursor: zoom-in; }
+.wb-cursor-zoom-out { cursor: zoom-out; }
+
+/* 拖拽把手惯例：静止 grab，按压 grabbing（:active 兜底；
+ * 会话级一致性用 lockWorkbenchCursor 的全局锁） */
+.wb-cursor-grab:active { cursor: grabbing; }
+
+/* ==========================================================================
+ * 2. 全局光标锁（lockWorkbenchCursor 写入 <html data-wb-cursor="...">）
+ * --------------------------------------------------------------------------
+ * 这里必须只命中根伪元素，禁止恢复 `:root[...] *`：通配后代选择器会在每次
+ * pointerdown / pointerup 让整个应用 DOM 重新匹配样式，是窗口起拖首帧卡顿的
+ * 直接来源。全屏透明命中盾覆盖光标，而 Pointer Capture 仍把事件送回原手柄；
+ * 即使老 WebView 捕获失败，事件也会从 :root 冒泡到 window 的收尾监听器。
+ * 该实现仅依赖标准 CSS，在 WebView2 / WKWebView / WebKitGTK 上行为一致。
+ * ========================================================================== */
+
+:root[data-wb-cursor]::after {
+  position: fixed;
+  z-index: 2147483647;
+  inset: 0;
+  content: '';
+  pointer-events: auto;
+  background: transparent;
+}
+
+:root[data-wb-cursor='grab']::after { cursor: grab !important; }
+:root[data-wb-cursor='grabbing']::after { cursor: grabbing !important; }
+:root[data-wb-cursor='move']::after { cursor: move !important; }
+:root[data-wb-cursor='copy']::after { cursor: copy !important; }
+:root[data-wb-cursor='not-allowed']::after { cursor: not-allowed !important; }
+:root[data-wb-cursor='ns-resize']::after { cursor: ns-resize !important; }
+:root[data-wb-cursor='ew-resize']::after { cursor: ew-resize !important; }
+:root[data-wb-cursor='nesw-resize']::after { cursor: nesw-resize !important; }
+:root[data-wb-cursor='nwse-resize']::after { cursor: nwse-resize !important; }
+:root[data-wb-cursor='col-resize']::after { cursor: col-resize !important; }
+:root[data-wb-cursor='row-resize']::after { cursor: row-resize !important; }
+:root[data-wb-cursor='zoom-in']::after { cursor: zoom-in !important; }
+:root[data-wb-cursor='zoom-out']::after { cursor: zoom-out !important; }
+:root[data-wb-cursor='default']::after { cursor: default !important; }
+
+/* ==========================================================================
+ * 3. 焦点环（键盘焦点统一视觉；鼠标点击不出现 —— :focus-visible 驱动）
+ * ========================================================================== */
+
+.wb-focus-ring:focus-visible {
+  outline: var(--wb-focus-ring-width) solid var(--wb-focus-ring-color);
+  outline-offset: var(--wb-focus-ring-offset);
+}
+
+/* 内收变体：容器 overflow:hidden 或贴边元素（窗口内贴边按钮）防裁切 */
+.wb-focus-ring-inset:focus-visible {
+  outline: var(--wb-focus-ring-width) solid var(--wb-focus-ring-color);
+  outline-offset: calc(-1 * var(--wb-focus-ring-width));
+}
+
+/* 组合部件：内部任意子项聚焦时容器出环（如整个 Dock 弹层） */
+.wb-focus-within-ring:focus-within {
+  outline: var(--wb-focus-ring-width) solid var(--wb-focus-ring-color);
+  outline-offset: var(--wb-focus-ring-offset);
+}
+
+/* 鼠标按压产生的 :focus 不出环（保持 macOS 手感） */
+.wb-focus-ring:focus:not(:focus-visible),
+.wb-focus-ring-inset:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* 屏幕阅读器专用（视觉隐藏、AT 可达）：跳转链接 / 补充说明文本 */
+.wb-focus-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* sr-only 元素（如「跳到窗口列表」链接）获得焦点时浮现 */
+.wb-focus-sr-only.wb-focus-reveal:focus-visible {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 10000;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 6px 12px;
+  clip: auto;
+  clip-path: none;
+  white-space: normal;
+  border-radius: 8px;
+  background: hsl(var(--card, 0 0% 100%));
+  color: hsl(var(--foreground, 222 47% 11%));
+  outline: var(--wb-focus-ring-width) solid var(--wb-focus-ring-color);
+}
+
+/* ==========================================================================
+ * 4. 拖放落点高亮（useDesktopDrop 直写的两态类 + data 属性）
+ * --------------------------------------------------------------------------
+ * 只用 outline / background-color，零布局影响；消费方也可用
+ * [data-wb-drop-state='over'] 属性选择器给子元素做自定义反馈。
+ * ========================================================================== */
+
+/* 落点基类（可选，消费方自愿挂载）：为过渡做准备 */
+.wb-cursor-drop-zone {
+  transition: background-color var(--wb-cursor-drop-transition) linear;
+}
+
+.wb-cursor-drop-over {
+  outline: 2px dashed var(--wb-cursor-drop-stroke);
+  outline-offset: -2px;
+  background-color: var(--wb-cursor-drop-fill);
+}
+
+.wb-cursor-drop-denied {
+  outline: 2px dashed var(--wb-cursor-drop-denied-stroke);
+  outline-offset: -2px;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+ * 5. 高对比模式适配（Windows 高对比主题 forced-colors）
+ * --------------------------------------------------------------------------
+ * forced-colors 下自定义颜色会被系统调色板覆盖；显式映射到系统色，
+ * 保证焦点环 / 拖放高亮仍可辨识。
+ * ========================================================================== */
+
+@media (forced-colors: active) {
+  .wb-focus-ring:focus-visible,
+  .wb-focus-ring-inset:focus-visible,
+  .wb-focus-within-ring:focus-within {
+    outline: 3px solid Highlight;
+    outline-offset: 1px;
+  }
+
+  .wb-cursor-drop-over {
+    outline: 3px dashed Highlight;
+    background-color: transparent;
+  }
+
+  .wb-cursor-drop-denied {
+    outline: 3px dashed GrayText;
+  }
+}
+
+/* 增强对比偏好（非 forced-colors）：加粗焦点环 */
+@media (prefers-contrast: more) {
+  :where(:root) {
+    --wb-focus-ring-width: 3px;
+    --wb-focus-ring-color: var(--wb-snap-stroke, hsl(var(--primary, 220 90% 56%)));
+  }
+}
+
+/* ==========================================================================
+ * 6. 减动效（本文件唯一的动效是落点底色过渡，一并归零）
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-cursor-drop-zone {
+    transition: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-cursor-drop-zone {
+  transition: none;
+}

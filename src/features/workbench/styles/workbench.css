@@ -1,0 +1,636 @@
+/**
+ * Workbench Liquid Glass 样式（P4 专属）
+ * ---------------------------------------------------------------------------
+ * §0.3 类名契约的唯一实现。组件代理（P3/P5/P6/P11）只消费这些类 +
+ * Tailwind 布局工具类，不得自写 backdrop-filter / 阴影 / 材质。
+ *
+ * 契约类名：
+ *   wb-glass / wb-glass-highlight / wb-glass-lens
+ *   wb-window / wb-window-focused / wb-window-idle
+ *   wb-titlebar
+ *   wb-traffic / wb-traffic-close / wb-traffic-min / wb-traffic-zoom
+ *   wb-dock / wb-dock-item / wb-dock-indicator / wb-dock-badge
+ *   wb-snap-preview
+ *   wb-anim-open / wb-anim-minimize
+ *   wb-expose-backdrop
+ *
+ * 纪律：
+ *   - 所有动画仅 transform / opacity（阴影档位切换用 box-shadow transition，
+ *     属一次性状态过渡，非逐帧动画）；
+ *   - 三档材质降级发生在 workbench.tokens.css 的 token 层，本文件
+ *     只有极少数结构性降级规则（动画兜底）。
+ *   - 真折射仅 opt-in：`.wb-glass-lens` + `useLiquidGlassLens` /
+ *     `attachLiquidGlassLens`；大面板禁止挂透镜。
+ */
+@import './workbench.tokens.css';
+
+/* ==========================================================================
+ * 玻璃基础材质
+ * ========================================================================== */
+
+.wb-glass {
+  position: relative;
+  background-color: var(--wb-glass-bg);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-glass-blur);
+  backdrop-filter: var(--wb-glass-blur);
+  border: 1px solid var(--wb-glass-border);
+}
+
+/* 顶缘 1px specular 高光（伪元素实现，避免与外层 box-shadow 冲突） */
+.wb-glass-highlight {
+  position: relative;
+}
+
+.wb-glass-highlight::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--wb-glass-highlight) 16%,
+    var(--wb-glass-highlight) 84%,
+    transparent 100%
+  );
+}
+
+/*
+ * 液态玻璃透镜（opt-in，仅小表面）
+ * ---------------------------------------------------------------------------
+ * JS（liquidGlassLens.ts）在 Chromium + full 档写入 inline backdrop-filter
+ * （blur + url(#wb-liquid-lens-*)）。无能力 / reduced / minimal 时 html 带
+ * data-wb-lens=off，本类退回普通毛玻璃 token，不破坏可读性。
+ * isolation 保证 backdrop 采样边界清晰；overflow 裁切边缘折射溢出。
+ */
+.wb-glass-lens {
+  isolation: isolate;
+}
+
+/*
+ * 多数透镜面裁切边缘折射溢出。
+ * 例外：桌面菜单（子菜单飞出，见 DesktopContextMenu.css）。
+ * Dock 已不挂真折射，仅保留毛玻璃。
+ */
+.wb-glass-lens:not(.wb-desk-menu) {
+  overflow: hidden;
+}
+
+html[data-wb-lens='off'] .wb-glass-lens,
+html[data-wb-material='reduced'] .wb-glass-lens,
+html[data-wb-material='minimal'] .wb-glass-lens {
+  /* 清掉可能残留的 inline 折射（切档瞬间）；token blur 由层叠回退 */
+  -webkit-backdrop-filter: var(--wb-glass-blur) !important;
+  backdrop-filter: var(--wb-glass-blur) !important;
+}
+
+/* 桌面菜单 / Dock 菜单等自写 strong blur 的透镜面 */
+html[data-wb-lens='off'] .wb-desk-menu.wb-glass-lens,
+html[data-wb-material='reduced'] .wb-desk-menu.wb-glass-lens,
+html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
+  -webkit-backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur)) !important;
+  backdrop-filter: var(--wb-glass-blur-strong, var(--wb-glass-blur)) !important;
+}
+
+/* ==========================================================================
+ * 窗口容器 + 焦点阴影两档
+ * ========================================================================== */
+
+.wb-window {
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: var(--wb-window-radius);
+  background: var(--wb-window-bg);
+  border: 1px solid var(--wb-window-border);
+  overflow: hidden;
+  /* 壳可程序聚焦（tabIndex=-1 / bringDomFocusToShell）；焦点态用阴影档，勿画浏览器默认蓝框 */
+  outline: none;
+  /* 阴影档位切换过渡（40ms）；开/关窗动画走 wb-anim-* 类 */
+  transition: box-shadow var(--wb-shadow-transition-duration) var(--wb-ease);
+  /* 空闲不常驻合成层；拖/缩与生命周期动画再提升（见 WindowShell / WindowLifecycle） */
+  will-change: auto;
+}
+
+.wb-window:focus,
+.wb-window:focus-visible {
+  outline: none;
+}
+
+.wb-window-focused {
+  box-shadow:
+    inset 0 1px 0 var(--wb-window-rim),
+    var(--wb-shadow-focused);
+}
+
+.wb-window-idle {
+  box-shadow:
+    inset 0 1px 0 var(--wb-window-rim),
+    var(--wb-shadow-idle);
+}
+
+/*
+ * 拖拽中：禁止切换阴影档（COORDINATION / macos-2026/06 §0）。
+ * 跟手走 transform，阴影保持 focused/idle；关掉 transition 避免松手时阴影插值卡顿。
+ *
+ * 跟手期关窗内 backdrop-filter（直接写属性，禁止在窗根翻转继承自定义属性——
+ * 继承变量一变会逼整棵设置子树 style recalc，起拖多付 ~100ms）。
+ */
+.wb-window.wb-shell-dragging,
+.wb-window.wb-shell-resizing {
+  transition: none;
+}
+
+/* 契约玻璃面 + 系统抽屉把手 + Tailwind blur：跟手期强制实色 */
+.wb-window.wb-shell-dragging .wb-glass,
+.wb-window.wb-shell-resizing .wb-glass,
+.wb-window.wb-shell-dragging .wb-sys-drawer-handle,
+.wb-window.wb-shell-resizing .wb-sys-drawer-handle,
+.wb-window.wb-shell-dragging [class*='backdrop-blur'],
+.wb-window.wb-shell-resizing [class*='backdrop-blur'] {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* animation-play-state 不继承；点名常见无限动画，避免跟手期每帧弄脏图层 */
+.wb-window.wb-shell-dragging .animate-spin,
+.wb-window.wb-shell-resizing .animate-spin,
+.wb-window.wb-shell-dragging .animate-pulse,
+.wb-window.wb-shell-resizing .animate-pulse,
+.wb-window.wb-shell-dragging .feature-status-dot,
+.wb-window.wb-shell-resizing .feature-status-dot {
+  animation-play-state: paused !important;
+}
+
+/* ==========================================================================
+ * 标题栏（薄玻璃 tint，叠于不透明内容区之上）
+ * ========================================================================== */
+
+.wb-titlebar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: var(--wb-titlebar-height);
+  flex: 0 0 var(--wb-titlebar-height);
+  padding: 0 12px;
+  gap: 8px;
+  box-sizing: border-box;
+  background-color: var(--wb-titlebar-bg);
+  background-image: var(--wb-glass-sheen);
+  border-bottom: 1px solid var(--wb-titlebar-border);
+  color: var(--wb-titlebar-fg);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+/* 标题栏自带顶缘高光（窗口圆角内侧） */
+.wb-titlebar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--wb-glass-highlight) 16%,
+    var(--wb-glass-highlight) 84%,
+    transparent 100%
+  );
+}
+
+.wb-window-idle .wb-titlebar {
+  color: var(--wb-titlebar-fg-idle);
+}
+
+/* ==========================================================================
+ * 三键（macOS 红黄绿；idle 窗褪灰，hover 三键区恢复本色）
+ * ========================================================================== */
+
+.wb-traffic {
+  display: flex;
+  align-items: center;
+  gap: var(--wb-traffic-gap);
+  flex: 0 0 auto;
+}
+
+.wb-traffic-close,
+.wb-traffic-min,
+.wb-traffic-zoom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wb-traffic-size);
+  height: var(--wb-traffic-size);
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  box-sizing: border-box;
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+}
+
+.wb-traffic-close {
+  background: var(--wb-traffic-close);
+  border-color: var(--wb-traffic-close-border);
+}
+
+.wb-traffic-min {
+  background: var(--wb-traffic-min);
+  border-color: var(--wb-traffic-min-border);
+}
+
+.wb-traffic-zoom {
+  background: var(--wb-traffic-zoom);
+  border-color: var(--wb-traffic-zoom-border);
+}
+
+/* 键内符号（P3 放入的 svg/span）默认隐藏，hover 三键区时浮现 */
+.wb-traffic-close > *,
+.wb-traffic-min > *,
+.wb-traffic-zoom > * {
+  opacity: 0;
+  color: var(--wb-traffic-glyph);
+  width: 8px;
+  height: 8px;
+  pointer-events: none;
+  transition: opacity 80ms linear;
+}
+
+.wb-traffic:hover .wb-traffic-close > *,
+.wb-traffic:hover .wb-traffic-min > *,
+.wb-traffic:hover .wb-traffic-zoom > * {
+  opacity: 1;
+}
+
+.wb-traffic-close:active,
+.wb-traffic-min:active,
+.wb-traffic-zoom:active {
+  filter: brightness(0.82);
+}
+
+/* 非焦点窗口三键褪灰；指针进入三键区立即恢复本色（macOS 行为） */
+.wb-window-idle .wb-traffic:not(:hover) .wb-traffic-close,
+.wb-window-idle .wb-traffic:not(:hover) .wb-traffic-min,
+.wb-window-idle .wb-traffic:not(:hover) .wb-traffic-zoom {
+  background: var(--wb-traffic-idle);
+  border-color: var(--wb-traffic-idle-border);
+}
+
+.wb-traffic-close:focus-visible,
+.wb-traffic-min:focus-visible,
+.wb-traffic-zoom:focus-visible {
+  box-shadow: 0 0 0 2px var(--wb-snap-stroke);
+}
+
+/* ==========================================================================
+ * Dock
+ * ========================================================================== */
+
+.wb-dock {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--wb-z-dock, 9000);
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wb-dock-gap);
+  padding: var(--wb-dock-padding);
+  border-radius: var(--wb-dock-radius);
+  background-color: var(--wb-dock-bg);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-dock-blur);
+  backdrop-filter: var(--wb-dock-blur);
+  border: 1px solid var(--wb-dock-border);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    var(--wb-dock-shadow);
+}
+
+.wb-dock-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--wb-dock-item-size);
+  height: var(--wb-dock-item-size);
+  padding: 0;
+  border: none;
+  border-radius: var(--wb-dock-item-radius);
+  background: transparent;
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+  outline: none;
+  transform-origin: 50% 100%;
+  transition:
+    transform var(--wb-dock-transition-duration) var(--wb-ease-out),
+    background-color var(--wb-dock-transition-duration) linear;
+}
+
+/* hover/active scale 由 --wb-dock-item-hover-scale 驱动（默认 1；邻近放大见 Dock.css） */
+.wb-dock-item:hover {
+  transform: scale(var(--wb-dock-item-hover-scale));
+  background-color: var(--wb-dock-item-hover-bg);
+}
+
+.wb-dock-item:active {
+  transform: scale(calc(var(--wb-dock-item-hover-scale) * 0.94));
+}
+
+.wb-dock-item:focus-visible {
+  box-shadow: 0 0 0 2px var(--wb-snap-stroke);
+}
+
+/* 运行指示点 */
+.wb-dock-indicator {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: var(--wb-dock-indicator);
+  pointer-events: none;
+}
+
+/* 角标 */
+.wb-dock-badge {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--wb-dock-badge-bg);
+  color: var(--wb-dock-badge-fg);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* 固定区 / 运行区分隔符（P5 使用） */
+.wb-dock-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 4px 2px;
+  background: var(--wb-dock-divider);
+}
+
+/* ==========================================================================
+ * 吸附预览轮廓（120ms fade-in，独立 fixed 层）
+ * ========================================================================== */
+
+.wb-snap-preview {
+  position: absolute;
+  z-index: var(--wb-z-snap-preview, 8500);
+  box-sizing: border-box;
+  border: 1.5px solid var(--wb-snap-stroke);
+  border-radius: var(--wb-snap-radius);
+  background: var(--wb-snap-fill);
+  pointer-events: none;
+  animation: wb-snap-fade-in var(--wb-snap-fade-duration) var(--wb-ease-out) both;
+}
+
+@keyframes wb-snap-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 中缝拖动态（useTilingDivider 挂 wb-tile-divider-active；细样式见 SnapPreview.css） */
+.wb-tile-divider-active {
+  cursor: col-resize;
+}
+
+/* ==========================================================================
+ * 开窗 / 最小化动效（仅 transform + opacity）
+ * ========================================================================== */
+
+.wb-anim-open {
+  animation: wb-open var(--wb-anim-open-duration) var(--wb-ease-out) both;
+}
+
+@keyframes wb-open {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/*
+ * 最小化：向 Dock 方位缩小并淡出。
+ * Dock 图标坐标由调用方注入 CSS 变量：
+ *   --wb-minimize-origin-x / --wb-minimize-origin-y
+ *（缺省 50% / 130% = 向正下方收敛）
+ */
+.wb-anim-minimize {
+  transform-origin: var(--wb-minimize-origin-x) var(--wb-minimize-origin-y);
+  animation: wb-minimize var(--wb-anim-minimize-duration) var(--wb-ease) both;
+  pointer-events: none;
+}
+
+@keyframes wb-minimize {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  60% {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.12) translateY(6%);
+  }
+}
+
+/* ==========================================================================
+ * 俯瞰背景
+ * ========================================================================== */
+
+.wb-expose-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-expose-backdrop, 5);
+  background: var(--wb-expose-backdrop-bg);
+  -webkit-backdrop-filter: var(--wb-expose-backdrop-blur);
+  backdrop-filter: var(--wb-expose-backdrop-blur);
+}
+
+/* ==========================================================================
+ * 壁纸层（WallpaperLayer.tsx 消费）
+ * ========================================================================== */
+
+.wb-wallpaper {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-wallpaper, 0);
+  pointer-events: none;
+  background-color: hsl(var(--background));
+}
+
+.wb-wallpaper[data-wb-wallpaper='aurora'] {
+  background-image: var(--wb-wallpaper-aurora);
+}
+
+.wb-wallpaper[data-wb-wallpaper='horizon'] {
+  background-image: var(--wb-wallpaper-horizon);
+}
+
+.wb-wallpaper[data-wb-wallpaper='graphite'] {
+  background-image: var(--wb-wallpaper-graphite);
+}
+
+/* 自定义图片壁纸 */
+.wb-wallpaper-image {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* 图片之上的可读性 scrim */
+.wb-wallpaper-scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--wb-wallpaper-scrim);
+}
+
+/* ==========================================================================
+ * 空桌面引导卡（EmptyDesktop.tsx 消费）
+ * ========================================================================== */
+
+.wb-empty-desktop {
+  position: absolute;
+  inset: 0;
+  z-index: var(--wb-z-desktop-ui, 1);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.wb-empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  max-width: 340px;
+  padding: 32px 40px 28px;
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: var(--wb-shadow-idle);
+}
+
+.wb-empty-icons {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+}
+
+.wb-empty-icons > :nth-child(1) {
+  opacity: 0.55;
+  transform: translateY(2px) rotate(-8deg);
+}
+
+.wb-empty-icons > :nth-child(2) {
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-empty-icons > :nth-child(3) {
+  opacity: 0.55;
+  transform: translateY(2px) rotate(8deg);
+}
+
+.wb-empty-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-empty-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+}
+
+.wb-empty-hint-arrow {
+  margin-top: 10px;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  /* 时长走 O1 breathe token：minimal / reduced-motion 下归零 */
+  animation: wb-empty-bounce var(--wb-motion-breathe, 2200ms) var(--wb-ease) infinite;
+}
+
+@keyframes wb-empty-bounce {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(4px);
+  }
+}
+
+/* ==========================================================================
+ * 动效兜底降级
+ * --------------------------------------------------------------------------
+ * minimal 档所有 --wb-*-duration 已在 token 层归零（0ms 的 CSS 动画
+ * 仍会同步触发 animationend，P3/P5/P6 依赖该事件的收尾逻辑不受影响）。
+ * 这里对系统 prefers-reduced-motion 再做一层 CSS 兜底（materialTier.ts
+ * 正常情况下会先把档位切到 minimal）。
+ * ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  :where(:root) {
+    --wb-anim-open-duration: 0ms;
+    --wb-anim-minimize-duration: 0ms;
+    --wb-shadow-transition-duration: 0ms;
+    --wb-dock-transition-duration: 0ms;
+    --wb-snap-fade-duration: 0ms;
+    --wb-dock-item-hover-scale: 1;
+  }
+
+  .wb-empty-hint-arrow {
+    animation: none;
+  }
+}
+
+/* minimal 档：token 已把 --wb-motion-breathe 归零，再显式关停避免 0ms infinite 空转 */
+:root[data-wb-material='minimal'] .wb-empty-hint-arrow {
+  animation: none;
+}

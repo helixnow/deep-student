@@ -1,0 +1,352 @@
+/**
+ * Workbench 动效基建（O1 → L2）—— macOS 级 spring / 缓动曲线库
+ * ---------------------------------------------------------------------------
+ * 本文件由 workbench.tokens.css 顶部 @import 引入：只要 tokens/workbench.css
+ * 已加载，这里的全部 CSS 变量与命名 keyframes 即全局可用。
+ *
+ * 引用契约（O2–O19，命名见 docs/dev/workbench-progress/O1.md §命名预告）：
+ *   - 曲线：--wb-ease-spring / -spring-soft / -overshoot / -swift / -in /
+ *           -genie / -magnify（另保留既有 --wb-ease / --wb-ease-out）
+ *   - 时长：--wb-motion-instant / -quick / -standard / -gentle / -genie /
+ *           -bounce / -breathe / -tier-fade
+ *   - 三态：--wb-hover-duration|ease、--wb-press-duration|ease、
+ *           --wb-focus-duration|ease
+ *   - keyframes：wb-kf-*（仅 transform/opacity）
+ *
+ * L2（2026-07-09）：
+ *   - spring / spring-soft / overshoot → CSS `linear()` 采样（@supports 回退 bezier）
+ *   - pop-in / overshoot-in 关键帧单调，过冲只来自 timing（避免双重回弹）
+ *   - prefers-reduced-motion：路径类时长归零，opacity 淡变保留 120–160ms
+ *   - minimal 材质档仍全时长归零（性能档，与 RM 分层不同）
+ *
+ * 纪律：
+ *   - 所有 keyframes 仅 transform / opacity；
+ *   - 勿恢复 wb-anim-open 叠播；勿做持续 Dock bounce 循环。
+ */
+
+:where(:root) {
+  /* ==== 缓动曲线（无 linear() 时的 bezier 回退） ======================== */
+  /* 标准弹出：开窗 / 平铺落位 / 弹层入场 */
+  --wb-ease-spring: cubic-bezier(0.32, 1.12, 0.36, 1);
+  /* 柔和 spring：焦点切换、俯瞰 FLIP、选中框滑动 */
+  --wb-ease-spring-soft: cubic-bezier(0.3, 1.06, 0.36, 1);
+  /* 菜单 / tooltip 入场（L1 autohide 已改用 spring-soft，本 token 仍供弹层） */
+  --wb-ease-overshoot: cubic-bezier(0.34, 1.28, 0.64, 1);
+  /* 快速淡入：hover 高亮、指示点、badge */
+  --wb-ease-swift: cubic-bezier(0.3, 0.9, 0.35, 1);
+  /* 加速退场：关窗前段、淡出、下沉 */
+  --wb-ease-in: cubic-bezier(0.5, 0.05, 0.8, 0.4);
+  /* genie：形状在密集关键帧内；类层用 linear */
+  --wb-ease-genie: linear;
+  /* magnification 跟踪：Dock 邻近放大等指针跟随类（短时长搭配） */
+  --wb-ease-magnify: cubic-bezier(0.2, 0.6, 0.25, 1);
+
+  /* ==== 时长刻度 ==================================================== */
+  --wb-motion-instant: 90ms;
+  --wb-motion-quick: 150ms;
+  --wb-motion-standard: 280ms;
+  --wb-motion-gentle: 320ms;
+  --wb-motion-genie: 480ms;
+  --wb-motion-bounce: 640ms;
+  --wb-motion-breathe: 2400ms;
+  /* 材质切档交叉淡化（materialTier.ts 编排，token 层消费） */
+  --wb-motion-tier-fade: 220ms;
+
+  /* ==== 三态过渡（悬停 / 按压 / 焦点） =============================== */
+  --wb-hover-duration: var(--wb-motion-quick);
+  --wb-hover-ease: var(--wb-ease-swift);
+  --wb-press-duration: var(--wb-motion-instant);
+  --wb-press-ease: var(--wb-ease-in);
+  --wb-focus-duration: var(--wb-motion-standard);
+  --wb-focus-ease: var(--wb-ease-spring-soft);
+}
+
+/*
+ * Apple duration+bounce → CSS linear() 采样（@supports 渐进增强）。
+ * bounce 0.15 / 0.08 / 0.22；峰值约 1.006 / 1.0 / 1.02。
+ */
+@supports (animation-timing-function: linear(0, 1)) {
+  :where(:root) {
+    --wb-ease-spring: linear(
+      0,
+      0.0347 4.55%,
+      0.118 9.09%,
+      0.2258 13.64%,
+      0.3419 18.18%,
+      0.4556 22.73%,
+      0.5605 27.27%,
+      0.6532 31.82%,
+      0.7325 36.36%,
+      0.7985 40.91%,
+      0.8521 45.45%,
+      0.8945 50%,
+      0.9274 54.55%,
+      0.9523 59.09%,
+      0.9707 63.64%,
+      0.9839 68.18%,
+      0.993 72.73%,
+      0.9991 77.27%,
+      1.0029 81.82%,
+      1.0051 86.36%,
+      1.0061 90.91%,
+      1.0063 95.45%,
+      1
+    );
+    --wb-ease-spring-soft: linear(
+      0,
+      0.0343 4.55%,
+      0.1154 9.09%,
+      0.2191 13.64%,
+      0.3296 18.18%,
+      0.4372 22.73%,
+      0.5363 27.27%,
+      0.6241 31.82%,
+      0.6997 36.36%,
+      0.7633 40.91%,
+      0.8158 45.45%,
+      0.8585 50%,
+      0.8927 54.55%,
+      0.9196 59.09%,
+      0.9406 63.64%,
+      0.9568 68.18%,
+      0.969 72.73%,
+      0.9783 77.27%,
+      0.9851 81.82%,
+      0.99 86.36%,
+      0.9936 90.91%,
+      0.9961 95.45%,
+      1
+    );
+    --wb-ease-overshoot: linear(
+      0,
+      0.0351 4.55%,
+      0.1207 9.09%,
+      0.233 13.64%,
+      0.355 18.18%,
+      0.4754 22.73%,
+      0.5868 27.27%,
+      0.6851 31.82%,
+      0.7687 36.36%,
+      0.8373 40.91%,
+      0.8919 45.45%,
+      0.934 50%,
+      0.9652 54.55%,
+      0.9875 59.09%,
+      1.0026 63.64%,
+      1.0121 68.18%,
+      1.0174 72.73%,
+      1.0196 77.27%,
+      1.0198 81.82%,
+      1.0186 86.36%,
+      1.0166 90.91%,
+      1.0143 95.45%,
+      1
+    );
+  }
+}
+
+/* ==========================================================================
+ * 命名 keyframes（仅 transform / opacity）
+ * ========================================================================== */
+
+/* --- 淡入 / 淡出 --------------------------------------------------------- */
+@keyframes wb-kf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes wb-kf-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* --- 标准弹出 / 消散（开窗 / 关窗） --------------------------------------
+ * L2：关键帧单调 scale 0.96→1；过冲只来自 --wb-ease-spring（禁止关键帧内再过冲） */
+@keyframes wb-kf-pop-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes wb-kf-pop-out {
+  from { opacity: 1; transform: scale(1); }
+  to { opacity: 0; transform: scale(0.97); }
+}
+
+/* --- 弹层入场：关键帧单调；回弹交给 --wb-ease-overshoot ----------------- */
+@keyframes wb-kf-overshoot-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* --- 上浮入场 / 下沉退场（Dock 弹层、tooltip、菜单） ---------------------- */
+@keyframes wb-kf-rise-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes wb-kf-sink-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+
+/* --- genie 吸入 / 还原 ----------------------------------------------------
+ * 收敛点由消费方注入 --wb-minimize-origin-x/y（缺省 50% / 130%）。
+ * 密集采样 + 每段 linear：形状编码在采样点；类层 timing 用 linear。
+ * ------------------------------------------------------------------------- */
+@keyframes wb-kf-genie-min {
+  0% { opacity: 1; transform: scale(1, 1) translateY(0); animation-timing-function: linear; }
+  12% { opacity: 1; transform: scale(0.94, 0.985) translateY(0.4%); animation-timing-function: linear; }
+  24% { opacity: 0.97; transform: scale(0.84, 0.94) translateY(1.1%); animation-timing-function: linear; }
+  36% { opacity: 0.92; transform: scale(0.71, 0.86) translateY(2%); animation-timing-function: linear; }
+  48% { opacity: 0.84; transform: scale(0.56, 0.74) translateY(3.1%); animation-timing-function: linear; }
+  60% { opacity: 0.72; transform: scale(0.41, 0.6) translateY(4.4%); animation-timing-function: linear; }
+  72% { opacity: 0.56; transform: scale(0.27, 0.44) translateY(5.6%); animation-timing-function: linear; }
+  84% { opacity: 0.36; transform: scale(0.16, 0.28) translateY(6.8%); animation-timing-function: linear; }
+  100% { opacity: 0; transform: scale(0.05, 0.1) translateY(8%); }
+}
+
+@keyframes wb-kf-genie-restore {
+  0% { opacity: 0; transform: scale(0.05, 0.1) translateY(8%); animation-timing-function: linear; }
+  14% { opacity: 0.3; transform: scale(0.15, 0.26) translateY(6.9%); animation-timing-function: linear; }
+  28% { opacity: 0.55; transform: scale(0.28, 0.44) translateY(5.6%); animation-timing-function: linear; }
+  42% { opacity: 0.74; transform: scale(0.44, 0.62) translateY(4.2%); animation-timing-function: linear; }
+  56% { opacity: 0.88; transform: scale(0.62, 0.78) translateY(2.8%); animation-timing-function: linear; }
+  70% { opacity: 0.96; transform: scale(0.8, 0.91) translateY(1.5%); animation-timing-function: linear; }
+  82% { opacity: 1; transform: scale(0.93, 0.985) translateY(0.6%); animation-timing-function: linear; }
+  92% { opacity: 1; transform: scale(1.008, 1.004) translateY(0); animation-timing-function: linear; }
+  100% { opacity: 1; transform: scale(1, 1) translateY(0); }
+}
+
+/* --- Dock launch bounce（库内保留；Dock.css 自管另一套，勿持续循环） ------ */
+@keyframes wb-kf-bounce {
+  0% { transform: translateY(0); animation-timing-function: cubic-bezier(0.2, 0.7, 0.35, 1); }
+  22% { transform: translateY(-42%); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+  44% { transform: translateY(0); animation-timing-function: cubic-bezier(0.2, 0.7, 0.35, 1); }
+  62% { transform: translateY(-18%); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+  78% { transform: translateY(0); animation-timing-function: cubic-bezier(0.2, 0.7, 0.35, 1); }
+  90% { transform: translateY(-5%); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.4); }
+  100% { transform: translateY(0); }
+}
+
+/* --- 指示点呼吸（暂无消费者；勿加回 Dock 指示点） ------------------------ */
+@keyframes wb-kf-breathe {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* --- 非法操作 headshake --------------------------------------------------- */
+@keyframes wb-kf-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+/* --- Dock autohide 专用（translate(-50%, y) 复合） ------------------------ */
+@keyframes wb-kf-dock-slide-in {
+  from { opacity: 0; transform: translate(-50%, 110%); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@keyframes wb-kf-dock-slide-out {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to { opacity: 0; transform: translate(-50%, 110%); }
+}
+
+/* ==========================================================================
+ * 可选辅助类
+ * ========================================================================== */
+
+.wb-motion-fade-in {
+  animation: wb-kf-fade-in var(--wb-motion-quick) var(--wb-ease-swift) both;
+}
+
+.wb-motion-fade-out {
+  animation: wb-kf-fade-out var(--wb-motion-quick) var(--wb-ease-in) both;
+}
+
+.wb-motion-pop-in {
+  animation: wb-kf-pop-in var(--wb-motion-standard) var(--wb-ease-spring) both;
+}
+
+.wb-motion-pop-out {
+  animation: wb-kf-pop-out var(--wb-motion-quick) var(--wb-ease-in) both;
+}
+
+.wb-motion-overshoot-in {
+  animation: wb-kf-overshoot-in var(--wb-motion-standard) var(--wb-ease-overshoot) both;
+}
+
+.wb-motion-rise-in {
+  animation: wb-kf-rise-in var(--wb-motion-standard) var(--wb-ease-spring) both;
+}
+
+.wb-motion-sink-out {
+  animation: wb-kf-sink-out var(--wb-motion-quick) var(--wb-ease-in) both;
+}
+
+/* ==========================================================================
+ * 降级：minimal（性能档全归零）vs prefers-reduced-motion（保留短淡变）
+ * ========================================================================== */
+
+:root[data-wb-material='minimal'] {
+  --wb-motion-instant: 0ms;
+  --wb-motion-quick: 0ms;
+  --wb-motion-standard: 0ms;
+  --wb-motion-gentle: 0ms;
+  --wb-motion-genie: 0ms;
+  --wb-motion-bounce: 0ms;
+  --wb-motion-breathe: 0ms;
+  --wb-motion-tier-fade: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(:root) {
+    /* 路径 / bounce / genie / 呼吸：关 */
+    --wb-motion-instant: 0ms;
+    --wb-motion-genie: 0ms;
+    --wb-motion-bounce: 0ms;
+    --wb-motion-breathe: 0ms;
+    /* opacity 淡变保留 */
+    --wb-motion-quick: 120ms;
+    --wb-motion-standard: 160ms;
+    --wb-motion-gentle: 160ms;
+    --wb-motion-tier-fade: 160ms;
+    --wb-ease-spring: linear;
+    --wb-ease-spring-soft: linear;
+    --wb-ease-overshoot: linear;
+    --wb-ease-swift: linear;
+    --wb-ease-magnify: linear;
+  }
+
+  /* 开窗/弹层：去掉 scale，只淡入（避免 RM 下仍缩放） */
+  @keyframes wb-kf-pop-in {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes wb-kf-pop-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: none; }
+  }
+  @keyframes wb-kf-overshoot-in {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes wb-kf-rise-in {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes wb-kf-sink-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: none; }
+  }
+  @keyframes wb-kf-genie-min {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: none; }
+  }
+  @keyframes wb-kf-genie-restore {
+    from { opacity: 0; transform: none; }
+    to { opacity: 1; transform: none; }
+  }
+}
