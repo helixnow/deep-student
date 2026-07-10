@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { SidebarSimple } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
@@ -17,6 +18,13 @@ export interface SandboxWorkbenchSurfaceProps {
   embedded?: boolean;
   className?: string;
   onClose?: () => void;
+  /**
+   * 隐藏自绘的 SandboxToolbar。
+   * ★ 2026-07-08（移动端审计 D-6）：独立视图形态下移动端已有统一顶栏
+   * （UnifiedMobileHeader），再渲染 SandboxToolbar 会形成第二条顶栏；
+   * 由 SandboxWorkbenchPage 在小屏时传入。嵌入 chat-v2 右屏时保持默认 false。
+   */
+  hideToolbar?: boolean;
 }
 
 const viewportClasses: Record<'desktop' | 'tablet' | 'mobile', string> = {
@@ -29,7 +37,9 @@ export function SandboxWorkbenchSurface({
   embedded = false,
   className,
   onClose,
+  hideToolbar = false,
 }: SandboxWorkbenchSurfaceProps) {
+  const { t } = useTranslation('common');
   const { isSmallScreen } = useBreakpoint();
   const activeSession = useSandboxWorkbenchStore((state) => state.activeSession);
   const isOpen = useSandboxWorkbenchStore((state) => state.isOpen);
@@ -73,17 +83,24 @@ export function SandboxWorkbenchSurface({
 
     return (
       <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
-        <SandboxToolbar
-          title="沙箱工作台"
-          subtitle={subtitle}
-          inspectorOpen={inspectorOpen}
-          onReload={refreshSession}
-          onToggleInspector={handleToggleInspector}
-          onClose={handleClose}
-        />
+        {!hideToolbar && (
+          <SandboxToolbar
+            title="沙箱工作台"
+            subtitle={subtitle}
+            inspectorOpen={inspectorOpen}
+            onReload={refreshSession}
+            onToggleInspector={handleToggleInspector}
+            onClose={handleClose}
+          />
+        )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="w-full max-w-3xl rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
             <p className="text-sm text-muted-foreground">在聊天中打开代码块即可预览。</p>
+            {isSmallScreen && (
+              <p className="mt-2 text-xs text-muted-foreground/70">
+                {t('sandbox_workbench.mobile_hint', '移动端以预览为主，完整工作台建议在桌面端使用。')}
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -93,14 +110,16 @@ export function SandboxWorkbenchSurface({
   if (!isOpen && !embedded) {
     return (
       <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
-        <SandboxToolbar
-          title={activeSession.title}
-          meta="已收起"
-          inspectorOpen={inspectorOpen}
-          onReload={refreshSession}
-          onToggleInspector={handleToggleInspector}
-          onClose={handleClose}
-        />
+        {!hideToolbar && (
+          <SandboxToolbar
+            title={activeSession.title}
+            meta="已收起"
+            inspectorOpen={inspectorOpen}
+            onReload={refreshSession}
+            onToggleInspector={handleToggleInspector}
+            onClose={handleClose}
+          />
+        )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="flex flex-col items-center gap-4">
             <NotionButton
@@ -192,20 +211,24 @@ export function SandboxWorkbenchSurface({
 
   return (
     <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
-      <SandboxToolbar
-        title={activeSession.title}
-        subtitle={toolbarSubtitle}
-        inspectorOpen={inspectorOpen}
-        onReload={refreshSession}
-        onToggleInspector={handleToggleInspector}
-        onClose={handleClose}
-      />
+      {!hideToolbar && (
+        <SandboxToolbar
+          title={activeSession.title}
+          subtitle={toolbarSubtitle}
+          inspectorOpen={inspectorOpen}
+          onReload={refreshSession}
+          onToggleInspector={handleToggleInspector}
+          onClose={handleClose}
+        />
+      )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {isSmallScreen ? (
           <div className="flex h-full min-h-0 flex-col">
             <div className="min-h-0 flex-1">{previewShell}</div>
-            {inspectorShell}
+            {/* ★ 2026-07-08（移动端审计 D-7）：原先无条件渲染，
+                工具栏的检查器开关与面板内 X 按钮在小屏上形同虚设 */}
+            {inspectorOpen ? inspectorShell : null}
           </div>
         ) : (
           <PanelGroup direction="horizontal" className="h-full">

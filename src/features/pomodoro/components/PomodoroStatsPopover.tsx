@@ -31,27 +31,15 @@ const shiftDays = (d: Date, n: number): Date => {
   return next;
 };
 
-export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+/**
+ * 统计内容主体：桌面端由 PomodoroStatsPopover 承载，
+ * 移动端由 Todo 页 inline 子屏承载（showTitle=false 时标题走统一顶栏）。
+ */
+export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTitle = true }) => {
   const { t, i18n } = useTranslation('todo');
-  const ref = useRef<HTMLDivElement>(null);
   const [mode, setMode] = useState<ViewMode>(7);
   const [stats, setStats] = useState<PomodoroDailyStat[] | null>(null);
   const days = mode === 'heatmap' ? HEATMAP_DAYS : mode;
-
-  useEffect(() => {
-    const handleOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('mousedown', handleOutside);
-    document.addEventListener('keydown', handleEsc);
-    return () => {
-      document.removeEventListener('mousedown', handleOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, [onClose]);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,16 +163,15 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
   ];
 
   return (
-    <div
-      ref={ref}
-      className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-[var(--radius-shell-control)] border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root,var(--background))] p-3 shadow-xl"
-      role="dialog"
-      aria-label={t('pomodoro.statsPopover.title')}
-    >
+    <>
       <div className="mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold text-foreground">
-          {t('pomodoro.statsPopover.title')}
-        </span>
+        {showTitle ? (
+          <span className="text-xs font-semibold text-foreground">
+            {t('pomodoro.statsPopover.title')}
+          </span>
+        ) : (
+          <span />
+        )}
         <div className="flex items-center gap-0.5">
           {RANGES.map((r) => (
             <button
@@ -192,7 +179,7 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
               type="button"
               onClick={() => setMode(r)}
               className={cn(
-                'rounded px-1.5 py-0.5 text-[11px] transition-colors',
+                'rounded px-1.5 py-0.5 text-[11px] transition-colors [@media(pointer:coarse)]:min-h-[2.25rem] [@media(pointer:coarse)]:px-2.5',
                 mode === r
                   ? 'bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
                   : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)]',
@@ -205,7 +192,7 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
             type="button"
             onClick={() => setMode('heatmap')}
             className={cn(
-              'rounded px-1.5 py-0.5 text-[11px] transition-colors',
+              'rounded px-1.5 py-0.5 text-[11px] transition-colors [@media(pointer:coarse)]:min-h-[2.25rem] [@media(pointer:coarse)]:px-2.5',
               mode === 'heatmap'
                 ? 'bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))]'
                 : 'text-muted-foreground hover:bg-[color:var(--interactive-hover)]',
@@ -347,6 +334,37 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
           )}
         </div>
       )}
+    </>
+  );
+};
+
+export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { t } = useTranslation('todo');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute bottom-full right-0 z-50 mb-2 w-80 rounded-[var(--radius-shell-control)] border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root,var(--background))] p-3 shadow-xl"
+      role="dialog"
+      aria-label={t('pomodoro.statsPopover.title')}
+    >
+      <PomodoroStatsContent />
     </div>
   );
 };

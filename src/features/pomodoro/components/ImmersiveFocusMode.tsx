@@ -4,6 +4,7 @@ import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipF
 import { cn } from '@/lib/utils';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { noiseEngine, NOISE_TYPES } from '../noiseEngine';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 /**
  * 沉浸式专注模式 —— 全屏覆盖视图
@@ -100,6 +101,16 @@ export const ImmersiveFocusMode: React.FC<{
 
   const isCountUpWork = mode === 'work' && (phaseStartedAt != null || settings.countUp);
   const pauseLocked = settings.strictMode && mode === 'work' && status === 'running';
+
+  // Android 系统返回键 = 退出沉浸模式（与 ESC 同语义；桌面端无 Android 桥接，零影响）
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, []);
 
   // ESC 退出
   useEffect(() => {
@@ -267,11 +278,12 @@ export const ImmersiveFocusMode: React.FC<{
               aria-label={t('pomodoro.settings.noiseVolume')}
             />
           )}
-          {/* 关闭按钮 */}
+          {/* 关闭按钮（触屏放大到 44px 触控目标） */}
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-[var(--overlay-control-hover)] transition-colors"
+            className="p-2 [@media(pointer:coarse)]:p-3 rounded-lg text-white/30 hover:text-white/60 hover:bg-[var(--overlay-control-hover)] transition-colors"
             title={t('pomodoro.controls.exitImmersive')}
+            aria-label={t('pomodoro.controls.exitImmersive')}
           >
             <X size={20} />
           </button>

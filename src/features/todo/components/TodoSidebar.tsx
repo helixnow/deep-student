@@ -109,9 +109,14 @@ const NavRow: React.FC<NavRowProps> = ({
 interface TodoSidebarProps {
   /** 移动端点击列表后回调（用于关闭滑动侧栏） */
   onItemSelect?: () => void;
+  /**
+   * 外部承载回收站时传入（移动端 inline 子屏）。
+   * 提供后点击回收站不再弹 Dialog，而是交给宿主页面全屏展示。
+   */
+  onOpenTrash?: () => void;
 }
 
-export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
+export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTrash }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { isSmallScreen } = useBreakpoint();
   const unifiedDrawer = useMobileUnifiedDrawer();
@@ -492,15 +497,21 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
       <div className={cn('shrink-0 px-2 py-1.5', !unifiedDrawer && 'border-t border-[color:var(--shell-navigation-border)]')}>
         <NavRow
           isActive={false}
-          onClick={() => setTrashOpen(true)}
+          onClick={() => {
+            if (onOpenTrash) {
+              onOpenTrash();
+            } else {
+              setTrashOpen(true);
+            }
+          }}
           leftSlot={<Trash size={18} weight="bold" />}
         >
           {t('todo:trash.title')}
         </NavRow>
       </div>
 
-      {/* 回收站对话框 */}
-      <TodoTrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
+      {/* 回收站对话框（外部承载 inline 子屏时不挂载） */}
+      {!onOpenTrash && <TodoTrashDialog open={trashOpen} onOpenChange={setTrashOpen} />}
 
       {/* 删除清单确认 */}
       <NotionAlertDialog

@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture } from '@phosphor-icons/react';
+import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -31,6 +31,8 @@ export const GlobalPomodoroWidget: React.FC = () => {
   const currentView = useViewStore((s) => s.currentView);
   // P-1/P-2: 触屏上抬高药丸避开底部停靠的输入栏，并放大控制按钮触控目标
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  // 移动端可收起：小屏上完整药丸接近整屏宽，收起后只留图标+倒计时，减少对底部内容的遮挡
+  const [collapsed, setCollapsed] = useState(false);
 
   // 启动时墙钟矫正：恢复持久化的进行中会话（重启期间计时照常流逝，
   // 已超时的阶段会被立即按完成处理）
@@ -149,11 +151,14 @@ export const GlobalPomodoroWidget: React.FC = () => {
     : 'p-1.5 rounded-full transition-colors';
   const controlIconSize = isTouchPrimary ? 16 : 14;
 
+  const showCollapsedPill = isTouchPrimary && collapsed;
+
   return (
     <div
       className={cn(
-        'fixed right-6 z-50 bg-background border border-border shadow-xl rounded-full flex items-center gap-3 px-4 pr-2 cursor-default animate-in fade-in slide-in-from-bottom-4 duration-300',
-        isTouchPrimary ? 'h-14' : 'h-12'
+        'fixed right-6 z-50 bg-background border border-border shadow-xl rounded-full flex items-center gap-3 px-4 pr-2 cursor-default ui-rise-in',
+        isTouchPrimary ? 'h-14 max-w-[calc(100vw-3rem)]' : 'h-12',
+        showCollapsedPill && 'gap-2 px-3 pr-3'
       )}
       style={{
         // 触屏上避开底部停靠的聊天输入栏（约 88px）+ 安全区
@@ -163,16 +168,29 @@ export const GlobalPomodoroWidget: React.FC = () => {
           : '1.5rem',
       }}
     >
+      {/* 触屏：收起/展开开关（左端，44px 高触控带） */}
+      {isTouchPrimary && (
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="-mx-2 flex h-11 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground"
+          title={collapsed ? t('pomodoro.widget.expand', '展开') : t('pomodoro.widget.collapse', '收起')}
+          aria-label={collapsed ? t('pomodoro.widget.expand', '展开') : t('pomodoro.widget.collapse', '收起')}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? <CaretLeft size={14} /> : <CaretRight size={14} />}
+        </button>
+      )}
       {getModeIcon()}
-      <span className="font-mono font-medium tracking-wider text-sm text-foreground">
+      <span className="font-mono font-medium tracking-wider text-sm text-foreground flex-shrink-0">
         {formatTime(timeLeft)}
       </span>
-      {currentTaskTitle && (
-        <span className="text-xs text-muted-foreground truncate max-w-[120px]" title={currentTaskTitle}>
+      {currentTaskTitle && !showCollapsedPill && (
+        <span className="text-xs text-muted-foreground truncate min-w-0 max-w-[120px]" title={currentTaskTitle}>
           {currentTaskTitle}
         </span>
       )}
-      <div className="flex items-center gap-1 ml-1">
+      {!showCollapsedPill && (
+      <div className="flex items-center gap-1 ml-1 flex-shrink-0">
         {/* 严格模式专注中不显示暂停（store 同样拦截） */}
         {!(settings.strictMode && mode === 'work' && status === 'running') && (
           <button
@@ -212,6 +230,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
           </button>
         )}
       </div>
+      )}
     </div>
   );
 };

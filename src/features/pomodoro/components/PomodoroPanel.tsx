@@ -35,8 +35,12 @@ import { noiseEngine, NOISE_TYPES, type NoiseType } from '../noiseEngine';
 import { PomodoroStatsPopover } from './PomodoroStatsPopover';
 
 // ============================================================================
-// PomodoroSettingsPopover — 时长/间隔/自动开始设置
+// PomodoroSettingsContent — 时长/间隔/自动开始设置（内容主体）
+// 桌面端由 PomodoroSettingsPopover 承载；移动端由 Todo 页 inline 子屏承载
+// size='md' 用于移动端子屏：行高/控件放大到触控友好尺寸
 // ============================================================================
+
+type SettingsRowSize = 'sm' | 'md';
 
 const SettingsNumberRow: React.FC<{
   label: string;
@@ -45,9 +49,10 @@ const SettingsNumberRow: React.FC<{
   max: number;
   unit?: string;
   onChange: (v: number) => void;
-}> = ({ label, value, min, max, unit, onChange }) => (
-  <div className="flex items-center justify-between gap-3 py-1">
-    <span className="text-xs text-muted-foreground">{label}</span>
+  size?: SettingsRowSize;
+}> = ({ label, value, min, max, unit, onChange, size = 'sm' }) => (
+  <div className={cn('flex items-center justify-between gap-3', size === 'md' ? 'min-h-[2.75rem] py-1.5' : 'py-1')}>
+    <span className={cn('text-muted-foreground', size === 'md' ? 'text-sm' : 'text-xs')}>{label}</span>
     <div className="flex items-center gap-1.5">
       <Input
         type="number"
@@ -58,9 +63,9 @@ const SettingsNumberRow: React.FC<{
           const n = Number(e.target.value);
           if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, Math.round(n))));
         }}
-        className="h-7 w-16 text-xs text-right"
+        className={cn('text-right', size === 'md' ? 'h-9 w-20 text-sm' : 'h-7 w-16 text-xs')}
       />
-      {unit && <span className="w-8 text-[11px] text-muted-foreground">{unit}</span>}
+      {unit && <span className={cn('w-8 text-muted-foreground', size === 'md' ? 'text-xs' : 'text-[11px]')}>{unit}</span>}
     </div>
   </div>
 );
@@ -69,21 +74,149 @@ const SettingsToggleRow: React.FC<{
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
-}> = ({ label, checked, onChange }) => (
-  <label className="flex cursor-pointer items-center justify-between gap-3 py-1">
-    <span className="text-xs text-muted-foreground">{label}</span>
+  size?: SettingsRowSize;
+}> = ({ label, checked, onChange, size = 'sm' }) => (
+  <label className={cn('flex cursor-pointer items-center justify-between gap-3', size === 'md' ? 'min-h-[2.75rem] py-1.5' : 'py-1')}>
+    <span className={cn('text-muted-foreground', size === 'md' ? 'text-sm' : 'text-xs')}>{label}</span>
     <input
       type="checkbox"
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
-      className="h-3.5 w-3.5 accent-[hsl(var(--primary))]"
+      className={cn('accent-[hsl(var(--primary))]', size === 'md' ? 'h-5 w-5' : 'h-3.5 w-3.5')}
     />
   </label>
 );
 
-const PomodoroSettingsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+export const PomodoroSettingsContent: React.FC<{ size?: SettingsRowSize }> = ({ size = 'sm' }) => {
   const { t } = useTranslation('todo');
   const { settings, updateSettings } = usePomodoroStore();
+
+  return (
+    <>
+      <SettingsNumberRow
+        size={size}
+        label={t('pomodoro.settings.workDuration')}
+        value={Math.round(settings.workDuration / 60)}
+        min={1}
+        max={120}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ workDuration: v * 60 })}
+      />
+      <SettingsNumberRow
+        size={size}
+        label={t('pomodoro.settings.shortBreak')}
+        value={Math.round(settings.shortBreak / 60)}
+        min={1}
+        max={60}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ shortBreak: v * 60 })}
+      />
+      <SettingsNumberRow
+        size={size}
+        label={t('pomodoro.settings.longBreak')}
+        value={Math.round(settings.longBreak / 60)}
+        min={1}
+        max={90}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ longBreak: v * 60 })}
+      />
+      <SettingsNumberRow
+        size={size}
+        label={t('pomodoro.settings.longBreakInterval')}
+        value={settings.longBreakInterval}
+        min={1}
+        max={12}
+        unit={t('pomodoro.settings.pomodorosUnit')}
+        onChange={(v) => updateSettings({ longBreakInterval: v })}
+      />
+      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
+      <SettingsToggleRow
+        size={size}
+        label={t('pomodoro.settings.autoStartBreaks')}
+        checked={settings.autoStartBreaks}
+        onChange={(v) => updateSettings({ autoStartBreaks: v })}
+      />
+      <SettingsToggleRow
+        size={size}
+        label={t('pomodoro.settings.autoStartWork')}
+        checked={settings.autoStartWork}
+        onChange={(v) => updateSettings({ autoStartWork: v })}
+      />
+      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
+      <SettingsToggleRow
+        size={size}
+        label={t('pomodoro.settings.strictMode')}
+        checked={settings.strictMode}
+        onChange={(v) => updateSettings({ strictMode: v })}
+      />
+      <SettingsToggleRow
+        size={size}
+        label={t('pomodoro.settings.countUp')}
+        checked={settings.countUp}
+        onChange={(v) => updateSettings({ countUp: v })}
+      />
+      <SettingsNumberRow
+        size={size}
+        label={t('pomodoro.settings.endReminder')}
+        value={Math.round(settings.endReminderSeconds / 60)}
+        min={0}
+        max={10}
+        unit={t('pomodoro.settings.minutesUnit')}
+        onChange={(v) => updateSettings({ endReminderSeconds: v * 60 })}
+      />
+      <SettingsNumberRow
+        size={size}
+        label={t('pomodoro.settings.dailyGoal')}
+        value={settings.dailyGoal}
+        min={0}
+        max={99}
+        unit={t('pomodoro.settings.pomodorosUnit')}
+        onChange={(v) => updateSettings({ dailyGoal: v })}
+      />
+      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
+      <div className={cn('flex items-center justify-between gap-3', size === 'md' ? 'min-h-[2.75rem] py-1.5' : 'py-1')}>
+        <span className={cn('text-muted-foreground', size === 'md' ? 'text-sm' : 'text-xs')}>{t('pomodoro.settings.noiseType')}</span>
+        <select
+          value={settings.noiseType}
+          onChange={(e) => {
+            const type = e.target.value as NoiseType;
+            updateSettings({ noiseType: type });
+            noiseEngine.setType(type);
+          }}
+          className={cn(
+            'rounded-md border border-[color:var(--shell-workspace-border)] bg-transparent text-foreground focus:outline-none',
+            size === 'md' ? 'h-9 px-2 text-sm' : 'h-7 px-1.5 text-xs',
+          )}
+        >
+          {NOISE_TYPES.map((type) => (
+            <option key={type} value={type}>
+              {t(`pomodoro.noise.${type}`)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className={cn('flex items-center justify-between gap-3', size === 'md' ? 'min-h-[2.75rem] py-1.5' : 'py-1')}>
+        <span className={cn('text-muted-foreground', size === 'md' ? 'text-sm' : 'text-xs')}>{t('pomodoro.settings.noiseVolume')}</span>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Math.round(settings.noiseVolume * 100)}
+          onChange={(e) => {
+            const volume = Number(e.target.value) / 100;
+            updateSettings({ noiseVolume: volume });
+            noiseEngine.setVolume(volume);
+          }}
+          className={cn('cursor-pointer accent-[hsl(var(--primary))]', size === 'md' ? 'h-2 w-40' : 'h-1.5 w-28')}
+          aria-label={t('pomodoro.settings.noiseVolume')}
+        />
+      </div>
+    </>
+  );
+};
+
+const PomodoroSettingsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const { t } = useTranslation('todo');
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -111,111 +244,7 @@ const PomodoroSettingsPopover: React.FC<{ onClose: () => void }> = ({ onClose })
       <div className="mb-2 text-xs font-semibold text-foreground">
         {t('pomodoro.settings.title')}
       </div>
-      <SettingsNumberRow
-        label={t('pomodoro.settings.workDuration')}
-        value={Math.round(settings.workDuration / 60)}
-        min={1}
-        max={120}
-        unit={t('pomodoro.settings.minutesUnit')}
-        onChange={(v) => updateSettings({ workDuration: v * 60 })}
-      />
-      <SettingsNumberRow
-        label={t('pomodoro.settings.shortBreak')}
-        value={Math.round(settings.shortBreak / 60)}
-        min={1}
-        max={60}
-        unit={t('pomodoro.settings.minutesUnit')}
-        onChange={(v) => updateSettings({ shortBreak: v * 60 })}
-      />
-      <SettingsNumberRow
-        label={t('pomodoro.settings.longBreak')}
-        value={Math.round(settings.longBreak / 60)}
-        min={1}
-        max={90}
-        unit={t('pomodoro.settings.minutesUnit')}
-        onChange={(v) => updateSettings({ longBreak: v * 60 })}
-      />
-      <SettingsNumberRow
-        label={t('pomodoro.settings.longBreakInterval')}
-        value={settings.longBreakInterval}
-        min={1}
-        max={12}
-        unit={t('pomodoro.settings.pomodorosUnit')}
-        onChange={(v) => updateSettings({ longBreakInterval: v })}
-      />
-      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
-      <SettingsToggleRow
-        label={t('pomodoro.settings.autoStartBreaks')}
-        checked={settings.autoStartBreaks}
-        onChange={(v) => updateSettings({ autoStartBreaks: v })}
-      />
-      <SettingsToggleRow
-        label={t('pomodoro.settings.autoStartWork')}
-        checked={settings.autoStartWork}
-        onChange={(v) => updateSettings({ autoStartWork: v })}
-      />
-      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
-      <SettingsToggleRow
-        label={t('pomodoro.settings.strictMode')}
-        checked={settings.strictMode}
-        onChange={(v) => updateSettings({ strictMode: v })}
-      />
-      <SettingsToggleRow
-        label={t('pomodoro.settings.countUp')}
-        checked={settings.countUp}
-        onChange={(v) => updateSettings({ countUp: v })}
-      />
-      <SettingsNumberRow
-        label={t('pomodoro.settings.endReminder')}
-        value={Math.round(settings.endReminderSeconds / 60)}
-        min={0}
-        max={10}
-        unit={t('pomodoro.settings.minutesUnit')}
-        onChange={(v) => updateSettings({ endReminderSeconds: v * 60 })}
-      />
-      <SettingsNumberRow
-        label={t('pomodoro.settings.dailyGoal')}
-        value={settings.dailyGoal}
-        min={0}
-        max={99}
-        unit={t('pomodoro.settings.pomodorosUnit')}
-        onChange={(v) => updateSettings({ dailyGoal: v })}
-      />
-      <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
-      <div className="flex items-center justify-between gap-3 py-1">
-        <span className="text-xs text-muted-foreground">{t('pomodoro.settings.noiseType')}</span>
-        <select
-          value={settings.noiseType}
-          onChange={(e) => {
-            const type = e.target.value as NoiseType;
-            updateSettings({ noiseType: type });
-            noiseEngine.setType(type);
-          }}
-          className="h-7 rounded-md border border-[color:var(--shell-workspace-border)] bg-transparent px-1.5 text-xs text-foreground focus:outline-none"
-        >
-          {NOISE_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {t(`pomodoro.noise.${type}`)}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div className="flex items-center justify-between gap-3 py-1">
-        <span className="text-xs text-muted-foreground">{t('pomodoro.settings.noiseVolume')}</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(settings.noiseVolume * 100)}
-          onChange={(e) => {
-            const volume = Number(e.target.value) / 100;
-            updateSettings({ noiseVolume: volume });
-            noiseEngine.setVolume(volume);
-          }}
-          className="h-1.5 w-28 cursor-pointer accent-[hsl(var(--primary))]"
-          aria-label={t('pomodoro.settings.noiseVolume')}
-        />
-      </div>
+      <PomodoroSettingsContent />
     </div>
   );
 };
@@ -227,7 +256,20 @@ interface ModeInfo {
   progressClass: string;
 }
 
-export const PomodoroPanel: React.FC = () => {
+interface PomodoroPanelProps {
+  /**
+   * 移动端：外部承载「设置」inline 子屏时传入。
+   * 提供后设置按钮不再弹锚定弹层，而是交给宿主页面全屏展示。
+   */
+  onOpenSettingsSubView?: () => void;
+  /** 移动端：外部承载「统计」inline 子屏时传入（同上） */
+  onOpenStatsSubView?: () => void;
+}
+
+export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
+  onOpenSettingsSubView,
+  onOpenStatsSubView,
+}) => {
   const { t } = useTranslation('todo');
   const {
     mode,
@@ -358,7 +400,8 @@ export const PomodoroPanel: React.FC = () => {
   const goalReached = settings.dailyGoal > 0 && todayCount >= settings.dailyGoal;
 
   return (
-    <div className="flex-shrink-0">
+    // 面板是 Todo 中屏最底部元素：预留移动端安全区，避免手势条遮挡统计行（桌面端变量为 0）
+    <div className="flex-shrink-0 pb-[var(--mobile-safe-area-bottom,0px)]">
       <div className="flex flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6">
         {/* 模式 + 任务 */}
         <div className="flex min-w-0 flex-shrink-0 items-center gap-2">
@@ -511,20 +554,28 @@ export const PomodoroPanel: React.FC = () => {
             </NotionButton>
           )}
 
-          {/* 统计趋势 */}
+          {/* 统计趋势（移动端交给宿主页 inline 子屏，桌面端锚定弹层） */}
           <div className="relative">
             <NotionButton
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={() => setStatsOpen((v) => !v)}
+              onClick={() => {
+                if (onOpenStatsSubView) {
+                  onOpenStatsSubView();
+                } else {
+                  setStatsOpen((v) => !v);
+                }
+              }}
               title={t('pomodoro.statsPopover.title')}
               aria-label={t('pomodoro.statsPopover.title')}
               className="!h-7 !w-7"
             >
               <ChartBar size={14} />
             </NotionButton>
-            {statsOpen && <PomodoroStatsPopover onClose={() => setStatsOpen(false)} />}
+            {!onOpenStatsSubView && statsOpen && (
+              <PomodoroStatsPopover onClose={() => setStatsOpen(false)} />
+            )}
           </div>
 
           <div className="relative">
@@ -532,14 +583,22 @@ export const PomodoroPanel: React.FC = () => {
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={() => setSettingsOpen((v) => !v)}
+              onClick={() => {
+                if (onOpenSettingsSubView) {
+                  onOpenSettingsSubView();
+                } else {
+                  setSettingsOpen((v) => !v);
+                }
+              }}
               title={t('pomodoro.settings.title')}
               aria-label={t('pomodoro.settings.title')}
               className="!h-7 !w-7"
             >
               <GearSix size={14} />
             </NotionButton>
-            {settingsOpen && <PomodoroSettingsPopover onClose={() => setSettingsOpen(false)} />}
+            {!onOpenSettingsSubView && settingsOpen && (
+              <PomodoroSettingsPopover onClose={() => setSettingsOpen(false)} />
+            )}
           </div>
         </div>
       </div>

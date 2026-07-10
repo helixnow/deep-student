@@ -58,8 +58,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/u
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
-import { usePomodoroStore } from '@/features/pomodoro';
-import { PomodoroPanel } from '@/features/pomodoro';
+import { usePomodoroStore, PomodoroPanel } from '@/features/pomodoro';
 import { listPomodorosByTodo, type PomodoroRecord } from '@/features/pomodoro/api';
 import type {
   EisenhowerQuadrant,
@@ -95,13 +94,14 @@ import { useViewStore } from '@/stores/viewStore';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
-// MobileDetailOverlay — 移动端详情全屏覆盖层
-// 滑入/滑出过渡 + Android 系统返回键关闭（与其余移动浮层语义一致）
+// MobileDetailOverlay — 移动端子屏全屏覆盖层（详情/回收站/番茄设置等共用）
+// 滑入/滑出过渡 + Android 系统返回键关闭（BACK_PRIORITY.view：
+// 叠加在其上的确认对话框等 overlay 层先于子屏被返回键关闭）
 // ============================================================================
 
 const MOBILE_DETAIL_EXIT_MS = 200;
 
-const MobileDetailOverlay: React.FC<{
+export const MobileDetailOverlay: React.FC<{
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
@@ -132,7 +132,7 @@ const MobileDetailOverlay: React.FC<{
     return registerBackHandler(() => {
       onCloseRef.current();
       return true;
-    }, BACK_PRIORITY.overlay);
+    }, BACK_PRIORITY.view);
   }, [open]);
 
   if (!visible) return null;
@@ -354,6 +354,15 @@ const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
     };
   }, [menuPos]);
 
+  // Android 返回键：菜单打开时先关菜单，不触发页面级返回
+  useEffect(() => {
+    if (!menuPos) return;
+    return registerBackHandler(() => {
+      setMenuPos(null);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [menuPos]);
+
   // 仅在菜单打开时计算：menuPos 每次打开都变化，"今天/明天"以打开时刻为准，
   // 避免 useMemo 捕获渲染时的 now、组件常驻跨午夜后日期过期
   const options = useMemo(() => {
@@ -401,7 +410,9 @@ const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
           e.stopPropagation();
           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
           // 菜单宽 144px；贴右对齐按钮，靠近视口底部时向上弹
-          const openUp = rect.bottom + 160 > window.innerHeight;
+          // 触屏菜单项更高（44px），预估高度按触屏放大避免底部溢出
+          const estimatedMenuHeight = window.matchMedia('(pointer: coarse)').matches ? 220 : 160;
+          const openUp = rect.bottom + estimatedMenuHeight > window.innerHeight;
           setMenuPos({
             x: Math.max(8, rect.right - 144),
             y: openUp ? rect.top - 4 : rect.bottom + 4,
@@ -410,7 +421,7 @@ const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
         }}
         title={t('todo:reschedule.title')}
         aria-label={t('todo:reschedule.title')}
-        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5"
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!-m-1.5"
       >
         <CalendarPlus size={16} />
       </NotionButton>
@@ -434,6 +445,7 @@ const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
               onClick={() => handlePick(opt.date)}
               className={cn(
                 'flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition-colors',
+                '[@media(pointer:coarse)]:min-h-[2.75rem]',
                 'hover:bg-[color:var(--interactive-hover)]',
                 opt.key === 'clear' ? 'text-muted-foreground' : 'text-foreground',
               )}
@@ -482,6 +494,7 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
   return (
     <div
       data-selected={isSelected}
+      data-agent-entity={`todo:${item.id}`}
       className={cn(
         'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors duration-100 sm:px-6',
         'hover:bg-[color:var(--interactive-hover)]',
@@ -498,7 +511,8 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
           e.stopPropagation();
           onToggle(item.id);
         }}
-        className="flex-shrink-0 transition-transform duration-150 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full"
+        // 触屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变
+        className="flex-shrink-0 transition-transform duration-150 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
         aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
       >
         {isCompleted ? (
@@ -626,7 +640,7 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
           }}
           title={t('todo:actions.startFocusSession')}
           aria-label={t('todo:actions.startFocusSession')}
-          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5"
+          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!-m-1.5"
         >
           <Play size={16} />
         </NotionButton>
@@ -642,7 +656,7 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
         }}
         title={t('todo:actions.deleteItem')}
         aria-label={t('todo:actions.deleteItem')}
-        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3 [@media(pointer:coarse)]:!-m-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
         <Trash size={16} />
       </NotionButton>
@@ -691,6 +705,8 @@ const SortableTodoItemRow: React.FC<
               'text-muted-foreground/0 transition-colors active:cursor-grabbing',
               'group-hover:text-muted-foreground/60 hover:!text-muted-foreground',
               'focus-visible:text-muted-foreground focus:outline-none',
+              // 触屏无 hover：手柄常显淡色，长按可拖拽排序（否则功能不可发现）
+              '[@media(pointer:coarse)]:text-muted-foreground/50',
             )}
           >
             <DotsSixVertical size={14} weight="bold" />
@@ -709,7 +725,9 @@ const TodoItemDetail: React.FC<{
   item: TodoItem;
   onClose: () => void;
   className?: string;
-}> = ({ item, onClose, className }) => {
+  /** 移动端子屏承载时隐藏右上角关闭按钮（返回统一走顶栏返回箭头/系统返回键） */
+  hideCloseButton?: boolean;
+}> = ({ item, onClose, className, hideCloseButton }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { items, updateItem, toggleItem, deleteItem, createItem, reloadCurrentView } = useTodoStore();
   const [title, setTitle] = useState(item.title);
@@ -893,6 +911,7 @@ const TodoItemDetail: React.FC<{
 
   return (
     <aside
+      data-todo-detail-panel
       className={cn(
         'flex h-full flex-col bg-[color:var(--shell-inspector-panel)]',
         className,
@@ -902,7 +921,7 @@ const TodoItemDetail: React.FC<{
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => toggleItem(item.id)}
-            className="transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full"
+            className="transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
             aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
           >
             {isCompleted ? (
@@ -917,16 +936,18 @@ const TodoItemDetail: React.FC<{
             {t('todo:detail.title')}
           </span>
         </div>
-        <NotionButton
-          variant="utility"
-          size="icon"
-          iconOnly
-          onClick={onClose}
-          aria-label={t('common:actions.close')}
-          className="!p-1.5"
-        >
-          <X size={16} />
-        </NotionButton>
+        {!hideCloseButton && (
+          <NotionButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            onClick={onClose}
+            aria-label={t('common:actions.close')}
+            className="!p-1.5"
+          >
+            <X size={16} />
+          </NotionButton>
+        )}
       </div>
 
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-5 py-5 space-y-5">
@@ -1069,7 +1090,7 @@ const TodoItemDetail: React.FC<{
                     type="button"
                     onClick={() => handleRemoveTag(tag)}
                     aria-label={t('todo:tags.remove', { tag })}
-                    className="rounded-full hover:text-foreground focus:outline-none"
+                    className="rounded-full hover:text-foreground focus:outline-none [@media(pointer:coarse)]:p-2 [@media(pointer:coarse)]:-m-2"
                   >
                     <X size={11} />
                   </button>
@@ -1235,7 +1256,7 @@ const TodoItemDetail: React.FC<{
               >
                 <button
                   onClick={() => toggleItem(sub.id)}
-                  className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))]"
+                  className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
                   aria-label={
                     sub.status === 'completed'
                       ? t('todo:actions.markPending')
@@ -1260,7 +1281,8 @@ const TodoItemDetail: React.FC<{
                   onClick={() => deleteItem(sub.id)}
                   aria-label={t('todo:actions.deleteItem')}
                   title={t('todo:actions.deleteItem')}
-                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-[color:hsl(var(--destructive))] group-hover/subtask:opacity-100"
+                  // 触屏无 hover：常显淡色并扩大命中（否则子任务删除不可发现/难点中）
+                  className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-[color:hsl(var(--destructive))] group-hover/subtask:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-3 [@media(pointer:coarse)]:-mr-3"
                 >
                   <X size={12} />
                 </button>
@@ -1346,7 +1368,7 @@ const TodoItemDetail: React.FC<{
         )}
       </CustomScrollArea>
 
-      <div className="flex items-center justify-between px-4 py-3">
+      <div className="flex items-center justify-between px-4 py-3 pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]">
         <span className="text-xs text-muted-foreground">
           {item.updatedAt
             ? t('todo:detail.updatedAt', {
@@ -1426,7 +1448,17 @@ const ReviewLinkCard: React.FC = () => {
 // TodoMainPanel
 // ============================================================================
 
-export const TodoMainPanel: React.FC = () => {
+export type PomodoroSubView = 'settings' | 'stats';
+
+interface TodoMainPanelProps {
+  /**
+   * 移动端：番茄钟设置/统计以 inline 子屏形式打开（由 TodoContentView 承载，
+   * 联动统一顶栏返回箭头与 Android 返回键）。未提供时番茄钟按钮走桌面锚定弹层。
+   */
+  onOpenPomodoroSubView?: (view: PomodoroSubView) => void;
+}
+
+export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubView }) => {
   const { t } = useTranslation(['todo']);
   const { isSmallScreen } = useBreakpoint();
   const {
@@ -1753,7 +1785,7 @@ export const TodoMainPanel: React.FC = () => {
                 <CircleNotch size={24} className="animate-spin text-muted-foreground/60" />
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="study-shell-empty-state m-4 sm:m-6 animate-in fade-in duration-300">
+              <div className="study-shell-empty-state m-4 sm:m-6 ui-rise-in">
                 <div
                   className={cn(
                     'study-shell-empty-state__icon',
@@ -1925,9 +1957,20 @@ export const TodoMainPanel: React.FC = () => {
           </CustomScrollArea>
         </div>
 
-        <PomodoroPanel />
+        <PomodoroPanel
+          onOpenSettingsSubView={
+            isSmallScreen && onOpenPomodoroSubView
+              ? () => onOpenPomodoroSubView('settings')
+              : undefined
+          }
+          onOpenStatsSubView={
+            isSmallScreen && onOpenPomodoroSubView
+              ? () => onOpenPomodoroSubView('stats')
+              : undefined
+          }
+        />
 
-        {/* 移动端详情：全屏覆盖（滑入/滑出 + 系统返回键关闭） */}
+        {/* 移动端详情：全屏覆盖（滑入/滑出 + 系统返回键关闭；顶栏返回箭头由 TodoContentView 联动） */}
         {isSmallScreen && (
           <MobileDetailOverlay open={!!selectedItem} onClose={() => selectItem(null)}>
             {selectedItem && (
@@ -1936,6 +1979,7 @@ export const TodoMainPanel: React.FC = () => {
                 item={selectedItem}
                 onClose={() => selectItem(null)}
                 className="w-full"
+                hideCloseButton
               />
             )}
           </MobileDetailOverlay>
@@ -1948,7 +1992,7 @@ export const TodoMainPanel: React.FC = () => {
           key={selectedItem.id}
           item={selectedItem}
           onClose={() => selectItem(null)}
-          className="w-[360px] flex-shrink-0 border-l border-[color:var(--shell-seam)] animate-in slide-in-from-right-8 duration-200"
+          className="w-[360px] flex-shrink-0 border-l border-[color:var(--shell-seam)] ui-slide-fade-in [--ui-enter-x:32px]"
         />
       )}
     </div>
