@@ -6,6 +6,7 @@ import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { useMindMapStore } from '../../../store';
 import { StyleRegistry } from '../../../registry';
+import { openNodeRef } from '../../../utils/openNodeRef';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 
 export interface RootNodeData extends Record<string, unknown> {
@@ -38,6 +39,8 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const styleId = useMindMapStore(state => state.styleId);
   const setMeasuredNodeHeight = useMindMapStore(state => state.setMeasuredNodeHeight);
   const reciteMode = useMindMapStore(state => state.reciteMode);
+  const searchResults = useMindMapStore(state => state.searchResults);
+  const currentSearchIndex = useMindMapStore(state => state.currentSearchIndex);
   const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
@@ -55,23 +58,43 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     updateNode(data.nodeId, { text });
   }, [data.nodeId, updateNode]);
 
+  const handleCommitLiveText = useCallback((text: string) => {
+    updateNode(data.nodeId, { text }, { preserveBlankedRanges: true, skipHistory: true });
+  }, [data.nodeId, updateNode]);
+
   const handleStartEdit = useCallback(() => {
     setEditingNodeId(data.nodeId);
   }, [data.nodeId, setEditingNodeId]);
 
+  // 按 nodeId 守卫：连续建点时旧 textarea blur 不得清掉新节点的 editingNodeId
   const handleEndEdit = useCallback(() => {
-    setEditingNodeId(null);
-  }, [setEditingNodeId]);
+    const { editingNodeId: current } = useMindMapStore.getState();
+    if (current === data.nodeId) {
+      setEditingNodeId(null);
+    }
+  }, [data.nodeId, setEditingNodeId]);
 
-  const handleAddChild = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCommitAndCreateSibling = useCallback(() => {
+    // 根节点 Enter → 子级（与非编辑快捷键一致）
     const newId = addNode(data.nodeId, 0);
     if (newId) {
       setFocusedNodeId(newId);
-      // 与 Tab/Enter 快捷键行为一致：新节点直接进入编辑，省一次双击
       setEditingNodeId(newId);
     }
   }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
+
+  const handleCommitAndCreateChild = useCallback(() => {
+    const newId = addNode(data.nodeId, 0);
+    if (newId) {
+      setFocusedNodeId(newId);
+      setEditingNodeId(newId);
+    }
+  }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
+
+  const handleAddChild = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleCommitAndCreateChild();
+  }, [handleCommitAndCreateChild]);
 
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器
@@ -123,12 +146,20 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     ...customStyle,
   };
 
+  const isSearchMatch = searchResults.includes(data.nodeId);
+  const isCurrentSearchMatch =
+    isSearchMatch &&
+    currentSearchIndex >= 0 &&
+    searchResults[currentSearchIndex] === data.nodeId;
+
   return (
     <div
       ref={nodeRef}
       className={cn(
         "mm-root-node group relative flex items-center justify-center",
         selected && "selected",
+        isSearchMatch && "search-match",
+        isCurrentSearchMatch && "search-match-current",
         data.completed && "mm-completed"
       )}
       style={themeStyle}
@@ -153,20 +184,34 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         revealedIndices={revealedBlanks[data.nodeId]}
         reciteMode={reciteMode}
         onTextChange={handleTextChange}
+        onCommitLiveText={handleCommitLiveText}
         onNoteChange={(note) => updateNode(data.nodeId, { note })}
         onStartEdit={reciteMode ? undefined : handleStartEdit}
         onEndEdit={handleEndEdit}
         onEndEditNote={() => setEditingNoteNodeId(null)}
+        onCommitAndCreateSibling={reciteMode ? undefined : handleCommitAndCreateSibling}
+        onCommitAndCreateChild={reciteMode ? undefined : handleCommitAndCreateChild}
+        isBold={data.style?.fontWeight === 'bold'}
         onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
         onAddBlank={(range) => addBlankRange(data.nodeId, range)}
         onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
+        onToggleBold={() =>
+          updateNode(data.nodeId, {
+            style: {
+              ...data.style,
+              fontWeight: data.style?.fontWeight === 'bold' ? undefined : 'bold',
+            },
+          })
+        }
         onRemoveRef={isEmbed ? undefined : (sourceId) => removeNodeRef(data.nodeId, sourceId)}
-        onClickRef={isEmbed ? undefined : (sourceId) => {
-          const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
-          window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
-            detail: { view: 'learning-hub', openResource: dstuPath },
-          }));
-        }}
+        onClickRef={
+          isEmbed
+            ? undefined
+            : (sourceId) => {
+                const ref = data.refs?.find((r) => r.sourceId === sourceId);
+                void openNodeRef(sourceId, { type: ref?.type, name: ref?.name });
+              }
+        }
       />
 
       {/* Action Buttons Container - hidden in recite mode */}

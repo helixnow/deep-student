@@ -5,7 +5,12 @@
  */
 
 // 主 Store（整合文档、UI、历史、API）
-export { useMindMapStore } from './mindmapStore';
+export {
+  useMindMapStore,
+  type MindMapViewports,
+  type MindMapViewportView,
+  type MergeWithPreviousResult,
+} from './mindmapStore';
 
 // 兼容旧导入路径
 export { useMindMapStore as useDocumentStore } from './mindmapStore';

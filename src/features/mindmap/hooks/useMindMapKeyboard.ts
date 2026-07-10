@@ -31,6 +31,8 @@ export function useMindMapKeyboard(): void {
   const deleteNodes = useMindMapStore(s => s.deleteNodes);
   const moveNode = useMindMapStore(s => s.moveNode);
   const toggleCollapse = useMindMapStore(s => s.toggleCollapse);
+  const collapseAll = useMindMapStore(s => s.collapseAll);
+  const expandAll = useMindMapStore(s => s.expandAll);
   const updateNode = useMindMapStore(s => s.updateNode);
   const setEditingNoteNodeId = useMindMapStore(s => s.setEditingNoteNodeId);
   const undo = useMindMapStore(s => s.undo);
@@ -83,7 +85,9 @@ export function useMindMapKeyboard(): void {
       return;
     }
 
-    // Escape → 退出编辑 / 取消选中
+    // Escape → 退出编辑 / 退出背诵 / 取消选中
+    // 搜索栏 Esc 由 MindMapContentView 在 window capture 阶段优先处理并 stopPropagation，
+    // 本 listener 挂在 document 冒泡，搜索打开时不会走到这里。
     if (e.key === 'Escape') {
       e.preventDefault();
       handled();
@@ -198,6 +202,10 @@ export function useMindMapKeyboard(): void {
           // 折叠（阻止冒泡，防止与 nav.back 冲突）
           e.preventDefault();
           handled();
+          if (e.shiftKey) {
+            collapseAll();
+            return;
+          }
           const node = findNodeById(root, focusedNodeId);
           if (node && node.children.length > 0 && !node.collapsed) {
             toggleCollapse(focusedNodeId);
@@ -208,6 +216,10 @@ export function useMindMapKeyboard(): void {
           // 展开（阻止冒泡，防止与 nav.forward 冲突）
           e.preventDefault();
           handled();
+          if (e.shiftKey) {
+            expandAll();
+            return;
+          }
           const node = findNodeById(root, focusedNodeId);
           if (node && node.collapsed) {
             toggleCollapse(focusedNodeId);
@@ -348,7 +360,7 @@ export function useMindMapKeyboard(): void {
   }, [
     focusedNodeId, editingNodeId, editingNoteNodeId, selection, document,
     setFocusedNodeId, setEditingNodeId, setEditingNoteNodeId, setSelection,
-    addNode, deleteNodes, moveNode, toggleCollapse, updateNode,
+    addNode, deleteNodes, moveNode, toggleCollapse, collapseAll, expandAll, updateNode,
     undo, redo, save, reciteMode,
   ]);
 

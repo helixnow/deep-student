@@ -104,7 +104,7 @@ function expandAllRecursive(node: MindMapNode): MindMapNode {
   };
 }
 
-/** 展开到指定深度 */
+/** 展开到指定深度（更深节点折叠） */
 export function expandToDepth(root: MindMapNode, depth: number): MindMapNode {
   function expand(node: MindMapNode, currentDepth: number): MindMapNode {
     const shouldCollapse = currentDepth >= depth && node.children.length > 0;
@@ -116,5 +116,13 @@ export function expandToDepth(root: MindMapNode, depth: number): MindMapNode {
   }
   
   return expand(root, 0);
+}
+
+/**
+ * 折叠到指定深度（与 expandToDepth 同语义）。
+ * maxDepth=1：根展开，直接子可见，更深全折叠。
+ */
+export function collapseToDepth(root: MindMapNode, maxDepth: number): MindMapNode {
+  return expandToDepth(root, maxDepth);
 }
 

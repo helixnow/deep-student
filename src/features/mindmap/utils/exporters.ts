@@ -325,12 +325,17 @@ export async function exportToImage(
   const originalFocusedNodeId = store.focusedNodeId;
   const originalEditingNodeId = store.editingNodeId;
   const originalEditingNoteNodeId = store.editingNoteNodeId;
+  const originalReciteMode = store.reciteMode;
   
   store.setIsExporting(true);
   store.setSelection([]);
   store.setFocusedNodeId(null);
   store.setEditingNodeId(null);
   store.setEditingNoteNodeId(null);
+  // 导出完整文本，不带背诵遮挡
+  if (originalReciteMode) {
+    store.setReciteMode(false);
+  }
   store.setExportProgress(10);
   
   // 等待所有节点 DOM 渲染并完成尺寸测量（替代固定 500ms 延迟）
@@ -543,6 +548,9 @@ export async function exportToImage(
     store.setFocusedNodeId(originalFocusedNodeId);
     store.setEditingNodeId(originalEditingNodeId);
     store.setEditingNoteNodeId(originalEditingNoteNodeId);
+    if (originalReciteMode) {
+      store.setReciteMode(true);
+    }
     _exportLock = false;
   }
 

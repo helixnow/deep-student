@@ -9,9 +9,13 @@ interface BlankedTextProps {
   blankedRanges?: BlankRange[];
   revealedIndices?: Record<number, boolean>;
   reciteMode: boolean;
+  /** 非背诵时也允许选区弹出「加粗 | 标记挖空」 */
+  allowSelectionActions?: boolean;
+  isBold?: boolean;
   onRevealBlank?: (rangeIndex: number) => void;
   onAddBlank?: (range: BlankRange) => void;
   onRemoveBlank?: (rangeIndex: number) => void;
+  onToggleBold?: () => void;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -21,9 +25,12 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
   blankedRanges,
   revealedIndices,
   reciteMode,
+  allowSelectionActions = false,
+  isBold = false,
   onRevealBlank,
   onAddBlank,
   onRemoveBlank,
+  onToggleBold,
   className,
   style,
 }) => {
@@ -38,9 +45,10 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
   } | null>(null);
 
   const segments = splitTextByRanges(text, blankedRanges || []);
+  const selectionEnabled = reciteMode || allowSelectionActions;
 
   const handleMouseUp = useCallback(() => {
-    if (!reciteMode || !onAddBlank) return;
+    if (!selectionEnabled || !onAddBlank) return;
 
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !containerRef.current) return;
@@ -48,7 +56,6 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
     const range = sel.getRangeAt(0);
     if (!containerRef.current.contains(range.commonAncestorContainer)) return;
 
-    // Calculate the selection range relative to the full text
     const walker = document.createTreeWalker(
       containerRef.current,
       NodeFilter.SHOW_TEXT,
@@ -74,7 +81,6 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
       return;
     }
 
-    // Check if the selection overlaps with an existing blank
     let isAlreadyBlanked = false;
     let overlappingRangeIndex = -1;
     if (blankedRanges) {
@@ -82,7 +88,6 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
         const seg = segments[i];
         if (seg.isBlanked && seg.rangeIndex >= 0) {
           const br = blankedRanges[seg.rangeIndex] || { start: 0, end: 0 };
-          // Check overlap
           if (startOffset < br.end && endOffset > br.start) {
             isAlreadyBlanked = true;
             overlappingRangeIndex = seg.rangeIndex;
@@ -92,7 +97,6 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
       }
     }
 
-    // Position popup above selection
     const selRect = range.getBoundingClientRect();
     setPopup({
       x: selRect.left + selRect.width / 2,
@@ -102,7 +106,7 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
       isAlreadyBlanked,
       overlappingRangeIndex,
     });
-  }, [reciteMode, onAddBlank, blankedRanges, segments]);
+  }, [selectionEnabled, onAddBlank, blankedRanges, segments]);
 
   const handleBlank = useCallback(() => {
     if (!popup || !onAddBlank) return;
@@ -118,29 +122,35 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
     window.getSelection()?.removeAllRanges();
   }, [popup, onRemoveBlank]);
 
+  const handleToggleBold = useCallback(() => {
+    onToggleBold?.();
+    setPopup(null);
+    window.getSelection()?.removeAllRanges();
+  }, [onToggleBold]);
+
   const handleClosePopup = useCallback(() => {
     setPopup(null);
   }, []);
 
-  // 背诵模式下阻止 mousedown 冒泡，防止 ReactFlow 将文本选择拦截为节点拖拽
+  // 选区模式下阻止 mousedown 冒泡，防止 ReactFlow 将文本选择拦截为节点拖拽
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (reciteMode) {
+    if (selectionEnabled) {
       e.stopPropagation();
     }
-  }, [reciteMode]);
+  }, [selectionEnabled]);
 
   return (
     <>
       <span
         ref={containerRef}
-        className={cn(className, reciteMode && 'nopan nodrag')}
+        className={cn(className, selectionEnabled && 'nopan nodrag')}
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         style={{
           ...style,
-          cursor: reciteMode ? 'text' : undefined,
-          userSelect: reciteMode ? 'text' : undefined,
-          WebkitUserSelect: reciteMode ? 'text' : undefined,
+          cursor: selectionEnabled ? 'text' : undefined,
+          userSelect: selectionEnabled ? 'text' : undefined,
+          WebkitUserSelect: selectionEnabled ? 'text' : undefined,
         }}
       >
         {segments.map((seg, i) => {
@@ -149,6 +159,19 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
           }
 
           const isRevealed = revealedIndices?.[seg.rangeIndex] ?? false;
+
+          // 非背诵：挖空区间用下划虚线标记，不遮挡正文
+          if (!reciteMode) {
+            return (
+              <span
+                key={i}
+                className="border-b border-dashed border-amber-500/70 rounded-sm px-0.5"
+                title={seg.text}
+              >
+                {seg.text}
+              </span>
+            );
+          }
 
           if (isRevealed) {
             return (
@@ -170,7 +193,6 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
                 e.stopPropagation();
                 onRevealBlank?.(seg.rangeIndex);
               }}
-              title={reciteMode ? undefined : undefined}
             >
               {seg.text}
             </span>
@@ -183,8 +205,11 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
           x={popup.x}
           y={popup.y}
           isAlreadyBlanked={popup.isAlreadyBlanked}
+          mode={reciteMode ? 'recite' : 'edit'}
+          isBold={isBold}
           onBlank={handleBlank}
           onUnblank={handleUnblank}
+          onToggleBold={!reciteMode && onToggleBold ? handleToggleBold : undefined}
           onClose={handleClosePopup}
         />
       )}

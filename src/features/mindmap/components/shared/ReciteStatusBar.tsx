@@ -22,7 +22,7 @@ export const ReciteStatusBar: React.FC = () => {
   if (!reciteMode) return null;
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2 rounded-xl bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] shadow-lg backdrop-blur">
+    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 max-w-[calc(100%-16px)] rounded-xl bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] shadow-lg backdrop-blur">
       <BookOpen className="w-4 h-4 text-amber-500 shrink-0" />
       <span className="text-sm font-medium whitespace-nowrap">{t('recite.title')}</span>
 

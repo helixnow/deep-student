@@ -25,6 +25,7 @@ import {
   Copy,
   Scissors,
   ClipboardText,
+  MagnifyingGlassPlus,
   Note,
   X,
 } from '@phosphor-icons/react';
@@ -40,6 +41,7 @@ interface CanvasContextMenuProps {
   nodeId: string | null;
   onClose: () => void;
   onOpenResourcePicker?: (nodeId: string) => void;
+  onFocusBranch?: (nodeId: string) => void;
 }
 
 interface MenuItemProps {
@@ -56,6 +58,7 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, destructive,
   <NotionButton variant="ghost"
     className={cn(
       'flex items-center gap-2 w-full px-2 py-1.5 rounded text-[13px] text-left transition-colors',
+      '[@media(pointer:coarse)]:min-h-[40px]',
       destructive
         ? 'text-destructive hover:bg-destructive/10'
         : active
@@ -87,20 +90,21 @@ const ColorPalette: React.FC<{
   activeColor?: string;
   onSelect: (color: string | undefined) => void;
 }> = ({ colors, activeColor, onSelect }) => (
-  <div className="flex items-center gap-1 px-2 py-1.5">
+  <div className="flex flex-wrap items-center gap-1 px-2 py-1.5">
     {colors.map(color => (
       <NotionButton
         key={color}
         variant="ghost" size="icon" iconOnly
         className={cn(
           "!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border-2 hover:scale-125 flex-shrink-0",
+          "[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6",
           activeColor === color ? "border-primary scale-110" : "border-transparent"
         )}
         style={{ backgroundColor: color }}
         onClick={(e) => { e.stopPropagation(); onSelect(color); }}
       />
     ))}
-    <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border border-border text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label="clear color">
+    <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 border border-border text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label="clear color">
       <X className="w-2.5 h-2.5" />
     </NotionButton>
   </div>
@@ -112,6 +116,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   nodeId,
   onClose,
   onOpenResourcePicker,
+  onFocusBranch,
 }) => {
   const { t } = useTranslation('mindmap');
   const menuRef = useRef<HTMLDivElement>(null);
@@ -184,7 +189,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed min-w-[180px] max-w-[240px] p-1 rounded-lg border border-border bg-popover shadow-lg animate-in fade-in-0 zoom-in-95 duration-100"
+      className="fixed min-w-[180px] max-w-[240px] p-1 rounded-lg border border-border bg-popover shadow-lg ui-zoom-fade-in"
       style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
     >
       <MenuItem
@@ -234,6 +239,16 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         })}
       />
 
+      {!isRoot && (
+        <MenuItem
+          icon={<MagnifyingGlassPlus className="w-4 h-4" />}
+          label={t('outline.enterFocusMode')}
+          onClick={() => exec(() => {
+            if (nodeId) onFocusBranch?.(nodeId);
+          })}
+        />
+      )}
+
       <MenuSeparator />
 
       <MenuItem
@@ -245,7 +260,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         onClick={() => exec(() => updateNode(nodeId, { completed: !node.completed }))}
       />
       {/* B / I / U / S | H1 / H2 / H3 / T */}
-      <div className="flex items-center gap-1 px-2 py-1">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1">
         {[
           { key: 'bold', icon: TextB, prop: 'fontWeight' as const, val: 'bold', cur: node.style?.fontWeight },
           { key: 'italic', icon: TextItalic, prop: 'fontStyle' as const, val: 'italic', cur: node.style?.fontStyle },
@@ -253,7 +268,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: node.style?.textDecoration },
         ].map(({ key, icon: Icon, prop, val, cur }) => (
           <NotionButton variant="ghost" key={key}
-            className={cn("w-7 h-7 flex items-center justify-center rounded", cur === val && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 flex items-center justify-center rounded", cur === val && "bg-accent")}
             onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, [prop]: cur === val ? undefined : val } }))}
             title={t(`contextMenu.${key}`)}
           ><Icon className="w-4 h-4" /></NotionButton>
@@ -261,13 +276,13 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         <div className="w-px h-4 bg-border mx-0.5" />
         {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
           <NotionButton variant="ghost" key={level}
-            className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
+            className={cn("w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
             onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }))}
             title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
           ><Icon className="w-4 h-4" /></NotionButton>
         ))}
         <NotionButton variant="ghost"
-          className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
+          className={cn("w-7 h-7 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
           onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: undefined } }))}
           title={t('contextMenu.normalText')}
         ><TextT className="w-4 h-4" /></NotionButton>

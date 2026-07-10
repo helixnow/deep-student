@@ -4,6 +4,7 @@ import { useMindMapIsActive } from '../MindMapActiveContext';
 import { findNodeById } from '../utils/node/find';
 import type { MindMapNode } from '../types';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
+import { looksLikeMarkdownList } from '../utils/pasteMarkdown';
 
 /** 将节点树递归序列化为纯文本（每行一个节点，缩进表示层级） */
 function nodesToText(nodes: MindMapNode[], level = 0): string {
@@ -37,23 +38,31 @@ export function useMindMapClipboard(): void {
   const copyNodes = useMindMapStore(s => s.copyNodes);
   const cutNodes = useMindMapStore(s => s.cutNodes);
   const pasteNodes = useMindMapStore(s => s.pasteNodes);
+  const pasteMarkdownChildren = useMindMapStore(s => s.pasteMarkdownChildren);
   const addNode = useMindMapStore(s => s.addNode);
   const updateNode = useMindMapStore(s => s.updateNode);
 
-  /** 从系统剪贴板粘贴外部文本为子节点 */
+  /** 从系统剪贴板粘贴外部文本为子节点（Markdown 层级优先） */
   const handlePasteExternal = useCallback(async (targetId: string) => {
     const text = await readFromSystemClipboard();
     if (!text?.trim()) return;
-    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+    if (looksLikeMarkdownList(text)) {
+      pasteMarkdownChildren(targetId, text);
+      return;
+    }
+
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     for (const line of lines) {
       const newId = addNode(targetId);
       if (newId) updateNode(newId, { text: line });
     }
-  }, [addNode, updateNode]);
+  }, [addNode, updateNode, pasteMarkdownChildren]);
 
   useEffect(() => {
     if (!isActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 编辑态 textarea/input 内仍让系统默认粘贴
       if (editingNodeId) return;
 
       const activeNodes = selection.length > 0
@@ -74,7 +83,6 @@ export function useMindMapClipboard(): void {
         if (activeNodes.length === 0) return;
         e.preventDefault();
         copyNodes(activeNodes);
-        // 同步写入系统剪贴板
         const nodes = activeNodes
           .map((id) => findNodeById(document.root, id))
           .filter((n): n is MindMapNode => n !== null);
@@ -82,21 +90,26 @@ export function useMindMapClipboard(): void {
       } else if (key === 'x') {
         if (activeNodes.length === 0) return;
         e.preventDefault();
-        // 先读取文本再剪切（剪切会删除节点）
         const nodes = activeNodes
           .map((id) => findNodeById(document.root, id))
           .filter((n): n is MindMapNode => n !== null);
         cutNodes(activeNodes);
         if (nodes.length > 0) writeToSystemClipboard(nodesToText(nodes));
       } else if (key === 'v') {
-        const pasteTargetId = activeNodes[0] || document.root.id;
+        // 优先粘到焦点节点，其次选中集中的第一个
+        const pasteTargetId =
+          (focusedNodeId &&
+          (selection.length === 0 || selection.includes(focusedNodeId))
+            ? focusedNodeId
+            : null) ||
+          activeNodes[0] ||
+          document.root.id;
         if (!pasteTargetId) return;
         e.preventDefault();
-        // 优先内部剪贴板，若为空则回退到系统剪贴板
         if (clipboard && clipboard.nodes.length > 0) {
           pasteNodes(pasteTargetId);
         } else {
-          handlePasteExternal(pasteTargetId);
+          void handlePasteExternal(pasteTargetId);
         }
       }
     };

@@ -120,13 +120,19 @@ export function getAncestors(root: MindMapNode, nodeId: NodeId): MindMapNode[] {
   return ancestors;
 }
 
-/** 计算节点总数 */
+/** 计算节点总数（含自身） */
 export function countNodes(root: MindMapNode): number {
   let count = 1;
   for (const child of root.children) {
     count += countNodes(child);
   }
   return count;
+}
+
+/** 计算后代节点总数（不含自身） */
+export function countDescendants(node: MindMapNode): number {
+  if (!node.children || node.children.length === 0) return 0;
+  return node.children.reduce((sum, child) => sum + 1 + countDescendants(child), 0);
 }
 
 /** 获取最大深度 */

@@ -82,9 +82,83 @@
   background-color: var(--mm-bg-hover);
 }
 
+.outline-node-row.selected {
+  background-color: var(--mm-primary-soft);
+}
+
+.outline-node-row.selected:hover {
+  background-color: hsl(var(--primary) / 0.16);
+}
+
+.outline-node-row.selected.focused {
+  background-color: hsl(var(--primary) / 0.18);
+}
+
 .outline-node-row.is-dragging {
   opacity: 0.3;
   background: var(--mm-bg-elevated);
+}
+
+/* 多选浮动操作条 */
+.outline-multiselect-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  box-shadow: var(--mm-shadow);
+  color: var(--mm-text);
+}
+
+.outline-multiselect-count {
+  font-size: 12px;
+  color: var(--mm-text-secondary);
+  padding: 0 8px 0 4px;
+  white-space: nowrap;
+}
+
+.outline-multiselect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--mm-text);
+}
+
+.outline-multiselect-btn:hover {
+  background: var(--mm-bg-hover);
+}
+
+.outline-multiselect-btn.destructive {
+  color: hsl(var(--destructive));
+}
+
+.outline-drag-count-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--mm-primary);
+  color: hsl(var(--primary-foreground));
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--mm-shadow-sm);
 }
 
 /* 缩进参考线 - 更加细腻 */
@@ -134,10 +208,33 @@
 
 .collapse-toggle.is-collapsed {
   opacity: 1; /* 节点折叠时常驻显示 */
+  min-width: 18px;
+  width: auto;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background-color: var(--mm-bg-hover);
 }
 
 .collapse-toggle:hover {
   background-color: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+/* 大纲折叠态：后代数量徽章（可点展开） */
+.outline-collapse-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--mm-text-muted);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.collapse-toggle.is-collapsed:hover .outline-collapse-count {
   color: var(--mm-text);
 }
 
@@ -177,7 +274,7 @@
   height: 6px;
   border-radius: 50%;
   background-color: var(--mm-text-muted);
-  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: all var(--page-slide-dur, 200ms) var(--ease-standard);
   position: relative;
   box-sizing: border-box;
 }
@@ -392,8 +489,37 @@
   background-color: hsl(var(--warning) / 0.2);
 }
 
-.outline-node-row.search-match.focused {
+.outline-node-row.search-match.focused,
+.outline-node-row.search-match-current {
   background-color: hsl(var(--warning) / 0.4);
+}
+
+.outline-node-row .search-text-match {
+  background-color: hsl(var(--warning) / 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
+}
+
+.mm-root-node.search-match,
+.mm-branch-node.search-match,
+.mindmap-node-underline.search-match {
+  box-shadow: 0 0 0 2px hsl(var(--warning) / 0.55);
+}
+
+.mm-root-node.search-match-current,
+.mm-branch-node.search-match-current,
+.mindmap-node-underline.search-match-current {
+  box-shadow: 0 0 0 2px hsl(var(--warning) / 0.85);
+}
+
+.mm-node-content .search-text-match {
+  background-color: hsl(var(--warning) / 0.55);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
 }
 
 /* ============================================
@@ -820,43 +946,98 @@
   transform: scale(1.02);
 }
 
-.mm-drop-target .mm-root-node,
-.mm-drop-target .mm-branch-node,
-.mm-drop-target .mindmap-node-underline {
+/* 落点目标公共：RF 节点 wrapper 作为定位上下文 */
+.mindmap-container .react-flow__node.mm-drop-target {
+  position: relative;
+  overflow: visible;
+  z-index: 50 !important;
+}
+
+/* child：内侧虚线框 + 右侧「成为子节点」角标 */
+.mm-drop-target.mm-drop-child .mm-root-node,
+.mm-drop-target.mm-drop-child .mm-branch-node,
+.mm-drop-target.mm-drop-child .mindmap-node-underline {
   outline: 2.5px dashed var(--mm-primary);
   outline-offset: 4px;
   border-radius: 6px;
-  background-color: color-mix(in srgb, var(--mm-primary) 8%, transparent);
-  transition: outline 0.15s ease, background-color 0.15s ease;
+  background-color: color-mix(in srgb, var(--mm-primary) 10%, transparent);
+  transition: outline 0.12s ease, background-color 0.12s ease;
 }
 
-.mm-drop-sibling-before,
-.mm-drop-sibling-after {
-  position: relative;
-}
-
-.mm-drop-sibling-before::before {
+.mindmap-container .react-flow__node.mm-drop-child::after {
   content: '';
   position: absolute;
-  top: -3px;
-  left: 0;
-  right: 0;
+  top: 50%;
+  right: -18px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid var(--mm-primary);
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--mm-primary), var(--mm-primary)) center / 8px 2px no-repeat,
+    linear-gradient(var(--mm-primary), var(--mm-primary)) center / 2px 8px no-repeat,
+    color-mix(in srgb, var(--mm-primary) 12%, var(--mm-bg-elevated, #fff));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mm-primary) 20%, transparent);
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* sibling：上下插入线（带端点圆点，对齐大纲 drop-indicator 语义） */
+.mindmap-container .react-flow__node.mm-drop-sibling-before::before,
+.mindmap-container .react-flow__node.mm-drop-sibling-after::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  right: -4px;
   height: 3px;
   background: var(--mm-primary);
   border-radius: 2px;
-  z-index: 10;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--mm-primary) 45%, transparent);
+  pointer-events: none;
+  z-index: 20;
 }
 
-.mm-drop-sibling-after::after {
+.mindmap-container .react-flow__node.mm-drop-sibling-before::before {
+  top: -5px;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-after::after {
+  bottom: -5px;
+}
+
+/* 插入线端点 */
+.mindmap-container .react-flow__node.mm-drop-sibling-before::after,
+.mindmap-container .react-flow__node.mm-drop-sibling-after::before {
   content: '';
   position: absolute;
-  bottom: -3px;
-  left: 0;
-  right: 0;
-  height: 3px;
+  left: -7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
   background: var(--mm-primary);
-  border-radius: 2px;
-  z-index: 10;
+  box-shadow: 0 0 4px color-mix(in srgb, var(--mm-primary) 40%, transparent);
+  pointer-events: none;
+  z-index: 21;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-before::after {
+  top: -7.5px;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-after::before {
+  bottom: -7.5px;
+}
+
+/* sibling 时节点本体轻微提示，避免只靠细线难辨 */
+.mm-drop-sibling-before .mm-root-node,
+.mm-drop-sibling-before .mm-branch-node,
+.mm-drop-sibling-before .mindmap-node-underline,
+.mm-drop-sibling-after .mm-root-node,
+.mm-drop-sibling-after .mm-branch-node,
+.mm-drop-sibling-after .mindmap-node-underline {
+  background-color: color-mix(in srgb, var(--mm-primary) 5%, transparent);
+  transition: background-color 0.12s ease;
 }
 
 /* ============================================
@@ -887,6 +1068,17 @@
 
 .outline-node-row.entering {
   animation: nodeSlideIn 0.2s ease-out both;
+}
+
+/* ACR R1-11：画布节点 Agent 入场（transform + opacity only，复用 nodeSlideIn） */
+.mindmap-container .react-flow__node.agent-entering {
+  animation: nodeSlideIn 0.2s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mindmap-container .react-flow__node.agent-entering {
+    animation: none;
+  }
 }
 
 /* --- 进入/退出节点视图动画 --- */
@@ -949,5 +1141,15 @@
     content: '';
     position: absolute;
     inset: -8px;
+  }
+
+  /* 顶部工具栏按钮（28px 高）扩大命中区到 ~40px，视觉尺寸不变 */
+  .notion-topbar .notion-btn {
+    position: relative;
+  }
+  .notion-topbar .notion-btn::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
   }
 }

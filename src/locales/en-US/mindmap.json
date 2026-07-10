@@ -32,12 +32,23 @@
     "prevResult": "Previous result",
     "nextResult": "Next result",
     "closeSearch": "Close search",
+    "searchMode": "Search mode",
+    "searchFilter": "Filter",
+    "searchLocate": "Locate",
+    "searchFilterHint": "Outline shows only matches and their ancestor path",
+    "searchLocateHint": "Keep full tree and jump to matches",
     "moreActions": "More actions",
     "save": "Save",
     "saving": "Saving...",
     "saved": "Saved",
     "shortcutList": "Keyboard Shortcuts",
-    "closeShortcuts": "Close shortcuts panel"
+    "closeShortcuts": "Close shortcuts panel",
+    "hideCompleted": "Hide completed",
+    "fold": "Fold",
+    "foldMenu": "Expand / collapse to level",
+    "expandAll": "Expand all",
+    "collapseAll": "Collapse all",
+    "collapseToLevel": "Collapse to level {{level}}"
   },
   "export": {
     "title": "Export",
@@ -107,7 +118,11 @@
     "fitView": "Fit view",
     "clipboard": "Copy / cut / paste",
     "indentOutdent": "Indent / outdent",
-    "escape": "Exit editing / deselect"
+    "escape": "Exit editing / deselect",
+    "splitMerge": "Split at caret / merge at line start",
+    "multiSelect": "Range select / toggle select",
+    "continuousCreate": "While editing: Enter creates next sibling",
+    "batchOps": "With multi-select: Tab / Delete batch ops"
   },
   "embed": {
     "zoomIn": "Zoom in",
@@ -176,6 +191,7 @@
     "contentCorrupted": "Mind map content is corrupted and cannot be loaded: {{error}}",
     "saveFailed": "Failed to save mind map. Please check your network and retry.",
     "saveFailedTitle": "Save Failed",
+    "saveRetryExhausted": "Auto-save failed repeatedly. Please check your network and save manually.",
     "updateConflict": "Content has been updated elsewhere. Auto-refreshing to the latest version…",
     "conflictResolved": "Successfully refreshed to the latest version.",
     "conflictReloadFailed": "Auto-refresh failed. Please manually refresh the page to get the latest content.",
@@ -199,8 +215,11 @@
   },
   "outline": {
     "dragToMove": "Drag to move",
+    "bulletZoomAndDrag": "Click to enter focus mode, drag to move",
+    "bulletFocusAndDrag": "Click to focus, drag to move",
     "doubleClickFocus": "Double-click to enter focus mode",
     "enterFocusMode": "Enter focus mode",
+    "exitFocusMode": "Exit focus mode",
     "markIncomplete": "Mark as incomplete",
     "markComplete": "Mark as complete",
     "bold": "Bold",
@@ -208,7 +227,11 @@
     "highlight": "Highlight",
     "unnamedNode": "Unnamed node",
     "untitled": "Untitled",
-    "emptyHint": "Click here or press Tab to add the first child node"
+    "emptyHint": "Click here or press Tab to add the first child node",
+    "expandWithCount": "Expand ({{count}})",
+    "selectedCount": "{{count}} selected",
+    "batchComplete": "Complete",
+    "clearSelection": "Clear selection"
   },
   "contextMenu": {
     "addSibling": "Add Sibling",
@@ -242,7 +265,8 @@
     "searchPlaceholder": "Search resources...",
     "loading": "Loading...",
     "noResults": "No matching resources",
-    "empty": "No resources"
+    "empty": "No resources",
+    "unavailable": "Resource deleted or unavailable"
   },
   "node": {
     "unnamed": "Unnamed",
@@ -266,6 +290,7 @@
     "exitFirst": "Please exit Recite Mode first",
     "blank": "Blank",
     "unblank": "Unblank",
+    "markBlank": "Mark blank",
     "clearBlanks": "Clear All Blanks",
     "emptyHint": "Select text and click 'Blank' to create cloze items",
     "progress": "{{revealed}}/{{total}} revealed"

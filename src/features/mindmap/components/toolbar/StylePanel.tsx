@@ -327,7 +327,7 @@ export const StyleSettings: React.FC<{
               getPlacementStyles(),
               'w-[280px] p-4 rounded-xl shadow-lg',
               'bg-popover border border-border text-popover-foreground',
-              'animate-in fade-in-0 zoom-in-95 duration-200',
+              'ui-zoom-fade-in',
               'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
             )}
           >

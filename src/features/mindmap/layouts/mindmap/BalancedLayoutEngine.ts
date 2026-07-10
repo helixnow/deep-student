@@ -208,6 +208,10 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
      * 递归布局子树
      * ★ P0 修复：添加深度限制检查
      */
+    /**
+     * 递归布局子树
+     * @param x 右侧分支为左边缘；左侧分支为右边缘锚点（同 TreeLayoutEngine 的向左语义）
+     */
     const layoutSubtree = (
       node: MindMapNode,
       x: number,
@@ -225,6 +229,8 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       const hasChildren = node.children && node.children.length > 0;
       const nodeWidth = calculateNodeWidth(node, config);
       const nodeHeight = calculateNodeHeight(node, false, config);
+      // 左侧：x 是右边缘锚点，实际左边缘 = x - ownWidth（宽窄兄弟各自独立，避免共用 children[0] 宽度）
+      const nodeX = side === 'left' ? x - nodeWidth : x;
 
       // 根据分支位置设置 Handle 位置
       // 左侧分支：target 在右边（连接根节点），source 在左边（连接子节点）
@@ -235,7 +241,7 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       nodes.push({
         id: node.id,
         type: 'branchNode',
-        position: { x, y },
+        position: { x: nodeX, y },
         width: nodeWidth,
         height: nodeHeight,
         data: {
@@ -271,11 +277,11 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
         return nodeHeight;
       }
 
-      // 计算子节点位置
+      // 右侧：子节点左边缘；左侧：子节点右边缘锚点（各子节点再按自身宽度回退）
       const childX =
         side === 'right'
-          ? x + nodeWidth + config.horizontalGap
-          : x - config.horizontalGap - calculateNodeWidth(node.children![0], config);
+          ? nodeX + nodeWidth + config.horizontalGap
+          : nodeX - config.horizontalGap;
 
       const subtreeHeights = node.children!.map(child =>
         calculateSubtreeHeight(child, config)
@@ -295,10 +301,10 @@ export class BalancedLayoutEngine extends BaseLayoutEngine {
       return Math.max(nodeHeight, totalHeight);
     };
 
-    // 布局左侧
+    // 布局左侧：传入右边缘锚点（根左边缘 0 - gap），各子节点按自身宽度定位
     if (left.length > 0) {
-      const leftX = -config.horizontalGap - calculateNodeWidth(left[0], config);
-      layoutSide(left, 'left', leftX);
+      const leftAnchorX = -config.horizontalGap;
+      layoutSide(left, 'left', leftAnchorX);
     }
 
     // 布局右侧

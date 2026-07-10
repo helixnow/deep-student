@@ -19,6 +19,7 @@ export {
   flattenAllNodes,
   getAncestors,
   countNodes,
+  countDescendants,
   getMaxDepth,
 } from './traverse';
 
@@ -46,6 +47,7 @@ export {
   collapseAll,
   expandAll,
   expandToDepth,
+  collapseToDepth,
 } from './update';
 
 // 删除
@@ -77,4 +79,8 @@ export {
   addSiblingBefore,
   addChild,
 } from './move';
+
+// 拆分 / 合并
+export type { SplitNodeResult, MergeWithPreviousResult } from './splitMerge';
+export { splitNode, mergeWithPrevious } from './splitMerge';
 

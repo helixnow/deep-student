@@ -5,3 +5,6 @@
 export * from './layoutEngine';
 export * from './exporters';
 export * from './importers';
+export * from './pasteMarkdown';
+export * from './hideCompleted';
+export * from './searchFilter';

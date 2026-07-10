@@ -7,6 +7,8 @@ import { NodeContent } from './NodeContent';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMindMapStore } from '../../../store';
 import { StyleRegistry } from '../../../registry';
+import { findParentNode } from '../../../utils/node/find';
+import { openNodeRef } from '../../../utils/openNodeRef';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 
 export interface BranchNodeData extends Record<string, unknown> {
@@ -46,6 +48,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   const styleId = useMindMapStore(state => state.styleId);
   const setMeasuredNodeHeight = useMindMapStore(state => state.setMeasuredNodeHeight);
   const reciteMode = useMindMapStore(state => state.reciteMode);
+  const searchResults = useMindMapStore(state => state.searchResults);
+  const currentSearchIndex = useMindMapStore(state => state.currentSearchIndex);
   const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
@@ -58,6 +62,11 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   
   const hasChildren = data.hasChildren;
   const isCollapsed = data.collapsed;
+  const isSearchMatch = searchResults.includes(data.nodeId);
+  const isCurrentSearchMatch =
+    isSearchMatch &&
+    currentSearchIndex >= 0 &&
+    searchResults[currentSearchIndex] === data.nodeId;
   
   // Handle 位置
   const targetPos = data.targetPosition || 'left';
@@ -104,23 +113,56 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     updateNode(data.nodeId, { text });
   }, [data.nodeId, updateNode]);
 
+  const handleCommitLiveText = useCallback((text: string) => {
+    updateNode(data.nodeId, { text }, { preserveBlankedRanges: true, skipHistory: true });
+  }, [data.nodeId, updateNode]);
+
   const handleStartEdit = useCallback(() => {
     setEditingNodeId(data.nodeId);
   }, [data.nodeId, setEditingNodeId]);
 
+  // 按 nodeId 守卫：连续建点时旧 textarea blur 不得清掉新节点的 editingNodeId
   const handleEndEdit = useCallback(() => {
-    setEditingNodeId(null);
-  }, [setEditingNodeId]);
+    const { editingNodeId: current } = useMindMapStore.getState();
+    if (current === data.nodeId) {
+      setEditingNodeId(null);
+    }
+  }, [data.nodeId, setEditingNodeId]);
 
-  const handleAddChild = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleCommitAndCreateSibling = useCallback(() => {
+    const { document: doc, addNode: add, setFocusedNodeId: focus, setEditingNodeId: edit } =
+      useMindMapStore.getState();
+    const root = doc.root;
+    if (root.id === data.nodeId) {
+      const newId = add(data.nodeId, 0);
+      if (newId) {
+        focus(newId);
+        edit(newId);
+      }
+      return;
+    }
+    const parent = findParentNode(root, data.nodeId);
+    if (!parent) return;
+    const idx = parent.children.findIndex((c) => c.id === data.nodeId);
+    const newId = add(parent.id, idx + 1);
+    if (newId) {
+      focus(newId);
+      edit(newId);
+    }
+  }, [data.nodeId]);
+
+  const handleCommitAndCreateChild = useCallback(() => {
     const newId = addNode(data.nodeId, 0);
     if (newId) {
       setFocusedNodeId(newId);
-      // 与 Tab/Enter 快捷键行为一致：新节点直接进入编辑，省一次双击
       setEditingNodeId(newId);
     }
   }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
+
+  const handleAddChild = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    handleCommitAndCreateChild();
+  }, [handleCommitAndCreateChild]);
 
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -245,6 +287,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
         "group flex items-center justify-center gap-1",
         selected && "selected",
         isEditing && "editing",
+        isSearchMatch && "search-match",
+        isCurrentSearchMatch && "search-match-current",
         data.completed && "mm-completed"
       )}
       style={themeStyle}
@@ -304,20 +348,34 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           revealedIndices={revealedBlanks[data.nodeId]}
           reciteMode={reciteMode}
           onTextChange={handleTextChange}
+          onCommitLiveText={handleCommitLiveText}
           onNoteChange={(note) => updateNode(data.nodeId, { note })}
           onStartEdit={reciteMode ? undefined : handleStartEdit}
           onEndEdit={handleEndEdit}
           onEndEditNote={() => setEditingNoteNodeId(null)}
+          onCommitAndCreateSibling={reciteMode ? undefined : handleCommitAndCreateSibling}
+          onCommitAndCreateChild={reciteMode ? undefined : handleCommitAndCreateChild}
+          isBold={data.style?.fontWeight === 'bold'}
           onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
           onAddBlank={(range) => addBlankRange(data.nodeId, range)}
           onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
+          onToggleBold={() =>
+            updateNode(data.nodeId, {
+              style: {
+                ...data.style,
+                fontWeight: data.style?.fontWeight === 'bold' ? undefined : 'bold',
+              },
+            })
+          }
           onRemoveRef={isEmbed ? undefined : (sourceId) => removeNodeRef(data.nodeId, sourceId)}
-          onClickRef={isEmbed ? undefined : (sourceId) => {
-            const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
-            window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
-              detail: { view: 'learning-hub', openResource: dstuPath },
-            }));
-          }}
+          onClickRef={
+            isEmbed
+              ? undefined
+              : (sourceId) => {
+                  const ref = data.refs?.find((r) => r.sourceId === sourceId);
+                  void openNodeRef(sourceId, { type: ref?.type, name: ref?.name });
+                }
+          }
         />
       </div>
 

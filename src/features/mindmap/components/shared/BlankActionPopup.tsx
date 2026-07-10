@@ -2,14 +2,19 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { EyeSlash, Eye } from '@phosphor-icons/react';
+import { EyeSlash, Eye, TextB } from '@phosphor-icons/react';
 
-interface BlankActionPopupProps {
+export interface BlankActionPopupProps {
   x: number;
   y: number;
   isAlreadyBlanked: boolean;
+  /** 背诵模式：仅挖空；编辑选区：加粗 + 标记挖空 */
+  mode?: 'recite' | 'edit';
+  /** 当前节点是否已加粗（编辑模式） */
+  isBold?: boolean;
   onBlank: () => void;
   onUnblank: () => void;
+  onToggleBold?: () => void;
   onClose: () => void;
 }
 
@@ -17,8 +22,11 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
   x,
   y,
   isAlreadyBlanked,
+  mode = 'recite',
+  isBold = false,
   onBlank,
   onUnblank,
+  onToggleBold,
   onClose,
 }) => {
   const { t } = useTranslation('mindmap');
@@ -45,25 +53,60 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
     };
   }, [handleClickOutside, handleKeyDown]);
 
+  const btnClass =
+    '!px-3 !py-1.5 !h-auto !rounded-full text-xs font-medium whitespace-nowrap';
+
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[9999] flex items-center rounded-full shadow-lg ring-1 ring-border/40 animate-in fade-in-0 zoom-in-95 duration-150 backdrop-blur-sm"
+      className="fixed z-[9999] flex items-center gap-0.5 rounded-full shadow-lg ring-1 ring-border/40 ui-zoom-fade-in backdrop-blur-sm bg-zinc-800/90 p-0.5"
       style={{
         left: `${x}px`,
         top: `${y - 36}px`,
         transform: 'translateX(-50%)',
       }}
+      // 阻止 mousedown 抢先让编辑框 blur，否则加粗/挖空点击会失效
+      onMouseDown={(e) => e.preventDefault()}
     >
+      {mode === 'edit' && onToggleBold && (
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          className={`${btnClass} ${isBold ? 'bg-zinc-600 text-white' : 'text-zinc-200 hover:bg-[var(--interactive-hover)]'}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleBold();
+          }}
+        >
+          <TextB size={12} />
+          {t('contextMenu.bold')}
+        </NotionButton>
+      )}
       {isAlreadyBlanked ? (
-        <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-zinc-700/90 text-zinc-200 hover:bg-[var(--interactive-hover)] text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onUnblank(); }}>
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          className={`${btnClass} bg-zinc-700/90 text-zinc-200 hover:bg-[var(--interactive-hover)]`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnblank();
+          }}
+        >
           <Eye size={12} />
           {t('recite.unblank')}
         </NotionButton>
       ) : (
-        <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-amber-500/90 text-white hover:bg-amber-500 text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onBlank(); }}>
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          className={`${btnClass} bg-amber-500/90 text-white hover:bg-amber-500`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBlank();
+          }}
+        >
           <EyeSlash size={12} />
-          {t('recite.blank')}
+          {mode === 'edit' ? t('recite.markBlank') : t('recite.blank')}
         </NotionButton>
       )}
     </div>,

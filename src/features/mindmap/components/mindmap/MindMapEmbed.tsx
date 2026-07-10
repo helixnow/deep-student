@@ -93,6 +93,11 @@ interface MindMapEmbedInnerProps {
   metadata: VfsMindMap | null;
 }
 
+// ★ 2026-07-08（审计 27-P1-2）：提为模块级常量。
+// 原先是组件体内每次渲染新建的 {} 字面量，又被列入布局 useMemo 的依赖数组，
+// 导致 memo 实质失效——每次父组件重渲染（聊天流式输出期间高频发生）都会全量重跑布局引擎。
+const EMBED_MEASURED_NODE_HEIGHTS: Record<string, number> = Object.freeze({});
+
 const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
   ensureInitialized();
   const { t } = useTranslation('mindmap');
@@ -101,7 +106,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
 
   // ★ 2026-02 修复：Embed 使用独立的默认配置，不订阅全局 store
   // 避免主编辑器切换布局/样式时导致所有 Embed 实例重新渲染
-  const measuredNodeHeights: Record<string, number> = {};
+  const measuredNodeHeights = EMBED_MEASURED_NODE_HEIGHTS;
   const [isBothLayout, setIsBothLayout] = useState(true);
   const layoutId = isBothLayout ? 'balanced' : 'tree';
   const layoutDirection = isBothLayout ? 'both' : 'right';

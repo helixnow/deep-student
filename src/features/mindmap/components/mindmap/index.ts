@@ -4,6 +4,7 @@
 
 // 画布
 export { MindMapCanvas } from './MindMapCanvas';
+export type { MindMapCanvasHandle, MindMapCanvasProps } from './MindMapCanvas';
 
 // 结构选择器
 export { StructureSelector } from './StructureSelector';
@@ -19,6 +20,7 @@ export * from './edges';
 
 // 视图（保留兼容）
 export { MindMapViewNew } from './MindMapViewNew';
+export type { MindMapViewNewHandle, MindMapViewNewProps } from './MindMapViewNew';
 
 // 嵌入式组件（保留兼容）
 export { MindMapEmbed } from './MindMapEmbed';

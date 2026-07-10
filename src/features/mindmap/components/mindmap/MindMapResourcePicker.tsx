@@ -158,9 +158,9 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
     <div
       ref={panelRef}
       className={cn(
-        'fixed w-[360px] max-h-[420px] flex flex-col',
+        'fixed w-[360px] max-w-[calc(100vw-32px)] max-h-[min(420px,calc(100vh-96px))] flex flex-col',
         'rounded-lg border border-transparent ring-1 ring-border/40 bg-popover shadow-lg',
-        'animate-in fade-in-0 zoom-in-95 duration-150',
+        'ui-zoom-fade-in',
         'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
       )}
       style={{ zIndex: Z_INDEX.contextMenu + 10 }}
@@ -168,7 +168,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-sm font-medium">{t('refs.pickerTitle', '关联资源')}</span>
-        <NotionButton variant="ghost" onClick={onClose} className="w-6 h-6 p-0">
+        <NotionButton variant="ghost" onClick={onClose} className="w-6 h-6 p-0 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9">
           <X className="w-4 h-4" />
         </NotionButton>
       </div>
@@ -218,6 +218,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
                 onClick={() => handleSelect(node)}
                 className={cn(
                   '!w-full !justify-start !px-2 !py-1.5 !h-auto !rounded-md !text-left',
+                  '[@media(pointer:coarse)]:!min-h-[44px]',
                   isAdded
                     ? 'opacity-50 cursor-not-allowed'
                     : 'hover:bg-[var(--interactive-hover)] cursor-pointer',

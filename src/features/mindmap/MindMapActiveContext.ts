@@ -7,7 +7,7 @@
  * 同一 target 上的其他 listener）。
  *
  * MindMapContentView 通过本 Provider 下发 isActive 与 resourceId，
- * 画布内的全局监听器（useMindMapKeyboard / useMindMapClipboard / Ctrl+0）
+ * 全局监听器（useMindMapClipboard 挂在 ContentView；useMindMapKeyboard / Ctrl+0 挂在画布）
  * 仅在「实例活跃 且 store 当前加载的就是本实例的文档」时注册。
  * resourceId 校验用于分屏场景：左右面板同时 isActive=true，但单例
  * store 只承载其中一个文档，另一个实例不得响应按键。

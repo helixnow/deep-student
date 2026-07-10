@@ -10,6 +10,7 @@ import { exportToOpml, exportToMarkdown, exportToJson, exportToImage } from './u
 import { importMindMap } from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { cn } from '@/lib/utils';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
@@ -26,11 +27,15 @@ import {
   X,
   CaretUp,
   CaretDown,
+  CaretLeft,
   Keyboard,
   WarningCircle,
   ArrowClockwise as RefreshIcon,
   Gear,
   BookOpen,
+  TreeStructure,
+  ArrowsInLineVertical,
+  ArrowsOutLineVertical,
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { useTranslation } from 'react-i18next';
@@ -39,15 +44,23 @@ import {
   AppMenuTrigger,
   AppMenuContent,
   AppMenuItem,
+  AppMenuCheckboxItem,
   AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
-import { OutlineView } from './views/OutlineView';
-import { MindMapView } from './views/MindMapView';
+import { OutlineView, type OutlineViewHandle } from './views/OutlineView';
+import { MindMapView, type MindMapViewHandle } from './views/MindMapView';
 import { StructureSelector } from './components/mindmap/StructureSelector';
 import { StyleSettings } from './components/toolbar/StylePanel';
 import { ReciteStatusBar } from './components/shared/ReciteStatusBar';
 import { Progress } from '@/components/ui/shad/Progress';
+import { useMindMapClipboard } from './hooks/useMindMapClipboard';
 import './styles/mindmap.css';
+
+/** 挂在 ActiveContext Provider 内，使大纲/画布共用剪贴板快捷键且受 isActive 门控 */
+const MindMapClipboardEffects: React.FC = () => {
+  useMindMapClipboard();
+  return null;
+};
 
 interface MindMapContentViewProps {
   resourceId?: string;
@@ -70,6 +83,8 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const setCurrentView = useMindMapStore(state => state.setCurrentView);
   const reciteMode = useMindMapStore(state => state.reciteMode);
   const setReciteMode = useMindMapStore(state => state.setReciteMode);
+  const hideCompleted = useMindMapStore(state => state.hideCompleted);
+  const setHideCompleted = useMindMapStore(state => state.setHideCompleted);
   const mindmapDocument = useMindMapStore(state => state.document);
   const isDirty = useMindMapStore(state => state.isDirty);
   const isSaving = useMindMapStore(state => state.isSaving);
@@ -89,8 +104,13 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const nextSearchResult = useMindMapStore(state => state.nextSearchResult);
   const prevSearchResult = useMindMapStore(state => state.prevSearchResult);
   const clearSearch = useMindMapStore(state => state.clearSearch);
+  const searchFilterMode = useMindMapStore(state => state.searchFilterMode);
+  const setSearchFilterMode = useMindMapStore(state => state.setSearchFilterMode);
   const setDocument = useMindMapStore(state => state.setDocument);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
+  const collapseAll = useMindMapStore(state => state.collapseAll);
+  const expandAll = useMindMapStore(state => state.expandAll);
+  const collapseToDepth = useMindMapStore(state => state.collapseToDepth);
 
   // A6-24: 保存冲突时暂存的本地编辑快照 + 恢复/忽略
   const conflictSnapshot = useMindMapStore(state => state.conflictSnapshot);
@@ -107,7 +127,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   
   // 工具栏面板互斥状态：同一时间只允许打开一个面板
-  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'export' | 'more' | null>(null);
+  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'export' | 'more' | 'fold' | null>(null);
 
   // 移动端悬浮面板状态
   const [showMobileStructure, setShowMobileStructure] = useState(false);
@@ -117,6 +137,61 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
   const [showImportConfirm, setShowImportConfirm] = useState(false);
+
+  // 大纲⇄导图双模保真：离开前写入 store.viewports，切回时作为 initial* 恢复
+  // focusedNodeId / selection / collapsed 已在文档与 store 中，切换不重置
+  const outlineViewRef = useRef<OutlineViewHandle>(null);
+  const mindMapViewRef = useRef<MindMapViewHandle>(null);
+  const setViewViewport = useMindMapStore(state => state.setViewViewport);
+  const outlineScrollRestore = useMindMapStore(state => state.viewports.outline?.scrollTop ?? null);
+  const mindMapViewportRestore = useMindMapStore(state => state.viewports.mindmap ?? null);
+
+  const switchView = useCallback(
+    (next: 'outline' | 'mindmap') => {
+      const prev = useMindMapStore.getState().currentView;
+      if (prev === next) return;
+
+      if (prev === 'outline') {
+        const top = outlineViewRef.current?.getScrollTop() ?? 0;
+        setViewViewport('outline', { scrollTop: top });
+      } else if (prev === 'mindmap') {
+        try {
+          const vp = mindMapViewRef.current?.getViewport();
+          if (vp) setViewViewport('mindmap', vp);
+        } catch {
+          // ReactFlow 可能已卸载，忽略
+        }
+      }
+
+      setCurrentView(next);
+    },
+    [setCurrentView, setViewViewport],
+  );
+
+  // 移动端浮层/子屏打开时注册 Android 返回键：返回 = 关闭当前层
+  useEffect(() => {
+    if (!showMobileStructure) return;
+    return registerBackHandler(() => {
+      setShowMobileStructure(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showMobileStructure]);
+
+  useEffect(() => {
+    if (!showMobileStyle) return;
+    return registerBackHandler(() => {
+      setShowMobileStyle(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showMobileStyle]);
+
+  useEffect(() => {
+    if (!showShortcutHelp) return;
+    return registerBackHandler(() => {
+      setShowShortcutHelp(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [showShortcutHelp]);
 
   // ★ 标签页保活：isActive 变化时 saveDraft / loadMindMap
   const prevIsActiveRef = useRef(isActive);
@@ -344,6 +419,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
   // 键盘快捷键
   // ★ 标签页：仅活跃标签页响应快捷键，防止多个 MindMap 标签页同时处理同一按键
+  // ★ capture：Esc 关搜索须在 document 冒泡的 useMindMapKeyboard 之前执行，否则会被 stopPropagation 吞掉
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isActive === false) return;
@@ -352,6 +428,16 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       const target = e.target as HTMLElement;
       const isTextInputContext =
         target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+
+      // 搜索打开时 Esc 优先关闭搜索，不进入画布「退出编辑 → 退出背诵 → 清选中」级联
+      if (e.key === 'Escape' && showSearch) {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowSearch(false);
+        clearSearch();
+        setSearchInput('');
+        return;
+      }
 
       // 画布视图下 undo/redo/save 由 useMindMapKeyboard hook 处理，避免重复触发
       if (currentView !== 'mindmap' && !isTextInputContext) {
@@ -373,15 +459,10 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
         e.preventDefault();
         setShowSearch(true);
       }
-      if (e.key === 'Escape' && showSearch) {
-        setShowSearch(false);
-        clearSearch();
-        setSearchInput('');
-      }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [undo, redo, canUndo, canRedo, save, isDirty, isSaving, showSearch, clearSearch, currentView, isActive]);
 
   // M-069: 组件卸载时同步保存草稿到 localStorage，防止异步 save 未完成导致数据丢失
@@ -442,6 +523,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     <MindMapErrorBoundary onReset={handleErrorReset} fallbackMessage={t('mindmap:errorBoundary')}>
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
+    <MindMapClipboardEffects />
     <div ref={containerRef} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
       {/* Notion-style Topbar */}
       <div className="notion-topbar">
@@ -451,7 +533,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           <div className="relative flex items-center bg-[var(--mm-bg-hover)] p-[3px] rounded-lg">
             {/* Sliding background pill */}
             <div
-              className="absolute top-[3px] bottom-[3px] rounded-md bg-[var(--mm-bg-elevated)] shadow-sm border border-[var(--mm-border)] transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)]"
+              className="absolute top-[3px] bottom-[3px] rounded-md bg-[var(--mm-bg-elevated)] shadow-sm border border-[var(--mm-border)] transition-all duration-300 ease-[var(--resize-ease)]"
               style={{
                 left: currentView === 'outline' ? '3px' : '50%',
                 right: currentView === 'mindmap' ? '3px' : '50%',
@@ -464,7 +546,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                   ? "text-[var(--mm-text)]"
                   : "text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
               )}
-              onClick={() => setCurrentView('outline')}
+              onClick={() => switchView('outline')}
             >
               <FileText className="w-3.5 h-3.5 mr-1.5" />
               {t('mindmap:toolbar.outline')}
@@ -476,7 +558,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                   ? "text-[var(--mm-text)]"
                   : "text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
               )}
-              onClick={() => setCurrentView('mindmap')}
+              onClick={() => switchView('mindmap')}
             >
               <GitBranch className="w-3.5 h-3.5 mr-1.5" />
               {t('mindmap:toolbar.mindmap')}
@@ -559,6 +641,45 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             <span className="text-xs">{t('mindmap:toolbar.search')}</span>
           </NotionButton>
 
+          <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden sm:block" />
+
+          {/* Desktop: Fold / Expand controls */}
+          <AppMenu open={activePanel === 'fold'} onOpenChange={(open) => setActivePanel(open ? 'fold' : null)}>
+            <AppMenuTrigger asChild>
+              <NotionButton variant="ghost" className="notion-btn hidden sm:flex" title={t('mindmap:toolbar.foldMenu')}>
+                <TreeStructure size={16} />
+                <span className="text-xs">{t('mindmap:toolbar.fold')}</span>
+                <CaretDown size={12} className="opacity-50 ml-0.5" />
+              </NotionButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={200}>
+              <AppMenuItem
+                icon={<ArrowsOutLineVertical size={16} />}
+                shortcut="⌘⇧]"
+                onClick={() => expandAll()}
+              >
+                {t('mindmap:toolbar.expandAll')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<ArrowsInLineVertical size={16} />}
+                shortcut="⌘⇧["
+                onClick={() => collapseAll()}
+              >
+                {t('mindmap:toolbar.collapseAll')}
+              </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem onClick={() => collapseToDepth(1)}>
+                {t('mindmap:toolbar.collapseToLevel', { level: 1 })}
+              </AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(2)}>
+                {t('mindmap:toolbar.collapseToLevel', { level: 2 })}
+              </AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(3)}>
+                {t('mindmap:toolbar.collapseToLevel', { level: 3 })}
+              </AppMenuItem>
+            </AppMenuContent>
+          </AppMenu>
+
           {/* Desktop: Export Menu */}
           <AppMenu open={activePanel === 'export'} onOpenChange={(open) => setActivePanel(open ? 'export' : null)}>
             <AppMenuTrigger asChild>
@@ -601,10 +722,17 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
-            <AppMenuContent align="end" width={180}>
+            <AppMenuContent align="end" width={200}>
               <AppMenuItem icon={<FloppyDisk size={16} />} onClick={handleSave} disabled={!isDirty || isSaving}>
                 {isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
               </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuCheckboxItem
+                checked={hideCompleted}
+                onCheckedChange={setHideCompleted}
+              >
+                {t('mindmap:toolbar.hideCompleted')}
+              </AppMenuCheckboxItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Keyboard size={16} />} onClick={() => setShowShortcutHelp(true)}>
                 {t('mindmap:toolbar.shortcutList')}
@@ -619,7 +747,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
-            <AppMenuContent align="end" width={180}>
+            <AppMenuContent align="end" width={200}>
               <AppMenuItem icon={<GitBranch size={16} />} onClick={() => setShowMobileStructure(true)}>
                 {t('mindmap:toolbar.structure')}
               </AppMenuItem>
@@ -630,8 +758,30 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
               <AppMenuItem icon={<BookOpen size={16} />} onClick={() => setReciteMode(!reciteMode)}>
                 {reciteMode ? t('mindmap:recite.exit', '退出背诵') : t('mindmap:recite.title')}
               </AppMenuItem>
+              <AppMenuCheckboxItem
+                checked={hideCompleted}
+                onCheckedChange={setHideCompleted}
+              >
+                {t('mindmap:toolbar.hideCompleted')}
+              </AppMenuCheckboxItem>
               <AppMenuItem icon={<MagnifyingGlass size={16} />} onClick={() => setShowSearch(!showSearch)}>
                 {t('mindmap:toolbar.search')}
+              </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem icon={<ArrowsOutLineVertical size={16} />} onClick={() => expandAll()}>
+                {t('mindmap:toolbar.expandAll')}
+              </AppMenuItem>
+              <AppMenuItem icon={<ArrowsInLineVertical size={16} />} onClick={() => collapseAll()}>
+                {t('mindmap:toolbar.collapseAll')}
+              </AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(1)}>
+                {t('mindmap:toolbar.collapseToLevel', { level: 1 })}
+              </AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(2)}>
+                {t('mindmap:toolbar.collapseToLevel', { level: 2 })}
+              </AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(3)}>
+                {t('mindmap:toolbar.collapseToLevel', { level: 3 })}
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>
@@ -660,7 +810,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
       {/* A6-24: 保存冲突后，本地未保存编辑已暂存，提供"恢复我的修改"入口 */}
       {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 animate-in slide-in-from-top-1 duration-200">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 ui-drop-in">
           <WarningCircle size={16} className="shrink-0" />
           <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
           <NotionButton
@@ -682,7 +832,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       )}
 
       {showSearch && (
-        <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] animate-in slide-in-from-top-1 duration-200">
+        <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] ui-drop-in">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
             className="flex-1 h-full bg-transparent border-none outline-none text-sm placeholder-[var(--mm-text-muted)]"
@@ -704,6 +854,44 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             autoFocus
           />
           
+          {searchInput.trim() && (
+            <div
+              className="flex items-center border border-[var(--mm-border)] rounded overflow-hidden text-xs shrink-0"
+              role="group"
+              aria-label={t('mindmap:toolbar.searchMode')}
+            >
+              <NotionButton
+                variant="ghost"
+                className={cn(
+                  "px-2 py-1 h-7 rounded-none",
+                  searchFilterMode
+                    ? "bg-[var(--mm-bg-active)] text-[var(--mm-text)]"
+                    : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+                )}
+                onClick={() => setSearchFilterMode(true)}
+                title={t('mindmap:toolbar.searchFilterHint')}
+                aria-pressed={searchFilterMode}
+              >
+                {t('mindmap:toolbar.searchFilter')}
+              </NotionButton>
+              <div className="w-px h-4 bg-[var(--mm-border)]" />
+              <NotionButton
+                variant="ghost"
+                className={cn(
+                  "px-2 py-1 h-7 rounded-none",
+                  !searchFilterMode
+                    ? "bg-[var(--mm-bg-active)] text-[var(--mm-text)]"
+                    : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+                )}
+                onClick={() => setSearchFilterMode(false)}
+                title={t('mindmap:toolbar.searchLocateHint')}
+                aria-pressed={!searchFilterMode}
+              >
+                {t('mindmap:toolbar.searchLocate')}
+              </NotionButton>
+            </div>
+          )}
+
           {searchResults.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-[var(--mm-text-secondary)]">
               <span>{currentSearchIndex + 1} / {searchResults.length}</span>
@@ -764,9 +952,15 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             </div>
           </div>
         ) : currentView === 'outline' ? (
-          <OutlineView />
+          <OutlineView
+            ref={outlineViewRef}
+            initialScrollTop={outlineScrollRestore}
+          />
         ) : (
-          <MindMapView />
+          <MindMapView
+            ref={mindMapViewRef}
+            initialViewport={mindMapViewportRestore}
+          />
         )}
 
         {showShortcutHelp && (() => {
@@ -812,6 +1006,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                 <Group title={t('mindmap:shortcuts.groupCanvas')}>
                   <Row keys={['Tab', '⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
                   <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
+                  <Row keys={['Enter (edit)']} label={t('mindmap:shortcuts.continuousCreate')} />
                   <Row keys={['F2', 'Space']} label={t('mindmap:shortcuts.editNode')} />
                   <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
                   <Row keys={['↑ ↓ ← →']} label={t('mindmap:shortcuts.navigate')} />
@@ -824,11 +1019,16 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                 </Group>
                 <Group title={t('mindmap:shortcuts.groupOutline')}>
                   <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
+                  <Row keys={['Enter / ⌫']} label={t('mindmap:shortcuts.splitMerge')} />
+                  <Row keys={['⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
                   <Row keys={['Tab / ⇧ + Tab']} label={t('mindmap:shortcuts.indentOutdent')} />
+                  <Row keys={['⇧ + Click', '⌘/Ctrl + Click']} label={t('mindmap:shortcuts.multiSelect')} />
+                  <Row keys={['Tab / Del (multi)']} label={t('mindmap:shortcuts.batchOps')} />
                   <Row keys={['↑ ↓']} label={t('mindmap:shortcuts.navigate')} />
                   <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
                   <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
-                  <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                  <Row keys={['⌘/Ctrl + ⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                  <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
                 </Group>
               </div>
             </div>
@@ -836,53 +1036,43 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           );
         })()}
         
-        {/* Mobile: Structure Panel Overlay */}
+        {/* Mobile: Structure Panel（inline 子屏：全屏替换内容区 + 顶栏返回） */}
         {showMobileStructure && (
-          <div className="absolute inset-0 z-50 sm:hidden">
-            <div 
-              className="absolute inset-0 bg-black/30" 
-              onClick={() => setShowMobileStructure(false)} 
-            />
-            <div className="absolute top-4 left-4 right-4 bg-[var(--mm-bg-elevated)] rounded-lg shadow-lg border border-[var(--mm-border)] max-h-[80vh] overflow-auto">
-              <div className="flex items-center justify-between p-3 border-b border-[var(--mm-border)]">
-                <span className="font-medium text-sm">{t('mindmap:selectStructure')}</span>
-                <NotionButton variant="ghost" 
-                  className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
-                  onClick={() => setShowMobileStructure(false)}
-                >
-                  <X className="w-4 h-4" />
-                </NotionButton>
-              </div>
-              <div className="p-2">
-                <StructureSelector 
-                  placement="inline"
-                  onSelect={() => setShowMobileStructure(false)}
-                />
-              </div>
+          <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
+            <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
+              <NotionButton variant="ghost"
+                className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+                onClick={() => setShowMobileStructure(false)}
+                aria-label={t('common:back', '返回')}
+              >
+                <CaretLeft className="w-5 h-5" />
+              </NotionButton>
+              <span className="font-medium text-sm">{t('mindmap:selectStructure')}</span>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-2 pb-[var(--mobile-safe-area-bottom,0px)]">
+              <StructureSelector 
+                placement="inline"
+                onSelect={() => setShowMobileStructure(false)}
+              />
             </div>
           </div>
         )}
         
-        {/* Mobile: Style Panel Overlay */}
+        {/* Mobile: Style Panel（inline 子屏：全屏替换内容区 + 顶栏返回） */}
         {showMobileStyle && (
-          <div className="absolute inset-0 z-50 sm:hidden">
-            <div 
-              className="absolute inset-0 bg-black/30" 
-              onClick={() => setShowMobileStyle(false)} 
-            />
-            <div className="absolute top-4 left-4 right-4 bg-[var(--mm-bg-elevated)] rounded-lg shadow-lg border border-[var(--mm-border)] max-h-[80vh] overflow-auto">
-              <div className="flex items-center justify-between p-3 border-b border-[var(--mm-border)]">
-                <span className="font-medium text-sm">{t('mindmap:toolbar.styleSettings')}</span>
-                <NotionButton variant="ghost" 
-                  className="p-1 hover:bg-[var(--mm-bg-hover)] rounded"
-                  onClick={() => setShowMobileStyle(false)}
-                >
-                  <X className="w-4 h-4" />
-                </NotionButton>
-              </div>
-              <div className="p-2">
-                <StyleSettings placement="inline" />
-              </div>
+          <div className="absolute inset-0 z-50 sm:hidden flex flex-col bg-[var(--mm-bg)]">
+            <div className="flex items-center gap-1 px-2 h-12 border-b border-[var(--mm-border)] shrink-0">
+              <NotionButton variant="ghost"
+                className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
+                onClick={() => setShowMobileStyle(false)}
+                aria-label={t('common:back', '返回')}
+              >
+                <CaretLeft className="w-5 h-5" />
+              </NotionButton>
+              <span className="font-medium text-sm">{t('mindmap:toolbar.styleSettings')}</span>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto p-2 pb-[var(--mobile-safe-area-bottom,0px)]">
+              <StyleSettings placement="inline" />
             </div>
           </div>
         )}
@@ -890,7 +1080,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
         {/* Export Loading Overlay */}
         {isExporting && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
-            <div className="bg-[var(--mm-bg-elevated)] px-8 py-6 rounded-lg shadow-lg border border-[var(--mm-border)] flex flex-col items-center gap-4 animate-in fade-in zoom-in-95 duration-200 min-w-[240px]">
+            <div className="bg-[var(--mm-bg-elevated)] px-8 py-6 rounded-lg shadow-lg border border-[var(--mm-border)] flex flex-col items-center gap-4 ui-zoom-fade-in min-w-[240px]">
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium text-[var(--mm-text)]">{t('mindmap:export.processing')}</span>
