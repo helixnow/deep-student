@@ -78,6 +78,76 @@ fn default_bbox() -> [f64; 4] {
 }
 
 // ============================================================================
+// ★ P1-3 修复：DOCX 直提路径的图片请求预算
+//
+// 此前 extract_docx_questions_stream 把全部原始图片（不压缩、无上限）
+// 塞进单次 VLM 请求，几十张手机照片即产生数十 MB 请求体（413/超时），
+// 且每次重试完整重传。以下限制对齐考卷分割路径
+// （llm_manager::EXAM_SEGMENT_MAX_IMAGE_BYTES / EXAM_SEGMENT_MAX_DIMENSION /
+//  EXAM_SEGMENT_MAX_PAGES，私有常量故在此镜像）。
+// ============================================================================
+
+/// 单图字节上限（超过则缩放 + JPEG 重编码），对齐 EXAM_SEGMENT_MAX_IMAGE_BYTES
+const DOCX_VLM_MAX_IMAGE_BYTES: usize = 1_500_000;
+/// 压缩时的最长边上限，对齐 EXAM_SEGMENT_MAX_DIMENSION
+const DOCX_VLM_MAX_DIMENSION: u32 = 1_600;
+/// 单次请求最多附带的图片数，对齐 EXAM_SEGMENT_MAX_PAGES
+const DOCX_VLM_MAX_IMAGES: usize = 36;
+
+/// 压缩单张 base64 data URL 图片：解码后超过字节上限时缩放至最长边
+/// DOCX_VLM_MAX_DIMENSION 并以 JPEG(85) 重编码。
+///
+/// 解码/压缩失败或压缩后反而更大时返回原始 data URL（不改变行为，仅放弃优化）。
+fn compress_data_url_if_needed(data_url: &str) -> String {
+    let Some(comma) = data_url.find(',') else {
+        return data_url.to_string();
+    };
+    if !data_url[..comma].contains(";base64") {
+        return data_url.to_string();
+    }
+    let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&data_url[comma + 1..])
+    else {
+        return data_url.to_string();
+    };
+    if bytes.len() <= DOCX_VLM_MAX_IMAGE_BYTES {
+        return data_url.to_string();
+    }
+    let Ok(img) = image::load_from_memory(&bytes) else {
+        return data_url.to_string();
+    };
+    let (w, h) = img.dimensions();
+    let resized = if w <= DOCX_VLM_MAX_DIMENSION && h <= DOCX_VLM_MAX_DIMENSION {
+        img
+    } else {
+        img.resize(
+            DOCX_VLM_MAX_DIMENSION,
+            DOCX_VLM_MAX_DIMENSION,
+            image::imageops::FilterType::Triangle,
+        )
+    };
+    let mut cursor = std::io::Cursor::new(Vec::new());
+    if resized
+        .write_to(&mut cursor, image::ImageOutputFormat::Jpeg(85))
+        .is_err()
+    {
+        return data_url.to_string();
+    }
+    let out = cursor.into_inner();
+    if out.len() >= bytes.len() {
+        return data_url.to_string();
+    }
+    info!(
+        "[VLM-Grounding] DOCX 图片压缩: {:.1}MB -> {:.1}MB",
+        bytes.len() as f64 / (1024.0 * 1024.0),
+        out.len() as f64 / (1024.0 * 1024.0)
+    );
+    format!(
+        "data:image/jpeg;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&out)
+    )
+}
+
+// ============================================================================
 // DOCX 图文混合 VLM 直提类型
 // ============================================================================
 
@@ -226,9 +296,11 @@ impl VlmGroundingService {
             }
 
             if attempt == 0 {
+                // 🔒 URL query 可能含 API key（Gemini ?key=...），日志脱敏
                 info!(
                     "[VLM-Grounding] 发送分析请求: model={}, url={}",
-                    config.model, preq.url
+                    config.model,
+                    crate::llm_manager::sanitize_url_for_log(&preq.url)
                 );
             }
 
@@ -418,19 +490,48 @@ impl VlmGroundingService {
             .llm_manager
             .decrypt_api_key_if_needed(&config.api_key)?;
 
-        // 构建多图 + 文本的 content 数组
-        let mut content_parts: Vec<Value> = Vec::with_capacity(image_data_urls.len() + 1);
+        // ★ P1-3 修复：进请求前做图片压缩（超限缩放 + JPEG 重编码），
+        // 压缩为 CPU 密集操作，放到 blocking 线程执行
+        let prepared_urls: Vec<String> = {
+            let urls: Vec<String> = image_data_urls.to_vec();
+            tokio::task::spawn_blocking(move || {
+                urls.iter()
+                    .map(|u| compress_data_url_if_needed(u))
+                    .collect::<Vec<String>>()
+            })
+            .await
+            .map_err(|e| AppError::internal(format!("图片压缩任务失败: {}", e)))?
+        };
 
-        for (idx, url) in image_data_urls.iter().enumerate() {
+        if prepared_urls.len() > DOCX_VLM_MAX_IMAGES {
+            warn!(
+                "[VLM-Grounding] DOCX 图片数 {} 超过单请求上限 {}，超出部分将省略（仅保留文本标注）",
+                prepared_urls.len(),
+                DOCX_VLM_MAX_IMAGES
+            );
+        }
+
+        // 构建多图 + 文本的 content 数组
+        let mut content_parts: Vec<Value> = Vec::with_capacity(prepared_urls.len() * 2 + 1);
+
+        for (idx, url) in prepared_urls.iter().enumerate() {
             // 在每张图片前加文本标注，帮助 VLM 建立索引
             content_parts.push(json!({
                 "type": "text",
                 "text": format!("【图片{}】", idx)
             }));
-            content_parts.push(json!({
-                "type": "image_url",
-                "image_url": { "url": url, "detail": "high" }
-            }));
+            if idx < DOCX_VLM_MAX_IMAGES {
+                content_parts.push(json!({
+                    "type": "image_url",
+                    "image_url": { "url": url, "detail": "high" }
+                }));
+            } else {
+                // 保留编号连续性（VLM 输出以图片索引关联题目），仅省略图片本体
+                content_parts.push(json!({
+                    "type": "text",
+                    "text": "（该图片超出单次请求数量上限，已省略）"
+                }));
+            }
         }
 
         // 构建提取指令
@@ -488,7 +589,7 @@ impl VlmGroundingService {
             "[VLM-Grounding] DOCX 图文提取 (streaming): {} 张图片, model={}, url={}",
             image_data_urls.len(),
             config.model,
-            preq.url
+            crate::llm_manager::sanitize_url_for_log(&preq.url)
         );
 
         const MAX_RETRIES: u32 = 2;
@@ -547,6 +648,8 @@ impl VlmGroundingService {
             use futures_util::StreamExt;
             let mut stream = response.bytes_stream();
             let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
+            // 增量 UTF-8 解码：保留跨 chunk 边界的不完整多字节字符，避免中文乱码
+            let mut utf8_decoder = crate::llm_manager::utf8_stream::Utf8StreamDecoder::new();
             let mut json_parser = crate::llm_manager::IncrementalJsonArrayParser::new();
             let mut full_content = String::new();
             let mut stream_ended = false;
@@ -560,7 +663,7 @@ impl VlmGroundingService {
                 }
                 match chunk_result {
                     Ok(chunk) => {
-                        let chunk_str = String::from_utf8_lossy(&chunk);
+                        let chunk_str = utf8_decoder.decode(&chunk);
                         let complete_lines = sse_buffer.process_chunk(&chunk_str);
 
                         for line in complete_lines {
@@ -636,6 +739,35 @@ impl VlmGroundingService {
                 }
                 if stream_ended {
                     break;
+                }
+            }
+
+            // ★ S5 遗留：冲刷 UTF-8 解码器残留后再 flush SSE 缓冲
+            {
+                let tail = utf8_decoder.flush();
+                if !tail.is_empty() {
+                    let complete_lines = sse_buffer.process_chunk(&tail);
+                    for line in complete_lines {
+                        if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                            break;
+                        }
+                        let events = provider.parse_stream(&line);
+                        for event in events {
+                            if let crate::providers::StreamEvent::ContentChunk(content) = event {
+                                full_content.push_str(&content);
+                                if let Some(objects) = json_parser.feed(&content) {
+                                    for obj in objects {
+                                        if let Ok(vq) =
+                                            serde_json::from_value::<VlmExtractedQuestion>(obj)
+                                        {
+                                            question_count += 1;
+                                            let _ = on_question(vq);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

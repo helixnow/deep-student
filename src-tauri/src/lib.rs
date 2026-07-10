@@ -4,6 +4,7 @@
 
 // 声明所有子模块，以便在 crate 内可见
 pub mod adapters;
+pub mod anki;
 pub mod anki_connect_service;
 #[allow(dead_code)]
 pub mod apkg_exporter_service;
@@ -24,7 +25,7 @@ pub mod debug_commands;
 pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
 pub mod debug_logger;
 
-pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
+pub mod anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
 pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
@@ -46,6 +47,7 @@ pub mod essay_grading;
 #[allow(dead_code)]
 pub mod exam_sheet_service;
 pub mod feature_flags;
+pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 pub mod figure_extractor;
 pub mod file_manager;
 pub mod injection_budget;
@@ -84,6 +86,7 @@ pub mod question_import_service;
 pub mod question_sync_service;
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
+pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
@@ -187,6 +190,25 @@ fn prepare_linux_appimage_runtime_env() {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // 环境变量在 run() 最前面设置（审阅 34 P2-3 / 19 P2-2）：
+    // 此时 Sentry/tokio/ANR 看门狗等工作线程尚未启动，set_var 不存在
+    // 多线程 getenv 数据竞争；原先放在 setup 闭包里时该前提不成立。
+    // Windows WebView2 参数由 tauri.windows.conf.json 的 additionalBrowserArgs 注入。
+    // ANTI-REGRESSION（2026-07-10）：禁止在此处或 tauri.windows.conf.json 的
+    // additionalBrowserArgs 里加 --disable-gpu / --disable-gpu-compositing /
+    // CalculateNativeWinOcclusion。OS 模式 translate3d 拖窗依赖 GPU 合成；
+    // 全局软件渲染会造成固定起拖卡顿。仅保留 OOUI/SmartScreen 相关 disable-features；
+    // 显卡级问题用设备白名单回退，勿全局禁用。macOS/Linux 无此开关，勿在平台 conf 仿写。
+
+    // 始终开启 Rust backtrace，便于 crash 日志定位
+    std::env::set_var("RUST_BACKTRACE", "1");
+
+    // 默认压降第三方过度详细的日志（可用 RUST_LOG 覆盖）
+    if std::env::var("RUST_LOG").is_err() {
+        // info 级别，且降低 lance/lancedb 噪声
+        std::env::set_var("RUST_LOG", "info,lance=warn,lancedb=warn,tracing=warn");
+    }
+
     #[cfg(target_os = "linux")]
     prepare_linux_appimage_runtime_env();
 
@@ -209,7 +231,22 @@ pub fn run() {
     };
 
     // 构建 Tauri 应用
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // 单实例锁（审阅 34 P1-2，2026-07-08）：防止双开进程共享同一套
+    // SQLite/数据空间（A/B 切换标记、周期自动化调度器、更新器均不可重入）。
+    // 官方要求该插件必须最先注册；仅桌面端启用。
+    // 第二个实例启动时，把已有实例的主窗口带到前台。
+    #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }));
+
+    let builder = builder
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -307,10 +344,13 @@ pub fn run() {
             // 初始化崩溃日志（即使后续仍有致命错误，也能落盘）
             crate::crash_logger::init_crash_logging(base_app_data_dir.clone());
 
-            // 启动 ANR 看门狗（所有平台，检测后端线程阻塞）
+            // 启动异步运行时看门狗（所有平台）。
+            // 注意：心跳跑在 tokio runtime 上，检测的是 tokio worker 饥饿
+            // （如全局锁风暴导致所有 invoke 停摆），不是 UI 主线程 ANR，
+            // 详见 anr_watchdog.rs 模块文档（审阅 19 P2-1 修正）。
             crate::anr_watchdog::start_anr_watchdog();
 
-            // 定期发送心跳以驱动 ANR 检测
+            // 定期发送心跳以驱动运行时饥饿检测
             tauri::async_runtime::spawn(async {
                 let mut interval = tokio::time::interval(std::time::Duration::from_secs(3));
                 loop {
@@ -326,26 +366,11 @@ pub fn run() {
                 );
             }
 
-            // Windows WebView2 稳定性：禁用 GPU 合成以规避部分 Win10 设备崩溃
-            // SAFETY: std::env::set_var 在此处于应用启动的单线程初始化阶段调用，
-            // 尚未创建任何工作线程，因此不存在多线程环境变量竞争的未定义行为风险。
-            #[cfg(target_os = "windows")]
-            {
-                std::env::set_var(
-                    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                    "--disable-gpu --disable-gpu-compositing --disable-features=CalculateNativeWinOcclusion",
-                );
-            }
-            // 始终开启 Rust backtrace，便于 crash 日志定位
-            // SAFETY: 同上，单线程启动阶段调用
-            std::env::set_var("RUST_BACKTRACE", "1");
-
-            // 默认压降第三方过度详细的日志（可用 RUST_LOG 覆盖）
-            if std::env::var("RUST_LOG").is_err() {
-                // info 级别，且降低 lance/lancedb 噪声
-                // SAFETY: 同上，单线程启动阶段调用
-                std::env::set_var("RUST_LOG", "info,lance=warn,lancedb=warn,tracing=warn");
-            }
+            // 注意（审阅 34 P1-1 / 19 P1-1，2026-07-08）：
+            // WebView2 参数必须走 tauri.windows.conf.json 的 additionalBrowserArgs；
+            // Wry 会覆盖 WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS，setup 阶段设置也已过晚。
+            // RUST_BACKTRACE / RUST_LOG 已移至 run() 开头（真正的单线程阶段）。
+            // ANTI-REGRESSION：勿在此 set_var WEBVIEW2_* 注入 --disable-gpu*；见 windows conf。
 
             // 初始化数据空间管理器（A/B 双数据空间）并应用 pending 切换
             crate::data_space::init_data_space_manager(base_app_data_dir.clone());
@@ -706,6 +731,18 @@ pub fn run() {
                 }
             }
 
+            // Workbench 内置浏览器：manage 未打开的 DB + Service（不无条件 ensure_open）
+            {
+                let browser_db = std::sync::Arc::new(crate::browser::BrowserDatabase::new(
+                    active_app_data_dir.clone(),
+                ));
+                let browser_svc =
+                    crate::browser::BrowserService::new(app_handle.clone(), browser_db);
+                crate::browser::BrowserService::boot_cleanup(&app_handle);
+                app.manage(browser_svc);
+                info!("✅ BrowserService 已注册（lazy DB；boot_cleanup 已扫孤儿窗）");
+            }
+
             // 初始化 MCP 客户端（已熔断后端模式；仅当 mcp.mode=backend 时才初始化）
             #[cfg(feature = "mcp")]
             {
@@ -770,6 +807,21 @@ pub fn run() {
                         database_manager_for_backup,
                         file_manager_for_backup,
                     ).await;
+                });
+            }
+
+            // 周期自动化调度器
+            {
+                let database_for_automation = database.clone();
+                let vfs_db_for_automation = app_state.inner().vfs_db.clone();
+                let app_handle_for_automation = app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    crate::chat_v2::automations::start_automation_scheduler(
+                        database_for_automation,
+                        vfs_db_for_automation,
+                        app_handle_for_automation,
+                    )
+                    .await;
                 });
             }
 
@@ -859,6 +911,38 @@ pub fn run() {
                 }
             }
 
+            // Windows：WebView2 呈现位置自愈（2026-07-10 OS 模式整层错位事故）。
+            // WebView2 把 Chromium 合成输出经 DirectComposition 呈现到宿主 HWND 的
+            // 那一段，在 resize / 最大化 / 跨 DPI 显示器移动后偶发保持陈旧偏移：
+            // 页面布局正确，但整个画面上/下错位（顶部黑条、Dock 画出窗框以下）。
+            // NotifyParentWindowPositionChanged 是宿主侧标准自愈调用——强制
+            // WebView2 重新计算相对宿主窗口的呈现位置与裁剪。幂等且极廉价，
+            // 在聚焦 / 尺寸 / DPI 变化时各补一次。前端另有 useCompositorNudge
+            // 做页面侧整面重绘，两层自愈相互独立（CI：platformPerformanceConfig）。
+            #[cfg(windows)]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let webview_for_refresh = window.clone();
+                    window.on_window_event(move |event| {
+                        use tauri::WindowEvent;
+                        let should_refresh = matches!(
+                            event,
+                            WindowEvent::Focused(true)
+                                | WindowEvent::Resized(_)
+                                | WindowEvent::ScaleFactorChanged { .. }
+                        );
+                        if should_refresh {
+                            let _ = webview_for_refresh.with_webview(|platform| {
+                                let controller = platform.controller();
+                                // SAFETY: with_webview 在 UI 线程回调；controller 由 wry
+                                // 持有存活。该 COM 调用无出参、幂等，失败可安全忽略。
+                                let _ = unsafe { controller.NotifyParentWindowPositionChanged() };
+                            });
+                        }
+                    });
+                }
+            }
+
             Ok(())
         })
         // Provide ChatV2State for Chat V2 stream management (Arc wrapped for spawn usage)
@@ -936,6 +1020,9 @@ pub fn run() {
             crate::commands::save_api_configurations,
             crate::commands::get_model_assignments,
             crate::commands::save_model_assignments,
+            // LLM Failover 策略（fallback 链 / key 轮换 / 用途分模型路由）
+            crate::llm_manager::routing::llm_get_failover_policy,
+            crate::llm_manager::routing::llm_set_failover_policy,
             crate::commands::get_vendor_configs,
             crate::commands::save_vendor_configs,
             crate::commands::get_model_profiles,
@@ -1264,6 +1351,15 @@ pub fn run() {
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_respond
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_cancel
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_clear_approval_history
+            ,crate::chat_v2::runtime_roots::chat_v2_list_runtime_roots
+            ,crate::chat_v2::runtime_roots::chat_v2_set_workspace_root
+            ,crate::chat_v2::runtime_roots::chat_v2_reset_workspace_root
+            ,crate::chat_v2::runtime_roots::chat_v2_authorize_runtime_root
+            ,crate::chat_v2::runtime_roots::chat_v2_revoke_runtime_root
+            ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
+            ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
+            ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write
+            ,crate::chat_v2::runtime_roots::chat_v2_read_runtime_file
             // 🆕 用户提问命令（轻量级问答交互）
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）
@@ -1311,10 +1407,12 @@ pub fn run() {
             ,crate::chat_v2::handlers::resource_handlers::resource_get_versions_by_source
             // 🆕 Skills 文件系统命令
             ,crate::chat_v2::skills::skill_list_directories
+            ,crate::chat_v2::skills::skill_list_package_files
             ,crate::chat_v2::skills::skill_read_file
             ,crate::chat_v2::skills::skill_create
             ,crate::chat_v2::skills::skill_update
             ,crate::chat_v2::skills::skill_delete
+            ,crate::chat_v2::skills::skill_import_zip
             // =================================================
             // VFS 虚拟文件系统命令
             // =================================================
@@ -1671,6 +1769,29 @@ pub fn run() {
             ,crate::review_plan_service::review_plan_get_or_create
             ,crate::review_plan_service::review_plan_get_calendar_data
             // =================================================
+            // FSRS 闪卡复习（M2：近似调度，独立于 anki_cards / review_plans）
+            // =================================================
+            ,crate::cmd::fsrs_review::fsrs_enqueue_cards
+            ,crate::cmd::fsrs_review::fsrs_get_due
+            ,crate::cmd::fsrs_review::fsrs_rate
+            ,crate::cmd::fsrs_review::fsrs_get_stats
+            // =================================================
+            // Workbench 内置浏览器（B1e；content 窗零 capability，见 capabilities/browser-content.json）
+            // =================================================
+            ,crate::cmd::browser::browser_open_session
+            ,crate::cmd::browser::browser_navigate
+            ,crate::cmd::browser::browser_back
+            ,crate::cmd::browser::browser_forward
+            ,crate::cmd::browser::browser_reload
+            ,crate::cmd::browser::browser_get_state
+            ,crate::cmd::browser::browser_close
+            ,crate::cmd::browser::browser_focus
+            ,crate::cmd::browser::browser_take_over
+            ,crate::cmd::browser::browser_snapshot
+            ,crate::cmd::browser::browser_click
+            ,crate::cmd::browser::browser_type
+            ,crate::cmd::browser::browser_scroll
+            // =================================================
             // 题目集同步冲突策略
             // =================================================
             ,crate::question_sync_service::qbank_sync_check
@@ -1745,6 +1866,10 @@ pub fn run() {
             ,crate::data_governance::commands::data_governance_get_migration_diagnostic_report
             ,crate::data_governance::commands::data_governance_run_slot_c_empty_db_test
             ,crate::data_governance::commands::data_governance_run_slot_d_clone_db_test
+            // =================================================
+            // Chat V2 自动化：立即运行（headless agent turn）
+            // =================================================
+            ,crate::chat_v2::automations::chat_v2_automation_run_now
         ])
         // 注册 pdfstream:// 自定义协议，用于 PDF 流式加载（支持 HTTP Range Request）
         .register_uri_scheme_protocol("pdfstream", |ctx, request| {

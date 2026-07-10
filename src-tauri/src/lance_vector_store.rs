@@ -249,6 +249,105 @@ impl LanceVectorStore {
         vec![256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096]
     }
 
+    /// 从表名解析维度后缀（如 `kb_chunks_v2_d1792` → 1792）
+    ///
+    /// P1 修复：写入路径接受任意维度，但维护路径此前只遍历 `candidate_dim_values()`
+    /// 硬编码白名单，非白名单维度（如 Matryoshka 截断的 1792/2560）写入后会成为
+    /// "检索得到、删不掉、统计不到"的孤儿数据。改为按 LanceDB 实际存在的表枚举。
+    #[cfg(feature = "lance")]
+    fn parse_dim_from_table_name(name: &str, prefix: &str) -> Option<usize> {
+        name.strip_prefix(prefix)
+            .and_then(|suffix| suffix.parse::<usize>().ok())
+    }
+
+    /// 枚举 LanceDB 中实际存在的、带指定维度前缀的表（返回 (dim, table_name)，按 dim 升序）
+    #[cfg(feature = "lance")]
+    async fn existing_dim_tables(
+        db: &lancedb::Connection,
+        prefix: &str,
+    ) -> Result<Vec<(usize, String)>> {
+        let names = db
+            .table_names()
+            .execute()
+            .await
+            .map_err(|e| AppError::database(format!("枚举 Lance 表失败: {}", e)))?;
+        let mut out: Vec<(usize, String)> = names
+            .into_iter()
+            .filter_map(|name| {
+                Self::parse_dim_from_table_name(&name, prefix).map(|dim| (dim, name))
+            })
+            .collect();
+        out.sort_unstable_by_key(|(dim, _)| *dim);
+        Ok(out)
+    }
+
+    /// 只读打开指定维度的 KB 宽表。
+    ///
+    /// P1 修复：检索路径此前调用 `ensure_wide_table(查询向量维度)`，表不存在时会
+    /// 静默创建一张空表并返回空结果——嵌入模型切换维度后所有历史数据"消失"且无任何
+    /// 提示，同时读路径产生建表副作用。改为：
+    /// - 表存在 → 返回 `Some(tbl)`；
+    /// - 表不存在且库内没有任何 KB 维度表 → 返回 `None`（空库，正常返回空结果）；
+    /// - 表不存在但存在其它维度的 KB 表 → 返回明确错误，提示嵌入模型维度不匹配需重建索引。
+    #[cfg(feature = "lance")]
+    async fn open_wide_table_for_read(&self, dim: usize) -> Result<Option<Table>> {
+        let path = self.get_lance_path()?;
+        let db = lancedb::connect(&path)
+            .execute()
+            .await
+            .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
+        let table_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
+        match db.open_table(&table_name).execute().await {
+            Ok(tbl) => Ok(Some(tbl)),
+            Err(_) => {
+                let existing = Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX)
+                    .await
+                    .unwrap_or_default();
+                if existing.is_empty() {
+                    // 空库：尚未写入任何向量，返回空结果是正确语义
+                    Ok(None)
+                } else {
+                    let dims: Vec<usize> = existing.iter().map(|(d, _)| *d).collect();
+                    warn!(
+                        "⚠️ [LanceVector] 查询向量维度 {} 与库内既有维度 {:?} 不匹配，拒绝检索（嵌入模型可能已变更）",
+                        dim, dims
+                    );
+                    Err(AppError::validation(format!(
+                        "查询向量维度 {} 与知识库现有向量维度 {:?} 不匹配：嵌入模型可能已变更，请重建向量索引后再检索",
+                        dim, dims
+                    )))
+                }
+            }
+        }
+    }
+
+    /// 只读打开指定维度的聊天向量表；表不存在返回 `None`（不创建表）。
+    /// 与 KB 不同，聊天记忆检索是背景增强能力，维度不匹配时告警并返回空结果而非报错。
+    #[cfg(feature = "lance")]
+    async fn open_chat_table_for_read(&self, dim: usize) -> Result<Option<Table>> {
+        let path = self.get_lance_path()?;
+        let db = lancedb::connect(&path)
+            .execute()
+            .await
+            .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
+        let table_name = format!("{}{}", CHAT_V2_TABLE_PREFIX, dim);
+        match db.open_table(&table_name).execute().await {
+            Ok(tbl) => Ok(Some(tbl)),
+            Err(_) => {
+                if let Ok(existing) = Self::existing_dim_tables(&db, CHAT_V2_TABLE_PREFIX).await {
+                    if !existing.is_empty() {
+                        let dims: Vec<usize> = existing.iter().map(|(d, _)| *d).collect();
+                        warn!(
+                            "⚠️ [LanceChat] 查询向量维度 {} 与聊天向量表既有维度 {:?} 不匹配，返回空结果（嵌入模型可能已变更）",
+                            dim, dims
+                        );
+                    }
+                }
+                Ok(None)
+            }
+        }
+    }
+
     #[cfg(feature = "lance")]
     fn extract_chunk_rows_from_batch(batch: &RecordBatch) -> Result<Vec<LanceChunkRow>> {
         let schema = batch.schema();
@@ -357,8 +456,8 @@ impl LanceVectorStore {
         let mut text_bytes: usize = 0;
         let mut embedding_bytes: usize = 0;
 
-        for dim in Self::candidate_dim_values() {
-            let table_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
+        // P1 修复：枚举实际存在的维度表，覆盖非白名单维度（如 1792/2560）的数据
+        for (_dim, table_name) in Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX).await? {
             let tbl = match db.open_table(&table_name).execute().await {
                 Ok(tbl) => tbl,
                 Err(_) => continue,
@@ -413,13 +512,13 @@ impl LanceVectorStore {
         })
     }
 
+    /// 枚举实际存在的 KB 维度表名（P1 修复：不再依赖 candidate_dim_values 白名单）
     #[cfg(feature = "lance")]
-    fn candidate_kb_table_names_for_scan() -> Vec<String> {
-        let mut names: Vec<String> = Vec::new();
-        for d in Self::candidate_dim_values() {
-            names.push(format!("{}{}", KB_V2_TABLE_PREFIX, d));
-        }
-        names
+    async fn existing_kb_table_names(db: &Connection) -> Vec<String> {
+        Self::existing_dim_tables(db, KB_V2_TABLE_PREFIX)
+            .await
+            .map(|pairs| pairs.into_iter().map(|(_, name)| name).collect())
+            .unwrap_or_default()
     }
     pub fn new(database: Arc<Database>) -> Result<Self> {
         // 在启用情况下，可在此读取维度 / 初始化 Lance 表等
@@ -447,7 +546,7 @@ impl LanceVectorStore {
         let fut = async move {
             let db = lancedb::connect(&path).execute().await.ok()?;
             let mut total: usize = 0;
-            for name in Self::candidate_kb_table_names_for_scan() {
+            for name in Self::existing_kb_table_names(&db).await {
                 if let Ok(tbl) = db.open_table(&name).execute().await {
                     if let Ok(mut stream) = tbl.query().execute().await {
                         while let Ok(Some(batch)) = stream.try_next().await {
@@ -1125,7 +1224,14 @@ impl LanceVectorStore {
                 .collect::<Vec<_>>()
                 .join(",");
             let expr = format!("chunk_id IN ({})", in_list);
-            let _ = tbl.delete(expr.as_str()).await;
+            // P2 修复：upsert 为"先删后插"，删除失败若被忽略会导致同一 chunk_id
+            // 新旧两行并存（重复行挤占 top_k）。删除失败即中止本批写入。
+            tbl.delete(expr.as_str()).await.map_err(|e| {
+                AppError::database(format!(
+                    "upsert 前删除旧 chunk 失败（中止本批写入以避免重复行）: {}",
+                    e
+                ))
+            })?;
         }
 
         let (schema, batch) = self.build_batch_embeddings_wide(dim, rows)?;
@@ -1182,7 +1288,10 @@ impl LanceVectorStore {
         use futures_util::TryStreamExt;
 
         let dim = query_embedding.len();
-        let tbl = self.ensure_wide_table(dim).await?;
+        // P1 修复：检索是只读路径，不创建表；维度不匹配时报错而非静默空结果
+        let Some(tbl) = self.open_wide_table_for_read(dim).await? else {
+            return Ok(Vec::new());
+        };
 
         let mut fetch_limit = top_k.saturating_mul(fetch_mul.max(1));
         if fetch_limit < top_k {
@@ -1378,7 +1487,10 @@ impl LanceVectorStore {
         use futures_util::TryStreamExt;
 
         let dim = query_embedding.len();
-        let tbl = self.ensure_wide_table(dim).await?;
+        // P1 修复：检索是只读路径，不创建表；维度不匹配时报错而非静默空结果
+        let Some(tbl) = self.open_wide_table_for_read(dim).await? else {
+            return Ok(Vec::new());
+        };
 
         let mut fetch_limit = top_k.saturating_mul(fetch_mul.max(1));
         if fetch_limit < top_k {
@@ -1600,8 +1712,8 @@ impl LanceVectorStore {
             .await
             .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
         let mut tables = Vec::new();
-        for dim in Self::candidate_dim_values() {
-            let table_name = format!("{}{}", CHAT_V2_TABLE_PREFIX, dim);
+        // P1 修复：枚举实际存在的维度表，覆盖非白名单维度
+        for (_dim, table_name) in Self::existing_dim_tables(&db, CHAT_V2_TABLE_PREFIX).await? {
             if let Ok(tbl) = db.open_table(&table_name).execute().await {
                 tables.push(tbl);
             }
@@ -1621,7 +1733,10 @@ impl LanceVectorStore {
         use futures_util::TryStreamExt;
 
         let dim = query_embedding.len();
-        let tbl = self.ensure_chat_table(dim).await?;
+        // P1 修复：检索是只读路径，不创建表；维度不匹配时告警并返回空结果
+        let Some(tbl) = self.open_chat_table_for_read(dim).await? else {
+            return Ok(Vec::new());
+        };
 
         let mut fetch_limit = top_k.saturating_mul(fetch_mul.max(1));
         if fetch_limit < top_k {
@@ -1955,8 +2070,8 @@ impl LanceVectorStore {
             .await
             .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
         let mut total = 0usize;
-        for dim in Self::candidate_dim_values() {
-            let table_name = format!("{}{}", CHAT_V2_TABLE_PREFIX, dim);
+        // P1 修复：枚举实际存在的维度表，覆盖非白名单维度
+        for (_dim, table_name) in Self::existing_dim_tables(&db, CHAT_V2_TABLE_PREFIX).await? {
             let tbl = match db.open_table(&table_name).execute().await {
                 Ok(tbl) => tbl,
                 Err(_) => continue,
@@ -1981,8 +2096,8 @@ impl LanceVectorStore {
             .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
 
         let mut all_ids: HashSet<String> = HashSet::new();
-        for dim in Self::candidate_dim_values() {
-            let table_name = format!("{}{}", CHAT_V2_TABLE_PREFIX, dim);
+        // P1 修复：枚举实际存在的维度表，覆盖非白名单维度
+        for (_dim, table_name) in Self::existing_dim_tables(&db, CHAT_V2_TABLE_PREFIX).await? {
             let tbl = match db.open_table(&table_name).execute().await {
                 Ok(tbl) => tbl,
                 Err(_) => continue,
@@ -2028,9 +2143,15 @@ impl LanceVectorStore {
 
         let mut doc_revision_map: HashMap<String, String> = HashMap::new();
         let mut per_doc_counts: HashMap<String, usize> = HashMap::new();
+        // P2 修复：upsert 先删后插非原子，历史数据可能存在重复 chunk_id 行；
+        // 检索侧按 chunk_id 去重兜底，保留分数最高的一行（rows 已按分数降序）
+        let mut seen_chunk_ids: HashSet<String> = HashSet::new();
         let mut out: Vec<RetrievedChunk> = Vec::with_capacity(top_k);
 
         for (row, score) in rows.into_iter() {
+            if !seen_chunk_ids.insert(row.chunk_id.clone()) {
+                continue;
+            }
             let doc_id = row.document_id.clone();
             let active_revision = if let Some(rev) = doc_revision_map.get(&doc_id) {
                 rev.clone()
@@ -2196,7 +2317,13 @@ impl LanceVectorStore {
                     .collect::<Vec<_>>()
                     .join(",")
             );
-            let _ = tbl.delete(expr.as_str()).await;
+            // P2 修复：删除失败即中止本批写入，避免同一 message_id 新旧两行并存
+            tbl.delete(expr.as_str()).await.map_err(|e| {
+                AppError::database(format!(
+                    "upsert 前删除旧聊天向量失败（中止本批写入以避免重复行）: {}",
+                    e
+                ))
+            })?;
         }
         let (schema, batch) = self.build_batch_embeddings_chat(dim, rows)?;
         let iter = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
@@ -2254,7 +2381,10 @@ impl LanceVectorStore {
     ) -> Result<Vec<(String, f32)>> {
         use futures_util::TryStreamExt;
         let fetch_limit: usize = std::cmp::max(1, limit).saturating_mul(10);
-        let tbl = self.ensure_chat_table(query_embedding.len()).await?;
+        // P1 修复：检索是只读路径，不创建表；维度不匹配时告警并返回空结果
+        let Some(tbl) = self.open_chat_table_for_read(query_embedding.len()).await? else {
+            return Ok(Vec::new());
+        };
         let mut stream = tbl
             .vector_search(query_embedding)
             .map_err(|e| AppError::database(e.to_string()))?
@@ -2866,8 +2996,8 @@ impl VectorStore for LanceVectorStore {
                 .map(|batch| batch.iter().map(|id| id.replace("'", "''")).collect())
                 .collect();
 
-            for dim in Self::candidate_dim_values() {
-                let wide_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
+            // P1 修复：枚举实际存在的维度表，非白名单维度的数据也能被删除
+            for (_dim, wide_name) in Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX).await? {
                 if let Ok(tbl) = db.open_table(&wide_name).execute().await {
                     for ids in &delete_batches {
                         let expr = format!(
@@ -2877,7 +3007,12 @@ impl VectorStore for LanceVectorStore {
                                 .collect::<Vec<_>>()
                                 .join(",")
                         );
-                        let _ = tbl.delete(expr.as_str()).await;
+                        if let Err(err) = tbl.delete(expr.as_str()).await {
+                            warn!(
+                                "⚠️ [LanceDelete] 从表 {} 删除 chunk 失败: {}",
+                                wide_name, err
+                            );
+                        }
                     }
                 }
             }
@@ -2900,9 +3035,12 @@ impl VectorStore for LanceVectorStore {
 
             let filter_expr = format!("document_id = '{}'", document_id.replace("'", "''"));
             let mut chunk_rows: Vec<LanceChunkRow> = Vec::new();
+            let mut seen_chunk_ids: std::collections::HashSet<String> =
+                std::collections::HashSet::new();
 
-            for dim in Self::candidate_dim_values() {
-                let table_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
+            // P1 修复：枚举实际存在的维度表且不在首个非空表提前 break —— 模型切换期间
+            // 文档可能同时分布在多个维度表，需全部收集（按 chunk_id 去重）
+            for (_dim, table_name) in Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX).await? {
                 let tbl = match db.open_table(&table_name).execute().await {
                     Ok(tbl) => tbl,
                     Err(_) => continue,
@@ -2920,14 +3058,11 @@ impl VectorStore for LanceVectorStore {
                     .await
                     .map_err(|e| AppError::database(e.to_string()))?
                 {
-                    let rows = Self::extract_chunk_rows_from_batch(&batch)?;
-                    if !rows.is_empty() {
-                        chunk_rows.extend(rows);
+                    for row in Self::extract_chunk_rows_from_batch(&batch)? {
+                        if seen_chunk_ids.insert(row.chunk_id.clone()) {
+                            chunk_rows.push(row);
+                        }
                     }
-                }
-
-                if !chunk_rows.is_empty() {
-                    break;
                 }
             }
 
@@ -3001,12 +3136,14 @@ impl VectorStore for LanceVectorStore {
             }
         }
 
-        // 清空 Lance 表（遍历所有候选表，忽略不存在的表）
+        // 清空 Lance 表（P1 修复：枚举实际存在的维度表，覆盖非白名单维度）
         let path = self.get_lance_path()?;
         if let Ok(db) = lancedb::connect(&path).execute().await {
-            for name in Self::candidate_kb_table_names_for_scan() {
+            for name in Self::existing_kb_table_names(&db).await {
                 if let Ok(tbl) = db.open_table(&name).execute().await {
-                    let _ = tbl.delete("true").await; // 忽略错误提升容错
+                    if let Err(err) = tbl.delete("true").await {
+                        warn!("⚠️ [LanceClear] 清空表 {} 失败: {}", name, err);
+                    }
                 }
             }
         }
@@ -3114,11 +3251,11 @@ impl LanceVectorStore {
                 .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
             let mut remaining: HashMap<String, usize> = wanted.clone();
 
-            for dim in Self::candidate_dim_values() {
+            // P1 修复：枚举实际存在的维度表，非白名单维度的数据也能被按 id 取回
+            for (_dim, table_name) in Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX).await? {
                 if remaining.is_empty() {
                     break;
                 }
-                let table_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
                 let tbl = match db.open_table(&table_name).execute().await {
                     Ok(tbl) => tbl,
                     Err(_) => continue,
@@ -3219,7 +3356,10 @@ impl LanceVectorStore {
     ) -> Result<Vec<(String, f32)>> {
         use futures_util::TryStreamExt;
         let fetch_limit: usize = std::cmp::max(1, limit).saturating_mul(10);
-        let tbl = self.ensure_wide_table(query_embedding.len()).await?;
+        // P1 修复：检索是只读路径，不创建表；维度不匹配时报错而非静默空结果
+        let Some(tbl) = self.open_wide_table_for_read(query_embedding.len()).await? else {
+            return Ok(Vec::new());
+        };
 
         let mut stream = tbl
             .vector_search(query_embedding)
@@ -4339,4 +4479,65 @@ struct ChunkMeta {
     chunk_index: usize,
     text: String,
     metadata: HashMap<String, String>,
+}
+
+#[cfg(all(test, feature = "lance"))]
+mod tests {
+    use super::*;
+
+    /// P1 回归：维度表名解析必须覆盖任意维度（含非白名单维度），且拒绝无关表名
+    #[test]
+    fn parse_dim_from_table_name_accepts_any_dim_and_rejects_others() {
+        // 白名单维度
+        assert_eq!(
+            LanceVectorStore::parse_dim_from_table_name("kb_chunks_v2_d1024", KB_V2_TABLE_PREFIX),
+            Some(1024)
+        );
+        // 非白名单维度（Matryoshka 截断等）也必须能识别
+        assert_eq!(
+            LanceVectorStore::parse_dim_from_table_name("kb_chunks_v2_d1792", KB_V2_TABLE_PREFIX),
+            Some(1792)
+        );
+        assert_eq!(
+            LanceVectorStore::parse_dim_from_table_name("kb_chunks_v2_d2560", KB_V2_TABLE_PREFIX),
+            Some(2560)
+        );
+        // 前缀不符 / 后缀非数字 → None
+        assert_eq!(
+            LanceVectorStore::parse_dim_from_table_name(
+                "chat_embeddings_v2_d1024",
+                KB_V2_TABLE_PREFIX
+            ),
+            None
+        );
+        assert_eq!(
+            LanceVectorStore::parse_dim_from_table_name("kb_chunks_v2_dabc", KB_V2_TABLE_PREFIX),
+            None
+        );
+        assert_eq!(
+            LanceVectorStore::parse_dim_from_table_name("unrelated_table", KB_V2_TABLE_PREFIX),
+            None
+        );
+    }
+
+    /// P2 回归：检索侧按 chunk_id 去重，保留分数最高的一行
+    #[test]
+    fn rows_to_retrieved_input_dedup_semantics() {
+        // rows_to_retrieved 需要 Database 实例，这里验证去重前置逻辑的排序假设：
+        // 输入按分数降序排序后，首个出现的 chunk_id 即为最高分行
+        let mut rows: Vec<(String, f32)> = vec![
+            ("c1".to_string(), 0.5),
+            ("c1".to_string(), 0.9),
+            ("c2".to_string(), 0.7),
+        ];
+        rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+        let mut seen: HashSet<String> = HashSet::new();
+        let deduped: Vec<(String, f32)> = rows
+            .into_iter()
+            .filter(|(id, _)| seen.insert(id.clone()))
+            .collect();
+        assert_eq!(deduped.len(), 2);
+        assert_eq!(deduped[0], ("c1".to_string(), 0.9));
+        assert_eq!(deduped[1], ("c2".to_string(), 0.7));
+    }
 }

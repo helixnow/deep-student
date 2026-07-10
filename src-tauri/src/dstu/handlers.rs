@@ -63,6 +63,7 @@ use super::handler_utils::{
     session_to_dstu_node,
     textbook_to_dstu_node,
     translation_to_dstu_node,
+    update_content_by_type,
 };
 
 use super::trash_handlers::is_resource_in_trash;
@@ -771,9 +772,11 @@ pub async fn dstu_create(
             }
         }
         "textbooks" => {
-            // 教材创建需要文件上传，这里仅支持元数据创建
+            // 教材创建需要文件上传，DSTU 不承接该链路
+            // ★ 2026-07-08：修正误导性提示——原文案引用的 vfs_create_textbook 命令并不存在，
+            // 实际上传入口是 textbooks_add / vfs_upload_file
             return Err(
-                "Textbook creation requires file upload, use vfs_create_textbook instead"
+                "Textbook creation requires file upload, use textbooks_add or vfs_upload_file instead"
                     .to_string(),
             );
         }
@@ -1346,11 +1349,58 @@ pub async fn dstu_update(
             // 教材内容是 PDF，不支持直接更新内容
             return Err("Textbook content update not supported".to_string());
         }
-        "translations" | "translation" | "exams" | "exam" | "essays" | "essay" | "images"
-        | "image" | "files" | "file" => {
-            // TODO: 实现其他类型的 Repo 调用
+        "translations" | "translation" | "exams" | "exam" | "essays" | "essay" | "mindmaps"
+        | "mindmap" => {
+            // ★ 2026-07-08：接线 content_helpers::update_content_by_type。
+            // 该能力早已实现（2026-01-28，供 chat_v2 agent 工具使用），但命令层
+            // 一直停留在只支持 note 的旧实现，导致前端（如 EssayEditorWrapper）
+            // 经 DSTU 保存这些类型时必然报 "not yet implemented"。
+            // 各类型语义：
+            // - translation: JSON { source, translated } → resources.data
+            // - exam: preview_json 整体更新
+            // - essay: essay_session_* 更新元数据 / essay_* 更新轮次正文
+            // - mindmap: MindMapDocument JSON（Repo 内部校验结构与大小）
+            update_content_by_type(&vfs_db, &resource_type, &id, &content)?;
+
+            // 更新成功后取回最新节点返回（与 note 分支行为一致）
+            let plural_type = match resource_type.as_str() {
+                "translation" | "translations" => "translations",
+                "exam" | "exams" => "exams",
+                "essay" | "essays" => "essays",
+                _ => "mindmaps",
+            };
+            match get_resource_by_type_and_id(&vfs_db, plural_type, &id).await {
+                Ok(Some(node)) => {
+                    log::info!(
+                        "[DSTU::handlers] dstu_update: SUCCESS - type={}, id={}",
+                        resource_type,
+                        id
+                    );
+                    node
+                }
+                Ok(None) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but node not found - type={}, id={}",
+                        resource_type,
+                        id
+                    );
+                    return Err(DstuError::not_found(&id).to_string());
+                }
+                Err(e) => {
+                    log::error!(
+                        "[DSTU::handlers] dstu_update: updated but fetch failed - type={}, id={}, error={}",
+                        resource_type,
+                        id,
+                        e
+                    );
+                    return Err(e);
+                }
+            }
+        }
+        "images" | "image" | "files" | "file" => {
+            // 二进制附件不支持直接更新内容（与 content_helpers 语义一致）
             return Err(format!(
-                "{} update not yet implemented via DSTU",
+                "{} content update not supported: binary files cannot be directly edited",
                 resource_type
             ));
         }
@@ -3149,9 +3199,7 @@ pub async fn dstu_set_metadata(
         }
     };
 
-    // 根据类型更新元数据
-    // 对于笔记：更新 title 和 tags
-    // 对于其他类型：TODO
+    // 根据类型更新元数据（全类型已覆盖：notes/translations/essays/textbooks/exams/files/images/mindmaps/folders）
     let node = match resource_type.as_str() {
         "notes" => {
             // 从 metadata 中提取 title 和 tags

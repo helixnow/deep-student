@@ -123,6 +123,64 @@ pub fn calculate_bytes_hash(data: &[u8]) -> String {
 }
 
 // ============================================================================
+// 备份产物敏感材料剥离
+// ============================================================================
+
+/// 从备份目录中剥离加密密钥材料（审阅 15-backup-dataspace P1-1）。
+///
+/// `backup_crypto_keys` 会把明文主密钥 `.master_key` 与 `.secure/`
+/// 目录（密钥种子 `.key_seed` + 加密凭据 `*.enc`）复制进备份目录的
+/// `crypto/` 子目录；而备份 ZIP 导出没有任何加密，自动备份还可能写到
+/// 网盘同步目录——拿到 ZIP 即同时获得密文与解密密钥。
+///
+/// 在把备份目录打包为**未加密 ZIP** 之前调用本函数，删除以下敏感条目：
+/// - `crypto/` 子目录（整体）
+/// - 备份根目录下可能存在的散落 `.master_key` / `.key_seed` / `.secure`
+///
+/// 取舍：剥离后该 ZIP 恢复到新设备时无法自动解密历史 API 凭据
+/// （`restore_crypto_keys` 对缺失 `crypto/` 的备份按"旧版备份"跳过、
+/// 不会报错），用户需重新输入 API Key——相比密钥随明文 ZIP 泄露，
+/// 这是可接受的代价。
+///
+/// 返回删除的条目数；删除失败仅告警不阻断（打包继续，宁可多打包也不
+/// 让备份流程失败），但调用方可依据返回值与日志判断是否完全剥离。
+pub fn strip_crypto_secrets_from_backup_dir(backup_dir: &Path) -> usize {
+    let mut removed = 0usize;
+
+    let sensitive_dirs = [backup_dir.join("crypto"), backup_dir.join(".secure")];
+    for dir in &sensitive_dirs {
+        if dir.is_dir() {
+            match fs::remove_dir_all(dir) {
+                Ok(()) => {
+                    tracing::info!("[BackupCommon] 已从备份产物剥离敏感目录: {:?}", dir);
+                    removed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("[BackupCommon] 剥离敏感目录失败 {:?}: {}", dir, e);
+                }
+            }
+        }
+    }
+
+    let sensitive_files = [backup_dir.join(".master_key"), backup_dir.join(".key_seed")];
+    for file in &sensitive_files {
+        if file.is_file() {
+            match fs::remove_file(file) {
+                Ok(()) => {
+                    tracing::info!("[BackupCommon] 已从备份产物剥离敏感文件: {:?}", file);
+                    removed += 1;
+                }
+                Err(e) => {
+                    tracing::warn!("[BackupCommon] 剥离敏感文件失败 {:?}: {}", file, e);
+                }
+            }
+        }
+    }
+
+    removed
+}
+
+// ============================================================================
 // ZIP 炸弹检测
 // ============================================================================
 

@@ -309,6 +309,18 @@ async fn check_and_perform_auto_backup(
 
     let backup_id = &manifest.backup_id;
     let backup_subdir = backups_dir.join(backup_id);
+
+    // 安全修复（审阅 15-backup-dataspace P1-1）：自动备份 ZIP 未加密且可能落在
+    // 网盘同步目录，打包前剥离 crypto/（明文主密钥 + 密钥种子 + 加密凭据），
+    // 避免"密文与解密密钥同渠道泄露"。恢复该 ZIP 后需重新输入 API Key。
+    let stripped = crate::backup_common::strip_crypto_secrets_from_backup_dir(&backup_subdir);
+    if stripped > 0 {
+        tracing::info!(
+            "[AutoBackup] 已从备份产物剥离 {} 个敏感密钥条目（ZIP 不包含 API 凭据解密材料）",
+            stripped
+        );
+    }
+
     let zip_name = format!("auto-backup-{}.zip", Utc::now().format("%Y%m%d-%H%M%S"));
     let zip_options = ZipExportOptions {
         output_path: Some(backups_dir.join(&zip_name)),

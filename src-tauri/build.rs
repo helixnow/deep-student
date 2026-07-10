@@ -6,7 +6,10 @@ const ANDROID_MODIFY_AUDIO_SETTINGS_PERMISSION: &str = "android.permission.MODIF
 fn main() {
     println!("cargo:rerun-if-env-changed=TAURI_ANDROID_PROJECT_PATH");
     println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_OS");
+    println!("cargo:rerun-if-env-changed=CARGO_CFG_TARGET_ENV");
     println!("cargo:rerun-if-changed=gen/android/app/src/main/AndroidManifest.xml");
+
+    configure_windows_test_runtime();
 
     // 使用 vendored protoc，自动设置环境变量
     std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path().unwrap());
@@ -53,6 +56,25 @@ fn main() {
     ensure_android_microphone_permissions();
     tauri_build::build();
     ensure_android_microphone_permissions();
+}
+
+/// Tauri 只把 Common Controls v6 manifest 资源链接到应用 bin；Cargo 的 lib-test
+/// harness 默认没有该资源。Windows/MSVC 会因此绑定到 comctl32 v5，并在加载
+/// `TaskDialogIndirect` 时以 STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) 退出。
+///
+/// 通用 link arg 会覆盖 lib-test harness；主应用已有相同依赖，link.exe 会去重合并。
+fn configure_windows_test_runtime() {
+    let is_windows_msvc = std::env::var("CARGO_CFG_TARGET_OS").ok().as_deref() == Some("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").ok().as_deref() == Some("msvc");
+    if !is_windows_msvc {
+        return;
+    }
+
+    println!(
+        "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' \
+         name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+         processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
+    );
 }
 
 fn ensure_android_microphone_permissions() {

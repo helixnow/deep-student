@@ -15,16 +15,22 @@ import { TextSwap } from '@/components/ui/TextSwap';
 import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
-// ★ 2026-06-12：绕过 features/settings barrel 深路径导入,避免把 Settings.tsx 整树拖进首屏 bundle
-import { CloudStorageSection } from '@/features/settings/components/CloudStorageSection';
+// ★ 2026-07-08（审计 30-P1-4）：CloudStorageSection（≈1300 行，仅云存储弹窗使用）与
+// TaskDashboardPage（≈1295 行）改为 React.lazy，静态导入会把它们及其依赖树拖进首屏 chunk
+const CloudStorageSection = React.lazy(() =>
+  import('@/features/settings/components/CloudStorageSection').then(m => ({ default: m.CloudStorageSection }))
+);
 import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
-import { TaskDashboardPage } from '@/components/anki/TaskDashboardPage';
+const TaskDashboardPage = React.lazy(() =>
+  import('@/components/anki/TaskDashboardPage').then(m => ({ default: m.TaskDashboardPage }))
+);
 import { useWindowDrag } from './hooks/useWindowDrag';
 // 🚀 性能优化：ImageViewer 改为懒加载
 import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
+import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
@@ -73,7 +79,7 @@ import { MigrationStatusBanner } from './components/system-status/MigrationStatu
 import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
 import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
-import { setPendingSettingsTab } from './utils/pendingSettingsTab';
+import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
 import { shouldBlockMobileNavigation } from './hooks/useKeyboardHeight';
@@ -125,6 +131,13 @@ import {
   LazyLLMOutputPlayground,
   LazyChatV2Page,
 } from './lazyComponents';
+
+// ★ Workbench（学习 OS 桌面，实验功能）：刻意深路径导入轻量模块，
+//   避免经 workbench/index.ts 把应用群 re-export 拖进主 bundle；
+//   桌面本体为独立 lazy chunk，开关关闭时不加载（设计 §9.3）。
+import { installLegacyNavigationFallback } from '@/features/workbench/core/legacyNavigationMap';
+import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
+const LazyWorkbenchDesktop = React.lazy(() => import('@/features/workbench/components/WorkbenchDesktop'));
 
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -395,7 +408,7 @@ function DesktopHeaderNavControls({
   return (
     <div
       className={cn(
-        'desktop-shell-toolbar-group transition-[transform,opacity,margin-right] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+        'desktop-shell-toolbar-group transition-[transform,opacity,margin-right] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none',
         collapsed ? 'mr-0 translate-x-0 opacity-100' : 'mr-1 translate-x-1 opacity-100'
       )}
     >
@@ -831,13 +844,61 @@ function App() {
     void params;
   }, []);
 
+  // ★ Workbench 实验开关：localStorage 同步预读避免冷启动闪回 legacy 壳，
+  //   再以 get_setting 为准；监听设置页 workbench:mode-changed 即时切换
+  const WORKBENCH_MODE_CACHE_KEY = 'desktop.workbenchMode';
+  const [workbenchMode, setWorkbenchMode] = useState(() => {
+    try {
+      return typeof localStorage !== 'undefined' && localStorage.getItem(WORKBENCH_MODE_CACHE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    installLegacyNavigationFallback();
+    let cancelled = false;
+    const cacheMode = (enabled: boolean) => {
+      try {
+        localStorage.setItem(WORKBENCH_MODE_CACHE_KEY, String(enabled));
+      } catch {
+        /* private mode / quota */
+      }
+    };
+    (async () => {
+      try {
+        const value = await invoke<string | null>('get_setting', { key: 'desktop.workbenchMode' });
+        if (cancelled) return;
+        const enabled = String(value ?? '').trim() === 'true';
+        setWorkbenchMode(enabled);
+        cacheMode(enabled);
+      } catch {
+        /* 默认关闭；保留预读缓存 */
+      }
+    })();
+    const onModeChanged = (event: Event) => {
+      const enabled = Boolean((event as CustomEvent<{ enabled?: boolean }>).detail?.enabled);
+      setWorkbenchMode(enabled);
+      cacheMode(enabled);
+    };
+    try { window.addEventListener('workbench:mode-changed', onModeChanged); } catch { /* non-critical */ }
+    return () => {
+      cancelled = true;
+      try { window.removeEventListener('workbench:mode-changed', onModeChanged); } catch { /* non-critical */ }
+    };
+  }, []);
+
+  // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）
+  const workbenchActive = workbenchMode && !isSmallScreen;
+
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
-  const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
-  const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;
+  const desktopNavigationWidth = workbenchActive
+    ? 0
+    : !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
+  const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed && !workbenchActive;
   const shouldUseDesktopFloatingAccessory = !isSmallScreen;
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
   const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');
@@ -872,17 +933,27 @@ function App() {
       updateDownloading={updater.downloading}
     />
   );
+  // 工作台模式：顶栏只留原生/自绘窗口控制，不占内容高度
+  const shellTitlebarOccupiedHeight = workbenchActive
+    ? 0
+    : DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin;
   const appShellCustomProperties = useMemo(() => ({
     ...getMobileShellCssVars(),
     '--sidebar-width': `${desktopNavigationWidth}px`,
     '--sidebar-expanded-width': `${shellSidebarWidth}px`,
     '--sidebar-collapsed-width': `${desktopNavigationWidth}px`,
     '--shell-navigation-width': `${desktopNavigationWidth}px`,
-    '--shell-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-    '--desktop-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-    '--topbar-safe-area': `${topbarTopMargin}px`,
+    '--shell-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
+    '--desktop-titlebar-height': `${shellTitlebarOccupiedHeight}px`,
+    '--topbar-safe-area': `${workbenchActive ? 0 : topbarTopMargin}px`,
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
-  }) as React.CSSProperties, [desktopNavigationWidth, shellSidebarWidth, topbarTopMargin]);
+  }) as React.CSSProperties, [
+    desktopNavigationWidth,
+    shellSidebarWidth,
+    shellTitlebarOccupiedHeight,
+    topbarTopMargin,
+    workbenchActive,
+  ]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
@@ -1032,13 +1103,22 @@ function App() {
   }, []);
 
   // 🎯 监听云存储设置事件
+  // 移动端不弹全局配置弹窗（移动端设计契约：表单类流程禁用模态框），
+  // 改为导航到 设置 → 数据治理 → 同步 的内联编辑器，可经统一顶栏/系统返回键闭环返回
   useEffect(() => {
     const onOpenCloudStorage = () => {
+      if (isSmallScreenRef.current) {
+        const route = { tab: 'data-governance', dataGovernanceTab: 'sync' };
+        setPendingSettingsRoute(route);
+        window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: route }));
+        setCurrentView('settings');
+        return;
+      }
       setShowCloudStorageSettings(true);
     };
     window.addEventListener('DSTU_OPEN_CLOUD_STORAGE_SETTINGS', onOpenCloudStorage);
     return () => { window.removeEventListener('DSTU_OPEN_CLOUD_STORAGE_SETTINGS', onOpenCloudStorage); };
-  }, []);
+  }, [setCurrentView]);
 
   // 统一架构：selectedMistake 已移除，由 ChatSessionStore 统一管理
   const [showImportConversation, setShowImportConversation] = useState(false);
@@ -1823,11 +1903,19 @@ function App() {
     currentView,
   }), [currentView, desktopPageSidebarTarget]);
 
-  const desktopShellSidebarElement = currentView === 'settings'
-    ? settingsShellSidebarElement
+  // 侧栏内容类型：同时作为侧栏包裹层的 key，类型变化时重挂载并重播入场动画
+  const desktopShellSidebarKind = currentView === 'settings'
+    ? 'settings'
     : currentView === 'todo'
-    ? todoShellSidebarElement
+    ? 'todo'
     : currentView === 'learning-hub' || currentView === 'template-management'
+    ? 'desktop-page'
+    : 'main';
+  const desktopShellSidebarElement = desktopShellSidebarKind === 'settings'
+    ? settingsShellSidebarElement
+    : desktopShellSidebarKind === 'todo'
+    ? todoShellSidebarElement
+    : desktopShellSidebarKind === 'desktop-page'
     ? desktopPageShellSidebarElement
     : sidebarElement;
 
@@ -1890,6 +1978,22 @@ function App() {
     }
 
     event.preventDefault();
+
+    if (event.detail === 2) {
+      void toggleDesktopWindowMaximize();
+      return;
+    }
+
+    void startDragging(event);
+  }, [startDragging, toggleDesktopWindowMaximize]);
+  /** 工作台 chrome 拖拽条：仅 strip 启动 startDragging（不与 CSS app-region 混用） */
+  const handleWorkbenchChromeDragMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
 
     if (event.detail === 2) {
       void toggleDesktopWindowMaximize();
@@ -2303,6 +2407,7 @@ function App() {
         isDarkMode={isDarkMode}
         switchLanguage={switchLanguage}
       >
+      <AgentBridge workbenchActive={workbenchActive} />
       <TextContextMenuProvider>
       <MobileLayoutProvider>
       <MobileHeaderProvider>
@@ -2338,123 +2443,181 @@ function App() {
           <UnifiedMobileHeader
             canGoBack={unifiedCanGoBack}
             onBack={unifiedGoBack}
+            canGoForward={unifiedCanGoForward}
+            onForward={unifiedGoForward}
             fallbackTitle={desktopShellViewLabel}
             className="fixed top-0 left-0 right-0 z-[1100]"
           />
         )}
 
-        {/* 桌面端：固定顶部栏 - 覆盖整个顶部包括侧边栏 */}
+        {/* 桌面端：固定顶部栏；工作台模式只留 Win/Mac 窗口控制区（无标题/导航条） */}
         {!isSmallScreen && (
         <header
           data-shell-layer="window-chrome"
           data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
-          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none"
+          data-workbench-chrome={workbenchActive ? 'controls-only' : undefined}
+          className={cn(
+            'desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none',
+            workbenchActive && 'desktop-shell-titlebar--workbench-chrome',
+          )}
           style={{
-            paddingTop: `${topbarTopMargin}px`,
-            height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-            minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            paddingTop: workbenchActive ? 0 : `${topbarTopMargin}px`,
+            height: `${DESKTOP_SHELL.titlebarBaseHeight + (workbenchActive ? 0 : topbarTopMargin)}px`,
+            minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + (workbenchActive ? 0 : topbarTopMargin)}px`,
           }}
-          onMouseDown={handleDesktopTitlebarMouseDown}
+          onMouseDown={workbenchActive ? undefined : handleDesktopTitlebarMouseDown}
         >
-          {shouldUseDesktopFloatingAccessory ? (
-            <div
-              className="pointer-events-none absolute z-20 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
-              style={{
-                left: `${desktopFloatingAccessoryOffset}px`,
-                top: `${topbarTopMargin}px`,
-                height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
-                width: `${desktopFloatingAccessoryWidth}px`,
-                opacity: 1,
-              }}
-            >
-              <div className="pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5">
-                <div className="flex items-center">
-                  {desktopSidebarAccessoryContent}
+          {workbenchActive ? (
+            <>
+              {/*
+                工作台 chrome：应用 icon 拖拽区 + 控制钮共用一块圆角胶囊；
+                拖拽仅走 strip 上的 startDragging；其余顶栏不挡桌面点击。
+              */}
+              {isMacOS() ? (
+                <div className="flex h-full shrink-0 items-center pl-0 pr-2">
+                  <div
+                    className="pointer-events-none shrink-0"
+                    style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }}
+                    aria-hidden
+                  />
+                  <div
+                    className="desktop-shell-workbench-chrome-pill desktop-shell-workbench-chrome-pill--drag-only"
+                    aria-label={t('common:window_controls.drag', '拖动窗口')}
+                    title={t('common:window_controls.drag', '拖动窗口')}
+                  >
+                    <div
+                      className="desktop-shell-workbench-drag-strip"
+                      onMouseDown={handleWorkbenchChromeDragMouseDown}
+                    >
+                      <DeepStudentMark className="desktop-shell-workbench-app-icon" />
+                    </div>
+                  </div>
                 </div>
-                {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
-              </div>
-            </div>
-          ) : null}
+              ) : null}
+              {isWindows() ? (
+                <div className="ml-auto flex h-full items-center pr-2">
+                  <div className="desktop-shell-workbench-chrome-pill">
+                    <div
+                      className="desktop-shell-workbench-drag-strip"
+                      aria-label={t('common:window_controls.drag', '拖动窗口')}
+                      title={t('common:window_controls.drag', '拖动窗口')}
+                      onMouseDown={handleWorkbenchChromeDragMouseDown}
+                    >
+                      <DeepStudentMark className="desktop-shell-workbench-app-icon" />
+                    </div>
+                    <div className="desktop-shell-workbench-chrome-controls" data-no-drag>
+                      <WindowControls />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {shouldUseDesktopFloatingAccessory ? (
+                <div
+                  className="pointer-events-none absolute z-20 transition-[opacity,transform] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none"
+                  style={{
+                    left: `${desktopFloatingAccessoryOffset}px`,
+                    top: `${topbarTopMargin}px`,
+                    height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
+                    width: `${desktopFloatingAccessoryWidth}px`,
+                    opacity: 1,
+                  }}
+                >
+                  <div className="pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5">
+                    <div className="flex items-center">
+                      {desktopSidebarAccessoryContent}
+                    </div>
+                    {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
+                  </div>
+                </div>
+              ) : null}
 
-          <div
-            className={cn(
-              'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-              leftPanelCollapsed ? 'px-0' : 'px-4'
-            )}
-            style={{
-              width: `${desktopNavigationWidth}px`,
-            }}
-          >
-            <div
-              className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
-              data-no-drag
-              data-shell-hotzone="desktop-nav"
-              role="button"
-              tabIndex={0}
-              aria-label={desktopHeaderNewSessionTooltipLabel}
-              onMouseDown={handleHeaderHotzoneMouseDown}
-              onMouseMove={handleHeaderHotzoneMouseMove}
-              onMouseUp={handleHeaderHotzoneMouseUp}
-              onMouseLeave={handleHeaderHotzoneMouseLeave}
-              onClick={(event) => handleHeaderHotzoneClick(event, handleCreateChatSession)}
-              onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}
-            >
-              {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
-            </div>
-          </div>
-
-          <div
-            data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
-            className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
-            style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
-          >
-            <div
-              className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
-              data-no-drag
-              data-shell-hotzone="desktop-title"
-              role="button"
-              tabIndex={0}
-              aria-label={desktopHeaderTitleHotzoneLabel}
-              onMouseDown={handleHeaderHotzoneMouseDown}
-              onMouseMove={handleHeaderHotzoneMouseMove}
-              onMouseUp={handleHeaderHotzoneMouseUp}
-              onMouseLeave={handleHeaderHotzoneMouseLeave}
-              onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}
-              onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}
-            >
-              <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
-
-              <div className="min-w-0 pl-1">
-                <div className="min-w-0 desktop-shell-header-title">
-                  {currentView === 'learning-hub' ? (
-                    <LearningHubTopbarBreadcrumb currentView={currentView} />
-                  ) : (
-                    <TextSwap
-                      text={desktopShellViewLabel}
-                      className="block max-w-full truncate"
-                    />
-                  )}
+              <div
+                className={cn(
+                  'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none',
+                  leftPanelCollapsed ? 'px-0' : 'px-4'
+                )}
+                style={{
+                  width: `${desktopNavigationWidth}px`,
+                }}
+              >
+                <div
+                  className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
+                  data-no-drag
+                  data-shell-hotzone="desktop-nav"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={desktopHeaderNewSessionTooltipLabel}
+                  onMouseDown={handleHeaderHotzoneMouseDown}
+                  onMouseMove={handleHeaderHotzoneMouseMove}
+                  onMouseUp={handleHeaderHotzoneMouseUp}
+                  onMouseLeave={handleHeaderHotzoneMouseLeave}
+                  onClick={(event) => handleHeaderHotzoneClick(event, handleCreateChatSession)}
+                  onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}
+                >
+                  {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
                 </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2" data-no-drag>
-              {isWindows() && <WindowControls />}
-            </div>
-          </div>
+              <div
+                data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
+                className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
+                style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
+              >
+                <div
+                  className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
+                  data-no-drag
+                  data-shell-hotzone="desktop-title"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={desktopHeaderTitleHotzoneLabel}
+                  onMouseDown={handleHeaderHotzoneMouseDown}
+                  onMouseMove={handleHeaderHotzoneMouseMove}
+                  onMouseUp={handleHeaderHotzoneMouseUp}
+                  onMouseLeave={handleHeaderHotzoneMouseLeave}
+                  onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}
+                  onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}
+                >
+                  <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
+
+                  <div className="min-w-0 pl-1">
+                    <div className="min-w-0 desktop-shell-header-title">
+                      {currentView === 'learning-hub' ? (
+                        <LearningHubTopbarBreadcrumb currentView={currentView} />
+                      ) : (
+                        <TextSwap
+                          text={desktopShellViewLabel}
+                          className="block max-w-full truncate"
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2" data-no-drag>
+                  {isWindows() && <WindowControls />}
+                </div>
+              </div>
+            </>
+          )}
         </header>
         )}
 
-        {/* 桌面端：主导航侧边栏 */}
-        {!isSmallScreen ? (
+        {/* 桌面端：主导航侧边栏（workbench 模式下隐藏，导航职责移交 Dock，设计 §3.1） */}
+        {!isSmallScreen && !workbenchActive ? (
           <div
             className={cn(
               'h-full flex-shrink-0',
-              'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+              'overflow-hidden transition-[width] duration-200 ease-[var(--panel-ease)]',
               leftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'
             )}
           >
-            {desktopShellSidebarElement}
+            {/* key 按侧栏类型：整组内容替换时重挂载并播放入场动画（与视图切换同款观感） */}
+            <div key={desktopShellSidebarKind} className="desktop-shell-content-enter h-full w-full">
+              {desktopShellSidebarElement}
+            </div>
           </div>
         ) : null}
 
@@ -2463,8 +2626,12 @@ function App() {
           data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
           className="desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden"
           style={{
-            // 移动端：48px 基础高度 + topbarTopMargin，桌面端：使用原有标题栏高度
-            paddingTop: isSmallScreen ? 'var(--mobile-header-total-height)' : `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+            // 移动端：48px 基础高度 + topbarTopMargin；工作台：顶栏不占位；其余桌面：标题栏高度
+            paddingTop: isSmallScreen
+              ? 'var(--mobile-header-total-height)'
+              : workbenchActive
+                ? 0
+                : `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
           }}
         >
           <MigrationStatusBanner />
@@ -2506,7 +2673,24 @@ function App() {
             )}
             data-tour-id="analysis-main"
           >
-            <div ref={contentBodyRef} className={`content-body w-full h-full relative ${currentView === 'settings' ? 'settings-view' : ''}`}>
+            <div
+              ref={contentBodyRef}
+              className={cn(
+                'content-body w-full h-full relative',
+                currentView === 'settings' && 'settings-view',
+                // 学习桌面大量 transform（视差/Dock/AppsPanel）；content-body 的
+                // contain:layout 会在 WebView2 上裁错合成脏区，表现为半屏撕裂。
+                workbenchActive && 'content-body--workbench',
+              )}
+            >
+              {workbenchActive ? (
+              /* ★ Workbench 学习桌面：独立 lazy chunk，替换整个视图层；
+                 关闭开关即卸载整棵树回到下方 legacy 视图（布局快照保留在磁盘） */
+              <Suspense fallback={<PageLoadingFallback />}>
+                <LazyWorkbenchDesktop />
+              </Suspense>
+              ) : (
+              <>
               {/* ★ 废弃视图已移除（2026-01 清理）：analysis, library, exam-sheet */}
 
               {renderViewLayer('dashboard', dashboardContent, 'overflow-hidden')}
@@ -2559,6 +2743,8 @@ function App() {
               {renderViewLayer('chat-v2', chatV2Content)}
 
               {/* ★ 废弃视图已移除（2026-01 清理）：bridge-to-irec */}
+              </>
+              )}
 
             </div>
           </main>
@@ -2572,7 +2758,9 @@ function App() {
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
       <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
         <NotionDialogBody>
-          <CloudStorageSection isDialog />
+          <Suspense fallback={<PageLoadingFallback />}>
+            <CloudStorageSection isDialog />
+          </Suspense>
         </NotionDialogBody>
       </NotionDialog>
       {/* 全局悬浮调试面板（按需懒加载，避免生产首包引入调试模块） */}

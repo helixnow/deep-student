@@ -9,13 +9,14 @@ use std::collections::HashMap;
 /// 注入类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InjectionType {
-    Rag,          // RAG检索内容
-    Memory,       // 记忆内容
-    WebSearch,    // 网页搜索结果
-    Context,      // 上下文信息
-    SystemPrompt, // 系统提示
-    UserInput,    // 用户输入
-    ToolResults,  // 工具执行结果
+    Rag,            // RAG检索内容
+    Memory,         // 记忆内容
+    LearnerProfile, // 学习者画像（策展长期层，随会话注入）
+    WebSearch,      // 网页搜索结果
+    Context,        // 上下文信息
+    SystemPrompt,   // 系统提示
+    UserInput,      // 用户输入
+    ToolResults,    // 工具执行结果
 }
 
 impl InjectionType {
@@ -23,6 +24,7 @@ impl InjectionType {
         match self {
             InjectionType::Rag => "rag",
             InjectionType::Memory => "memory",
+            InjectionType::LearnerProfile => "learner_profile",
             InjectionType::WebSearch => "web_search",
             InjectionType::Context => "context",
             InjectionType::SystemPrompt => "system_prompt",
@@ -112,6 +114,8 @@ impl Default for BudgetConfig {
         let mut type_limits = HashMap::new();
         type_limits.insert(InjectionType::Rag, 8000);
         type_limits.insert(InjectionType::Memory, 4000);
+        // 与 memory/learner_profile.rs 的 LEARNER_PROFILE_MAX_CHARS 对齐
+        type_limits.insert(InjectionType::LearnerProfile, 4000);
         type_limits.insert(InjectionType::WebSearch, 6000);
         type_limits.insert(InjectionType::Context, 3000);
         type_limits.insert(InjectionType::SystemPrompt, 2000);

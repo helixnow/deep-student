@@ -1694,6 +1694,9 @@ pub enum StreamedCardPayload {
     DocumentProcessingCompleted {
         document_id: String,
     }, // 整个文档所有任务处理完毕
+    DocumentProcessingCancelled {
+        document_id: String,
+    }, // 整个文档处理被用户取消（保留已生成卡片）
     RateLimitWarning {
         message: String,
         retry_after_seconds: Option<u32>,

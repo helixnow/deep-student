@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser-content",
+  "description": "Zero-IPC capability for the isolated browser content WebviewWindow (label: browser-content). Intentionally empty permissions — content must NOT inherit main/default (no core:default, fs, http, dialog). Do NOT add browser-content to default.json windows.",
+  "windows": ["browser-content"],
+  "platforms": ["linux", "macOS", "windows"],
+  "permissions": []
+}

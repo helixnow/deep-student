@@ -51,10 +51,8 @@ export const LazySOTADashboard = React.lazy(() =>
   import('./components/SOTADashboardLite').then(m => ({ default: m.SOTADashboard }))
 );
 
-// LLM 使用量统计
-export const LazyLlmUsageStatsPage = React.lazy(() =>
-  import('./components/llm-usage/LlmUsageStatsPage').then(m => ({ default: m.LlmUsageStatsPage }))
-);
+// ★ 2026-07-08：移除 LazyLlmUsageStatsPage 死导出（llm-usage-stats 独立视图已并入 DataStats，
+//   页面组件仍以 embedded 形态被 LlmUsageStatsSection 使用）
 
 // 数据导入导出
 export const LazyDataImportExport = React.lazy(() =>

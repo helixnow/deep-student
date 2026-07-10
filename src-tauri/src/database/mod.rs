@@ -4219,11 +4219,19 @@ impl Database {
         Ok(cards)
     }
 
-    /// 更新Anki卡片
+    /// 更新Anki卡片（忽略影响行数；兼容旧调用方）
     pub fn update_anki_card(&self, card: &AnkiCard) -> Result<()> {
+        let _ = self.update_anki_card_rows(card)?;
+        Ok(())
+    }
+
+    /// 更新Anki卡片并返回影响行数。
+    ///
+    /// `0` 表示 `WHERE id = ?` 未命中任何行（常见于内容去重 IGNORE 后用新 id 回退 UPDATE）。
+    pub fn update_anki_card_rows(&self, card: &AnkiCard) -> Result<usize> {
         let conn = self.get_conn_safe()?;
         let updated_at = chrono::Utc::now().to_rfc3339();
-        conn.execute(
+        let rows = conn.execute(
             "UPDATE anki_cards SET
              front = ?1, back = ?2, text = ?3, tags_json = ?4, images_json = ?5,
              is_error_card = ?6, error_content = ?7, updated_at = ?8,
@@ -4243,7 +4251,47 @@ impl Database {
                 card.id
             ],
         )?;
-        Ok(())
+        Ok(rows)
+    }
+
+    /// AnkiConnect Sync 成功后按卡片回写 receipt（note id + export_status）。
+    ///
+    /// `note_ids` 与 `card_ids` 一一对应；仅对 `Some(note_id)` 的条目写回。
+    /// 重复跳过（None）不覆盖已有 receipt。
+    pub fn write_anki_export_receipts(
+        &self,
+        card_ids: &[String],
+        note_ids: &[Option<u64>],
+    ) -> Result<usize> {
+        if card_ids.is_empty() || note_ids.is_empty() {
+            return Ok(0);
+        }
+        let len = card_ids.len().min(note_ids.len());
+        let conn = self.get_conn_safe()?;
+        let exported_at = chrono::Utc::now().to_rfc3339();
+        let mut written = 0usize;
+        for i in 0..len {
+            let Some(note_id) = note_ids[i] else {
+                continue;
+            };
+            let card_id = card_ids[i].trim();
+            if card_id.is_empty() {
+                continue;
+            }
+            let affected = conn.execute(
+                "UPDATE anki_cards SET
+                    anki_note_id = ?1,
+                    export_status = 'synced',
+                    last_exported_at = ?2,
+                    updated_at = ?2
+                 WHERE id = ?3",
+                params![note_id as i64, exported_at, card_id],
+            )?;
+            if affected > 0 {
+                written += 1;
+            }
+        }
+        Ok(written)
     }
 
     /// 删除Anki卡片
@@ -5512,8 +5560,8 @@ impl Database {
     }
 
     /// 🔧 Phase 1: 恢复卡住的制卡任务
-    /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Failed（中断），
-    /// 用户可通过"重试失败任务"续跑。
+    /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Paused（可 resume），
+    /// 用户可通过「恢复」继续，而非当作 Failed 重试。
     ///
     /// 注意：updated_at 存储为 RFC3339（带 'T'/'Z'），直接与 datetime('now',...) 的
     /// 空格分隔格式做字符串比较在同一天内恒为假，必须先用 datetime() 规范化两侧。
@@ -5521,16 +5569,16 @@ impl Database {
         self.recover_stuck_document_tasks_older_than_minutes(10)
     }
 
-    /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Failed。
+    /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Paused。
     /// `minutes = 0` 表示无条件回收。注意：应用未启用单实例约束，启动路径
     /// 必须走带阈值的 `recover_stuck_document_tasks()`（10 分钟），不要传 0，
-    /// 否则并行实例正在跑的任务会被误标为 Failed。
+    /// 否则并行实例正在跑的任务会被误标为 Paused。
     pub fn recover_stuck_document_tasks_older_than_minutes(&self, minutes: u32) -> Result<u32> {
         let conn = self.get_conn_safe()?;
         let count = conn.execute(
             r#"UPDATE document_tasks
-               SET status = 'Failed',
-                   error_message = '任务被中断（应用重启或长时间无响应），可点击"重试失败任务"继续',
+               SET status = 'Paused',
+                   error_message = '任务被中断（应用重启），可点击恢复继续',
                    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                WHERE status IN ('Processing', 'Streaming')
                AND (?1 = 0 OR datetime(updated_at) < datetime('now', '-' || ?1 || ' minutes')
@@ -6045,6 +6093,70 @@ mod tests {
             )?
         };
         assert_eq!(task_2_exists, 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn update_anki_card_rows_reports_zero_when_id_missing() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let now = Utc::now().to_rfc3339();
+
+        let task = DocumentTask {
+            id: "task-u".to_string(),
+            document_id: "doc-u".to_string(),
+            original_document_name: "doc".to_string(),
+            segment_index: 0,
+            content_segment: "seg".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let card = AnkiCard {
+            id: "card-u".to_string(),
+            task_id: "task-u".to_string(),
+            front: "f".to_string(),
+            back: "b".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(&task, &[card.clone()])?;
+
+        let rows_hit = db.update_anki_card_rows(&AnkiCard {
+            front: "f2".to_string(),
+            back: "b2".to_string(),
+            updated_at: Utc::now().to_rfc3339(),
+            ..card.clone()
+        })?;
+        assert_eq!(rows_hit, 1);
+
+        let ghost = AnkiCard {
+            id: "ghost-id".to_string(),
+            task_id: "task-u".to_string(),
+            front: "f".to_string(),
+            back: "b".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        let rows_miss = db.update_anki_card_rows(&ghost)?;
+        assert_eq!(rows_miss, 0);
 
         Ok(())
     }

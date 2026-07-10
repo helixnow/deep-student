@@ -281,11 +281,15 @@ impl DocumentParser {
         let mut total_uncompressed: u64 = 0;
         let compressed_size = bytes.len() as u64;
 
-        // ★ 收集需要递归检测的嵌套 ZIP 条目
-        // 由于 ZipArchive 借用规则，需要先收集索引和名称，再分别处理
-        // 元组: (索引, 名称, 是否已通过扩展名识别为ZIP)
-        let mut nested_zip_indices: Vec<(usize, String, bool)> = Vec::new();
-
+        // ★ P1-3 修复：不再信任中央目录里攻击者可伪造的声明大小。
+        // `zip 0.6` 的 Read 实现按 deflate 流实际结束为准，不会在解压输出达到
+        // 声明的 uncompressed_size 时截断——攻击者可声明 size=1KB 而实际解出数 GB。
+        // 因此对每个条目做「有界真实解压 + 边解压边计数」：
+        // 1. 声明值检查保留（快速拒绝显式超限的样本）；
+        // 2. 真实解压以 MAX_SINGLE_ENTRY_SIZE 为上限（take 截断），超限即判定炸弹；
+        // 3. 累计真实解压字节数与总量上限比较；
+        // 4. 声明大小与真实大小不符（低报）本身即判定为恶意样本；
+        // 5. 嵌套 ZIP 直接用真实解压出的字节做魔数判定与递归（合并原第二遍扫描）。
         for i in 0..file_count {
             let entry = match archive.by_index(i) {
                 Ok(e) => e,
@@ -296,7 +300,7 @@ impl DocumentParser {
             let entry_compressed = entry.compressed_size();
             let entry_name = entry.name().to_string();
 
-            // 检查单个条目大小
+            // 检查单个条目声明大小（快速预检）
             if entry_size > MAX_SINGLE_ENTRY_SIZE {
                 return Err(ParsingError::ZipBombDetected(format!(
                     "文件 '{}' 中的条目 '{}' 解压后大小 {:.1}MB 超过限制 {:.1}MB",
@@ -307,7 +311,7 @@ impl DocumentParser {
                 )));
             }
 
-            // 检查单个条目压缩比
+            // 检查单个条目声明压缩比（快速预检）
             if entry_compressed > 0 {
                 let ratio = entry_size as f64 / entry_compressed as f64;
                 if ratio > MAX_COMPRESSION_RATIO {
@@ -318,9 +322,51 @@ impl DocumentParser {
                 }
             }
 
-            total_uncompressed += entry_size;
+            // ★ 有界真实解压：以 MAX_SINGLE_ENTRY_SIZE+1 为上限，读满即判定炸弹。
+            // 检测器自身的读取被 take 硬性限制，不会成为攻击载体。
+            let mut entry_bytes: Vec<u8> = Vec::new();
+            let mut limited = entry.take(MAX_SINGLE_ENTRY_SIZE + 1);
+            if limited.read_to_end(&mut entry_bytes).is_err() {
+                // 个别条目解压失败交给后续具体解析器处理
+                continue;
+            }
+            let actual_size = entry_bytes.len() as u64;
 
-            // ★ 新增：提前检查总解压大小（避免遍历所有条目才发现超限）
+            if actual_size > MAX_SINGLE_ENTRY_SIZE {
+                return Err(ParsingError::ZipBombDetected(format!(
+                    "文件 '{}' 中的条目 '{}' 实际解压大小超过限制 {:.1}MB（声明大小 {:.1}MB，声明值被伪造）",
+                    file_name,
+                    entry_name,
+                    MAX_SINGLE_ENTRY_SIZE as f64 / (1024.0 * 1024.0),
+                    entry_size as f64 / (1024.0 * 1024.0)
+                )));
+            }
+
+            // 声明值明显低报（真实大小超声明 1MB 以上）视为恶意构造
+            if actual_size > entry_size.saturating_add(1024 * 1024) {
+                return Err(ParsingError::ZipBombDetected(format!(
+                    "文件 '{}' 中的条目 '{}' 真实解压大小 {:.1}MB 远超声明值 {:.1}MB，疑似 ZIP Bomb",
+                    file_name,
+                    entry_name,
+                    actual_size as f64 / (1024.0 * 1024.0),
+                    entry_size as f64 / (1024.0 * 1024.0)
+                )));
+            }
+
+            // 检查真实压缩比
+            if entry_compressed > 0 {
+                let ratio = actual_size as f64 / entry_compressed as f64;
+                if ratio > MAX_COMPRESSION_RATIO {
+                    return Err(ParsingError::ZipBombDetected(format!(
+                        "文件 '{}' 中的条目 '{}' 真实压缩比 {:.1}:1 超过安全阈值 {:.0}:1",
+                        file_name, entry_name, ratio, MAX_COMPRESSION_RATIO
+                    )));
+                }
+            }
+
+            total_uncompressed += actual_size;
+
+            // 按真实解压字节累计检查总大小
             if total_uncompressed > MAX_DECOMPRESSED_SIZE {
                 return Err(ParsingError::ZipBombDetected(format!(
                     "文件 '{}' 解压后总大小超过限制 {:.0}MB（已累计 {:.1}MB）",
@@ -330,17 +376,30 @@ impl DocumentParser {
                 )));
             }
 
-            // ★ 嵌套 ZIP 检测：标记需要递归检测的条目
-            // 只对合理大小的条目进行递归（避免读取过大的嵌套文件）
-            // 使用扩展名预筛选；魔数检测在读取内容后进行（防止扩展名绕过）
-            if entry_size > 0 && entry_size <= MAX_SINGLE_ENTRY_SIZE {
-                // 通过扩展名标记为已知 ZIP 类型，或标记为需要魔数检测
+            // ★ 嵌套 ZIP 检测：扩展名或魔数命中即递归检查（字节已在手，无需二次解压）
+            if !entry_bytes.is_empty() {
                 let is_known_zip_ext = Self::is_zip_like_extension(&entry_name);
-                nested_zip_indices.push((i, entry_name, is_known_zip_ext));
+                let is_zip_by_magic =
+                    entry_bytes.len() >= 4 && Self::is_zip_magic_bytes(&entry_bytes[..4]);
+                if is_known_zip_ext || is_zip_by_magic {
+                    let nested_path = format!("{} -> {}", file_name, entry_name);
+                    let detection_method = match (is_known_zip_ext, is_zip_by_magic) {
+                        (true, true) => "extension+magic",
+                        (true, false) => "extension",
+                        _ => "magic-bytes",
+                    };
+                    log::debug!(
+                        "ZIP bomb check: recursively checking nested ZIP '{}' at depth {} (detected by: {})",
+                        nested_path,
+                        depth + 1,
+                        detection_method
+                    );
+                    self.check_zip_bomb_recursive(&entry_bytes, &nested_path, depth + 1)?;
+                }
             }
         }
 
-        // 检查整体压缩比
+        // 检查整体压缩比（基于真实解压字节）
         if compressed_size > 0 {
             let overall_ratio = total_uncompressed as f64 / compressed_size as f64;
             if overall_ratio > MAX_COMPRESSION_RATIO {
@@ -349,67 +408,6 @@ impl DocumentParser {
                     file_name, overall_ratio, MAX_COMPRESSION_RATIO
                 )));
             }
-        }
-
-        // ★ 嵌套 ZIP 检测：递归检查嵌套的 ZIP 文件
-        // ★ 2026-06-12（代理 3 审阅 E1）：
-        // 1. 复用已打开的归档（旧实现对每个条目都重新打开归档、重新解析中央目录）；
-        // 2. 先只解压前 4 字节做魔数判定，命中（或扩展名命中）才完整解压——
-        //    旧实现对所有非空条目 read_to_end，等于为做检查把整个文档解压一遍。
-        for (index, nested_name, is_known_zip_ext) in nested_zip_indices {
-            let mut entry = match archive.by_index(index) {
-                Ok(e) => e,
-                Err(_) => continue,
-            };
-
-            // 先读前 4 字节判断 ZIP 魔数（解压代价极小）
-            let mut head = [0u8; 4];
-            let mut head_len = 0usize;
-            while head_len < 4 {
-                match entry.read(&mut head[head_len..]) {
-                    Ok(0) => break,
-                    Ok(n) => head_len += n,
-                    Err(_) => break,
-                }
-            }
-            if head_len == 0 {
-                continue;
-            }
-
-            // ★ 安全增强：同时使用扩展名和魔数检测
-            // 条件1: 扩展名匹配已知 ZIP 格式
-            // 条件2: 文件头匹配 ZIP 魔数（防止扩展名绕过攻击）
-            let is_zip_by_magic = head_len == 4 && Self::is_zip_magic_bytes(&head);
-            if !is_known_zip_ext && !is_zip_by_magic {
-                continue;
-            }
-
-            // 命中后才继续读取剩余内容
-            let mut nested_bytes = Vec::with_capacity(entry.size() as usize);
-            nested_bytes.extend_from_slice(&head[..head_len]);
-            if entry.read_to_end(&mut nested_bytes).is_err() || nested_bytes.is_empty() {
-                continue;
-            }
-
-            // 构造嵌套文件的完整路径用于错误消息
-            let nested_path = format!("{} -> {}", file_name, nested_name);
-
-            let detection_method = match (is_known_zip_ext, is_zip_by_magic) {
-                (true, true) => "extension+magic",
-                (true, false) => "extension",
-                (false, true) => "magic-bytes",
-                (false, false) => continue, // 上方已过滤，不可达
-            };
-
-            log::debug!(
-                "ZIP bomb check: recursively checking nested ZIP '{}' at depth {} (detected by: {})",
-                nested_path,
-                depth + 1,
-                detection_method
-            );
-
-            // 递归检测嵌套 ZIP
-            self.check_zip_bomb_recursive(&nested_bytes, &nested_path, depth + 1)?;
         }
 
         log::debug!(
@@ -421,6 +419,31 @@ impl DocumentParser {
         );
 
         Ok(())
+    }
+
+    /// ★ P1-3 修复：有界读取 ZIP 条目
+    ///
+    /// 不信任中央目录声明大小，以 `cap` 为真实解压字节上限（`take(cap+1)` 截断），
+    /// 超限判定为 ZIP Bomb。所有从 ZIP 条目做完整读取的路径统一走此函数。
+    fn read_zip_entry_bounded<R: std::io::Read>(
+        entry: R,
+        entry_name: &str,
+        cap: u64,
+    ) -> Result<Vec<u8>, ParsingError> {
+        use std::io::Read;
+        let mut data = Vec::new();
+        let mut limited = entry.take(cap + 1);
+        limited
+            .read_to_end(&mut data)
+            .map_err(|e| ParsingError::IoError(format!("读取 ZIP 条目 '{}' 失败: {}", entry_name, e)))?;
+        if data.len() as u64 > cap {
+            return Err(ParsingError::ZipBombDetected(format!(
+                "ZIP 条目 '{}' 实际解压大小超过 {:.0}MB 上限（声明大小可能被伪造）",
+                entry_name,
+                cap as f64 / (1024.0 * 1024.0)
+            )));
+        }
+        Ok(data)
     }
 
     /// 检查基于路径的 ZIP 文件是否为 ZIP Bomb
@@ -833,9 +856,10 @@ impl DocumentParser {
             } else {
                 format!("word/{}", target)
             };
-            if let Ok(mut file) = archive.by_name(&zip_path) {
-                let mut buf = Vec::with_capacity(file.size() as usize);
-                if file.read_to_end(&mut buf).is_ok() && !buf.is_empty() {
+            if let Ok(file) = archive.by_name(&zip_path) {
+                // ★ P1-3 修复：有界读取，防止声明大小被伪造导致无界解压
+                let buf = Self::read_zip_entry_bounded(file, &zip_path, MAX_SINGLE_ENTRY_SIZE)?;
+                if !buf.is_empty() {
                     rid_to_bytes.insert(rid.clone(), buf);
                 }
             }
@@ -1121,6 +1145,11 @@ impl DocumentParser {
     /// 与 `extract_docx_text` 不同，此方法保留文档结构信息，
     /// 供 LLM 工具 `docx_read_structured` 使用。
     pub fn extract_docx_structured(&self, bytes: &[u8]) -> Result<String, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体（此前 chat_v2 文档工具等调用方完全绕过防护）
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "document.docx")?;
+        self.check_zip_bomb(bytes, "document.docx")?;
+
         let docx =
             docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
@@ -1357,6 +1386,11 @@ impl DocumentParser {
 
     /// ★ 提取 DOCX 文档中的所有表格为结构化 JSON
     pub fn extract_docx_tables(&self, bytes: &[u8]) -> Result<Vec<Vec<Vec<String>>>, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "document.docx")?;
+        self.check_zip_bomb(bytes, "document.docx")?;
+
         let docx =
             docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
@@ -1396,6 +1430,11 @@ impl DocumentParser {
 
     /// ★ 提取 DOCX 文档属性（标题/作者/描述/关键词/创建时间/修改时间）
     pub fn extract_docx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "document.docx")?;
+        self.check_zip_bomb(bytes, "document.docx")?;
+
         let docx =
             docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
@@ -1423,6 +1462,11 @@ impl DocumentParser {
     ///
     /// LLM 可通过 docx_to_spec → 修改 spec → docx_create 完成编辑闭环。
     pub fn extract_docx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "document.docx")?;
+        self.check_zip_bomb(bytes, "document.docx")?;
+
         let docx =
             docx_rs::read_docx(bytes).map_err(|e| ParsingError::DocxParsingError(e.to_string()))?;
 
@@ -2663,6 +2707,11 @@ impl DocumentParser {
 
     /// 从 XLSX 字节提取结构化 JSON spec（用于 round-trip 编辑）
     pub fn extract_xlsx_as_spec(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "spreadsheet.xlsx")?;
+        self.check_zip_bomb(bytes, "spreadsheet.xlsx")?;
+
         let cursor = Cursor::new(bytes.to_vec());
         let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
@@ -2816,6 +2865,11 @@ impl DocumentParser {
         &self,
         bytes: &[u8],
     ) -> Result<Vec<serde_json::Value>, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "spreadsheet.xlsx")?;
+        self.check_zip_bomb(bytes, "spreadsheet.xlsx")?;
+
         let cursor = Cursor::new(bytes.to_vec());
         let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
@@ -2855,6 +2909,11 @@ impl DocumentParser {
 
     /// ★ GAP-4 修复：提取 XLSX 文件元数据（工作表数量/名称/行列数）
     pub fn extract_xlsx_metadata(&self, bytes: &[u8]) -> Result<serde_json::Value, ParsingError> {
+        // ★ P1-2 修复：安全检查下沉到方法本体
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "spreadsheet.xlsx")?;
+        self.check_zip_bomb(bytes, "spreadsheet.xlsx")?;
+
         let cursor = Cursor::new(bytes.to_vec());
         let book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
@@ -2898,6 +2957,10 @@ impl DocumentParser {
 
     /// 从EPUB字节流提取文本
     fn extract_epub_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
+        // ★ P1-1 修复：EPUB 同为 ZIP 容器，此前是唯一绕过 ZIP Bomb 防护的格式
+        self.check_file_size(bytes.len())?;
+        self.check_zip_bomb(&bytes, "book.epub")?;
+
         let cursor = Cursor::new(bytes);
         let mut archive = ZipArchive::new(cursor)
             .map_err(|e| ParsingError::EpubParsingError(format!("无法打开EPUB ZIP: {}", e)))?;
@@ -3097,19 +3160,20 @@ impl DocumentParser {
     }
 
     /// 从 ZIP 归档中读取指定条目的 UTF-8 文本内容
+    ///
+    /// ★ P1-1 修复：改为有界读取（不信任声明大小），超限判定为 ZIP Bomb
     fn epub_read_entry<R: std::io::Read + std::io::Seek>(
         &self,
         archive: &mut ZipArchive<R>,
         name: &str,
     ) -> Result<String, ParsingError> {
-        let mut file = archive.by_name(name).map_err(|e| {
+        let file = archive.by_name(name).map_err(|e| {
             ParsingError::EpubParsingError(format!("EPUB 中未找到 {}: {}", name, e))
         })?;
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content).map_err(|e| {
-            ParsingError::EpubParsingError(format!("读取 EPUB 条目 {} 失败: {}", name, e))
-        })?;
-        Ok(content)
+        let bytes = Self::read_zip_entry_bounded(file, name, MAX_SINGLE_ENTRY_SIZE)?;
+        String::from_utf8(bytes).map_err(|e| {
+            ParsingError::EpubParsingError(format!("读取 EPUB 条目 {} 失败: 非 UTF-8 内容 ({})", name, e))
+        })
     }
 
     // ========================================================================

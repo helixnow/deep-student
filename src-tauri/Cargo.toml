@@ -93,6 +93,8 @@ quick-xml = "0.37"   # XML 解析
 bincode = "1.3"
 # 并行计算优化
 rayon = "1.8"
+# FSRS 调度（仅 scheduler，不含优化器/Burn；vendored 避免 crates.io 拉取不稳）
+rs-fsrs = { path = "vendor/rs-fsrs", features = ["serde"] }
 # 高性能并发哈希表
 dashmap = "5.5.3"
 log = "0.4"
@@ -143,11 +145,13 @@ reqwest-eventsource = "0.5"
 zstd = "0.13.3"
 tauri-plugin-clipboard-manager = "~2.2"
 
-# 桌面端专用插件（更新器 + 进程管理）
+# 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
 # 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# 单实例锁（审阅 34 P1-2）：防止双开进程共享同一套 SQLite/数据空间
+tauri-plugin-single-instance = "2"
 
 # OAuth2 在 Android 上暂不支持（会引入 native-tls）
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -187,8 +191,10 @@ harness = false
 cocoa = "0.25"
 objc = "0.2"
 
-# Windows 特定依赖（系统 OCR）
+# Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
 [target.'cfg(windows)'.dependencies]
+# 与 wry/tauri 对齐；仅用于 browser::bridge eval_with_result（勿与下方 OCR windows 0.58 混用类型）
+webview2-com = "0.38"
 windows = { version = "0.58", features = [
     "Media_Ocr",
     "Graphics_Imaging",

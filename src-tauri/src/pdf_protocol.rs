@@ -8,16 +8,19 @@ use std::path::PathBuf;
 
 const DEFAULT_CORS_ORIGIN: &str = "tauri://localhost";
 
-/// 无 Range 请求时的最大单次返回字节数（4MB）。
-/// 超过该阈值时改为返回 206 Partial Content，避免一次性把整个 PDF 读入内存。
-const PDF_PROTOCOL_NO_RANGE_CAP: u64 = 4 * 1024 * 1024;
-
-/// ★ 2026-06-12（代理 3 审阅 A1）：单次 Range 响应的最大字节数（8MB）。
-/// 此前 `bytes=0-` 这类开区间请求会把整个 PDF 一次读入内存（数百 MB 的 OOM 风险）。
-/// 截断后返回实际范围的 Content-Range，客户端（PDF.js 按 64KB 块请求，浏览器
-/// 按 Content-Range 续读）均能正确继续。8MB 为 64KB 的整数倍，保证与 PDF.js
-/// ChunkedStreamManager 的块边界对齐。
-const PDF_PROTOCOL_RANGE_CAP: u64 = 8 * 1024 * 1024;
+// ★ 2026-07-08（PDF 链路审计 H1/H2）：移除 4MB 无 Range 截断与 8MB Range 截断。
+//
+// 此前的截断策略与 pdf.js 实际行为不兼容，导致 >4MB 的 PDF 必然解析失败或挂起：
+// - H1：pdf.js 的初始完整请求（PDFFetchStreamFullReader / validateRangeRequestCapabilities）
+//   只读取 Content-Length，从不解析 Content-Range。返回 206 + Content-Length=4MB 时，
+//   pdf.js 认为文件总长就是 4MB，xref/trailer 不可达 → "Invalid PDF"。
+//   macOS/Linux 上 pdfstream:// 为非 http scheme，pdf.js 直接禁用 Range 模式，无任何恢复路径。
+// - H2：pdf.js 的 ChunkedStreamManager 会把连续缺失的 64KB 块合并为单个 Range 请求；
+//   服务端静默截断到 8MB 后，剩余块保持 requested 状态且永远不会重发 → 加载永久挂起。
+//
+// 现在：无 Range 请求返回 200 + 完整内容；Range 请求严格按请求范围返回
+// （parse_range_header 已把 end clamp 到 file_size-1，读取量以文件大小为上界）。
+// 内存峰值等于单个 PDF 文件大小（本地文件、瞬时缓冲），优先保证正确性。
 
 fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
     let origin = request
@@ -204,12 +207,26 @@ pub fn handle_asset_protocol(
             .body(Vec::new())?);
     }
 
-    // 获取文件元数据
-    let metadata = std::fs::metadata(&canonical_path)?;
+    // 打开文件（★ 2026-07-08 审计 M4：先 open 再取已打开句柄的 metadata，
+    // 避免 stat 与 open 之间文件被替换/收缩产生 read_exact 竞态 500）
+    let mut file = File::open(&canonical_path)?;
+    let metadata = file.metadata()?;
     let file_size = metadata.len();
 
-    // 打开文件
-    let mut file = File::open(&canonical_path)?;
+    // ★ 2026-07-08（审计 L1）：HEAD 请求只返回响应头，不读文件体
+    let is_head = request.method() == tauri::http::Method::HEAD;
+    if is_head {
+        return Ok(tauri::http::Response::builder()
+            .status(200)
+            .header("Content-Type", get_mime_type(&canonical_path))
+            .header("Content-Length", file_size.to_string())
+            .header("Accept-Ranges", "bytes")
+            .header("Vary", "Origin")
+            .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
+            .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+            .header("Access-Control-Allow-Headers", "Range")
+            .body(Vec::new())?);
+    }
 
     // 解析 Range 请求头
     let range_header = request.headers().get("range");
@@ -220,10 +237,9 @@ pub fn handle_asset_protocol(
             let range_str = range_value.to_str()?;
 
             if let Some((start, end)) = parse_range_header(range_str, file_size) {
-                // ★ 2026-06-12（代理 3 审阅 A1）：限幅单次响应大小，
-                // 防止 `bytes=0-` 把整个大 PDF 一次性读入内存。
-                // 返回实际截断后的 Content-Range，客户端按需继续请求剩余部分。
-                let end = end.min(start + PDF_PROTOCOL_RANGE_CAP - 1);
+                // ★ 2026-07-08（审计 H2）：不再截断 Range 响应。
+                // pdf.js 对被截断的 206 不会重发剩余部分（ChunkedStreamManager 挂起）。
+                // end 已在 parse_range_header 中 clamp 到 file_size-1。
 
                 // 计算实际读取范围
                 let content_length = end - start + 1;
@@ -231,9 +247,21 @@ pub fn handle_asset_protocol(
                 // Seek 到起始位置
                 file.seek(SeekFrom::Start(start))?;
 
-                // 读取指定范围的数据
+                // 读取指定范围的数据（★ 审计 M4：文件在读取中收缩时返回 416 而非 500）
                 let mut buffer = vec![0u8; content_length as usize];
-                file.read_exact(&mut buffer)?;
+                if let Err(e) = file.read_exact(&mut buffer) {
+                    warn!(
+                        "[pdfstream] Range 读取失败（文件可能已被修改）: {}..{}, err={}",
+                        start, end, e
+                    );
+                    return Ok(with_cors_headers(
+                        tauri::http::Response::builder()
+                            .status(416)
+                            .header("Content-Range", format!("bytes */{}", file_size)),
+                        request,
+                    )
+                    .body(Vec::new())?);
+                }
 
                 // 返回 206 Partial Content
                 Ok(tauri::http::Response::builder()
@@ -262,42 +290,24 @@ pub fn handle_asset_protocol(
             }
         }
         None => {
-            // 无 Range 请求：小文件直接整体返回；大文件改用 206 + 4MB 截断，
-            // PDF.js 会基于响应中的 Content-Range/total 长度继续发起后续 Range 请求。
-            if file_size <= PDF_PROTOCOL_NO_RANGE_CAP {
-                let mut buffer = Vec::with_capacity(file_size as usize);
-                file.read_to_end(&mut buffer)?;
+            // ★ 2026-07-08（审计 H1）：无 Range 请求一律返回 200 + 完整内容。
+            // pdf.js 的初始完整请求不解析 Content-Range，任何截断都会被当作文件总长，
+            // 导致 >截断值 的 PDF 解析失败。Tauri 自定义协议无法流式响应，
+            // 只能整体缓冲；Accept-Ranges: bytes 让 pdf.js（Windows http scheme）
+            // 尽早切换到 Range 模式以减少后续全量请求。
+            let mut buffer = Vec::with_capacity(file_size as usize);
+            file.read_to_end(&mut buffer)?;
 
-                Ok(tauri::http::Response::builder()
-                    .status(200)
-                    .header("Content-Type", get_mime_type(&canonical_path))
-                    .header("Content-Length", file_size.to_string())
-                    .header("Accept-Ranges", "bytes")
-                    .header("Vary", "Origin")
-                    .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
-                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-                    .header("Access-Control-Allow-Headers", "Range")
-                    .body(buffer)?)
-            } else {
-                let cap = PDF_PROTOCOL_NO_RANGE_CAP;
-                let mut buffer = Vec::with_capacity(cap as usize);
-                file.take(cap).read_to_end(&mut buffer)?;
-
-                Ok(tauri::http::Response::builder()
-                    .status(206)
-                    .header("Content-Type", get_mime_type(&canonical_path))
-                    .header("Content-Length", cap.to_string())
-                    .header(
-                        "Content-Range",
-                        format!("bytes 0-{}/{}", cap - 1, file_size),
-                    )
-                    .header("Accept-Ranges", "bytes")
-                    .header("Vary", "Origin")
-                    .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
-                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-                    .header("Access-Control-Allow-Headers", "Range")
-                    .body(buffer)?)
-            }
+            Ok(tauri::http::Response::builder()
+                .status(200)
+                .header("Content-Type", get_mime_type(&canonical_path))
+                .header("Content-Length", buffer.len().to_string())
+                .header("Accept-Ranges", "bytes")
+                .header("Vary", "Origin")
+                .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
+                .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                .header("Access-Control-Allow-Headers", "Range")
+                .body(buffer)?)
         }
     }
 }
@@ -407,14 +417,6 @@ mod tests {
         assert!(!is_allowed_origin("http://localhost.evil.com"));
         assert!(!is_allowed_origin("https://localhost.evil.com:443"));
         assert!(!is_allowed_origin("http://evil.com"));
-    }
-
-    #[test]
-    fn test_range_cap_alignment() {
-        // 8MB cap 必须是 PDF.js 默认块大小（64KB）的整数倍，
-        // 否则截断响应会打破 ChunkedStreamManager 的块边界假设。
-        assert_eq!(PDF_PROTOCOL_RANGE_CAP % (64 * 1024), 0);
-        assert!(PDF_PROTOCOL_RANGE_CAP >= PDF_PROTOCOL_NO_RANGE_CAP);
     }
 
     #[test]

@@ -1,9 +1,14 @@
 [build]
 # rustc-wrapper = "sccache"  # Windows 开发环境临时禁用
 
+# 本机 Clash 代理（仅开发机；CI/无代理环境可忽略）
+[http]
+proxy = "http://127.0.0.1:7897"
+
 # Windows 本地编译链接器配置 - 解决内存不足问题
+# /PDBPAGESIZE:16384：debug PDB 超过默认 4GB 上限会 LNK1140（勿用 /PDB:NONE，会生成名为 NONE 的垃圾文件）
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=/INCREMENTAL:NO", "-C", "link-arg=/STACK:16777216"]
+rustflags = ["-C", "link-arg=/INCREMENTAL:NO", "-C", "link-arg=/STACK:16777216", "-C", "link-arg=/PDBPAGESIZE:16384"]
 # 注意：macOS 交叉编译时 cargo-xwin 会自动配置链接器，无需手动设置 linker
 
 [target.x86_64-unknown-linux-gnu]

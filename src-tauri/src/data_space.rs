@@ -555,6 +555,94 @@ impl DataSpaceManager {
         self.slot_dir(self.inactive_slot())
     }
 
+    /// 恢复前清空目标插槽（审阅 15-backup-dataspace P1-2）。
+    ///
+    /// 非活跃插槽通常保留着上一次切换前的完整旧数据空间；恢复只覆盖备份中
+    /// 存在的文件，备份未包含的内容（如精简备份不含 `llm_usage.db`、资产目录、
+    /// 旧的 `ws_*.db`）会原样残留，切换后用户得到"备份数据 + 旧插槽残留"的
+    /// 混合体。恢复写入前应先调用本方法清场。
+    ///
+    /// 行为：
+    /// 1. 拒绝清空当前**活跃**插槽（防误用——活跃插槽数据库被连接池持有）；
+    /// 2. 若目标插槽有残留内容，整体移动到 `slots/<slot>.trash-<时间戳>`
+    ///    作为兜底（rename 快速且失败可回退），再重建空目录；
+    /// 3. rename 失败（如跨设备/被占用）时回退为逐条删除；逐条删除仍有
+    ///    失败则返回错误，不允许在脏插槽上继续恢复；
+    /// 4. 目标插槽本就为空时直接成功（幂等）。
+    ///
+    /// 返回残留内容被移动到的 trash 目录（若有残留），供完成消息展示与
+    /// 后续清理策略处置。
+    pub fn clear_slot_for_restore(&self, target: Slot) -> std::io::Result<Option<PathBuf>> {
+        if !target.is_test_slot() && target == self.active_slot() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "拒绝清空活跃插槽 {}：恢复必须写入非活跃插槽",
+                    target.name()
+                ),
+            ));
+        }
+
+        let target_dir = self.slot_dir(target);
+        if !target_dir.is_dir() || !Self::dir_has_data(&target_dir) {
+            // 无残留，确保目录存在即可
+            fs::create_dir_all(&target_dir)?;
+            return Ok(None);
+        }
+
+        // 1. 优先整体移动到 trash 目录（保留兜底，可手动找回）
+        let trash_dir = self.slots_dir().join(format!(
+            "{}.trash-{}",
+            target.name(),
+            chrono::Utc::now().format("%Y%m%d%H%M%S")
+        ));
+        match fs::rename(&target_dir, &trash_dir) {
+            Ok(()) => {
+                info!(
+                    "[DataSpace] 恢复前已清空插槽 {}：残留数据移动到 {:?}",
+                    target.name(),
+                    trash_dir
+                );
+                fs::create_dir_all(&target_dir)?;
+                return Ok(Some(trash_dir));
+            }
+            Err(e) => {
+                warn!(
+                    "[DataSpace] 移动插槽 {} 残留数据到 trash 失败（回退为逐条删除）: {}",
+                    target.name(),
+                    e
+                );
+            }
+        }
+
+        // 2. 回退：逐条删除插槽内容（不删除插槽目录本身）
+        let mut errors: Vec<String> = Vec::new();
+        for entry in fs::read_dir(&target_dir)?.filter_map(log_and_skip_entry_err) {
+            let p = entry.path();
+            let result = if p.is_dir() {
+                fs::remove_dir_all(&p)
+            } else {
+                fs::remove_file(&p)
+            };
+            if let Err(e) = result {
+                errors.push(format!("{:?}: {}", p, e));
+            }
+        }
+        if !errors.is_empty() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!(
+                    "清空插槽 {} 失败（{} 个条目无法删除，禁止在脏插槽上恢复）: {}",
+                    target.name(),
+                    errors.len(),
+                    errors.join("; ")
+                ),
+            ));
+        }
+        info!("[DataSpace] 恢复前已清空插槽 {}（逐条删除）", target.name());
+        Ok(None)
+    }
+
     /// 标记下次重启时切换到目标 slot。
     ///
     /// 事务性保证：
@@ -1302,6 +1390,72 @@ mod tests {
         mgr.write_state(&state).unwrap();
         assert_eq!(mgr.active_slot(), Slot::B);
         assert_eq!(mgr.inactive_slot(), Slot::A);
+    }
+
+    // -----------------------------------------------------------------------
+    // 补充: clear_slot_for_restore 测试（审阅 15 P1-2）
+    // -----------------------------------------------------------------------
+    #[test]
+    fn test_clear_slot_for_restore_moves_residual_to_trash() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+
+        // 活跃为 slotA，向非活跃 slotB 放入残留数据
+        populate_slot_with_db(&mgr, Slot::B);
+        let residual_sub = mgr.slot_dir(Slot::B).join("images");
+        fs::create_dir_all(&residual_sub).unwrap();
+        fs::write(residual_sub.join("old.jpg"), "stale").unwrap();
+
+        let trash = mgr
+            .clear_slot_for_restore(Slot::B)
+            .expect("清空非活跃插槽应成功");
+
+        // 插槽应存在且为空
+        let slot_b = mgr.slot_dir(Slot::B);
+        assert!(slot_b.is_dir(), "清空后插槽目录应仍存在");
+        assert!(
+            fs::read_dir(&slot_b).unwrap().next().is_none(),
+            "清空后插槽应为空"
+        );
+
+        // 残留数据应被移动到 trash 目录
+        let trash = trash.expect("有残留时应返回 trash 目录");
+        assert!(trash.is_dir(), "trash 目录应存在");
+        assert!(
+            trash.join("main.db").exists(),
+            "残留数据库应保留在 trash 中"
+        );
+        assert!(
+            trash.join("images").join("old.jpg").exists(),
+            "残留资产应保留在 trash 中"
+        );
+    }
+
+    #[test]
+    fn test_clear_slot_for_restore_rejects_active_slot() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+
+        // 默认活跃 slotA
+        populate_slot(&mgr, Slot::A);
+        let result = mgr.clear_slot_for_restore(Slot::A);
+        assert!(result.is_err(), "清空活跃插槽应被拒绝");
+        assert!(
+            mgr.slot_dir(Slot::A).join("placeholder.txt").exists(),
+            "活跃插槽数据不应被动过"
+        );
+    }
+
+    #[test]
+    fn test_clear_slot_for_restore_empty_slot_is_noop() {
+        let (_tmp, mgr) = make_manager();
+        mgr.ensure_layout().unwrap();
+
+        let trash = mgr
+            .clear_slot_for_restore(Slot::B)
+            .expect("空插槽清空应成功");
+        assert!(trash.is_none(), "空插槽不应产生 trash 目录");
+        assert!(mgr.slot_dir(Slot::B).is_dir(), "插槽目录应仍存在");
     }
 
     // -----------------------------------------------------------------------

@@ -44,7 +44,12 @@ export const ViewLayerRenderer = React.memo(function ViewLayerRenderer({
       className={cn(
         'page-container desktop-shell-view-layer absolute inset-0 flex flex-col',
         extraClass,
-        currentView === view ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
+        // 入场动画类仅挂在激活层：非激活时移除，再次激活时重新挂上即可重播一次
+        // CSS animation（样式见 shared/styles/app.css 的 .desktop-shell-content-enter）。
+        // 离场层不做动画，visibility:hidden 同帧生效是刻意行为。
+        currentView === view
+          ? 'desktop-shell-content-enter opacity-100 z-10 pointer-events-auto'
+          : 'opacity-0 z-0 pointer-events-none'
       )}
       style={{
         position: 'absolute',

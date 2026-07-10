@@ -664,11 +664,30 @@ impl BackupJobContext {
     // ========================================================================
 
     /// 设置任务参数（用于持久化和恢复）
+    ///
+    /// 安全封禁（审阅 15-backup-dataspace P0-1）：增量备份是功能空壳——
+    /// 导出的"增量备份"只含变更日志元信息（表名/记录 ID/操作类型），不含任何
+    /// 行数据，且恢复路径明确拒绝增量清单。用户按"全量+增量"心智使用时，
+    /// 增量备份实际什么都没备到。此处是新建备份与失败重试两条执行路径的
+    /// 共同参数入口：检测到 `backup_type == "incremental"` 时立即将任务标记
+    /// 为失败（附明确错误信息）并置取消标志，执行体在下一个取消检查点即退出，
+    /// 不会产生任何备份产物。待增量备份真正实现（行级数据捕获 + 独立游标 +
+    /// 增量链合并恢复）后再放开。
     pub fn set_params(&self, params: BackupJobParams) {
+        let is_incremental = params.backup_type.as_deref() == Some("incremental");
         self.manager.with_state(&self.job_id, |state| {
             let mut runtime = safe_lock(&state.runtime);
             runtime.params = Some(params);
         });
+        if is_incremental {
+            warn!(
+                "[BackupJob] 拒绝增量备份任务 {}：增量备份当前为空壳实现，已被安全封禁",
+                self.job_id
+            );
+            // 先置取消标志，确保执行体即使忽略失败状态也会在检查点退出
+            self.manager.request_cancel(&self.job_id);
+            self.fail(INCREMENTAL_BACKUP_DISABLED_MESSAGE.to_string());
+        }
     }
 
     /// 初始化检查点（在开始处理之前调用）
@@ -758,6 +777,13 @@ impl BackupJobContext {
         });
     }
 }
+
+/// 增量备份封禁提示（审阅 15-backup-dataspace P0-1）
+///
+/// 增量备份导出仅含变更日志元信息、无行数据、不可恢复，为避免用户误以为
+/// "已有备份"而实际数据不可挽回，在实现完整增量链之前统一拒绝该类型。
+pub const INCREMENTAL_BACKUP_DISABLED_MESSAGE: &str =
+    "增量备份功能当前不可用：现有实现不包含实际数据、无法用于恢复，已被安全禁用。请使用完整备份（full）或分层备份。";
 
 /// 备份任务持久化目录名
 const BACKUP_JOBS_DIR: &str = "backup_jobs";

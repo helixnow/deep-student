@@ -82,6 +82,132 @@ const SENSITIVE_KEY_PATTERNS: &[&str] = &[
     "token",    // 通用 token 模式
 ];
 
+/// `.key_seed` 文件的 DPAPI 封装前缀（Windows）
+///
+/// 安全修复（审阅 16-secrets-security-infra P1-1）：明文种子与密文同目录存放时，
+/// 加密强度完全依赖 best-effort 的文件 ACL。Windows 下改用 DPAPI（用户级
+/// `CryptProtectData`）封装种子后落盘：即使 `.secure` 目录整体泄露（备份、
+/// 网盘同步、取证镜像），缺少当前 Windows 用户上下文也无法解封种子。
+/// 文件格式：`DPAPI1:` + base64(DPAPI blob)。旧版明文种子在首次读取时平滑迁移。
+#[cfg(windows)]
+const DPAPI_SEED_PREFIX: &str = "DPAPI1:";
+
+/// DPAPI 附加熵（应用绑定，防止其他同用户进程用空熵直接解封）
+///
+/// 注意：这是编译期常量而非秘密——同机同用户的进程理论上仍可携带此熵调用
+/// DPAPI 解封（DPAPI 的保护边界是"用户上下文"），但它阻断了通用 DPAPI
+/// 扫描工具的无差别解封，并把跨用户/跨机器的离线解密彻底封死。
+#[cfg(windows)]
+const DPAPI_SEED_ENTROPY: &[u8] = b"deep-student.key_seed.dpapi.v1";
+
+/// Windows DPAPI 最小 FFI 绑定（crypt32）
+///
+/// 项目的 `windows` crate 依赖未启用 `Win32_Security_Cryptography` feature，
+/// 为避免改动构建配置，这里直接声明所需的两个 API。
+#[cfg(windows)]
+mod win_dpapi {
+    use std::ffi::c_void;
+    use std::ptr;
+
+    #[repr(C)]
+    struct DataBlob {
+        cb_data: u32,
+        pb_data: *mut u8,
+    }
+
+    /// 禁止 DPAPI 弹出任何 UI（保持与"避免 Keychain 弹窗"的设计原则一致）
+    const CRYPTPROTECT_UI_FORBIDDEN: u32 = 0x01;
+
+    #[link(name = "crypt32")]
+    extern "system" {
+        fn CryptProtectData(
+            p_data_in: *const DataBlob,
+            sz_data_descr: *const u16,
+            p_optional_entropy: *const DataBlob,
+            pv_reserved: *mut c_void,
+            p_prompt_struct: *mut c_void,
+            dw_flags: u32,
+            p_data_out: *mut DataBlob,
+        ) -> i32;
+        fn CryptUnprotectData(
+            p_data_in: *const DataBlob,
+            pp_sz_data_descr: *mut *mut u16,
+            p_optional_entropy: *const DataBlob,
+            pv_reserved: *mut c_void,
+            p_prompt_struct: *mut c_void,
+            dw_flags: u32,
+            p_data_out: *mut DataBlob,
+        ) -> i32;
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn LocalFree(h_mem: *mut c_void) -> *mut c_void;
+    }
+
+    fn as_blob(data: &[u8]) -> DataBlob {
+        DataBlob {
+            cb_data: data.len() as u32,
+            // DPAPI 不会写入输入 blob，仅签名要求可变指针
+            pb_data: data.as_ptr() as *mut u8,
+        }
+    }
+
+    /// 用当前 Windows 用户上下文加密数据；失败返回 None
+    pub fn protect(data: &[u8], entropy: &[u8]) -> Option<Vec<u8>> {
+        unsafe {
+            let input = as_blob(data);
+            let ent = as_blob(entropy);
+            let mut out = DataBlob {
+                cb_data: 0,
+                pb_data: ptr::null_mut(),
+            };
+            let ok = CryptProtectData(
+                &input,
+                ptr::null(),
+                &ent,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut out,
+            );
+            if ok == 0 || out.pb_data.is_null() {
+                return None;
+            }
+            let result = std::slice::from_raw_parts(out.pb_data, out.cb_data as usize).to_vec();
+            LocalFree(out.pb_data as *mut c_void);
+            Some(result)
+        }
+    }
+
+    /// 解封 DPAPI blob；跨用户/跨机器（或熵不匹配）时返回 None
+    pub fn unprotect(data: &[u8], entropy: &[u8]) -> Option<Vec<u8>> {
+        unsafe {
+            let input = as_blob(data);
+            let ent = as_blob(entropy);
+            let mut out = DataBlob {
+                cb_data: 0,
+                pb_data: ptr::null_mut(),
+            };
+            let ok = CryptUnprotectData(
+                &input,
+                ptr::null_mut(),
+                &ent,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut out,
+            );
+            if ok == 0 || out.pb_data.is_null() {
+                return None;
+            }
+            let result = std::slice::from_raw_parts(out.pb_data, out.cb_data as usize).to_vec();
+            LocalFree(out.pb_data as *mut c_void);
+            Some(result)
+        }
+    }
+}
+
 /// 安全存储服务
 pub struct SecureStore {
     config: SecureStoreConfig,
@@ -269,6 +395,10 @@ impl SecureStore {
     }
 
     /// 获取或创建主密钥种子（稳定存储在 .key_seed）
+    ///
+    /// Windows 下种子经 DPAPI 封装后落盘（见 `DPAPI_SEED_PREFIX` 注释）；
+    /// 历史明文种子在首次读取时自动迁移为封装格式（迁移失败不影响读取）。
+    /// 其余平台维持原有明文 + 权限收紧策略。
     fn get_or_create_master_seed(&self) -> Result<String, SecureStoreError> {
         let secure_dir = self.get_secure_dir()?;
         let seed_file = secure_dir.join(".key_seed");
@@ -276,7 +406,24 @@ impl SecureStore {
         if let Ok(seed) = std::fs::read_to_string(&seed_file) {
             let trimmed = seed.trim();
             if !trimmed.is_empty() {
-                return Ok(trimmed.to_string());
+                #[cfg(windows)]
+                {
+                    if let Some(encoded) = trimmed.strip_prefix(DPAPI_SEED_PREFIX) {
+                        return Self::unwrap_dpapi_seed(encoded);
+                    }
+                    // 旧版明文种子：平滑迁移为 DPAPI 封装（失败仅告警，不影响使用）
+                    let plain_seed = trimmed.to_string();
+                    if let Err(e) = Self::write_seed_file(&seed_file, &plain_seed) {
+                        warn!("迁移明文密钥种子到 DPAPI 封装失败（继续使用明文）: {}", e);
+                    } else {
+                        info!("已将明文密钥种子迁移为 DPAPI 封装存储");
+                    }
+                    return Ok(plain_seed);
+                }
+                #[cfg(not(windows))]
+                {
+                    return Ok(trimmed.to_string());
+                }
             }
         }
 
@@ -285,11 +432,58 @@ impl SecureStore {
         OsRng.fill_bytes(&mut seed_bytes);
         let seed = hex::encode(seed_bytes);
         seed_bytes.zeroize();
-        std::fs::write(&seed_file, &seed)
+        Self::write_seed_file(&seed_file, &seed)?;
+        Ok(seed)
+    }
+
+    /// 将种子写入 `.key_seed`：Windows 优先 DPAPI 封装，封装失败时回退明文
+    /// （回退时保留权限收紧，并输出显著告警）；其余平台明文 + 权限收紧。
+    fn write_seed_file(seed_file: &std::path::Path, seed: &str) -> Result<(), SecureStoreError> {
+        #[cfg(windows)]
+        {
+            if let Some(wrapped) = win_dpapi::protect(seed.as_bytes(), DPAPI_SEED_ENTROPY) {
+                use base64::Engine;
+                let encoded = format!(
+                    "{}{}",
+                    DPAPI_SEED_PREFIX,
+                    base64::engine::general_purpose::STANDARD.encode(wrapped)
+                );
+                std::fs::write(seed_file, encoded)
+                    .map_err(|e| SecureStoreError::Other(format!("写入密钥种子失败: {}", e)))?;
+                Self::restrict_permissions(seed_file, false);
+                return Ok(());
+            }
+            warn!(
+                "⚠️ DPAPI 封装密钥种子失败，回退为明文落盘（凭据加密强度退化为仅依赖文件 ACL）: {:?}",
+                seed_file
+            );
+        }
+        std::fs::write(seed_file, seed)
             .map_err(|e| SecureStoreError::Other(format!("写入密钥种子失败: {}", e)))?;
         // 种子是凭据加密的根密钥，必须限制为仅属主可读
-        Self::restrict_permissions(&seed_file, false);
-        Ok(seed)
+        Self::restrict_permissions(seed_file, false);
+        Ok(())
+    }
+
+    /// 解封 DPAPI 封装的种子（`DPAPI1:` 之后的 base64 载荷）
+    #[cfg(windows)]
+    fn unwrap_dpapi_seed(encoded: &str) -> Result<String, SecureStoreError> {
+        use base64::Engine;
+        let wrapped = base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .map_err(|e| {
+                SecureStoreError::EncryptionError(format!("密钥种子 DPAPI 载荷解码失败: {}", e))
+            })?;
+        let mut plain = win_dpapi::unprotect(&wrapped, DPAPI_SEED_ENTROPY).ok_or_else(|| {
+            SecureStoreError::EncryptionError(
+                "DPAPI 解封密钥种子失败：种子与当前 Windows 用户/机器绑定，跨设备复制的种子无法解密"
+                    .to_string(),
+            )
+        })?;
+        let seed = String::from_utf8(plain.clone())
+            .map_err(|e| SecureStoreError::Other(format!("密钥种子 UTF-8 解码失败: {}", e)))?;
+        plain.zeroize();
+        Ok(seed.trim().to_string())
     }
 
     fn derive_key(seed: &str, salt: &[u8]) -> [u8; 32] {
@@ -511,6 +705,42 @@ mod tests {
         let second = store.get_device_key();
 
         assert_eq!(first, second);
+    }
+
+    /// Windows：明文 `.key_seed` 首次读取应平滑迁移为 DPAPI 封装且种子不变
+    #[cfg(windows)]
+    #[test]
+    fn plaintext_seed_migrates_to_dpapi_wrapping() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+
+        let secure_dir = store.get_secure_dir().expect("secure dir");
+        let seed_file = secure_dir.join(".key_seed");
+        let legacy_seed = "aa".repeat(32); // 模拟旧版 64 字符 hex 明文种子
+        std::fs::write(&seed_file, &legacy_seed).expect("write plaintext seed");
+
+        // 首次读取：返回原种子并触发迁移
+        let seed = store.get_or_create_master_seed().expect("read seed");
+        assert_eq!(seed, legacy_seed, "迁移不应改变种子内容");
+
+        let on_disk = std::fs::read_to_string(&seed_file).expect("read seed file");
+        assert!(
+            on_disk.starts_with(DPAPI_SEED_PREFIX),
+            "落盘内容应为 DPAPI 封装格式，实际: {}",
+            &on_disk[..on_disk.len().min(16)]
+        );
+        assert!(
+            !on_disk.contains(&legacy_seed),
+            "落盘内容不应再包含明文种子"
+        );
+
+        // 再次读取：走 DPAPI 解封路径，种子一致
+        let seed_again = store.get_or_create_master_seed().expect("read seed again");
+        assert_eq!(seed_again, legacy_seed, "DPAPI 解封后种子应一致");
+
+        // 派生密钥稳定
+        assert_eq!(store.get_device_key(), store.get_device_key());
     }
 
     #[test]

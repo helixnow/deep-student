@@ -625,6 +625,10 @@ export type DashboardTab = 'overview' | 'archive' | 'backup' | 'sync' | 'audit' 
  *
  * 明确豁免（不纳入数据治理）：
  * - message_queue.db — 运行时临时队列，重启后自动重建
+ * - browser.db — 内置浏览器元数据（`{active_slot}/browser.db`）；懒加载；模块内迁移；
+ *   不进 DatabaseId / RowSync / 默认备份（对齐 message_queue）
+ * - browser-profiles/ — WebView profile 目录（cookie/缓存；非 SQLite）；
+ *   `{active_slot}/browser-profiles/default/`；清 Cookie 与清历史分离；禁用浏览器保留文件
  * - ws_*.db — 工作空间独立数据库，随工作空间生命周期管理
  * - resources.db — 已废弃的兼容期资源数据库，仅读不写
  */

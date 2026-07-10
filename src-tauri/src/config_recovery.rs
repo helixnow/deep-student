@@ -9,10 +9,10 @@ use anyhow::Result;
 /// 创建常用的默认API配置
 pub fn create_default_api_configs() -> Vec<ApiConfig> {
     vec![
-        // OpenAI GPT-4 配置
+        // OpenAI GPT-5.4 Mini 配置（高吞吐低成本主力，2026-07 现役）
         ApiConfig {
             id: "openai-gpt4".to_string(),
-            name: "OpenAI GPT-4".to_string(),
+            name: "OpenAI GPT-5.4 Mini".to_string(),
             vendor_id: None,
             vendor_name: None,
             provider_type: Some("openai".to_string()),
@@ -32,44 +32,45 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             ),
             api_key: "".to_string(), // 用户需要填入
             base_url: "https://api.openai.com/v1".to_string(),
-            model: "gpt-4-turbo-preview".to_string(),
+            model: "gpt-5.4-mini".to_string(),
             is_multimodal: true,
-            is_reasoning: false,
+            is_reasoning: true,
             is_embedding: false,
             is_reranker: false,
             is_image_generation: false,
             enabled: false, // 默认禁用，等用户填入API密钥后启用
             model_adapter: "general".to_string(),
-            max_output_tokens: 4096,
-            temperature: 0.7,
-            supports_tools: true, // GPT-4 支持工具调用
+            max_output_tokens: 32768,
+            // GPT-5.x 推理模型在 reasoning_effort != none 时会拒绝自定义采样参数，保持默认值
+            temperature: 1.0,
+            supports_tools: true,
             gemini_api_version: "v1".to_string(),
             is_builtin: false,
             is_read_only: false,
-            reasoning_effort: None,
-            thinking_enabled: false,
+            reasoning_effort: Some("medium".to_string()),
+            thinking_enabled: true,
             thinking_budget: None,
-            include_thoughts: false,
+            include_thoughts: true,
             min_p: None,
             top_k: None,
             enable_thinking: None,
-            supports_reasoning: false,
+            supports_reasoning: true,
             headers: None,
             top_p_override: None,
             frequency_penalty_override: None,
             presence_penalty_override: None,
             is_favorite: false,
             max_tokens_limit: None,
-            context_window: None,
+            context_window: Some(400_000),
             repetition_penalty: None,
             reasoning_split: None,
             effort: None,
-            verbosity: None,
+            verbosity: Some("medium".to_string()),
         },
-        // Claude 3.5 Sonnet 配置
+        // Claude Sonnet 5 配置（2026-07 现役 ID；claude-3-5-sonnet 早已退役）
         ApiConfig {
             id: "claude-sonnet".to_string(),
-            name: "Claude 3.5 Sonnet".to_string(),
+            name: "Claude Sonnet 5".to_string(),
             vendor_id: None,
             vendor_name: None,
             provider_type: Some("anthropic".to_string()),
@@ -89,7 +90,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             ),
             api_key: "".to_string(), // 用户需要填入
             base_url: "https://api.anthropic.com/v1".to_string(),
-            model: "claude-3-5-sonnet-20241022".to_string(),
+            model: "claude-sonnet-5".to_string(),
             is_multimodal: true,
             is_reasoning: false,
             is_embedding: false,
@@ -97,16 +98,19 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             is_image_generation: false,
             enabled: false, // 默认禁用
             model_adapter: "anthropic".to_string(),
-            max_output_tokens: 4096,
-            temperature: 0.7,
+            max_output_tokens: 8192,
+            // Sonnet 5 对非默认 temperature/top_p/top_k 一律 400，只能用默认值
+            temperature: 1.0,
             min_p: None,
             top_k: None,
             enable_thinking: None,
-            supports_tools: true, // Claude 3.5 Sonnet 支持工具调用
+            supports_tools: true,
             gemini_api_version: "v1".to_string(),
             is_builtin: false,
             is_read_only: false,
             reasoning_effort: None,
+            // Sonnet 5 服务端默认 adaptive thinking；在适配器支持 adaptive 请求形态前
+            // 不在客户端显式开启 thinking，避免发送旧的 enabled+budget_tokens 形态导致 400
             thinking_enabled: false,
             thinking_budget: None,
             include_thoughts: false,
@@ -117,7 +121,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             presence_penalty_override: None,
             is_favorite: false,
             max_tokens_limit: None,
-            context_window: None,
+            context_window: Some(1_000_000),
             repetition_penalty: None,
             reasoning_split: None,
             effort: None,

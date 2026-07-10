@@ -21,7 +21,8 @@
         "skipTaskbar": false,
         "alwaysOnTop": false,
         "visible": true,
-        "dragDropEnabled": true
+        "dragDropEnabled": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"
       }
     ]
   }

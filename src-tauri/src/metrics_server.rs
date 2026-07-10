@@ -49,12 +49,15 @@ async fn start_server(_app_handle: tauri::AppHandle) -> Result<()> {
     let make_svc =
         make_service_fn(|_conn| async { Ok::<_, hyper::Error>(service_fn(handle_request)) });
 
+    // `Server::bind` 在端口被占用时会 panic；开发期重复实例不应拖垮 Tokio worker。
+    let builder = Server::try_bind(&addr)
+        .map_err(|e| anyhow::anyhow!("metrics server 绑定 {} 失败: {}", addr, e))?;
     log::info!(
         "[MetricsServer] Metrics server listening on http://{}",
         addr
     );
 
-    let server = Server::bind(&addr).serve(make_svc);
+    let server = builder.serve(make_svc);
     server
         .await
         .map_err(|e| anyhow::anyhow!("metrics server错误: {}", e))

@@ -25,7 +25,7 @@ const ALL_NS = [
   'essay_grading', 'app_menu', 'learningHub', 'dstu', 'migration',
   'skills', 'command_palette', 'backend_errors', 'mcp', 'workspace',
   'stats', 'llm_usage', 'review', 'practice', 'sync', 'mindmap', 'vfs',
-  'forms', 'console', 'cloudStorage', 'todo',
+  'forms', 'console', 'cloudStorage', 'todo', 'workbench', 'flashcards',
 ];
 
 const FALLBACK_NS = ALL_NS.filter((namespace) => namespace !== 'common');
