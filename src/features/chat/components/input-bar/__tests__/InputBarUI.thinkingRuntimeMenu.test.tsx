@@ -8,14 +8,27 @@ import { createDefaultPanelStates } from '../../../core/types/common';
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => undefined },
   useTranslation: () => ({
-    t: (_key: string, options?: Record<string, unknown> | string) => {
-      if (typeof options === 'string') {
-        return options;
-      }
-      if (typeof options === 'object' && typeof options.defaultValue === 'string') {
-        return options.defaultValue;
-      }
-      return _key;
+    // 与真实 i18next 对齐：支持 t(key, defaultValue, options) 三参形式，并对
+    // defaultValue 中的 {{var}} 占位符做插值（runtimeModelSwitchCurrent 等依赖）
+    t: (
+      _key: string,
+      defaultValueOrOptions?: Record<string, unknown> | string,
+      maybeOptions?: Record<string, unknown>
+    ) => {
+      const defaultValue =
+        typeof defaultValueOrOptions === 'string'
+          ? defaultValueOrOptions
+          : typeof defaultValueOrOptions === 'object' && typeof defaultValueOrOptions.defaultValue === 'string'
+            ? defaultValueOrOptions.defaultValue
+            : undefined;
+      const options =
+        (typeof defaultValueOrOptions === 'object' && defaultValueOrOptions !== null
+          ? defaultValueOrOptions
+          : maybeOptions) ?? {};
+      const template = defaultValue ?? _key;
+      return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+        options[name] !== undefined ? String(options[name]) : match
+      );
     },
   }),
 }));

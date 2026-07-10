@@ -33,7 +33,7 @@ function renderContent(interaction: BlockingInteraction, sessionId: string) {
 export const BlockingInteractionBar: React.FC<BlockingInteractionBarProps> = React.memo(({ interaction, sessionId }) => {
   return (
     <div className={cn(
-      'animate-in fade-in slide-in-from-bottom-2 duration-150',
+      'ui-rise-in',
       'py-1'
     )}>
       {renderContent(interaction, sessionId)}

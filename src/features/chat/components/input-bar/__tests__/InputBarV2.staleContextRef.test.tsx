@@ -55,6 +55,38 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
+// 测试环境不加载异步 i18n 命名空间（chatV2 等按需加载），真实 t 会原样返回
+// 未插值的 defaultValue（如 '推理: {{depth}}'）。与同目录其它测试一致，
+// mock useTranslation 并补上 {{var}} 插值，保证断言确定性。
+vi.mock('react-i18next', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-i18next')>();
+  const translate = (
+    key: string,
+    defaultValueOrOptions?: unknown,
+    maybeOptions?: Record<string, unknown>
+  ): string => {
+    const defaultValue =
+      typeof defaultValueOrOptions === 'string'
+        ? defaultValueOrOptions
+        : (defaultValueOrOptions as { defaultValue?: string } | undefined)?.defaultValue;
+    const options =
+      (typeof defaultValueOrOptions === 'object' && defaultValueOrOptions !== null
+        ? (defaultValueOrOptions as Record<string, unknown>)
+        : maybeOptions) ?? {};
+    const template = defaultValue ?? key;
+    return template.replace(/\{\{(\w+)\}\}/g, (match, name: string) =>
+      options[name] !== undefined ? String(options[name]) : match
+    );
+  };
+  return {
+    ...actual,
+    useTranslation: () => ({
+      t: translate,
+      i18n: { language: 'zh-CN', changeLanguage: vi.fn() },
+    }),
+  };
+});
+
 vi.mock('../../skills/hooks/useLoadedSkills', () => ({
   useLoadedSkills: () => ({ loadedSkillIds: new Set<string>() }),
 }));

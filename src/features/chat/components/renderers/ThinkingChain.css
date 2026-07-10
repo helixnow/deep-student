@@ -87,15 +87,15 @@
 }
 
 .chat-v2 .thinking-trace__body {
-  background: hsl(var(--card));
-  border-color: hsl(var(--border));
+  background: var(--chat-thinking-surface);
+  border-color: var(--chat-thinking-border);
   color: hsl(var(--muted-foreground));
 }
 
 [data-theme="dark"] .chat-v2 .thinking-trace__body,
 .dark .chat-v2 .thinking-trace__body {
-  background: hsl(var(--muted) / 0.4);
-  border-color: hsl(var(--border));
+  background: var(--chat-thinking-surface);
+  border-color: var(--chat-thinking-border);
   color: hsl(var(--muted-foreground));
 }
 
@@ -132,20 +132,20 @@
 
 .chat-v2 .thinking-trace__text::before {
   top: 0;
-  background: linear-gradient(180deg, hsl(var(--card) / 0.95), hsl(var(--card) / 0));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 .chat-v2 .thinking-trace__text::after {
   bottom: 0;
-  background: linear-gradient(0deg, hsl(var(--card) / 0.95), hsl(var(--card) / 0));
+  background: linear-gradient(0deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 [data-theme="dark"] .chat-v2 .thinking-trace__text::before {
-  background: linear-gradient(180deg, hsl(var(--muted) / 0.4), transparent);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 [data-theme="dark"] .chat-v2 .thinking-trace__text::after {
-  background: linear-gradient(0deg, hsl(var(--muted) / 0.4), transparent);
+  background: linear-gradient(0deg, color-mix(in srgb, var(--chat-thinking-surface) 95%, transparent), transparent);
 }
 
 .chat-v2 .thinking-trace__text p {
@@ -162,7 +162,7 @@
   margin-top: 12px;
   padding-left: 14px;
   border-left: 1px solid hsl(var(--border) / 0.35);
-  --timeline-ease: cubic-bezier(0.16, 0.84, 0.44, 1);
+  --timeline-ease: var(--ease-standard);
 }
 
 [data-theme="dark"] .chat-v2 .timeline-panel {
@@ -346,7 +346,8 @@
 }
 
 [data-theme="dark"] .chat-v2 .timeline-item--highlight .timeline-item__content {
-  background: hsla(var(--primary), 0.12);
+  /* hsla(var(--primary), a) 是无效语法（token 为空格分隔），必须用 hsl(... / a) */
+  background: hsl(var(--primary) / 0.12);
 }
 
 .chat-v2 .timeline-thinking {
@@ -434,14 +435,14 @@
 }
 
 [data-theme="dark"] .chat-v2 .tool-event-detail-block {
-  background: hsla(var(--background), 0.35);
-  border-color: hsla(var(--border), 0.55);
+  background: hsl(var(--background) / 0.35);
+  border-color: hsl(var(--border) / 0.55);
   color: hsl(var(--muted-foreground));
 }
 
 [data-theme="dark"] .tool-event-detail-block.error {
-  background: hsla(var(--destructive), 0.18);
-  border-color: hsla(var(--destructive), 0.4);
+  background: hsl(var(--destructive) / 0.18);
+  border-color: hsl(var(--destructive) / 0.4);
   color: hsl(var(--destructive-foreground));
 }
 
@@ -870,10 +871,12 @@
    ============================================================================ */
 
 .think-block {
-  border: 1px solid hsl(var(--border) / 0.3);
-  border-left: 2px solid var(--brand-primary);
+  border: 1px solid var(--chat-thinking-border);
+
+  /* --brand-primary 是裸 HSL 分量，必须包 hsl() 才是合法颜色 */
+  border-left: 2px solid hsl(var(--brand-primary));
   border-radius: var(--radius-shell-toolbar);
-  background: hsl(var(--card));
+  background: var(--chat-thinking-surface);
   overflow: hidden;
   contain: layout style;
   transition: border-color 0.2s, box-shadow 0.2s;
@@ -885,8 +888,8 @@
 }
 
 .dark .think-block {
-  background: hsl(var(--muted) / 0.2);
-  border-color: hsl(var(--border) / 0.2);
+  background: var(--chat-thinking-surface);
+  border-color: var(--chat-thinking-border);
 }
 
 .dark .think-block--expanded {
@@ -914,11 +917,11 @@
 }
 
 .think-header:hover {
-  background: hsl(var(--muted) / 0.35);
+  background: var(--chat-thinking-hover-surface);
 }
 
 .think-header-icon {
-  color: var(--brand-primary);
+  color: hsl(var(--brand-primary));
   flex-shrink: 0;
   opacity: 0.85;
 }
@@ -947,14 +950,14 @@
 
 .think-pulse-label {
   font-size: 0.75rem;
-  color: var(--brand-primary);
+  color: hsl(var(--brand-primary));
 }
 
 .think-pulse-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--brand-primary);
+  background: hsl(var(--brand-primary));
   animation: thinkPulse 1.4s ease-in-out infinite;
 }
 
@@ -981,7 +984,7 @@
   flex-shrink: 0;
   color: hsl(var(--muted-foreground) / 0.5);
   transition: transform var(--icon-swap-dur, 200ms) var(--icon-swap-ease, ease-in-out);
-  will-change: transform;
+  /* 不用常驻 will-change：每条消息都可能有 thinking 块，常驻合成层白占显存 */
 }
 
 .think-chevron--expanded {
@@ -1001,7 +1004,7 @@
 }
 
 .think-content {
-  border-top: 1px solid hsl(var(--border) / 0.15);
+  border-top: 1px solid var(--chat-thinking-border);
   padding: 0.75rem 0.875rem;
   transform: translateY(-6px);
   opacity: 0;
@@ -1010,7 +1013,7 @@
     transform var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     opacity   var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
     filter    var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
-  will-change: transform, opacity, filter;
+  /* 不用常驻 will-change：折叠态内容常驻 DOM，强制分层会随消息数线性膨胀 */
 }
 
 .think-content-wrapper--expanded .think-content {
@@ -1047,7 +1050,7 @@
 }
 
 .think-content .markdown-content code:not(pre code) {
-  background: hsl(var(--muted) / 0.5);
+  background: var(--chat-thinking-header-surface);
   border-radius: 4px;
   padding: 0.15em 0.35em;
   font-size: 0.9em;

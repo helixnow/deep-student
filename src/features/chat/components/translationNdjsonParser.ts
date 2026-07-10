@@ -53,12 +53,17 @@ export function createNdjsonParser() {
   }
 
   function parseLine(rawLine: string): AlignedSegment | 'done' | null {
-    const line = rawLine.trim();
+    let line = rawLine.trim();
     if (!line) return null;
 
     // 跳过 markdown 围栏与单纯的引导文本
     if (line.startsWith('```')) return null;
     if (!line.startsWith('{')) return null;
+
+    // 容忍常见的 LLM 输出瑕疵：行尾多余的逗号（NDJSON 被当成 JSON 数组元素输出）
+    if (line.endsWith(',')) {
+      line = line.slice(0, -1).trimEnd();
+    }
 
     try {
       const obj = JSON.parse(line) as { src?: unknown; tgt?: unknown; done?: unknown };
@@ -67,7 +72,7 @@ export function createNdjsonParser() {
         return { src: obj.src, tgt: obj.tgt };
       }
     } catch {
-      // 单行不合法 JSON：可能是 LLM 拼写错（如尾随逗号）；忽略不致命
+      // 单行不合法 JSON：可能是 LLM 拼写错；忽略不致命
     }
     return null;
   }
@@ -102,16 +107,36 @@ export function parseAlignedFallback(raw: string): AlignedSegment[] | null {
   const { segments } = parser.push(raw + '\n');
   if (segments.length > 0) return segments;
 
+  const isValidSegment = (s: unknown): s is AlignedSegment => {
+    const seg = s as { src?: unknown; tgt?: unknown } | null;
+    return typeof seg?.src === 'string' && typeof seg?.tgt === 'string';
+  };
+
   // 旧版调用 call_llm_for_boundary 时返回的是 {"segments":[...]} 整段
   try {
     const start = raw.indexOf('{');
     const end = raw.lastIndexOf('}');
     if (start >= 0 && end > start) {
-      const obj = JSON.parse(raw.slice(start, end + 1)) as { segments?: AlignedSegment[] };
+      const obj = JSON.parse(raw.slice(start, end + 1)) as { segments?: unknown[] };
       if (Array.isArray(obj?.segments)) {
-        return obj.segments.filter(
-          (s) => typeof s?.src === 'string' && typeof s?.tgt === 'string'
-        );
+        const valid = obj.segments.filter(isValidSegment);
+        if (valid.length > 0) return valid;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // LLM 也可能直接输出 JSON 数组 [{"src":...,"tgt":...}, ...]（含 ```json 围栏时
+  // 上面的 NDJSON 路径解不出来，这里整体兜底）
+  try {
+    const start = raw.indexOf('[');
+    const end = raw.lastIndexOf(']');
+    if (start >= 0 && end > start) {
+      const arr = JSON.parse(raw.slice(start, end + 1)) as unknown[];
+      if (Array.isArray(arr)) {
+        const valid = arr.filter(isValidSegment);
+        if (valid.length > 0) return valid;
       }
     }
   } catch {

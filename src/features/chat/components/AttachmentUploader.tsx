@@ -150,7 +150,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
   onUploadError,
   children,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t } = useTranslation(['chatV2', 'common']);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -164,7 +164,10 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
   const processFile = useCallback(
     async (file: File): Promise<AttachmentMeta | null> => {
       // 检查数量限制
-      if (attachments.length >= maxCount) {
+      // ★ 从 store 实时读取数量：同一批多文件循环中闭包里的 attachments 不会更新，
+      // 若用快照值会导致一次拖入超量文件时绕过上限
+      const currentCount = store.getState().attachments.length;
+      if (currentCount >= maxCount) {
         const error = t('attachmentUploader.errors.maxCount', { max: maxCount });
         setUploadError(error);
         onUploadError?.(error);
@@ -216,7 +219,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         reader.readAsDataURL(file);
       });
     },
-    [attachments.length, maxCount, acceptTypes, maxSize, t, onUploadError]
+    [store, maxCount, acceptTypes, maxSize, t, onUploadError]
   );
 
   // 处理多个文件
@@ -228,6 +231,13 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
       for (const file of fileArray) {
         const attachment = await processFile(file);
         if (attachment) {
+          // FileReader 读取失败的附件没有内容，不能继续上传空数据
+          if (attachment.status === 'error') {
+            const readError = attachment.error || t('attachmentUploader.errors.readFailed');
+            setUploadError(readError);
+            onUploadError?.(readError);
+            continue;
+          }
           // ★ VFS 引用模式：上传到 VFS，存储引用
           try {
             // 确定资源类型：图片 vs 文件
@@ -315,16 +325,18 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
             store.getState().addAttachment(attachment);
             onUploadSuccess?.(attachment);
           } catch (error: unknown) {
+            const message = getErrorMessage(error);
             logAttachment('ui', 'upload_error', {
               fileName: attachment.name,
-              error: getErrorMessage(error),
+              error: message,
             }, 'error');
-            onUploadError?.(getErrorMessage(error));
+            setUploadError(message);
+            onUploadError?.(message);
           }
         }
       }
     },
-    [processFile, store, onUploadSuccess, onUploadError, targetFolderId]
+    [processFile, store, onUploadSuccess, onUploadError, targetFolderId, t]
   );
 
   // 点击上传
@@ -480,7 +492,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         <div className="mt-2 flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
           <WarningCircle size={16} className="flex-shrink-0" />
           <span className="flex-1">{uploadError}</span>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label="close">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label={t('common:close')}>
             <X size={16} />
           </NotionButton>
         </div>

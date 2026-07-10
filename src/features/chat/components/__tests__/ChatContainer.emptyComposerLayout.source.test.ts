@@ -38,8 +38,8 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(containerSource).toContain('chat-composer-motion-frame');
     expect(containerSource).toContain('chat-composer-motion-frame--empty');
     expect(containerSource).toContain('chat-composer-motion-frame--docked');
-    expect(beautifySource).toContain('--chat-composer-motion-duration: 210ms');
-    expect(beautifySource).toContain('--chat-composer-motion-ease: cubic-bezier(0.2, 0.8, 0.2, 1)');
+    expect(beautifySource).toContain('--chat-composer-motion-duration: var(--page-slide-dur)');
+    expect(beautifySource).toContain('--chat-composer-motion-ease: var(--page-slide-ease)');
     expect(beautifySource).toContain('@keyframes chatComposerDockIn');
     expect(beautifySource).toContain('@keyframes chatComposerFloatIn');
     expect(beautifySource).toContain('@media (prefers-reduced-motion: reduce)');

@@ -53,8 +53,8 @@ export const OcrProgress: React.FC<OcrProgressProps> = ({ store }) => {
     return null;
   }
 
-  // 计算进度百分比
-  const progressPercent = Math.min(Math.max(ocrProgress, 0), 100);
+  // 计算进度百分比（钳制 0-100 并取整，后端可能上报小数进度）
+  const progressPercent = Math.round(Math.min(Math.max(ocrProgress ?? 0, 0), 100));
 
   return (
     <div

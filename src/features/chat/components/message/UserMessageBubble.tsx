@@ -36,7 +36,7 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
   children,
   className,
 }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation('chatV2');
   const contentRef = useRef<HTMLDivElement>(null);
   const [isOverflow, setIsOverflow] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -86,15 +86,17 @@ export const UserMessageBubble: React.FC<UserMessageBubbleProps> = ({
           onClick={toggleExpand}
           aria-expanded={isExpanded}
         >
+          {/* 🔧 i18n 修复：messageItem.bubble.* 键在语言包中缺失，
+              回退到已存在的 activityTimeline.* 键，避免英文界面显示中文兜底文案 */}
           {isExpanded ? (
             <>
               <CaretUp size={14} />
-              <span>{t('messageItem.bubble.collapse', '收起')}</span>
+              <span>{t('messageItem.bubble.collapse', t('activityTimeline.collapse', '收起'))}</span>
             </>
           ) : (
             <>
               <CaretDown size={14} />
-              <span>{t('messageItem.bubble.expand', '展开全文')}</span>
+              <span>{t('messageItem.bubble.expand', t('activityTimeline.expand', '展开全文'))}</span>
             </>
           )}
         </button>

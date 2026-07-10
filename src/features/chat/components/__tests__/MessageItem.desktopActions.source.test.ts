@@ -26,7 +26,8 @@ describe('MessageItem desktop actions source', () => {
     expect(messageItemSource).toContain("const assistantFooterClassName = showAssistantFooterAlways");
     expect(messageItemSource).toContain('!shouldHideLatestAssistantFooter && (');
     expect(messageActionsSource).toContain('alwaysExpanded?: boolean;');
-    expect(messageActionsSource).toContain('const showDesktopSecondaryActions = compactMobile || alwaysExpanded;');
+    // coarse 指针（触屏平板）无 hover，次要操作常显；桌面 fine 指针仍保持 hover 显隐契约
+    expect(messageActionsSource).toContain('const showDesktopSecondaryActions = compactMobile || alwaysExpanded || isCoarsePointer;');
     expect(messageActionsSource).toContain('const hasSecondaryActions = Boolean(');
     expect(messageActionsSource).toContain('const showOverflowMenu = compactMobile || hasSecondaryActions');
     expect(messageActionsSource).toContain('const showInlineCopyOnly = !compactMobile');

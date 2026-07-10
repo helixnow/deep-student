@@ -12,7 +12,7 @@
  * 6. 暗色/亮色主题支持
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
@@ -169,13 +169,16 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
   const IconComponent = getResourceIconComponent(attachment.name, attachment.mimeType);
   // 触屏无 hover:删除按钮必须常显,否则附件无法在发送前移除
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  // WebView 无法解码的图片（如 HEIC/HEIF）会触发 <img> onError，此时降级为文件图标
+  const [previewFailed, setPreviewFailed] = useState(false);
 
   // 是否显示图片预览 (仅当有 previewUrl 且是图片类型时)
   // 如果是小尺寸，且有预览图，优先显示预览图
   // 如果是大尺寸，文档类型显示图标，图片类型显示预览图
   const showImagePreview =
     (attachment.type === 'image' || attachment.mimeType.startsWith('image/')) && 
-    attachment.previewUrl;
+    attachment.previewUrl &&
+    !previewFailed;
 
   // 状态指示
   const isPending = attachment.status === 'pending';
@@ -208,6 +211,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
               src={attachment.previewUrl}
               alt={attachment.name}
               className="w-full h-full object-cover"
+              onError={() => setPreviewFailed(true)}
             />
             {/* 渐变遮罩，为了显示文件名（仅在非sm尺寸） */}
             {size !== 'sm' && (
@@ -243,9 +247,12 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
         </div>
       )}
 
-      {/* 错误状态 */}
+      {/* 错误状态（title 显示具体错误信息） */}
       {isError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 z-10">
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-destructive/10 z-10"
+          title={attachment.error || undefined}
+        >
           <WarningCircle size={24} className="text-destructive" />
         </div>
       )}

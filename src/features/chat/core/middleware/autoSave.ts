@@ -254,7 +254,7 @@ export function createAutoSaveMiddleware(
  */
 export interface StreamingBlockSaver {
   /**
-   * 调度流式块保存（防抖 5 秒）
+   * 调度流式块保存（节流 5 秒：持续流式期间最多每 5 秒保存一次）
    * @param blockId 块 ID
    * @param messageId 消息 ID
    * @param blockType 块类型
@@ -396,13 +396,14 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
       });
     }
 
-    // 取消之前的定时器
-    const existingTimer = this.pendingTimers.get(blockId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
+    // 🔧 节流而非防抖：已有定时器时只累积内容，等待其到期统一保存。
+    // 原实现每个 chunk 都 clearTimeout + setTimeout（防抖），连续流式期间
+    // 定时器被不断重置，"定期保存防闪退"实际永远不会触发；同时每 chunk 的
+    // 定时器churn 也是无谓开销。
+    if (this.pendingTimers.has(blockId)) {
+      return;
     }
 
-    // 设置新的防抖定时器
     const timer = setTimeout(() => {
       this.pendingTimers.delete(blockId);
       this.executeSave(blockId);

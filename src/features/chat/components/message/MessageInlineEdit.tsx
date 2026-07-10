@@ -25,18 +25,28 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.selectionStart = textareaRef.current.value.length;
-    }
+    const el = textareaRef.current;
+    if (!el) return;
+    el.focus();
+    // 光标定位到末尾
+    const len = el.value.length;
+    el.setSelectionRange(len, len);
+    // 初始高度适配内容（上限 320px），保留 resize-y 手动调整能力
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight + 2, 320)}px`;
   }, []);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // 🔧 IME 修复：中文等输入法组合期间的 Enter/Escape 属于输入法操作，
+    // 不能触发提交或取消（取消会直接丢弃整段编辑内容）
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       onConfirm();
     }
     if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
       onCancel();
     }
   }, [onConfirm, onCancel]);

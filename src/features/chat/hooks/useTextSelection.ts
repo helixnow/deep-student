@@ -104,6 +104,11 @@ export function useTextSelection(
   const [contextAfter, setContextAfter] = useState('');
   // 防止 mousedown 在工具栏上时清除选择
   const isToolbarInteraction = useRef(false);
+  // 用 ref 镜像 isVisible，保证 document 级监听器引用稳定（避免每次显隐都解绑/重绑）
+  const isVisibleRef = useRef(false);
+  useEffect(() => {
+    isVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   const clear = useCallback(() => {
     setSelectedText('');
@@ -161,6 +166,7 @@ export function useTextSelection(
   }, [containerRef, clear]);
 
   // 检测选中文本（桌面鼠标路径）
+  const pendingRafRef = useRef<number | null>(null);
   const handleMouseUp = useCallback((e: MouseEvent) => {
     // 仅处理左键（右键/中键不应触发浮动工具栏）
     if (e.button !== 0) {
@@ -174,7 +180,11 @@ export function useTextSelection(
     }
 
     // 延迟一帧确保 selection 已更新
-    requestAnimationFrame(() => {
+    if (pendingRafRef.current !== null) {
+      cancelAnimationFrame(pendingRafRef.current);
+    }
+    pendingRafRef.current = requestAnimationFrame(() => {
+      pendingRafRef.current = null;
       evaluateSelection();
     });
   }, [evaluateSelection]);
@@ -187,32 +197,32 @@ export function useTextSelection(
       return;
     }
     // 点击其他区域时清除
-    if (isVisible) {
+    if (isVisibleRef.current) {
       clear();
     }
-  }, [isVisible, clear]);
+  }, [clear]);
 
-  // 滚动时隐藏
+  // 滚动/窗口尺寸变化时隐藏（选区 rect 已失效）
   const handleScroll = useCallback(() => {
-    if (isVisible) {
+    if (isVisibleRef.current) {
       clear();
     }
-  }, [isVisible, clear]);
+  }, [clear]);
 
   // Escape 键关闭
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape' && isVisible) {
+    if (e.key === 'Escape' && isVisibleRef.current) {
       clear();
       window.getSelection()?.removeAllRanges();
     }
-  }, [isVisible, clear]);
+  }, [clear]);
 
   // 右键时隐藏浮动工具栏，让右键菜单独占
   const handleContextMenu = useCallback(() => {
-    if (isVisible) {
+    if (isVisibleRef.current) {
       clear();
     }
-  }, [isVisible, clear]);
+  }, [clear]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -241,9 +251,11 @@ export function useTextSelection(
       document.addEventListener('selectionchange', handleSelectionChange);
     }
 
-    // 滚动监听：找到最近的可滚动父元素
-    const scrollParent = container.closest('.chat-history-viewport') || container.parentElement;
-    scrollParent?.addEventListener('scroll', handleScroll, { passive: true });
+    // 滚动监听：捕获阶段监听 document，任何滚动容器（聊天视口、嵌套代码块等）
+    // 滚动都会让选区的视口 rect 失效，统一隐藏工具栏
+    document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    // 窗口 resize 时文本会重排，选区 rect 失效，直接隐藏
+    window.addEventListener('resize', handleScroll);
 
     return () => {
       document.removeEventListener('mouseup', handleMouseUp);
@@ -256,7 +268,12 @@ export function useTextSelection(
           window.clearTimeout(selectionChangeTimer);
         }
       }
-      scrollParent?.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('scroll', handleScroll, { capture: true });
+      window.removeEventListener('resize', handleScroll);
+      if (pendingRafRef.current !== null) {
+        cancelAnimationFrame(pendingRafRef.current);
+        pendingRafRef.current = null;
+      }
     };
   }, [containerRef, handleMouseUp, handleMouseDown, handleScroll, handleKeyDown, handleContextMenu, evaluateSelection]);
 

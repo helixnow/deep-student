@@ -216,12 +216,13 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
 
   return (
     <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : undefined)}>
-      {/* 面板头部 - 移动端/侧栏模式隐藏 */}
-      {!isMobile && !sidebarMode && (
+      {/* 面板头部 - 仅侧栏模式隐藏（侧栏有自己的标题栏）；
+          📱 移动端也渲染：提供可见关闭按钮（契约：面板须可见关闭 + 返回键） */}
+      {!sidebarMode && (
         <ComposerPanel.Header
           icon={SlidersHorizontal}
           title={t('common:chat_controls')}
-          subtitle={t('chat_host:advanced.notice')}
+          subtitle={isMobile ? undefined : t('chat_host:advanced.notice')}
           onClose={onClose}
           closeAriaLabel={t('common:actions.cancel')}
           className="mb-3"

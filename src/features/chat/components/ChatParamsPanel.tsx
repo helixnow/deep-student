@@ -344,7 +344,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
               ariaLabel={t('chatParams.maxTokens')}
               value={chatParams.maxTokens}
               min={256}
-              max={selectedModelConfig?.maxOutput || 32768}
+              max={Math.max(selectedModelConfig?.maxOutput || 32768, chatParams.maxTokens)}
               step={256}
               onChange={(v) => updateParam('maxTokens', v)}
               formatValue={(v) => `${(v / 1024).toFixed(1)}K`}

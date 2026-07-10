@@ -92,13 +92,17 @@ interface SessionBrowserProps {
 type TimeGroup = 'today' | 'yesterday' | 'previous7Days' | 'previous30Days' | 'older';
 
 // 获取会话的时间分组
+// 使用日历运算（而非固定 86400000ms 偏移）计算本地日界，避免夏令时切换日产生 1 小时偏差
 const getTimeGroup = (isoString: string): TimeGroup => {
   const date = new Date(isoString);
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
-  const startOf7DaysAgo = new Date(startOfToday.getTime() - 7 * 86400000);
-  const startOf30DaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  const startOfToday = new Date(year, month, day);
+  const startOfYesterday = new Date(year, month, day - 1);
+  const startOf7DaysAgo = new Date(year, month, day - 7);
+  const startOf30DaysAgo = new Date(year, month, day - 30);
 
   if (date >= startOfToday) return 'today';
   if (date >= startOfYesterday) return 'yesterday';
@@ -266,7 +270,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
               type="text"
               value={editingTitle}
               onChange={(e) => onEditTitleChange(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
               onKeyDown={(e) => {
+                // IME 安全：中文输入法组合期间的 Enter/Escape 只作用于候选词
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   onSaveEdit();
@@ -737,25 +744,30 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             ))}
           </div>
         ) : filteredCount === 0 ? (
-          // 空状态 - 简洁风格简洁设计
-          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Chat size={40} className="mb-3 opacity-40" />
-            <span className="text-sm mb-2">
-              {searchQuery
-                ? t('browser.noResults')
-                : t('page.noSessions')}
-            </span>
-            <span className="text-xs text-muted-foreground/60 mb-4">
-              {searchQuery
-                ? t('browser.tryDifferentKeyword')
-                : t('page.selectOrCreate')}
-            </span>
-            {!searchQuery && (
-              <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
-                {t('page.createFirst')}
-              </NotionButton>
-            )}
-          </div>
+          // 空状态 - 简洁风格简洁设计（搜索或标签过滤导致的空结果不应提示"暂无会话"）
+          (() => {
+            const hasActiveFilter = Boolean(searchQuery.trim()) || sessionTags.selectedFilterTags.size > 0;
+            return (
+              <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                <Chat size={40} className="mb-3 opacity-40" />
+                <span className="text-sm mb-2">
+                  {hasActiveFilter
+                    ? t('browser.noResults')
+                    : t('page.noSessions')}
+                </span>
+                <span className="text-xs text-muted-foreground/60 mb-4">
+                  {hasActiveFilter
+                    ? t('browser.tryDifferentKeyword')
+                    : t('page.selectOrCreate')}
+                </span>
+                {!hasActiveFilter && (
+                  <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:underline">
+                    {t('page.createFirst')}
+                  </NotionButton>
+                )}
+              </div>
+            );
+          })()
         ) : groupMode === 'time' ? (
           // 按时间分组显示会话卡片
           <div className="space-y-6 sm:space-y-8">

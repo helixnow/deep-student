@@ -8,6 +8,10 @@ import type { Block, BlockStatus, BlockType } from '../core/types/block';
 import type { AttachmentMeta, MessageMeta, SourceInfo } from '../core/types/message';
 import type { ChatParams, PanelStates, TokenUsage } from '../core/types/common';
 import type { SendContextRef, ContentBlock } from '../resources/types';
+import {
+  isWorkbenchToolName,
+  remapWorkbenchBlockType,
+} from '@/features/chat/utils/workbenchBlockRemap';
 
 // ============================================================================
 // 发送选项 - 与后端 SendOptions 对齐
@@ -128,7 +132,7 @@ export interface SendOptions {
   /** 当前会话激活的 Skill IDs */
   activeSkillIds?: string[];
 
-  /** 当前启用 Skills 声明允许使用的工具 ID */
+  /** 当前启用 Skills 声明允许使用的工具 ID；undefined 表示无策略，[] 表示明确不允许业务工具 */
   skillAllowedTools?: string[];
 
   /** Skill 内容（SKILL.md 内容） */
@@ -144,6 +148,8 @@ export interface SendOptions {
     description?: string;
     inputSchema?: unknown;
   }>>;
+  /** Skill package roots exposed to local runtime as read-only skill:<id> roots */
+  skillPackageRoots?: Record<string, string>;
   /** 关闭工具白名单检查 */
   disableToolWhitelist?: boolean;
   /** 图片压缩质量策略 */
@@ -490,12 +496,17 @@ export interface CreateSessionRequest {
 
 /**
  * 将 BackendBlock 转换为前端 Block 类型
+ *
+ * ACR R2-05：恢复路径与 restoreActions 一致——workbench_* 纠正为 workbench_ops，
+ * 并用 block.id 回填 toolCallId（桥 runId 现为 block_id；账本不跨重启）。
  */
 export function convertBackendBlock(b: BackendBlock): Block {
+  const type = remapWorkbenchBlockType(b.type, b.toolName) as BlockType;
+  const isWorkbench = type === 'workbench_ops' || isWorkbenchToolName(b.toolName);
   return {
     id: b.id,
     messageId: b.messageId,
-    type: b.type as BlockType,
+    type,
     status: b.status as BlockStatus,
     content: b.content,
     toolName: b.toolName,
@@ -506,5 +517,6 @@ export function convertBackendBlock(b: BackendBlock): Block {
     startedAt: b.startedAt,
     endedAt: b.endedAt,
     firstChunkAt: b.firstChunkAt,
+    ...(isWorkbench ? { toolCallId: b.id } : {}),
   };
 }

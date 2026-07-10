@@ -13,7 +13,7 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
  * 5. 暗色/亮色主题支持
  */
 
-import React, { useCallback, useState, useMemo, useRef } from 'react';
+import React, { useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { useTranslation } from 'react-i18next';
@@ -157,6 +157,16 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   const { t } = useTranslation(['chatV2', 'common']);
   const [isOpen, setIsOpen] = useState(false);
 
+  // Escape 关闭下拉
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   if (templates.length === 0) {
     return null;
   }
@@ -168,6 +178,8 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
         size="sm"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
       >
         <FileText size={16} />
         <span>{t('systemPrompt.templates')}</span>
@@ -252,6 +264,16 @@ const VariableInserter: React.FC<VariableInserterProps> = ({
   const { t } = useTranslation('chatV2');
   const [isOpen, setIsOpen] = useState(false);
 
+  // Escape 关闭下拉
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
   return (
     <div className="relative">
       <NotionButton
@@ -259,6 +281,8 @@ const VariableInserter: React.FC<VariableInserterProps> = ({
         size="sm"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
       >
         <Textbox className="w-4 h-4" />
         <span>{t('systemPrompt.insertVariable')}</span>
@@ -344,6 +368,8 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
   const { t } = useTranslation('chatV2');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [copied, setCopied] = useState(false);
+  // 记录清空前的内容，支持一次撤销（清空是破坏性操作）
+  const [lastCleared, setLastCleared] = useState<string | null>(null);
 
   // Resolve default variables with i18n
   const variables = useMemo(
@@ -408,11 +434,17 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
     }
   }, [value]);
 
-  // 清空内容
+  // 清空内容 / 撤销清空
   const handleClear = useCallback(() => {
-    onChange('');
+    if (value) {
+      setLastCleared(value);
+      onChange('');
+    } else if (lastCleared !== null) {
+      onChange(lastCleared);
+      setLastCleared(null);
+    }
     textareaRef.current?.focus();
-  }, [onChange]);
+  }, [value, lastCleared, onChange]);
 
   // 人格预设 chips：点击插入语气段落，再次点击移除（toggle）
   const personaPresets = useMemo(() => getPersonaPresets(t), [t]);
@@ -480,8 +512,16 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
             {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
 
-          {/* 清空按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClear} disabled={!value || disabled} aria-label={t('systemPrompt.clear')} title={t('systemPrompt.clear')}>
+          {/* 清空/撤销清空按钮 */}
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={handleClear}
+            disabled={(!value && lastCleared === null) || disabled}
+            aria-label={value ? t('systemPrompt.clear') : t('systemPrompt.undoClear', '撤销清空')}
+            title={value ? t('systemPrompt.clear') : t('systemPrompt.undoClear', '撤销清空')}
+          >
             <ArrowCounterClockwise size={16} />
           </NotionButton>
         </div>

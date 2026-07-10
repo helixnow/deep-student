@@ -595,6 +595,18 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 🔧 IME 合成态追踪：防止 WKWebView 中文输入法重复追加文本
   const isComposingRef = useRef(false);
+  // 🔧 Safari/WebKit 时序修复：compositionend 先于确认 Enter 的 keydown 触发，
+  // 该 keydown 的 isComposing 已为 false，会把「确认候选词」误判为「发送」。
+  // 标记 compositionend 后的同一轮事件循环，期间的 Enter 一律视为 IME 确认键。
+  const compositionJustEndedRef = useRef(false);
+  const compositionEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (compositionEndTimerRef.current !== null) {
+        clearTimeout(compositionEndTimerRef.current);
+      }
+    };
+  }, []);
 
   // ========== 本地状态 ==========
   // 🔧 首帧降载：使用固定高度占位，idle 后再测量真实高度
@@ -1124,7 +1136,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       : runtimeModelLabel
     : undefined;
   const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
-    ? `${chooseRuntimeModelLabel}，当前：${runtimeModelAccessibleCurrent}`
+    ? t('chatV2:inputBar.runtimeModelSwitchCurrent', '{{label}}，当前：{{current}}', {
+        label: chooseRuntimeModelLabel,
+        current: runtimeModelAccessibleCurrent,
+      })
     : chooseRuntimeModelLabel;
   const runtimeModelSwitchTitle = runtimeModelAccessibleCurrent
     ? `${chooseRuntimeModelLabel}: ${runtimeModelAccessibleCurrent}`
@@ -1360,12 +1375,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     ) : null;
 
   // IME 合成态检测
+  // 覆盖三类场景：1) 标准 isComposing；2) Windows/旧 WebView 的 keyCode 229；
+  // 3) Safari/WebKit 在 compositionend 之后才派发确认 Enter 的 keydown（isComposing 已为 false）
   const isImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const anyNative = e.nativeEvent as any;
     return Boolean(
       (e as any).isComposing ||
       (anyNative && anyNative.isComposing) ||
-      (e as any).which === 229
+      (e as any).which === 229 ||
+      (anyNative && anyNative.keyCode === 229) ||
+      isComposingRef.current ||
+      compositionJustEndedRef.current
     );
   }, []);
 
@@ -1458,9 +1478,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       closeAllPanels();
     };
 
+    // Esc 关闭面板：跳过已被内层浮层（菜单/对话框）消费的事件
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      closeAllPanels();
+    };
+
     // pointerdown 同时覆盖鼠标与触摸（触摸场景不依赖合成 mouse 事件），且比 click 更早响应
     document.addEventListener('pointerdown', handleClickOutside);
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [hasAnyPanelOpen, closeAllPanels]);
 
   // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
@@ -2252,6 +2282,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               }}
               onCompositionEnd={(e) => {
                 isComposingRef.current = false;
+                // Safari/WebKit：确认 Enter 的 keydown 会在 compositionend 之后同步派发，
+                // 用微小的时间窗标记它属于 IME 确认，避免误触发送
+                compositionJustEndedRef.current = true;
+                if (compositionEndTimerRef.current !== null) {
+                  clearTimeout(compositionEndTimerRef.current);
+                }
+                compositionEndTimerRef.current = setTimeout(() => {
+                  compositionJustEndedRef.current = false;
+                  compositionEndTimerRef.current = null;
+                }, 0);
                 // 合成结束时用最终值同步 store，确保不丢字
                 onInputChange((e.target as HTMLTextAreaElement).value);
                 setTimeout(adjustTextareaHeight, 0);
@@ -2272,6 +2312,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 if (
                   modelMentionState?.showAutoComplete &&
                   modelMentionActions &&
+                  !isImeComposing(e) &&
                   shouldHandleModelMentionKey(e, modelMentionState.showAutoComplete)
                 ) {
                   if (e.key === 'ArrowUp') {
@@ -2557,10 +2598,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         title={thinkingRuntimeTitle}
                         aria-label={
                           thinkingUnsupported
-                            ? 'Reasoning unsupported'
+                            ? t('chatV2:inputBar.thinkingUnsupported')
                             : hasThinkingDepthMenu
-                            ? 'Choose reasoning depth'
-                            : 'Reasoning'
+                            ? t('chatV2:inputBar.thinkingDepthMenu')
+                            : t('chatV2:inputBar.thinking')
                         }
                       >
                         {runtimeModelIconId ? (
@@ -2786,7 +2827,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 iconOnly
                 onClick={handleStop}
                 disabled={!canAbort}
-                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 !rounded-full shadow-sm')}
+                // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
+                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 !rounded-full shadow-sm')}
                 aria-label={t('analysis:input_bar.actions.stop')}
               >
                 <Square size={12} weight="fill" />

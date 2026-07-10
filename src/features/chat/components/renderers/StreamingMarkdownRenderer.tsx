@@ -43,6 +43,29 @@ type ParsedContent = {
   mainContent: string;
 }
 
+// 模块级空数组：保持引用稳定，避免每个 token 生成新数组击穿下游 memo。
+const EMPTY_REMARK_PLUGINS: any[] = [];
+
+// 解析思维链内容：同时支持 <thinking>…</thinking> 与 <think>…</think>
+// 🔔 V2 兼容性说明：V2 架构中 thinking 已是独立块，此解析主要用于：
+// 1. 兼容旧架构的遗留数据
+// 2. 处理某些 AI 模型在正文中输出 thinking 标签的情况
+// 正常 V2 流程中，content 块不应包含 thinking 标签
+const parseChainOfThought = (content: string): ParsedContent | null => {
+  if (!content) return null;
+  const tryMatch = (src: string, tag: 'thinking' | 'think') =>
+    src.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>\\s*`, 'i'));
+
+  let thinkingMatch = tryMatch(content, 'thinking');
+  if (!thinkingMatch) thinkingMatch = tryMatch(content, 'think');
+  if (thinkingMatch) {
+    const thinkingContent = (thinkingMatch[1] || '').trim();
+    const mainContent = content.replace(thinkingMatch[0], '').trim();
+    return { thinkingContent, mainContent };
+  }
+  return null;
+};
+
 // 流式内容预处理函数
 //
 // 行业最优解（2026，对齐 ChatGPT / Claude.ai）
@@ -95,27 +118,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     highlightSpansRef.current = highlightSpans;
   }
 
-  // 解析思维链内容：同时支持 <thinking>…</thinking> 与 <think>…</think>
-  // 🔔 V2 兼容性说明：V2 架构中 thinking 已是独立块，此解析主要用于：
-  // 1. 兼容旧架构的遗留数据
-  // 2. 处理某些 AI 模型在正文中输出 thinking 标签的情况
-  // 正常 V2 流程中，content 块不应包含 thinking 标签
-  const parseChainOfThought = (content: string): ParsedContent | null => {
-    if (!content) return null;
-    const tryMatch = (src: string, tag: 'thinking' | 'think') =>
-      src.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>\\s*`, 'i'));
-
-    let thinkingMatch = tryMatch(content, 'thinking');
-    if (!thinkingMatch) thinkingMatch = tryMatch(content, 'think');
-    if (thinkingMatch) {
-      const thinkingContent = (thinkingMatch[1] || '').trim();
-      const mainContent = content.replace(thinkingMatch[0], '').trim();
-      return { thinkingContent, mainContent };
-    }
-    return null;
-  };
-
-  const parsedContent = parseChainOfThought(displayContent);
+  const parsedContent = useMemo(() => parseChainOfThought(displayContent), [displayContent]);
   const stableHighlightSpans = highlightSpansRef.current;
   const hasExtendedMarkdownFeatures = Boolean(
     onCitationClick ||
@@ -137,14 +140,36 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       hasExtendedMarkdownFeatures,
     );
 
+  // 高亮插件仅在非流式时构建；流式期间直接复用外部插件数组的引用，
+  // 避免每个 token 生成新数组击穿 BlockedMarkdownRenderer 内部已完成块的 memo。
+  const parsedMainPlugins = useMemo(() => {
+    const mainContent = parsedContent?.mainContent ?? '';
+    const needsHighlight =
+      !isStreaming &&
+      Boolean(mainContent) &&
+      Array.isArray(stableHighlightSpans) &&
+      stableHighlightSpans.length > 0;
+    if (!needsHighlight) {
+      return extraRemarkPlugins ?? EMPTY_REMARK_PLUGINS;
+    }
+    return [
+      ...(extraRemarkPlugins || []),
+      makeUncertaintyHighlightPlugin(mainContent, stableHighlightSpans, t('renderer.uncertain')),
+    ];
+  }, [parsedContent, isStreaming, stableHighlightSpans, extraRemarkPlugins, t]);
+
   // P1修复：大文本memo化 - 流式渲染优化
   const renderedContent = useMemo(() => {
     if (!displayContent) return null;
-    // 合并高亮插件和外部传入的插件
-    const highlightPlugins = (!isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0)
-      ? [makeUncertaintyHighlightPlugin(displayContent, stableHighlightSpans, t('renderer.uncertain'))]
-      : [];
-    const allPlugins = [...(extraRemarkPlugins || []), ...highlightPlugins];
+    // 合并高亮插件和外部传入的插件（高亮仅在非流式时启用）
+    const needsHighlight =
+      !isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0;
+    const allPlugins = needsHighlight
+      ? [
+          ...(extraRemarkPlugins || []),
+          makeUncertaintyHighlightPlugin(displayContent, stableHighlightSpans, t('renderer.uncertain')),
+        ]
+      : (extraRemarkPlugins ?? EMPTY_REMARK_PLUGINS);
 
     if (effectiveMode === 'blocked') {
       return (
@@ -237,12 +262,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
                   content={parsedContent.mainContent}
                   isStreaming={isStreaming}
                   onLinkClick={onLinkClick}
-                  extraRemarkPlugins={[
-                    ...(extraRemarkPlugins || []),
-                    ...(highlightSpans?.length
-                      ? [makeUncertaintyHighlightPlugin(parsedContent.mainContent, stableHighlightSpans, t('renderer.uncertain'))]
-                      : [])
-                  ]}
+                  extraRemarkPlugins={parsedMainPlugins}
                   onCitationClick={onCitationClick}
                   resolveCitationImage={resolveCitationImage}
                 />

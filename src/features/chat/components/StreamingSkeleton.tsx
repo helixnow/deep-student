@@ -6,15 +6,18 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import './StreamingSkeleton.css';
 
 export const StreamingSkeleton: React.FC<{ className?: string }> = ({ className }) => {
+  const { t } = useTranslation('chatV2');
+  const label = t('messageList.waiting', { defaultValue: '正在思考...' });
   return (
-    <div className={`stream-skeleton ${className ?? ''}`} role="status" aria-label="Loading response">
+    <div className={`stream-skeleton ${className ?? ''}`} role="status" aria-label={label}>
       <div className="stream-skeleton-line" style={{ width: '82%' }} />
       <div className="stream-skeleton-line" style={{ width: '60%', animationDelay: '120ms' }} />
       <div className="stream-skeleton-line" style={{ width: '40%', animationDelay: '240ms' }} />
-      <span className="sr-only">Loading</span>
+      <span className="sr-only">{label}</span>
     </div>
   );
 };

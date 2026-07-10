@@ -162,7 +162,7 @@ export const OcrResultCard: React.FC<OcrResultCardProps> = ({
                       >
                         <img
                           src={finalSrc}
-                          alt={`Question image ${idx + 1}`}
+                          alt={t('chatV2:imageViewer.imageAlt', { index: idx + 1 })}
                           className={`rounded-md border border-border bg-card object-contain ${
                             isSingleImage
                               ? 'w-full max-h-[300px]'

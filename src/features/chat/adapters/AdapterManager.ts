@@ -30,6 +30,24 @@ const LOG_PREFIX = '[ChatV2:AdapterManager]';
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
 // ============================================================================
+// 子代理空闲逐出
+// ============================================================================
+
+/**
+ * 子代理适配器空闲逐出延迟。
+ *
+ * 子代理会话（agent_ / subagent_ 前缀）由 WORKER_READY 预热创建，
+ * 任务结束后 Store+Adapter+Tauri 监听器若不回收会随工作区数量单调增长。
+ * refCount 归零后挂 10 分钟延迟定时器，到期且无活跃流则 destroy；
+ * re-acquire（getOrCreate）时取消定时器。主会话适配器不受影响。
+ */
+const SUBAGENT_IDLE_EVICT_MS = 10 * 60 * 1000;
+
+function isSubagentSession(sessionId: string): boolean {
+  return sessionId.startsWith('agent_') || sessionId.startsWith('subagent_');
+}
+
+// ============================================================================
 // 适配器状态
 // ============================================================================
 

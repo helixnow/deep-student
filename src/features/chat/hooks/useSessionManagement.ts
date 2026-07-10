@@ -12,13 +12,17 @@ const LAST_SESSION_KEY = 'chat-v2-last-session-id';
 
 export type TimeGroup = 'today' | 'yesterday' | 'previous7Days' | 'previous30Days' | 'older';
 
+// 使用日历运算（而非固定 86400000ms 偏移）计算本地日界，避免夏令时切换日产生 1 小时偏差
 export const getTimeGroup = (isoString: string): TimeGroup => {
   const date = new Date(isoString);
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
-  const startOf7DaysAgo = new Date(startOfToday.getTime() - 7 * 86400000);
-  const startOf30DaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  const startOfToday = new Date(year, month, day);
+  const startOfYesterday = new Date(year, month, day - 1);
+  const startOf7DaysAgo = new Date(year, month, day - 7);
+  const startOf30DaysAgo = new Date(year, month, day - 30);
 
   if (date >= startOfToday) return 'today';
   if (date >= startOfYesterday) return 'yesterday';

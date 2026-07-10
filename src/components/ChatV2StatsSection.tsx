@@ -126,9 +126,9 @@ export const ChatV2StatsSection: React.FC<ChatV2StatsProps> = ({ className, stat
         </PropRow>
       </div>
 
-      {/* 学习热力图 - 移除了显式边框，使用背景色块区分 */}
+      {/* 学习热力图 - 卡片容器，与 LLM 图表卡片保持一致 */}
       {!statsOnly && (
-        <div className="p-1">
+        <div className="rounded-xl bg-card ring-1 ring-border/40 shadow-sm p-5">
           <LearningHeatmap months={12} showStats={false} showLegend={true} />
         </div>
       )}

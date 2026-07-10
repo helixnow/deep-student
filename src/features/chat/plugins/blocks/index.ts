@@ -53,6 +53,9 @@ import './templatePreview';
 // 🆕 用户提问块（轻量级问答交互）
 import './askUserBlock';
 
+// ACR R1-09: 桌面操控工具卡（workbench_* → workbench_ops）
+import './workbenchOpsBlock';
+
 // 🆕 P1: 上下文压缩摘要块（长会话锚定摘要 + 尾部保真）
 import './compactionSummary';
 

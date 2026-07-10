@@ -10,6 +10,7 @@
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
@@ -59,6 +60,7 @@ interface ProgressSnapshot {
 // 阶段配置
 // ============================================================================
 
+// label 为 zh 兜底文案，渲染时经 chatV2:blocks.paperSave.stage.* 走 i18n
 const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; weight: number }> = {
   resolving:     { label: '解析地址',   icon: MagnifyingGlass, weight: 5 },
   downloading:   { label: '下载中',     icon: DownloadSimple,  weight: 60 },
@@ -109,6 +111,7 @@ function formatBytes(bytes: number): string {
 // ============================================================================
 
 const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
+  const { t } = useTranslation('chatV2');
   const config = STAGE_CONFIG[paper.s] || STAGE_CONFIG.resolving;
   const Icon = config.icon;
   const overallPct = computeOverallPercent(paper);
@@ -122,7 +125,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
   const [showSources, setShowSources] = useState(false);
   const [selectedSourceIdx, setSelectedSourceIdx] = useState<number | null>(null);
 
-  const sources = paper.srcs ?? [];
+  const sources = useMemo(() => paper.srcs ?? [], [paper.srcs]);
   const hasMultipleSources = sources.length > 1;
 
   const handleRetry = useCallback(async (sourceUrl?: string) => {
@@ -140,9 +143,9 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
       setRetryState('success');
     } catch (e) {
       setRetryState('error');
-      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? '下载失败');
+      setRetryError(typeof e === 'string' ? e : (e as Error)?.message ?? t('blocks.paperSave.downloadFailed', '下载失败'));
     }
-  }, [sources, paper.t]);
+  }, [sources, paper.t, t]);
 
   return (
     <div className="flex flex-col gap-1.5 py-2 first:pt-0 last:pb-0">
@@ -176,15 +179,15 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
         <div className="flex items-center gap-1.5 shrink-0 text-xs text-muted-foreground">
           {/* 当前源标签 */}
           {isActive && paper.src && (
-            <span className="text-muted-foreground/60" title={`下载源: ${paper.src}`}>
+            <span className="text-muted-foreground/60" title={t('blocks.paperSave.sourceTitle', '下载源: {{source}}', { source: paper.src })}>
               {paper.src}
             </span>
           )}
 
           {/* 去重标识 */}
           {paper.dedup && (
-            <span className="text-amber-500" title="已存在于资料库">
-              去重
+            <span className="text-amber-500" title={t('blocks.paperSave.dedupTitle', '已存在于资料库')}>
+              {t('blocks.paperSave.dedup', '去重')}
             </span>
           )}
 
@@ -198,30 +201,30 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 阶段标签 */}
           {isActive && (
-            <span className="text-primary">{config.label}</span>
+            <span className="text-primary">{t(`blocks.paperSave.stage.${paper.s}`, config.label)}</span>
           )}
 
           {/* 完成 */}
           {(isDone || retryState === 'success') && (
-            <span className="text-green-500">已保存</span>
+            <span className="text-green-500">{t('blocks.paperSave.saved', '已保存')}</span>
           )}
 
           {/* 错误 + 重试按钮 */}
           {isError && retryState !== 'success' && (
             <>
               <span className="text-destructive truncate max-w-[100px]" title={paper.err}>
-                {paper.err || '失败'}
+                {paper.err || t('blocks.paperSave.stage.error', '失败')}
               </span>
               {retryState === 'loading' ? (
                 <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
-                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title="重试下载">
+                  <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title={t('blocks.paperSave.retryTitle', '重试下载')}>
                     <ArrowCounterClockwise size={12} />
-                    <span>重试</span>
+                    <span>{t('blocks.paperSave.retry', '重试')}</span>
                   </NotionButton>
                   {hasMultipleSources && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label="切换下载源" title="切换下载源">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label={t('blocks.paperSave.switchSource', '切换下载源')} title={t('blocks.paperSave.switchSource', '切换下载源')}>
                       <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
                     </NotionButton>
                   )}
@@ -232,7 +235,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 
           {/* 重试失败 */}
           {retryState === 'error' && (
-            <span className="text-destructive" title={retryError ?? undefined}>重试失败</span>
+            <span className="text-destructive" title={retryError ?? undefined}>{t('blocks.paperSave.retryFailed', '重试失败')}</span>
           )}
         </div>
       </div>
@@ -289,6 +292,7 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
 // ============================================================================
 
 const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
+  const { t } = useTranslation('chatV2');
   // 从 block.content 解析最后一行 NDJSON 获取当前进度快照
   const snapshot = useMemo<ProgressSnapshot | null>(() => {
     const raw = block.content;
@@ -329,7 +333,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
     return (
       <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
         <CircleNotch size={16} className="animate-spin text-primary" />
-        <span>准备下载论文…</span>
+        <span>{t('blocks.paperSave.preparing', '准备下载论文…')}</span>
       </div>
     );
   }
@@ -355,14 +359,16 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">
-              论文下载
+              {t('blocks.paperSave.title', '论文下载')}
             </span>
             <span className="text-xs text-muted-foreground">
               {isComplete
-                ? `${doneCount}/${totalCount} 篇完成${errorCount > 0 ? `，${errorCount} 篇失败` : ''}`
+                ? `${t('blocks.paperSave.summaryDone', '{{done}}/{{total}} 篇完成', { done: doneCount, total: totalCount, count: totalCount })}${errorCount > 0 ? t('blocks.paperSave.summaryFailedSuffix', '，{{count}} 篇失败', { count: errorCount }) : ''}`
                 : isError
-                  ? (totalCount > 0 ? `${doneCount}/${totalCount} 篇完成，${errorCount} 篇失败` : '下载失败')
-                  : `下载中 ${doneCount}/${totalCount}`}
+                  ? (totalCount > 0
+                    ? `${t('blocks.paperSave.summaryDone', '{{done}}/{{total}} 篇完成', { done: doneCount, total: totalCount, count: totalCount })}${t('blocks.paperSave.summaryFailedSuffix', '，{{count}} 篇失败', { count: errorCount })}`
+                    : t('blocks.paperSave.downloadFailed', '下载失败'))
+                  : t('blocks.paperSave.downloading', '下载中 {{done}}/{{total}}', { done: doneCount, total: totalCount })}
             </span>
           </div>
         </div>
@@ -396,7 +402,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       {/* 错误信息 */}
       {isError && !snapshot && (
         <div className="p-3 text-sm text-destructive">
-          {block.error || '论文下载失败'}
+          {block.error || t('blocks.paperSave.blockError', '论文下载失败')}
         </div>
       )}
     </div>

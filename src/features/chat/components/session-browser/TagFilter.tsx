@@ -166,8 +166,14 @@ export const AddTagInput: React.FC<{
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onKeyDown={(e) => {
+        // IME 安全：中文输入法组合期间的 Enter/Escape 只作用于候选词
+        if (e.nativeEvent.isComposing || e.keyCode === 229) return;
         if (e.key === 'Enter') handleSubmit();
-        if (e.key === 'Escape') setShowInput(false);
+        if (e.key === 'Escape') {
+          // 取消输入：清空草稿，避免下次打开残留旧值
+          setValue('');
+          setShowInput(false);
+        }
       }}
       onBlur={handleSubmit}
       autoFocus

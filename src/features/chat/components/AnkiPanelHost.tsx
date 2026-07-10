@@ -1,8 +1,21 @@
 /**
+ * @deprecated Dead bridge host for `open-anki-panel`.
+ * `dispatchOpenAnkiPanelEvent` has no business callers; mounts were removed from
+ * ChatV2Page / WorkbenchEventBridge. Kept for reference / possible revival —
+ * do not re-mount without restoring a write-back path to the chat block.
+ *
  * Chat V2 - Anki 面板宿主组件
  *
- * 监听 open-anki-panel 事件，显示侧边栏 Anki 编辑面板。
+ * 监听 open-anki-panel 事件，显示 Anki 编辑面板。
  * 提供卡片预览、编辑、导出和同步功能。
+ *
+ * 两种呈现形态：
+ * - variant="sheet"（默认，桌面）：右侧 Radix Sheet 抽屉；
+ * - variant="inline"（移动端）：由宿主页面（ChatV2Page）全屏渲染在中屏，
+ *   标题/返回箭头由统一顶栏承载，符合移动端「inline 子屏」契约。
+ *
+ * 面板状态可由外部传入 bridge（宿主页面托管，用于驱动顶栏/返回键），
+ * 缺省时组件自管理（保持 WorkbenchEventBridge 等既有挂载点行为不变）。
  *
  * 这是 CardForge 2.0 与 Chat V2 集成的关键组件。
  */
@@ -19,7 +32,7 @@ import {
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Download, PaperPlaneRight, Trash, X, CircleNotch, Check, WarningCircle } from '@phosphor-icons/react';
-import { useAnkiPanelV2Bridge } from '../hooks/useAnkiPanelV2Bridge';
+import { useAnkiPanelV2Bridge, type UseAnkiPanelV2BridgeReturn } from '../hooks/useAnkiPanelV2Bridge';
 import { ChatV2AnkiAdapter } from '@/components/anki/cardforge/adapters/chatV2Adapter';
 import { cn } from '@/utils/cn';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -99,9 +112,18 @@ const CardItem: React.FC<CardItemProps> = ({ card, index, onRemove }) => {
 // 主组件
 // ============================================================================
 
-export const AnkiPanelHost: React.FC = () => {
+export interface AnkiPanelHostProps {
+  /** 外部托管的面板桥接状态（如 ChatV2Page）；缺省时组件内部自管理 */
+  bridge?: UseAnkiPanelV2BridgeReturn;
+  /** sheet: 右侧抽屉（桌面默认）；inline: 移动端中屏子屏全屏渲染 */
+  variant?: 'sheet' | 'inline';
+}
+
+export const AnkiPanelHost: React.FC<AnkiPanelHostProps> = ({ bridge, variant = 'sheet' }) => {
   const { t } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
+  // 外部托管时内部实例不监听全局事件，避免双开
+  const internalBridge = useAnkiPanelV2Bridge({ listen: !bridge });
   const {
     isOpen,
     cards,
@@ -109,7 +131,7 @@ export const AnkiPanelHost: React.FC = () => {
     businessSessionId,
     closePanel,
     updateCards,
-  } = useAnkiPanelV2Bridge();
+  } = bridge ?? internalBridge;
 
   // 操作状态
   const [exportStatus, setExportStatus] = useState<ActionStatus>('idle');
@@ -122,9 +144,19 @@ export const AnkiPanelHost: React.FC = () => {
   // 同步互斥锁：防止快速双击导致重复调用
   const actionLockRef = useRef<Set<string>>(new Set());
 
+  // 关闭退场动画期间渲染的卡片快照
+  const lastRenderCardsRef = useRef<AnkiCard[]>([]);
+
+  // 状态重置定时器：卸载时统一清理
+  const statusTimersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
   // 重置状态
   const resetStatus = useCallback((setter: React.Dispatch<React.SetStateAction<ActionStatus>>) => {
-    setTimeout(() => setter('idle'), 2000);
+    const timer = setTimeout(() => {
+      statusTimersRef.current.delete(timer);
+      setter('idle');
+    }, 2000);
+    statusTimersRef.current.add(timer);
   }, []);
 
   // 导出为 APKG
@@ -254,11 +286,14 @@ export const AnkiPanelHost: React.FC = () => {
   }, [cards, undoState, updateCards]);
 
   useEffect(() => {
+    const statusTimers = statusTimersRef.current;
     return () => {
       if (undoTimerRef.current) {
         clearTimeout(undoTimerRef.current);
         undoTimerRef.current = null;
       }
+      statusTimers.forEach((timer) => clearTimeout(timer));
+      statusTimers.clear();
     };
   }, []);
 
@@ -276,7 +311,116 @@ export const AnkiPanelHost: React.FC = () => {
     }
   };
 
-  if (!isOpen) return null;
+  // 不能在关闭时直接 return null：Radix Sheet 依赖 data-state="closed" 的退场动画，
+  // 立即卸载会让面板瞬间消失。关闭期间渲染最后一次打开的卡片快照，避免退场时闪现空态
+  // （closePanel 会立刻清空 bridge 状态）。
+  if (isOpen) {
+    lastRenderCardsRef.current = cards;
+  }
+  const displayCards = isOpen ? cards : lastRenderCardsRef.current;
+
+  // 面板主体（错误提示 / 撤销条 / 导出同步 / 卡片列表 / 底部关闭），
+  // Sheet 与 inline 两种形态共用
+  const panelBody = (
+    <>
+      {/* 错误提示 */}
+      {errorMessage && (
+        <div className={cn(
+          "mt-4 p-3 bg-destructive/10 text-destructive text-sm rounded-md flex items-center gap-2",
+          isSmallScreen ? "mx-4" : "mx-6"
+        )}>
+          <WarningCircle size={16} className="flex-shrink-0" />
+          {errorMessage}
+        </div>
+      )}
+      {undoState && (
+        <div className={cn(
+          "mt-4 flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm",
+          isSmallScreen ? "mx-4" : "mx-6"
+        )}>
+          <span className="text-muted-foreground">{t('chatV2.cardRemoved')}</span>
+          <NotionButton size="sm" variant="ghost" onClick={handleUndoRemove}>
+            {t('chatV2.undoRemove')}
+          </NotionButton>
+        </div>
+      )}
+
+      {/* 操作按钮 */}
+      <div className={cn("py-3 border-b flex gap-2", isSmallScreen ? "px-4" : "px-6")}>
+        <NotionButton
+          variant="outline"
+          size="sm"
+          onClick={handleExport}
+          disabled={cards.length === 0 || exportStatus === 'loading'}
+          className={cn(
+            'flex-1',
+            exportStatus === 'success' && 'border-green-500',
+            exportStatus === 'error' && 'border-destructive'
+          )}
+        >
+          {getButtonIcon(exportStatus, Download)}
+          <span className="ml-2">{t('chatV2.exportApkg')}</span>
+        </NotionButton>
+        <NotionButton
+          variant="outline"
+          size="sm"
+          onClick={handleSync}
+          disabled={cards.length === 0 || syncStatus === 'loading'}
+          className={cn(
+            'flex-1',
+            syncStatus === 'success' && 'border-green-500',
+            syncStatus === 'error' && 'border-destructive'
+          )}
+        >
+          {getButtonIcon(syncStatus, PaperPlaneRight)}
+          <span className="ml-2">{t('chatV2.syncToAnki')}</span>
+        </NotionButton>
+      </div>
+
+      {/* 卡片列表 */}
+      <CustomScrollArea className={cn("flex-1 py-4", isSmallScreen ? "px-4" : "px-6")}>
+        {displayCards.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
+            <Trash size={32} className="mb-2 opacity-50" />
+            <p>{t('chatV2.noCards')}</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {displayCards.map((card, index) => (
+              <CardItem
+                key={card.id || index}
+                card={card}
+                index={index}
+                onRemove={handleRemoveCard}
+              />
+            ))}
+          </div>
+        )}
+      </CustomScrollArea>
+
+      {/* 底部操作 */}
+      <div className={cn("py-3 border-t", isSmallScreen ? "px-4 pb-safe" : "px-6")}>
+        <NotionButton variant="ghost" size="sm" onClick={closePanel} className="w-full">
+          {t('chatV2.close')}
+        </NotionButton>
+      </div>
+    </>
+  );
+
+  // 移动端 inline 子屏：标题与返回箭头由统一顶栏（useChatPageLayout）承载，
+  // 这里只渲染计数摘要 + 面板主体，全屏占据中屏
+  if (variant === 'inline') {
+    if (!isOpen) return null;
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-background">
+        <div className="border-b px-4 py-3 text-sm text-muted-foreground">
+          {t('chatV2.totalCards', { count: displayCards.length })}
+          {blockId && <span className="ml-2 text-xs">· Block: {blockId.slice(0, 8)}...</span>}
+        </div>
+        {panelBody}
+      </div>
+    );
+  }
 
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && closePanel()}>
@@ -293,92 +437,12 @@ export const AnkiPanelHost: React.FC = () => {
             {t('chatV2.cardEdit')}
           </SheetTitle>
           <SheetDescription>
-            {t('chatV2.totalCards', { count: cards.length })}
+            {t('chatV2.totalCards', { count: displayCards.length })}
             {blockId && <span className="ml-2 text-xs">· Block: {blockId.slice(0, 8)}...</span>}
           </SheetDescription>
         </SheetHeader>
 
-        {/* 错误提示 */}
-        {errorMessage && (
-          <div className={cn(
-            "mt-4 p-3 bg-destructive/10 text-destructive text-sm rounded-md flex items-center gap-2",
-            isSmallScreen ? "mx-4" : "mx-6"
-          )}>
-            <WarningCircle size={16} className="flex-shrink-0" />
-            {errorMessage}
-          </div>
-        )}
-        {undoState && (
-          <div className={cn(
-            "mt-4 flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-sm",
-            isSmallScreen ? "mx-4" : "mx-6"
-          )}>
-            <span className="text-muted-foreground">{t('chatV2.cardRemoved')}</span>
-            <NotionButton size="sm" variant="ghost" onClick={handleUndoRemove}>
-              {t('chatV2.undoRemove')}
-            </NotionButton>
-          </div>
-        )}
-
-        {/* 操作按钮 */}
-        <div className={cn("py-3 border-b flex gap-2", isSmallScreen ? "px-4" : "px-6")}>
-          <NotionButton
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            disabled={cards.length === 0 || exportStatus === 'loading'}
-            className={cn(
-              'flex-1',
-              exportStatus === 'success' && 'border-green-500',
-              exportStatus === 'error' && 'border-destructive'
-            )}
-          >
-            {getButtonIcon(exportStatus, Download)}
-            <span className="ml-2">{t('chatV2.exportApkg')}</span>
-          </NotionButton>
-          <NotionButton
-            variant="outline"
-            size="sm"
-            onClick={handleSync}
-            disabled={cards.length === 0 || syncStatus === 'loading'}
-            className={cn(
-              'flex-1',
-              syncStatus === 'success' && 'border-green-500',
-              syncStatus === 'error' && 'border-destructive'
-            )}
-          >
-            {getButtonIcon(syncStatus, PaperPlaneRight)}
-            <span className="ml-2">{t('chatV2.syncToAnki')}</span>
-          </NotionButton>
-        </div>
-
-        {/* 卡片列表 */}
-        <CustomScrollArea className={cn("flex-1 py-4", isSmallScreen ? "px-4" : "px-6")}>
-          {cards.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-              <Trash size={32} className="mb-2 opacity-50" />
-              <p>{t('chatV2.noCards')}</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {cards.map((card, index) => (
-                <CardItem
-                  key={card.id || index}
-                  card={card}
-                  index={index}
-                  onRemove={handleRemoveCard}
-                />
-              ))}
-            </div>
-          )}
-        </CustomScrollArea>
-
-        {/* 底部操作 */}
-        <div className={cn("py-3 border-t", isSmallScreen ? "px-4 pb-safe" : "px-6")}>
-          <NotionButton variant="ghost" size="sm" onClick={closePanel} className="w-full">
-            {t('chatV2.close')}
-          </NotionButton>
-        </div>
+        {panelBody}
       </SheetContent>
     </Sheet>
   );

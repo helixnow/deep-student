@@ -1,34 +1,51 @@
-import type { ChatSession } from '../types/session';
-
 // 时间分组类型
 export type TimeGroup = 'today' | 'yesterday' | 'previous7Days' | 'previous30Days' | 'older';
 
-// 获取会话的时间分组
-export const getTimeGroup = (isoString: string): TimeGroup => {
-  const date = new Date(isoString);
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
-  const startOf7DaysAgo = new Date(startOfToday.getTime() - 7 * 86400000);
-  const startOf30DaysAgo = new Date(startOfToday.getTime() - 30 * 86400000);
+interface TimeGroupBoundaries {
+  startOfToday: number;
+  startOfYesterday: number;
+  startOf7DaysAgo: number;
+  startOf30DaysAgo: number;
+}
 
-  if (date >= startOfToday) return 'today';
-  if (date >= startOfYesterday) return 'yesterday';
-  if (date >= startOf7DaysAgo) return 'previous7Days';
-  if (date >= startOf30DaysAgo) return 'previous30Days';
+// 使用日历运算（而非固定 86400000ms 偏移）计算本地日界，避免夏令时切换日产生 1 小时偏差
+const computeBoundaries = (now: Date): TimeGroupBoundaries => {
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const day = now.getDate();
+  return {
+    startOfToday: new Date(year, month, day).getTime(),
+    startOfYesterday: new Date(year, month, day - 1).getTime(),
+    startOf7DaysAgo: new Date(year, month, day - 7).getTime(),
+    startOf30DaysAgo: new Date(year, month, day - 30).getTime(),
+  };
+};
+
+const resolveTimeGroup = (timestamp: number, boundaries: TimeGroupBoundaries): TimeGroup => {
+  if (timestamp >= boundaries.startOfToday) return 'today';
+  if (timestamp >= boundaries.startOfYesterday) return 'yesterday';
+  if (timestamp >= boundaries.startOf7DaysAgo) return 'previous7Days';
+  if (timestamp >= boundaries.startOf30DaysAgo) return 'previous30Days';
   return 'older';
 };
 
-// 按时间分组会话
-export const groupSessionsByTime = (sessions: ChatSession[]): Map<TimeGroup, ChatSession[]> => {
-  const groups = new Map<TimeGroup, ChatSession[]>();
+// 获取会话的时间分组
+export const getTimeGroup = (isoString: string): TimeGroup =>
+  resolveTimeGroup(new Date(isoString).getTime(), computeBoundaries(new Date()));
+
+// 按时间分组会话（日界只计算一次，保证一次分组过程内的一致性）
+export const groupSessionsByTime = <T extends { updatedAt: string }>(
+  sessions: T[]
+): Map<TimeGroup, T[]> => {
+  const groups = new Map<TimeGroup, T[]>();
   const order: TimeGroup[] = ['today', 'yesterday', 'previous7Days', 'previous30Days', 'older'];
   order.forEach(g => groups.set(g, []));
-  
+
+  const boundaries = computeBoundaries(new Date());
   sessions.forEach(session => {
-    const group = getTimeGroup(session.updatedAt);
+    const group = resolveTimeGroup(new Date(session.updatedAt).getTime(), boundaries);
     groups.get(group)?.push(session);
   });
-  
+
   return groups;
 };

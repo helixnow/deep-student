@@ -32,6 +32,8 @@
     "copy": "Copy",
     "copySuccess": "Code copied to clipboard",
     "copySuccessTitle": "Copy successful",
+    "copyFailed": "Copy failed, please try again",
+    "copyFailedTitle": "Copy Failed",
     "render": "Render",
     "run": "Run",
     "source": "Source",
@@ -128,6 +130,10 @@
       "retry": "Retry",
       "retryParallel": "Parallel Retry ({{count}})"
     },
+    "bubble": {
+      "expand": "Show more",
+      "collapse": "Collapse"
+    },
     "rawRequest": {
       "title": "API Request Body",
       "copy": "Copy",
@@ -141,10 +147,20 @@
       "stats": {
         "bodyChars": "{{kb}}K chars",
         "messages": "{{count}} messages",
+        "messages_one": "{{count}} message",
+        "messages_other": "{{count}} messages",
         "images": "{{count}} images",
+        "images_one": "{{count}} image",
+        "images_other": "{{count}} images",
         "tools": "{{count}} tools",
+        "tools_one": "{{count}} tool",
+        "tools_other": "{{count}} tools",
         "toolCalls": "{{count}} calls",
-        "toolResults": "{{count}} results"
+        "toolCalls_one": "{{count}} call",
+        "toolCalls_other": "{{count}} calls",
+        "toolResults": "{{count}} results",
+        "toolResults_one": "{{count}} result",
+        "toolResults_other": "{{count}} results"
       }
     },
     "loadingFiles": "Loading files...",
@@ -172,6 +188,7 @@
       "creating": "Creating reference"
     },
     "modeSeparator": ", ",
+    "runtimeModelSwitchCurrent": "{{label}}, current: {{current}}",
     "thinkingEnabled": "Reasoning mode enabled",
     "thinkingDisabled": "Click to enable reasoning mode",
     "toggleThinking": "Toggle reasoning mode",
@@ -182,6 +199,18 @@
     "thinkingOff": "Off",
     "thinkingUnsupported": "Reasoning unsupported",
     "thinkingUnsupportedDescription": "This model does not support reasoning",
+    "thinkingDepth": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Ultra",
+      "max": "Max"
+    },
+    "thinkingState": {
+      "unsupported": "Reasoning: unsupported",
+      "off": "Reasoning: off",
+      "on": "Reasoning: {{depth}}"
+    },
     "runtimeModelTitle": "Model",
     "chooseRuntimeModel": "Choose model",
     "thinkingDepthExpensive": "Slower",
@@ -299,14 +328,17 @@
     "bubble": {
       "steer": "Steer",
       "delete": "Delete",
-      "iconLabel": "Queued message"
+      "iconLabel": "Queued message",
+      "attachmentsOnly": "Attachments only",
+      "empty": "Empty message"
     },
     "steeredBadge": "Steered turn",
     "error": {
       "retry": "Retry",
       "skip": "Skip",
       "clearAll": "Clear all",
-      "tooltipPrefix": "Failed: "
+      "tooltipPrefix": "Failed: ",
+      "unknown": "Unknown error"
     },
     "fullTooltip": "Queue is full, please wait"
   },
@@ -330,7 +362,8 @@
       "type": "Type",
       "input": "Input",
       "output": "Output",
-      "error": "Error"
+      "error": "Error",
+      "unknownType": "Unknown block type"
     },
     "retrieval": {
       "sourcesCount": "sources",
@@ -345,6 +378,35 @@
         "web_search": "Web Search"
       }
     },
+    "paperSave": {
+      "title": "Paper Download",
+      "preparing": "Preparing paper download…",
+      "stage": {
+        "resolving": "Resolving URL",
+        "downloading": "Downloading",
+        "deduplicating": "Checking duplicates",
+        "storing": "Storing",
+        "processing": "Extracting text",
+        "indexing": "Indexing",
+        "done": "Done",
+        "error": "Failed"
+      },
+      "sourceTitle": "Download source: {{source}}",
+      "dedup": "Duplicate",
+      "dedupTitle": "Already in your library",
+      "saved": "Saved",
+      "retry": "Retry",
+      "retryTitle": "Retry download",
+      "switchSource": "Switch download source",
+      "retryFailed": "Retry failed",
+      "downloadFailed": "Download failed",
+      "blockError": "Paper download failed",
+      "summaryDone_one": "{{done}}/{{total}} paper completed",
+      "summaryDone_other": "{{done}}/{{total}} papers completed",
+      "summaryFailedSuffix_one": ", {{count}} failed",
+      "summaryFailedSuffix_other": ", {{count}} failed",
+      "downloading": "Downloading {{done}}/{{total}}"
+    },
     "rag": {
       "title": "Document RAG",
       "searching": "Searching...",
@@ -354,7 +416,9 @@
       "errorMessage": "Document search failed, please retry",
       "noResults": "No documents found",
       "stats": "Showing {{shown}} / {{total}} results",
-      "statsSimple": "{{count}} results"
+      "statsSimple": "{{count}} results",
+      "statsSimple_one": "{{count}} result",
+      "statsSimple_other": "{{count}} results"
     },
     "memory": {
       "title": "User Memory",
@@ -364,6 +428,8 @@
       "errorMessage": "Memory search failed, please retry",
       "noResults": "No related memories found",
       "statsSimple": "{{count}} memories",
+      "statsSimple_one": "{{count}} memory",
+      "statsSimple_other": "{{count}} memories",
       "types": {
         "conversation": "Conversation",
         "long_term": "Long-term",
@@ -378,7 +444,9 @@
       "errorMessage": "Web search failed, please retry",
       "noResults": "No results found",
       "stats": "Showing {{shown}} / {{total}} results",
-      "statsSimple": "{{count}} results"
+      "statsSimple": "{{count}} results",
+      "statsSimple_one": "{{count}} result",
+      "statsSimple_other": "{{count}} results"
     },
     "academicSearch": {
       "title": "Academic Search",
@@ -388,7 +456,9 @@
       "errorMessage": "Academic search failed, please retry",
       "noResults": "No papers found",
       "stats": "Showing {{shown}} / {{total}} papers",
-      "statsSimple": "{{count}} papers"
+      "statsSimple": "{{count}} papers",
+      "statsSimple_one": "{{count}} paper",
+      "statsSimple_other": "{{count}} papers"
     },
     "mcpTool": {
       "title": "Tool Call",
@@ -416,7 +486,31 @@
       },
       "loadedSkills": "Loaded skills",
       "loadedTools": "Loaded tools",
-      "viewSourceFile": "View Source File"
+      "viewSourceFile": "View Source File",
+      "openRuntimeSettings": "Authorize runtime folders",
+      "generatingArgs": "Generating arguments..."
+    },
+    "workbenchOps": {
+      "title": "Desktop ops",
+      "openTarget": "Open target window",
+      "undo": "Undo",
+      "undone": "Undone",
+      "undoFailed": "Undo failed",
+      "steps": "Steps",
+      "done": "Done",
+      "pending": "Not done",
+      "target": "Target",
+      "noTarget": "No target window",
+      "message": "Note",
+      "applied": "Applied {{applied}}/{{total}}",
+      "undoExpired": "Undo expired (session ended or ledger cleared)",
+      "status": {
+        "running": "Running",
+        "success": "Completed",
+        "partial": "Partial",
+        "cancelled": "Cancelled",
+        "error": "Failed"
+      }
     },
     "imageGen": {
       "title": "Image Generation",
@@ -458,6 +552,10 @@
       "save": "Save",
       "export": "Export",
       "sync": "Sync",
+      "reviewBatch": "Review batch",
+      "pause": "Pause",
+      "resume": "Resume",
+      "cancel": "Cancel",
       "synced": "Synced",
       "syncToAnki": "Sync to Anki",
       "syncStatus": {
@@ -532,13 +630,22 @@
         "contextRefInvalid": "{{count}} attachments could not be parsed. Remove and reattach them if needed.",
         "textTruncated": "Document exceeds {{limitMB}}MB text limit. Only the first {{limitMB}}MB was processed. Consider splitting the document.",
         "templateLoadPartial": "{{count}} templates failed to load and were skipped. Check whether they were removed, or re-enable them in template settings and retry.",
-        "overLimitCardsRemoved": "Concurrent generation exceeded the limit of {{limit}} cards; {{count}} extra cards were removed."
+        "overLimitCardsRetained": "Concurrent generation exceeded the limit of {{limit}} cards; {{count}} over-limit cards were retained in the library but not included in this batch."
       },
       "action": {
         "saveFailed": "Save failed",
         "savedCount": "Saved {{count}} cards",
+        "savedCount_one": "Saved {{count}} card",
+        "savedCount_other": "Saved {{count}} cards",
         "savedCountWithHint": "Saved {{count}} cards. Next: open the Anki panel to review or export.",
+        "savedCountWithHint_one": "Saved {{count}} card. Next: open the Anki panel to review or export.",
+        "savedCountWithHint_other": "Saved {{count}} cards. Next: open the Anki panel to review or export.",
+        "savePartialTitle": "Partially saved",
+        "savePartialDetail": "Added {{saved}}, updated existing {{duplicated}}, skipped {{skipped}}, failed {{failed}}.",
+        "saveAllSkippedTitle": "Cards already in library",
+        "saveAllSkippedDetail": "{{skipped}} skipped as content duplicates, {{duplicated}} updated by id; nothing new was added.",
         "saveFailedWithHint": "Save failed. Retry, or export from the panel instead.",
+        "saveFailedDetail": "Save failed: {{detail}}",
         "exportFailed": "Export failed",
         "exportFailedNoPath": "Export failed: no file path returned",
         "apkgExported": "APKG exported",
@@ -551,12 +658,22 @@
         "syncAllDuplicatesTitle": "Cards already exist",
         "syncAllDuplicatesDetail": "All {{count}} cards already exist in Anki (skipped as duplicates); nothing new was added.",
         "syncedCount": "Synced {{count}} cards to Anki",
+        "syncedCount_one": "Synced {{count}} card to Anki",
+        "syncedCount_other": "Synced {{count}} cards to Anki",
         "syncedCountWithHint": "Synced {{count}} cards to Anki. Next: open Anki to review.",
+        "syncedCountWithHint_one": "Synced {{count}} card to Anki. Next: open Anki to review.",
+        "syncedCountWithHint_other": "Synced {{count}} cards to Anki. Next: open Anki to review.",
         "syncFailedWithHint": "Sync failed. Ensure Anki is running and AnkiConnect is enabled, then retry.",
         "persistFailed": "Card edit failed to save. Changes may be lost if you switch sessions. Please retry.",
         "dbSyncFailed": "Card change failed to sync to the card library; AI export/sync may not include it.",
         "exportCancelled": "Export cancelled",
-        "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards."
+        "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards.",
+        "paused": "Generation paused",
+        "resumed": "Generation resumed",
+        "cancelled": "Generation cancelled",
+        "pauseFailed": "Failed to pause",
+        "resumeFailed": "Failed to resume",
+        "cancelFailed": "Failed to cancel"
       }
     }
   },
@@ -600,7 +717,9 @@
     "pageAlt": "Page {{page}}",
     "pageLabel": "Page {{page}}",
     "stillPreparing": "Textbook images are still being prepared, please wait",
-    "pagesInjected": "Injected {{count}} textbook pages"
+    "pagesInjected": "Injected {{count}} textbook pages",
+    "pagesInjected_one": "Injected {{count}} textbook page",
+    "pagesInjected_other": "Injected {{count}} textbook pages"
   },
   "bridge": {
     "linkingInProgress": "Establishing session link, please wait",
@@ -682,6 +801,7 @@
     "placeholder": "Enter system prompt to customize AI behavior and role...",
     "copy": "Copy",
     "clear": "Clear",
+    "undoClear": "Undo clear",
     "saveAsTemplate": "Save as Template",
     "newTemplateName": "New Template",
     "personas": {
@@ -862,7 +982,10 @@
     "primaryNavigation": "Primary navigation",
     "resourceUnsupported": "This resource type is not yet supported in Learning Hub",
     "groupSaveFailed": "Failed to save group",
-    "openNoteFailed": "Failed to open note"
+    "openNoteFailed": "Failed to open note",
+    "openInLearningHub": "Open in Learning Hub",
+    "collapseSandboxWorkbench": "Collapse Sandbox Workbench",
+    "expandSandboxWorkbench": "Expand Sandbox Workbench"
   },
   "pdfRef": {
     "openFailedTitle": "Cannot Open PDF Reference",
@@ -915,7 +1038,64 @@
   "agentPanel": {
     "plan": "Plan",
     "sources": "Sources",
-    "artifacts": "Artifacts"
+    "artifacts": "Artifacts",
+    "runtime": "Runtime",
+    "changes": "Changes",
+    "runtimeActions": {
+      "list": "List",
+      "read": "Read",
+      "write": "Write",
+      "check": "Command",
+      "blocked": "Blocked"
+    },
+    "changeActions": {
+      "create": "Create",
+      "update": "Update",
+      "delete": "Delete",
+      "append": "Append",
+      "write": "Write"
+    },
+    "goAuthorize": "Authorize runtime folders",
+    "revealInFolder": "Reveal in file manager: {{path}}",
+    "revealFailed": "Could not locate file",
+    "reverted": "Reverted",
+    "revertWrite": "Revert write (delete this artifact file)",
+    "revertDone": "Artifact write reverted",
+    "revertFailed": "Failed to revert",
+    "preview": "Preview",
+    "previewClose": "Close preview",
+    "previewFailed": "Preview failed",
+    "previewTruncated": "Content truncated",
+    "revertRestore": "Restore original content",
+    "revertDeleteNew": "Delete new file",
+    "restoreDone": "Original content restored",
+    "saveAsNote": "Save to note library",
+    "savedAsNote": "Saved as note",
+    "openSavedNote": "Open note",
+    "saveAsNoteFailed": "Failed to save as note",
+    "saveAsNoteTruncated": "Artifact content was truncated before saving",
+    "collapsePanel": "Collapse panel"
+  },
+  "shellOutput": {
+    "title": "Local command",
+    "showFull": "Show all ({{kb}} KB)",
+    "copyCommand": "Copy command",
+    "copyStdout": "Copy stdout",
+    "copyStderr": "Copy stderr",
+    "exitCode": "Exit code {{code}}",
+    "timedOut": "Timed out",
+    "truncated": "Output truncated",
+    "noOutput": "Command produced no output",
+    "policy": "Execution policy",
+    "netOn": "Network: allowed",
+    "netOff": "Network: blocked",
+    "envAllowlist": "Env: allowlist mode",
+    "envExplicit": "{{count}} custom env vars",
+    "hint": {
+      "timeout": "The command timed out and was terminated. Narrow the task or raise timeout_ms and retry.",
+      "nonZeroWithStderr": "The command exited with a non-zero code. Check stderr above for the reason.",
+      "nonZero": "The command exited with a non-zero code. This usually means bad arguments, a missing dependency, or a nonexistent path."
+    }
   },
   "timeline": {
     "thinking": {
@@ -962,6 +1142,8 @@
     },
     "noteTool": {
       "read": "Read Note",
+      "create": "Create Note",
+      "list": "List Notes",
       "append": "Append Content",
       "replace": "Replace Content",
       "set": "Set Content",
@@ -1097,7 +1279,21 @@
     "retryAll": "Retry All",
     "deleteMessage": "Delete Message",
     "unknownModel": "Unknown Model",
-    "switchToVariant": "Switch to variant {{index}}"
+    "switchToVariant": "Switch to variant {{index}}",
+    "prevVariant": "Previous variant",
+    "nextVariant": "Next variant"
+  },
+  "selectionToolbar": {
+    "ariaLabel": "Selected text actions",
+    "copy": "Copy",
+    "copied": "Copied",
+    "explain": "Explain",
+    "translate": "Translate",
+    "addToChat": "Add to chat"
+  },
+  "explainPopover": {
+    "thinking": "Thinking...",
+    "prompt": "Explain the following content in clear, concise language. If it is a technical term, provide a definition and a plain-language explanation; if it is a passage, summarize its core meaning. Answer in English.\n\n\"{{text}}\""
   },
   "browser": {
     "title": "Session Browser",
@@ -1135,9 +1331,16 @@
     "toolName": "Tool Name",
     "description": "Description",
     "arguments": "Arguments",
-    "approve": "Approve",
-    "reject": "Reject",
+    "approve": "Allow Once",
+    "reject": "Reject Once",
+    "rejectReasonPlaceholder": "Optional: tell the AI why you rejected or what it should do instead",
+    "rejectDirectly": "Reject Directly",
+    "rejectSend": "Send",
+    "userReasonLabel": "User feedback",
     "allowSession": "Allow for Session",
+    "allowScope": "Allow Scope",
+    "runtimeRoot": "Runtime root",
+    "runtimeCwd": "Working directory",
     "alwaysAllow": "Always Allow",
     "alwaysDeny": "Always Deny",
     "timeout": "Approval Timeout",
@@ -1161,10 +1364,27 @@
     },
     "expandArgs": "Show full arguments",
     "collapseArgs": "Collapse arguments",
+    "countdownPaused": "Paused",
+    "aria": {
+      "requested": "Tool {{tool}} is awaiting approval and will be rejected automatically in {{seconds}} seconds",
+      "countdownWarning": "{{seconds}} seconds left before automatic rejection",
+      "countdownPaused": "Auto-reject countdown paused",
+      "autoRejectCountdown": "Auto-reject in {{seconds}} seconds"
+    },
     "sensitivity": {
       "low": "Low Risk",
       "medium": "Medium Risk",
       "high": "High Risk"
+    }
+  },
+  "skillInstall": {
+    "approval": {
+      "sha256Prefix": "Package SHA-256 prefix",
+      "risk": {
+        "low": "Scan: low risk",
+        "medium": "Scan: medium risk",
+        "high": "Scan: high risk"
+      }
     }
   },
   "completion": {
@@ -1304,7 +1524,8 @@
       "idle": "Idle",
       "running": "Running",
       "completed": "Completed",
-      "failed": "Failed"
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     },
     "skill": {
       "loading": "Loading...",
@@ -1355,10 +1576,21 @@
     "unableToResolveSessionId": "Unable to resolve requester session ID for workspace command",
     "online": "Network restored, syncing workspace...",
     "offline": "Network disconnected, some operations unavailable",
+    "workerStartFailed": "Worker \"{{name}}\" failed to start: {{error}}",
+    "coordinatorAwakened": "Coordinator awakened by subagent {{agent}}, continuing...",
+    "subagentRetry": "Subagent {{agent}} did not send a result, re-triggering...",
+    "subagentRetryExhausted": "Subagent {{agent}} produced no result after multiple retries",
+    "subagentRetryExhaustedTitle": "Subagent produced no result after multiple retries",
     "subagentRetryDefault": "Subagent completed the task but did not send a result message, re-triggering...",
     "subagentRetryFailed": "Subagent retry failed",
     "subagentRetryResolved": "Subagent has resent the result",
     "subagentRetryTitle": "Subagent Retry",
+    "warning": {
+      "inbox_full_rejected": "Agent {{agent}} inbox is full; new messages were rejected. Wait for it to finish and retry.",
+      "run_agent_conflict_requeue_failed": "Agent {{agent}} is already running and some task messages could not be re-queued. Wait for completion, then retry manually.",
+      "retry_limit_exceeded": "Message retry limit reached ({{retry}}/{{max}})",
+      "agent_cancelled": "Agent {{agent}} execution was cancelled"
+    },
     "cancelled": "Stop request sent",
     "cancelNoop": "Nothing to cancel (may already be idle)",
     "cancelFailed": "Stop failed: {{error}}",
@@ -1413,7 +1645,8 @@
       "running": "Running...",
       "completed": "Completed",
       "failed": "Failed",
-      "idle": "Idle"
+      "idle": "Idle",
+      "cancelled": "Cancelled"
     },
     "unknownSkill": "Subagent",
     "noSessionId": "Subagent session ID missing",
@@ -1510,6 +1743,8 @@
     "showJson": "JSON",
     "hideJson": "Visual",
     "fieldsCount": "{{count}} fields",
+    "fieldsCount_one": "{{count}} field",
+    "fieldsCount_other": "{{count}} fields",
     "active": "Active",
     "inactive": "Inactive",
     "builtin": "Built-in",

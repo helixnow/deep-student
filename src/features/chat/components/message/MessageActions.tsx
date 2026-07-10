@@ -1,10 +1,11 @@
 /**
  * MessageActions - 消息操作按钮组件
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, GitBranch, DotsThree } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { IconSwap } from '@/components/ui/IconSwap';
@@ -64,11 +65,22 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const [isSavingNote, setIsSavingNote] = useState(false);
   const [isBranching, setIsBranching] = useState(false);
 
+  // 🔧 修复：复制反馈定时器在卸载时清理，避免卸载后 setState / 定时器泄漏
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
+
   const handleCopy = useCallback(async () => {
     if (copied) return;
-    await onCopy();
+    try {
+      await onCopy();
+    } catch {
+      // 复制失败：错误提示由 onCopy 内部展示，这里不显示成功态对勾
+      return;
+    }
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copiedTimerRef.current = setTimeout(() => setCopied(false), 2000);
   }, [copied, onCopy]);
 
   // 🆕 保存为笔记
@@ -123,8 +135,9 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     }
   }, [canDelete, isDeleting, onDelete]);
 
+  // 视觉保持 36px（!h-9 !w-9），用透明伪元素把命中区扩大到 ≥44px（触控目标契约）
   const compactButtonClassName = compactMobile
-    ? '!h-9 !w-9 rounded-full [&_svg]:h-[14px] [&_svg]:w-[14px]'
+    ? '!h-9 !w-9 rounded-full [&_svg]:h-[14px] [&_svg]:w-[14px] relative after:absolute after:-inset-1 after:rounded-full after:content-[\'\']'
     : undefined;
 
   const showInlineCopyOnly = !compactMobile;
@@ -138,7 +151,10 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     (!isUser && onRetry && !showInlineRetry)
   );
   const showOverflowMenu = compactMobile || hasSecondaryActions;
-  const showDesktopSecondaryActions = compactMobile || alwaysExpanded;
+  // ≥768 触屏平板无 hover：coarse 指针下次要操作（重试/编辑/更多菜单）需常显，
+  // 否则历史消息只剩复制按钮可用（与 MessageItem footer 的 coarse 指针契约一致）
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const showDesktopSecondaryActions = compactMobile || alwaysExpanded || isCoarsePointer;
   const desktopSecondaryActionsClassName = showDesktopSecondaryActions
     ? 'flex items-center gap-0.5 transition-opacity'
     : 'flex items-center gap-0.5 transition-opacity md:pointer-events-none md:w-0 md:overflow-hidden md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:w-auto md:group-hover:overflow-visible md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:w-auto md:group-focus-within:overflow-visible md:group-focus-within:opacity-100';
@@ -159,8 +175,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           variant="ghost"
           size="icon"
           iconOnly
-          aria-label={t('common.more', '更多操作')}
-          title={t('common.more', '更多操作')}
+          aria-label={t('common:more', '更多')}
+          title={t('common:more', '更多')}
           className={compactButtonClassName}
         >
           <DotsThree className="w-4 h-4" weight="bold" />
@@ -169,7 +185,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       <AppMenuContent
         align="end"
         width={compactMobile ? 168 : 188}
-        className={compactMobile ? '[&_.app-menu-item]:text-[12px] [&_.app-menu-item]:py-1.5 [&_.app-menu-item-icon_svg]:h-3.5 [&_.app-menu-item-icon_svg]:w-3.5' : undefined}
+        className={compactMobile ? '[&_.app-menu-item]:text-[12px] [&_.app-menu-item]:min-h-10 [&_.app-menu-item-icon_svg]:h-3.5 [&_.app-menu-item-icon_svg]:w-3.5' : undefined}
       >
         {!isUser && onRetry && !showInlineRetry && (
           <AppMenuItem onClick={handleRetry} disabled={isLocked || isRetrying} icon={<ArrowCounterClockwise size={16} />}>
@@ -244,7 +260,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           onOpenChange={setDeleteConfirmOpen}
           title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
           description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
-          icon={<Trash className="h-5 w-5 text-red-500" />}
+          icon={<Trash className="h-5 w-5 text-destructive" />}
           confirmText={t('messageItem.actions.delete', '删除')}
           cancelText={t('common.cancel', '取消')}
           confirmVariant="danger"
@@ -279,7 +295,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         onOpenChange={setDeleteConfirmOpen}
         title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
         description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
-        icon={<Trash className="h-5 w-5 text-red-500" />}
+        icon={<Trash className="h-5 w-5 text-destructive" />}
         confirmText={t('messageItem.actions.delete', '删除')}
         cancelText={t('common.cancel', '取消')}
         confirmVariant="danger"

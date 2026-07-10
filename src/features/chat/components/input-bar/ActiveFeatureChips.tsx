@@ -59,8 +59,9 @@ interface FeatureChipProps {
 }
 
 const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
+  const { t } = useTranslation(['common']);
   const colorClass = colorClasses[feature.color || 'default'];
-  
+
   return (
     <div
       className={cn(
@@ -73,7 +74,7 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
         {feature.icon}
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10" aria-label={`Close ${feature.label}`}>
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10" aria-label={`${t('common:actions.close')} ${feature.label}`}>
         <X size={10} weight="bold" />
       </NotionButton>
     </div>
@@ -94,7 +95,7 @@ export const ActiveFeatureChips: React.FC<ActiveFeatureChipsProps> = ({
   return (
     <div
       className={cn(
-        'flex flex-wrap gap-1.5 mb-2 animate-in fade-in slide-in-from-bottom-1 duration-200',
+        'flex flex-wrap gap-1.5 mb-2 ui-rise-in',
         className
       )}
     >

@@ -1,4 +1,5 @@
 import React, { memo, useState, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   File,
   FileCode,
@@ -65,6 +66,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
   disabled = false,
   className,
 }) => {
+  const { t } = useTranslation(['analysis']);
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -119,7 +121,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
     <>
       <div
         role="list"
-        aria-label="待发送附件"
+        aria-label={t('analysis:input_bar.attachments.title')}
         className={cn(
           'attachment-preview-chips mb-2 flex max-h-[76px] flex-nowrap items-center gap-2 overflow-x-auto overflow-y-hidden pr-1 sm:flex-wrap sm:content-start sm:overflow-y-auto',
           className
@@ -176,8 +178,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                         event.stopPropagation();
                         onRemove(attachment.id);
                       }}
-                      aria-label={`移除附件 ${attachment.name}`}
-                      title={`移除附件 ${attachment.name}`}
+                      aria-label={`${t('analysis:input_bar.attachments.remove')} ${attachment.name}`}
+                      title={`${t('analysis:input_bar.attachments.remove')} ${attachment.name}`}
                       className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100"
                     >
                       <X size={10} weight="bold" aria-hidden="true" />

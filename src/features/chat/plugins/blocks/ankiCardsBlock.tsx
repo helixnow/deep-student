@@ -28,8 +28,14 @@ import {
   X,
   CaretUp,
   Trash,
+  Pause,
+  Play,
+  Stop,
+  Stack,
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { controlDocumentTask } from '@/features/anki/taskControl';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
 // ============================================================================
 // 复用 Chat V2 本地 Anki 管线
@@ -310,8 +316,8 @@ interface InlineCardItemProps {
   /** 多模板映射（优先根据 card.template_id 解析） */
   templateMap?: Map<string, CustomAnkiTemplate>;
   onToggleEdit: (index: number) => void;
-  onSave: (index: number, updated: AnkiCard) => void;
-  onDelete: (index: number) => void;
+  onSave: (index: number, updated: AnkiCard) => void | Promise<void>;
+  onDelete: (index: number) => void | Promise<void>;
   disabled?: boolean;
 }
 
@@ -422,7 +428,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
 
   if (isEditing) {
     return (
-      <div className="border rounded-lg bg-card overflow-hidden animate-in fade-in-0 slide-in-from-top-1 duration-200">
+      <div className="border rounded-lg bg-card overflow-hidden ui-drop-in">
         {/* 编辑头部 */}
         <div className="flex items-center justify-between px-3 py-2 bg-accent/30 border-b">
           <span className="text-xs font-medium text-muted-foreground">
@@ -597,9 +603,9 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
             </div>
           )}
         </div>
-        {/* 编辑提示 */}
+        {/* 编辑提示（触屏无 hover：coarse 指针下常显弱化态，保证可编辑性可发现） */}
         {!disabled && (
-          <Pencil size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1" />
+          <Pencil size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 transition-opacity flex-shrink-0 mt-1" />
         )}
       </div>
     </div>
@@ -621,20 +627,24 @@ const ActionButtons: React.FC<{
   isStreaming?: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
-}> = ({ cards, data, blockId, blockStatus, isStreaming, isExpanded, onToggleExpand }) => {
+  /** 同步成功/失败后回写块 toolOutput.syncStatus（消灭 syncStatus 空转） */
+  onSyncStatusChange?: (status: 'synced' | 'error' | 'syncing', error?: string) => void;
+}> = ({ cards, data, blockId, blockStatus, isStreaming, isExpanded, onToggleExpand, onSyncStatusChange }) => {
   const { t } = useTranslation('chatV2');
   const [saveStatus, setSaveStatus] = useState<ActionStatus>('idle');
   const [exportStatus, setExportStatus] = useState<ActionStatus>('idle');
   const [syncStatus, setSyncStatus] = useState<ActionStatus>('idle');
+  const [taskControlStatus, setTaskControlStatus] = useState<ActionStatus>('idle');
 
   // 同步互斥锁：防止同一事件循环 tick 内的快速双击导致重复调用
   const actionLockRef = useRef<Set<string>>(new Set());
   const timeoutRefs = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
+    const timeouts = timeoutRefs.current;
     return () => {
-      timeoutRefs.current.forEach((id) => clearTimeout(id));
-      timeoutRefs.current.clear();
+      timeouts.forEach((id) => clearTimeout(id));
+      timeouts.clear();
     };
   }, []);
 
@@ -661,21 +671,98 @@ const ActionButtons: React.FC<{
     []
   );
 
+  const documentId = data?.documentId;
+  const progressStage = data?.progress?.stage?.toLowerCase();
+  const isPaused =
+    progressStage === 'paused' || data?.finalStatus?.toLowerCase() === 'paused';
+  const isBlockBusy = blockStatus === 'pending' || blockStatus === 'running';
+  const showTaskControls = Boolean(documentId) && (isBlockBusy || isPaused);
+
+  const handleTaskControl = useCallback(
+    async (action: 'pause' | 'resume' | 'cancel') => {
+      if (!documentId || taskControlStatus === 'loading' || actionLockRef.current.has('taskControl')) {
+        return;
+      }
+      actionLockRef.current.add('taskControl');
+      setTaskControlStatus('loading');
+      try {
+        await controlDocumentTask({ documentId, action });
+        setTaskControlStatus('success');
+        const successKey =
+          action === 'pause'
+            ? 'blocks.ankiCards.action.paused'
+            : action === 'resume'
+              ? 'blocks.ankiCards.action.resumed'
+              : 'blocks.ankiCards.action.cancelled';
+        showGlobalNotification('success', t(successKey));
+      } catch (error: unknown) {
+        const msg = getErrorMessage(error);
+        console.error(`[AnkiCardsBlock] Task ${action} failed:`, msg);
+        setTaskControlStatus('error');
+        const failKey =
+          action === 'pause'
+            ? 'blocks.ankiCards.action.pauseFailed'
+            : action === 'resume'
+              ? 'blocks.ankiCards.action.resumeFailed'
+              : 'blocks.ankiCards.action.cancelFailed';
+        showGlobalNotification('error', t(failKey), msg);
+      }
+      actionLockRef.current.delete('taskControl');
+      resetStatusAfterDelay(setTaskControlStatus);
+    },
+    [documentId, taskControlStatus, resetStatusAfterDelay, t]
+  );
+
   const handleSave = useCallback(async () => {
     if (cards.length === 0 || saveStatus === 'loading' || actionLockRef.current.has('save')) return;
     actionLockRef.current.add('save');
     setSaveStatus('loading');
     try {
       const result = await saveCardsToLibrary({ cards, context });
-      if (!result.success) throw new Error(t('blocks.ankiCards.action.saveFailed'));
+      if (!result.success) {
+        const failDetail =
+          result.error ||
+          result.failed?.map((f) => `${f.id}: ${f.error}`).join('; ') ||
+          t('blocks.ankiCards.action.saveFailed');
+        throw new Error(failDetail);
+      }
       logChatAnkiEvent('chat_anki_action_performed', { action: 'save', cardCount: cards.length }, context);
       setSaveStatus('success');
-      showGlobalNotification('success', t('blocks.ankiCards.action.savedCountWithHint', { count: result.savedCount }));
+      if (result.warning?.code === 'anki_save_partial') {
+        showGlobalNotification(
+          'warning',
+          t('blocks.ankiCards.action.savePartialTitle'),
+          t('blocks.ankiCards.action.savePartialDetail', {
+            saved: result.warning.details.saved,
+            duplicated: result.warning.details.duplicated,
+            skipped: result.warning.details.skipped,
+            failed: result.warning.details.failed,
+          })
+        );
+      } else if (result.warning?.code === 'anki_save_all_skipped') {
+        showGlobalNotification(
+          'info',
+          t('blocks.ankiCards.action.saveAllSkippedTitle'),
+          t('blocks.ankiCards.action.saveAllSkippedDetail', {
+            skipped: result.warning.details.skipped,
+            duplicated: result.warning.details.duplicated,
+          })
+        );
+      } else {
+        showGlobalNotification(
+          'success',
+          t('blocks.ankiCards.action.savedCountWithHint', { count: result.savedCount })
+        );
+      }
     } catch (error: unknown) {
       const msg = getErrorMessage(error);
       console.error('[AnkiCardsBlock] Save failed:', msg);
       setSaveStatus('error');
-      showGlobalNotification('error', t('blocks.ankiCards.action.saveFailedWithHint'), msg);
+      showGlobalNotification(
+        'error',
+        t('blocks.ankiCards.action.saveFailedWithHint'),
+        t('blocks.ankiCards.action.saveFailedDetail', { detail: msg })
+      );
     }
     actionLockRef.current.delete('save');
     resetStatusAfterDelay(setSaveStatus);
@@ -734,15 +821,43 @@ const ActionButtons: React.FC<{
     resetStatusAfterDelay(setExportStatus);
   }, [cards, context, exportStatus, resetStatusAfterDelay, t]);
 
+  const handleReviewBatch = useCallback(() => {
+    if (cards.length === 0) return;
+    const cardIds = cards
+      .map((c) => c.id)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    const payload = {
+      screen: 'session' as const,
+      mode: 'batch' as const,
+      cardIds: cardIds.length > 0 ? cardIds : cards.map((_, i) => `chat-batch-${blockId}-${i}`),
+    };
+    // R2-04：收编双路径——统一走 onActivation startReview（已开窗 activate；未开窗 fallbackLaunch）
+    workbenchBus.activate({
+      typeId: 'flashcards',
+      instanceKey: '',
+      action: 'startReview',
+      payload,
+      fallbackLaunch: {
+        typeId: 'flashcards',
+        reason: 'api',
+        payload,
+      },
+    });
+    logChatAnkiEvent('chat_anki_action_performed', { action: 'review_batch', cardCount: cards.length }, context);
+  }, [blockId, cards, context]);
+
   const handleSync = useCallback(async () => {
     if (cards.length === 0 || syncStatus === 'loading' || actionLockRef.current.has('sync')) return;
     actionLockRef.current.add('sync');
     setSyncStatus('loading');
+    onSyncStatusChange?.('syncing');
     try {
       const result = await importCardsViaAnkiConnect({ cards, context });
       if (!result.success) throw new Error(t('blocks.ankiCards.action.syncFailedDetail'));
       logChatAnkiEvent('chat_anki_action_performed', { action: 'import', cardCount: cards.length }, context);
       setSyncStatus('success');
+      // M4：写块 syncStatus，避免预览态长期停在 pending
+      onSyncStatusChange?.('synced');
       if (result.warning?.code === 'anki_sync_partial') {
         showGlobalNotification(
           'warning',
@@ -768,14 +883,14 @@ const ActionButtons: React.FC<{
       const msg = getErrorMessage(error);
       console.error('[AnkiCardsBlock] Sync failed:', msg);
       setSyncStatus('error');
+      onSyncStatusChange?.('error', msg);
       showGlobalNotification('error', t('blocks.ankiCards.action.syncFailedWithHint'), msg);
     }
     actionLockRef.current.delete('sync');
     resetStatusAfterDelay(setSyncStatus);
-  }, [cards, context, syncStatus, resetStatusAfterDelay, t]);
+  }, [cards, context, syncStatus, resetStatusAfterDelay, onSyncStatusChange, t]);
 
-  const isBlockBusy = blockStatus === 'pending' || blockStatus === 'running';
-  const isDisabled = cards.length === 0 || isStreaming || isBlockBusy;
+  const isDisabled = cards.length === 0 || isStreaming || (isBlockBusy && !isPaused);
   const isAnkiConnectAvailable = data?.ankiConnect?.available === true;
   const syncDisabledReason = !isAnkiConnectAvailable
     ? t(
@@ -800,6 +915,57 @@ const ActionButtons: React.FC<{
 
   return (
     <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3 pt-3 border-t border-border/50">
+      {/* 运行中：暂停 / 继续 / 取消（有 documentId 时） */}
+      {showTaskControls && (
+        <>
+          {isPaused ? (
+            <NotionButton
+              type="button"
+              onClick={() => void handleTaskControl('resume')}
+              disabled={taskControlStatus === 'loading'}
+              variant="primary"
+              className="text-xs sm:text-sm"
+            >
+              {taskControlStatus === 'loading' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <Play size={14} />
+              )}
+              {t('blocks.ankiCards.resume')}
+            </NotionButton>
+          ) : (
+            <NotionButton
+              type="button"
+              onClick={() => void handleTaskControl('pause')}
+              disabled={taskControlStatus === 'loading'}
+              variant="default"
+              className="text-xs sm:text-sm"
+            >
+              {taskControlStatus === 'loading' ? (
+                <CircleNotch size={14} className="animate-spin" />
+              ) : (
+                <Pause size={14} />
+              )}
+              {t('blocks.ankiCards.pause')}
+            </NotionButton>
+          )}
+          <NotionButton
+            type="button"
+            onClick={() => void handleTaskControl('cancel')}
+            disabled={taskControlStatus === 'loading'}
+            variant="danger"
+            className="text-xs sm:text-sm"
+          >
+            {taskControlStatus === 'loading' ? (
+              <CircleNotch size={14} className="animate-spin" />
+            ) : (
+              <Stop size={14} />
+            )}
+            {t('blocks.ankiCards.cancel')}
+          </NotionButton>
+        </>
+      )}
+
       {/* 内联展开/折叠编辑 */}
       <NotionButton
         type="button"
@@ -848,6 +1014,18 @@ const ActionButtons: React.FC<{
         {renderIcon(syncStatus, PaperPlaneRight)}
         {t('blocks.ankiCards.sync')}
       </NotionButton>
+
+      {/* 复习这批 → workbench 闪卡会话 */}
+      <NotionButton
+        type="button"
+        onClick={handleReviewBatch}
+        disabled={isDisabled || cards.length === 0}
+        variant="default"
+        className="text-xs sm:text-sm"
+      >
+        <Stack size={16} />
+        {t('blocks.ankiCards.reviewBatch')}
+      </NotionButton>
     </div>
   );
 };
@@ -855,6 +1033,9 @@ const ActionButtons: React.FC<{
 // ============================================================================
 // 主组件
 // ============================================================================
+
+/** Zombie block watchdog 阈值：running 状态超过该时长无更新则做后端核实/标错 */
+const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Anki 卡片块组件
@@ -870,7 +1051,9 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
 }) => {
   const { t } = useTranslation('chatV2');
   const data = block.toolOutput as AnkiCardsBlockData | undefined;
-  const cards = data?.cards || [];
+  // useMemo 固定空数组引用：`data?.cards || []` 每次渲染都会生成新数组，
+  // 导致依赖 cards 的 effect/memo（调试上报、模板 id 提取等）在流式期间每帧重跑
+  const cards = useMemo(() => data?.cards ?? [], [data?.cards]);
   const isBlockBusy = block.status === 'pending' || block.status === 'running';
   const isActionDisabled = isBlockBusy || Boolean(isStreaming);
 
@@ -1043,7 +1226,6 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   }, [store, block.id]);
 
   // Zombie block watchdog: 如果 block 持续处于 running 状态超过 5 分钟无更新，自动标记为 error
-  const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
   const lastActivityRef = useRef(Date.now());
   useEffect(() => {
     // 每次 cards/progress 变化都重置活跃时间戳
@@ -1148,68 +1330,127 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [block.id, t]
   );
 
+  // M4：Sync 成功后写块 syncStatus（store + DB tool_output）
+  const handleSyncStatusChange = useCallback(
+    (status: 'synced' | 'error' | 'syncing', error?: string) => {
+      if (!store) return;
+      const latestBlock = store.getState().blocks.get(block.id);
+      const latestData = (latestBlock?.toolOutput as AnkiCardsBlockData | undefined) ?? data;
+      if (!latestData) return;
+      const newData: AnkiCardsBlockData = {
+        ...latestData,
+        syncStatus: status,
+        syncError: status === 'error' ? error : undefined,
+      };
+      store.getState().updateBlock(block.id, { toolOutput: newData });
+      // syncing 为瞬时态，不必落库；synced/error 持久化以免刷新后空转
+      if (status === 'synced' || status === 'error') {
+        persistToolOutput(newData);
+      }
+    },
+    [store, block.id, data, persistToolOutput]
+  );
+
   // E2 修复：块内编辑/删除同时回写 anki_cards 表（消灭双数据源）。
   // AI 的 chatanki_export / chatanki_sync 读取的是 DB，
   // 不回写会导致"用户在块里删过/改过的卡在 AI 导出时复活"。
-  const syncCardUpdateToDb = useCallback((card: AnkiCard) => {
+  // 成功后再更新投影；失败 toast 且不覆写 store（避免与流式更新竞态丢卡）。
+  const syncCardUpdateToDb = useCallback(async (card: AnkiCard) => {
     if (!card.id) return;
     // 空 text 归一化为 null，避免把 DB 中的 NULL 覆盖为空字符串
     const payload = { ...card, text: card.text?.trim() ? card.text : null };
-    invoke('update_anki_card', { card: payload }).catch((err) => {
+    try {
+      await invoke('update_anki_card', { card: payload });
+    } catch (err) {
       console.warn('[AnkiCardsBlock] Failed to sync card edit to anki DB:', err);
       showGlobalNotification(
         'warning',
         t('blocks.ankiCards.action.dbSyncFailed'),
       );
-    });
+      throw err;
+    }
   }, [t]);
 
-  const syncCardDeleteToDb = useCallback((card: AnkiCard | undefined) => {
+  const syncCardDeleteToDb = useCallback(async (card: AnkiCard | undefined) => {
     if (!card?.id) return;
-    invoke('delete_anki_card', { cardId: card.id }).catch((err) => {
+    try {
+      await invoke('delete_anki_card', { cardId: card.id });
+    } catch (err) {
       console.warn('[AnkiCardsBlock] Failed to sync card delete to anki DB:', err);
       showGlobalNotification(
         'warning',
         t('blocks.ankiCards.action.dbSyncFailed'),
       );
-    });
+      throw err;
+    }
   }, [t]);
 
-  // 保存卡片编辑
+  // 保存卡片编辑：从 store 读最新 toolOutput 再合并，避免闭包 cards 整表覆写冲掉流式新卡
   const handleSaveCard = useCallback(
-    (index: number, updated: AnkiCard) => {
-      if (!data || !store) return;
-      const newCards = [...cards];
-      newCards[index] = updated;
-      const newData = { ...data, cards: newCards };
+    async (index: number, updated: AnkiCard) => {
+      if (!store) return;
+      try {
+        await syncCardUpdateToDb(updated);
+      } catch {
+        return;
+      }
+      const latestBlock = store.getState().blocks.get(block.id);
+      const latestData = latestBlock?.toolOutput as AnkiCardsBlockData | undefined;
+      if (!latestData) return;
+      const latestCards = latestData.cards ?? [];
+      const newCards = [...latestCards];
+      const byId = updated.id
+        ? newCards.findIndex((card) => card.id === updated.id)
+        : -1;
+      const targetIndex = byId >= 0 ? byId : index;
+      if (targetIndex < 0 || targetIndex >= newCards.length) return;
+      newCards[targetIndex] = updated;
+      const newData = { ...latestData, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       persistToolOutput(newData);
-      syncCardUpdateToDb(updated);
       setEditingIndex(-1);
-      logChatAnkiEvent('chat_anki_card_edited', { index, blockId: block.id });
+      logChatAnkiEvent('chat_anki_card_edited', { index: targetIndex, blockId: block.id });
     },
-    [cards, data, store, block.id, persistToolOutput, syncCardUpdateToDb]
+    [store, block.id, persistToolOutput, syncCardUpdateToDb]
   );
 
-  // 删除卡片
+  // 删除卡片：同样基于最新 store 合并，避免 stale closure 整表覆写
   // 🔧 修复：删除非编辑中的卡片时，正确调整 editingIndex 避免偏移到错误卡片
   const handleDeleteCard = useCallback(
-    (index: number) => {
-      if (!data || !store) return;
-      const removed = cards[index];
-      const newCards = cards.filter((_, i) => i !== index);
-      const newData = { ...data, cards: newCards };
+    async (index: number) => {
+      if (!store) return;
+      const latestBlock = store.getState().blocks.get(block.id);
+      const latestData = latestBlock?.toolOutput as AnkiCardsBlockData | undefined;
+      if (!latestData) return;
+      const latestCards = latestData.cards ?? [];
+      if (index < 0 || index >= latestCards.length) return;
+      const removed = latestCards[index];
+      try {
+        await syncCardDeleteToDb(removed);
+      } catch {
+        return;
+      }
+      // DB 成功后再读一次，避免 await 期间流式更新被丢弃
+      const afterBlock = store.getState().blocks.get(block.id);
+      const afterData = afterBlock?.toolOutput as AnkiCardsBlockData | undefined;
+      if (!afterData) return;
+      const afterCards = afterData.cards ?? [];
+      const removeIndex = removed?.id
+        ? afterCards.findIndex((card) => card.id === removed.id)
+        : index;
+      if (removeIndex < 0) return;
+      const newCards = afterCards.filter((_, i) => i !== removeIndex);
+      const newData = { ...afterData, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       persistToolOutput(newData);
-      syncCardDeleteToDb(removed);
       setEditingIndex((prev) => {
-        if (prev === index) return -1;
-        if (prev > index) return prev - 1;
+        if (prev === removeIndex) return -1;
+        if (prev > removeIndex) return prev - 1;
         return prev;
       });
-      logChatAnkiEvent('chat_anki_card_deleted', { index, blockId: block.id });
+      logChatAnkiEvent('chat_anki_card_deleted', { index: removeIndex, blockId: block.id });
     },
-    [cards, data, store, block.id, persistToolOutput, syncCardDeleteToDb]
+    [store, block.id, persistToolOutput, syncCardDeleteToDb]
   );
 
   // 计算预览状态
@@ -1260,7 +1501,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
 
       {/* 展开态：内联卡片编辑列表 */}
       {isExpanded && cards.length > 0 && (
-        <div className="animate-in fade-in-0 slide-in-from-top-2 duration-300">
+        <div className="ui-drop-in">
           {/* 头部统计 */}
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-foreground">
@@ -1331,7 +1572,12 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       )}
 
       {/* 底部操作区：移动端全宽，桌面端保持原布局 */}
-      {(shouldShowChatAnkiProgress || cards.length > 0) && (
+      {(shouldShowChatAnkiProgress ||
+        cards.length > 0 ||
+        (Boolean(data?.documentId) &&
+          (isBlockBusy ||
+            data?.progress?.stage?.toLowerCase() === 'paused' ||
+            data?.finalStatus?.toLowerCase() === 'paused'))) && (
         <FullWidthCardWrapper className="chatanki-bottom-actions">
           {shouldShowChatAnkiProgress && (
             <ChatAnkiProgressCompact
@@ -1345,8 +1591,12 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
             />
           )}
 
-          {/* 操作按钮组（仅在有卡片时显示） */}
-          {cards.length > 0 && (
+          {/* 操作按钮组：有卡片，或运行中/暂停且有 documentId（暂停/继续/取消） */}
+          {(cards.length > 0 ||
+            (Boolean(data?.documentId) &&
+              (isBlockBusy ||
+                data?.progress?.stage?.toLowerCase() === 'paused' ||
+                data?.finalStatus?.toLowerCase() === 'paused'))) && (
             <ActionButtons
               cards={cards}
               data={data}
@@ -1355,6 +1605,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               isStreaming={isStreaming}
               isExpanded={isExpanded}
               onToggleExpand={handleToggleExpand}
+              onSyncStatusChange={handleSyncStatusChange}
             />
           )}
         </FullWidthCardWrapper>

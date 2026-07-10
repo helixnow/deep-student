@@ -15,6 +15,15 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
 // 通用块组件
 // ============================================================================
 
+/** 安全序列化：循环引用/BigInt 等 JSON.stringify 会抛错的场景降级为 String() */
+function safeStringify(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * GenericBlock - 通用块渲染组件
  *
@@ -70,8 +79,8 @@ const GenericBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStrea
           <div className="text-xs text-muted-foreground mb-1">
             {t('blocks.generic.input')}:
           </div>
-          <pre className="text-xs whitespace-pre-wrap break-words text-muted-foreground bg-background/50 p-2 rounded">
-            {JSON.stringify(block.toolInput, null, 2)}
+          <pre className="text-xs whitespace-pre-wrap break-words text-muted-foreground bg-background/50 p-2 rounded max-h-40 overflow-auto">
+            {safeStringify(block.toolInput)}
           </pre>
         </div>
       )}
@@ -85,7 +94,7 @@ const GenericBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStrea
           <pre className="text-xs whitespace-pre-wrap break-words text-muted-foreground bg-background/50 p-2 rounded max-h-40 overflow-auto">
             {typeof block.toolOutput === 'string'
               ? block.toolOutput
-              : JSON.stringify(block.toolOutput, null, 2)}
+              : safeStringify(block.toolOutput)}
           </pre>
         </div>
       )}

@@ -12,11 +12,12 @@
 // 确保 Chat V2 初始化（样式 + 插件注册）
 import '../init';
 
-import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
+import type { StoreApi } from 'zustand';
+import type { ChatStore } from '../core/types';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, Info } from '@phosphor-icons/react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { Info } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
@@ -66,6 +67,60 @@ export interface ChatContainerProps {
 // 组件实现
 // ============================================================================
 
+// 冷启动骨架屏。定义在组件外：若在 ChatContainer 内部定义，每次渲染都会生成
+// 新的组件类型，导致骨架子树整体 remount、animate-pulse 动画反复重启
+const ChatSkeleton: React.FC = () => (
+  <ThreadContentShell
+    data-slot="chat-loading-shell"
+    className="flex h-full flex-col px-4 py-4 md:px-8"
+  >
+    <div className="flex h-full flex-col animate-pulse">
+      {/* 模拟消息列表 */}
+      <div data-slot="chat-loading-messages" className="flex-1 space-y-4">
+        {/* 用户消息骨架 */}
+        <div className="flex justify-end">
+          <div className="h-16 w-2/3 rounded-lg bg-muted" />
+        </div>
+        {/* 助手消息骨架 */}
+        <div className="flex justify-start gap-3">
+          <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-full rounded bg-muted" />
+            <div className="h-4 w-3/4 rounded bg-muted" />
+            <div className="h-4 w-1/2 rounded bg-muted" />
+          </div>
+        </div>
+        {/* 用户消息骨架 */}
+        <div className="flex justify-end">
+          <div className="h-12 w-1/2 rounded-lg bg-muted" />
+        </div>
+        {/* 助手消息骨架 */}
+        <div className="flex justify-start gap-3">
+          <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
+          <div className="flex-1 space-y-2">
+            <div className="h-4 w-full rounded bg-muted" />
+            <div className="h-4 w-2/3 rounded bg-muted" />
+          </div>
+        </div>
+      </div>
+      {/* 输入框骨架 */}
+      <div data-slot="chat-loading-composer" className="mt-4">
+        <div className="chat-loading-shell__composer-panel rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--shell-inspector-panel)] p-3 shadow-[var(--shadow-shell-soft)]">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-muted" />
+            <div className="h-8 w-24 rounded-full bg-muted" />
+            <div className="h-8 w-8 rounded-full bg-muted" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-4 w-5/6 rounded bg-muted" />
+            <div className="h-4 w-2/5 rounded bg-muted" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </ThreadContentShell>
+);
+
 /**
  * ChatContainer 主容器组件
  *
@@ -96,17 +151,33 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 2. TauriAdapter 被设置并开始监听后端事件
   // 3. 发送消息、中断流式等操作能正常工作
   const {
-    store,
+    store: targetStore,
     isReady: adapterReady,
     error: adapterError,
   } = useConnectedSession(sessionId, { preload: true });
 
-  // 获取会话状态
+  const targetDataLoaded = useStore(targetStore, (s) => s.isDataLoaded);
+  const targetCanRender = targetDataLoaded || adapterReady;
+
+  // 切换至未加载会话时保留上一会话画面，避免空白等待（LRU 命中则 targetCanRender 为 true，不走此路径）
+  const lastRenderableRef = useRef<{ sessionId: string; store: StoreApi<ChatStore> } | null>(null);
+  if (targetCanRender) {
+    lastRenderableRef.current = { sessionId, store: targetStore };
+  }
+
+  const isSwitchingToUnloaded =
+    !targetCanRender
+    && lastRenderableRef.current !== null
+    && lastRenderableRef.current.sessionId !== sessionId;
+  const isColdStart = !targetCanRender && lastRenderableRef.current === null;
+
+  const store = targetCanRender
+    ? targetStore
+    : (lastRenderableRef.current?.store ?? targetStore);
+
+  // 获取会话状态（展示用 store）
   const sessionStatus = useSessionStatus(store);
-  
-  // 🚀 性能优化：直接从 Store 读取 isDataLoaded
-  // 即使 adapter 未就绪，只要数据已加载就可以渲染消息列表
-  const isDataLoaded = useStore(store, (s) => s.isDataLoaded);
+
   const messageCount = useStore(store, (s) => s.messageOrder.length);
   const sessionGroupId = useStore(store, (s) => s.groupId);
   const resolvedEmptyStateGroupName = emptyStateGroupName ?? (
@@ -115,25 +186,29 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       : null
   );
 
-  // 🚀 防闪动优化：只有加载超过 500ms 才显示骨架屏
-  const isActuallyLoading = !isDataLoaded && !adapterReady;
-  const [showSkeleton, setShowSkeleton] = useState(false);
-  
-  useEffect(() => {
-    if (isActuallyLoading) {
-      // 加载开始，延迟 500ms 后显示骨架屏
-      const timer = setTimeout(() => {
-        setShowSkeleton(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    } else {
-      // 加载完成，立即隐藏骨架屏
-      setShowSkeleton(false);
-    }
-  }, [isActuallyLoading]);
+  // 仅冷启动（无任何可展示会话）时显示骨架屏；切换中保留旧画面
+  const isActuallyLoading = isColdStart;
 
-  // 🆕 阻塞交互请求
-  const pendingApprovalRequest = useStore(store, (s) => s.pendingBlockingInteraction);
+  // 会话切换轻入场：不 remount MessageList，仅重播包裹层 animation。
+  // 以展示 store 为基准（而非 sessionId）：切到未缓存会话时旧画面继续显示，
+  // 直到数据就绪 store 才切换——此刻才是新内容真正落地、应播入场的时机
+  const threadShellRef = useRef<HTMLDivElement>(null);
+  const prevDisplayStoreRef = useRef(store);
+  useEffect(() => {
+    if (prevDisplayStoreRef.current === store) return;
+    prevDisplayStoreRef.current = store;
+    const el = threadShellRef.current;
+    if (!el) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+    el.classList.remove('chat-thread-enter');
+    void el.offsetHeight;
+    el.classList.add('chat-thread-enter');
+  }, [store]);
+
+  // 🆕 阻塞交互请求（审批卡片）已移至 InputBarV2 内部订阅渲染，
+  // 此处不再订阅 pendingBlockingInteraction，避免整个容器随之重渲染
 
   // 🔧 P1修复：使用响应式订阅获取模式，而非直接调用 getState()
   const mode = useStore(store, (s) => s.mode);
@@ -159,78 +234,14 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 🆕 Canvas 上下文引用管理 - 白板功能已移除
   // useCanvasContextRef({ store });
 
-
-  // 创建骨架屏组件
-  const ChatSkeleton = () => (
-    <ThreadContentShell
-      data-slot="chat-loading-shell"
-      className="flex h-full flex-col px-4 py-4 md:px-8"
-    >
-      <div className="flex h-full flex-col animate-pulse">
-        {/* 模拟消息列表 */}
-        <div data-slot="chat-loading-messages" className="flex-1 space-y-4">
-          {/* 用户消息骨架 */}
-          <div className="flex justify-end">
-            <div className="h-16 w-2/3 rounded-lg bg-muted" />
-          </div>
-          {/* 助手消息骨架 */}
-          <div className="flex justify-start gap-3">
-            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-full rounded bg-muted" />
-              <div className="h-4 w-3/4 rounded bg-muted" />
-              <div className="h-4 w-1/2 rounded bg-muted" />
-            </div>
-          </div>
-          {/* 用户消息骨架 */}
-          <div className="flex justify-end">
-            <div className="h-12 w-1/2 rounded-lg bg-muted" />
-          </div>
-          {/* 助手消息骨架 */}
-          <div className="flex justify-start gap-3">
-            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 w-full rounded bg-muted" />
-              <div className="h-4 w-2/3 rounded bg-muted" />
-            </div>
-          </div>
-        </div>
-        {/* 输入框骨架 */}
-        <div data-slot="chat-loading-composer" className="mt-4">
-          <div className="chat-loading-shell__composer-panel rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--shell-inspector-panel)] p-3 shadow-[var(--shadow-shell-soft)]">
-            <div className="mb-3 flex items-center gap-2">
-              <div className="h-8 w-8 rounded-full bg-muted" />
-              <div className="h-8 w-24 rounded-full bg-muted" />
-              <div className="h-8 w-8 rounded-full bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <div className="h-4 w-5/6 rounded bg-muted" />
-              <div className="h-4 w-2/5 rounded bg-muted" />
-            </div>
-          </div>
-        </div>
-      </div>
-    </ThreadContentShell>
-  );
-
   // 🚀 性能优化：不再等待 adapterReady
   // 只要 store 存在，就可以渲染消息列表和输入框
   // adapter 未就绪时，只是无法发送消息，但可以查看历史记录
-  //
-  // 🚀 防闪动优化：只有加载超过 500ms 才显示骨架屏
-  // 如果加载很快（< 500ms），不显示任何加载指示器，避免闪动
-  if (isActuallyLoading && showSkeleton) {
-    return (
-      <div className={cn('flex flex-col h-full', className)}>
-        <ChatSkeleton />
-      </div>
-    );
-  }
-  
-  // 加载中但未超过 500ms，显示空白而非骨架屏
   if (isActuallyLoading) {
     return (
-      <div className={cn('flex flex-col h-full', className)} />
+      <div className={cn('flex flex-col h-full chat-loading-shell-defer', className)}>
+        <ChatSkeleton />
+      </div>
     );
   }
 
@@ -279,23 +290,34 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     compact?: boolean;
     showBottomFade?: boolean;
   } = {}) => (
+    // 不按 sessionId remount：MessageList 内部随 store 切换重置；入场动画由 threadShellRef 重播
     <div
+      ref={threadShellRef}
       className={cn(
+        'chat-thread-enter relative',
         compact ? 'relative overflow-visible' : 'flex-1 overflow-hidden relative',
-        messageListSlotClassName
+        messageListSlotClassName,
+        isSwitchingToUnloaded && 'pointer-events-none'
       )}
     >
+      {isSwitchingToUnloaded ? (
+        <div
+          aria-hidden
+          className="absolute inset-0 z-20 bg-[color:var(--shell-workspace-panel)]/40 backdrop-blur-[1px]"
+        />
+      ) : null}
       <MessageList
-        key={sessionId}
         store={store}
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
       />
-      <div
-        aria-hidden="true"
-        className="scroll-fade scroll-fade--bottom"
-        style={{ '--scroll-fade-surface': 'var(--shell-workspace-panel)' } as React.CSSProperties}
-      />
+      {showBottomFade ? (
+        <div
+          aria-hidden="true"
+          className="scroll-fade scroll-fade--bottom"
+          style={{ '--scroll-fade-surface': 'var(--shell-workspace-panel)' } as React.CSSProperties}
+        />
+      ) : null}
     </div>
   );
 
@@ -324,12 +346,13 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         'chat-composer-motion-frame',
         motionState === 'empty'
           ? 'chat-composer-motion-frame--empty'
-          : 'chat-composer-motion-frame--docked'
+          : 'chat-composer-motion-frame--docked',
+        isSwitchingToUnloaded && 'pointer-events-none opacity-50'
       )}
     >
       <div className="w-full">
         <InputBarV2
-          store={store}
+          store={targetCanRender ? targetStore : store}
           textbookOpen={textbookOpen}
           onTextbookToggle={onTextbookToggle}
           availableModels={availableModels}
@@ -375,8 +398,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </div>
       ) : (
         <>
-          {/* 消息列表 - 与输入框布局完全分离 */}
-          {/* 🚀 性能优化：使用 key={sessionId} 强制重新挂载组件 */}
+          {/* 消息列表 - 与输入框布局完全分离；切换会话不 remount，由 MessageList 随 store 更新 */}
           {renderMessageList()}
 
           {/* 模式插件 Footer */}

@@ -73,7 +73,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingSessionId(session.id);
     setEditingTitle(getSessionTitleText(session.title, ''));
     resetDeleteConfirmation();
-  }, [resetDeleteConfirmation]);
+  }, [resetDeleteConfirmation, setEditingSessionId, setEditingTitle, setRenameError, setRenamingSessionId]);
 
   // 保存会话名称
   const saveSessionTitle = useCallback(async (sessionId: string) => {
@@ -116,7 +116,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     } finally {
       setRenamingSessionId(null);
     }
-  }, [editingTitle, t]);
+  }, [editingTitle, sessionsRef, setEditingSessionId, setEditingTitle, setRenameError, setRenamingSessionId, setSessions, t]);
 
   // 取消编辑
   const cancelEditSession = useCallback(() => {
@@ -124,7 +124,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setRenameError(null);
     setEditingSessionId(null);
     setEditingTitle('');
-  }, []);
+  }, [setEditingSessionId, setEditingTitle, setRenameError, setRenamingSessionId]);
 
   const togglePinSession = useCallback(async (sessionId: string, pinned: boolean, metadata?: ChatSession['metadata']) => {
     try {
@@ -186,7 +186,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setGroupEditorOpen(true);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setSessionSheetOpen, setViewMode]);
 
   const openEditGroup = useCallback((group: SessionGroup) => {
     setEditingGroup(group);
@@ -194,7 +194,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setGroupEditorOpen(true);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setSessionSheetOpen, setViewMode]);
 
   const openRenameGroup = useCallback((group: SessionGroup) => {
     setEditingGroup(group);
@@ -202,7 +202,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setGroupEditorOpen(true);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setSessionSheetOpen, setViewMode]);
 
   const closeGroupEditor = useCallback(() => {
     setGroupEditorOpen(false);
@@ -212,7 +212,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     groupPickerAddRef.current = null;
     setGroupPinnedIds(new Set());
     setMobileResourcePanelOpen(false);
-  }, [setGroupEditorAutoFocusField]);
+  }, [groupPickerAddRef, setEditingGroup, setGroupEditorAutoFocusField, setGroupEditorOpen, setGroupPinnedIds, setMobileResourcePanelOpen]);
 
   const handleSubmitGroup = useCallback(async (payload: CreateGroupRequest | UpdateGroupRequest) => {
     try {
@@ -224,6 +224,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       closeGroupEditor();
     } catch (error) {
       console.error('[ChatV2Page] Failed to save group:', getErrorMessage(error));
+      // 向上抛出，让 GroupEditorPanel 展示保存失败提示并保持编辑器打开
+      throw error;
     }
   }, [closeGroupEditor, createGroup, editingGroup, updateGroup]);
 
@@ -262,7 +264,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
 
       store.setState(storeUpdate);
     }
-  }, []);
+  }, [setSessions]);
 
   const confirmArchiveGroup = useCallback(async () => {
     if (!pendingArchiveGroup) return;
@@ -320,7 +322,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   }, [moveSessionToGroup]);
 
   // 格式化时间
-  const formatTime = (isoString: string): string => {
+  const formatTime = useCallback((isoString: string): string => {
     const date = new Date(isoString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -333,7 +335,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     if (diffHours < 24) return t('common.hoursAgo', { count: diffHours } as any) as string;
     if (diffDays < 7) return t('common.daysAgo', { count: diffDays } as any) as string;
     return date.toLocaleDateString();
-  };
+  }, [t]);
 
   return {
     startEditSession,

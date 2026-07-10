@@ -166,6 +166,22 @@ export interface BlockRendererProps {
 // 通用块组件（Fallback）
 // ============================================================================
 
+/** Fallback 输出预览上限（避免超大 payload 拖垮渲染） */
+const GENERIC_OUTPUT_MAX_CHARS = 4000;
+
+/** 安全序列化：循环引用/BigInt 等 JSON.stringify 会抛错的场景降级为 String() */
+function safeStringifyToolOutput(output: unknown): string {
+  try {
+    const json = JSON.stringify(output, null, 2);
+    const text = json ?? String(output);
+    return text.length > GENERIC_OUTPUT_MAX_CHARS
+      ? text.slice(0, GENERIC_OUTPUT_MAX_CHARS) + '\n…'
+      : text;
+  } catch {
+    return String(output);
+  }
+}
+
 /**
  * GenericBlock - 未知块类型的 Fallback 渲染
  */
@@ -173,19 +189,25 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
   block,
   isStreaming,
 }) => {
+  const { t } = useTranslation('chatV2');
+  const outputPreview = useMemo(
+    () => (block.toolOutput ? safeStringifyToolOutput(block.toolOutput) : ''),
+    [block.toolOutput]
+  );
+
   return (
     <div className="p-3 bg-muted/50 rounded-md border border-border">
       <div className="text-xs text-muted-foreground mb-1">
-        Unknown block type: <code className="font-mono">{block.type}</code>
+        {t('blocks.generic.unknownType', { defaultValue: 'Unknown block type' })}: <code className="font-mono">{block.type}</code>
       </div>
       {block.content && (
         <pre className="text-sm whitespace-pre-wrap break-words">
           {block.content}
         </pre>
       )}
-      {block.toolOutput && (
-        <pre className="text-sm text-muted-foreground">
-          {JSON.stringify(block.toolOutput, null, 2)}
+      {outputPreview && (
+        <pre className="text-sm text-muted-foreground whitespace-pre-wrap break-words max-h-60 overflow-auto">
+          {outputPreview}
         </pre>
       )}
       {isStreaming && (
@@ -205,10 +227,11 @@ const GenericBlock: React.FC<{ block: Block; isStreaming?: boolean }> = ({
  * 核心逻辑：
  * 1. 跳过来源类型块（rag, memory, web_search, multimodal_rag），这些块由 SourcePanelV2 统一渲染
  * 2. 从 blockRegistry 获取对应类型的渲染组件
- * 3. 如果未注册，使用 GenericBlock 作为 Fallback
+ * 3. 如果未注册，优先回退到注册的 'generic' 插件（i18n + 状态展示更完整），
+ *    再兜底到本地 GenericBlock
  * 4. 禁止使用 switch/case 进行类型判断
  */
-export const BlockRenderer: React.FC<BlockRendererProps> = ({
+const BlockRendererInner: React.FC<BlockRendererProps> = ({
   block,
   isStreaming = false,
   className,
@@ -217,7 +240,10 @@ export const BlockRenderer: React.FC<BlockRendererProps> = ({
   sessionSwitchPerf.mark('br_render', { blockType: block.type });
 
   // 从注册表获取渲染插件（禁止 switch/case）；hooks 必须在 early return 之前
-  const plugin = useMemo(() => blockRegistry.get(block.type), [block.type]);
+  const plugin = useMemo(
+    () => blockRegistry.get(block.type) ?? blockRegistry.get('generic'),
+    [block.type]
+  );
 
   // 跳过来源类型块，这些块只在 SourcePanelV2 中统一展示
   if (SOURCE_BLOCK_TYPES.has(block.type)) {
@@ -235,6 +261,12 @@ export const BlockRenderer: React.FC<BlockRendererProps> = ({
     </div>
   );
 };
+
+/**
+ * 🚀 memo：父组件（消息项）重渲染时，block 引用未变的块跳过重渲染。
+ * store 对块做不可变更新，流式期间只有变化的块换引用，浅比较即可。
+ */
+export const BlockRenderer = memo(BlockRendererInner);
 
 export default BlockRenderer;
 
@@ -283,8 +315,8 @@ const BlockRendererWithStoreInner: React.FC<BlockRendererWithStoreProps> = ({
     return null;
   }
 
-  // 从注册表获取渲染插件
-  const plugin = blockRegistry.get(block.type);
+  // 从注册表获取渲染插件；未注册类型回退到注册的 'generic' 插件，再兜底本地 GenericBlock
+  const plugin = blockRegistry.get(block.type) ?? blockRegistry.get('generic');
   const Component = plugin?.component ?? GenericBlock;
 
   return (

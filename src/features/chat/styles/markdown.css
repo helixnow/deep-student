@@ -32,7 +32,7 @@
   font-size: var(--chat-md-font-size);
   letter-spacing: var(--chat-md-letter-spacing);
   overflow: visible;
-  word-wrap: break-word;
+  overflow-wrap: break-word;
   width: 100%;
   max-width: 100%;
   font-feature-settings: "kern" 1, "liga" 1;
@@ -73,7 +73,6 @@
 /* 段落和文本 */
 .chat-v2 .markdown-content p {
   margin: var(--chat-md-paragraph-gap) 0;
-  word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
@@ -109,20 +108,22 @@
 
 .chat-v2 .markdown-content del {
   text-decoration: line-through;
-  color: hsl(var(--muted-foreground) / 0.7);
+  color: hsl(var(--muted-foreground) / 70%);
 }
 
-/* 链接样式 */
+/* 链接样式
+ * 注意：--brand-primary / --brand-primary-dark 是裸 HSL 分量（如 "215 72% 42%"），
+ * 必须包在 hsl() 中使用，否则整条声明会在 computed-value 阶段失效。 */
 .chat-v2 .markdown-content a {
-  color: var(--brand-primary);
+  color: hsl(var(--brand-primary));
   text-decoration: none;
   border-bottom: 1px solid transparent;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, border-color 0.2s ease;
 }
 
 .chat-v2 .markdown-content a:hover {
-  color: var(--brand-primary-dark);
-  border-bottom-color: var(--brand-primary-dark);
+  color: hsl(var(--brand-primary-dark));
+  border-bottom-color: hsl(var(--brand-primary-dark));
 }
 
 /* 列表样式 */
@@ -194,7 +195,7 @@
   margin: var(--chat-md-block-gap) 0;
   padding: 0.9em 1.05em;
   border-left: 3px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.5);
+  background: hsl(var(--muted) / 50%);
   border-radius: 0;
   color: hsl(var(--foreground));
 }
@@ -224,7 +225,9 @@
    ============================================================================ */
 
 .chat-v2 .markdown-content code {
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  /* 统一走全局等宽字体 token（typography.css / shadcn-variables.css 的 --font-mono），
+     避免与全局 code/pre 字体链分叉 */
+  font-family: var(--font-mono);
   font-size: 0.9em;
   display: inline; /* 默认内联显示 */
 }
@@ -267,16 +270,6 @@
   position: sticky;
   top: 0;
   z-index: 2;
-}
-
-.chat-v2 .markdown-content .code-block-sticky-sentinel {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 1px;
-  pointer-events: none;
-  opacity: 0;
 }
 
 /* Sticky 模式下内层 header：实底 + 过渡动画 */
@@ -340,8 +333,8 @@
   max-width: none !important;
   width: auto !important;
   height: auto !important;
-  text-rendering: geometricPrecision;
-  shape-rendering: geometricPrecision;
+  text-rendering: geometricprecision;
+  shape-rendering: geometricprecision;
 }
 
 /* 让 HTML/XML 预览用的 iframe 在预览画布中可被平移缩放 */
@@ -398,12 +391,14 @@
   transition: color 0.15s ease, background-color 0.15s ease;
   font-size: 12px;
 }
+
 .chat-v2 .markdown-content .code-block-copy:hover {
   color: hsl(var(--foreground));
-  background: hsl(var(--muted) / 0.5);
+  background: hsl(var(--muted) / 50%);
 }
+
 .chat-v2 .markdown-content .code-block-copy:active {
-  background: hsl(var(--muted) / 0.8);
+  background: hsl(var(--muted) / 80%);
 }
 
 /* 让 pre 与头部连为一个整体 */
@@ -440,8 +435,7 @@
 
 /* Inner pre inside ScrollArea — let OverlayScrollbars manage overflow */
 .chat-v2 .markdown-content .code-block-scroll-area pre.code-block-inner {
-  overflow-x: visible !important;
-  overflow-y: visible !important;
+  overflow: visible !important;
   max-height: none !important;
 }
 
@@ -513,7 +507,7 @@
 
 /* 检测短代码块并内联显示
    ⚠️ 排除 .code-block-inner（块级代码架内的 pre），否则块级代码块会被错误地 inline 化 */
-.chat-v2 .markdown-content .code-block:not(.code-block-inner):not(:has(br)):not(:has(.hljs-ln)) {
+.chat-v2 .markdown-content .code-block:not(.code-block-inner, :has(br), :has(.hljs-ln)) {
   display: inline-block !important;
   width: auto !important;
   max-width: 100% !important;
@@ -526,7 +520,7 @@
 
 .chat-v2 .code-block:not(.code-block-inner):has(code:only-child) code,
 .chat-v2 .markdown-content p > .code-block code,
-.chat-v2 .markdown-content .code-block:not(.code-block-inner):not(:has(br)):not(:has(.hljs-ln)) code {
+.chat-v2 .markdown-content .code-block:not(.code-block-inner, :has(br), :has(.hljs-ln)) code {
   white-space: pre-wrap !important;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -609,8 +603,7 @@
   width: 100%;
   max-width: 100%;
   margin: var(--chat-md-table-gap) 0;
-  margin-block-start: calc(var(--chat-md-table-gap) * 1.15);
-  margin-block-end: calc(var(--chat-md-table-gap) * 1.6);
+  margin-block: calc(var(--chat-md-table-gap) * 1.15) calc(var(--chat-md-table-gap) * 1.6);
   overflow-x: auto;
 }
 
@@ -646,8 +639,7 @@
 /* Blocked streaming path: each markdown block is its own .markdown-content root,
  * so table spacing must be applied at the block shell level, not only inside the table subtree. */
 .chat-v2 .blocked-markdown > .markdown-content.block-type-table {
-  margin-block-start: calc(var(--chat-md-table-gap) * 1.1);
-  margin-block-end: calc(var(--chat-md-table-gap) * 1.45);
+  margin-block: calc(var(--chat-md-table-gap) * 1.1) calc(var(--chat-md-table-gap) * 1.45);
 }
 
 .chat-v2 .blocked-markdown > .markdown-content.block-type-table + .markdown-content {
@@ -678,7 +670,7 @@
 }
 
 .chat-v2 .markdown-table td {
-  color: hsl(var(--foreground) / 0.92);
+  color: hsl(var(--foreground) / 92%);
 }
 
 
@@ -689,8 +681,9 @@
 
 .chat-v2 .streaming-markdown {
   position: relative;
+
   --stream-reveal-duration: 220ms;
-  --stream-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --stream-reveal-ease: var(--ease-standard);
   --stream-tail-duration: 1.45s;
 }
 
@@ -719,8 +712,8 @@
 
 .chat-v2 .chain-of-thought {
   margin: var(--chat-md-block-gap) 0;
-  border: 1px solid hsl(var(--border) / 0.3);
-  border-left: 2px solid var(--brand-primary);
+  border: 1px solid hsl(var(--border) / 30%);
+  border-left: 2px solid hsl(var(--brand-primary));
   border-radius: var(--radius-shell-toolbar);
   background: hsl(var(--card));
   overflow: hidden;
@@ -730,7 +723,7 @@
 .chat-v2 .chain-header {
   padding: 0.625rem 0.875rem;
   background: transparent;
-  border-bottom: 1px solid hsl(var(--border) / 0.15);
+  border-bottom: 1px solid hsl(var(--border) / 15%);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -751,7 +744,7 @@
 
 .chat-v2 .chain-title {
   font-weight: 500;
-  color: hsl(var(--foreground) / 0.75);
+  color: hsl(var(--foreground) / 75%);
   font-size: var(--font-size-sm);
 }
 
@@ -787,7 +780,7 @@
   gap: 6px;
   font-size: 13px;
   font-weight: 500;
-  color: var(--brand-primary);
+  color: hsl(var(--brand-primary));
   background: var(--chat-block-surface-muted);
   border-bottom: 1px solid hsl(var(--border));
   transition: background-color 0.2s;
@@ -866,7 +859,7 @@
    响应式设计 - Responsive Design
    ============================================================================ */
 
-@media (max-width: 767.98px) {
+@media (width <= 767.98px) {
   .chat-v2 .markdown-content {
     font-size: 1.0rem;
   }
@@ -914,7 +907,7 @@
   }
 }
 
-@media (max-width: 479.98px) {
+@media (width <= 479.98px) {
   .chat-v2 .markdown-content {
     font-size: 0.95rem;
   }
@@ -987,7 +980,7 @@
 
 /* 错误边界容器 */
 .chat-v2 .mermaid-error-boundary {
-  border: 1px solid hsl(var(--destructive) / 0.3);
+  border: 1px solid hsl(var(--destructive) / 30%);
   border-radius: 8px;
   overflow: hidden;
   background: hsl(var(--card));
@@ -999,8 +992,8 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: hsl(var(--destructive) / 0.1);
-  border-bottom: 1px solid hsl(var(--destructive) / 0.2);
+  background: hsl(var(--destructive) / 10%);
+  border-bottom: 1px solid hsl(var(--destructive) / 20%);
 }
 
 .chat-v2 .mermaid-error-icon {
@@ -1035,7 +1028,7 @@
   padding: 8px 12px;
   font-size: 0.8em;
   color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 0.5);
+  background: hsl(var(--muted) / 50%);
   border-bottom: 1px solid hsl(var(--border));
   word-break: break-word;
 }
@@ -1072,21 +1065,21 @@
 
 /* 预览区域有错误时的样式 */
 .chat-v2 .mermaid-preview.has-error {
-  border-color: hsl(var(--destructive) / 0.3);
+  border-color: hsl(var(--destructive) / 30%);
 }
 
 /* 暗色模式适配 */
 .dark .chat-v2 .mermaid-error-boundary {
   background: hsl(var(--card));
-  border-color: hsl(var(--destructive) / 0.4);
+  border-color: hsl(var(--destructive) / 40%);
 }
 
 .dark .chat-v2 .mermaid-error-header {
-  background: hsl(var(--destructive) / 0.15);
+  background: hsl(var(--destructive) / 15%);
 }
 
 .dark .chat-v2 .mermaid-error-message {
-  background: hsl(var(--muted) / 0.3);
+  background: hsl(var(--muted) / 30%);
 }
 
 .dark .chat-v2 .mermaid-error-reset {
@@ -1241,22 +1234,14 @@
   color: hsl(var(--citation-source-web-search));
 }
 
-/* 引用徽章 + 内联图片渲染（按来源序号自动解析） */
-.chat-v2 .citation-inline-wrapper {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  vertical-align: middle;
-}
-
 /* ★ 2026-01 修复：图片引用块 - 作为独立布局元素显示 */
 .chat-v2 .citation-image-block {
   display: inline-block; /* 只包裹内容，不占全宽 */
   margin: 1rem 0;
   padding: 0.5rem;
-  background: hsl(var(--muted) / 0.3);
+  background: hsl(var(--muted) / 30%);
   border-radius: 12px;
-  border: 1px solid hsl(var(--border) / 0.5);
+  border: 1px solid hsl(var(--border) / 50%);
   max-width: 50%; /* 默认占有效区域的半宽 */
 }
 
@@ -1274,7 +1259,7 @@
   border-radius: 8px;
   object-fit: contain;
   border: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.2);
+  background: hsl(var(--muted) / 20%);
   box-shadow: none;
 }
 
@@ -1284,7 +1269,7 @@
   width: 100%;
   max-width: 400px;
   height: 300px;
-  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--muted) / 0.5) 50%, hsl(var(--muted)) 75%);
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--muted) / 50%) 50%, hsl(var(--muted)) 75%);
   background-size: 200% 100%;
   animation: citation-image-loading 1.5s infinite;
   border-radius: 8px;

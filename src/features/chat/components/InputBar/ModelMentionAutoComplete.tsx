@@ -229,8 +229,8 @@ export const ModelMentionAutoComplete: React.FC<
         'rounded-lg shadow-lg ring-1 ring-border/40 dark:shadow-xl',
         'overflow-hidden',
         // 动画
-        'animate-in fade-in-0 zoom-in-95',
-        position === 'above' ? 'slide-in-from-bottom-2' : 'slide-in-from-top-2',
+        'ui-zoom-fade-in',
+        position === 'above' ? '[--ui-enter-y:8px]' : '[--ui-enter-y:-8px]',
         className
       )}
     >

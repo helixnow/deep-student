@@ -115,6 +115,10 @@ export function useFilePreviewsFromRefs(
       setIsLoading(true);
       setError(null);
 
+      // 在异步流程中收集错误，统一在结束时（仍挂载才）写入 state，
+      // 避免旧一轮加载覆盖新一轮的状态（竞态）
+      let partialError: string | null = null;
+
       const previews: FilePreview[] = [];
 
       // ★ 批量收集所有 VfsResourceRef，然后一次性解析
@@ -161,10 +165,8 @@ export function useFilePreviewsFromRefs(
           for (const resolved of resolvedResources) {
             if (!resolved.found || !resolved.content) {
               console.warn('[useFilePreviewsFromRefs] VFS resource not found:', resolved.sourceId);
-              // 设置部分资源未找到的提示（不中断整个流程）
-              if (!error) {
-                setError(i18next.t('chatV2:filePreview.partialNotFound'));
-              }
+              // 记录部分资源未找到的提示（不中断整个流程）
+              partialError ??= i18next.t('chatV2:filePreview.partialNotFound');
               continue;
             }
 
@@ -205,12 +207,13 @@ export function useFilePreviewsFromRefs(
             errorMessage = i18next.t('chatV2:filePreview.permissionDenied');
           }
 
-          setError(errorMessage);
+          partialError = errorMessage;
         }
       }
 
       if (isMounted) {
         setFilePreviews(previews);
+        setError(partialError);
         setIsLoading(false);
       }
     };

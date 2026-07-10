@@ -97,7 +97,9 @@ function getToolType(toolName: string): NoteToolType {
 // 组件实现
 // ============================================================================
 
-export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
+// React.memo：时间线流式更新时，父组件每个 chunk 重渲染一次；
+// 本组件全部 props 为原始值或来自 block 的稳定引用，浅比较即可跳过未变化的节点
+export const NoteToolPreview: React.FC<NoteToolPreviewProps> = React.memo(({
   toolName,
   status,
   isStreaming = false,
@@ -180,7 +182,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       color: 'text-muted-foreground',
       spin: false,
     };
-  }, [isRunning, isError, isSuccess, durationMs, t, ToolIcon]);
+  }, [isRunning, isError, isSuccess, t]);
 
   const durationText = useMemo(() => {
     if (!isSuccess) return '';
@@ -197,6 +199,14 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
 
   // 是否有预览内容
   const hasPreview = !!(output?.beforePreview || output?.afterPreview || output?.content || output?.addedContent);
+
+  // 是否有可展开的内容（预览 / 错误信息 / 操作统计）；否则点击头部展开的是空面板
+  const hasStats = isSuccess && !!output && (
+    output.appendedCount !== undefined ||
+    output.replaceCount !== undefined ||
+    output.wordCount !== undefined
+  );
+  const hasExpandableContent = hasPreview || hasStats || !!(isError && error);
 
   // 渲染 diff 视图
   const renderDiffView = () => {
@@ -318,10 +328,12 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       <NotionButton
         variant="ghost"
         size="sm"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={hasExpandableContent ? () => setIsExpanded(!isExpanded) : undefined}
+        aria-expanded={hasExpandableContent ? isExpanded : undefined}
         className={cn(
           'w-full !justify-between gap-2 !px-3 !py-2',
           'text-left !rounded-t-lg !rounded-b-none',
+          !hasExpandableContent && 'cursor-default',
           isExpanded && 'border-b border-border'
         )}
       >
@@ -379,7 +391,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               <ArrowSquareOut size={14} className="text-muted-foreground hover:text-foreground" />
             </span>
           )}
-          {hasPreview && (
+          {hasExpandableContent && (
             isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />
           )}
         </div>
@@ -387,7 +399,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
 
       {/* 展开内容 */}
       <AnimatePresence initial={false}>
-        {isExpanded && (
+        {isExpanded && hasExpandableContent && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -458,6 +470,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       </AnimatePresence>
     </div>
   );
-};
+});
+NoteToolPreview.displayName = 'NoteToolPreview';
 
 export default NoteToolPreview;

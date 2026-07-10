@@ -8,6 +8,8 @@
  */
 
 import React, { memo, useMemo, useRef, useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { invoke } from '@tauri-apps/api/core';
@@ -80,30 +82,45 @@ interface ModelProfileDisplayRecord {
   model?: string;
 }
 
-const THINKING_DEPTH_LABELS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
+// 值 → i18n 键后缀（chatV2:inputBar.thinkingDepth.*）；kind 仅约束该模型允许的档位
+const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
   'openai-effort': {
-    low: '低',
-    medium: '中',
-    high: '高',
-    xhigh: '超高',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
   },
   'v4-effort': {
-    high: '高',
-    max: '超高',
+    high: 'high',
+    max: 'max',
   },
   'v32-budget-effort': {
-    low: '低',
-    medium: '中',
-    high: '高',
-    xhigh: '超高',
-    max: '超高',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+    xhigh: 'xhigh',
+    max: 'max',
   },
   'toggle-only': {},
 };
 
-function getThinkingDepthLabel(kind: DeepSeekReasoningControlKind, value: DeepSeekReasoningOptionValue | undefined): string {
-  if (!value) return '开启';
-  return THINKING_DEPTH_LABELS[kind][value] ?? value;
+const THINKING_DEPTH_LABEL_FALLBACKS: Record<string, string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '超高',
+  max: '超高',
+};
+
+function getThinkingDepthLabel(
+  kind: DeepSeekReasoningControlKind,
+  value: DeepSeekReasoningOptionValue | undefined,
+  t: TFunction
+): string {
+  if (!value) return t('chatV2:inputBar.thinkingOn', '开启');
+  const keySuffix = THINKING_DEPTH_LABEL_KEYS[kind][value];
+  if (!keySuffix) return value;
+  return t(`chatV2:inputBar.thinkingDepth.${keySuffix}`, THINKING_DEPTH_LABEL_FALLBACKS[keySuffix] ?? value);
 }
 
 function normalizeModelIdentity(value: unknown): string {
@@ -214,6 +231,7 @@ function getManualPinnedSkillIds(
 
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
   ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, inputToolSlot, composerInlinePanel, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
+    const { t } = useTranslation(['chatV2']);
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
       sessionId,
@@ -526,14 +544,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const thinkingStateLabel = useMemo(() => {
-      if (!runtimeModelSupportsReasoning) return '推理: 不支持';
-      if (!effectiveEnableThinking) return '推理: 关闭';
+      if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported', '推理: 不支持');
+      if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off', '推理: 关闭');
       const depthLabel = getThinkingDepthLabel(
         thinkingControl.kind,
-        normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined
+        normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined,
+        t
       );
-      return `推理: ${depthLabel}`;
-    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind]);
+      return t('chatV2:inputBar.thinkingState.on', '推理: {{depth}}', { depth: depthLabel });
+    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind, t]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
     // Anki 工具现在始终可用，无需单独开关

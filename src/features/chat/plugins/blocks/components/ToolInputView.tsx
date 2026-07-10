@@ -122,14 +122,15 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
     setIsExpanded((prev) => !prev);
   }, []);
 
-  // 格式化的 JSON 字符串
+  // 格式化的 JSON 字符串（仅在展开时才序列化，流式期间折叠态不付出 stringify 成本）
   const formattedJson = useMemo(() => {
+    if (!isExpanded) return '';
     try {
-      return JSON.stringify(input, null, 2);
+      return JSON.stringify(input, null, 2) ?? String(input);
     } catch {
       return String(input);
     }
-  }, [input]);
+  }, [input, isExpanded]);
 
   // 获取参数键列表
   const paramKeys = useMemo(() => Object.keys(input), [input]);

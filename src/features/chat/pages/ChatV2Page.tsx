@@ -44,7 +44,8 @@ import type { ChatSession } from '../types/session';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
-import { SidebarDrawer } from '@/components/ui/unified-sidebar/SidebarDrawer';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
 import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
@@ -65,13 +66,8 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
 
-// CardForge 2.0 Anki 面板 (Chat V2 集成)
-import { AnkiPanelHost } from '../anki';
-
 // 🆕 对话控制面板（侧栏版）
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { shouldShowSessionActionButtons } from './sessionItemActionVisibility';
-import { groupSessionsByTime, type TimeGroup } from './timeGroups';
 import { useSessionLifecycle } from './useSessionLifecycle';
 import { useSessionEdit } from './useSessionEdit';
 import { useChatPageLayout } from './useChatPageLayout';
@@ -144,35 +140,36 @@ export const ChatV2Page: React.FC = () => {
   // 🔧 P1-26 + P1-28: 包装 setCurrentSessionId
   // - 同步更新 sessionManager（P1-26）
   // - 保存到 localStorage（P1-28）
+  // 副作用移出 setState updater（updater 必须纯函数，StrictMode 下会被双调用）
+  const currentSessionIdRef = useRef<string | null>(null);
   const setCurrentSessionId = useCallback((sessionIdOrUpdater: string | null | ((prev: string | null) => string | null)) => {
-    setCurrentSessionIdState((prev) => {
-      const newId = typeof sessionIdOrUpdater === 'function' ? sessionIdOrUpdater(prev) : sessionIdOrUpdater;
-      // 同步更新 sessionManager 的当前会话 ID
-      sessionManager.setCurrentSessionId(newId);
-      // 🔧 P1-28: 保存到 localStorage（只保存有效的会话 ID）
-      if (newId) {
-        try {
-          // 批判性修复：只持久化普通会话 sess_，避免 Worker 会话 agent_ 污染“上次会话”
-          if (newId.startsWith('sess_')) {
-            localStorage.setItem(LAST_SESSION_KEY, newId);
-          }
-        } catch (e) {
-          console.warn('[ChatV2Page] Failed to save last session ID:', e);
+    const prev = currentSessionIdRef.current;
+    const newId = typeof sessionIdOrUpdater === 'function' ? sessionIdOrUpdater(prev) : sessionIdOrUpdater;
+    currentSessionIdRef.current = newId;
+    // 同步更新 sessionManager 的当前会话 ID
+    sessionManager.setCurrentSessionId(newId);
+    // 🔧 P1-28: 保存到 localStorage（只保存有效的会话 ID）
+    if (newId) {
+      try {
+        // 批判性修复：只持久化普通会话 sess_，避免 Worker 会话 agent_ 污染“上次会话”
+        if (newId.startsWith('sess_')) {
+          localStorage.setItem(LAST_SESSION_KEY, newId);
         }
+      } catch (e) {
+        console.warn('[ChatV2Page] Failed to save last session ID:', e);
       }
-      // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
-      if (newId !== prev) {
-        setOpenApp(null);
-        setAttachmentPreviewOpen(false);
-        useSandboxWorkbenchStore.getState().closeSession();
-      }
-      return newId;
-    });
-  }, [t]);
+    }
+    // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
+    if (newId !== prev) {
+      setOpenApp(null);
+      setAttachmentPreviewOpen(false);
+      useSandboxWorkbenchStore.getState().closeSession();
+    }
+    setCurrentSessionIdState(newId);
+  }, []);
   // 🔧 P1-005 修复：使用 ref 追踪最新状态，避免 deleteSession 中的闭包竞态条件
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
-  const [learningHubSheetOpen, setLearningHubSheetOpen] = useState(false);
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
   const sandboxActiveSession = useSandboxWorkbenchStore((state) => state.activeSession);
@@ -340,7 +337,10 @@ export const ChatV2Page: React.FC = () => {
     }));
   }, [activeGroupIds, sessions, t]);
 
-  const displayGroups = [...groups, ...staleSessionGroups];
+  const displayGroups = useMemo(
+    () => [...groups, ...staleSessionGroups],
+    [groups, staleSessionGroups]
+  );
 
   const groupNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -392,7 +392,6 @@ export const ChatV2Page: React.FC = () => {
     () => filteredSessions.filter((s) => !s.groupId),
     [filteredSessions]
   );
-  const groupedSessions = useMemo(() => groupSessionsByTime(ungroupedSessions), [ungroupedSessions]);
 
   useEffect(() => {
     loadGroups();
@@ -404,15 +403,6 @@ export const ChatV2Page: React.FC = () => {
       pruneDeletedGroups(groups.map((g) => g.id));
     }
   }, [groups, pruneDeletedGroups]);
-  
-  // 时间分组标签映射
-  const timeGroupLabels: Record<TimeGroup, string> = {
-    today: t('page.timeGroups.today'),
-    yesterday: t('page.timeGroups.yesterday'),
-    previous7Days: t('page.timeGroups.previous7Days'),
-    previous30Days: t('page.timeGroups.previous30Days'),
-    older: t('page.timeGroups.older'),
-  };
 
   // P1-22: 分页状态
   const PAGE_SIZE = 50;
@@ -608,6 +598,18 @@ export const ChatV2Page: React.FC = () => {
     return () => window.removeEventListener('modern-sidebar:session-action', handler);
   }, [setCurrentSessionId, setSessionSheetOpen, setViewMode, startEditSession]);
 
+  // ===== 移动端右屏/子屏收口 =====
+  // 沙箱工作台占据右屏时，顶栏返回箭头与手势/返回键统一走这里收回
+  const mobileSandboxOpen = sandboxWorkbenchOpen && !!sandboxActiveSession;
+  const closeMobileSandbox = useCallback(() => {
+    closeSandboxWorkbench();
+    setMobileResourcePanelOpen(false);
+  }, [closeSandboxWorkbench]);
+  // 右屏资源预览返回上一层（资源库列表），而非直接退回聊天
+  const closeMobileOpenApp = useCallback(() => {
+    setOpenApp(null);
+  }, []);
+
   // ===== 页面布局 hook =====
   useChatPageLayout({
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
@@ -615,7 +617,38 @@ export const ChatV2Page: React.FC = () => {
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
+    mobileSandboxOpen, closeMobileSandbox,
+    openAppTitle: openApp ? (openApp.title ?? '') : null,
+    closeMobileOpenApp,
+    groupEditorOpen,
+    groupEditorMode: editingGroup ? 'edit' : 'create',
+    closeGroupEditor,
   });
+
+  // ===== Android 返回键：中屏子视图（会话浏览 / 分组编辑器）逐层返回 =====
+  // 左/右屏由 MobileSlidingLayout 以 overlay 优先级先行消费，这里只处理中屏内容
+  const mobileCenterBackRef = useRef({ viewMode, groupEditorOpen });
+  mobileCenterBackRef.current = { viewMode, groupEditorOpen };
+  useEffect(() => {
+    if (!isSmallScreen) return;
+    return registerBackHandler(() => {
+      // 页面常驻挂载：仅在 chat-v2 为当前视图时消费返回键
+      if (useViewStore.getState().currentView !== 'chat-v2') return false;
+      const {
+        viewMode: centerMode,
+        groupEditorOpen: editorOpen,
+      } = mobileCenterBackRef.current;
+      if (centerMode === 'browser') {
+        setViewMode('sidebar');
+        return true;
+      }
+      if (editorOpen) {
+        closeGroupEditor();
+        return true;
+      }
+      return false;
+    }, BACK_PRIORITY.view);
+  }, [isSmallScreen, closeGroupEditor]);
 
   // ===== 页面事件 hook =====
   useChatPageEvents({
@@ -643,8 +676,13 @@ export const ChatV2Page: React.FC = () => {
 
   // ===== 侧边栏内容 hook =====
   const { renderSessionSidebarContent } = useSessionSidebarContent({
-    searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
+    searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
     setPendingDeleteSessionId,
+    editableGroupIds: activeGroupIds,
+    onCreateGroup: openCreateGroup,
+    onRenameGroup: openRenameGroup,
+    onEditGroup: openEditGroup,
+    onArchiveGroup: setPendingArchiveGroup,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
@@ -742,7 +780,7 @@ export const ChatV2Page: React.FC = () => {
 
     if (panelMode === 'sandbox' && sandboxActiveSession) {
       return (
-        <div className="h-full transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none opacity-100 translate-x-0">
+        <div className="h-full transition-[opacity,transform] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none opacity-100 translate-x-0">
           <SandboxWorkbenchSurface
             embedded
             className="h-full"
@@ -757,9 +795,11 @@ export const ChatV2Page: React.FC = () => {
     }
 
     return (
-      <PanelGroup direction="horizontal" className="h-full">
+      <PanelGroup direction="horizontal" className="h-full" autoSaveId="chat-v2-canvas-panels">
         {/* Learning Hub 侧边栏 */}
         <Panel
+          id="chat-v2-canvas-sidebar"
+          order={1}
           defaultSize={openApp ? 35 : 100}
           minSize={openApp ? 25 : 100}
           className="h-full"
@@ -779,6 +819,8 @@ export const ChatV2Page: React.FC = () => {
               <DotsSixVertical size={12} className="text-muted-foreground/50" />
             </PanelResizeHandle>
             <Panel
+              id="chat-v2-canvas-app"
+              order={2}
               defaultSize={65}
               minSize={40}
               className="h-full"
@@ -883,7 +925,7 @@ export const ChatV2Page: React.FC = () => {
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub', '在学习中心打开')} title={t('page.openInLearningHub', '在学习中心打开')} className="!h-7 !w-7">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClose} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
@@ -984,6 +1026,8 @@ export const ChatV2Page: React.FC = () => {
           onMobileBrowse={isSmallScreen ? (addResource, currentIds) => {
             groupPickerAddRef.current = addResource;
             setGroupPinnedIds(new Set(currentIds));
+            // 清掉残留的资源预览，确保右屏展示的是资源库选择列表
+            setOpenApp(null);
             setMobileResourcePanelOpen(true);
           } : undefined}
         />
@@ -1071,6 +1115,11 @@ export const ChatV2Page: React.FC = () => {
           onScreenPositionChange={(pos: ScreenPosition) => {
             setSessionSheetOpen(pos === 'left');
             setMobileResourcePanelOpen(pos === 'right');
+            // 沙箱工作台占据右屏时，手势/返回键滑回中屏必须同步关闭工作台，
+            // 否则 screenPosition 会被 sandboxWorkbenchOpen 锁在 'right'（导航死胡同）
+            if (pos !== 'right' && sandboxWorkbenchOpen) {
+              closeSandboxWorkbench();
+            }
           }}
           rightPanelEnabled={true}
           sidebarWidth="auto"
@@ -1081,24 +1130,26 @@ export const ChatV2Page: React.FC = () => {
           threshold={0.3}
         >
           {/* 移动端：会话浏览作为主内容区域的一部分，直接切换 */}
-          {viewMode === 'browser' ? (
-            <SessionBrowser
-              sessions={sessionsForBrowser}
-              groups={browserGroups}
-              isLoading={isLoading}
-              onSelectSession={handleBrowserSelectSession}
-              onDeleteSession={deleteSession}
-              onCreateSession={() => {
-                setViewMode('sidebar');
-                void createSession();
-              }}
-              onRenameSession={handleBrowserRenameSession}
-              className="h-full"
-              embeddedMode={true}
-            />
-          ) : (
-            renderMainContent()
-          )}
+          <div className="relative h-full">
+            {viewMode === 'browser' ? (
+              <SessionBrowser
+                sessions={sessionsForBrowser}
+                groups={browserGroups}
+                isLoading={isLoading}
+                onSelectSession={handleBrowserSelectSession}
+                onDeleteSession={deleteSession}
+                onCreateSession={() => {
+                  setViewMode('sidebar');
+                  void createSession();
+                }}
+                onRenameSession={handleBrowserRenameSession}
+                className="h-full"
+                embeddedMode={true}
+              />
+            ) : (
+              renderMainContent()
+            )}
+          </div>
         </MobileSlidingLayout>
       ) : null}
 
@@ -1148,7 +1199,7 @@ export const ChatV2Page: React.FC = () => {
           }}
         >
           <CommonTooltip
-            content={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+            content={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
             position="bottom"
           >
             <NotionButton
@@ -1157,19 +1208,19 @@ export const ChatV2Page: React.FC = () => {
               iconOnly
               onClick={toggleSandboxWorkbench}
               className={cn(
-                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:bg-background hover:shadow-lg',
+                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[var(--dropdown-ease)] hover:bg-background hover:shadow-lg',
                 sandboxWorkbenchOpen
                   ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
                   : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
               )}
-              aria-label={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
-              title={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+              aria-label={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
+              title={sandboxWorkbenchOpen ? t('page.collapseSandboxWorkbench', '收起沙箱工作台') : t('page.expandSandboxWorkbench', '展开沙箱工作台')}
             >
               <span className="relative block h-[18px] w-[18px]">
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[var(--dropdown-ease)]',
                     sandboxWorkbenchOpen ? 'translate-x-[-4px] opacity-0' : 'translate-x-0 opacity-100'
                   )}
                 >
@@ -1178,7 +1229,7 @@ export const ChatV2Page: React.FC = () => {
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[var(--dropdown-ease)]',
                     sandboxWorkbenchOpen ? 'translate-x-0 opacity-100' : 'translate-x-[4px] opacity-0'
                   )}
                 >
@@ -1189,89 +1240,6 @@ export const ChatV2Page: React.FC = () => {
           </CommonTooltip>
         </div>
       )}
-
-      {/* 移动端：Learning Hub SidebarDrawer */}
-      {isSmallScreen && (
-        <SidebarDrawer
-          open={learningHubSheetOpen}
-          onOpenChange={setLearningHubSheetOpen}
-          side="right"
-          width={320}
-        >
-          <div className="h-full flex flex-col">
-            {/* 标题栏 */}
-            <div className="study-shell-toolbar flex items-center justify-between px-4 py-3 border-b shrink-0">
-              <span className="font-medium">{t('learningHub:title')}</span>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setLearningHubSheetOpen(false)} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                <X size={16} className="text-muted-foreground" />
-              </NotionButton>
-            </div>
-            <div className="flex-1 overflow-hidden">
-              {openApp ? (
-                <div className="h-full flex flex-col">
-                  {/* 应用标题栏 */}
-                  <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {(() => {
-                        const AppIcon = getAppIcon(openApp.type);
-                        return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
-                      })()}
-                      <span className="text-sm font-medium truncate">
-                        {openApp.title || t('common:untitled')}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                        <ArrowSquareOut size={14} className="text-muted-foreground" />
-                      </NotionButton>
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                        <X size={16} className="text-muted-foreground" />
-                      </NotionButton>
-                    </div>
-                  </div>
-
-                  {/* 应用内容 */}
-                  <div className="flex-1 overflow-hidden">
-                    <Suspense
-                      fallback={
-                        <div className="flex items-center justify-center h-full">
-                          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-                          <span className="ml-2 text-muted-foreground">
-                            {t('common:loading')}
-                          </span>
-                        </div>
-                      }
-                    >
-                      <UnifiedAppPanel
-                        type={openApp.type}
-                        resourceId={openApp.id}
-                        dstuPath={openApp.filePath || `/${openApp.id}`}
-                        onClose={handleCloseApp}
-                        onTitleChange={handleTitleChange}
-                        isActive
-                        className="h-full"
-                      />
-                    </Suspense>
-                  </div>
-                </div>
-              ) : (
-                <LearningHubSidebar
-                  mode="canvas"
-                  onClose={() => setLearningHubSheetOpen(false)}
-                  onOpenApp={handleOpenApp}
-                  className="h-full"
-                />
-              )}
-            </div>
-          </div>
-        </SidebarDrawer>
-      )}
-
-      {/* CardForge 2.0 Anki 编辑面板 - 监听 open-anki-panel 事件 */}
-        <AnkiPanelHost />
 
       {/* 归档分组确认对话框 */}
         <NotionAlertDialog

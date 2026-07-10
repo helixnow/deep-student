@@ -11,7 +11,7 @@
  * 设计文档: docs/multimodal-user-memory-design.md (Section 8.4)
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
@@ -94,6 +94,12 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
   const hasThumbnail = multimodal?.thumbnailBase64;
   const score = item.score;
   const scorePercent = score != null ? Math.round(score * 100) : null;
+
+  // 缩略图变化（组件被复用展示其他 item）时重置加载/错误状态
+  useEffect(() => {
+    setImageLoading(true);
+    setImageError(false);
+  }, [multimodal?.thumbnailBase64]);
 
   // 处理图片加载
   const handleImageLoad = useCallback(() => {
@@ -202,7 +208,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
 
       {/* 文本摘要 */}
       <div className="text-xs text-muted-foreground line-clamp-2 mb-1.5 h-[2.4em]">
-        {item.snippet || t('common:chat.sources.multimodal.noThumbnail')}
+        {item.snippet || t('common:chat.sources.multimodal.noSnippet')}
       </div>
 
       {/* 底部操作区 */}

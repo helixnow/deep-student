@@ -66,7 +66,7 @@ export const CompletionCard: React.FC<CompletionCardProps> = ({ data, className 
 
       <CardContent className="space-y-3">
         {/* 结果文本 */}
-        <div className="text-sm text-foreground whitespace-pre-wrap">{data.result}</div>
+        <div className="text-sm text-foreground whitespace-pre-wrap break-words">{data.result}</div>
 
         {/* 建议命令（如果有） */}
         {data.command && (

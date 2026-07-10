@@ -100,7 +100,14 @@ export function useMessageBlocks(store: ChatStoreApi, messageId: string): Block[
     useCallback(
       (s: ChatStore) => {
         const message = s.messageMap.get(messageId);
-        if (!message) return prevBlocksRef.current.length === 0 ? prevBlocksRef.current : [];
+        if (!message) {
+          // 缓存空数组引用：直接返回新 [] 会让 useStore 在消息缺失期间
+          // 每次 store 更新都判定为变化，导致组件持续重渲染
+          if (prevBlocksRef.current.length !== 0) {
+            prevBlocksRef.current = [];
+          }
+          return prevBlocksRef.current;
+        }
         
         const newBlocks = message.blockIds
           .map((id) => s.blocks.get(id))

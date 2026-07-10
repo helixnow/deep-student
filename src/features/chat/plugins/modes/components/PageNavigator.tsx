@@ -89,8 +89,10 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         const pageNum = parseInt(inputPage, 10);
-        if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
-          setCurrentPage(store.getState(), pageNum);
+        if (!isNaN(pageNum) && totalPages > 0) {
+          // 超界输入钳制到首/末页，而不是静默忽略（用户输入 999 期望跳到末页）
+          const clamped = Math.min(Math.max(pageNum, 1), totalPages);
+          setCurrentPage(store.getState(), clamped);
           setInputPage('');
         }
       }
@@ -214,6 +216,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
           <div className="flex items-center gap-1 px-2">
             <Input
               type="text"
+              inputMode="numeric"
               value={inputPage}
               onChange={handlePageInput}
               onKeyDown={handlePageJump}

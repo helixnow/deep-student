@@ -177,7 +177,8 @@ export const SourceCard: React.FC<SourceCardProps> = ({
           <CaretRight
             className={cn(
               'flex-shrink-0 text-muted-foreground',
-              'opacity-0 group-hover:opacity-100 transition-opacity',
+              // 触屏无 hover：coarse 指针下常显，保留"可点开"的视觉线索
+              'opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 transition-opacity',
               compact ? 'w-3 h-3' : 'w-4 h-4'
             )}
           />

@@ -8,7 +8,6 @@ import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { Globe, X, Check } from '@phosphor-icons/react';
-import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useDialogControl } from '@/contexts/DialogControlContext';
@@ -29,8 +28,6 @@ interface SearchPanelProps {
 
 export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
   const { t } = useTranslation(['analysis', 'common']);
-  const mobileLayout = useMobileLayoutSafe();
-  const isMobile = mobileLayout?.isMobile ?? false;
 
   // 从 DialogControlContext 获取搜索引擎数据
   const {
@@ -48,7 +45,6 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
 
   // 🔧 修复闪动：使用 ref 追踪是否已完成初始同步，避免循环更新
   const hasSyncedFromStoreRef = useRef(false);
-  const isUserActionRef = useRef(false);
 
   // 从 Store 恢复选择状态（仅在组件挂载时执行一次）
   useEffect(() => {
@@ -67,16 +63,13 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
     hasSyncedFromStoreRef.current = true;
   }, [ready, availableSearchEngines, storeSelectedSearchEngines, selectedSearchEngines, setSelectedSearchEngines]);
 
-  // 同步选择到 Store 和持久化设置（仅在用户操作后执行）
+  // 同步选择到 Store 和持久化设置（初始恢复完成后生效）
+  // 与 Store 相同的选择不会重复写入（下方 join 比较兜底），无需额外的"用户操作"标记
+  //（旧的标记会吞掉恢复完成后的第一次切换，导致首次勾选不被持久化）
   useEffect(() => {
     // 跳过初始同步阶段
     if (!hasSyncedFromStoreRef.current) return;
-    // 只有用户操作才同步到 Store
-    if (!isUserActionRef.current) {
-      isUserActionRef.current = true; // 标记后续更新为用户操作
-      return;
-    }
-    
+
     const currentStoreEngines = store.getState().chatParams.selectedSearchEngines || [];
     if (selectedSearchEngines.join(',') !== currentStoreEngines.join(',')) {
       store.getState().setChatParams({ selectedSearchEngines: selectedSearchEngines });
@@ -124,23 +117,21 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
 
   return (
     <div className="space-y-3">
-      {/* 面板头部 - 移动端隐藏 */}
-      {!isMobile && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            <Globe size={16} />
-            <span>{t('analysis:input_bar.search_engine.title')}</span>
-            {selectedSearchEngines.length > 0 && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
-                {selectedSearchEngines.length}
-              </span>
-            )}
-          </div>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
-            <X size={16} />
-          </NotionButton>
+      {/* 📱 面板头部移动端也渲染：提供可见关闭按钮（契约：面板须可见关闭 + 返回键） */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm text-foreground">
+          <Globe size={16} />
+          <span>{t('analysis:input_bar.search_engine.title')}</span>
+          {selectedSearchEngines.length > 0 && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+              {selectedSearchEngines.length}
+            </span>
+          )}
         </div>
-      )}
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+          <X size={16} />
+        </NotionButton>
+      </div>
 
       {/* 说明文字 */}
       <div className="text-xs text-muted-foreground">

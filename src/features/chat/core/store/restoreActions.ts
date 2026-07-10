@@ -12,6 +12,11 @@ import { skillDefaults } from '../../skills/skillDefaults';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from 'i18next';
 import { showOperationLockNotification } from './createChatStore';
+import {
+  isWorkbenchToolName,
+  markWorkbenchBlockRestored,
+  remapWorkbenchBlockType,
+} from '@/features/chat/utils/workbenchBlockRemap';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -38,6 +43,70 @@ function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && item.length > 0)
     : [];
+}
+
+/**
+ * 后端块 → 前端 Block（restoreFromBackend / prependHistoryFromBackend 共用）
+ *
+ * ACR R2-05：旧库可能把 workbench_* 存成 mcp_tool；恢复时按 toolName remap 为
+ * workbench_ops。DB 不存 toolCallId；桥侧 runId 现为 block.id，故 workbench 块用
+ * id 回填 toolCallId，便于与 presence/账本候选对齐（账本本身不跨重启）。
+ */
+function convertBackendBlock(blk: LoadSessionResponseType['blocks'][number]): Block {
+  const type = remapWorkbenchBlockType(blk.type, blk.toolName) as BlockType;
+  const isWorkbench = type === 'workbench_ops' || isWorkbenchToolName(blk.toolName);
+  if (isWorkbench) markWorkbenchBlockRestored(blk.id);
+  return {
+    id: blk.id,
+    messageId: blk.messageId,
+    type,
+    status: blk.status as BlockStatus,
+    content: blk.content,
+    toolName: blk.toolName,
+    toolInput: blk.toolInput as Record<string, unknown> | undefined,
+    toolOutput: blk.toolOutput,
+    citations: blk.citations,
+    error: blk.error,
+    startedAt: blk.startedAt,
+    endedAt: blk.endedAt,
+    // 🔧 P3修复：恢复 firstChunkAt 用于排序（保持思维链交替顺序）
+    firstChunkAt: blk.firstChunkAt,
+    ...(isWorkbench ? { toolCallId: blk.id } : {}),
+  };
+}
+
+/** 后端消息 → 前端 Message（restoreFromBackend / prependHistoryFromBackend 共用） */
+function convertBackendMessage(msg: LoadSessionResponseType['messages'][number]): Message {
+  return {
+    id: msg.id,
+    role: msg.role,
+    blockIds: msg.blockIds, // 直接使用后端返回的 blockIds
+    timestamp: msg.timestamp,
+    persistentStableId: msg.persistentStableId,
+    attachments: msg.attachments,
+    // 🔧 修复：后端 serde(rename = "_meta") 序列化，字段名是 _meta
+    // 🆕 统一用户消息处理：确保 contextSnapshot 被正确恢复
+    _meta: msg._meta
+      ? {
+          modelId: msg._meta.modelId,
+          // 🔒 审计修复: 添加 modelDisplayName 恢复（原代码遗漏此字段，
+          // 导致恢复后消息显示模型 ID 而非用户友好名称）
+          modelDisplayName: msg._meta.modelDisplayName,
+          chatParams: msg._meta.chatParams,
+          usage: msg._meta.usage,
+          contextSnapshot: msg._meta.contextSnapshot,
+          skillSnapshotBefore: msg._meta.skillSnapshotBefore,
+          skillSnapshotAfter: msg._meta.skillSnapshotAfter,
+          skillRuntimeBefore: msg._meta.skillRuntimeBefore,
+          skillRuntimeAfter: msg._meta.skillRuntimeAfter,
+          replaySource: msg._meta.replaySource,
+        }
+      : undefined,
+    // 🔧 变体字段恢复
+    activeVariantId: msg.activeVariantId,
+    variants: msg.variants,
+    sharedContext: msg.sharedContext,
+  };
 }
 
 function filterSkillInstructionRefsWhenStructuredStateExists(
@@ -96,10 +165,63 @@ export function createRestoreActions(
   set: SetState,
   getState: GetState,
 ) {
+  // 🔧 P1 修复（2026-07-08 审阅 20 P1-3）：恢复代际计数器（每 store 实例一份闭包）。
+  // restoreFromBackend 的异步恢复链跨多次网络级 await，期间用户可能编辑上下文引用
+  // 或再次触发 loadSession；每次 set 前用代际 + sessionId 双重校验丢弃过期写回。
+  let restoreGeneration = 0;
+
   return {
+        /**
+         * 尾部分块加载第二阶段：把全量响应中的更早历史合并到会话头部。
+         * 只补 messageMap/messageOrder/blocks，不触碰运行时状态。
+         */
+        prependHistoryFromBackend: (response: LoadSessionResponseType): void => {
+          const current = getState();
+          // 会话已切换或数据未就绪时丢弃（补齐请求可能晚于切换返回）
+          if (current.sessionId !== response.session.id || !current.isDataLoaded) {
+            return;
+          }
+
+          const olderMessages = [...response.messages]
+            .sort((a, b) => a.timestamp - b.timestamp)
+            .filter((msg) => !current.messageMap.has(msg.id));
+          if (olderMessages.length === 0) return;
+
+          const messageMap = new Map(current.messageMap);
+          const prependOrder: string[] = [];
+          for (const msg of olderMessages) {
+            messageMap.set(msg.id, convertBackendMessage(msg));
+            prependOrder.push(msg.id);
+          }
+
+          // 块只增不改：已存在的块可能承载着流式/编辑后的最新内容
+          const blocksMap = new Map(current.blocks);
+          for (const blk of response.blocks) {
+            if (!blocksMap.has(blk.id)) {
+              blocksMap.set(blk.id, convertBackendBlock(blk));
+            }
+          }
+
+          set({
+            messageMap,
+            messageOrder: [...prependOrder, ...current.messageOrder],
+            blocks: blocksMap,
+          });
+
+          console.log(
+            '[ChatStore] Prepended history from backend:',
+            response.session.id,
+            `+${prependOrder.length} messages`
+          );
+        },
         restoreFromBackend: (response: LoadSessionResponseType): void => {
           const { session, messages, blocks, state } = response;
           const t0 = performance.now();
+
+          // 🔧 P1: 递增恢复代际；后续异步链的每次写回前校验代际与会话未变
+          const thisRestoreGeneration = ++restoreGeneration;
+          const isRestoreStale = (): boolean =>
+            restoreGeneration !== thisRestoreGeneration || getState().sessionId !== session.id;
 
           // 1. 按 timestamp 排序消息（确保消息顺序正确）
           const tSortStart = performance.now();
@@ -116,23 +238,7 @@ export function createRestoreActions(
           const tBlockMapStart = performance.now();
           const blocksMap = new Map<string, Block>();
           for (const blk of blocks) {
-            const block: Block = {
-              id: blk.id,
-              messageId: blk.messageId,
-              type: blk.type as BlockType,
-              status: blk.status as BlockStatus,
-              content: blk.content,
-              toolName: blk.toolName,
-              toolInput: blk.toolInput as Record<string, unknown> | undefined,
-              toolOutput: blk.toolOutput,
-              citations: blk.citations,
-              error: blk.error,
-              startedAt: blk.startedAt,
-              endedAt: blk.endedAt,
-              // 🔧 P3修复：恢复 firstChunkAt 用于排序（保持思维链交替顺序）
-              firstChunkAt: blk.firstChunkAt,
-            };
-            blocksMap.set(blk.id, block);
+            blocksMap.set(blk.id, convertBackendBlock(blk));
           }
           const tBlockMapEnd = performance.now();
           sessionSwitchPerf.mark('set_data_end', {
@@ -149,37 +255,7 @@ export function createRestoreActions(
           const messageOrder: string[] = [];
 
           for (const msg of sortedMessages) {
-            const message: Message = {
-              id: msg.id,
-              role: msg.role,
-              blockIds: msg.blockIds, // 直接使用后端返回的 blockIds
-              timestamp: msg.timestamp,
-              persistentStableId: msg.persistentStableId,
-              attachments: msg.attachments,
-              // 🔧 修复：后端 serde(rename = "_meta") 序列化，字段名是 _meta
-              // 🆕 统一用户消息处理：确保 contextSnapshot 被正确恢复
-              _meta: msg._meta
-                ? {
-                    modelId: msg._meta.modelId,
-                    // 🔒 审计修复: 添加 modelDisplayName 恢复（原代码遗漏此字段，
-                    // 导致恢复后消息显示模型 ID 而非用户友好名称）
-                    modelDisplayName: msg._meta.modelDisplayName,
-                    chatParams: msg._meta.chatParams,
-                    usage: msg._meta.usage,
-                    contextSnapshot: msg._meta.contextSnapshot,
-                    skillSnapshotBefore: msg._meta.skillSnapshotBefore,
-                    skillSnapshotAfter: msg._meta.skillSnapshotAfter,
-                    skillRuntimeBefore: msg._meta.skillRuntimeBefore,
-                    skillRuntimeAfter: msg._meta.skillRuntimeAfter,
-                    replaySource: msg._meta.replaySource,
-                  }
-                : undefined,
-              // 🔧 变体字段恢复
-              activeVariantId: msg.activeVariantId,
-              variants: msg.variants,
-              sharedContext: msg.sharedContext,
-            };
-            messageMap.set(msg.id, message);
+            messageMap.set(msg.id, convertBackendMessage(msg));
             messageOrder.push(msg.id);
           }
           const tMsgMapEnd = performance.now();
@@ -631,6 +707,12 @@ export function createRestoreActions(
           // 合并原有的三条竞态路径为单一 queueMicrotask
           queueMicrotask(async () => {
             try {
+              // 🔧 P1: 恢复链入口守卫——会话已切换或新一轮 restore 已开始时整体放弃
+              if (isRestoreStale()) {
+                console.log('[ChatStore] Skip unified restore chain: session/generation changed');
+                return;
+              }
+
               // === Step 0: 注入分组关联来源（pinned resources） ===
               const currentGroupId = getState().groupId;
               if (currentGroupId) {
@@ -643,10 +725,12 @@ export function createRestoreActions(
                     const { resourceStoreApi } = await import('../../resources');
                     const refsResult = await getResourceRefsV2(pinnedIds);
                     if (refsResult.ok && refsResult.value.refs.length > 0) {
-                      const currentRefs = getState().pendingContextRefs;
-                      const newRefs = [...currentRefs];
-                      // Build a set of existing resourceIds for fast dedup
-                      const existingResourceIds = new Set(currentRefs.map((r) => r.resourceId));
+                      // 🔧 P1: 只收集"待新增"的 pinned refs，写回时基于最新 state 做增量合并，
+                      // 避免逐个 await 期间用户新增的引用被快照整体覆盖丢弃
+                      const pinnedRefsToAdd: import('../../context/types').ContextRef[] = [];
+                      const seenResourceIds = new Set(
+                        getState().pendingContextRefs.map((r) => r.resourceId)
+                      );
                       for (const vfsRef of refsResult.value.refs) {
                         try {
                           const resourceResult = await resourceStoreApi.createOrReuse({
@@ -656,30 +740,45 @@ export function createRestoreActions(
                             metadata: { name: vfsRef.name, title: vfsRef.name },
                           });
                           // Skip if same resourceId already in refs (exact content match via hash)
-                          if (existingResourceIds.has(resourceResult.resourceId)) continue;
-                          existingResourceIds.add(resourceResult.resourceId);
+                          if (seenResourceIds.has(resourceResult.resourceId)) continue;
+                          seenResourceIds.add(resourceResult.resourceId);
 
-                          const contextRef: import('../../context/types').ContextRef = {
+                          pinnedRefsToAdd.push({
                             resourceId: resourceResult.resourceId,
                             hash: resourceResult.hash,
                             typeId: vfsRef.type,
                             isSticky: true,
                             displayName: vfsRef.name,
-                          };
-                          newRefs.push(contextRef);
+                          });
                         } catch (refErr) {
                           console.warn('[ChatStore] Failed to create pinned resource ref:', vfsRef.sourceId, refErr);
                         }
                       }
-                      if (newRefs.length > currentRefs.length) {
-                        set({ pendingContextRefs: newRefs, pendingContextRefsDirty: false });
-                        console.log('[ChatStore] Injected group pinned resources:', newRefs.length - currentRefs.length);
+                      if (pinnedRefsToAdd.length > 0 && !isRestoreStale()) {
+                        // 基于写回时刻的最新 refs 增量合并；不复位 pendingContextRefsDirty，
+                        // 避免破坏 editAndResend 三态语义（用户在恢复窗口内的编辑保持 dirty）
+                        const latestRefs = getState().pendingContextRefs;
+                        const latestIds = new Set(latestRefs.map((r) => r.resourceId));
+                        const mergedRefs = [
+                          ...latestRefs,
+                          ...pinnedRefsToAdd.filter((r) => !latestIds.has(r.resourceId)),
+                        ];
+                        if (mergedRefs.length > latestRefs.length) {
+                          set({ pendingContextRefs: mergedRefs });
+                          console.log('[ChatStore] Injected group pinned resources:', mergedRefs.length - latestRefs.length);
+                        }
                       }
                     }
                   }
                 } catch (groupErr) {
                   console.warn('[ChatStore] Failed to inject group pinned resources:', groupErr);
                 }
+              }
+
+              // 🔧 P1: Step 0 可能耗时较长，进入后续步骤前再次校验
+              if (isRestoreStale()) {
+                console.log('[ChatStore] Abort unified restore chain after Step 0: session/generation changed');
+                return;
               }
 
               // === Step 1: 兼容恢复 — 如果 activeSkillIdsJson 为空但存在 legacy skill refs，从 refs 推断 ===
@@ -710,7 +809,7 @@ export function createRestoreActions(
                       console.warn('[ChatStore] Failed to infer skill from ref:', e);
                     }
                   }
-                  if (inferredIds.length > 0) {
+                  if (inferredIds.length > 0 && !isRestoreStale()) {
                     set({ activeSkillIds: inferredIds } as Partial<ChatStoreState>);
                     console.log('[ChatStore] Inferred activeSkillIds from orphan refs:', inferredIds);
                   }
@@ -722,33 +821,38 @@ export function createRestoreActions(
               const currentRefsForValidation = getState().pendingContextRefs;
               if (currentRefsForValidation.length > 0) {
                 const { resourceStoreApi } = await import('../../resources');
-                const validRefs: import('../../context/types').ContextRef[] = [];
                 const invalidRefs: string[] = [];
 
                 for (const ref of currentRefsForValidation) {
                   try {
                     const exists = await resourceStoreApi.exists(ref.resourceId);
-                    if (exists) {
-                      validRefs.push(ref);
-                    } else {
+                    if (!exists) {
                       invalidRefs.push(ref.resourceId);
                     }
                   } catch {
                     // 验证失败时保留引用（宁可多保留，避免丢失用户数据）
-                    validRefs.push(ref);
                   }
                 }
 
-                if (invalidRefs.length > 0) {
-                  console.warn('[ChatStore] Removing invalid refs:', invalidRefs.length);
-                  set({ pendingContextRefs: validRefs, pendingContextRefsDirty: false });
-                  showGlobalNotification('warning', i18n.t('chatV2:chat.context_invalid_removed', { count: invalidRefs.length }));
+                if (invalidRefs.length > 0 && !isRestoreStale()) {
+                  // 🔧 P1: 写回时基于最新 state 只剔除已确认无效的引用，
+                  // 保留验证窗口期内用户新增的引用；不强制复位 dirty
+                  const invalidIdSet = new Set(invalidRefs);
+                  const latestRefs = getState().pendingContextRefs;
+                  const filteredRefs = latestRefs.filter((ref) => !invalidIdSet.has(ref.resourceId));
+                  if (filteredRefs.length !== latestRefs.length) {
+                    console.warn('[ChatStore] Removing invalid refs:', latestRefs.length - filteredRefs.length);
+                    set({ pendingContextRefs: filteredRefs });
+                    showGlobalNotification('warning', i18n.t('chatV2:chat.context_invalid_removed', { count: latestRefs.length - filteredRefs.length }));
+                  }
                 }
               }
 
               // 🔧 修复：会话恢复完成后修复 skill 状态一致性
               // repairSkillState 从 hasActiveSkill getter 中提取，避免 getter 副作用
-              getState().repairSkillState();
+              if (!isRestoreStale()) {
+                getState().repairSkillState();
+              }
             } catch (e) {
               console.error('[ChatStore] Failed during unified session restore:', e);
             }
@@ -777,6 +881,9 @@ export function createRestoreActions(
           if (restoredLoadedSkillIds.length > 0) {
             queueMicrotask(async () => {
               try {
+                // 🔧 P1: 会话/代际守卫（syncLoadedSkillsFromBackend 按 session.id 隔离，
+                // 此守卫避免为已切走的会话做无谓的等待与重试订阅）
+                if (isRestoreStale()) return;
                 // 等待 skillRegistry 初始化完成（带超时保护）
                 const { skillRegistry } = await import('../../skills/registry');
                 if (!skillRegistry.isInitialized()) {

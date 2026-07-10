@@ -19,7 +19,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260527;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260528;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;
@@ -120,9 +120,23 @@ impl ChatV2Database {
 
     /// 获取数据库连接
     ///
+    /// 🔧 P1 修复：维护模式检查下沉到 get_conn()。
+    /// 之前只有 get_conn_safe() 拦截维护模式，todo_executor 等仍走 get_conn()，
+    /// 备份/恢复期间的写入会静默落到内存池、退出维护模式后凭空消失。
+    /// 现在两个入口统一拒绝，维护窗口内的读写均快速失败（窗口很短，可重试）。
+    ///
     /// # Returns
     /// * `ChatV2Result<ChatV2PooledConnection>` - 池化连接
     pub fn get_conn(&self) -> ChatV2Result<ChatV2PooledConnection> {
+        if self
+            .maintenance_mode
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return Err(ChatV2Error::Database(
+                "Database is in maintenance mode (backup/restore in progress)".to_string(),
+            ));
+        }
+
         let pool = self
             .pool
             .read()
@@ -433,6 +447,31 @@ mod tests {
             .get_schema_version()
             .expect("Failed to get schema version");
         assert_eq!(version2, CURRENT_SCHEMA_VERSION);
+    }
+
+    /// 🔧 P1 回归：维护模式下 get_conn 与 get_conn_safe 必须一致拒绝，
+    /// 防止写入落到内存池导致数据静默丢失
+    #[test]
+    fn test_get_conn_rejects_maintenance_mode() {
+        let (_temp_dir, db) = setup_test_db();
+
+        db.enter_maintenance_mode()
+            .expect("enter maintenance mode should succeed");
+        assert!(
+            db.get_conn().is_err(),
+            "get_conn must be rejected in maintenance mode"
+        );
+        assert!(
+            db.get_conn_safe().is_err(),
+            "get_conn_safe must be rejected in maintenance mode"
+        );
+
+        db.exit_maintenance_mode()
+            .expect("exit maintenance mode should succeed");
+        assert!(
+            db.get_conn().is_ok(),
+            "get_conn should work again after exiting maintenance mode"
+        );
     }
 
     #[test]

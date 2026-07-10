@@ -110,11 +110,14 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
   const viewRef = useRef(view);
   viewRef.current = view;
   const [rotation, setRotation] = useState(0);
+  const [imageError, setImageError] = useState(false);
   const scale = view.scale;
   const canNavigatePrev = images.length > 1 && currentIndex > 0 && typeof onPrev === 'function';
   const canNavigateNext = images.length > 1 && currentIndex < images.length - 1 && typeof onNext === 'function';
+  const currentImage = images[currentIndex] ?? '';
 
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
 
   const handleResetView = useCallback(() => {
     setView({ scale: 1, offsetX: 0, offsetY: 0 });
@@ -324,13 +327,25 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
   // 重置状态当图片改变时
   useEffect(() => {
     handleResetView();
-  }, [currentIndex, handleResetView]);
+    setImageError(false);
+  }, [currentImage, currentIndex, handleResetView]);
 
   // 键盘事件处理
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 焦点未被浮层捕获（无焦点陷阱）：用户可能仍在背后的输入框打字，
+      // 此时只响应 Escape，避免输入 r/+/- 等字符误触发旋转/缩放
+      const target = e.target as HTMLElement | null;
+      const isEditableTarget = !!target && (
+        target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.isContentEditable
+      );
+      if (isEditableTarget && e.key !== 'Escape') {
+        return;
+      }
       switch (e.key) {
         case 'Escape':
           onClose();
@@ -394,6 +409,25 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     };
   }, [isOpen]);
 
+  // 滚轮缩放：React 在根节点上以 passive 方式注册 wheel，onWheel 里的
+  // preventDefault 不生效（ctrl+wheel 会连带缩放整个页面），
+  // 因此改用原生非 passive 监听
+  useEffect(() => {
+    if (!isOpen) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      // 触控板捏合在桌面表现为 ctrl+wheel（标准检测方式），据此缩放；
+      // 普通滚轮保持不缩放（见 fullscreen 契约测试）
+      if (e.ctrlKey || e.metaKey) {
+        zoomAt(e.clientX, e.clientY, viewRef.current.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      }
+    };
+    stage.addEventListener('wheel', handleWheel, { passive: false });
+    return () => stage.removeEventListener('wheel', handleWheel);
+  }, [isOpen, container, zoomAt]);
+
   // 下载图片
   const handleDownload = useCallback(async () => {
     const currentImage = images[currentIndex];
@@ -429,7 +463,6 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     return null;
   }
 
-  const currentImage = images[currentIndex] ?? '';
   const topHotzoneHeightClassName = 'h-[96px] sm:h-[112px]';
   const stageTopPaddingClassName = 'pt-[96px] sm:pt-[112px]';
 
@@ -471,6 +504,7 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
 
       {/* 图片容器（IMG-1：捏合缩放 / 放大后单指平移 / 双击与双触缩放 / 滚轮缩放） */}
       <div
+        ref={stageRef}
         className={cn(
           'relative flex flex-1 items-center justify-center overflow-hidden px-4 sm:px-8',
           stageTopPaddingClassName,
@@ -482,26 +516,25 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
         onPointerMove={handleStagePointerMove}
         onPointerUp={handleStagePointerUp}
         onPointerCancel={handleStagePointerUp}
-        onWheel={(e) => {
-          e.preventDefault();
-          // 触控板捏合在桌面表现为 ctrl+wheel（标准检测方式），据此缩放；
-          // 普通滚轮保持不缩放（见 fullscreen 契约测试）
-          if (e.ctrlKey || e.metaKey) {
-            zoomAt(e.clientX, e.clientY, viewRef.current.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
-          }
-        }}
       >
-        <img
-          ref={imageRef}
-          src={currentImage}
-          alt={t('chatV2:imageViewer.imageAlt', { index: currentIndex + 1 })}
-          className="max-h-full max-w-full object-contain select-none"
-          style={{
-            transform: `translate(${view.offsetX}px, ${view.offsetY}px) scale(${scale}) rotate(${rotation}deg)`,
-          }}
-          onDoubleClick={handleImageDoubleClick}
-          draggable={false}
-        />
+        {imageError ? (
+          <div className="flex flex-col items-center gap-2 text-sm text-white/80 select-none">
+            <span>{t('chatV2:blocks.imageGen.loadError')}</span>
+          </div>
+        ) : (
+          <img
+            ref={imageRef}
+            src={currentImage}
+            alt={t('chatV2:imageViewer.imageAlt', { index: currentIndex + 1 })}
+            className="max-h-full max-w-full object-contain select-none"
+            style={{
+              transform: `translate(${view.offsetX}px, ${view.offsetY}px) scale(${scale}) rotate(${rotation}deg)`,
+            }}
+            onDoubleClick={handleImageDoubleClick}
+            onError={() => setImageError(true)}
+            draggable={false}
+          />
+        )}
 
       </div>
 

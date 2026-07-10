@@ -45,9 +45,40 @@ function isCodeFence(line: string): boolean {
   return trimmed.startsWith('```') || trimmed.startsWith('~~~');
 }
 
+interface CodeFenceInfo {
+  /** 围栏字符：` 或 ~ */
+  char: string;
+  /** 围栏长度（>=3） */
+  length: number;
+}
+
+/** 解析开栏行，返回围栏字符与长度 */
+function parseCodeFenceOpen(line: string): CodeFenceInfo | null {
+  const m = /^\s*(`{3,}|~{3,})/.exec(line);
+  if (!m) return null;
+  return { char: m[1][0], length: m[1].length };
+}
+
+/**
+ * 检测行是否为对应开栏的合法闭栏。
+ * CommonMark 规则：闭栏必须使用相同字符、长度不小于开栏、且后面只能有空白。
+ * 这样 ```` ```` ```` 包裹的示例代码里嵌套的 ``` 不会提前闭合外层围栏。
+ */
+function isCodeFenceClose(line: string, open: CodeFenceInfo): boolean {
+  const m = /^\s*(`{3,}|~{3,})\s*$/.exec(line);
+  if (!m) return false;
+  return m[1][0] === open.char && m[1].length >= open.length;
+}
+
 /** 检测行是否为数学块分隔符 $$ */
 function isMathFence(line: string): boolean {
   return line.trim().startsWith('$$');
+}
+
+/** 检测 $$ 开头的行是否在同一行内自闭合（如 `$$E=mc^2$$`） */
+function isSelfClosedMathLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.length >= 4 && trimmed.startsWith('$$') && trimmed.endsWith('$$');
 }
 
 /** 检测行是否为标题 */
@@ -109,12 +140,13 @@ export function splitMarkdownBlocks(content: string, isStreaming: boolean): Mark
 
     // --- 代码块（围栏） ---
     if (isCodeFence(line)) {
+      const openFence = parseCodeFenceOpen(line);
       const startLine = i;
       i++;
-      // 寻找闭合围栏
+      // 寻找闭合围栏（必须与开栏字符相同且长度不小于开栏）
       let closed = false;
       while (i < lines.length) {
-        if (isCodeFence(lines[i])) {
+        if (openFence && isCodeFenceClose(lines[i], openFence)) {
           i++;
           closed = true;
           break;
@@ -134,6 +166,17 @@ export function splitMarkdownBlocks(content: string, isStreaming: boolean): Mark
     // --- 数学块（$$） ---
     if (isMathFence(line)) {
       const startLine = i;
+      // 单行自闭合：`$$E=mc^2$$` 不能吞掉后续行
+      if (isSelfClosedMathLine(line)) {
+        i++;
+        blocks.push({
+          id: '',
+          type: 'math',
+          raw: line,
+          isComplete: true,
+        });
+        continue;
+      }
       i++;
       let closed = false;
       while (i < lines.length) {

@@ -110,6 +110,36 @@ impl ChatV2Repo {
 
         current
     }
+
+    /// 🔧 P1-3 修复（06 报告）：variants_json 的「读出 → 内存改 → 整体写回」序列
+    /// 必须持写锁执行，否则多模型并行变体（连接池 max_size=10）下两个连接
+    /// 交叉读改写同一条消息的 variants_json 会互相覆盖（丢状态、丢 block_ids）。
+    ///
+    /// - 连接处于 autocommit 状态时：用 `BEGIN IMMEDIATE` 先取写锁再读，
+    ///   读到的即最新值，消除丢失更新窗口（WAL + busy_timeout=3000 下等锁而非报错）。
+    /// - 连接已在外层事务中：直接执行，由外层事务保证原子性与互斥。
+    fn with_variants_write_txn<T>(
+        conn: &Connection,
+        f: impl FnOnce(&Connection) -> ChatV2Result<T>,
+    ) -> ChatV2Result<T> {
+        if !conn.is_autocommit() {
+            return f(conn);
+        }
+
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| ChatV2Error::Database(format!("BEGIN IMMEDIATE failed: {}", e)))?;
+        match f(conn) {
+            Ok(value) => {
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| ChatV2Error::Database(format!("COMMIT failed: {}", e)))?;
+                Ok(value)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
     // ========================================================================
     // 会话 CRUD
     // ========================================================================
@@ -1749,6 +1779,102 @@ impl ChatV2Repo {
             messages,
             blocks,
             state,
+            total_message_count: None,
+        })
+    }
+
+    /// 加载会话尾部数据（最近 tail_limit 条消息及其块）
+    ///
+    /// 用于首屏快速展示：长会话只回最近 N 条，前端在首帧后再全量补齐历史。
+    /// 消息总数不超过 tail_limit 时等价于全量加载。
+    pub fn load_session_tail_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        tail_limit: u32,
+    ) -> ChatV2Result<LoadSessionResponse> {
+        let t0 = Instant::now();
+
+        let session = Self::get_session_with_conn(conn, session_id)?
+            .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
+
+        let total_count: u32 = conn.query_row(
+            "SELECT COUNT(*) FROM chat_v2_messages WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+
+        if total_count <= tail_limit {
+            // 无需分块，走全量路径（total_message_count 留空表示全量）
+            return Self::load_session_full_with_conn(conn, session_id);
+        }
+
+        // 最近 tail_limit 条消息（倒序取，再反转恢复时间正序）
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id, parent_id, supersedes, meta_json, attachments_json, active_variant_id, variants_json, shared_context_json
+            FROM chat_v2_messages
+            WHERE session_id = ?1
+            ORDER BY timestamp DESC, rowid DESC
+            LIMIT ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![session_id, tail_limit], Self::row_to_message)?;
+        let mut messages: Vec<ChatMessage> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+        messages.reverse();
+
+        // 仅取尾部消息的块（子查询与消息查询保持同一截断口径）
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT b.id, b.message_id, b.block_type, b.status, b.block_index,
+                   b.content, b.tool_name, b.tool_input_json, b.tool_output_json,
+                   b.citations_json, b.error, b.started_at, b.ended_at, b.first_chunk_at
+            FROM chat_v2_blocks b
+            INNER JOIN (
+                SELECT id, timestamp, rowid AS message_rowid
+                FROM chat_v2_messages
+                WHERE session_id = ?1
+                ORDER BY timestamp DESC, rowid DESC
+                LIMIT ?2
+            ) m ON b.message_id = m.id
+            ORDER BY m.timestamp ASC, COALESCE(b.first_chunk_at, b.started_at) ASC, b.block_index ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(params![session_id, tail_limit], Self::row_to_block)?;
+        let blocks: Vec<MessageBlock> = rows
+            .filter_map(|r| match r {
+                Ok(val) => Some(val),
+                Err(e) => {
+                    log::warn!("[ChatV2Repo] Skipping malformed row: {}", e);
+                    None
+                }
+            })
+            .collect();
+
+        let state = Self::load_session_state_with_conn(conn, session_id)?;
+
+        info!(
+            "[ChatV2::Repo] Loaded session tail: {} with {}/{} messages and {} blocks, total {} ms",
+            session_id,
+            messages.len(),
+            total_count,
+            blocks.len(),
+            t0.elapsed().as_millis()
+        );
+
+        Ok(LoadSessionResponse {
+            session,
+            messages,
+            blocks,
+            state,
+            total_message_count: Some(total_count),
         })
     }
 
@@ -2362,6 +2488,8 @@ impl ChatV2Repo {
     }
 
     /// 更新变体状态（使用现有连接）
+    ///
+    /// 🔧 P1-3 修复：读-改-写包进 IMMEDIATE 事务，消除并行变体下的丢失更新
     pub fn update_variant_status_with_conn(
         conn: &Connection,
         message_id: &str,
@@ -2374,28 +2502,31 @@ impl ChatV2Repo {
             message_id, variant_id, status
         );
 
-        // 获取当前消息
-        let message = Self::get_message_with_conn(conn, message_id)?
-            .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+        Self::with_variants_write_txn(conn, |conn| {
+            // 获取当前消息（写锁内读取，保证读到最新值）
+            let message = Self::get_message_with_conn(conn, message_id)?
+                .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
 
-        // 获取并更新变体
-        let mut variants = message.variants.unwrap_or_default();
-        let variant = variants
-            .iter_mut()
-            .find(|v| v.id == variant_id)
-            .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
+            // 获取并更新变体
+            let mut variants = message.variants.unwrap_or_default();
+            let variant = variants
+                .iter_mut()
+                .find(|v| v.id == variant_id)
+                .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
 
-        variant.status = status.to_string();
-        variant.error = error.map(|s| s.to_string());
+            variant.status = status.to_string();
+            variant.error = error.map(|s| s.to_string());
 
-        // 保存更新后的变体列表
-        let raw_json = serde_json::to_string(&variants)?;
-        let variants_json =
-            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
-        conn.execute(
-            "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
-            params![message_id, variants_json],
-        )?;
+            // 保存更新后的变体列表
+            let raw_json = serde_json::to_string(&variants)?;
+            let variants_json =
+                Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+            conn.execute(
+                "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
+                params![message_id, variants_json],
+            )?;
+            Ok(())
+        })?;
 
         debug!(
             "[ChatV2::Repo] Variant status updated: variant_id={}, status={}",
@@ -2420,6 +2551,8 @@ impl ChatV2Repo {
     /// 删除变体（使用现有连接）
     ///
     /// P1 修复：使用 SAVEPOINT 保证原子性
+    /// 🔧 P1-3 修复：读取也移入 IMMEDIATE 事务（之前读取发生在 SAVEPOINT 之外，
+    /// 读取与写回之间可被另一连接修改，导致丢失更新）
     pub fn delete_variant_with_conn(
         conn: &Connection,
         message_id: &str,
@@ -2430,6 +2563,17 @@ impl ChatV2Repo {
             message_id, variant_id
         );
 
+        Self::with_variants_write_txn(conn, |conn| {
+            Self::delete_variant_locked(conn, message_id, variant_id)
+        })
+    }
+
+    /// delete_variant 的事务内实现（调用方必须已持有写锁 / 外层事务）
+    fn delete_variant_locked(
+        conn: &Connection,
+        message_id: &str,
+        variant_id: &str,
+    ) -> ChatV2Result<DeleteVariantResult> {
         // 获取当前消息
         let message = Self::get_message_with_conn(conn, message_id)?
             .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
@@ -2569,6 +2713,9 @@ impl ChatV2Repo {
     }
 
     /// 将块添加到变体（使用现有连接）
+    ///
+    /// 🔧 P1-3 修复：读-改-写包进 IMMEDIATE 事务，消除并行变体下的丢失更新；
+    /// 同时保证「更新 variants_json」与「更新块表 variant_id」两步原子
     pub fn add_block_to_variant_with_conn(
         conn: &Connection,
         message_id: &str,
@@ -2580,36 +2727,39 @@ impl ChatV2Repo {
             message_id, variant_id, block_id
         );
 
-        // 获取当前消息
-        let message = Self::get_message_with_conn(conn, message_id)?
-            .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
+        Self::with_variants_write_txn(conn, |conn| {
+            // 获取当前消息（写锁内读取，保证读到最新值）
+            let message = Self::get_message_with_conn(conn, message_id)?
+                .ok_or_else(|| ChatV2Error::MessageNotFound(message_id.to_string()))?;
 
-        // 更新变体的 block_ids
-        let mut variants = message.variants.unwrap_or_default();
-        let variant = variants
-            .iter_mut()
-            .find(|v| v.id == variant_id)
-            .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
+            // 更新变体的 block_ids
+            let mut variants = message.variants.unwrap_or_default();
+            let variant = variants
+                .iter_mut()
+                .find(|v| v.id == variant_id)
+                .ok_or_else(|| ChatV2Error::Other(format!("Variant not found: {}", variant_id)))?;
 
-        // 添加 block_id（避免重复）
-        if !variant.block_ids.contains(&block_id.to_string()) {
-            variant.block_ids.push(block_id.to_string());
-        }
+            // 添加 block_id（避免重复）
+            if !variant.block_ids.contains(&block_id.to_string()) {
+                variant.block_ids.push(block_id.to_string());
+            }
 
-        // 保存更新后的变体列表
-        let raw_json = serde_json::to_string(&variants)?;
-        let variants_json =
-            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
-        conn.execute(
-            "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
-            params![message_id, variants_json],
-        )?;
+            // 保存更新后的变体列表
+            let raw_json = serde_json::to_string(&variants)?;
+            let variants_json =
+                Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+            conn.execute(
+                "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
+                params![message_id, variants_json],
+            )?;
 
-        // 同时更新块表的 variant_id 字段
-        conn.execute(
-            "UPDATE chat_v2_blocks SET variant_id = ?2 WHERE id = ?1",
-            params![block_id, variant_id],
-        )?;
+            // 同时更新块表的 variant_id 字段
+            conn.execute(
+                "UPDATE chat_v2_blocks SET variant_id = ?2 WHERE id = ?1",
+                params![block_id, variant_id],
+            )?;
+            Ok(())
+        })?;
 
         debug!(
             "[ChatV2::Repo] Block added to variant: block_id={}, variant_id={}",
@@ -2667,66 +2817,70 @@ impl ChatV2Repo {
     }
 
     /// 修复消息中的变体状态（使用现有连接）
+    ///
+    /// 🔧 P1-3 修复：读-改-写包进 IMMEDIATE 事务，避免与流式写入交叉覆盖
     pub fn repair_message_variant_status_with_conn(
         conn: &Connection,
         message_id: &str,
     ) -> ChatV2Result<bool> {
         use super::types::variant_status;
 
-        let message = match Self::get_message_with_conn(conn, message_id)? {
-            Some(m) => m,
-            None => return Ok(false),
-        };
+        Self::with_variants_write_txn(conn, |conn| {
+            let message = match Self::get_message_with_conn(conn, message_id)? {
+                Some(m) => m,
+                None => return Ok(false),
+            };
 
-        let mut variants = match message.variants {
-            Some(v) if !v.is_empty() => v,
-            _ => return Ok(false),
-        };
+            let mut variants = match message.variants {
+                Some(v) if !v.is_empty() => v,
+                _ => return Ok(false),
+            };
 
-        let mut repaired = false;
+            let mut repaired = false;
 
-        // 修复 streaming/pending 状态的变体
-        for variant in &mut variants {
-            if variant.status == variant_status::STREAMING
-                || variant.status == variant_status::PENDING
-            {
-                variant.status = variant_status::ERROR.to_string();
-                variant.error = Some("Process interrupted unexpectedly".to_string());
-                repaired = true;
+            // 修复 streaming/pending 状态的变体
+            for variant in &mut variants {
+                if variant.status == variant_status::STREAMING
+                    || variant.status == variant_status::PENDING
+                {
+                    variant.status = variant_status::ERROR.to_string();
+                    variant.error = Some("Process interrupted unexpectedly".to_string());
+                    repaired = true;
+                }
             }
-        }
 
-        if !repaired {
-            return Ok(false);
-        }
+            if !repaired {
+                return Ok(false);
+            }
 
-        // 修复 active_variant_id
-        let current_active = message.active_variant_id.as_deref();
-        let needs_new_active = current_active
-            .and_then(|id| variants.iter().find(|v| v.id == id))
-            .map_or(true, |v| v.status == variant_status::ERROR);
+            // 修复 active_variant_id
+            let current_active = message.active_variant_id.as_deref();
+            let needs_new_active = current_active
+                .and_then(|id| variants.iter().find(|v| v.id == id))
+                .map_or(true, |v| v.status == variant_status::ERROR);
 
-        let new_active_id = if needs_new_active {
-            Self::determine_active_variant(&variants)
-        } else {
-            current_active.map(|s| s.to_string())
-        };
+            let new_active_id = if needs_new_active {
+                Self::determine_active_variant(&variants)
+            } else {
+                current_active.map(|s| s.to_string())
+            };
 
-        // 保存更新
-        let raw_json = serde_json::to_string(&variants)?;
-        let variants_json =
-            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
-        conn.execute(
-            "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
-            params![message_id, variants_json, &new_active_id],
-        )?;
+            // 保存更新
+            let raw_json = serde_json::to_string(&variants)?;
+            let variants_json =
+                Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
+            conn.execute(
+                "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
+                params![message_id, variants_json, &new_active_id],
+            )?;
 
-        info!(
-            "[ChatV2::Repo] Repaired variant status for message: {}, new_active_id={:?}",
-            message_id, new_active_id
-        );
+            info!(
+                "[ChatV2::Repo] Repaired variant status for message: {}, new_active_id={:?}",
+                message_id, new_active_id
+            );
 
-        Ok(true)
+            Ok(true)
+        })
     }
 
     /// 修复会话中所有消息的变体状态（崩溃恢复）

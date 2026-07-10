@@ -278,14 +278,14 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
     <div className="flex flex-col h-full bg-background relative">
       {/* Action Buttons - Absolute Positioned */}
       <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10 flex items-center gap-2">
-          <NotionButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3">
+          <NotionButton variant="ghost" onClick={onClose} disabled={isSaving} className="h-8 px-3 max-md:h-10">
             {t('common:cancel')}
           </NotionButton>
           <NotionButton 
             variant="primary" 
             onClick={handleSubmit} 
             disabled={isSaving || !name.trim()}
-            className="h-8 px-3"
+            className="h-8 px-3 max-md:h-10"
           >
             {mode === 'create' ? t('common:create') : t('common:save')}
           </NotionButton>
@@ -332,7 +332,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       key={iconName}
                       onClick={() => setIcon(iconName)}
                       className={cn(
-                        "w-9 h-9 flex items-center justify-center rounded-md cursor-pointer transition-colors",
+                        // 移动端触控目标放大到 44px，桌面保持 36px
+                        "w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer transition-colors",
                         icon === iconName
                           ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                           : "hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
@@ -346,7 +347,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   {icon && (
                     <div
                       onClick={() => setIcon('')}
-                      className="w-9 h-9 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      className="w-9 h-9 max-md:w-11 max-md:h-11 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title={t('common:clear')}
                     >
                       <X size={16} />
@@ -447,7 +448,8 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         type="button"
                         onClick={() => removePinnedResource(ref.sourceId)}
                         className={cn(
-                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors',
+                          // 视觉紧凑，透明伪元素扩大触控命中区
+                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                           isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                         )}
                         aria-label={t('common:remove', '移除')}
@@ -505,7 +507,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           onClick={() => setPickerOpen(false)}
         >
           <div
-            className="h-full w-[380px] max-w-[85vw] bg-card shadow-xl flex flex-col border-l border-border/40 animate-in slide-in-from-right-full duration-200"
+            className="h-full w-[380px] max-w-[85vw] bg-card shadow-xl flex flex-col border-l border-border/40 ui-slide-in-right"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-3 py-2 border-b border-border/40 shrink-0">

@@ -279,6 +279,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       try { showGlobalNotification('success', t('codeBlock.copySuccess', '已复制代码到剪贴板'), t('codeBlock.copySuccessTitle', '复制成功')); } catch {}
     } catch (err: unknown) {
       console.error('[CodeBlock] Copy failed:', getErrorMessage(err));
+      try { showGlobalNotification('error', t('codeBlock.copyFailed', '复制失败，请重试'), t('codeBlock.copyFailedTitle', '复制失败')); } catch {}
     }
   };
 
@@ -292,6 +293,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   const handleRunMermaid = async () => {
     if (!canRunMermaid || isStreaming) return;
+    const id = `mermaid-${Math.random().toString(36).slice(2)}`;
     try {
       setRunning(true);
       setMermaidError(null);
@@ -314,7 +316,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           sequence: { useMaxWidth: true },
         });
       }
-      const id = `mermaid-${Math.random().toString(36).slice(2)}`;
       let svg: string | null = null;
       if (mermaid?.render) {
         const out = await mermaid.render(id, codeContent);
@@ -343,6 +344,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       setRenderedSvg(svg);
       setShowRendered(true);
     } catch (err: unknown) {
+      // mermaid.render 解析失败时会把错误图（id / d+id）残留在 document.body 上，
+      // 必须手动移除，否则每次失败渲染都会泄漏一个孤儿 DOM 节点
+      try {
+        document.getElementById(id)?.remove();
+        document.getElementById(`d${id}`)?.remove();
+      } catch {}
+
       // 组件卸载后不更新状态
       if (!isMountedRef.current) return;
       
@@ -490,6 +498,30 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     setLastMouse({ x: e.clientX, y: e.clientY });
   };
   const endPan = () => { setPanning(false); setLastMouse(null); };
+
+  // React 17+ 在根容器以 passive 模式绑定 wheel 事件，onWheel 里的
+  // preventDefault() 会被忽略：ctrl+滚轮缩放预览时页面/WebView 仍会同步缩放滚动，
+  // 且控制台报 "Unable to preventDefault inside passive event listener"。
+  // 改用原生非 passive 监听器；handler 存 ref，避免 offset/scale 闭包过期。
+  const wheelHandlerRef = useRef<(e: WheelEvent) => void>(() => {});
+  wheelHandlerRef.current = (e: WheelEvent) => {
+    if (!(e.ctrlKey || e.metaKey)) return; // 需要修饰键
+    e.preventDefault();
+    const el = previewRef.current;
+    if (!el) return;
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const rect = el.getBoundingClientRect();
+    applyZoom(factor, { x: e.clientX - rect.left, y: e.clientY - rect.top });
+  };
+
+  useEffect(() => {
+    if (!showRendered || !renderedSvg || htmlPreviewContent) return;
+    const el = previewRef.current;
+    if (!el) return;
+    const onWheelNative = (e: WheelEvent) => wheelHandlerRef.current(e);
+    el.addEventListener('wheel', onWheelNative, { passive: false });
+    return () => el.removeEventListener('wheel', onWheelNative);
+  }, [showRendered, renderedSvg, htmlPreviewContent]);
 
   // 重置错误边界
   const handleErrorBoundaryReset = () => {
@@ -755,14 +787,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
             onMouseUp={endPan}
             onMouseLeave={endPan}
             onDoubleClick={handleFitView}
-            onWheel={(e) => {
-              if (!(e.ctrlKey || e.metaKey)) return; // 需要修饰键
-              e.preventDefault();
-              const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
-              const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-              const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-              applyZoom(factor, anchor);
-            }}
           >
             <div className="mermaid-canvas">
               <div

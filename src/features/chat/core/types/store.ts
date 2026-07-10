@@ -158,11 +158,45 @@ export interface LoadSessionResponseType {
   messages: BackendMessageForRestore[];
   blocks: BackendBlockForRestore[];
   state?: SessionStateForRestore;
+  /** 会话消息总数；仅尾部分块加载时返回（undefined 表示 messages 已是全量） */
+  totalMessageCount?: number;
 }
 
 // ============================================================================
 // Blocking Interaction 类型
 // ============================================================================
+
+export interface ShellRuntimeApprovalScope {
+  kind: 'shell';
+  toolSource?: string;
+  toolName?: string;
+  rootId: string;
+  cwd: string;
+  commandPrefix: string;
+  commandHash: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  networkAllowed?: boolean;
+  hasShellOperators?: boolean;
+  usesScriptRunner?: boolean;
+  firstToken?: string | null;
+  rememberDisabled?: boolean;
+}
+
+export interface SkillInstallRuntimeApprovalScope {
+  kind: 'skill_install';
+  toolSource?: string;
+  toolName?: string;
+  sourceSummary?: string;
+  expectedSha256Prefix?: string;
+  declaredRiskLevel?: 'low' | 'medium' | 'high' | string;
+  skillId?: string;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+export type RuntimeApprovalScope =
+  | ShellRuntimeApprovalScope
+  | SkillInstallRuntimeApprovalScope;
 
 export interface ToolApprovalBlockingInteraction {
   kind: 'tool_approval';
@@ -174,6 +208,7 @@ export interface ToolApprovalBlockingInteraction {
   timeoutSeconds: number;
   resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
   resolvedReason?: string;
+  runtimeScope?: RuntimeApprovalScope;
 }
 
 export interface AskUserBlockingInteraction {
@@ -657,7 +692,7 @@ export interface ChatStore {
     id: string;
     name: string;
     description: string;
-    /** 🆕 P1-B: allowedTools 用于工具可见性过滤 */
+    /** allowedTools 用于 Skill 运行时工具约束摘要 */
     allowedTools?: string[];
   }>>;
 
@@ -809,6 +844,14 @@ export interface ChatStore {
 
   /** 从后端响应恢复状态（适配器调用） */
   restoreFromBackend(response: LoadSessionResponseType): void;
+
+  /**
+   * 将全量响应中的更早历史消息合并到已恢复的会话头部（适配器调用）
+   *
+   * 用于尾部分块加载的第二阶段：只补齐 messageMap/messageOrder/blocks，
+   * 不触碰运行时状态（输入草稿、流式状态、技能等）。
+   */
+  prependHistoryFromBackend(response: LoadSessionResponseType): void;
 
   // ========== 辅助方法（O(1) 查找） ==========
 

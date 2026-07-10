@@ -84,7 +84,10 @@ export function makeUncertaintyHighlightPlugin(
                 data: {
                   hName: 'mark',
                   hProperties: {
-                    style: 'background-color: hsl(var(--warning) / 0.3); border-radius:2px; padding:0 1px;',
+                    // 用 class 而非内联 style：rehype-sanitize 默认丢弃 style 属性，
+                    // 旧写法在消毒管线里会让高亮样式（乃至整个 mark 标签）静默失效。
+                    // 样式定义见 renderers/streaming.css 的 .uncertainty-mark。
+                    className: ['uncertainty-mark'],
                     title: r.reason || defaultReason,
                   },
                 },

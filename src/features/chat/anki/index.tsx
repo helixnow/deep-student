@@ -15,7 +15,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { save as dialogSave } from '@tauri-apps/plugin-dialog';
 import type { AnkiCard, AnkiGenerationOptions, CustomAnkiTemplate } from '@/types';
 import { ankiApiAdapter } from '@/services/ankiApiAdapter';
-import { RenderedAnkiCard } from '../plugins/blocks/components/RenderedAnkiCard';
 import { Card3DPreview } from '@/components/Card3DPreview';
 
 // ============================================================================
@@ -79,14 +78,42 @@ interface AnkiSyncReport {
   createdModels: string[];
 }
 
+type AnkiSaveWarning =
+  | {
+      code: 'anki_save_partial';
+      details: {
+        saved: number;
+        duplicated: number;
+        skipped: number;
+        failed: number;
+      };
+    }
+  | {
+      code: 'anki_save_all_skipped';
+      details: {
+        skipped: number;
+        duplicated: number;
+      };
+    };
+
 /**
  * 保存卡片到本地库
  *
- * 使用 ChatV2AnkiAdapter 导出为 JSON 格式
+ * 使用诚实语义响应：区分新插入 / 已存在更新 / 跳过 / 失败。
  */
 export async function saveCardsToLibrary(
   params: AnkiActionParams
-): Promise<{ success: boolean; savedCount: number; savedIds?: string[]; taskId?: string }> {
+): Promise<{
+  success: boolean;
+  savedCount: number;
+  savedIds?: string[];
+  duplicatedIds?: string[];
+  skippedIds?: string[];
+  failed?: Array<{ id: string; error: string }>;
+  taskId?: string;
+  warning?: AnkiSaveWarning;
+  error?: string;
+}> {
   const { cards, context } = params;
 
   if (cards.length === 0) {
@@ -104,21 +131,73 @@ export async function saveCardsToLibrary(
       options: context?.options,
     });
 
-    if (result.savedIds?.length) {
-      console.log('[anki] saveCardsToLibrary success:', result.savedIds.length, 'cards saved');
+    const savedIds = result.savedIds ?? [];
+    const duplicatedIds = result.duplicatedIds ?? [];
+    const skippedIds = result.skippedIds ?? [];
+    const failed = result.failed ?? [];
+    const savedCount = savedIds.length;
+    const hasProgress =
+      savedCount > 0 || duplicatedIds.length > 0 || (skippedIds.length > 0 && failed.length === 0);
+
+    if (!hasProgress) {
+      const failDetail = failed
+        .map((f) => `${f.id}: ${f.error}`)
+        .join('; ');
+      console.error('[anki] saveCardsToLibrary error: no cards saved', { failed });
       return {
-        success: true,
-        savedCount: result.savedIds.length,
-        savedIds: result.savedIds,
+        success: false,
+        savedCount: 0,
+        savedIds,
+        duplicatedIds,
+        skippedIds,
+        failed,
         taskId: result.taskId,
+        error: failDetail || 'savedIds empty',
       };
-    } else {
-      console.error('[anki] saveCardsToLibrary error: savedIds empty');
-      return { success: false, savedCount: 0, taskId: result.taskId };
     }
+
+    let warning: AnkiSaveWarning | undefined;
+    if (failed.length > 0 || (skippedIds.length > 0 && savedCount > 0)) {
+      warning = {
+        code: 'anki_save_partial',
+        details: {
+          saved: savedCount,
+          duplicated: duplicatedIds.length,
+          skipped: skippedIds.length,
+          failed: failed.length,
+        },
+      };
+    } else if (savedCount === 0 && (skippedIds.length > 0 || duplicatedIds.length > 0)) {
+      warning = {
+        code: 'anki_save_all_skipped',
+        details: {
+          skipped: skippedIds.length,
+          duplicated: duplicatedIds.length,
+        },
+      };
+    }
+
+    console.log('[anki] saveCardsToLibrary success:', {
+      saved: savedCount,
+      duplicated: duplicatedIds.length,
+      skipped: skippedIds.length,
+      failed: failed.length,
+    });
+
+    return {
+      success: true,
+      savedCount,
+      savedIds,
+      duplicatedIds,
+      skippedIds,
+      failed,
+      taskId: result.taskId,
+      warning,
+    };
   } catch (error: unknown) {
     console.error('[anki] saveCardsToLibrary error:', error);
-    return { success: false, savedCount: 0 };
+    const message = error instanceof Error ? error.message : String(error ?? 'unknown error');
+    return { success: false, savedCount: 0, error: message };
   }
 }
 
@@ -557,7 +636,8 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
           )}
         </div>
         {cards.length > 0 && !disabled && (
-          <NotionButton variant="ghost" size="sm" onClick={onClick} className="!h-auto !p-0 text-[10px] sm:text-[11px] text-muted-foreground/50 hover:text-muted-foreground">
+          // 视觉不变（负 margin 抵消 padding），实际命中区扩大满足触控目标
+          <NotionButton variant="ghost" size="sm" onClick={onClick} className="!h-auto !p-2 -m-2 text-[10px] sm:text-[11px] text-muted-foreground/50 hover:text-muted-foreground">
             {t('chatV2.clickToEdit')} →
           </NotionButton>
         )}

@@ -193,11 +193,22 @@ export function useAllSessionIds(pollInterval = 1000): string[] {
   const [ids, setIds] = useState<string[]>([]);
 
   useEffect(() => {
-    setIds(sessionManager.getAllSessionIds());
+    // 内容相同则保留旧引用，避免每次轮询都因新数组引用触发重渲染
+    const syncIds = () => {
+      setIds((prev) => {
+        const next = sessionManager.getAllSessionIds();
+        if (
+          prev.length === next.length &&
+          next.every((id, i) => id === prev[i])
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
 
-    const interval = setInterval(() => {
-      setIds(sessionManager.getAllSessionIds());
-    }, pollInterval);
+    syncIds();
+    const interval = setInterval(syncIds, pollInterval);
 
     return () => clearInterval(interval);
   }, [pollInterval]);
@@ -284,12 +295,20 @@ export function useSessionStats(pollInterval = 1000): SessionStats {
     const updateStats = () => {
       const total = sessionManager.getSessionCount();
       const streaming = sessionManager.getActiveStreamingSessions().length;
-      setStats({
-        total,
-        streaming,
-        idle: total - streaming,
-        maxSessions: sessionManager.getMaxSessions(),
-      });
+      const maxSessions = sessionManager.getMaxSessions();
+      // 数值未变化时保留旧对象引用，避免每次轮询都触发重渲染
+      setStats((prev) =>
+        prev.total === total &&
+        prev.streaming === streaming &&
+        prev.maxSessions === maxSessions
+          ? prev
+          : {
+              total,
+              streaming,
+              idle: total - streaming,
+              maxSessions,
+            }
+      );
     };
 
     updateStats();

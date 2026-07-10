@@ -87,7 +87,14 @@ const markdownSanitizeSchema = {
       'className',
       'class',
     ],
+    // 不确定性高亮（rendererUtils.makeUncertaintyHighlightPlugin）产出的 <mark>：
+    // 只放行受控 class 与 title（tooltip），不放行任意 style
+    mark: [
+      ['className', 'uncertainty-mark'],
+    ],
   },
+  // defaultSchema 不含 mark，缺了它整个高亮节点会被消毒器拆掉
+  tagNames: [...(defaultSchema.tagNames || []), 'mark'],
 };
 
 function getCachedPdfPageImage(resourceId: string, pageIndex: number): string | undefined {
@@ -256,7 +263,8 @@ const fixCjkAdjacentBoldSyntaxSafely = (content: string): string => {
 const preprocessContent = (content: string, isStreaming = false): string => {
   if (!content) return '';
 
-  let processedContent = content;
+  // 行尾统一为 \n，确保后续按行的正则在 CRLF 输入下行为一致
+  let processedContent = content.replace(/\r\n/g, '\n');
 
   // 流式期间自动闭合未配对的 markdown 标记（**bold / [link / `` ` `` 等）
   // 仅处理 markdown 半边，不动数学（$...$ / \begin{}），后者由 remark-math 优雅降级
@@ -313,9 +321,6 @@ const preprocessContent = (content: string, isStreaming = false): string => {
   // eslint-disable-next-line no-control-regex
   processedContent = processedContent.replace(/\x00MB(\d+)\x00/g, (_m, idx) => mathBlockPlaceholders[Number(idx)]);
 
-  // eslint-disable-next-line no-control-regex
-  processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
-
   // 专门处理 bmatrix 环境
   processedContent = processedContent.replace(/\\begin{bmatrix}(.*?)\\end{bmatrix}/gs, (match, matrixContent) => {
     // 移除每行末尾 \\ 之前和之后的空格
@@ -329,7 +334,6 @@ const preprocessContent = (content: string, isStreaming = false): string => {
 
   // 处理空行：将多个连续的空行减少为最多一个空行
   processedContent = processedContent
-    .replace(/\r\n/g, '\n')
     .replace(/[ \t]+$/gm, '')
     .replace(/^\s*\d+\.\s*$/gm, '')
     .replace(/(\d+\.\s*[^\n]*\n)\n+(?=\d+\.)/g, '$1\n')
@@ -338,6 +342,11 @@ const preprocessContent = (content: string, isStreaming = false): string => {
     .replace(/(\d+\.\s*[^\n]*)\n\n+(\d+\.\s*[^\n]*)/g, '$1\n$2')
     .replace(/^\n+/, '')
     .replace(/\n+$/, '');
+
+  // 代码块最后还原：确保上方的空行折叠 / 列表修补 / bmatrix 清理
+  // 不会改写代码块内部内容（否则复制按钮拿到的代码与原文不一致）
+  // eslint-disable-next-line no-control-regex
+  processedContent = processedContent.replace(/\x00CB(\d+)\x00/g, (_m, idx) => codeBlockPlaceholders[Number(idx)]);
 
   // 若存在未闭合的 ```，自动补一个结尾
   const fenceCount = (processedContent.match(/```/g) || []).length;
@@ -477,7 +486,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     if (style.textContent !== CITATION_PLACEHOLDER_STYLES) {
       style.textContent = CITATION_PLACEHOLDER_STYLES;
     }
-  }, [CITATION_PLACEHOLDER_STYLES]);
+  }, []);
 
   // 🆕 引用标记点击处理
   const handleCitationClick = useCallback((e: React.MouseEvent<HTMLElement>) => {
@@ -538,16 +547,19 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   const processedContent = useMemo(() => preprocessContent(content, isStreaming), [content, isStreaming]);
 
   useEffect(() => {
+    // 流式期间跳过：这是纯调试日志，热路径上每个 token 都做一次
+    // querySelectorAll 全树扫描会白白消耗主线程时间
+    if (isStreaming) return;
     const container = containerRef.current;
     if (!container) return;
     const pdfRefs = Array.from(container.querySelectorAll('[data-pdf-ref="true"]')) as HTMLElement[];
     if (pdfRefs.length > 0) {
-      console.log('[MarkdownRenderer] pdf-ref nodes found:', pdfRefs.length, pdfRefs.map((el) => ({
+      console.warn('[MarkdownRenderer] pdf-ref nodes found:', pdfRefs.length, pdfRefs.map((el) => ({
         sourceId: el.dataset.pdfSource,
         page: el.dataset.pdfPage,
       })));
     }
-  }, [processedContent]);
+  }, [processedContent, isStreaming]);
 
   const remarkPlugins = useMemo(() => {
     const base: any[] = [
@@ -609,12 +621,10 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         remarkPlugins={remarkPlugins}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
         components={{
-          h1: ({ children, ...props }: any) => <h1 {...props}>{children}</h1>,
-          h2: ({ children, ...props }: any) => <h2 {...props}>{children}</h2>,
-          h3: ({ children, ...props }: any) => <h3 {...props}>{children}</h3>,
-          h4: ({ children, ...props }: any) => <h4 {...props}>{children}</h4>,
-          h5: ({ children, ...props }: any) => <h5 {...props}>{children}</h5>,
-          h6: ({ children, ...props }: any) => <h6 {...props}>{children}</h6>,
+          // 注意：react-markdown v9+ 会把 HAST `node` 传给自定义组件，
+          // 自定义组件展开 {...props} 前必须先把 node 解构掉，
+          // 否则 node 对象会作为未知属性写到 DOM 上（React dev 警告 + 无效属性）。
+          // h1-h6 / blockquote / li / strong / em 等纯透传覆盖已移除，交给默认渲染。
           // @ts-expect-error - remark-math plugin provides math/inlineMath components not in react-markdown types
           math: ({ value }: { value?: string }) => renderMath(String(value ?? ''), true),
           inlineMath: ({ value }: { value?: string }) => renderMath(String(value ?? ''), false),
@@ -626,8 +636,9 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             const codeContent = String((codeElement as any)?.props?.children ?? '').replace(/\n$/, '');
 
             // 若 pre>code 被标记为 math 样式（如 "math math-display" 或 "math math-inline"），直接用 KaTeX 渲染
+            // (?![\w-]) 边界：避免 language-latex-src / language-mathml 之类前缀语言被误判为数学
             const cls = typeof className === 'string' ? className : '';
-            const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)/i.test(cls);
+            const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)(?![\w-])/i.test(cls);
             if (isMathLike) {
               const display = /math-display/i.test(cls) || (!/math-inline/i.test(cls));
               return renderMath(codeContent, display);
@@ -640,11 +651,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             );
           },
           // 自定义 code：区分内联与块级，但块级不再额外包裹一层 pre
-          code: ({ inline, className, children, ...props }: any) => {
+          code: ({ inline, className, children, node: _node, ...props }: any) => {
             const codeContent = String(children).replace(/\n$/, '');
             
             // 1) 明确标记为 math/latex 的代码块，强制转 KaTeX
-            const isMathBlock = typeof className === 'string' && /language-(math|latex)/i.test(className);
+            // (?![\w-]) 边界：language-mathematica 等真实语言不应被误转
+            const isMathBlock = typeof className === 'string' && /language-(math|latex)(?![\w-])/i.test(className);
             if (isMathBlock) {
               return renderMath(codeContent, inline === false);
             }
@@ -669,7 +681,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             <TableBlockShell>{children}</TableBlockShell>
           ),
           // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL
-          img: ({ src, alt, ...props }: any) => {
+          img: ({ src, alt, node: _node, ...props }: any) => {
             const finalSrc = resolveImageSrc(src);
             return (
               <img
@@ -684,7 +696,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               />
             );
           },
-          p: ({ children, ...props }: any) => {
+          p: ({ children, node: _node, ...props }: any) => {
             const childArray = React.Children.toArray(children);
             const hasMindmapCard = childArray.some((child) =>
               React.isValidElement(child) && child.type === MindmapCitationCard
@@ -694,11 +706,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             }
             return <p {...props}>{children}</p>;
           },
-          blockquote: ({ children, ...props }: any) => (
-            <blockquote {...props}>{children}</blockquote>
-          ),
-          li: ({ children, ...props }: any) => <li {...props}>{children}</li>,
-          span: ({ children, ...props }: any) => {
+          span: ({ children, node: _node, ...props }: any) => {
             // 处理思维导图引用 - 渲染完整的 ReactFlow 预览
             const isMindmapCitation = props['data-mindmap-citation'] === 'true';
             if (isMindmapCitation) {
@@ -794,7 +802,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             );
           },
           // 自定义链接处理，跨平台兼容
-          a: ({ href, children, ...props }: any) => {
+          a: ({ href, children, node: _node, ...props }: any) => {
             const handleClick = async (e: React.MouseEvent) => {
               e.preventDefault();
               if (!href) return;
@@ -819,8 +827,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               </a>
             );
           },
-          strong: ({ children, ...props }: any) => <strong {...props}>{children}</strong>,
-          em: ({ children, ...props }: any) => <em {...props}>{children}</em>,
         }}
       >
         {processedContent}

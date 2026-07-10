@@ -25,6 +25,7 @@ import {
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Input } from '@/components/ui/shad/Input';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 类型定义
@@ -49,7 +50,7 @@ interface InlineDocumentViewerProps {
 // 辅助 Hook：获取 .chat-v2 容器
 // ============================================================================
 
-function useChatV2Container() {
+function useChatV2Container(isOpen: boolean) {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [bounds, setBounds] = useState<DOMRect | null>(null);
 
@@ -88,6 +89,16 @@ function useChatV2Container() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ★ 每次打开时重新测量边界：布局可能在未触发 window resize 的情况下变化
+  // （如侧栏折叠/分栏调整），仅靠挂载时测量会用到过期位置
+  useEffect(() => {
+    if (!isOpen) return;
+    const chatContainer = document.querySelector('.chat-v2') as HTMLElement | null;
+    if (chatContainer) {
+      setBounds(chatContainer.getBoundingClientRect());
+    }
+  }, [isOpen]);
+
   return { container, bounds };
 }
 
@@ -107,14 +118,16 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   const title = titleProp || t('chatV2:documentViewer.defaultTitle');
 
   // 获取 modal 容器和 .chat-v2 边界用于定位
-  const { container, bounds } = useChatV2Container();
+  const { container, bounds } = useChatV2Container(isOpen);
 
   // 状态
   const [fontScale, setFontScale] = useState(1);
   const [wrap, setWrap] = useState(true);
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState('');
-  const contentRef = useRef<HTMLPreElement>(null);
+  // 指向滚动容器（overflow-auto 的 div），而非 <pre>：<pre> 本身不滚动，
+  // 对它设置 scrollTop 是无效操作，搜索定位会静默失效
+  const contentRef = useRef<HTMLDivElement>(null);
   const previewUrlsRef = useRef<Set<string>>(new Set());
 
   // Cleanup all created blob URLs on unmount
@@ -128,6 +141,17 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 在输入框（如工具栏搜索框）打字时，除 Escape 外不响应快捷键，
+      // 否则输入 +/-/0/= 会同时改变字号
+      const target = e.target as HTMLElement | null;
+      const isEditableTarget = !!target && (
+        target.tagName === 'INPUT'
+        || target.tagName === 'TEXTAREA'
+        || target.isContentEditable
+      );
+      if (isEditableTarget && e.key !== 'Escape') {
+        return;
+      }
       switch (e.key) {
         case 'Escape':
           onClose();
@@ -148,6 +172,17 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Android 系统返回键 = 关闭浮层（自绘 portal overlay，Radix Escape 兜底覆盖不到）
+  const backCloseRef = useRef(onClose);
+  backCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      backCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen]);
 
   // 复制全文
   const handleCopy = useCallback(async () => {
@@ -183,14 +218,10 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
     try {
       const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
       const previewUrl = URL.createObjectURL(blob);
+      // noopener 下 window.open 恒返回 null，无法监听新窗口关闭；
+      // 统一登记到 previewUrlsRef，由组件卸载时的清理 effect 释放
       previewUrlsRef.current.add(previewUrl);
-      const win = window.open(previewUrl, '_blank', 'noopener,noreferrer');
-      if (win) {
-        win.addEventListener('beforeunload', () => {
-          URL.revokeObjectURL(previewUrl);
-          previewUrlsRef.current.delete(previewUrl);
-        });
-      }
+      window.open(previewUrl, '_blank', 'noopener,noreferrer');
     } catch (e: unknown) {
       console.error('Preview failed:', e);
     }
@@ -246,8 +277,8 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
         }
       }}
     >
-      {/* 工具栏 */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-muted/50 border-b border-border flex-shrink-0">
+      {/* 工具栏（小屏空间不足时允许换行，避免横向溢出） */}
+      <div className="flex flex-wrap items-center justify-between gap-y-1.5 px-4 py-2.5 bg-muted/50 border-b border-border flex-shrink-0">
         {/* 左侧：标题 */}
         <div className="flex items-center gap-3">
           <span className="text-foreground font-medium text-sm truncate max-w-[200px]" title={title}>
@@ -304,9 +335,8 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
       </div>
 
       {/* 文档内容 */}
-      <div className="flex-1 overflow-auto p-4">
+      <div ref={contentRef} className="flex-1 overflow-auto p-4">
         <pre
-          ref={contentRef}
           className="text-foreground font-mono"
           style={{
             whiteSpace: wrap ? 'pre-wrap' : 'pre',

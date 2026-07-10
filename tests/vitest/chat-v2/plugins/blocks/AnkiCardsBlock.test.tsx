@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import type { Block } from '@/features/chat/core/types';
 import type { AnkiCardsBlockData } from '@/features/chat/plugins/blocks/ankiCardsBlock';
@@ -248,14 +248,8 @@ describe('AnkiCardsBlock', () => {
     expect(screen.queryByTestId('chatanki-progress')).not.toBeInTheDocument();
   });
 
-  it('should render editable fields from card.fields and persist field edits', () => {
+  it('should render editable fields from card.fields and persist field edits', async () => {
     const updateBlock = vi.fn();
-    const store = {
-      getState: () => ({
-        updateBlock,
-      }),
-    } as any;
-
     const block = createBlock({ status: 'success' });
     const data = createData({
       cards: [
@@ -273,8 +267,15 @@ describe('AnkiCardsBlock', () => {
         } as any,
       ],
     });
+    const blockWithOutput = { ...block, toolOutput: data };
+    const store = {
+      getState: () => ({
+        blocks: new Map([[block.id, blockWithOutput]]),
+        updateBlock,
+      }),
+    } as any;
 
-    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} store={store} />);
+    render(<AnkiCardsBlock block={blockWithOutput} store={store} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
     fireEvent.click(screen.getByText('{"Question":"旧问题","optiona":"A","optionb":"B","correct":"B"}'));
@@ -288,21 +289,120 @@ describe('AnkiCardsBlock', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'chatV2.saveEdit' }));
 
-    expect(updateBlock).toHaveBeenCalledWith(
-      'anki-block-1',
-      expect.objectContaining({
-        toolOutput: expect.objectContaining({
-          cards: [
-            expect.objectContaining({
-              fields: expect.objectContaining({
-                Question: '新问题',
-                optiona: 'A',
-                optionb: 'B',
+    await waitFor(() => {
+      expect(updateBlock).toHaveBeenCalledWith(
+        'anki-block-1',
+        expect.objectContaining({
+          toolOutput: expect.objectContaining({
+            cards: [
+              expect.objectContaining({
+                fields: expect.objectContaining({
+                  Question: '新问题',
+                  optiona: 'A',
+                  optionb: 'B',
+                }),
               }),
-            }),
-          ],
-        }),
-      })
+            ],
+          }),
+        })
+      );
+    });
+    expect(mockInvoke).toHaveBeenCalledWith('update_anki_card', expect.objectContaining({
+      card: expect.objectContaining({ id: 'card-1' }),
+    }));
+  });
+
+  it('should merge card edits from latest store cards so streaming new cards are not overwritten', async () => {
+    const updateBlock = vi.fn();
+    // Use success so action buttons are enabled; store still holds fresher streamed cards
+    // than the stale render closure (simulates race with concurrent store updates).
+    const block = createBlock({ status: 'success' });
+    const staleData = createData({
+      cards: [{ id: 'card-1', front: 'Q1', back: 'A1' } as any],
+    });
+    const fresherData = createData({
+      cards: [
+        { id: 'card-1', front: 'Q1', back: 'A1' } as any,
+        { id: 'card-2', front: 'Q2-streamed', back: 'A2-streamed' } as any,
+      ],
+      progress: { cardsGenerated: 2, stage: 'generating' } as any,
+    });
+
+    // Mutable store: render sees stale props/closure, but getState returns fresher cards
+    let storeBlock: Block = { ...block, toolOutput: staleData };
+    const store = {
+      getState: () => ({
+        blocks: new Map([[block.id, storeBlock]]),
+        updateBlock,
+      }),
+    } as any;
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: staleData }} store={store} />);
+
+    // Expand + enter edit on the only card visible from stale props
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByText('Q1'));
+
+    // Simulate streaming update landing in store while editor still holds stale closure
+    storeBlock = { ...block, toolOutput: fresherData };
+
+    fireEvent.change(screen.getByDisplayValue('Q1'), {
+      target: { value: 'Q1-edited' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'chatV2.saveEdit' }));
+
+    await waitFor(() => {
+      expect(updateBlock).toHaveBeenCalled();
+    });
+
+    const [, payload] = updateBlock.mock.calls[0];
+    expect(payload.toolOutput.cards).toHaveLength(2);
+    expect(payload.toolOutput.cards[0]).toEqual(
+      expect.objectContaining({ id: 'card-1', front: 'Q1-edited', back: 'A1' })
     );
+    expect(payload.toolOutput.cards[1]).toEqual(
+      expect.objectContaining({ id: 'card-2', front: 'Q2-streamed', back: 'A2-streamed' })
+    );
+    // Preserve non-card fields from latest store (not stale closure)
+    expect(payload.toolOutput.progress).toEqual(
+      expect.objectContaining({ cardsGenerated: 2, stage: 'generating' })
+    );
+    expect(mockInvoke).toHaveBeenCalledWith('update_anki_card', expect.any(Object));
+  });
+
+  it('should not update store projection when DB sync fails on card edit', async () => {
+    mockInvoke.mockImplementation(async (cmd: unknown) => {
+      if (cmd === 'update_anki_card') {
+        throw new Error('db unavailable');
+      }
+      return undefined;
+    });
+
+    const updateBlock = vi.fn();
+    const block = createBlock({ status: 'success' });
+    const data = createData({
+      cards: [{ id: 'card-1', front: 'Q1', back: 'A1' } as any],
+    });
+    const blockWithOutput = { ...block, toolOutput: data };
+    const store = {
+      getState: () => ({
+        blocks: new Map([[block.id, blockWithOutput]]),
+        updateBlock,
+      }),
+    } as any;
+
+    render(<AnkiCardsBlock block={blockWithOutput} store={store} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.click(screen.getByText('Q1'));
+    fireEvent.change(screen.getByDisplayValue('Q1'), {
+      target: { value: 'Q1-edited' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'chatV2.saveEdit' }));
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('update_anki_card', expect.any(Object));
+    });
+    expect(updateBlock).not.toHaveBeenCalled();
   });
 });

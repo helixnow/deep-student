@@ -6,12 +6,11 @@
  * - 用户记忆由独立的 memory_search 工具处理
  */
 
-import React, { useState, useEffect, useCallback, useId } from 'react';
+import React, { useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { Stack, X, Image } from '@phosphor-icons/react';
-import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -46,8 +45,6 @@ interface RagPanelProps {
 
 export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
   const { t } = useTranslation(['chat_host', 'common', 'chatV2']);
-  const mobileLayout = useMobileLayoutSafe();
-  const isMobile = mobileLayout?.isMobile ?? false;
 
   // 从 Store 获取状态
   const sessionStatus = useStore(store, (s) => s.sessionStatus);
@@ -59,67 +56,55 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
   })));
   const isStreaming = sessionStatus === 'streaming';
 
-  // 本地状态（简化：只保留检索参数配置）
-  const [ragTopK, setRagTopK] = useState(storeRagTopK ?? DEFAULT_RAG_TOPK);
-  const [enableReranking, setEnableReranking] = useState(storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING);
-  const [multimodalEnabled, setMultimodalEnabled] = useState(storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED);
+  // 直接读写 Store（与 AdvancedPanel 一致）。
+  // 旧实现用本地 state 镜像 + effect 回写，当 AdvancedPanel 等其他入口
+  // 修改同一参数时，本面板会把旧的本地值写回 Store，互相覆盖。
+  const ragTopK = storeRagTopK ?? DEFAULT_RAG_TOPK;
+  const enableReranking = storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING;
+  const multimodalEnabled = storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
 
   const ragTopKFieldId = useId();
   const ragControlsDisabled = isStreaming;
 
-  // 同步 ragTopK 到 Store
-  useEffect(() => {
-    if (ragTopK !== (storeRagTopK ?? DEFAULT_RAG_TOPK)) {
-      store.getState().setChatParams({ ragTopK });
-    }
-  }, [ragTopK, storeRagTopK, store]);
-
-  // 同步 enableReranking 到 Store
-  useEffect(() => {
-    if (enableReranking !== (storeRagEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING)) {
-      store.getState().setChatParams({ ragEnableReranking: enableReranking });
-    }
-  }, [enableReranking, storeRagEnableReranking, store]);
-
-  // 同步 multimodalEnabled 到 Store
-  useEffect(() => {
-    if (multimodalEnabled !== (storeMultimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED)) {
-      store.getState().setChatParams({ multimodalRagEnabled: multimodalEnabled });
-    }
-  }, [multimodalEnabled, storeMultimodalRagEnabled, store]);
+  const setRagTopK = useCallback(
+    (next: number) => {
+      store.getState().setChatParams({ ragTopK: next });
+    },
+    [store]
+  );
 
   // 重置 TopK
   const resetTopK = useCallback(() => {
     setRagTopK(DEFAULT_RAG_TOPK);
-  }, []);
+  }, [setRagTopK]);
 
   // 切换 Rerank
   const toggleReranking = useCallback(() => {
-    setEnableReranking((prev) => !prev);
-  }, []);
+    const current = store.getState().chatParams.ragEnableReranking ?? DEFAULT_RAG_ENABLE_RERANKING;
+    store.getState().setChatParams({ ragEnableReranking: !current });
+  }, [store]);
 
   // 切换多模态检索
   const toggleMultimodal = useCallback(() => {
-    setMultimodalEnabled((prev) => !prev);
-  }, []);
+    const current = store.getState().chatParams.multimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
+    store.getState().setChatParams({ multimodalRagEnabled: !current });
+  }, [store]);
 
   return (
     <div className="space-y-3">
-      {/* 面板头部 - 移动端隐藏 */}
-      {!isMobile && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Stack size={16} className="text-foreground shrink-0" />
-            <span className="text-sm text-foreground shrink-0">{t('analysis:input_bar.rag.title')}</span>
-            <span className="text-xs text-muted-foreground">
-              {t('chat_host:rag.panel.vfs_subtitle')}
-            </span>
-          </div>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
-            <X size={16} />
-          </NotionButton>
+      {/* 📱 面板头部移动端也渲染：提供可见关闭按钮（契约：面板须可见关闭 + 返回键）；副标题窄屏隐藏省宽 */}
+      <div className="flex items-center justify-between">
+        <div className="flex min-w-0 items-center gap-2">
+          <Stack size={16} className="text-foreground shrink-0" />
+          <span className="text-sm text-foreground shrink-0">{t('analysis:input_bar.rag.title')}</span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+            {t('chat_host:rag.panel.vfs_subtitle')}
+          </span>
         </div>
-      )}
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
+          <X size={16} />
+        </NotionButton>
+      </div>
 
       {/* 配置区域（简化：只保留检索参数） */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

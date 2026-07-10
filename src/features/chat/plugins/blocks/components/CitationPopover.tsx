@@ -5,7 +5,8 @@
  * 支持预览来源内容
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -90,19 +91,43 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
     [onClose]
   );
 
+  // Escape 关闭（仅打开时监听，卸载/关闭时清理）
+  const handleEscapeKey = useCallback((e: Event) => {
+    if ((e as KeyboardEvent).key === 'Escape') {
+      e.stopPropagation();
+      onClose();
+    }
+  }, [onClose]);
+  useEventRegistry(
+    isOpen ? [{ target: 'window', type: 'keydown', listener: handleEscapeKey }] : [],
+    [isOpen, handleEscapeKey]
+  );
+
+  // 计算弹出位置样式：将锚点限制在视口内，避免弹层溢出屏幕
+  // （宽度固定 w-80 = 320px；高度上限约 340px：头部 + max-h-48 内容 + 底部按钮）
+  const positionStyle: React.CSSProperties = useMemo(() => {
+    if (!position) return {};
+    const POPOVER_WIDTH = 320;
+    const POPOVER_MAX_HEIGHT = 340;
+    const MARGIN = 8;
+    const vw = typeof window !== 'undefined' ? window.innerWidth : POPOVER_WIDTH;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : POPOVER_MAX_HEIGHT;
+    // x 是弹层中心点（translateX(-50%)），钳制使左右边缘都留出 margin
+    const halfWidth = POPOVER_WIDTH / 2;
+    const x = Math.min(Math.max(position.x, halfWidth + MARGIN), Math.max(vw - halfWidth - MARGIN, halfWidth + MARGIN));
+    // y 是弹层顶部（向下偏移 8px），底部放不下时向上钳制
+    const y = Math.min(position.y, Math.max(vh - POPOVER_MAX_HEIGHT - MARGIN, MARGIN));
+    return {
+      position: 'fixed',
+      left: x,
+      top: y,
+      transform: 'translate(-50%, 8px)',
+    };
+  }, [position]);
+
   if (!isOpen) {
     return null;
   }
-
-  // 计算弹出位置样式
-  const positionStyle: React.CSSProperties = position
-    ? {
-        position: 'fixed',
-        left: position.x,
-        top: position.y,
-        transform: 'translate(-50%, 8px)',
-      }
-    : {};
 
   return (
     <>
@@ -122,7 +147,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
           'z-50 w-80 rounded-lg border shadow-lg',
           'bg-popover text-popover-foreground',
           'dark:bg-popover dark:border-border',
-          'animate-in fade-in-0 zoom-in-95',
+          'ui-zoom-fade-in',
           !position && 'relative',
           className
         )}

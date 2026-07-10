@@ -128,6 +128,26 @@ export function useSmoothWheel(
       rafId = requestAnimationFrame(tick);
     };
 
+    // 事件目标到 viewport 之间若存在还能朝滚动方向继续滚的嵌套滚动容器
+    // （思维链/来源面板、可滚动代码块等），滚轮应交给它原生消费；
+    // capture + preventDefault 拦截会让嵌套容器永远滚不动
+    const hasNestedScrollableTarget = (e: WheelEvent, viewport: HTMLElement): boolean => {
+      let node: Element | null = e.target instanceof Element ? e.target : null;
+      while (node && node !== viewport && node !== hostElement) {
+        if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight + 1) {
+          const { overflowY } = getComputedStyle(node);
+          if (overflowY === 'auto' || overflowY === 'scroll') {
+            const canScrollUp = e.deltaY < 0 && node.scrollTop > 0;
+            const canScrollDown =
+              e.deltaY > 0 && node.scrollTop + node.clientHeight < node.scrollHeight - 1;
+            if (canScrollUp || canScrollDown) return true;
+          }
+        }
+        node = node.parentElement;
+      }
+      return false;
+    };
+
     const onWheel = (e: WheelEvent) => {
       // 横滚不处理，让浏览器自己来
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
@@ -135,6 +155,10 @@ export function useSmoothWheel(
       if (!el) return;
       const max = el.scrollHeight - el.clientHeight;
       if (max <= 0) return;
+      if (hasNestedScrollableTarget(e, el)) return; // 嵌套滚动容器优先原生消费
+      // 向上滚意图必须在"触控板放行"之前上报：流式吸底期间若不第一时间
+      // 释放跟随，吸底 rAF 每帧写回底部，触控板的小步原生滚动永远逃不出去
+      if (e.deltaY < 0) optsRef.current.onUserScrollUp?.();
       if (!isMouseWheel(e)) return; // 触控板：放行原生
 
       // 边界放行（允许父级 overscroll / 软弹回）
@@ -157,7 +181,6 @@ export function useSmoothWheel(
       if (target < 0) target = 0;
       if (target > max) target = max;
 
-      if (e.deltaY < 0) optsRef.current.onUserScrollUp?.();
       if (!rafId) rafId = requestAnimationFrame(tick);
     };
 

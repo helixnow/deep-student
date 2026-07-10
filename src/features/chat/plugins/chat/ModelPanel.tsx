@@ -82,13 +82,18 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
 
   const isInitialLoad = useRef(true);
+  // 加载序号：配置变更事件可能在上一轮加载未完成时触发新一轮，
+  // 旧一轮的响应到达后直接丢弃，避免乱序覆盖新数据
+  const loadSeqRef = useRef(0);
   const loadModels = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     try {
       if (isInitialLoad.current) {
         setLoading(true);
         isInitialLoad.current = false;
       }
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
+      if (seq !== loadSeqRef.current) return;
       const chatModels = (configs || []).filter((c) => {
         const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
         const isReranker = c.isReranker === true || c.is_reranker === true;
@@ -99,6 +104,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
 
       try {
         const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
+        if (seq !== loadSeqRef.current) return;
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
@@ -117,21 +123,24 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         setVendorOrderMap(orderMap);
         setVendorNameMap(nameMap);
       } catch {
-        setVendorOrderMap(new Map());
-        setVendorNameMap(new Map());
+        if (seq === loadSeqRef.current) {
+          setVendorOrderMap(new Map());
+          setVendorNameMap(new Map());
+        }
       }
 
       try {
         const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
+        if (seq !== loadSeqRef.current) return;
         setDefaultModelId(assignments?.['model2_config_id'] || null);
       } catch {
-        setDefaultModelId(null);
+        if (seq === loadSeqRef.current) setDefaultModelId(null);
       }
     } catch (error: unknown) {
       console.error('[ModelPanel] Failed to load models:', error);
-      setModels([]);
+      if (seq === loadSeqRef.current) setModels([]);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, []);
 

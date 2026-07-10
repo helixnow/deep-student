@@ -166,6 +166,11 @@ export function useTauriAdapter(
       return;
     }
 
+    // 🔧 竞态修复：快速切换会话时，旧会话的异步初始化可能晚于新会话 effect 完成。
+    // 若不检查 sessionIdRef，过期的 getOrCreate 结果会把旧会话的 adapter 写入
+    // adapterRef 并覆盖新会话的 isReady/error 状态（后续 sendMessage 会发往旧会话）。
+    const isStale = () => !isMountedRef.current || sessionIdRef.current !== sessionId;
+
     // 📊 性能打点：开始追踪会话切换
     sessionSwitchPerf.startTrace(sessionId);
 
@@ -181,7 +186,7 @@ export function useTauriAdapter(
     const unsubscribeDataLoaded = storeApi.subscribe((state) => {
       const isDataLoaded = state.isDataLoaded;
       // 只在 isDataLoaded 从 false 变为 true 时触发
-      if (isDataLoaded && !prevIsDataLoaded && !hasSetReadyEarly && isMountedRef.current) {
+      if (isDataLoaded && !prevIsDataLoaded && !hasSetReadyEarly && !isStale()) {
         hasSetReadyEarly = true;
         sessionSwitchPerf.mark('cc_adapter_state', { state: 'data_loaded_early' });
         console.log(LOG_PREFIX, `Data loaded early for ${sessionId}, setting isReady`);
@@ -237,15 +242,15 @@ export function useTauriAdapter(
         });
       }
       
-      // 检查组件是否已卸载
-      if (!isMountedRef.current) {
-        console.log(LOG_PREFIX, 'Component unmounted during setup, releasing...');
-        adapterManager.release(sessionId);
+      // 🔧 竞态修复：组件已卸载或 sessionId 已切换时丢弃过期结果。
+      // 注意：不要在这里再次 release —— effect cleanup 已经为本次 getOrCreate
+      // 的引用计数调用过 release，重复调用会导致 refCount 双重递减。
+      if (isStale()) {
+        console.log(LOG_PREFIX, `Stale initialize result for ${sessionId}, discarding (unmounted or session switched)`);
         return;
       }
 
       adapterRef.current = entry.adapter;
-      sessionIdRef.current = sessionId;
 
       // 🚀 性能优化：如果已经提前设置了 isReady，跳过重复的 setState
       if (!hasSetReadyEarly && isMountedRef.current) {
@@ -266,8 +271,9 @@ export function useTauriAdapter(
       
       const errorMsg = getErrorMessage(err);
       console.error(LOG_PREFIX, 'Setup failed:', errorMsg);
-      
-      if (isMountedRef.current) {
+
+      // 🔧 竞态修复：过期错误不覆盖新会话的状态
+      if (!isStale()) {
         // 🚀 性能优化：单次 setState
         sessionSwitchPerf.mark('cc_adapter_state', { state: 'init_done' });
         setState({ isLoading: false, error: errorMsg, isReady: false });

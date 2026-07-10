@@ -105,6 +105,9 @@ pub mod block_types {
 
     // 🆕 用户提问块
     pub const ASK_USER: &str = "ask_user";
+
+    // ACR R1-01：工作台操作工具卡（前端 remap workbench_* → 此块类型）
+    pub const WORKBENCH_OPS: &str = "workbench_ops";
 }
 
 /// 块状态字符串常量（与前端 BlockStatus 完全对齐）
@@ -724,6 +727,8 @@ pub struct SkillStateSnapshot {
 pub struct ReplaySkillPayloadSnapshot {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub active_skill_ids: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_allowed_tools: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_contents: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
@@ -747,6 +752,7 @@ impl ReplaySkillPayloadSnapshot {
 
     pub fn has_replay_metadata(&self) -> bool {
         !self.active_skill_ids.is_empty()
+            || self.skill_allowed_tools.is_some()
             || !self.skill_dependencies.is_empty()
             || !self.skill_embedded_tools.is_empty()
             || !self.mcp_tool_schemas.is_empty()
@@ -2072,6 +2078,14 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_skill_ids: Option<Vec<String>>,
 
+    /// 当前启用 Skills 声明允许调用的工具 ID 列表。
+    ///
+    /// 当前端提供该字段时，后端必须在工具执行前 fail-closed：
+    /// 不在列表内的工具直接返回 blocked tool result，不进入审批或执行。
+    /// `disable_tool_whitelist` 仅作为显式兼容/调试逃生口。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_allowed_tools: Option<Vec<String>>,
+
     // ========== 🆕 渐进披露 Skills 内容 ==========
     /// 技能内容映射（skillId -> content）
     /// 前端发送时填充所有已注册技能的 content
@@ -2094,6 +2108,13 @@ pub struct SendOptions {
     /// 后端 load_skills 执行后从此字段获取工具 Schema 并动态追加到 tools 数组
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
+
+    /// 技能包根目录映射（skillId -> package root）
+    ///
+    /// 仅作为本地 runtime 解析 `skill:<skillId>` 只读 root 的候选；
+    /// 后端执行前仍会重新验证路径位于允许的 skills 目录且包含 SKILL.md。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_package_roots: Option<std::collections::HashMap<String, String>>,
 
     // ========== 🆕 消息内继续执行支持 ==========
     /// 标记这是继续执行（而非新消息）
@@ -2140,6 +2161,11 @@ pub struct LoadSessionResponse {
     /// 会话状态（可选）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub state: Option<SessionState>,
+
+    /// 会话的消息总数（尾部分块加载时用于判断是否还有更早的历史）
+    /// None 表示 messages 已是全量
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub total_message_count: Option<u32>,
 }
 
 /// 会话设置（用于更新会话）
@@ -2727,6 +2753,25 @@ mod tests {
     }
 
     #[test]
+    fn test_send_options_skill_allowed_tools_serde_contract() {
+        let options: SendOptions = serde_json::from_value(json!({
+            "activeSkillIds": ["skill-a"],
+            "skillAllowedTools": []
+        }))
+        .unwrap();
+
+        assert_eq!(options.active_skill_ids, Some(vec!["skill-a".to_string()]));
+        assert_eq!(options.skill_allowed_tools, Some(Vec::new()));
+
+        let json = serde_json::to_string(&options).unwrap();
+        assert!(
+            json.contains("\"skillAllowedTools\":[]"),
+            "Expected explicit empty skillAllowedTools to round-trip, got: {}",
+            json
+        );
+    }
+
+    #[test]
     fn test_block_id_generation() {
         let id1 = MessageBlock::generate_id();
         let id2 = MessageBlock::generate_id();
@@ -2882,6 +2927,7 @@ mod tests {
             messages: vec![message],
             blocks: vec![block],
             state: None,
+            total_message_count: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -3621,6 +3667,7 @@ mod tests {
     fn test_replay_skill_payload_snapshot_without_skill_contents_keeps_light_metadata() {
         let snapshot = ReplaySkillPayloadSnapshot {
             active_skill_ids: vec!["manual-a".to_string()],
+            skill_allowed_tools: Some(vec!["builtin-web_search".to_string()]),
             skill_contents: std::collections::HashMap::from([(
                 "manual-a".to_string(),
                 "private instructions".to_string(),
@@ -3636,6 +3683,10 @@ mod tests {
         assert!(redacted.skill_contents.is_empty());
         assert_eq!(redacted.active_skill_ids, vec!["manual-a".to_string()]);
         assert_eq!(
+            redacted.skill_allowed_tools,
+            Some(vec!["builtin-web_search".to_string()])
+        );
+        assert_eq!(
             redacted
                 .skill_dependencies
                 .get("manual-a")
@@ -3644,6 +3695,26 @@ mod tests {
             vec!["dep-a".to_string()]
         );
         assert!(redacted.has_replay_metadata());
+    }
+
+    #[test]
+    fn test_replay_skill_payload_snapshot_preserves_explicit_empty_policy() {
+        let runtime = ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["instruction-only".to_string()],
+            skill_allowed_tools: Some(Vec::new()),
+            ..Default::default()
+        };
+
+        assert!(runtime.has_replay_metadata());
+        let json = serde_json::to_string(&runtime).unwrap();
+        assert!(
+            json.contains("\"skillAllowedTools\":[]"),
+            "Expected explicit empty skillAllowedTools to be serialized, got: {}",
+            json
+        );
+
+        let decoded: ReplaySkillPayloadSnapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.skill_allowed_tools, Some(Vec::new()));
     }
 
     #[test]

@@ -130,6 +130,13 @@ export const InputBar: React.FC<InputBarProps> = ({
   // 键盘事件
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // 🔧 IME 修复：中文输入法合成期间的 Enter 是「确认候选词」，不能触发发送
+      // keyCode 229 兜底覆盖部分 Windows 输入法/旧 WebView 不上报 isComposing 的情况
+      const nativeEvent = e.nativeEvent as KeyboardEvent;
+      if (nativeEvent.isComposing || nativeEvent.keyCode === 229) {
+        return;
+      }
+
       // Ctrl/Cmd + Enter 发送
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();

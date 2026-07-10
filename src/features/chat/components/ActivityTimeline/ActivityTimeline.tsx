@@ -11,6 +11,7 @@
  */
 
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -427,7 +428,7 @@ function readAutoCollapseSetting(): boolean {
   return document.documentElement.getAttribute('data-auto-collapse-thinking') !== 'false';
 }
 
-const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
+const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
@@ -435,16 +436,16 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
 
   const [, forceRerender] = useReducer((x: number) => x + 1, 0);
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.settingKey === 'thinking.auto_collapse') {
-        forceRerender();
-      }
-    };
-    window.addEventListener('systemSettingsChanged', handler);
-    return () => window.removeEventListener('systemSettingsChanged', handler);
+  const handleSettingsChanged = useCallback((e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    if (detail?.settingKey === 'thinking.auto_collapse') {
+      forceRerender();
+    }
   }, []);
+  useEventRegistry(
+    [{ target: 'window', type: 'systemSettingsChanged', listener: handleSettingsChanged }],
+    [handleSettingsChanged]
+  );
 
   const liveDurationSeconds = useLiveDurationSeconds(
     node.block.startedAt,
@@ -644,6 +645,34 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
   );
 };
 
+/**
+ * 🚀 节点级 memo：时间线任一块更新都会重建全部 node 对象（blocksToTimelineNodes），
+ * 若不做比较，流式期间每个 chunk 会让所有节点全量重渲染。
+ * store 对块做不可变更新（只有变化的块换引用），因此按 block 引用 +
+ * 派生自会话级 isStreaming 的字段比较即可精确跳过未变化的节点。
+ */
+const ThinkingNodeContent = React.memo(
+  ThinkingNodeContentInner,
+  (prev, next) =>
+    prev.node.block === next.node.block &&
+    prev.node.isThinking === next.node.isThinking &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast
+);
+
+/** 参数值预览：截断长字符串；对象序列化加 try/catch（循环引用不崩）并截断超大 JSON */
+function formatParamPreview(value: unknown): string {
+  if (typeof value === 'string') {
+    return value.length > 50 ? value.slice(0, 50) + '...' : value;
+  }
+  try {
+    const json = JSON.stringify(value) ?? String(value);
+    return json.length > 200 ? json.slice(0, 200) + '...' : json;
+  } catch {
+    return String(value);
+  }
+}
+
 // ============================================================================
 // 🔧 L-016: 工具输出摘要组件
 // 改善通用工具输出的可读性，特别是含 items 数组的列表/搜索结果
@@ -775,7 +804,7 @@ interface ToolNodeContentProps {
   isStreaming?: boolean;
 }
 
-const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast, isStreaming = false }) => {
+const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast, isStreaming = false }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
@@ -942,9 +971,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
                             {key}:
                           </span>
                           <span className="text-muted-foreground truncate max-w-[200px]">
-                            {typeof value === 'string'
-                              ? (value.length > 50 ? value.slice(0, 50) + '...' : value)
-                              : JSON.stringify(value)}
+                            {formatParamPreview(value)}
                           </span>
                         </div>
                       ))}
@@ -982,6 +1009,16 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
   );
 };
 
+/** 🚀 节点级 memo（同 ThinkingNodeContent）：block 引用未变 + 流式态未变即跳过重渲染 */
+const ToolNodeContent = React.memo(
+  ToolNodeContentInner,
+  (prev, next) =>
+    prev.node.block === next.node.block &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast &&
+    prev.isStreaming === next.isStreaming
+);
+
 // ============================================================================
 // TodoList 聚合节点渲染组件
 // ============================================================================
@@ -997,9 +1034,9 @@ interface TodoListNodeContentProps {
  *
  * 🔧 P7: 默认折叠，折叠时显示本次变更的 diff
  */
-const TodoListNodeContent: React.FC<TodoListNodeContentProps> = ({ node, isFirst, isLast }) => {
+const TodoListNodeContentInner: React.FC<TodoListNodeContentProps> = ({ node, isFirst, isLast }) => {
   const steps = node.todoSteps || [];
-  
+
   if (steps.length === 0) {
     return null;
   }
@@ -1026,6 +1063,15 @@ const TodoListNodeContent: React.FC<TodoListNodeContentProps> = ({ node, isFirst
   );
 };
 
+/** 🚀 节点级 memo（同 ThinkingNodeContent） */
+const TodoListNodeContent = React.memo(
+  TodoListNodeContentInner,
+  (prev, next) =>
+    prev.node.block === next.node.block &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast
+);
+
 // ============================================================================
 // 工具限制节点渲染组件
 // ============================================================================
@@ -1038,7 +1084,7 @@ interface ToolLimitNodeContentProps {
   onContinue?: () => void;
 }
 
-const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFirst, isLast, onContinue }) => {
+const ToolLimitNodeContentInner: React.FC<ToolLimitNodeContentProps> = ({ isFirst, isLast, onContinue }) => {
   const { t } = useTranslation('chatV2');
   // 🔧 竞态修复：添加本地防抖，防止 invoke 返回后、stream_start 到达前的窗口期重复点击
   const [isContinuing, setIsContinuing] = useState(false);
@@ -1089,13 +1135,24 @@ const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFir
             ) : (
               <CaretRight size={14} className="flex-shrink-0" />
             )}
-            <span>{isContinuing ? t('timeline.limit.continuing', '继续中...') : t('timeline.limit.continue')}</span>
+            {/* 复用已存在的 tool_limit.continuing key（timeline.limit 下无此 key，避免英文环境回退中文） */}
+            <span>{isContinuing ? t('tool_limit.continuing', '继续中...') : t('timeline.limit.continue')}</span>
           </NotionButton>
         )}
       </div>
     </TimelineNode>
   );
 };
+
+/** 🚀 节点级 memo（同 ThinkingNodeContent）；额外比较 onContinue 回调 */
+const ToolLimitNodeContent = React.memo(
+  ToolLimitNodeContentInner,
+  (prev, next) =>
+    prev.node.block === next.node.block &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast &&
+    prev.onContinue === next.onContinue
+);
 
 // ============================================================================
 // 主组件

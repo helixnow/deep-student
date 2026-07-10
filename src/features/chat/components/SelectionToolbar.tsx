@@ -8,7 +8,7 @@
  * 定位：Portal 渲染到 body，基于选区 rect 定位。
  */
 
-import React, { useCallback, useState, useEffect, useRef } from 'react';
+import React, { useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Check, Sparkle, Translate, ChatDots } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -62,13 +62,13 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   selectionRect,
   isVisible,
   onClear,
-  onSendMessage,
   onExplain,
   onTranslate,
   onAddToChat,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   // C-8: 触屏上默认放选区下方（避开系统选择气泡），并放大触控目标
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
@@ -78,8 +78,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     flipped: false,
   });
 
-  // 计算工具栏位置
-  useEffect(() => {
+  // 计算工具栏位置（useLayoutEffect：在绘制前定位，避免首帧闪现在视口左上角）
+  useLayoutEffect(() => {
     if (!selectionRect || !isVisible) return;
 
     const toolbarWidth = toolbarRef.current?.offsetWidth || 200;
@@ -107,6 +107,12 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
       }
     }
 
+    // 极端情况（选区几乎占满视口）翻转后仍可能越界，最终钳制回视口内
+    top = Math.max(
+      VIEWPORT_PADDING,
+      Math.min(top, window.innerHeight - toolbarHeight - VIEWPORT_PADDING)
+    );
+
     // 水平居中于选区
     let left = selectionRect.left + selectionRect.width / 2 - toolbarWidth / 2;
 
@@ -131,8 +137,26 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     e.stopPropagation();
     await copyTextToClipboard(selectedText);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    if (copiedTimerRef.current !== null) {
+      window.clearTimeout(copiedTimerRef.current);
+    }
+    copiedTimerRef.current = window.setTimeout(() => {
+      copiedTimerRef.current = null;
+      setCopied(false);
+    }, 1500);
   }, [selectedText]);
+
+  // 选中内容变化时重置"已复制"状态；卸载时清理定时器
+  useEffect(() => {
+    setCopied(false);
+  }, [selectedText]);
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
 
   // AI 解释
   const handleExplain = useCallback((e: React.MouseEvent) => {
@@ -179,6 +203,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
         <motion.div
           ref={toolbarRef}
           data-selection-toolbar
+          role="toolbar"
+          aria-label={t('selectionToolbar.ariaLabel', '选中文本操作')}
           variants={motionVariants}
           initial="initial"
           animate="animate"

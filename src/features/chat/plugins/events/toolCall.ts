@@ -33,6 +33,11 @@ import {
   trackStart,
   trackEnd,
 } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+// ACR R2-05: 与恢复路径共用 workbench_* 判定
+import {
+  isWorkbenchOpsToolName,
+  stripToolNamePrefix,
+} from '@/features/chat/utils/workbenchBlockRemap';
 
 // ============================================================================
 // 辅助函数
@@ -133,13 +138,22 @@ const toolCallEventHandler: EventHandler = {
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
     // 这样 SleepBlockComponent 才能渲染，展示嵌入的子代理 ChatContainer
-    const strippedToolName = (toolName || '')
-      .replace('builtin-', '')
-      .replace('mcp.tools.', '')
-      .replace(/^.*\./, '');
+    // 🆕 subagent_call 创建 subagent_embed 块，与后端历史加载映射（context.rs
+    // get_block_type_for_tool_static）保持一致，使嵌入卡片在实时流式时也能出现
+    const strippedToolName = stripToolNamePrefix(toolName);
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
-    const blockType = isSleepTool ? 'sleep' : isAskUserTool ? 'ask_user' : 'mcp_tool';
+    const isSubagentCallTool = strippedToolName === 'subagent_call';
+    // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops（撤销入口）
+    const blockType = isSleepTool
+      ? 'sleep'
+      : isAskUserTool
+        ? 'ask_user'
+        : isSubagentCallTool
+          ? 'subagent_embed'
+          : isWorkbenchOpsToolName(toolName)
+            ? 'workbench_ops'
+            : 'mcp_tool';
 
     // 🆕 2026-01-16: 尝试复用已存在的 preparing 块
     let preparingBlockId: string | undefined;
@@ -172,9 +186,10 @@ const toolCallEventHandler: EventHandler = {
       }
     } else if (preparingBlockId) {
       // 情况 2: 有 preparing 块 + 无后端 block_id，直接复用
-      // 🆕 2026-01-21: 如果是 sleep 工具，需要更新块类型
-      if (isSleepTool) {
-        store.updateBlock(preparingBlockId, { type: 'sleep' } as any);
+      // 🆕 2026-01-21: 如果 preparing 块类型与目标块类型不一致（sleep/subagent_embed 等），更新块类型
+      const preparingBlock = store.blocks.get(preparingBlockId);
+      if (preparingBlock && preparingBlock.type !== blockType) {
+        store.updateBlock(preparingBlockId, { type: blockType } as any);
       }
       blockId = preparingBlockId;
     } else if (backendBlockId) {
@@ -187,6 +202,8 @@ const toolCallEventHandler: EventHandler = {
       blockId = store.createBlock(messageId, blockType);
     }
 
+    // ACR R2-05：桥 runId 现为 block_id；workbench 卡把 toolCallId 与 block.id 都保留，
+    // 撤销经 resolveWorkbenchRunId(hasRun) 选账本实际键。流式仍写 LLM toolCallId。
     // 设置完整的工具信息，清空 preparing 阶段积累的 args 预览 content
     store.updateBlock(blockId, {
       toolName,
@@ -864,13 +881,21 @@ const toolCallPreparingEventHandler: EventHandler = {
     if (toolCallId) trackPreparing(toolCallId, toolName);
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
-    const strippedToolName = (toolName || '')
-      .replace('builtin-', '')
-      .replace('mcp.tools.', '')
-      .replace(/^.*\./, '');
+    // 🆕 subagent_call 创建 subagent_embed 块（与实时/历史两条路径的块类型保持一致）
+    const strippedToolName = stripToolNamePrefix(toolName);
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
-    const blockType = isSleepTool ? 'sleep' : isAskUserTool ? 'ask_user' : 'mcp_tool';
+    const isSubagentCallTool = strippedToolName === 'subagent_call';
+    // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops
+    const blockType = isSleepTool
+      ? 'sleep'
+      : isAskUserTool
+        ? 'ask_user'
+        : isSubagentCallTool
+          ? 'subagent_embed'
+          : isWorkbenchOpsToolName(toolName)
+            ? 'workbench_ops'
+            : 'mcp_tool';
 
     // 创建预渲染的工具块（使用后端 block_id 或前端生成）
     const blockId = backendBlockId

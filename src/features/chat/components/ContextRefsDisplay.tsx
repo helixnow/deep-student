@@ -22,21 +22,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';  // 用于 ContextRefItem 获取 locale
-import {
-  FileText,
-  ClipboardText,
-  Image,
-  Paperclip,
-  MagnifyingGlass,
-  FileXls,
-  BookOpen,
-  File,
-  PenNib,
-  Translate,
-  ArrowsOut,
-  CircleNotch,
-} from '@phosphor-icons/react';
-import type { Icon } from '@phosphor-icons/react';
+import { ArrowsOut, CircleNotch } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { contextTypeRegistry } from '../context';
 import type { ContextRef, ContextSnapshot } from '../context/types';
@@ -114,21 +100,11 @@ function isRichDocument(mimeType: string, fileName: string): boolean {
  * 通过 CHAT_OPEN_ATTACHMENT_PREVIEW 事件触发
  */
 function openInChatPanel(file: FilePreview): void {
-  // 推断资源类型
-  const resourceType = 'file'; // 附件统一使用 file 类型
-  
-  console.log('[ContextRefsDisplay] openInChatPanel:', {
-    sourceId: file.sourceId,
-    fileName: file.name,
-    mimeType: file.mimeType,
-    resourceType,
-  });
-  
-  // 发送事件让 ChatV2Page 在右侧面板打开附件
+  // 发送事件让 ChatV2Page 在右侧面板打开附件（附件统一使用 file 类型）
   window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
     detail: {
       id: file.sourceId,
-      type: resourceType,
+      type: 'file',
       title: file.name,
     }
   }));

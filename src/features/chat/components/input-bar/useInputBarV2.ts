@@ -60,6 +60,9 @@ export function useInputBarV2(
   // 使用 ref 保持回调的最新引用，避免闭包陈旧问题
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  // 发送重入保护：sendMessage 在真正落库/入队前有多个 await（readiness、模型能力查询），
+  // 期间快速连按 Enter / 连点发送会并发进入，队列模式下会把同一内容重复入队
+  const sendInFlightRef = useRef(false);
   // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较
   const {
     inputValue,
@@ -108,6 +111,17 @@ export function useInputBarV2(
 
   // 发送消息
   const sendMessage = useCallback(async () => {
+    if (sendInFlightRef.current) {
+      return;
+    }
+    sendInFlightRef.current = true;
+    try {
+      await sendMessageInner();
+    } finally {
+      sendInFlightRef.current = false;
+    }
+
+    async function sendMessageInner() {
     // 🆕 维护模式检查：阻止发送消息
     if (useSystemStatusStore.getState().maintenanceMode) {
       showGlobalNotification('warning', i18n.t('common:maintenance.blocked_chat_send', '维护模式下无法发送消息，请稍后再试。'));
@@ -410,6 +424,7 @@ export function useInputBarV2(
     } catch (error: unknown) {
       console.error('[useInputBarV2] Send message failed:', error);
       throw error;
+    }
     }
   }, [store, queueEnabled]);
 

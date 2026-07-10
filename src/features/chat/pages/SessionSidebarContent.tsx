@@ -1,12 +1,27 @@
 import React from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Archive,
   CaretRight,
   ChatCenteredText,
+  CircleNotch,
+  DotsThree,
   Folder,
+  Gear,
+  PencilSimple,
   Plus,
+  SquaresFour,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuGroup,
+  AppMenuItem,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   mobileDrawerNavRowClassName,
@@ -24,12 +39,36 @@ import type { ChatSession } from '../types/session';
 import type { CurrentView } from '@/types/navigation';
 import type { TFunction } from 'i18next';
 
+const EXPANDED_FOLDERS_STORAGE_KEY = 'chat-v2-sidebar-expanded-folders';
+
+function readPersistedExpandedFolders(): Set<string> {
+  try {
+    const raw = localStorage.getItem(EXPANDED_FOLDERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.filter((id): id is string => typeof id === 'string'));
+      }
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return new Set();
+}
+
 export interface UseSessionSidebarContentDeps {
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  viewMode: 'sidebar' | 'browser';
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setPendingDeleteSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  /** 可编辑（active）分组 ID 集合：仅这些分组显示重命名/编辑/归档菜单 */
+  editableGroupIds: Set<string>;
+  onCreateGroup: () => void;
+  onRenameGroup: (group: SessionGroup) => void;
+  onEditGroup: (group: SessionGroup) => void;
+  onArchiveGroup: (group: SessionGroup) => void;
   isInitialLoading: boolean;
   sessions: ChatSession[];
   visibleGroups: SessionGroup[];
@@ -51,8 +90,9 @@ export interface UseSessionSidebarContentDeps {
 
 export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const {
-    searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
+    searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
     setPendingDeleteSessionId,
+    editableGroupIds, onCreateGroup, onRenameGroup, onEditGroup, onArchiveGroup,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
@@ -65,13 +105,30 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   void setSearchQuery;
   void setPendingDeleteSessionId;
   void totalSessionCount;
-  void hasMoreSessions;
-  void isLoadingMore;
   void pendingDeleteSessionId;
   void resetDeleteConfirmation;
   void clearDeleteConfirmTimeout;
   void deleteConfirmTimeoutRef;
-  void loadMoreSessions;
+
+  const prefersReducedMotion = useReducedMotion();
+
+  // 会话行进出场（transitions-dev 观感）：新建 fade+4px 上升，删除/归档 fade+轻缩，
+  // 兄弟行经 layout 平滑补位；列表首挂载不动画（AnimatePresence initial={false}）
+  const renderAnimatedSessionRow = React.useCallback(
+    (session: ChatSession) => (
+      <motion.div
+        key={session.id}
+        layout={prefersReducedMotion ? false : 'position'}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {renderSessionItem(session)}
+      </motion.div>
+    ),
+    [prefersReducedMotion, renderSessionItem]
+  );
 
   const sortedSessions = React.useMemo(
     () => [...sessions].sort(compareSessionsForSidebar),
@@ -88,7 +145,16 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     [currentSessionId, sessions]
   );
 
-  const [expandedGroupIds, setExpandedGroupIds] = React.useState<Set<string>>(() => new Set());
+  // 展开状态持久化：避免每次进入页面都回到"全部折叠"
+  const [expandedGroupIds, setExpandedGroupIds] = React.useState<Set<string>>(readPersistedExpandedFolders);
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(EXPANDED_FOLDERS_STORAGE_KEY, JSON.stringify([...expandedGroupIds]));
+    } catch {
+      // ignore storage errors
+    }
+  }, [expandedGroupIds]);
 
   React.useEffect(() => {
     setExpandedGroupIds((current) => {
@@ -114,6 +180,24 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     void createSession();
   }, [createSession, setSessionSheetOpen, setViewMode]);
 
+  // 移动端进入会话浏览视图（中屏整屏切换，顶栏切为返回箭头）
+  const handleOpenBrowser = React.useCallback(() => {
+    setViewMode('browser');
+    setSessionSheetOpen(false);
+  }, [setSessionSheetOpen, setViewMode]);
+
+  const handleCreateSessionInFolder = React.useCallback((folderId: string) => {
+    setViewMode('sidebar');
+    setSessionSheetOpen(false);
+    setExpandedGroupIds((current) => {
+      if (current.has(folderId)) return current;
+      const next = new Set(current);
+      next.add(folderId);
+      return next;
+    });
+    void createSession(folderId === 'ungrouped' ? undefined : folderId);
+  }, [createSession, setSessionSheetOpen, setViewMode]);
+
   const toggleGroup = React.useCallback((groupId: string) => {
     setExpandedGroupIds((current) => {
       const next = new Set(current);
@@ -127,7 +211,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   }, []);
 
   const renderPrimaryItem = (
-    id: CurrentView | 'new-chat',
+    id: CurrentView | 'new-chat' | 'session-browser',
     label: string,
     Icon: React.ElementType,
     active: boolean,
@@ -181,24 +265,40 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     sessionsForFolder: ChatSession[],
     active: boolean,
     unified = false,
+    trailing?: React.ReactNode,
+    group?: SessionGroup,
   ) => {
     const isExpanded = expandedGroupIds.has(id);
     const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session));
+    const createSessionLabel = id === 'ungrouped'
+      ? t('page.newSession', '新建会话')
+      : t('page.newSessionInGroup', { groupName: label, defaultValue: '在 {{groupName}} 中新建会话' });
+    // 触屏无 hover：常显「…」菜单承载分组的新建会话/重命名/编辑/归档（与桌面 ModernSidebar 分组操作对齐）
+    const hasGroupMenu = !!group && editableGroupIds.has(group.id);
 
     return (
       <section key={id} className="space-y-0.5">
-        <button
-          type="button"
+        <div className="relative">
+        <div
+          role="button"
+          tabIndex={0}
           aria-expanded={isExpanded}
           onClick={() => toggleGroup(id)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              toggleGroup(id);
+            }
+          }}
           className={
             unified
-              ? mobileDrawerThreadRowClassName(active, 'group gap-2.5')
+              ? mobileDrawerThreadRowClassName(active, cn('group gap-2.5', hasGroupMenu && '!pr-11'))
               : cn(
-                  'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit',
+                  'group inline-flex min-h-[2.75rem] w-full min-w-0 shrink-0 cursor-pointer appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1.5 text-left text-[16px] font-normal leading-none outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring select-none [&_svg]:shrink-0 [&_svg]:text-inherit',
                   active
                     ? 'bg-[color:var(--interactive-selected)] text-[color:var(--sidebar-foreground)]'
                     : 'text-[color:var(--sidebar-foreground)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)]',
+                  hasGroupMenu && 'pr-11',
                 )
           }
         >
@@ -208,31 +308,92 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
             <span className={unified ? mobileDrawerRowTitleClassName : 'truncate'}>{label}</span>
             <span className="flex items-center gap-1.5 text-[color:var(--sidebar-muted)]">
-              <span
-                aria-hidden="true"
-                className="flex items-center opacity-0 transition-opacity duration-150 ease-out group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none"
-              >
-                <Plus size={12} />
+              <span className="flex items-center opacity-0 transition-opacity duration-150 ease-out focus-within:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 motion-reduce:transition-none">
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  className="!h-5 !w-5 !p-0"
+                  aria-label={createSessionLabel}
+                  title={createSessionLabel}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleCreateSessionInFolder(id);
+                  }}
+                >
+                  <Plus size={12} />
+                </NotionButton>
               </span>
               <CaretRight
                 size={12}
                 className={cn(
-                  'shrink-0 transition-transform duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+                  'pointer-events-none shrink-0 transition-transform duration-150 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
                   isExpanded && 'rotate-90'
                 )}
               />
             </span>
           </span>
-        </button>
+        </div>
+        {hasGroupMenu && group && (
+          <div className="absolute right-0.5 top-1/2 -translate-y-1/2 flex items-center">
+            <AppMenu>
+              <AppMenuTrigger asChild>
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  className="!h-11 !w-11"
+                  aria-label={t('page.groupActions', '分组操作')}
+                  title={t('page.groupActions', '分组操作')}
+                >
+                  <DotsThree size={18} className="text-muted-foreground/80" />
+                </NotionButton>
+              </AppMenuTrigger>
+              <AppMenuContent align="end" width={200}>
+                <AppMenuGroup>
+                  <AppMenuItem
+                    icon={<Plus size={16} />}
+                    onClick={() => handleCreateSessionInFolder(group.id)}
+                  >
+                    {t('page.newSession', '新建会话')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<PencilSimple size={16} />}
+                    onClick={() => onRenameGroup(group)}
+                  >
+                    {t('page.renameGroup', '重命名分组')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<Gear size={16} />}
+                    onClick={() => onEditGroup(group)}
+                  >
+                    {t('page.editGroup', '编辑分组')}
+                  </AppMenuItem>
+                  <AppMenuSeparator />
+                  <AppMenuItem
+                    icon={<Archive size={16} />}
+                    onClick={() => onArchiveGroup(group)}
+                  >
+                    {t('page.archiveGroup', '归档分组')}
+                  </AppMenuItem>
+                </AppMenuGroup>
+              </AppMenuContent>
+            </AppMenu>
+          </div>
+        )}
+        </div>
 
         <div
           className={cn(
-            'grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+            'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--panel-ease)]',
             isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           )}
         >
           <div className={cn('space-y-0.5 overflow-hidden pl-4', !isExpanded && 'pointer-events-none')}>
-            {nonPinnedSessions.map((session) => renderSessionItem(session))}
+            <AnimatePresence initial={false} mode="popLayout">
+              {nonPinnedSessions.map(renderAnimatedSessionRow)}
+            </AnimatePresence>
+            {trailing}
           </div>
         </div>
       </section>
@@ -254,13 +415,30 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
         {pinnedSessions.length > 0 && (
           <section className="space-y-0.5">
             <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions', '置顶会话')}>
-              {pinnedSessions.map((session) => renderSessionItem(session))}
+              <AnimatePresence initial={false} mode="popLayout">
+                {pinnedSessions.map(renderAnimatedSessionRow)}
+              </AnimatePresence>
             </div>
           </section>
         )}
 
         <section className="space-y-0.5" aria-label={t('page.studySessions', '课题')}>
-          {renderSectionLabel(t('page.studySessions', '课题'), unified)}
+          <div className="flex items-center justify-between gap-2 pr-0.5">
+            <div className="min-w-0 flex-1">
+              {renderSectionLabel(t('page.studySessions', '课题'), unified)}
+            </div>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={onCreateGroup}
+              aria-label={t('page.createGroup', '新建分组')}
+              title={t('page.createGroup', '新建分组')}
+              className="!h-11 !w-11 -my-2.5 shrink-0 text-muted-foreground/80"
+            >
+              <Plus size={15} />
+            </NotionButton>
+          </div>
           <div className="space-y-0.5">
             {visibleGroups.length > 0 ? (
               visibleGroups.map((group) =>
@@ -270,6 +448,8 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                   sessionsByGroup.get(group.id) ?? [],
                   activeGroupId === group.id,
                   unified,
+                  undefined,
+                  group,
                 )
               )
             ) : (
@@ -290,6 +470,18 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 ungroupedNonPinned,
                 activeGroupId === 'ungrouped',
                 unified,
+                hasMoreSessions ? (
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { void loadMoreSessions(); }}
+                    disabled={isLoadingMore}
+                    className="w-full justify-start gap-2 rounded-2xl px-3 text-[13px] font-normal text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+                  >
+                    {isLoadingMore && <CircleNotch size={14} className="animate-spin" aria-hidden="true" />}
+                    <span>{t('page.loadMore', '加载更多')}</span>
+                  </NotionButton>
+                ) : undefined,
               )}
             </div>
           </section>
@@ -325,6 +517,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       )}
       <nav aria-label={t('page.primaryNavigation', '主入口')} className="space-y-0.5">
         {renderPrimaryItem('new-chat', t('page.newChat', '新对话'), ChatCenteredText, !currentSessionId, handleCreateSession, unified)}
+        {renderPrimaryItem('session-browser', t('browser.allSessions', '所有对话'), SquaresFour, viewMode === 'browser', handleOpenBrowser, unified)}
       </nav>
       {renderStudySidebarContent(unified)}
     </div>

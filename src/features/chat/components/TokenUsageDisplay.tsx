@@ -34,9 +34,6 @@ export interface TokenUsageDisplayProps {
  * 格式化 token 数量（超过 1000 显示 K）
  */
 export function formatTokenCount(count: number): string {
-  if (count >= 10000) {
-    return `${(count / 1000).toFixed(1)}K`;
-  }
   if (count >= 1000) {
     return `${(count / 1000).toFixed(1)}K`;
   }

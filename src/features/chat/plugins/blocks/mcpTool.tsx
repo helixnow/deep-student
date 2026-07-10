@@ -18,21 +18,18 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  CircleNotch,
-  CheckCircle,
   WarningCircle,
   ArrowCounterClockwise,
   Wrench,
   CaretDown,
   CaretRight,
-  Clock,
   ArrowSquareOut,
   FileText,
   FileXls,
   Eye,
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
-import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './components';
+import { ToolInputView, ToolOutputView, ShellOutputView, isTemplateVisualOutput } from './components';
 import { CompletionCard } from '../../components/CompletionCard';
 import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
@@ -46,6 +43,10 @@ import {
   isTemplateDesignerToolName,
   normalizeToolName,
 } from '@/features/chat/debug/templateDesignerDebug';
+import {
+  isRuntimeRootBlockedError,
+  openToolPermissionSettings,
+} from '@/features/chat/utils/runtimeRootNavigation';
 
 // ============================================================================
 // 类型定义
@@ -101,8 +102,6 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
     error: 'text-destructive',
   }[status] || 'text-muted-foreground';
 
-  const isAnimating = status === 'running' || isStreaming;
-
   return (
     <div
       className={cn(
@@ -149,15 +148,9 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
           </span>
         )}
 
-        {/* 状态图标 */}
+        {/* 状态图标（仅错误状态显示，不做旋转动画） */}
         {StatusIcon && (
-          <StatusIcon
-            className={cn(
-              'w-4 h-4',
-              statusColor,
-              isAnimating && 'animate-spin'
-            )}
-          />
+          <StatusIcon className={cn('w-4 h-4', statusColor)} />
         )}
       </div>
     </div>
@@ -172,9 +165,18 @@ interface ToolProgressProps {
   content?: string;
 }
 
+/** 流式输出展开时最多渲染的尾部字符数（长任务 stdout 可能非常大，只看最新内容） */
+const PROGRESS_STREAM_MAX_DISPLAY = 8192;
+
 const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const displayContent = useMemo(() => {
+    if (!content) return '';
+    if (content.length <= PROGRESS_STREAM_MAX_DISPLAY) return content;
+    return '...' + content.slice(-PROGRESS_STREAM_MAX_DISPLAY);
+  }, [content]);
 
   return (
     <div className="px-3 py-2 border-b border-border/20">
@@ -187,7 +189,12 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
       {/* 流式输出（如 stdout） */}
       {content && (
         <div className="mt-2">
-          <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(!isExpanded)}
+            aria-expanded={isExpanded}
+          >
             {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
             <span>{t('blocks.mcpTool.streamingOutput')}</span>
           </NotionButton>
@@ -201,7 +208,7 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
                 'whitespace-pre-wrap break-words'
               )}
             >
-              {content}
+              {displayContent}
             </pre>
           )}
         </div>
@@ -244,7 +251,13 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
           )}
         </div>
         {charCount > 0 && (
-          <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpanded(!isExpanded)}
+            aria-expanded={isExpanded}
+            aria-label={t('blocks.mcpTool.streamingOutput')}
+          >
             {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
           </NotionButton>
         )}
@@ -288,6 +301,8 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
   const retryDisabledText = retryDisabledReason
     ? t('blocks.mcpTool.retryDisabled', { reason: retryDisabledReason })
     : '';
+  // Runtime root 授权类拦截：附带「去授权」入口，避免用户自己在设置里找
+  const isRuntimeBlocked = useMemo(() => isRuntimeRootBlockedError(error), [error]);
 
   return (
     <div className="p-3">
@@ -307,6 +322,17 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
             <div className="mt-1 text-xs text-destructive/80 break-words">
               {localizedError}
             </div>
+            {isRuntimeBlocked && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                onClick={openToolPermissionSettings}
+                className="mt-1.5 !h-auto !px-1.5 !py-0.5 text-[11px] text-primary hover:underline"
+              >
+                <ArrowSquareOut size={11} />
+                {t('blocks.mcpTool.openRuntimeSettings', { defaultValue: '去授权运行目录' })}
+              </NotionButton>
+            )}
           </div>
         </div>
       </div>
@@ -344,6 +370,9 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
  */
 const ATTEMPT_COMPLETION_TOOL = 'attempt_completion';
 
+/** 稳定的空输入对象：避免每次渲染生成新 {} 导致依赖它的 effect/memo 失效 */
+const EMPTY_TOOL_INPUT: Record<string, unknown> = Object.freeze({});
+
 /**
  * TodoList 工具名常量（永续执行 Agent）
  * 支持 builtin- 前缀和无前缀两种格式
@@ -364,6 +393,16 @@ function isPaperSaveTool(name: string): boolean {
     .replace(/^mcp\.tools\./, '')
     .replace(/^.*\./, '');
   return stripped === 'paper_save';
+}
+
+/** 本地 shell 执行工具（使用专用 stdout/stderr 分栏输出块）。 */
+function isShellExecuteTool(name: string): boolean {
+  const stripped = name
+    .replace(/^builtin[-:]/, '')
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '')
+    .replace(/^.*\./, '');
+  return stripped === 'local_shell_execute';
 }
 
 // 笔记编辑工具列表
@@ -483,7 +522,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
   // 从 block 中提取数据（通过 updateBlock 设置到 block 的直接字段上）
   const toolName = block.toolName || t('blocks.mcpTool.unknownTool');
-  const toolInput = block.toolInput || {};
+  const toolInput = block.toolInput || EMPTY_TOOL_INPUT;
   const toolOutput = block.toolOutput;
   const content = block.content;
   const retryState = useMemo(() => {
@@ -512,8 +551,6 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   // 🔧 P1-24: 重试回调 - 通过 store.retryMessage 重试整个消息
   // （以下 hooks 必须在专用渲染分支的 early return 之前，遵守 rules-of-hooks）
   const handleRetry = useCallback(() => {
-    console.log('[McpToolBlock] Retry tool:', toolName, 'messageId:', block.messageId);
-
     if (!store) {
       console.warn('[McpToolBlock] No store available for retry');
       return;
@@ -533,7 +570,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     } else {
       console.warn('[McpToolBlock] retryMessage not available in store');
     }
-  }, [toolName, store, block.messageId]);
+  }, [store, block.messageId]);
 
   // 根据状态展开/折叠输入
   React.useEffect(() => {
@@ -590,11 +627,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   }
 
   // 🆕 如果是 PaperSave 工具，使用专用进度组件渲染
-  const _isPaperSave = isPaperSaveTool(toolName);
-  if (process.env.NODE_ENV === 'development' && toolName.toLowerCase().includes('paper')) {
-    console.log('[McpTool] paper tool check:', { toolName, isPaperSave: _isPaperSave, blockStatus: block.status, hasContent: !!block.content });
-  }
-  if (_isPaperSave) {
+  if (isPaperSaveTool(toolName)) {
     return <PaperSaveBlock block={block} isStreaming={isStreaming} />;
   }
 
@@ -669,7 +702,11 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       {/* 成功输出 - 当 _templateVisual 时由独立 template_preview 块显示 */}
       {block.status === 'success' && toolOutput !== undefined && !isTemplateVisualOutput(toolOutput) && (
         <div className="p-3">
-          <ToolOutputView output={toolOutput} />
+          {isShellExecuteTool(toolName) ? (
+            <ShellOutputView output={toolOutput} />
+          ) : (
+            <ToolOutputView output={toolOutput} />
+          )}
           
           {/* DOCX/PPTX/XLSX 写入工具：文件引用卡片 + 跳转按钮 */}
           {DOC_WRITE_TOOLS.includes(toolName) && (() => {

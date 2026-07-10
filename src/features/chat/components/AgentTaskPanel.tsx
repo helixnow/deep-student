@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import {
   ListChecks,
   Check,
@@ -23,6 +24,7 @@ import {
   CaretDown,
   CaretUp,
   Notebook,
+  NotePencil,
   FileDoc,
   FileXls,
   FilePpt,
@@ -32,6 +34,11 @@ import {
   Brain,
   BookOpen,
   MagnifyingGlass,
+  Terminal,
+  FolderOpen,
+  ArrowCounterClockwise,
+  ArrowSquareOut,
+  Eye,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -39,7 +46,15 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { openUrl } from '@/utils/urlOpener';
 import { openResource } from '@/dstu/openResource';
+import { dstu } from '@/dstu/api';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
+import {
+  isRuntimeRootBlockedError,
+  openToolPermissionSettings,
+} from '../utils/runtimeRootNavigation';
 import { blocksToSourceBundle } from './panels/sourceAdapter';
+import { computeLineDiff } from '../utils/lineDiff';
 import type { Block } from '../core/types/block';
 
 // ============================================================================
@@ -111,6 +126,51 @@ interface ArtifactItem {
   toolName: string;
 }
 
+type ChangeAction = 'create' | 'update' | 'delete' | 'append' | 'write';
+type ChangeKind = 'note' | 'file' | 'document';
+
+interface ChangeItem {
+  id: string;
+  kind: ChangeKind;
+  action: ChangeAction;
+  label: string;
+  target?: string;
+  toolName: string;
+  openId?: string;
+  /** runtime root id（来自 file_change_summary，可用于 reveal/撤销） */
+  rootId?: string;
+  /** root 内相对路径（来自 file_change_summary） */
+  relativePath?: string;
+  /** 覆盖写时旧内容在 temp 根备份区的相对引用（撤销时恢复、预览时做 diff） */
+  backupRef?: string;
+}
+
+/** Changes 内联预览的加载态（当前内容 + 可选备份旧内容） */
+interface ChangePreviewState {
+  loading: boolean;
+  error?: string;
+  content?: string;
+  truncated?: boolean;
+  backupContent?: string;
+}
+
+interface RuntimeFilePreview {
+  content: string;
+  truncated: boolean;
+}
+
+type RuntimeAction = 'list' | 'read' | 'write' | 'check' | 'blocked';
+
+interface RuntimeItem {
+  id: string;
+  action: RuntimeAction;
+  rootId: string;
+  label: string;
+  detail?: string;
+  error?: string;
+  toolName: string;
+}
+
 const ORIGIN_ICONS: Record<string, Icon> = {
   web_search: Globe,
   memory: Brain,
@@ -118,6 +178,11 @@ const ORIGIN_ICONS: Record<string, Icon> = {
   multimodal: BookOpen,
   tool: MagnifyingGlass,
 };
+
+/** 可一键转存为笔记的文本产物扩展名（Changes 区「存为笔记」入口） */
+const NOTE_SAVABLE_EXTENSION_RE = /\.(md|markdown|txt)$/i;
+/** 转存笔记时读取产物的上限（512KB，超出则截断保存并提示） */
+const SAVE_AS_NOTE_MAX_BYTES = 512 * 1024;
 
 /** 笔记写入类工具（产生/修改笔记，视为产物） */
 const NOTE_WRITE_TOOLS = new Set([
@@ -145,17 +210,93 @@ function fileArtifactIcon(toolName: string): Icon {
   return FileIcon;
 }
 
+function unwrapToolData(output: unknown): Record<string, unknown> {
+  const out = (output ?? {}) as Record<string, unknown>;
+  return (typeof out.result === 'object' && out.result !== null
+    ? out.result
+    : out) as Record<string, unknown>;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : undefined;
+}
+
+function normalizeToolName(toolName: string): string {
+  return toolName
+    .replace(/^builtin-/, '')
+    .replace(/^mcp_/, '')
+    .replace(/^mcp\.tools\./, '');
+}
+
+function inferChangeActionFromOp(op: unknown): ChangeAction | undefined {
+  if (typeof op !== 'string') return undefined;
+  const normalized = op.toLowerCase();
+  if (normalized === 'created' || normalized === 'create') return 'create';
+  if (normalized === 'modified' || normalized === 'updated' || normalized === 'update') return 'update';
+  if (normalized === 'deleted' || normalized === 'delete') return 'delete';
+  if (normalized === 'appended' || normalized === 'append') return 'append';
+  if (normalized === 'written' || normalized === 'write') return 'write';
+  return undefined;
+}
+
+function inferChangeAction(toolName: string): ChangeAction | undefined {
+  const short = normalizeToolName(toolName);
+  if (short.includes('delete') || short.endsWith('_remove')) return 'delete';
+  if (short.includes('append')) return 'append';
+  if (short.includes('create') || short === 'file_write') return 'create';
+  if (short.includes('write') || short.includes('save')) return 'write';
+  if (short.includes('replace') || short.includes('patch') || short.includes('edit') || short.includes('update') || short.includes('set')) return 'update';
+  return undefined;
+}
+
+function isChangeProducingTool(toolName: string): boolean {
+  const short = normalizeToolName(toolName);
+  return (
+    NOTE_WRITE_TOOLS.has(toolName) ||
+    ['file_write', 'file_create', 'file_append', 'file_patch', 'file_delete'].includes(short) ||
+    short === 'workspace_artifact_write' ||
+    short === 'local_shell_execute' ||
+    short.startsWith('docx_') ||
+    short.startsWith('xlsx_') ||
+    short.startsWith('pptx_') ||
+    short === 'paper_save' ||
+    short === 'workspace_update_document'
+  );
+}
+
+function isRuntimeTool(toolName: string): boolean {
+  const short = normalizeToolName(toolName);
+  return short === 'workspace_file_list' ||
+    short === 'workspace_file_read' ||
+    short === 'workspace_artifact_write' ||
+    short === 'local_shell_preflight' ||
+    short === 'local_shell_execute';
+}
+
+function runtimeActionForTool(toolName: string, blocked: boolean): RuntimeAction {
+  if (blocked) return 'blocked';
+  const short = normalizeToolName(toolName);
+  if (short === 'workspace_file_list') return 'list';
+  if (short === 'workspace_file_read') return 'read';
+  if (short === 'local_shell_preflight') return 'check';
+  if (short === 'local_shell_execute') return 'check';
+  return 'write';
+}
+
 /** 从成功的工具块中提取产物（笔记 + 生成文件） */
 function extractArtifacts(blocks: Block[]): ArtifactItem[] {
   const artifacts = new Map<string, ArtifactItem>();
 
   for (const block of blocks) {
     if (block.status !== 'success' || !block.toolName) continue;
-    const out = (block.toolOutput ?? {}) as Record<string, unknown>;
-    // 兼容 { result: {...} } 包装
-    const d = (typeof out.result === 'object' && out.result !== null
-      ? out.result
-      : out) as Record<string, unknown>;
+    const d = unwrapToolData(block.toolOutput);
 
     if (NOTE_WRITE_TOOLS.has(block.toolName)) {
       const noteId = (d.note_id || d.noteId || d.id ||
@@ -182,6 +323,194 @@ function extractArtifacts(blocks: Block[]): ArtifactItem[] {
   }
 
   return [...artifacts.values()];
+}
+
+/** 从成功工具块中提取写入/修改摘要。 */
+function extractChanges(blocks: Block[]): ChangeItem[] {
+  const changes = new Map<string, ChangeItem>();
+
+  for (const block of blocks) {
+    if (block.status !== 'success' || !block.toolName || !isChangeProducingTool(block.toolName)) continue;
+
+    const toolName = block.toolName;
+    const short = normalizeToolName(toolName);
+    const data = unwrapToolData(block.toolOutput);
+    const input = block.toolInput ?? {};
+    const action = inferChangeAction(toolName) ?? 'update';
+    const summary = asRecord(data.file_change_summary);
+    const summaryChanges = Array.isArray(summary?.changes) ? summary.changes : [];
+
+    if (summaryChanges.length > 0) {
+      for (const entry of summaryChanges) {
+        const change = asRecord(entry);
+        if (!change) continue;
+        const target = firstString(
+          change.relative_path,
+          change.path,
+          change.file_path,
+          data.path,
+          input.path,
+        );
+        const label = firstString(change.file_name, target, data.file_name, short) ?? short;
+        const itemAction = inferChangeActionFromOp(change.op) ?? action;
+        const rootId = firstString(change.root_id, data.root_id);
+        const relativePath = firstString(change.relative_path, data.path);
+        const backupRef = firstString(change.backup_ref);
+        const id = `file:${itemAction}:${rootId ?? 'root'}:${target ?? label}:${toolName}`;
+        changes.set(id, {
+          id,
+          kind: 'file',
+          action: itemAction,
+          label,
+          target,
+          toolName,
+          rootId,
+          relativePath,
+          backupRef,
+        });
+      }
+      continue;
+    }
+
+    let kind: ChangeKind = 'file';
+    let openId: string | undefined;
+    let target = firstString(
+      data.path,
+      data.file_path,
+      input.path,
+      input.file_path,
+      data.file_id,
+      data.new_file_id,
+      input.file_id,
+      input.resource_id,
+    );
+    let label = firstString(
+      data.file_name,
+      data.title,
+      input.title,
+      target,
+      short,
+    ) ?? short;
+
+    if (NOTE_WRITE_TOOLS.has(toolName)) {
+      kind = 'note';
+      openId = firstString(data.note_id, data.noteId, data.id, input.noteId, input.note_id);
+      target = openId;
+      label = firstString(data.title, input.title, data.noteTitle, openId) ?? label;
+    } else if (short === 'workspace_update_document') {
+      kind = 'document';
+      openId = firstString(data.document_id, data.id);
+      target = openId;
+      label = firstString(data.title, input.title, openId) ?? label;
+    } else if (short.startsWith('docx_') || short.startsWith('xlsx_') || short.startsWith('pptx_') || short === 'paper_save') {
+      openId = firstString(data.file_id, data.new_file_id, input.file_id, input.resource_id);
+      target = openId ?? target;
+    }
+
+    const id = `${kind}:${action}:${target ?? label}:${toolName}`;
+    changes.set(id, {
+      id,
+      kind,
+      action,
+      label,
+      target,
+      toolName,
+      openId,
+    });
+  }
+
+  return [...changes.values()];
+}
+
+/** 从文件 runtime 工具块中提取读/列目录/写入/拦截事实，展示在任务面板内。 */
+function extractRuntimeItems(blocks: Block[]): RuntimeItem[] {
+  const runtime = new Map<string, RuntimeItem>();
+
+  for (const block of blocks) {
+    if (!block.toolName || !isRuntimeTool(block.toolName)) continue;
+
+    const toolName = block.toolName;
+    const short = normalizeToolName(toolName);
+    const data = unwrapToolData(block.toolOutput);
+    const input = block.toolInput ?? {};
+    const error = firstString(block.error, data.error, data.message, data.reason);
+    const riskLevel = firstString(data.risk_level);
+    const blocked = !!error || block.status === 'error' || riskLevel === 'blocked';
+    const action = runtimeActionForTool(toolName, blocked);
+    const rootId = firstString(
+      data.root_id,
+      input.root_id,
+      short === 'workspace_artifact_write' ? 'artifacts' : undefined,
+    ) ?? 'workspace';
+    const relativePath = firstString(
+      data.relative_path,
+      data.path,
+      short === 'local_shell_preflight' ? data.command : undefined,
+      short === 'local_shell_execute' ? data.command : undefined,
+      input.path,
+      short === 'local_shell_preflight' ? input.command : undefined,
+      short === 'local_shell_execute' ? input.command : undefined,
+    ) ?? '.';
+
+    let detail: string | undefined;
+    if (!blocked && short === 'workspace_file_list') {
+      const entries = Array.isArray(data.entries) ? data.entries.length : undefined;
+      const skipped = typeof data.skipped === 'number' && data.skipped > 0 ? data.skipped : undefined;
+      detail = entries !== undefined
+        ? skipped !== undefined
+          ? `${entries} entries, ${skipped} skipped`
+          : `${entries} entries`
+        : undefined;
+    } else if (!blocked && short === 'workspace_file_read') {
+      const bytes = typeof data.bytes === 'number' ? data.bytes : undefined;
+      const truncated = data.truncated === true;
+      detail = bytes !== undefined
+        ? truncated ? `${bytes} bytes, truncated` : `${bytes} bytes`
+        : undefined;
+    } else if (!blocked && short === 'workspace_artifact_write') {
+      const bytes = typeof data.bytes_written === 'number' ? data.bytes_written : undefined;
+      detail = bytes !== undefined ? `${bytes} bytes` : undefined;
+    } else if (short === 'local_shell_preflight') {
+      const cwd = firstString(data.cwd, input.cwd) ?? '.';
+      detail = riskLevel ? `${riskLevel} / ${cwd}` : cwd;
+    } else if (short === 'local_shell_execute') {
+      const cwd = firstString(data.cwd, input.cwd) ?? '.';
+      const timedOut = data.timed_out === true;
+      const exitCode = typeof data.exit_code === 'number' ? data.exit_code : undefined;
+      const truncated = data.stdout_truncated === true || data.stderr_truncated === true;
+      const envPolicy = data.env_policy && typeof data.env_policy === 'object'
+        ? data.env_policy as Record<string, unknown>
+        : undefined;
+      const envKeys = Array.isArray(envPolicy?.explicit_keys) ? envPolicy.explicit_keys.length : 0;
+      const envSuffix = envPolicy?.allowlist_mode === true
+        ? `, env allowlist${envKeys > 0 ? ` +${envKeys}` : ''}`
+        : envKeys > 0
+          ? `, env +${envKeys}`
+          : '';
+      const networkPolicy = data.network_policy && typeof data.network_policy === 'object'
+        ? data.network_policy as Record<string, unknown>
+        : undefined;
+      const networkSuffix = networkPolicy?.allow_network === true ? ', net' : '';
+      detail = timedOut
+        ? `timeout / ${cwd}`
+        : exitCode !== undefined
+          ? `exit ${exitCode}${truncated ? ', truncated' : ''}${envSuffix}${networkSuffix} / ${cwd}`
+          : cwd;
+    }
+
+    const id = `${action}:${rootId}:${relativePath}:${toolName}`;
+    runtime.set(id, {
+      id,
+      action,
+      rootId,
+      label: relativePath,
+      detail,
+      error,
+      toolName,
+    });
+  }
+
+  return [...runtime.values()];
 }
 
 /** 从成功块中提取来源（复用 sourceAdapter 的解析逻辑），按 title+url 去重 */
@@ -271,6 +600,15 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
   const ref = useRef<HTMLDivElement>(null);
 
   const blocksMap = useStore(store, (s: any) => s.blocks) as Map<string, any> | undefined;
+  const sessionId = useStore(store, (s: any) => s.sessionId) as string | undefined;
+  const [revertedIds, setRevertedIds] = useState<Set<string>>(new Set());
+  // 「存为笔记」转化状态：changeId → 已创建的笔记 id（组件内即可，无需持久化）
+  const [savedNoteIds, setSavedNoteIds] = useState<Map<string, string>>(new Map());
+  const [savingNoteIds, setSavingNoteIds] = useState<Set<string>>(new Set());
+  const [previewChangeId, setPreviewChangeId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ChangePreviewState | null>(null);
+  // 防止快速切换预览目标时，先发出的慢请求覆盖后发出的快请求结果
+  const previewRequestRef = useRef<string | null>(null);
 
   const { steps, title, isAllDone, message } = useMemo(() => {
     const out: { toolOutput?: unknown; toolName?: string }[] = [];
@@ -278,17 +616,43 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     return extractSteps(out);
   }, [blocksMap]);
 
-  // 来源 + 产物（仅在面板展开且存在计划时才提取：折叠态不展示这两个区，
+  // 廉价存在性检查：即使没有 todo 计划，只要用了本地 runtime 工具面板也要出现
+  //（只比较 toolName 字符串，流式期间每帧代价可忽略）
+  const hasRuntimeActivity = useMemo(() => {
+    if (!blocksMap) return false;
+    let found = false;
+    blocksMap.forEach((b: any) => {
+      if (found) return;
+      if (typeof b?.toolName === 'string' && isRuntimeTool(b.toolName)) found = true;
+    });
+    return found;
+  }, [blocksMap]);
+
+  // 来源 + 产物（仅在面板展开时才提取：折叠态不展示这两个区，
   // 流式期间 blocksMap 每帧变化，无谓的全量重算会被跳过）
   const { sources, artifacts } = useMemo(() => {
-    if (!expanded || !steps.length || !blocksMap) return { sources: [], artifacts: [] };
+    if (!expanded || !blocksMap) return { sources: [], artifacts: [] };
     const all: Block[] = [];
     blocksMap.forEach((b) => all.push(b));
     return {
       sources: extractSources(all),
       artifacts: extractArtifacts(all),
     };
-  }, [blocksMap, steps.length, expanded]);
+  }, [blocksMap, expanded]);
+
+  const changes = useMemo(() => {
+    if (!expanded || !blocksMap) return [];
+    const all: Block[] = [];
+    blocksMap.forEach((b) => all.push(b));
+    return extractChanges(all);
+  }, [blocksMap, expanded]);
+
+  const runtimeItems = useMemo(() => {
+    if (!expanded || !blocksMap) return [];
+    const all: Block[] = [];
+    blocksMap.forEach((b) => all.push(b));
+    return extractRuntimeItems(all);
+  }, [blocksMap, expanded]);
 
   const done = steps.filter((s) => s.status === 'completed').length;
   const total = steps.length;
@@ -314,18 +678,244 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
     }
   }, []);
 
-  // Auto-expand when new running steps appear
-  useEffect(() => {
-    if (has && streaming && !expanded && steps.some((s) => s.status === 'running')) {
-      setExpanded(true);
+  /** 在系统文件管理器中定位 runtime root 内的文件（artifacts/workspace 等）。 */
+  const revealRuntimeFile = useCallback(async (item: ChangeItem) => {
+    if (!sessionId || !item.rootId || !item.relativePath) return;
+    try {
+      const absolutePath = await invoke<string>('chat_v2_resolve_runtime_path', {
+        sessionId,
+        rootId: item.rootId,
+        relativePath: item.relativePath,
+      });
+      const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
+      await revealItemInDir(absolutePath);
+    } catch (error: unknown) {
+      showGlobalNotification(
+        'warning',
+        t('agentPanel.revealFailed', '无法定位文件'),
+        getErrorMessage(error),
+      );
     }
-  }, [has, streaming, expanded, steps]);
+  }, [sessionId, t]);
 
-  if (!has) return null;
+  const closePreview = useCallback(() => {
+    previewRequestRef.current = null;
+    setPreviewChangeId(null);
+    setPreview(null);
+  }, []);
+
+  /** 内联预览：读当前文件内容；覆盖写还会读 temp 备份区旧内容用于行级 diff。 */
+  const togglePreview = useCallback(async (item: ChangeItem) => {
+    if (previewChangeId === item.id) {
+      closePreview();
+      return;
+    }
+    if (!sessionId || !item.rootId || !item.relativePath) return;
+    previewRequestRef.current = item.id;
+    setPreviewChangeId(item.id);
+    setPreview({ loading: true });
+    try {
+      const current = await invoke<RuntimeFilePreview>('chat_v2_read_runtime_file', {
+        sessionId,
+        rootId: item.rootId,
+        relativePath: item.relativePath,
+      });
+      let backupContent: string | undefined;
+      if (item.backupRef) {
+        const backup = await invoke<RuntimeFilePreview>('chat_v2_read_runtime_file', {
+          sessionId,
+          rootId: 'temp',
+          relativePath: item.backupRef,
+        });
+        backupContent = backup.content;
+      }
+      if (previewRequestRef.current !== item.id) return;
+      setPreview({
+        loading: false,
+        content: current.content,
+        truncated: current.truncated,
+        backupContent,
+      });
+    } catch (error: unknown) {
+      if (previewRequestRef.current !== item.id) return;
+      setPreview({ loading: false, error: getErrorMessage(error) });
+    }
+  }, [previewChangeId, sessionId, closePreview]);
+
+  // 撤销请求进行中的 changeId 集合（ref 同步拦截双击重复 invoke）
+  const revertingIdsRef = useRef<Set<string>>(new Set());
+
+  /** 真实撤销：有 backupRef 恢复旧内容，无 backupRef（当次新建）删除该文件。 */
+  const revertArtifactWrite = useCallback(async (item: ChangeItem) => {
+    if (!sessionId || !item.relativePath || item.rootId !== 'artifacts') return;
+    if (revertingIdsRef.current.has(item.id)) return;
+    revertingIdsRef.current.add(item.id);
+    try {
+      await invoke('chat_v2_revert_artifact_write', {
+        sessionId,
+        relativePath: item.relativePath,
+        backupRef: item.backupRef ?? null,
+      });
+      setRevertedIds((prev) => {
+        const next = new Set(prev);
+        next.add(item.id);
+        return next;
+      });
+      // 撤销后文件内容已变化，预览若正开着则关闭，避免展示过期内容
+      if (previewRequestRef.current === item.id) {
+        closePreview();
+      }
+      showGlobalNotification(
+        'success',
+        item.backupRef
+          ? t('agentPanel.restoreDone', '已恢复原内容')
+          : t('agentPanel.revertDone', '已撤销该产物写入'),
+      );
+    } catch (error: unknown) {
+      showGlobalNotification(
+        'error',
+        t('agentPanel.revertFailed', '撤销失败'),
+        getErrorMessage(error),
+      );
+    } finally {
+      revertingIdsRef.current.delete(item.id);
+    }
+  }, [sessionId, t, closePreview]);
+
+  // 转存笔记进行中的 changeId 集合（ref 同步拦截：state 更新异步，双击会重复建笔记）
+  const savingNoteIdsRef = useRef<Set<string>>(new Set());
+
+  /** 把 artifacts 根内的文本产物转存为 DSTU 笔记，让产物流入学习资产库。 */
+  const saveChangeAsNote = useCallback(async (item: ChangeItem) => {
+    if (!sessionId || !item.relativePath || item.rootId !== 'artifacts') return;
+    if (savedNoteIds.has(item.id) || savingNoteIds.has(item.id)) return;
+    if (savingNoteIdsRef.current.has(item.id)) return;
+    savingNoteIdsRef.current.add(item.id);
+    setSavingNoteIds((prev) => {
+      const next = new Set(prev);
+      next.add(item.id);
+      return next;
+    });
+    try {
+      const file = await invoke<RuntimeFilePreview>('chat_v2_read_runtime_file', {
+        sessionId,
+        rootId: item.rootId,
+        relativePath: item.relativePath,
+        maxBytes: SAVE_AS_NOTE_MAX_BYTES,
+      });
+      const fileName = item.relativePath.split(/[\\/]/).pop() || item.label;
+      const title = fileName.replace(NOTE_SAVABLE_EXTENSION_RE, '') || fileName;
+      const result = await dstu.create('/', {
+        type: 'note',
+        name: title,
+        content: file.content,
+        metadata: { tags: [] },
+      });
+      if (!result.ok) {
+        throw result.error;
+      }
+      setSavedNoteIds((prev) => {
+        const next = new Map(prev);
+        next.set(item.id, result.value.id);
+        return next;
+      });
+      if (file.truncated) {
+        showGlobalNotification(
+          'warning',
+          t('agentPanel.saveAsNoteTruncated', '产物内容过长，已截断保存'),
+        );
+      }
+    } catch (error: unknown) {
+      showGlobalNotification(
+        'error',
+        t('agentPanel.saveAsNoteFailed', '存为笔记失败'),
+        getErrorMessage(error),
+      );
+    } finally {
+      savingNoteIdsRef.current.delete(item.id);
+      setSavingNoteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+    }
+  }, [sessionId, savedNoteIds, savingNoteIds, t]);
+
+  const openSavedNote = useCallback((noteId: string) => {
+    window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
+      detail: { noteId, source: 'agent_task_panel_changes' },
+    }));
+  }, []);
+
+  const openChange = useCallback((item: ChangeItem) => {
+    if (item.openId) {
+      if (item.kind === 'note') {
+        window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
+          detail: { noteId: item.openId, source: 'agent_task_panel_changes' },
+        }));
+      } else if (item.kind === 'file') {
+        void openResource(`/${item.openId}`, { handlerNamespace: 'chat-v2' });
+      }
+      return;
+    }
+    // runtime 文件变更没有内部资源 id，直接在文件管理器中定位
+    if (item.rootId && item.relativePath) {
+      void revealRuntimeFile(item);
+    }
+  }, [revealRuntimeFile]);
+
+  // Auto-expand when a NEW running step appears.
+  // 只在「进入 running 的步骤发生变化」时展开一次：原实现把 expanded 放进条件里，
+  // 用户在步骤仍在 running 时手动折叠会被立刻重新展开，面板收不起来。
+  const lastAutoExpandStepRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!has || !streaming) return;
+    const runningStep = steps.find((s) => s.status === 'running');
+    if (!runningStep) return;
+    const stepKey = runningStep.id || runningStep.description;
+    if (lastAutoExpandStepRef.current === stepKey) return;
+    lastAutoExpandStepRef.current = stepKey;
+    setExpanded(true);
+  }, [has, streaming, steps]);
+
+  const previewChange = previewChangeId
+    ? changes.find((c) => c.id === previewChangeId)
+    : undefined;
+  const previewDiffLines = useMemo(() => {
+    if (!preview || preview.loading || preview.error) return null;
+    if (preview.backupContent === undefined) return null;
+    return computeLineDiff(preview.backupContent, preview.content ?? '');
+  }, [preview]);
+
+  if (!has && !hasRuntimeActivity) return null;
 
   const showSources = sources.length > 0;
   const showArtifacts = artifacts.length > 0;
-  const showSections = showSources || showArtifacts;
+  const showChanges = changes.length > 0;
+  const showRuntime = runtimeItems.length > 0;
+  const showSections = showSources || showArtifacts || showChanges || showRuntime;
+
+  const changeActionLabel = (action: ChangeAction) => {
+    const fallback: Record<ChangeAction, string> = {
+      create: 'Create',
+      update: 'Update',
+      delete: 'Delete',
+      append: 'Append',
+      write: 'Write',
+    };
+    return t(`agentPanel.changeActions.${action}`, fallback[action]);
+  };
+
+  const runtimeActionLabel = (action: RuntimeAction) => {
+    const fallback: Record<RuntimeAction, string> = {
+      list: 'List',
+      read: 'Read',
+      write: 'Write',
+      check: 'Check',
+      blocked: 'Blocked',
+    };
+    return t(`agentPanel.runtimeActions.${action}`, fallback[action]);
+  };
 
   return (
     <div ref={ref} className={cn('w-full px-4 md:px-8 flex-shrink-0 pb-0', className)}>
@@ -347,18 +937,27 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               variant="ghost"
               size="sm"
               onClick={() => setExpanded(true)}
+              aria-expanded={false}
               className="!h-auto !p-0.5 !gap-1.5 !text-xs !font-medium !text-[color:var(--text-secondary)] hover:!text-[color:var(--text-primary)] !border-none !bg-transparent !shadow-none"
             >
-              <ListChecks size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
+              {has ? (
+                <ListChecks size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
+              ) : (
+                <Terminal size={12} className="text-[color:hsl(var(--primary))]" weight="fill" />
+              )}
               <span className="truncate max-w-[180px]">
-                {running ? running.description : title || 'Plan'}
+                {running
+                  ? running.description
+                  : title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.runtime', '运行时'))}
               </span>
               <CaretDown size={10} className="text-[color:var(--text-muted)]" />
             </NotionButton>
 
-            <span className="text-[10px] tabular-nums text-[color:var(--text-muted)] font-medium min-w-[2em] text-right">
-              {done}/{total}
-            </span>
+            {has && (
+              <span className="text-[10px] tabular-nums text-[color:var(--text-muted)] font-medium min-w-[2em] text-right">
+                {done}/{total}
+              </span>
+            )}
           </div>
         )}
 
@@ -383,28 +982,36 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               )}
             >
               <div className="flex items-center gap-2 px-4 py-2.5">
-                <ListChecks size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
+                {has ? (
+                  <ListChecks size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
+                ) : (
+                  <Terminal size={15} className="text-[color:hsl(var(--primary))] flex-shrink-0" />
+                )}
                 <span className="text-sm font-semibold text-[color:var(--text-primary)] truncate flex-1 min-w-0">
-                  {title || 'Plan'}
+                  {title || (has ? t('agentPanel.plan', '计划') : t('agentPanel.runtime', '运行时'))}
                 </span>
-                <span className="text-[11px] tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
-                  {done}/{total}
-                </span>
+                {has && (
+                  <span className="text-[11px] tabular-nums text-[color:var(--text-muted)] flex-shrink-0">
+                    {done}/{total}
+                  </span>
+                )}
                 <NotionButton
                   variant="ghost"
                   onClick={() => setExpanded(false)}
                   className="!h-auto !min-w-0 !p-1 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
-                  aria-label="Collapse"
+                  aria-label={t('agentPanel.collapsePanel', '折叠面板')}
+                  aria-expanded={true}
                 >
                   <CaretUp size={10} />
                 </NotionButton>
               </div>
               <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
 
-              {/* ── 区 1：计划 ── */}
-              {showSections && (
+              {/* ── 区 1：计划（无 todo 计划时整区隐藏，Runtime/Changes 仍可见） ── */}
+              {has && showSections && (
                 <SectionLabel>{t('agentPanel.plan', '计划')}</SectionLabel>
               )}
+              {has && (
               <div className="py-1 max-h-[260px] overflow-y-auto">
                 {steps.map((step, idx) => (
                   <div
@@ -441,6 +1048,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                   </div>
                 ))}
               </div>
+              )}
 
               {/* ── 区 2：来源 ── */}
               {showSources && (
@@ -473,6 +1081,83 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                           <OriginIcon size={11} className="flex-shrink-0 text-[color:var(--text-muted)]" />
                           <span className="truncate">{item.title}</span>
                         </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              {/* ── Runtime：文件读写边界 ── */}
+              {showRuntime && (
+                <>
+                  <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
+                  <SectionLabel>
+                    {t('agentPanel.runtime', 'Runtime')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal">{runtimeItems.length}</span>
+                  </SectionLabel>
+                  <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
+                    {runtimeItems.map((item) => {
+                      const runtimeShortName = normalizeToolName(item.toolName);
+                      const RuntimeIcon = runtimeShortName === 'local_shell_preflight' || runtimeShortName === 'local_shell_execute'
+                        ? Terminal
+                        : FileIcon;
+                      // 授权类拦截：chip 可点击直达 设置 > 工具权限（运行目录）
+                      const canJumpToSettings = item.action === 'blocked' && isRuntimeRootBlockedError(item.error);
+                      const chipContent = (
+                        <>
+                          {item.action === 'blocked' ? (
+                            <X size={11} className="flex-shrink-0 text-[color:hsl(var(--destructive))]" />
+                          ) : (
+                            <RuntimeIcon size={11} className="flex-shrink-0 text-[color:var(--text-muted)]" />
+                          )}
+                          <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                            {runtimeActionLabel(item.action)}
+                          </span>
+                          <span className="font-mono text-[10px] text-[color:var(--text-muted)] flex-shrink-0">
+                            {item.rootId}
+                          </span>
+                          <span className="truncate">{item.label}</span>
+                          {item.detail && (
+                            <span className="text-[10px] text-[color:var(--text-muted)] flex-shrink-0">
+                              {item.detail}
+                            </span>
+                          )}
+                        </>
+                      );
+
+                      if (canJumpToSettings) {
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={openToolPermissionSettings}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 h-6 px-2 max-w-[300px]',
+                              'rounded-full border border-[color:var(--border-soft)]',
+                              'bg-transparent text-[11px] text-[color:hsl(var(--destructive))]',
+                              'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
+                            )}
+                            title={`${item.error || item.label} — ${t('agentPanel.goAuthorize', '去授权运行目录')}`}
+                          >
+                            {chipContent}
+                            <ArrowSquareOut size={10} className="flex-shrink-0 text-[color:var(--text-muted)]" />
+                          </button>
+                        );
+                      }
+
+                      return (
+                        <span
+                          key={item.id}
+                          className={cn(
+                            'inline-flex items-center gap-1.5 h-6 px-2 max-w-[300px]',
+                            'rounded-full border border-[color:var(--border-soft)]',
+                            'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
+                            item.action === 'blocked' && 'text-[color:hsl(var(--destructive))]',
+                          )}
+                          title={item.error || item.detail || `${item.rootId}:${item.label}`}
+                        >
+                          {chipContent}
+                        </span>
                       );
                     })}
                   </div>
@@ -513,6 +1198,231 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
               )}
 
               {/* ── 区 4：摘要 ── */}
+              {showChanges && (
+                <>
+                  <div className="h-px bg-[color:var(--composer-panel-border)] opacity-40 mx-4" />
+                  <SectionLabel>
+                    {t('agentPanel.changes', 'Changes')}
+                    <span className="ml-1.5 normal-case tracking-normal font-normal">{changes.length}</span>
+                  </SectionLabel>
+                  <div className="flex flex-wrap gap-1.5 px-4 pb-2 max-h-[96px] overflow-y-auto">
+                    {changes.map((item) => {
+                      const ChangeIcon = item.kind === 'note' ? Notebook : FileIcon;
+                      const isReverted = revertedIds.has(item.id);
+                      const canReveal = !!(item.rootId && item.relativePath && sessionId);
+                      const clickable = !isReverted && item.kind !== 'document' && (!!item.openId || canReveal);
+                      const canPreview = canReveal && !isReverted && item.action !== 'delete';
+                      const isPreviewing = previewChangeId === item.id;
+                      const canRevert = !isReverted
+                        && item.rootId === 'artifacts'
+                        && !!item.relativePath
+                        && !!sessionId
+                        && item.action !== 'delete';
+                      const savedNoteId = savedNoteIds.get(item.id);
+                      const isSavingNote = savingNoteIds.has(item.id);
+                      const canSaveAsNote = !isReverted
+                        && item.rootId === 'artifacts'
+                        && !!item.relativePath
+                        && NOTE_SAVABLE_EXTENSION_RE.test(item.relativePath)
+                        && !!sessionId
+                        && item.action !== 'delete';
+                      const chip = (
+                        <>
+                          <ChangeIcon size={11} className="flex-shrink-0 text-[color:var(--text-muted)]" />
+                          <span className="text-[10px] uppercase tracking-wide text-[color:var(--text-muted)]">
+                            {isReverted
+                              ? t('agentPanel.reverted', '已撤销')
+                              : changeActionLabel(item.action)}
+                          </span>
+                          <span className={cn('truncate', isReverted && 'line-through opacity-60')}>
+                            {item.label}
+                          </span>
+                          {!item.openId && canReveal && !isReverted && (
+                            <FolderOpen size={10} className="flex-shrink-0 text-[color:var(--text-muted)]" />
+                          )}
+                        </>
+                      );
+
+                      if (!clickable) {
+                        return (
+                          <span
+                            key={item.id}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 h-6 px-2 max-w-[260px]',
+                              'rounded-full border border-[color:var(--border-soft)]',
+                              'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
+                              'cursor-default',
+                              isReverted && 'opacity-60',
+                            )}
+                            title={item.target || item.label}
+                          >
+                            {chip}
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <span
+                          key={item.id}
+                          className={cn(
+                            'inline-flex items-center h-6 max-w-[280px]',
+                            'rounded-full border border-[color:var(--border-soft)]',
+                            'bg-transparent text-[11px] text-[color:var(--text-secondary)]',
+                            'overflow-hidden',
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openChange(item)}
+                            className={cn(
+                              'inline-flex items-center gap-1.5 h-full px-2 min-w-0',
+                              'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)] cursor-pointer',
+                            )}
+                            title={
+                              item.openId
+                                ? (item.target || item.label)
+                                : t('agentPanel.revealInFolder', { defaultValue: '在文件管理器中显示', path: item.target || item.label })
+                            }
+                          >
+                            {chip}
+                          </button>
+                          {canPreview && (
+                            <button
+                              type="button"
+                              onClick={() => togglePreview(item)}
+                              className={cn(
+                                'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                                'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
+                                'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
+                                isPreviewing && 'bg-[color:var(--interactive-hover)] text-[color:var(--text-primary)]',
+                              )}
+                              title={t('agentPanel.preview', '预览')}
+                              aria-label={t('agentPanel.preview', '预览')}
+                            >
+                              <Eye size={10} />
+                            </button>
+                          )}
+                          {canSaveAsNote && (
+                            savedNoteId ? (
+                              <button
+                                type="button"
+                                onClick={() => openSavedNote(savedNoteId)}
+                                className={cn(
+                                  'inline-flex items-center gap-1 h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                                  'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
+                                  'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
+                                )}
+                                title={t('agentPanel.openSavedNote', '打开笔记')}
+                                aria-label={t('agentPanel.openSavedNote', '打开笔记')}
+                              >
+                                <Check size={10} className="flex-shrink-0 text-[color:hsl(var(--success))]" />
+                                <span className="text-[10px]">
+                                  {t('agentPanel.savedAsNote', '已存为笔记')}
+                                </span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => saveChangeAsNote(item)}
+                                disabled={isSavingNote}
+                                className={cn(
+                                  'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                                  'text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]',
+                                  'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
+                                  isSavingNote && 'opacity-60 cursor-default',
+                                )}
+                                title={t('agentPanel.saveAsNote', '保存到笔记库')}
+                                aria-label={t('agentPanel.saveAsNote', '保存到笔记库')}
+                              >
+                                {isSavingNote ? (
+                                  <CircleNotch size={10} className="animate-spin" />
+                                ) : (
+                                  <NotePencil size={10} />
+                                )}
+                              </button>
+                            )
+                          )}
+                          {canRevert && (
+                            <button
+                              type="button"
+                              onClick={() => revertArtifactWrite(item)}
+                              className={cn(
+                                'inline-flex items-center h-full px-1.5 border-l border-[color:var(--border-soft)]',
+                                'text-[color:var(--text-muted)] hover:text-[color:hsl(var(--destructive))]',
+                                'hover:bg-[color:var(--interactive-hover)] cursor-pointer',
+                              )}
+                              title={item.backupRef
+                                ? t('agentPanel.revertRestore', '恢复原内容')
+                                : t('agentPanel.revertDeleteNew', '删除新文件')}
+                              aria-label={item.backupRef
+                                ? t('agentPanel.revertRestore', '恢复原内容')
+                                : t('agentPanel.revertDeleteNew', '删除新文件')}
+                            >
+                              <ArrowCounterClockwise size={10} />
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+
+                  {/* 内联预览区：当前内容预览；覆盖写时与备份旧内容做行级 diff */}
+                  {previewChange && (
+                    <div className="mx-4 mb-2 rounded-[10px] border border-[color:var(--border-soft)] overflow-hidden">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 border-b border-[color:var(--border-soft)]">
+                        <FileIcon size={10} className="flex-shrink-0 text-[color:var(--text-muted)]" />
+                        <span className="flex-1 min-w-0 truncate font-mono text-[10px] text-[color:var(--text-muted)]">
+                          {previewChange.relativePath || previewChange.label}
+                        </span>
+                        {preview?.truncated && (
+                          <span className="flex-shrink-0 text-[10px] text-[color:var(--text-muted)]">
+                            {t('agentPanel.previewTruncated', '内容过长，已截断')}
+                          </span>
+                        )}
+                        <NotionButton
+                          variant="ghost"
+                          onClick={closePreview}
+                          className="!h-auto !min-w-0 !p-0.5 !gap-0 !border-none !bg-transparent !shadow-none text-[color:var(--text-muted)] hover:text-[color:var(--text-primary)]"
+                          aria-label={t('agentPanel.previewClose', '收起预览')}
+                        >
+                          <CaretUp size={9} />
+                        </NotionButton>
+                      </div>
+                      {preview?.loading ? (
+                        <div className="flex items-center gap-1.5 px-2.5 py-2">
+                          <CircleNotch size={11} className="animate-spin text-[color:hsl(var(--primary))]" />
+                        </div>
+                      ) : preview?.error ? (
+                        <div className="px-2.5 py-2 text-[11px] text-[color:hsl(var(--destructive))]">
+                          {t('agentPanel.previewFailed', '预览失败')}: {preview.error}
+                        </div>
+                      ) : previewDiffLines ? (
+                        <pre className="m-0 max-h-60 overflow-auto px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all">
+                          {previewDiffLines.map((line, idx) => (
+                            <div
+                              key={idx}
+                              className={cn(
+                                line.type === 'added'
+                                  && 'bg-[color:hsl(var(--success)/0.12)] text-[color:hsl(var(--success))]',
+                                line.type === 'removed'
+                                  && 'bg-[color:hsl(var(--destructive)/0.12)] text-[color:hsl(var(--destructive))]',
+                                line.type === 'unchanged' && 'text-[color:var(--text-muted)]',
+                              )}
+                            >
+                              {(line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  ') + line.text}
+                            </div>
+                          ))}
+                        </pre>
+                      ) : (
+                        <pre className="m-0 max-h-60 overflow-auto px-2.5 py-1.5 text-[11px] font-mono leading-relaxed whitespace-pre-wrap break-all text-[color:var(--text-secondary)]">
+                          {preview?.content ?? ''}
+                        </pre>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
               {isAllDone && message && (
                 <div className="flex-shrink-0 px-4 py-2 border-t border-[color:var(--composer-panel-border)] opacity-60">
                   <span className="text-[11px] text-[color:hsl(var(--success))] font-medium">{message}</span>

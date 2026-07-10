@@ -3,13 +3,16 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { TextShimmer } from './ui/TextShimmer';
 import './ThinkingIndicator.css';
 
 export const ThinkingIndicator: React.FC<{ className?: string }> = ({ className }) => {
+  const { t } = useTranslation('chatV2');
+  const label = t('messageList.waiting', { defaultValue: '正在思考...' });
   return (
-    <div className={`thinking-indicator ${className ?? ''}`} role="status" aria-label="正在思考">
-      <TextShimmer className="thinking-indicator-text">正在思考...</TextShimmer>
+    <div className={`thinking-indicator ${className ?? ''}`} role="status" aria-label={label}>
+      <TextShimmer className="thinking-indicator-text">{label}</TextShimmer>
     </div>
   );
 };

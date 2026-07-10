@@ -36,8 +36,6 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 // 🔧 编辑/重试调试日志
 import { logChatV2 } from '../debug/chatV2Logger';
-// 🆕 调试信息导出
-import { copyDebugInfoToClipboard } from '../debug/exportSessionDebug';
 // 🆕 开发者选项：显示请求体 + 过滤配置
 import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from '../hooks/useDevShowRawRequest';
 import { ThreadContentShell } from './ui/ThreadContentShell';
@@ -107,10 +105,6 @@ function hasSharedContextSources(message: { sharedContext?: {
 // ============================================================================
 
 type RawRequest = { _source?: string; model?: string; url?: string; body?: unknown; logFilePath?: string };
-
-function parseJsonSafe(text: string): unknown {
-  try { return JSON.parse(text); } catch { return null; }
-}
 
 async function applyCopyFilter(
   raw: RawRequest,
@@ -343,7 +337,9 @@ interface RawRequestPreviewProps {
 }
 
 function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }: RawRequestPreviewProps) {
-  const { t } = useTranslation();
+  // 🔧 修复：显式使用 chatV2 命名空间（messageItem.rawRequest.* 定义在 chatV2.json），
+  // 避免依赖 40+ 个 fallbackNS 的全量扫描
+  const { t } = useTranslation('chatV2');
   const rounds = rawRequests ?? [];
   const fallbackRaw = rawRequest;
 
@@ -436,6 +432,8 @@ function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }: RawReq
             return (
               <button
                 key={i}
+                type="button"
+                aria-pressed={i === activeIdx}
                 onClick={() => setSelectedRound(i + 1)}
                 className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
                   i === activeIdx
@@ -530,12 +528,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     activeVariant,
     isMultiVariant,
     displayBlockIds,
-    getVariantBlocks,
     switchVariant,
     cancelVariant,
     retryVariant,
     deleteVariant,
-    stopAllVariants,
     retryAllVariants,
   } = useVariantUI({ store, messageId });
 
@@ -676,6 +672,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   
   // 🧮 Token 汇总：多变体判断不依赖并行视图开关
   const hasMultipleVariants = variants.length > 1;
+  // 🔧 性能：memo 聚合结果，保持 usage 对象引用稳定，让 TokenUsageDisplay 的 memo 生效
+  const aggregatedUsage = useMemo(
+    () => (hasMultipleVariants ? aggregateVariantUsage(variants) : undefined),
+    [hasMultipleVariants, variants]
+  );
   const singleVariantDisplay = useMemo(
     () => resolveSingleVariantDisplayMeta(message, variants),
     [message, variants]
@@ -710,7 +711,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const hasConsumableAssistantContent = useMemo(() => {
     if (isUser) return false;
     return extractMessageContent().length > 0;
-  }, [extractMessageContent, isUser, sessionStatus, message?.id, activeVariant?.id]);
+  }, [extractMessageContent, isUser]);
 
   const assistantFailureDetails = useMemo(() => {
     if (isUser) return null;
@@ -762,6 +763,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     } catch (error: unknown) {
       console.error('[MessageItem] Copy failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.copyFailed'));
+      // 🔧 修复：向上抛出，让调用方（MessageActions 等）不要展示"已复制"的成功对勾
+      throw error;
     }
   }, [message, extractMessageContent, t]);
 
@@ -771,11 +774,22 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const [isDeletingMultiMessage, setIsDeletingMultiMessage] = useState(false);
   const [isRetryingFailure, setIsRetryingFailure] = useState(false);
 
+  // 🔧 修复：复制反馈定时器需要在卸载时清理，避免卸载后 setState
+  const multiCopiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (multiCopiedTimerRef.current) clearTimeout(multiCopiedTimerRef.current);
+  }, []);
+
   const handleMultiVariantCopy = useCallback(async () => {
     if (multiCopied) return;
-    await handleCopy();
+    try {
+      await handleCopy();
+    } catch {
+      // 复制失败：错误提示由 handleCopy 内部展示，不显示成功态对勾
+      return;
+    }
     setMultiCopied(true);
-    setTimeout(() => setMultiCopied(false), 2000);
+    multiCopiedTimerRef.current = setTimeout(() => setMultiCopied(false), 2000);
   }, [multiCopied, handleCopy]);
 
   const handleRetryAllVariantsInline = useCallback(async () => {
@@ -803,16 +817,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       setIsDeletingMultiMessage(false);
     }
   }, [canDelete, isDeletingMultiMessage, store, messageId, t]);
-
-  // 复制调试信息（JSON 格式，完整不截断）
-  const handleCopyDebug = useCallback(async () => {
-    try {
-      await copyDebugInfoToClipboard(store, 'json');
-      showGlobalNotification('success', t('debug.copySuccessDesc'), t('debug.copySuccess'));
-    } catch (error: unknown) {
-      showGlobalNotification('error', t('debug.copyFailed'));
-    }
-  }, [store, t]);
 
   // 重试消息
   const handleRetry = useCallback(async () => {
@@ -907,8 +911,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🔧 上下文引用预览回调
   // 发射事件让上层组件（ChatContainer/ChatV2Page）处理跳转到 Learning Hub
   const handleContextRefPreview = useCallback((ref: ContextRef) => {
-    console.log('[MessageItem] Context ref preview:', ref);
-    
     // 发射自定义事件，携带 ContextRef 信息
     // 事件将被 ChatContainer 或 App 层监听并处理跳转
     dispatchContextRefPreview(ref, message?._meta?.contextSnapshot?.pathMap);
@@ -1006,6 +1008,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       }, 'error', { messageId });
       console.error('[MessageItem] Edit failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.editFailed'));
+      // 🔧 修复：提交失败时恢复编辑态，避免用户已修改的内容丢失（editText 仍保留在 state 中）
+      setIsInlineEditing(true);
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -1129,12 +1133,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       detail: { noteId, source: 'note_tool_preview' } 
     }));
   }, []);
-
-  // 🔒 审计修复: 将 useCallback 移到条件返回之前，避免 React Hooks 调用顺序违规
-  // 🔧 P0修复：使用精确的 store 选择器判断块是否正在流式生成
-  const isBlockStreaming = useCallback((blockId: string) => {
-    return store.getState().activeBlockIds.has(blockId);
-  }, [store]);
 
   // 消息不存在
   if (!message) {
@@ -1633,7 +1631,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onBranchSession={handleBranch}
                         compactMobile
-                        tokenUsage={!isUser ? (hasMultipleVariants ? aggregateVariantUsage(variants) : singleVariantUsage) : undefined}
+                        tokenUsage={!isUser ? (hasMultipleVariants ? aggregatedUsage : singleVariantUsage) : undefined}
                       />
                     )}
                     {/* 移动端用户消息的时间显示 */}
@@ -1654,12 +1652,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {!isUser && !hasMultipleVariants && singleVariantUsage && (
                       <TokenUsageDisplay usage={singleVariantUsage} compact />
                     )}
-                    {!isUser && hasMultipleVariants && (() => {
-                      const aggregatedUsage = aggregateVariantUsage(variants);
-                      return aggregatedUsage ? (
-                        <TokenUsageDisplay usage={aggregatedUsage} compact />
-                      ) : null;
-                    })()}
+                    {!isUser && hasMultipleVariants && aggregatedUsage && (
+                      <TokenUsageDisplay usage={aggregatedUsage} compact />
+                    )}
                   </div>
                 )}
               </div>

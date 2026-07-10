@@ -15,6 +15,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
+import { beginSessionHoverPrefetch, cancelSessionHoverPrefetch } from '../core/session/sessionPrefetch';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
@@ -122,6 +123,8 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 setCurrentSessionId(session.id);
               }
             }}
+            onMouseEnter={() => beginSessionHoverPrefetch(session.id)}
+            onMouseLeave={() => cancelSessionHoverPrefetch(session.id)}
             className={getSidebarStudyRowClassName({
               variant: 'session',
               selected: currentSessionId === session.id,
@@ -140,7 +143,10 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               value={editingTitle}
               onChange={(e) => setEditingTitle(e.target.value)}
               onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => e.currentTarget.select()}
               onKeyDown={(e) => {
+                // IME 安全：中文输入法组合期间的 Enter/Escape 只作用于候选词
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
                 if (e.key === 'Enter' && renamingSessionId !== session.id) {
                   e.preventDefault();
                   saveSessionTitle(session.id);
@@ -238,7 +244,8 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               variant="ghost"
               size="icon"
               iconOnly
-              className="!h-9 !w-9 !p-1.5"
+              // 视觉 36px、命中区 44px（before 伪元素外扩，满足移动端触控目标）
+              className="relative !h-9 !w-9 !p-1.5 before:absolute before:-inset-1 before:content-['']"
               onClick={openSessionMenuFromButton}
               aria-label={t('page.sessionActions', '会话操作')}
             >
@@ -279,7 +286,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
   const handleBrowserSelectSession = useCallback((sessionId: string) => {
     setCurrentSessionId(sessionId);
     setViewMode('sidebar');
-  }, []);
+  }, [setCurrentSessionId, setViewMode]);
 
   // 处理从浏览器视图重命名会话
   const handleBrowserRenameSession = useCallback(async (sessionId: string, newTitle: string) => {
@@ -294,7 +301,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
     } catch (error) {
       console.error('[ChatV2Page] Failed to rename session:', getErrorMessage(error));
     }
-  }, []);
+  }, [setSessions]);
 
   return {
     renderSessionItem,

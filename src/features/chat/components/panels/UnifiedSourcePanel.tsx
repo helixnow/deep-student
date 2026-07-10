@@ -12,7 +12,6 @@ import { useIsMobile } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/shad/Sheet';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import {
   buildResourceLocator,
@@ -42,7 +41,6 @@ interface UnifiedSourcePanelProps {
 type CategoryKey = 'rag' | 'memory' | 'web_search' | 'tool' | 'multimodal' | string;
 const URL_REGEX = /(https?:\/\/[^\s]+)/gi;
 const SNIPPET_MAX_LENGTH = 220;
-const LINK_LABEL_MAX_LENGTH = 48;
 
 function groupIcon(group: CategoryKey) {
   switch (group) {
@@ -336,6 +334,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       | { type: 'item'; key: string; item: UnifiedSourceItem; globalIndex: number }
     > = [];
 
+    // 预建 id → globalIndex 映射，避免对每个 item 做 O(n) 查找
+    const globalIndexById = new Map<string, number>();
+    for (const s of allSourcesWithIndex) {
+      globalIndexById.set(s.item.id, s.globalIndex);
+    }
+
     activeCategoryProviders.forEach((provider, index) => {
       const displayLabel = resolveProviderLabel(provider.providerLabel, provider.providerId);
       const shouldShowHeader = activeCategoryProviders.length > 1 || !!displayLabel;
@@ -349,13 +353,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       }
 
       (provider.items || []).forEach((item, itemIndex) => {
-        // 查找全局索引
-        const globalInfo = allSourcesWithIndex.find(s => s.item.id === item.id);
         entries.push({
           type: 'item',
           key: `${provider.providerId || 'provider'}-${item.id}-${itemIndex}`,
           item,
-          globalIndex: globalInfo?.globalIndex ?? itemIndex,
+          globalIndex: globalIndexById.get(item.id) ?? itemIndex,
         });
       });
     });
@@ -535,7 +537,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           {entry.item.snippet}
         </div>
         <div className="flex items-center justify-between pt-2 border-t border-border/50">
-          <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">{entry.item.origin}</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">
+            {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
+          </span>
           {entry.item.origin === 'graph' ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary">
               <ArrowSquareOut size={14} />
@@ -617,22 +621,40 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       </NotionButton>
                     );
                   })}
-                  {/* 展开按钮 → 打开抽屉 */}
+                  {/* 展开/收起按钮 → 移动端契约：不用底部抽屉，改为消息流内 inline 垂直展开 */}
                   {flatEntries.filter(e => e.type === 'item').length > 2 && (
                     <NotionButton
                       variant="ghost"
                       size="sm"
                       className="usp-expand-btn ml-auto"
-                      onClick={() => setIsExpanded(true)}
-                      title={t('common:actions.expandAll')}
+                      onClick={() => setIsExpanded(prev => !prev)}
+                      title={isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}
                     >
-                      <ArrowsOut size={14} />
-                      <span>{t('common:actions.expandAll')}</span>
+                      {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
+                      <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
                     </NotionButton>
                   )}
                 </div>
 
-                {/* 来源卡片水平滚动列表 */}
+                {isExpanded ? (
+                  /* 展开态：inline 垂直列表（含分组标题），随消息流滚动，无遮挡可随时收起 */
+                  <div className="space-y-3 py-1">
+                    {flatEntries.length === 0 && (
+                      <div className="usp-empty w-full text-center py-4">{t('common:chat.sources.empty')}</div>
+                    )}
+                    {flatEntries.map(entry => {
+                      if (entry.type === 'header') {
+                        return (
+                          <div key={entry.key} className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">
+                            {entry.label}
+                          </div>
+                        );
+                      }
+                      return renderMobileSourceItem(entry);
+                    })}
+                  </div>
+                ) : (
+                /* 收起态：来源卡片水平滚动列表 */
                 <div className="usp-sources-wrapper relative">
                   {/* 左翻页按钮 */}
                   {canScrollLeft && (
@@ -642,7 +664,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       iconOnly
                       className="usp-scroll-btn usp-scroll-left absolute left-0 top-1/2 -translate-y-1/2 z-10 !w-7 !h-7 rounded-full bg-background/90 border shadow-md"
                       onClick={() => scrollByAmount('left')}
-                      aria-label="scroll left"
+                      aria-label={t('common:actions.scrollLeft')}
                     >
                       <CaretLeft size={16} />
                     </NotionButton>
@@ -656,7 +678,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       iconOnly
                       className="usp-scroll-btn usp-scroll-right absolute right-0 top-1/2 -translate-y-1/2 z-10 !w-7 !h-7 rounded-full bg-background/90 border shadow-md"
                       onClick={() => scrollByAmount('right')}
-                      aria-label="scroll right"
+                      aria-label={t('common:actions.scrollRight')}
                     >
                       <CaretRight size={16} />
                     </NotionButton>
@@ -706,79 +728,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     })}
                   </CustomScrollArea>
                 </div>
+                )}
               </div>
             </div>
           </div>
         </div>
-
-        {/* 底部抽屉 - 展开全部来源 */}
-        <Sheet open={isExpanded} onOpenChange={setIsExpanded}>
-          <SheetContent 
-            side="bottom" 
-            className="h-[80vh] flex flex-col p-0 rounded-t-2xl"
-            hideCloseButton
-          >
-            {/* 拖动指示器 */}
-            <div className="flex justify-center py-2 cursor-grab active:cursor-grabbing">
-              <div className="w-12 h-1 rounded-full bg-muted-foreground/30" />
-            </div>
-
-            {/* 抽屉头部 */}
-            <SheetHeader className="px-4 pb-3 border-b">
-              <SheetTitle className="flex items-center gap-2 text-base">
-                <MagnifyingGlass size={18} />
-                {totalLabel}
-              </SheetTitle>
-            </SheetHeader>
-
-            {/* 分类切换 */}
-            <CustomScrollArea orientation="horizontal" viewportClassName="flex gap-2 px-4 py-2" className="border-b bg-muted/30">
-              {categories.map(category => {
-                const isActive = category.group === activeCategory;
-                const label = t(`common:chat.sources.groupLabels.${category.group}`, { defaultValue: category.group });
-                return (
-                  <NotionButton
-                    key={`category-${category.group}`}
-                    variant={isActive ? 'primary' : 'outline'}
-                    size="sm"
-                    className="rounded-full whitespace-nowrap"
-                    onClick={() => setActiveCategory(category.group)}
-                  >
-                    <span className="opacity-80">{groupIcon(category.group)}</span>
-                    <span>{label}</span>
-                    <span className={cn(
-                      'px-1.5 py-0.5 rounded-full text-xs',
-                      isActive ? 'bg-primary-foreground/20' : 'bg-muted'
-                    )}>
-                      {category.count}
-                    </span>
-                  </NotionButton>
-                );
-              })}
-            </CustomScrollArea>
-
-            {/* 来源列表（垂直滚动 - 使用自研滚动条） */}
-            <CustomScrollArea className="flex-1" viewportClassName="p-4">
-              <div className="space-y-3">
-                {flatEntries.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    {t('common:chat.sources.empty')}
-                  </div>
-                )}
-                {flatEntries.map(entry => {
-                  if (entry.type === 'header') {
-                    return (
-                      <div key={entry.key} className="text-xs font-medium text-muted-foreground uppercase tracking-wider pt-2">
-                        {entry.label}
-                      </div>
-                    );
-                  }
-                  return renderMobileSourceItem(entry);
-                })}
-              </div>
-            </CustomScrollArea>
-          </SheetContent>
-        </Sheet>
       </div>
     );
   }
@@ -951,7 +905,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         {snippetText}
                       </div>
                       <div className="flex items-center justify-between mt-auto pt-1.5 border-t border-border/50">
-                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">{entry.item.origin}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">
+                          {t(`common:chat.sources.groupLabels.${entry.item.origin}`, { defaultValue: entry.item.origin })}
+                        </span>
                         {entry.item.origin === 'graph' ? (
                           <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary !h-6 text-xs">
                             <ArrowSquareOut size={12} />
@@ -991,7 +947,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
 
                   return (
                     <div
-                      className="fixed w-80 max-h-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-none animate-in fade-in zoom-in-95 duration-150 flex flex-col"
+                      className="fixed w-80 max-h-80 p-4 bg-popover text-popover-foreground rounded-xl shadow-lg ring-1 ring-border/40 border-transparent text-sm pointer-events-none ui-zoom-fade-in flex flex-col"
                       style={{
                         zIndex: Z_INDEX.toast,
                         top,
@@ -1030,18 +986,6 @@ function sanitizeSnippet(value?: string | null): string {
   const base = stripped || raw;
   if (base.length <= SNIPPET_MAX_LENGTH) return base;
   return `${base.slice(0, SNIPPET_MAX_LENGTH)}…`;
-}
-
-function buildLinkLabel(link: string): string {
-  try {
-    const url = new URL(link);
-    const label = `${url.hostname}${url.pathname === '/' ? '' : url.pathname}`;
-    if (label.length <= LINK_LABEL_MAX_LENGTH) return label;
-    return `${label.slice(0, LINK_LABEL_MAX_LENGTH)}…`;
-  } catch {
-    if (link.length <= LINK_LABEL_MAX_LENGTH) return link;
-    return `${link.slice(0, LINK_LABEL_MAX_LENGTH)}…`;
-  }
 }
 
 type ScrollContainer = Window | HTMLElement;

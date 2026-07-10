@@ -296,13 +296,14 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
  * 实际上在 ActivityTimeline 中会被聚合渲染
  */
 const TodoListBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => {
+  const { t } = useTranslation('common');
   // 从 toolOutput 解析数据
   const output = block.toolOutput as TodoListOutput | undefined;
-  
+
   if (!output) {
     return (
       <div className="text-sm text-muted-foreground">
-        任务列表加载中...
+        {t('loading')}
       </div>
     );
   }

@@ -78,9 +78,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     return () => {
       window.removeEventListener('DSTU_OPEN_NOTE' as any, handleOpenNote as any);
     };
-  }, [notesContext]);
+  }, [notesContext, t]);
 
+  // 只在挂载时加载一次：loadSessions 的身份会随语言切换（t）变化，
+  // 若直接依赖会导致切换语言时重新加载并把当前会话重置回启动 draft
+  const hasLoadedSessionsRef = useRef(false);
   useEffect(() => {
+    if (hasLoadedSessionsRef.current) return;
+    hasLoadedSessionsRef.current = true;
     pageLifecycleTracker.log('chat-v2', 'ChatV2Page', 'data_load', 'loadSessions');
     const start = Date.now();
     loadSessions().then(() => {
@@ -117,7 +122,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     };
     window.addEventListener('CHAT_V2_BRANCH_SESSION', handler);
     return () => window.removeEventListener('CHAT_V2_BRANCH_SESSION', handler);
-  }, [setCurrentSessionId, loadUngroupedCount]);
+  }, [setCurrentSessionId, loadUngroupedCount, setSessions]);
 
   // ★ 调试插件：允许程序化切换会话（附件流水线测试插件使用）
   useEffect(() => {
@@ -195,7 +200,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     // 🔧 P0-28 修复：使用命名空间注册，避免覆盖其他处理器
     const unregister = registerOpenResourceHandler(handler, 'chat-v2');
     return unregister;
-  }, [canvasSidebarOpen, isSmallScreen, setMobileResourcePanelOpen, t, toggleCanvasSidebar]);
+  }, [canvasSidebarOpen, isSmallScreen, setMobileResourcePanelOpen, setPendingOpenResource, t, toggleCanvasSidebar]);
 
   // ★ 当 Learning Hub 侧边栏打开后，处理待打开的资源
   // 直接设置 openApp 状态，复用 UnifiedAppPanel 显示资源
@@ -222,7 +227,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     } else {
       setAttachmentPreviewOpen(true);
     }
-  }, [isSmallScreen]);
+  }, [isSmallScreen, setAttachmentPreviewOpen, setMobileResourcePanelOpen, setOpenApp]);
 
   useEventRegistry([
     {
@@ -494,7 +499,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       }
       document.removeEventListener('pdf-ref:open', handlePdfRefOpen);
     };
-  }, []);
+  }, [t]);
 
   // ========== P1-07: 命令面板 CHAT_* 事件监听 ==========
   // 使用 ref 保存 currentSessionId 以便事件处理器可以访问最新值

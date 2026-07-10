@@ -41,7 +41,7 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
         'group flex items-center gap-2 px-3 py-2 rounded-xl cursor-pointer',
         'bg-neutral-100 dark:bg-neutral-800/80 border border-transparent',
         'transition-colors duration-200',
-        'animate-in slide-in-from-bottom-2 fade-in duration-200',
+        'ui-rise-in',
         'hover:bg-neutral-200/60 dark:hover:bg-neutral-700/80',
         failed && 'border-red-500/40',
       )}
@@ -59,7 +59,9 @@ export const QueuedMessageBubble: React.FC<Props> = React.memo(({
         {item.content || (
           <span className="text-muted-foreground italic">
             {/* No body text — only attachments / context refs */}
-            ({item.attachments.length > 0 || item.contextRefs.length > 0 ? 'attachments only' : 'empty'})
+            ({item.attachments.length > 0 || item.contextRefs.length > 0
+              ? t('chatV2:queue.bubble.attachmentsOnly', '仅附件')
+              : t('chatV2:queue.bubble.empty', '空消息')})
           </span>
         )}
       </div>

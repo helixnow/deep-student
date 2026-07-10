@@ -7,8 +7,9 @@
  * 每个变体卡片内部渲染与单变体完全一致（使用 BlockRenderer 统一渲染所有块）
  */
 
-import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useStore } from 'zustand';
 import i18n from 'i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -33,7 +34,6 @@ import {
   AppMenuTrigger,
   AppMenuContent,
   AppMenuItem,
-  AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
 import { BlockRendererWithStore } from '../BlockRenderer';
 import { TokenUsageDisplay } from '../TokenUsageDisplay';
@@ -145,16 +145,19 @@ interface VariantCardProps {
   isMobile?: boolean;
   /** 变体索引（用于移动端滚动定位） */
   variantIndex?: number;
-  onSwitch?: () => void;
-  onCancel?: () => Promise<void>;
-  onRetry?: () => Promise<void>;
-  onDelete?: () => Promise<void>;
+  /** 🚀 性能：以下回调按 variantId 调用且引用稳定，配合 React.memo 避免并行流式时互相拖累重渲染 */
+  onSwitch?: (variantId: string) => void;
+  onCancel?: (variantId: string) => Promise<void>;
+  onRetry?: (variantId: string) => Promise<void>;
+  onDelete?: (variantId: string) => Promise<void>;
+  /** 滚动到指定索引的卡片（引用稳定） */
+  scrollToVariant?: (index: number) => void;
   isBlockStreaming?: (blockId: string) => boolean;
   /** 🔧 继续执行回调（工具限制节点使用） */
   onContinue?: () => void;
 }
 
-const VariantCard: React.FC<VariantCardProps> = ({
+const VariantCardImpl: React.FC<VariantCardProps> = ({
   store,
   messageId,
   variant,
@@ -170,16 +173,23 @@ const VariantCard: React.FC<VariantCardProps> = ({
   onCancel,
   onRetry,
   onDelete,
+  scrollToVariant,
   onContinue,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
   const [isOperating, setIsOperating] = useState(false);
+  const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
   const isStreaming = variant.status === 'streaming';
   const canCancel = variant.status === 'streaming' || variant.status === 'pending';
   const canRetry = variant.status === 'error' || variant.status === 'cancelled';
   const canDelete = !isLastVariant && variant.status !== 'streaming';
+
+  // 图标地址变化时重置加载失败状态
+  useEffect(() => {
+    setIconLoadFailed(false);
+  }, [modelIcon]);
 
   // 🚀 P0修复：即时获取 blocks 用于操作回调（不订阅，避免不必要的重渲染）
   const getBlocks = useCallback((): Block[] => {
@@ -189,14 +199,15 @@ const VariantCard: React.FC<VariantCardProps> = ({
       .filter((b): b is Block => b !== undefined);
   }, [store, blockIds]);
 
-  // 检查是否有来源（与单变体一致）- 使用即时获取
-  const [hasSources, setHasSources] = useState(false);
-  
-  // 当 blockIds 变化时更新 hasSources
-  React.useEffect(() => {
-    const blocks = getBlocks();
-    setHasSources(hasSourcesInBlocks(blocks));
-  }, [blockIds, getBlocks]);
+  // 检查是否有来源（与单变体一致）
+  // 订阅 Store 计算布尔值：流式过程中 citations 到达时也能及时显示来源面板
+  // （选择器只返回 boolean，Object.is 相等时不会触发重渲染）
+  const hasSources = useStore(store, (s) => {
+    const blocks = blockIds
+      .map((id) => s.blocks.get(id))
+      .filter((b): b is Block => b !== undefined);
+    return hasSourcesInBlocks(blocks);
+  });
 
   // 🚀 P0修复：复制内容时即时获取 blocks
   const handleCopy = useCallback(async () => {
@@ -215,47 +226,57 @@ const VariantCard: React.FC<VariantCardProps> = ({
     }
   }, [getBlocks, copied, t]);
 
+  // 切换（仅非激活卡片可切换）
+  const handleSwitch = useCallback(() => {
+    if (!onSwitch || isActive) return;
+    if (typeof variantIndex === 'number') {
+      scrollToVariant?.(variantIndex);
+    }
+    onSwitch(variant.id);
+  }, [onSwitch, isActive, scrollToVariant, variantIndex, variant.id]);
+  const canSwitch = !!onSwitch && !isActive;
+
   // 取消
   const handleCancel = useCallback(async () => {
     if (!onCancel || isOperating) return;
     setIsOperating(true);
     try {
-      await onCancel();
+      await onCancel(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Cancel failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('variant.cancelFailed', '取消失败'));
     } finally {
       setIsOperating(false);
     }
-  }, [onCancel, isOperating, t]);
+  }, [onCancel, isOperating, variant.id, t]);
 
   // 重试
   const handleRetry = useCallback(async () => {
     if (!onRetry || isOperating) return;
     setIsOperating(true);
     try {
-      await onRetry();
+      await onRetry(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Retry failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('variant.retryFailed', '重试失败'));
     } finally {
       setIsOperating(false);
     }
-  }, [onRetry, isOperating, t]);
+  }, [onRetry, isOperating, variant.id, t]);
 
   // 删除
   const handleDelete = useCallback(async () => {
     if (!onDelete || isOperating) return;
     setIsOperating(true);
     try {
-      await onDelete();
+      await onDelete(variant.id);
     } catch (error: unknown) {
       console.error('[VariantCard] Delete failed:', error);
       showGlobalNotification('error', getErrorMessage(error), t('variant.deleteFailed', '删除失败'));
     } finally {
       setIsOperating(false);
     }
-  }, [onDelete, isOperating, t]);
+  }, [onDelete, isOperating, variant.id, t]);
 
   return (
     <div
@@ -272,19 +293,31 @@ const VariantCard: React.FC<VariantCardProps> = ({
           : 'flex-1 min-w-[200px]'
       )}
       data-variant-index={variantIndex}
-      onClick={onSwitch}
-      role={onSwitch ? 'button' : undefined}
-      tabIndex={onSwitch ? 0 : undefined}
+      onClick={canSwitch ? handleSwitch : undefined}
+      onKeyDown={
+        canSwitch
+          ? (e) => {
+              if (e.target !== e.currentTarget) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSwitch();
+              }
+            }
+          : undefined
+      }
+      role={canSwitch ? 'button' : undefined}
+      tabIndex={canSwitch ? 0 : undefined}
     >
       {/* 头部：模型信息 + 时间戳 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <div className="flex items-center gap-2.5">
-          {/* 模型图标 - 使用 ProviderIcon 自动识别供应商并显示对应图标 */}
-          {modelIcon ? (
+          {/* 模型图标 - 使用 ProviderIcon 自动识别供应商并显示对应图标；自定义图标加载失败时降级 */}
+          {modelIcon && !iconLoadFailed ? (
             <img
               src={modelIcon}
               alt={modelName}
               className="w-7 h-7 rounded-full object-cover"
+              onError={() => setIconLoadFailed(true)}
             />
           ) : (
             <ProviderIcon
@@ -449,7 +482,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
           {/* 更多操作菜单 */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label="more">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label={t('variant.actions', '变体操作')} title={t('variant.actions', '变体操作')}>
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
@@ -488,6 +521,13 @@ const VariantCard: React.FC<VariantCardProps> = ({
     </div>
   );
 };
+
+/**
+ * 🚀 性能：memo 边界——并行流式时，某个变体的更新只重渲染它自己的卡片。
+ * Store 对变体做不可变更新（未变更的 variant 对象保持引用），
+ * 配合上方引用稳定的按 id 回调，其余卡片全部命中 memo。
+ */
+const VariantCard = React.memo(VariantCardImpl);
 
 // ============================================================================
 // 子组件：消息级操作栏
@@ -736,7 +776,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
         return (
           <div className="flex items-center justify-center gap-2 mb-3">
             {/* 左箭头 */}
+            {/* eslint-disable-next-line ds-components/no-native-button -- 24px 紧凑视觉 + 伪元素扩大触控区的导航箭头，共享按钮组件 的 icon 尺寸体系不适配 */}
             <button
+              type="button"
               onClick={() => {
                 if (hasPrev) {
                   scrollToVariant(activeIndex - 1);
@@ -745,12 +787,14 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               }}
               disabled={!hasPrev}
               className={cn(
-                'p-1 rounded-md transition-colors',
+                // 视觉 24px，透明伪元素扩大触控命中区至 ~44px
+                'p-1 rounded-md transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                 hasPrev
                   ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
-              aria-label="Previous variant"
+              aria-label={t('variant.switchToVariant', { index: Math.max(1, activeIndex), defaultValue: `Switch to variant ${Math.max(1, activeIndex)}` })}
+              title={t('variant.switchToVariant', { index: Math.max(1, activeIndex), defaultValue: `Switch to variant ${Math.max(1, activeIndex)}` })}
             >
               <CaretLeft size={16} />
             </button>
@@ -775,8 +819,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                       '!rounded-full flex-shrink-0 !p-0',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
-                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-[var(--interactive-hover)]-foreground/50'
+                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
                     )}
+                    aria-current={isActive ? 'true' : undefined}
                     aria-label={t('variant.switchToVariant', { index: index + 1, defaultValue: `Switch to variant ${index + 1}` })}
                   />
                 );
@@ -784,7 +829,9 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
             </div>
 
             {/* 右箭头 */}
+            {/* eslint-disable-next-line ds-components/no-native-button -- 24px 紧凑视觉 + 伪元素扩大触控区的导航箭头，共享按钮组件 的 icon 尺寸体系不适配 */}
             <button
+              type="button"
               onClick={() => {
                 if (hasNext) {
                   scrollToVariant(activeIndex + 1);
@@ -793,12 +840,14 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               }}
               disabled={!hasNext}
               className={cn(
-                'p-1 rounded-md transition-colors',
+                // 视觉 24px，透明伪元素扩大触控命中区至 ~44px
+                'p-1 rounded-md transition-colors relative after:absolute after:-inset-2.5 after:content-[\'\']',
                 hasNext
                   ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
-              aria-label="Next variant"
+              aria-label={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2), defaultValue: `Switch to variant ${Math.min(variants.length, activeIndex + 2)}` })}
+              title={t('variant.switchToVariant', { index: Math.min(variants.length, activeIndex + 2), defaultValue: `Switch to variant ${Math.min(variants.length, activeIndex + 2)}` })}
             >
               <CaretRight size={16} />
             </button>
@@ -811,17 +860,18 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
         ref={scrollContainerRef}
         className={cn(
           'flex gap-4 pb-2',
-          // 移动端：横向滚动 + snap 对齐；桌面端：不溢出，卡片均分宽度
+          // 移动端：横向滚动 + snap 对齐
+          // 桌面端：卡片均分宽度；变体较多时（min-w 之和超出容器）允许横向滚动而非溢出裁切
           isSmallScreen
             ? 'overflow-x-auto scrollbar-hide snap-x snap-mandatory -mx-4 px-4'
-            : 'w-full'
+            : 'w-full overflow-x-auto'
         )}
         style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
         } as React.CSSProperties}
       >
-        {/* 🚀 P0修复：传递 blockIds 而非 blocks */}
+        {/* 🚀 P0修复：传递 blockIds 而非 blocks；按 id 回调直接透传，保持引用稳定以命中 VariantCard 的 memo */}
         {variants.map((variant, index) => {
           const isActive = variant.id === activeVariantId;
 
@@ -839,23 +889,11 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               isLastVariant={isLastVariant}
               isMobile={isSmallScreen}
               variantIndex={index}
-              onSwitch={
-                onSwitchVariant && !isActive
-                  ? () => {
-                      scrollToVariant(index);
-                      onSwitchVariant(variant.id);
-                    }
-                  : undefined
-              }
-              onCancel={
-                onCancelVariant ? () => onCancelVariant(variant.id) : undefined
-              }
-              onRetry={
-                onRetryVariant ? () => onRetryVariant(variant.id) : undefined
-              }
-              onDelete={
-                onDeleteVariant ? () => onDeleteVariant(variant.id) : undefined
-              }
+              onSwitch={onSwitchVariant}
+              onCancel={onCancelVariant}
+              onRetry={onRetryVariant}
+              onDelete={onDeleteVariant}
+              scrollToVariant={scrollToVariant}
               onContinue={onContinue}
             />
           );

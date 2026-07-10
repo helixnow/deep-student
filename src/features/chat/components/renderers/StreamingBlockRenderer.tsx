@@ -2,11 +2,15 @@ import React, { useMemo, memo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
-import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
+import { canUseDirectFlowTokenMarkdown, containsHtmlTagLikeContent } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
+
+// 模块级空数组：保持引用稳定，避免流式期间每个 token 都生成新数组
+// 击穿 MemoizedBlock / MarkdownRenderer 的 memo 比较。
+const EMPTY_REMARK_PLUGINS: any[] = [];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +55,14 @@ function shouldUseFullFlowTokenEffect(
   isStreamingBlock: boolean,
 ): boolean {
   if (!isStreamingBlock || !FLOWTOKEN_SUPPORTED_BLOCK_TYPES.has(block.type)) {
+    return false;
+  }
+
+  // 🔒 P1 (2026-07-08 审阅 21 P1-1)：块级路径此前只按块类型判断，
+  // paragraph 等块中的行内 HTML（如 `文本 <img onerror=...> 文本`）会绕过
+  // 整段级别的 flowtoken 门禁进入未消毒的 AnimatedMarkdown。
+  // 这里对块原文复检疑似 HTML，命中则回退到带 rehype-sanitize 的 MarkdownRenderer。
+  if (containsHtmlTagLikeContent(block.raw)) {
     return false;
   }
 
@@ -222,10 +234,19 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   );
 
   const allRemarkPlugins = useMemo(() => {
-    const highlightPlugins = (!isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0)
-      ? [makeUncertaintyHighlightPlugin(mainContent, stableHighlightSpans, t('renderer.uncertain'))]
-      : [];
-    return [...(extraRemarkPlugins || []), ...highlightPlugins];
+    const needsHighlight =
+      !isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0;
+    // 流式期间（无高亮）直接复用外部插件数组的引用：
+    // mainContent 每个 token 都变化，若在此处展开新数组，
+    // 已完成块的 MemoizedBlock memo 比较会因 extraRemarkPlugins 引用变化而全部失效，
+    // 导致整条消息每个 token 全量重渲染。
+    if (!needsHighlight) {
+      return extraRemarkPlugins ?? EMPTY_REMARK_PLUGINS;
+    }
+    return [
+      ...(extraRemarkPlugins || []),
+      makeUncertaintyHighlightPlugin(mainContent, stableHighlightSpans, t('renderer.uncertain')),
+    ];
   }, [isStreaming, stableHighlightSpans, extraRemarkPlugins, mainContent, t]);
 
   const hasVisibleContent = mainContent.trim().length > 0;

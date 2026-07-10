@@ -5,10 +5,9 @@
  * 选择一个或多个模型后点击"重试"按钮进行重试。
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowCounterClockwise } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { MultiSelectModelPanel } from '../plugins/chat/MultiSelectModelPanel';
@@ -52,6 +51,12 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
   // 选中的模型列表
   const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
 
+  // 防重复提交：对话框退场动画期间按钮仍可点击
+  const submittedRef = useRef(false);
+  useEffect(() => {
+    if (open) submittedRef.current = false;
+  }, [open]);
+
   // 选择模型
   const handleSelectModel = useCallback((model: ModelInfo) => {
     setSelectedModels((prev) => {
@@ -73,7 +78,8 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
 
   // 执行重试
   const handleRetry = useCallback(() => {
-    if (selectedModels.length === 0) return;
+    if (selectedModels.length === 0 || submittedRef.current) return;
+    submittedRef.current = true;
     const modelIds = selectedModels.map((m) => m.id);
     onRetry(modelIds);
     handleClose();

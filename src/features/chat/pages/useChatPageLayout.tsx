@@ -25,6 +25,20 @@ export interface UseChatPageLayoutDeps {
   setMobileResourcePanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
+  /** 移动端右屏正在展示沙箱工作台 */
+  mobileSandboxOpen: boolean;
+  /** 关闭移动端沙箱工作台（同时收起右屏） */
+  closeMobileSandbox: () => void;
+  /** 移动端右屏正在展示的资源标题（null = 资源库列表，显示面包屑） */
+  openAppTitle: string | null;
+  /** 关闭右屏资源预览（回到资源库列表上一层） */
+  closeMobileOpenApp: () => void;
+  /** 分组编辑器（inline 子屏）是否打开 */
+  groupEditorOpen: boolean;
+  /** 分组编辑器模式（决定顶栏标题） */
+  groupEditorMode: 'create' | 'edit';
+  /** 关闭分组编辑器（顶栏返回箭头 / Android 返回键） */
+  closeGroupEditor: () => void;
 }
 
 export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
@@ -33,13 +47,16 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     viewMode, sessionSheetOpen, t, sessionCount, createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
+    mobileSandboxOpen, closeMobileSandbox,
+    openAppTitle, closeMobileOpenApp,
+    groupEditorOpen, groupEditorMode, closeGroupEditor,
   } = deps;
 
+  const currentSessionGroupKey = currentSession ? (currentSession.groupId || 'ungrouped') : null;
   useEffect(() => {
-    if (!currentSession) return;
-    const groupId = currentSession.groupId || 'ungrouped';
-    expandGroup(groupId);
-  }, [currentSessionId, currentSession?.groupId, expandGroup]);
+    if (!currentSessionGroupKey) return;
+    expandGroup(currentSessionGroupKey);
+  }, [currentSessionId, currentSessionGroupKey, expandGroup]);
 
   // 空态判断：没有会话或当前会话没有消息，即为空态新对话
   // 有消息则可以新建对话，避免创建多个空对话
@@ -97,16 +114,34 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     finderJumpToBreadcrumb(index);
   }, [finderJumpToBreadcrumb]);
 
-  useMobileHeader('chat-v2', mobileResourcePanelOpen ? {
-    titleNode: (
-      <MobileBreadcrumb
-        rootTitle={t('learningHub:title')}
-        breadcrumbs={finderBreadcrumbs}
-        onNavigate={handleFinderBreadcrumbNavigate}
-      />
-    ),
+  // 顶栏分支与移动端可见内容一一对应：
+  // 右屏（沙箱 > 资源预览 > 资源库列表）→ 中屏子屏（Anki 卡片编辑 > 分组编辑器）→ 默认（浏览视图/聊天）
+  useMobileHeader('chat-v2', mobileSandboxOpen ? {
+    title: t('common:navigation.sandbox_workbench', '沙箱工作台'),
     showBackArrow: true,
-    onMenuClick: () => setMobileResourcePanelOpen(false),
+    onMenuClick: closeMobileSandbox,
+  } : mobileResourcePanelOpen ? (
+    openAppTitle !== null ? {
+      title: openAppTitle || t('common:untitled', '未命名'),
+      showBackArrow: true,
+      onMenuClick: closeMobileOpenApp,
+    } : {
+      titleNode: (
+        <MobileBreadcrumb
+          rootTitle={t('learningHub:title')}
+          breadcrumbs={finderBreadcrumbs}
+          onNavigate={handleFinderBreadcrumbNavigate}
+        />
+      ),
+      showBackArrow: true,
+      onMenuClick: () => setMobileResourcePanelOpen(false),
+    }
+  ) : (groupEditorOpen && viewMode !== 'browser') ? {
+    title: groupEditorMode === 'edit'
+      ? t('page.editGroup', '编辑分组')
+      : t('page.createGroup', '新建分组'),
+    showBackArrow: true,
+    onMenuClick: closeGroupEditor,
   } : {
     title: headerTitle,
     showMenu: viewMode !== 'browser',
@@ -120,7 +155,12 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
         ? () => setSessionSheetOpen(false)
         : () => setSessionSheetOpen(true),
     rightActions: headerRightActions,
-  }, [headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, sessionSheetOpen, finderBreadcrumbs, handleFinderBreadcrumbNavigate, t]);
+  }, [
+    headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, sessionSheetOpen,
+    finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
+    mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
+    groupEditorOpen, groupEditorMode, closeGroupEditor,
+  ]);
 
   return {
     isEmptyNewChat,

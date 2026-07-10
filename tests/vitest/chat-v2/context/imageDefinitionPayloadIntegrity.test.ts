@@ -61,6 +61,7 @@ describe('imageDefinition payload integrity', () => {
 
     expect(blocks).toHaveLength(1);
     expect(isTextContentBlock(blocks[0])).toBe(true);
-    expect((blocks[0] as any).text).toContain('[Invalid image content]');
+    // vitest.setup.ts 固定 i18n 语言为 zh-CN，占位文案为中文
+    expect((blocks[0] as any).text).toContain('[图片内容无效]');
   });
 });

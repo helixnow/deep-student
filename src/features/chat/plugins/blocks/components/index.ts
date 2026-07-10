@@ -13,5 +13,6 @@ export * from './types';
 // 工具块组件
 export * from './ToolInputView';
 export * from './ToolOutputView';
+export * from './ShellOutputView';
 export * from './ImagePreview';
 export * from './TemplateToolOutput';

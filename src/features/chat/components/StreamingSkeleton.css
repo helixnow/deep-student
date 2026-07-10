@@ -11,30 +11,43 @@
 }
 
 .stream-skeleton-line {
+  position: relative;
+  overflow: hidden;
   height: 13px;
   border-radius: 6px;
+  background: hsl(var(--muted) / 0.25);
+}
+
+/* shimmer 高光用 transform 扫过（合成器动画），
+   避免 background-position 动画逐帧重绘 */
+.stream-skeleton-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
     90deg,
-    hsl(var(--muted) / 0.25) 0%,
-    hsl(var(--muted) / 0.55) 40%,
-    hsl(var(--muted) / 0.25) 80%
+    hsl(var(--muted) / 0) 0%,
+    hsl(var(--muted) / 0.55) 50%,
+    hsl(var(--muted) / 0) 100%
   );
-  background-size: 250% 100%;
+  transform: translateX(-100%);
   animation: stream-skeleton-shimmer 1.6s ease-in-out infinite;
+  /* 继承行元素上的 inline animation-delay，保持三条线的错峰节奏 */
+  animation-delay: inherit;
 }
 
 @keyframes stream-skeleton-shimmer {
-  0% {
-    background-position: 250% 0;
-  }
   100% {
-    background-position: -250% 0;
+    transform: translateX(100%);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stream-skeleton-line {
+  .stream-skeleton-line::after {
     animation: none;
+  }
+
+  .stream-skeleton-line {
     opacity: 0.5;
   }
 }

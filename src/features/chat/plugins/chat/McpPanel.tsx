@@ -267,16 +267,15 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
 
   return (
     <ComposerPanel.Root fillHeight className="overflow-hidden">
-      {!isMobile && (
-        <ComposerPanel.Header
-          icon={Wrench}
-          title={t('analysis:input_bar.mcp.title')}
-          count={selectedMcpServers.length}
-          actions={headerActions}
-          onClose={onClose}
-          closeAriaLabel={t('common:actions.cancel')}
-        />
-      )}
+      {/* 📱 移动端也渲染 Header：提供可见的关闭按钮（契约：面板须可见关闭 + 返回键），与 SkillSelector 对齐 */}
+      <ComposerPanel.Header
+        icon={Wrench}
+        title={t('analysis:input_bar.mcp.title')}
+        count={selectedMcpServers.length}
+        actions={headerActions}
+        onClose={onClose}
+        closeAriaLabel={t('common:actions.cancel')}
+      />
 
       <ComposerPanel.Search
         value={searchTerm}

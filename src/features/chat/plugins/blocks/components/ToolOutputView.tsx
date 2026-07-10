@@ -127,13 +127,19 @@ function extractLoadSkillsSummary(output: unknown): LoadSkillsSummaryData | null
 // 子组件
 // ============================================================================
 
+/** JSON 展示上限：超大 payload 截断渲染（滚动容器内塞几 MB 文本会拖垮布局） */
+const JSON_OUTPUT_MAX_CHARS = 50_000;
+
 /**
  * JSON 输出渲染
  */
 const JsonOutput: React.FC<{ data: unknown }> = ({ data }) => {
   const formattedJson = useMemo(() => {
     try {
-      return JSON.stringify(data, null, 2);
+      const text = JSON.stringify(data, null, 2) ?? String(data);
+      return text.length > JSON_OUTPUT_MAX_CHARS
+        ? text.slice(0, JSON_OUTPUT_MAX_CHARS) + '\n…'
+        : text;
     } catch {
       return String(data);
     }

@@ -125,7 +125,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const { t } = useTranslation(['chatV2', 'chat_host', 'common']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
-  const shouldHideHeader = hideHeader ?? isMobile;
+  // 📱 移动端也默认显示头部：面板现以锚定 popover 呈现（无外层抽屉标题栏），
+  // 隐藏头部会一并丢失可见的关闭按钮（移动端契约：面板须可见关闭 + 返回键）
+  const shouldHideHeader = hideHeader ?? false;
 
   const isRetryMode = Boolean(retryMessageId);
   // retry 模式始终走 compare（即便只选一个也通过 compareSelected 传出）
@@ -467,6 +469,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               }}
               className={cn(
                 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] text-[color:var(--menu-shell-muted-foreground)] opacity-0 transition group-hover:opacity-100',
+                // 触屏无 hover：保持常显，否则"设为默认"入口不可达
+                '[@media(pointer:coarse)]:opacity-100',
+                'relative after:absolute after:-inset-2 after:content-[\'\']',
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
                 (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}

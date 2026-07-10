@@ -88,15 +88,16 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
   disabled = false,
   retryMessageId,
   onRetry,
-  hideHeader = false,
+  hideHeader,
 }) => {
   // 是否处于重试模式
   const isRetryMode = Boolean(retryMessageId);
   const { t } = useTranslation(['chatV2', 'chat_host', 'common']);
   // 移动端自动隐藏头部（如果未显式指定）
+  // 注意：不能给 hideHeader 设默认值，否则 ?? 永远取不到 isMobile 兜底（与 ModelPicker 行为对齐）
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
-  const shouldHideHeader = hideHeader ?? mobileLayout?.isMobile ?? false;
+  const shouldHideHeader = hideHeader ?? isMobile;
 
   // 本地状态
   const [models, setModels] = useState<ModelConfig[]>([]);
@@ -115,13 +116,18 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
 
   // 加载模型列表和默认模型
   const isInitialLoad = useRef(true);
+  // 加载序号：配置变更事件可能在上一轮加载未完成时触发新一轮，
+  // 旧一轮的响应到达后直接丢弃，避免乱序覆盖新数据
+  const loadSeqRef = useRef(0);
   const loadModels = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     try {
       if (isInitialLoad.current) {
         setLoading(true);
         isInitialLoad.current = false;
       }
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
+      if (seq !== loadSeqRef.current) return;
       const chatModels = (configs || []).filter((c) => {
         const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
         const isReranker = c.isReranker === true || c.is_reranker === true;
@@ -133,6 +139,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
       // 加载供应商配置以获取排序信息
       try {
         const vendorConfigs = await invoke<Array<{ id: string; providerType?: string; sortOrder?: number; name: string }>>('get_vendor_configs');
+        if (seq !== loadSeqRef.current) return;
         const orderMap = new Map<string, number>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
           const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
@@ -146,20 +153,21 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
         sorted.forEach((v, i) => orderMap.set(v.id, i));
         setVendorOrderMap(orderMap);
       } catch {
-        setVendorOrderMap(new Map());
+        if (seq === loadSeqRef.current) setVendorOrderMap(new Map());
       }
 
       try {
         const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
+        if (seq !== loadSeqRef.current) return;
         setDefaultModelId(assignments?.['model2_config_id'] || null);
       } catch {
-        setDefaultModelId(null);
+        if (seq === loadSeqRef.current) setDefaultModelId(null);
       }
     } catch (error: unknown) {
       console.error('[MultiSelectModelPanel] Failed to load models:', error);
-      setModels([]);
+      if (seq === loadSeqRef.current) setModels([]);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, []);
 

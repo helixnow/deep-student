@@ -173,6 +173,7 @@ export function useVariantUI({
     }
     prevDisplayBlockIdsRef.current = newIds;
     return newIds;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- message 是有意的重算触发器：useMemo 内部通过 getState() 命令式读取，消息（变体/blockIds）变化时必须重算
   }, [store, messageId, message]);
 
   // 🔧 调试打点：追踪 displayBlockIds 计算

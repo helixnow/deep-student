@@ -65,12 +65,22 @@ const initialState: AnkiPanelState = {
 // Hook 实现
 // ============================================================================
 
+export interface UseAnkiPanelV2BridgeOptions {
+  /**
+   * 是否监听全局 `open-anki-panel` 事件（默认 true）。
+   * 当面板状态由外部（如 ChatV2Page）统一托管并通过 props 下发时，
+   * 组件内部的备用实例应传 false，避免重复监听/重复开面板。
+   */
+  listen?: boolean;
+}
+
 /**
  * Anki 面板桥接 Hook
  *
  * 监听 `open-anki-panel` CustomEvent 并管理面板状态。
  */
-export function useAnkiPanelV2Bridge() {
+export function useAnkiPanelV2Bridge(options?: UseAnkiPanelV2BridgeOptions) {
+  const listen = options?.listen ?? true;
   const [panelState, setPanelState] = useState<AnkiPanelState>(initialState);
 
   // 打开面板
@@ -124,6 +134,8 @@ export function useAnkiPanelV2Bridge() {
 
   // 监听 open-anki-panel 事件
   useEffect(() => {
+    if (!listen) return;
+
     const handleOpenPanel = (event: Event) => {
       const customEvent = event as CustomEvent<OpenAnkiPanelParams>;
       console.log('[useAnkiPanelV2Bridge] Received open-anki-panel event:', customEvent.detail);
@@ -135,7 +147,7 @@ export function useAnkiPanelV2Bridge() {
     return () => {
       window.removeEventListener('open-anki-panel', handleOpenPanel);
     };
-  }, [openPanel]);
+  }, [listen, openPanel]);
 
   return {
     // 状态

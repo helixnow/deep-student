@@ -52,6 +52,7 @@ export type BlockType =
   | 'subagent_embed'   // 子代理嵌入
   | 'subagent_retry'   // 子代理重试提醒块
   | 'sleep'            // 协调器休眠
+  | 'workbench_ops'    // ACR 桌面操控工具卡（R1-09）
   // 系统提示块
   | 'tool_limit'    // 工具递归限制提示
   // 知识图谱（后端 graph_search 工具映射）

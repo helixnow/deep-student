@@ -80,6 +80,9 @@ const getTypeLabelKey = (typeId: string): string => {
   }
 };
 
+/** VFS 资源类型：这些引用已由附件 chips 或技能系统单独可视化，不在此重复显示 */
+const VFS_RESOURCE_TYPES = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap', 'todo', 'skill_instruction', 'skill']);
+
 /**
  * 根据类型 ID 获取 Chip 颜色样式
  */
@@ -119,10 +122,8 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
   ({ refs, onRemove, onClearAll, disabled = false, className }) => {
     const { t } = useTranslation(['chatV2', 'common']);
 
-  const vfsResourceTypes = new Set(['note', 'textbook', 'exam', 'essay', 'translation', 'image', 'file', 'mindmap', 'todo', 'skill_instruction', 'skill']);
-    
     const displayRefs = useMemo(() => {
-      return refs.filter((ref) => !vfsResourceTypes.has(ref.typeId) && !ref.autoLoaded);
+      return refs.filter((ref) => !VFS_RESOURCE_TYPES.has(ref.typeId) && !ref.autoLoaded);
     }, [refs]);
 
     // 没有需要显示的引用时不渲染

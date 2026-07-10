@@ -366,6 +366,29 @@ describe('Store Actions', () => {
       expect(block?.status).toBe('success');
       expect(block?.endedAt).toBeDefined();
     });
+
+    it('should surface structured tool errors on the block', async () => {
+      const state = getState();
+      await state.sendMessage('Test');
+
+      const assistantMessageId = getState().messageOrder[1];
+      const blockId = state.createBlock(assistantMessageId, 'mcp_tool');
+
+      state.setBlockResult(blockId, {
+        result: {
+          success: false,
+          error: "Current Skill policy does not allow tool 'builtin-read_file'",
+        },
+      });
+
+      const block = getState().blocks.get(blockId);
+      expect(block?.status).toBe('error');
+      expect(block?.error).toBe("Current Skill policy does not allow tool 'builtin-read_file'");
+      expect(block?.toolOutput).toEqual({
+        success: false,
+        error: "Current Skill policy does not allow tool 'builtin-read_file'",
+      });
+    });
   });
 
   // ==========================================================================

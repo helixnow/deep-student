@@ -9,6 +9,7 @@
  */
 
 import React, { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -42,6 +43,7 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
   disabled = false,
   className,
 }) => {
+  const { t } = useTranslation(['common']);
   const handleRemove = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -119,7 +121,7 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
       {/* 🔧 样式统一：与技能标签保持一致 */}
       <span className="truncate max-w-[80px]">{displayName}</span>
       {!disabled && (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`Remove ${model.name}`}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`${t('common:actions.remove')} ${model.name}`}>
           <X size={10} weight="bold" />
         </NotionButton>
       )}

@@ -26,6 +26,7 @@ import { skillRegistry } from '@/features/chat/skills/registry';
 import { clearSessionSkills, syncLoadedSkillsFromBackend } from '@/features/chat/skills/progressiveDisclosure';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 import { groupCache } from '@/features/chat/core/store/groupCache';
+import { McpService } from '@/mcp/mcpService';
 
 // ============================================================================
 // Mock Store
@@ -588,6 +589,47 @@ describe('ChatV2TauriAdapter', () => {
       }
     });
 
+    it('should use embedded tool names as the runtime policy for embedded-only skills', async () => {
+      await adapter.setup();
+
+      const skillId = 'embedded-only-skill';
+      const skill: SkillDefinition = {
+        id: skillId,
+        name: 'Embedded Only Skill',
+        description: 'Regression test embedded-only skill',
+        location: 'builtin',
+        sourcePath: 'builtin://embedded-only-skill',
+        content: 'embedded-only content',
+        embeddedTools: [
+          {
+            name: 'builtin-embedded_only_tool',
+            description: 'Embedded-only regression tool schema',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+              },
+            },
+          },
+        ],
+      };
+      skillRegistry.register(skill);
+
+      try {
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: [skillId],
+          agenticSessionSkillIds: [],
+          version: 13,
+        });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.skillAllowedTools).toEqual(['builtin-embedded_only_tool']);
+      } finally {
+        skillRegistry.unregister(skillId);
+      }
+    });
+
     it('should include runtime loaded skills when structured skill state is stale', async () => {
       await adapter.setup();
 
@@ -641,6 +683,156 @@ describe('ChatV2TauriAdapter', () => {
       } finally {
         skillRegistry.unregister(skillId);
         clearSessionSkills('test-session-id');
+      }
+    });
+
+    it('should expose package roots only for runtime-enabled trusted skills', async () => {
+      await adapter.setup();
+
+      const activeSkillId = 'active-package-skill';
+      const inactiveSkillId = 'inactive-package-skill';
+      const untrustedSkillId = 'untrusted-package-skill';
+      const activeSkill: SkillDefinition = {
+        id: activeSkillId,
+        name: 'Active Package Skill',
+        description: 'Regression test active package root',
+        location: 'project',
+        sourcePath: 'E:/study/.skills/active-package-skill/SKILL.md',
+        packageRoot: 'E:/study/.skills/active-package-skill',
+        trustStatus: 'trusted',
+        content: 'active package content',
+        allowedTools: ['builtin-workspace_file_read'],
+      };
+      const inactiveSkill: SkillDefinition = {
+        id: inactiveSkillId,
+        name: 'Inactive Package Skill',
+        description: 'Regression test inactive package root',
+        location: 'project',
+        sourcePath: 'E:/study/.skills/inactive-package-skill/SKILL.md',
+        packageRoot: 'E:/study/.skills/inactive-package-skill',
+        trustStatus: 'trusted',
+        content: 'inactive package content',
+        allowedTools: ['builtin-workspace_file_read'],
+      };
+      const untrustedSkill: SkillDefinition = {
+        id: untrustedSkillId,
+        name: 'Untrusted Package Skill',
+        description: 'Regression test untrusted package root',
+        location: 'project',
+        sourcePath: 'E:/study/.agents/skills/untrusted-package-skill/SKILL.md',
+        packageRoot: 'E:/study/.agents/skills/untrusted-package-skill',
+        trustStatus: 'untrusted',
+        content: 'untrusted package content',
+        allowedTools: ['builtin-workspace_file_read'],
+      };
+      skillRegistry.register(activeSkill);
+      skillRegistry.register(inactiveSkill);
+      skillRegistry.register(untrustedSkill);
+
+      try {
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: [activeSkillId, untrustedSkillId],
+          agenticSessionSkillIds: [],
+          version: 15,
+        });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.skillPackageRoots).toEqual({
+          [activeSkillId]: 'E:/study/.skills/active-package-skill',
+        });
+      } finally {
+        skillRegistry.unregister(activeSkillId);
+        skillRegistry.unregister(inactiveSkillId);
+        skillRegistry.unregister(untrustedSkillId);
+      }
+    });
+
+    it('should filter selected external MCP schemas by the active skill policy', async () => {
+      await adapter.setup();
+
+      const skillId = 'external-mcp-policy-skill';
+      const skill: SkillDefinition = {
+        id: skillId,
+        name: 'External MCP Policy Skill',
+        description: 'Regression test external MCP filtering',
+        location: 'builtin',
+        sourcePath: 'builtin://external-mcp-policy-skill',
+        content: 'external mcp policy content',
+        allowedTools: ['server-a::builtin-allowed_tool'],
+      };
+      skillRegistry.register(skill);
+      const getCachedToolsFor = vi.spyOn(McpService, 'getCachedToolsFor').mockReturnValue([
+        {
+          name: 'allowed_tool',
+          description: 'Allowed external tool',
+          input_schema: { type: 'object' },
+        },
+        {
+          name: 'blocked_tool',
+          description: 'Blocked external tool',
+          input_schema: { type: 'object' },
+        },
+      ] as any);
+
+      try {
+        (mockStore as any).chatParams = {
+          ...(mockStore as any).chatParams,
+          selectedMcpServers: ['server-a'],
+        };
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: [skillId],
+          agenticSessionSkillIds: [],
+          version: 14,
+        });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.skillAllowedTools).toEqual(['server-a::builtin-allowed_tool']);
+        expect(options.mcpToolSchemas).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'load_skills' }),
+            expect.objectContaining({ name: 'allowed_tool', serverId: 'server-a' }),
+          ]),
+        );
+        expect(options.mcpToolSchemas).not.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'blocked_tool', serverId: 'server-a' }),
+          ]),
+        );
+      } finally {
+        getCachedToolsFor.mockRestore();
+        skillRegistry.unregister(skillId);
+      }
+    });
+
+    it('should send an empty skillAllowedTools policy for active skills without allowed tools', async () => {
+      await adapter.setup();
+
+      const skillId = 'instruction-only-skill';
+      const skill: SkillDefinition = {
+        id: skillId,
+        name: 'Instruction Only Skill',
+        description: 'Regression test instruction-only skill',
+        location: 'builtin',
+        sourcePath: 'builtin://instruction-only-skill',
+        content: 'instruction-only content',
+      };
+      skillRegistry.register(skill);
+
+      try {
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: [skillId],
+          agenticSessionSkillIds: [],
+          version: 12,
+        });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.activeSkillIds).toEqual([skillId]);
+        expect(options.skillAllowedTools).toEqual([]);
+      } finally {
+        skillRegistry.unregister(skillId);
       }
     });
   });
@@ -730,6 +922,7 @@ describe('ChatV2TauriAdapter', () => {
 
       expect(invoke).toHaveBeenCalledWith('chat_v2_load_session', {
         sessionId: 'test-session-id',
+        tailLimit: 80,
       });
 
       // 验证调用了 store.restoreFromBackend
@@ -878,6 +1071,89 @@ describe('ChatV2TauriAdapter', () => {
           expect.objectContaining({ name: 'fetch', serverId: 'server-a' }),
         ]),
       );
+    });
+
+    it('should preserve explicit empty skillAllowedTools from original replay runtime snapshot', async () => {
+      await adapter.setup();
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-replay-empty-policy', {
+        id: 'msg-replay-empty-policy',
+        _meta: {
+          skillRuntimeAfter: {
+            activeSkillIds: ['instruction-only-skill'],
+            skillAllowedTools: [],
+          },
+        },
+      });
+
+      const options = (adapter as any).applyOriginalReplaySkillState(
+        'msg-replay-empty-policy',
+        {
+          replayMode: 'original',
+          skillAllowedTools: ['current-tool'],
+        },
+        [],
+      );
+
+      expect(options.activeSkillIds).toEqual(['instruction-only-skill']);
+      expect(options.skillAllowedTools).toEqual([]);
+    });
+
+    it('should not merge legacy effective tools into explicit empty replay runtime policy', async () => {
+      await adapter.setup();
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-replay-empty-policy-with-legacy', {
+        id: 'msg-replay-empty-policy-with-legacy',
+        _meta: {
+          skillRuntimeAfter: {
+            activeSkillIds: ['instruction-only-skill'],
+            skillAllowedTools: [],
+          },
+          skillSnapshotAfter: {
+            manualPinnedSkillIds: ['legacy-skill'],
+            effectiveAllowedInternalTools: ['builtin-legacy_tool'],
+            effectiveAllowedExternalTools: ['server-a::legacy_tool'],
+          },
+        },
+      });
+
+      const options = (adapter as any).applyOriginalReplaySkillState(
+        'msg-replay-empty-policy-with-legacy',
+        {
+          replayMode: 'original',
+          skillAllowedTools: ['current-tool'],
+        },
+        [],
+      );
+
+      expect(options.skillAllowedTools).toEqual([]);
+    });
+
+    it('should not invent an empty skillAllowedTools policy from legacy replay skill snapshot', async () => {
+      await adapter.setup();
+
+      (mockStore.messageMap as Map<string, unknown>).set('msg-replay-legacy-policy', {
+        id: 'msg-replay-legacy-policy',
+        _meta: {
+          skillSnapshotAfter: {
+            manualPinnedSkillIds: ['legacy-skill'],
+            effectiveAllowedInternalTools: [],
+            effectiveAllowedExternalTools: [],
+          },
+        },
+      });
+
+      const options = (adapter as any).applyOriginalReplaySkillState(
+        'msg-replay-legacy-policy',
+        {
+          replayMode: 'original',
+          skillAllowedTools: ['current-tool'],
+        },
+        [],
+      );
+
+      expect(options.activeSkillIds).toEqual(['legacy-skill']);
+      expect(options.skillAllowedTools).toEqual(['current-tool']);
     });
 
     it('should use current skill environment for retry(current)', async () => {
@@ -1030,6 +1306,155 @@ describe('ChatV2TauriAdapter', () => {
       await adapter.setup();
 
       expect(adapter.initialized).toBe(true);
+    });
+  });
+
+  describe('anki_generation_event routing (P1)', () => {
+    let ankiEventCallback: (event: { payload: unknown }) => void;
+
+    const seedAnkiBlock = (
+      id: string,
+      opts: {
+        documentId?: string;
+        status?: 'pending' | 'running' | 'success' | 'error';
+        cards?: Array<{ id: string; front: string; back: string }>;
+      } = {},
+    ) => {
+      const block = {
+        id,
+        type: 'anki_cards' as const,
+        status: opts.status ?? 'running',
+        messageId: 'msg-anki',
+        toolOutput: {
+          ...(opts.documentId ? { documentId: opts.documentId } : {}),
+          cards: opts.cards ?? [],
+        },
+      };
+      mockStore.blocks.set(id, block as any);
+      return block;
+    };
+
+    beforeEach(async () => {
+      vi.mocked(listen).mockImplementation(async (channel, callback) => {
+        if (channel === 'anki_generation_event') {
+          ankiEventCallback = callback as typeof ankiEventCallback;
+        }
+        return mockUnlisten;
+      });
+
+      // Make updateBlock mutate the in-memory blocks map so routing assertions can read results.
+      vi.mocked(mockStore.updateBlock).mockImplementation((blockId, updates) => {
+        const existing = mockStore.blocks.get(blockId);
+        if (!existing) return;
+        mockStore.blocks.set(blockId, {
+          ...existing,
+          ...updates,
+          toolOutput:
+            updates.toolOutput !== undefined
+              ? updates.toolOutput
+              : existing.toolOutput,
+        } as any);
+      });
+      vi.mocked(mockStore.updateBlockStatus).mockImplementation((blockId, status) => {
+        const existing = mockStore.blocks.get(blockId);
+        if (!existing) return;
+        mockStore.blocks.set(blockId, { ...existing, status } as any);
+      });
+
+      await adapter.setup();
+    });
+
+    it('drops event with documentId when no matching block (does not write any block)', () => {
+      seedAnkiBlock('anki-block-active', { status: 'running' }); // no documentId — must NOT receive fallback
+
+      ankiEventCallback({
+        payload: {
+          type: 'NewCard',
+          data: {
+            document_id: 'doc-missing',
+            card: { id: 'card-1', front: 'Q', back: 'A' },
+          },
+        },
+      });
+
+      expect(mockStore.updateBlock).not.toHaveBeenCalled();
+      const active = mockStore.blocks.get('anki-block-active') as any;
+      expect(active.toolOutput.cards).toEqual([]);
+      expect(active.toolOutput.documentId).toBeUndefined();
+    });
+
+    it('routes by documentId and does not cross-write between two anki blocks', () => {
+      seedAnkiBlock('anki-block-a', { documentId: 'doc-a', status: 'running' });
+      seedAnkiBlock('anki-block-b', { documentId: 'doc-b', status: 'running' });
+
+      ankiEventCallback({
+        payload: {
+          type: 'NewCard',
+          data: {
+            document_id: 'doc-a',
+            card: { id: 'card-a1', front: 'Qa', back: 'Aa' },
+          },
+        },
+      });
+      ankiEventCallback({
+        payload: {
+          type: 'NewCard',
+          data: {
+            documentId: 'doc-b',
+            card: { id: 'card-b1', front: 'Qb', back: 'Ab' },
+          },
+        },
+      });
+
+      const blockA = mockStore.blocks.get('anki-block-a') as any;
+      const blockB = mockStore.blocks.get('anki-block-b') as any;
+
+      expect(blockA.toolOutput.documentId).toBe('doc-a');
+      expect(blockA.toolOutput.cards).toHaveLength(1);
+      expect(blockA.toolOutput.cards[0].id).toBe('card-a1');
+
+      expect(blockB.toolOutput.documentId).toBe('doc-b');
+      expect(blockB.toolOutput.cards).toHaveLength(1);
+      expect(blockB.toolOutput.cards[0].id).toBe('card-b1');
+    });
+
+    it('does not stamp foreign documentId onto an unmatched active block', () => {
+      // Active block without documentId — old bug would fallback + ensureDocumentId write doc-x here
+      seedAnkiBlock('anki-block-orphan', { status: 'running' });
+
+      ankiEventCallback({
+        payload: {
+          type: 'TaskStatusUpdate',
+          data: {
+            document_id: 'doc-x',
+            status: 'streaming',
+          },
+        },
+      });
+
+      expect(mockStore.updateBlock).not.toHaveBeenCalled();
+      const orphan = mockStore.blocks.get('anki-block-orphan') as any;
+      expect(orphan.toolOutput.documentId).toBeUndefined();
+    });
+
+    it('allows latest-active fallback only when event has no documentId (owner)', () => {
+      seedAnkiBlock('anki-block-1', { documentId: 'doc-1', status: 'running' });
+      seedAnkiBlock('anki-block-2', { status: 'running' }); // latest active without doc id
+
+      ankiEventCallback({
+        payload: {
+          type: 'NewCard',
+          data: {
+            card: { id: 'card-fallback', front: 'Qf', back: 'Af' },
+          },
+        },
+      });
+
+      const block1 = mockStore.blocks.get('anki-block-1') as any;
+      const block2 = mockStore.blocks.get('anki-block-2') as any;
+      expect(block1.toolOutput.cards).toEqual([]);
+      expect(block2.toolOutput.cards).toHaveLength(1);
+      expect(block2.toolOutput.cards[0].id).toBe('card-fallback');
     });
   });
 });

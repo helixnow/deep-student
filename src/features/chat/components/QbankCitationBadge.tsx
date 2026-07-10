@@ -63,11 +63,11 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
         detail: {
           id: sessionId,
           type: 'exam',
-          title: title || '题目集',
+          title: title || t('qbankCitation.qbank'),
         },
       })
     );
-  }, [sessionId, title, onClick]);
+  }, [sessionId, title, onClick, t]);
 
   return (
     <NotionButton

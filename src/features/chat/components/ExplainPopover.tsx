@@ -63,7 +63,7 @@ const VIEWPORT_PADDING = 12;
 // 加载动画组件
 // ============================================================================
 
-const ThinkingIndicator: React.FC = () => (
+const ThinkingIndicator: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex items-center gap-2 text-xs text-muted-foreground">
     <span className="inline-flex items-center gap-0.5">
       {[0, 1, 2].map((i) => (
@@ -80,7 +80,7 @@ const ThinkingIndicator: React.FC = () => (
         />
       ))}
     </span>
-    <span>思考中...</span>
+    <span>{label}</span>
   </div>
 );
 
@@ -188,7 +188,12 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     setIsLoading(true);
     setError(null);
 
-    const prompt = `请用简洁清晰的语言解释以下内容。如果是专业术语，给出定义和通俗解释；如果是一段话，概括其核心含义。用中文回答。\n\n"${sourceText}"`;
+    // 通过 i18n 生成 prompt，使回答语言跟随界面语言
+    const prompt = t(
+      'explainPopover.prompt',
+      '请用简洁清晰的语言解释以下内容。如果是专业术语，给出定义和通俗解释；如果是一段话，概括其核心含义。用中文回答。\n\n"{{text}}"',
+      { text: sourceText }
+    );
 
     invoke<{ assistant_message: string; input_tokens: number; output_tokens: number }>(
       'call_llm_for_boundary',
@@ -205,7 +210,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       .finally(() => {
         if (requestIdRef.current === reqId) setIsLoading(false);
       });
-  }, [isVisible, sourceText, explanation, isLoading, error]);
+  }, [isVisible, sourceText, explanation, isLoading, error, t]);
 
   // 关闭时重置（同时让所有 in-flight 失效）
   useEffect(() => {
@@ -338,6 +343,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
             <button
               type="button"
               onClick={onClose}
+              aria-label={t('common:actions.close', '关闭')}
               className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors"
             >
               <X size={13} />
@@ -352,6 +358,8 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 <button
                   type="button"
                   onClick={handleRetry}
+                  aria-label={t('common:actions.retry', '重试')}
+                  title={t('common:actions.retry', '重试')}
                   className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowsClockwise size={14} />
@@ -362,7 +370,7 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 {explanation}
               </p>
             ) : isLoading ? (
-              <ThinkingIndicator />
+              <ThinkingIndicator label={t('explainPopover.thinking', '思考中...')} />
             ) : null}
           </div>
 

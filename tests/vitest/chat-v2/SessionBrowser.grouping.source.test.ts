@@ -22,7 +22,7 @@ describe('SessionBrowser grouping source contract', () => {
     expect(pageSource).toContain('const staleSessionGroups = useMemo');
     expect(pageSource).toContain("t('browser.staleTopic'");
     expect(pageSource).toContain('filter((groupId) => !activeGroupIds.has(groupId))');
-    expect(pageSource).toContain('const displayGroups = [...groups, ...staleSessionGroups]');
+    expect(pageSource).toContain('[...groups, ...staleSessionGroups]');
     expect(pageSource).toContain('return [...groups, ...staleSessionGroups].map((g) => ({');
     expect(pageSource).toContain('visibleGroups: editableVisibleGroups');
     expect(pageSource).toContain('groups: visibleGroups');

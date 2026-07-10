@@ -16,19 +16,24 @@
 pub mod adapters;
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
+pub mod automations; // 🆕 周期自动化定义存储与调度器
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;
 pub mod events;
 pub mod handlers;
+pub mod headless; // 🆕 Headless Runner：后端自主发起 agent turn（automations 到点真正跑 agent）
 pub mod migration; // 旧版数据迁移模块
 pub mod pipeline;
 pub mod prompt_builder;
 pub mod repo;
 pub mod resource_repo; // ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)，由 vfs/repos/resource_repo.rs 替代。参见 P1-#9。
 pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
+pub mod runtime_roots;
 pub mod skills; // 🆕 Skills 文件系统处理器
+pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
 pub mod state;
+pub mod tool_policy;
 pub mod tools;
 pub mod types;
 pub mod user_message_builder; // 用户消息统一构建模块
@@ -57,6 +62,11 @@ pub use events::{BackendEvent, ChatV2EventEmitter, SessionEvent};
 
 // 重导出状态类型
 pub use state::{ChatV2State, StreamGuard};
+
+// 重导出 Headless Runner（供 automations 调度器 / 手动触发命令使用）
+pub use headless::{
+    run_headless_turn, HeadlessSessionMode, HeadlessTurnRequest, HeadlessTurnResult,
+};
 
 // 重导出核心类型
 pub use types::{
@@ -133,7 +143,7 @@ pub use user_message_builder::{
 };
 
 // 重导出 Skills 命令
-pub use skills::{skill_list_directories, skill_read_file};
+pub use skills::{skill_list_directories, skill_list_package_files, skill_read_file};
 
 // 重导出 Tauri 命令
 pub use handlers::{

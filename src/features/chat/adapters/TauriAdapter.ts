@@ -60,6 +60,8 @@ import { logAttachment } from '../debug/chatV2Logger';
 import { collectSchemaToolIds } from '../tools/collector';
 import { McpService } from '@/mcp/mcpService';
 import { skillRegistry } from '../skills/registry';
+import { resolveEffectiveTrustStatus } from '../skills/skillTrustStorage';
+import { isSkillDisabled } from '../skills/skillEnableStorage';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../skills/types';
 import { groupCache } from '../core/store/groupCache';
 import { BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
@@ -68,11 +70,11 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import {
   LOAD_SKILLS_TOOL_SCHEMA,
   getLoadedSkills,
-  getLoadedToolSchemas,
   generateAvailableSkillsPrompt,
+  escapeXmlAttr,
 } from '../skills/progressiveDisclosure';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
-import { useWorkspaceStore } from '../workspace/workspaceStore';
+import { useWorkspaceStore, resolveWorkspaceIdForSession } from '../workspace/workspaceStore';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
 import {
   emitTemplateDesignerToolEvent,
@@ -96,6 +98,12 @@ function isTauriRuntimeAvailable(): boolean {
 
 const LOG_PREFIX = '[ChatV2:TauriAdapter]';
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+/**
+ * 会话加载尾部窗口：首屏只取最近 N 条消息，超出部分在首帧后空闲期补齐。
+ * 与 MessageList 直渲阈值（80）同量级，保证补齐前的可视内容已充足。
+ */
+const LOAD_SESSION_TAIL_LIMIT = 80;
 
 function getCanvasNoteIdFromModeState(modeState: Record<string, unknown> | null): string | undefined {
   if (!modeState || typeof modeState !== 'object') {
@@ -335,6 +343,66 @@ export class ChatV2TauriAdapter {
   }
 
   /**
+   * 🔧 P1 修复（2026-07-08 审阅 20 P1-2）：逐个注册监听器并收集 unlisten，失败时回滚。
+   *
+   * 原实现用 Promise.all：任一 listen reject 时整体 reject，已 resolve 的 unlisten
+   * 函数被丢弃，无法再释放（监听器闭包持有 adapter → store 引用链，既是事件重复
+   * 处理源也是内存泄漏）。改用 allSettled：部分失败时先释放全部已成功注册的
+   * 监听器，再抛出首个失败原因，保证"要么全部注册成功、要么零残留"。
+   */
+  private async registerEventListenersWithRollback(): Promise<UnlistenFn[]> {
+    const blockEventChannel = `chat_v2_event_${this.sessionId}`;
+    const sessionEventChannel = `chat_v2_session_${this.sessionId}`;
+
+    const results = await Promise.allSettled([
+      listen<BackendEvent>(blockEventChannel, (event) => {
+        this.handleBlockEvent(event.payload);
+      }),
+      listen<SessionEventPayload>(sessionEventChannel, (event) => {
+        this.handleSessionEvent(event.payload);
+      }),
+      listen<unknown>('anki_generation_event', (event) => {
+        this.handleAnkiGenerationEvent(event.payload);
+      }),
+      // ★ 2026-02-14: 监听后端真实 LLM 请求体，替换前端 rawRequest
+      listen<LlmRequestBodyEventPayload>('chat_v2_llm_request_body', (event) => {
+        this.handleLlmRequestBody(event.payload);
+      }),
+    ]);
+
+    const fulfilledUnlisteners = results
+      .filter((r): r is PromiseFulfilledResult<UnlistenFn> => r.status === 'fulfilled')
+      .map((r) => r.value);
+    const firstRejection = results.find(
+      (r): r is PromiseRejectedResult => r.status === 'rejected'
+    );
+
+    if (firstRejection) {
+      console.warn(
+        LOG_PREFIX,
+        `Listener registration partially failed (${fulfilledUnlisteners.length}/${results.length} succeeded), rolling back`
+      );
+      this.releaseUnlisteners(fulfilledUnlisteners, 'partial registration rollback');
+      throw firstRejection.reason instanceof Error
+        ? firstRejection.reason
+        : new Error(getErrorMessage(firstRejection.reason));
+    }
+
+    return fulfilledUnlisteners;
+  }
+
+  /** 逐个安全释放 unlisten 函数（单个失败不影响其余释放）。 */
+  private releaseUnlisteners(unlisteners: UnlistenFn[], reason: string): void {
+    for (const unlisten of unlisteners) {
+      try {
+        unlisten();
+      } catch (error) {
+        console.error(LOG_PREFIX, `Error during unlisten (${reason}):`, getErrorMessage(error));
+      }
+    }
+  }
+
+  /**
    * 🆕 P1 修复：尝试重新注册事件监听器
    * 
    * 当事件监听注册失败后，可以调用此方法尝试重新注册。
@@ -367,36 +435,17 @@ export class ChatV2TauriAdapter {
 
       const currentGeneration = ++this.setupGeneration;
 
-      // 重新注册监听器
-      const blockEventChannel = `chat_v2_event_${this.sessionId}`;
-      const sessionEventChannel = `chat_v2_session_${this.sessionId}`;
+      // 重新注册监听器（🔧 P1: 逐个注册 + 部分失败回滚，见 registerEventListenersWithRollback）
+      const listenPromise = this.registerEventListenersWithRollback();
 
-      const listenPromise = Promise.all([
-        listen<BackendEvent>(blockEventChannel, (event) => {
-          this.handleBlockEvent(event.payload);
-        }),
-        listen<SessionEventPayload>(sessionEventChannel, (event) => {
-          this.handleSessionEvent(event.payload);
-        }),
-        listen<unknown>('anki_generation_event', (event) => {
-          this.handleAnkiGenerationEvent(event.payload);
-        }),
-        listen<LlmRequestBodyEventPayload>('chat_v2_llm_request_body', (event) => {
-          this.handleLlmRequestBody(event.payload);
-        }),
-      ]);
-
-      this.listenersReadyPromise = listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
+      this.listenersReadyPromise = listenPromise.then((unlistenFns) => {
         if (this.setupGeneration !== currentGeneration) {
           console.warn(LOG_PREFIX, `Releasing stale retry listeners (gen=${currentGeneration}, current=${this.setupGeneration})`);
-          blockUnlisten();
-          sessionUnlisten();
-          ankiUnlisten();
-          llmReqUnlisten();
+          this.releaseUnlisteners(unlistenFns, 'stale retry generation');
           throw new Error(`Retry listener setup became stale for session ${this.sessionId}`);
         }
 
-        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
+        this.unlisteners.push(...unlistenFns);
         this.claimAnkiEventOwnership('retrySetupListeners');
         this.listenerRegistrationError = null;
       }).catch((err) => {
@@ -471,9 +520,8 @@ export class ChatV2TauriAdapter {
     sessionSwitchPerf.mark('adapter_setup_start', { fromCache: alreadyLoadedBefore });
 
     try {
-      // 监听块级事件: chat_v2_event_{session_id}
+      // 监听块级事件: chat_v2_event_{session_id}（通道构造收敛在 registerEventListenersWithRollback）
       const blockEventChannel = `chat_v2_event_${this.sessionId}`;
-      const sessionEventChannel = `chat_v2_session_${this.sessionId}`;
       
       // 🔧 调试打点：确认事件监听通道
       logMultiVariant('adapter', 'setup_listening', {
@@ -496,34 +544,18 @@ export class ChatV2TauriAdapter {
       this.listenerRegistrationError = null;
       
       // 启动事件监听（不立即 await，后台注册）
-      const listenPromise = Promise.all([
-        listen<BackendEvent>(blockEventChannel, (event) => {
-          this.handleBlockEvent(event.payload);
-        }),
-        listen<SessionEventPayload>(sessionEventChannel, (event) => {
-          this.handleSessionEvent(event.payload);
-        }),
-        listen<unknown>('anki_generation_event', (event) => {
-          this.handleAnkiGenerationEvent(event.payload);
-        }),
-        // ★ 2026-02-14: 监听后端真实 LLM 请求体，替换前端 rawRequest
-        listen<LlmRequestBodyEventPayload>('chat_v2_llm_request_body', (event) => {
-          this.handleLlmRequestBody(event.payload);
-        }),
-      ]);
-      
-      this.listenersReadyPromise = listenPromise.then(([blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten]) => {
+      // 🔧 P1: 逐个注册 + 部分失败回滚，见 registerEventListenersWithRollback
+      const listenPromise = this.registerEventListenersWithRollback();
+
+      this.listenersReadyPromise = listenPromise.then((unlistenFns) => {
         // 守卫：如果 cleanup/re-setup 已使当前 generation 失效，立即释放过期监听器
         if (this.setupGeneration !== currentGeneration) {
           console.warn(LOG_PREFIX, `Releasing stale listeners (gen=${currentGeneration}, current=${this.setupGeneration})`);
-          blockUnlisten();
-          sessionUnlisten();
-          ankiUnlisten();
-          llmReqUnlisten();
+          this.releaseUnlisteners(unlistenFns, 'stale setup generation');
           throw new Error(`Listener setup became stale for session ${this.sessionId}`);
         }
 
-        this.unlisteners.push(blockUnlisten, sessionUnlisten, ankiUnlisten, llmReqUnlisten);
+        this.unlisteners.push(...unlistenFns);
         this.claimAnkiEventOwnership('setup');
         sessionSwitchPerf.mark('listen_end');
         this.listenerRegistrationError = null;
@@ -975,7 +1007,7 @@ export class ChatV2TauriAdapter {
       }
       return undefined;
     };
-    // 回退：找任何 running/pending 的 anki_cards 块
+    // 仅无 documentId 时允许回退到最新活跃块（且仅 owner adapter 能走到这里）
     const findLatestActiveAnkiBlock = () => {
       const candidates = Array.from(blocks.values()).filter((block) => {
         if (block.type !== 'anki_cards') return false;
@@ -984,9 +1016,15 @@ export class ChatV2TauriAdapter {
       return candidates.length > 0 ? candidates[candidates.length - 1] : undefined;
     };
 
+    // P1 止血：有 documentId 时只精确匹配，禁止回退到「最新活跃块」（避免串块 / 写错 documentId）
+    let usedLatestActiveFallback = false;
     const targetBlock = documentId
-      ? findBlockByDocumentId(documentId) ?? findLatestActiveAnkiBlock()
-      : findLatestActiveAnkiBlock();
+      ? findBlockByDocumentId(documentId)
+      : (() => {
+          const fallback = findLatestActiveAnkiBlock();
+          if (fallback) usedLatestActiveFallback = true;
+          return fallback;
+        })();
     if (!targetBlock) {
       try {
         window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
@@ -997,10 +1035,22 @@ export class ChatV2TauriAdapter {
           detail: { type, data: dataObj ?? data },
         }}));
       } catch { /* debug only */ }
-      // documentId 存在但本 session 没有匹配的块 → 事件属于其他 session，静默忽略
+      // documentId 存在但本 session 没有匹配的块 → 事件属于其他 session / 块未就绪，静默忽略
       // documentId 不存在且没有活跃块 → 无处投递，忽略
       return;
     }
+    if (usedLatestActiveFallback) {
+      try {
+        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
+          level: 'warn',
+          phase: 'bridge:event',
+          summary: `anki_generation_event ${type}: no documentId, fallback to latest active block ${targetBlock.id.slice(0, 8)}`,
+          blockId: targetBlock.id,
+          detail: { type, adapterId: this.adapterInstanceId },
+        }}));
+      } catch { /* debug only */ }
+    }
+    // ensureDocumentId 仅在精确匹配到块后写入；有 documentId 时不会走到 fallback，故不会污染其他块
     try {
       window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
         level: 'debug',
@@ -1211,11 +1261,39 @@ export class ChatV2TauriAdapter {
       return;
     }
 
+    // 取消：保留已生成卡片，块 status=success，finalStatus=cancelled（与 failed 分离）
+    if (type === 'DocumentProcessingCancelled') {
+      try {
+        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
+          level: 'info', phase: 'bridge:card',
+          summary: `${type} → block ${targetBlock.id.slice(0, 8)} CANCELLED | ${currentCards.length} cards kept`,
+          documentId, blockId: targetBlock.id,
+          detail: { cardsCount: currentCards.length },
+        }}));
+      } catch { /* */ }
+      recordSourceSnapshot(
+        'event-doc-cancelled',
+        currentCards,
+        'success',
+        (ensureDocumentId.documentId as string | undefined) ?? (currentOutput.documentId as string | undefined),
+      );
+      state.updateBlock(targetBlock.id, {
+        toolOutput: {
+          ...currentOutput,
+          ...ensureDocumentId,
+          finalStatus: 'cancelled',
+        },
+      });
+      if (targetBlock.status !== 'error') {
+        state.updateBlockStatus(targetBlock.id, 'success');
+      }
+      return;
+    }
+
     if (
       type === 'TaskFailed' ||
       type === 'DocumentProcessingFailed' ||
-      type === 'WorkflowFailed' ||
-      type === 'DocumentProcessingCancelled'
+      type === 'WorkflowFailed'
     ) {
       const errorMessage =
         (dataObj?.message as string | undefined) ||
@@ -1476,7 +1554,20 @@ export class ChatV2TauriAdapter {
             }
           }
 
-          if (!this.isTargetingCurrentStreamMessage(payload.messageId)) {
+          // 🔧 P1 修复（2026-07-08 审阅 20 P1-1）：
+          // 原先此处对 isTargetingCurrentStreamMessage 的硬性守卫会把后端自主发起的流
+          // （P29 子代理场景：前端从未调用 send，currentStreamingMessageId 与
+          // streamExpectation 均为 null）静默丢弃，使下方占位消息创建路径成为死代码。
+          // messageId 冲突场景已由上方 hasConflictingCurrent/hasConflictingExpectation
+          // 守卫处理（含 retry 重绑白名单），走到这里只剩两种合法情况：
+          //   a) 事件指向当前流/预期流（isTargeting = true）
+          //   b) 当前无任何进行中流与预期 → 后端自主发起的新流，放行到占位路径
+          const isTargetingKnownStream = this.isTargetingCurrentStreamMessage(payload.messageId);
+          const isAutonomousStreamStart =
+            !isTargetingKnownStream &&
+            !this.getCurrentState().currentStreamingMessageId &&
+            !this.streamExpectation;
+          if (!isTargetingKnownStream && !isAutonomousStreamStart) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_start with mismatched messageId:', {
               incomingMessageId: payload.messageId,
               currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
@@ -1484,6 +1575,28 @@ export class ChatV2TauriAdapter {
             });
             break;
           }
+
+          // 拦截空闲态下针对已完成历史消息的自主 start 事件（stale 重放）。
+          // 🔧 必须在 syncStreamExpectationFromEvent 之前判断，否则 expectation 被
+          // 提前同步为该 messageId 后此守卫恒不命中（原实现的死代码问题）。
+          const autonomousTargetMessage = isAutonomousStreamStart
+            ? currentState.messageMap.get(payload.messageId)
+            : undefined;
+          if (
+            isAutonomousStreamStart
+            && autonomousTargetMessage
+            && currentState.sessionStatus === 'idle'
+            && (autonomousTargetMessage.blockIds?.length ?? 0) > 0
+          ) {
+            console.warn(LOG_PREFIX, 'Ignore stream_start for completed historical message:', {
+              messageId: payload.messageId,
+              blockCount: autonomousTargetMessage.blockIds?.length ?? 0,
+              currentStreamingMessageId,
+              expectedMessageId,
+            });
+            break;
+          }
+
           this.syncStreamExpectationFromEvent(payload.messageId, payload.timestamp);
 
           // 流式开始
@@ -1507,26 +1620,9 @@ export class ChatV2TauriAdapter {
           
           // 🔧 P29 修复：子代理场景下消息可能不存在（后端创建，前端未同步）
           // 检查消息是否存在，不存在则创建占位消息（与普通会话 sendMessageWithIds 等价）
-          const targetMessage = currentState.messageMap.get(payload.messageId);
-          const messageExists = !!targetMessage;
+          // （历史消息 stale 拦截已前移到 syncStreamExpectationFromEvent 之前，见上方守卫）
+          const messageExists = currentState.messageMap.has(payload.messageId);
 
-          // 进一步拦截空闲态下的历史消息 start 事件：
-          // 若当前既无 active stream 也无 expectation，且该消息已有内容块，几乎可判定为 stale。
-          if (
-            messageExists
-            && !this.isTargetingCurrentStreamMessage(payload.messageId)
-            && currentState.sessionStatus === 'idle'
-            && (targetMessage?.blockIds?.length ?? 0) > 0
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stream_start for completed historical message:', {
-              messageId: payload.messageId,
-              blockCount: targetMessage?.blockIds?.length ?? 0,
-              currentStreamingMessageId,
-              expectedMessageId,
-            });
-            break;
-          }
-          
           // 🔧 P31 全链路诊断
           const diagData = {
             messageId: payload.messageId,
@@ -1981,8 +2077,8 @@ export class ChatV2TauriAdapter {
 
       // 🔧 2026-01-15: 超时机制已移除
 
-      // 🆕 获取当前工作区 ID（多 Agent 协作）
-      const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
+      // 🔧 P1 修复：仅当本会话确实属于当前工作区时才附加 workspaceId，避免跨会话串台
+      const attachedWorkspaceId = resolveWorkspaceIdForSession(this.sessionId);
 
       // 5. 调用后端（传递前端生成的消息 ID）
       const request: SendMessageRequest = {
@@ -1995,7 +2091,7 @@ export class ChatV2TauriAdapter {
         assistantMessageId,
         userContextRefs, // 🆕 统一上下文注入（包含附件）
         pathMap: contextPathMap, // ★ 文档28 Prompt10：传递路径映射给后端保存
-        workspaceId: currentWorkspaceId ?? undefined, // 🆕 工作区 ID（多 Agent 协作）
+        workspaceId: attachedWorkspaceId, // 🆕 工作区 ID（多 Agent 协作，仅限工作区成员会话）
       };
 
       const requestAudit = buildAttachmentRequestAudit(request, {
@@ -2215,8 +2311,8 @@ export class ChatV2TauriAdapter {
 
       // 🔧 2026-01-15: 超时机制已移除
 
-      // 🆕 获取当前工作区 ID（多 Agent 协作）
-      const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
+      // 🔧 P1 修复：仅当本会话确实属于当前工作区时才附加 workspaceId，避免跨会话串台
+      const attachedWorkspaceId = resolveWorkspaceIdForSession(this.sessionId);
 
       // 5. 调用后端
       const request: SendMessageRequest = {
@@ -2228,7 +2324,7 @@ export class ChatV2TauriAdapter {
         assistantMessageId,
         userContextRefs, // 🆕 统一上下文注入（包含附件）
         pathMap: contextPathMap, // ★ 文档28 Prompt10：传递路径映射给后端保存
-        workspaceId: currentWorkspaceId ?? undefined, // 🆕 工作区 ID（多 Agent 协作）
+        workspaceId: attachedWorkspaceId, // 🆕 工作区 ID（多 Agent 协作，仅限工作区成员会话）
       };
 
       const requestAudit = buildAttachmentRequestAudit(request, {
@@ -2742,7 +2838,11 @@ export class ChatV2TauriAdapter {
   // ========================================================================
 
   /**
-   * 加载会话
+   * 加载会话（尾部分块）
+   *
+   * 第一阶段只取最近 LOAD_SESSION_TAIL_LIMIT 条消息，首屏 IPC/渲染成本与会话
+   * 总长度解耦；若后端报告还有更早历史，首帧空闲后全量拉取并合并到头部
+   * （store.prependHistoryFromBackend，滚动锚定由 MessageList 补偿）。
    */
   async loadSession(): Promise<void> {
     console.log(LOG_PREFIX, 'Loading session:', this.sessionId);
@@ -2757,6 +2857,7 @@ export class ChatV2TauriAdapter {
       
       const response = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
         sessionId: this.sessionId,
+        tailLimit: LOAD_SESSION_TAIL_LIMIT,
       });
       const invokeMs = performance.now() - t0;
 
@@ -2831,10 +2932,49 @@ export class ChatV2TauriAdapter {
       if (this.onDataRestored) {
         this.onDataRestored();
       }
+
+      // 第二阶段：还有更早历史时，首帧后空闲期全量拉取并合并到头部
+      const totalCount = response.totalMessageCount;
+      if (typeof totalCount === 'number' && totalCount > (response.messages?.length ?? 0)) {
+        this.scheduleFullHistoryLoad();
+      }
     } catch (error) {
       console.error(LOG_PREFIX, 'Load session failed:', getErrorMessage(error));
       throw error;
     }
+  }
+
+  /**
+   * 尾部分块加载第二阶段：空闲期全量加载并把更早历史合并到会话头部。
+   * 失败静默降级（首屏尾部数据已可用；下次进入会话会重试）。
+   */
+  private scheduleFullHistoryLoad(): void {
+    const generation = this.setupGeneration;
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+    };
+    const schedule = win.requestIdleCallback?.bind(win)
+      ?? ((cb: () => void) => window.setTimeout(cb, 120));
+
+    schedule(async () => {
+      // cleanup()/重新 setup 会推进 setupGeneration，此时放弃过期的补齐任务
+      if (generation !== this.setupGeneration) return;
+      try {
+        const t0 = performance.now();
+        const fullResponse = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
+          sessionId: this.sessionId,
+        });
+        if (generation !== this.setupGeneration) return;
+        this.store.prependHistoryFromBackend(fullResponse);
+        console.log(LOG_PREFIX, 'Full history merged:', {
+          sessionId: this.sessionId,
+          totalMessages: fullResponse.messages?.length ?? 0,
+          invokeMs: Math.round(performance.now() - t0),
+        });
+      } catch (error) {
+        console.warn(LOG_PREFIX, 'Full history load failed (tail view remains):', getErrorMessage(error));
+      }
+    });
   }
 
   /**
@@ -3533,14 +3673,16 @@ export class ChatV2TauriAdapter {
       options.activeSkillIds = replayPinnedSkillIds;
     }
 
-    const replayAllowedTools = Array.from(new Set([
-      ...(runtimeSnapshot?.skillAllowedTools || []),
-      ...(snapshot.effectiveAllowedInternalTools || []),
-      ...(snapshot.effectiveAllowedExternalTools || []),
-    ])).filter(Boolean);
-
-    if (replayAllowedTools.length > 0) {
-      options.skillAllowedTools = replayAllowedTools;
+    if (runtimeSnapshot?.skillAllowedTools !== undefined) {
+      options.skillAllowedTools = runtimeSnapshot.skillAllowedTools.filter(Boolean);
+    } else {
+      const replayAllowedTools = Array.from(new Set([
+        ...(snapshot.effectiveAllowedInternalTools || []),
+        ...(snapshot.effectiveAllowedExternalTools || []),
+      ])).filter(Boolean);
+      if (replayAllowedTools.length > 0) {
+        options.skillAllowedTools = replayAllowedTools;
+      }
     }
 
     const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
@@ -3559,6 +3701,12 @@ export class ChatV2TauriAdapter {
       }
       const skill = skillRegistry.get(skillId);
       if (!skill) continue;
+      // 🔒 P1（2026-07-08 审阅 22 P1-1）：重放路径同样对 untrusted 技能 fail-closed，
+      // 与 buildSendOptions 主路径的信任门禁保持一致
+      if (resolveEffectiveTrustStatus(skill) === 'untrusted') {
+        console.log(LOG_PREFIX, '[Replay] Skip untrusted skill injection:', skill.id);
+        continue;
+      }
       if (skill.content) {
         skillContents[skill.id] = skill.content;
       }
@@ -3687,6 +3835,61 @@ export class ChatV2TauriAdapter {
   private notifyContextTruncated(removedCount: number): void {
     showGlobalNotification('warning', i18n.t('chatV2:chat.context_truncated', { count: removedCount }));
   }
+
+  private canonicalSkillPolicyToolName(toolName: string): string {
+    return toolName
+      .replace(/^builtin[-:]/, '')
+      .replace(/^mcp\.tools\./, '')
+      .replace(/^mcp_/, '');
+  }
+
+  private isSkillPolicyControlTool(toolName: string): boolean {
+    return [
+      'load_skills',
+      'builtin-load_skills',
+      'builtin:load_skills',
+      'mcp_load_skills',
+      'attempt_completion',
+      'builtin-attempt_completion',
+      'mcp_attempt_completion',
+      'coordinator_sleep',
+      'builtin-coordinator_sleep',
+      'workspace_coordinator_sleep',
+    ].includes(toolName);
+  }
+
+  private isToolAllowedBySkillPolicy(
+    toolName: string,
+    serverId: string | undefined,
+    skillAllowedTools: string[] | undefined,
+  ): boolean {
+    if (this.isSkillPolicyControlTool(toolName)) return true;
+    if (skillAllowedTools === undefined) return true;
+
+    const toolShort = this.canonicalSkillPolicyToolName(toolName);
+    return skillAllowedTools
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .some((entry) => {
+        const scoped = entry.split('::');
+        if (scoped.length === 2) {
+          const [allowedServerId, allowedToolName] = scoped;
+          if (allowedServerId !== serverId) return false;
+          const allowedToolShort = this.canonicalSkillPolicyToolName(allowedToolName);
+          return allowedToolName === toolName ||
+            allowedToolName === toolShort ||
+            allowedToolShort === toolName ||
+            allowedToolShort === toolShort;
+        }
+
+        const allowedShort = this.canonicalSkillPolicyToolName(entry);
+        return entry === toolName ||
+          entry === toolShort ||
+          allowedShort === toolName ||
+          allowedShort === toolShort;
+      });
+  }
+
   private buildSendOptions(snapshot?: BuildSendOptionsSnapshot): SendOptions {
     // 🔧 使用 getCurrentState() 获取最新状态，而非构造时的快照
     // 这确保了 enableThinking 等用户实时修改的参数能正确传递
@@ -3758,9 +3961,11 @@ export class ChatV2TauriAdapter {
     const testModeConfig = getTestModeConfig();
 
     const structuredSkillState = this.getStructuredSkillStateFromStore();
-    const authoritativeActiveSkillIds = structuredSkillState
+    // 🆕 技能停用覆盖：停用的技能不作为激活技能上报（全量 skillContents 透传不受影响）
+    const authoritativeActiveSkillIds = (structuredSkillState
       ? structuredSkillState.manualPinnedSkillIds
-      : currentState.activeSkillIds;
+      : currentState.activeSkillIds
+    ).filter((id) => !isSkillDisabled(id));
     const modeRequiredSkillIds = (() => {
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       return currentWorkspaceId ? ['workspace-tools'] : [];
@@ -3791,6 +3996,8 @@ export class ChatV2TauriAdapter {
     while (pendingSkillIds.length > 0) {
       const skillId = pendingSkillIds.pop();
       if (!skillId || enabledSkillIdSet.has(skillId)) continue;
+      // 🆕 停用的技能（含作为种子或依赖被引入的场景）不进入 schema 工具收集
+      if (isSkillDisabled(skillId)) continue;
       enabledSkillIdSet.add(skillId);
       const skill = skillRegistry.get(skillId);
       for (const depId of skill?.dependencies ?? []) {
@@ -3800,6 +4007,13 @@ export class ChatV2TauriAdapter {
       }
     }
     const authoritativeToolSkillIds = Array.from(enabledSkillIdSet);
+    const hasSkillToolPolicy = authoritativeToolSkillIds.length > 0;
+    const skillAllowedTools = Array.from(new Set(
+      authoritativeToolSkillIds.flatMap((skillId) => {
+        const skill = skillRegistry.get(skillId);
+        return skill?.allowedTools ?? skill?.tools ?? skill?.embeddedTools?.map(tool => tool.name) ?? [];
+      })
+    )).filter(Boolean);
 
     const options = {
       // ChatParams
@@ -3873,6 +4087,7 @@ export class ChatV2TauriAdapter {
       mcpToolSchemas: this.collectMcpToolSchemas(
         chatParams.selectedMcpServers,
         authoritativeToolSkillIds,
+        hasSkillToolPolicy ? skillAllowedTools : undefined,
       ),
 
       // 搜索引擎（从 chatParams 获取选中的引擎）
@@ -3890,7 +4105,7 @@ export class ChatV2TauriAdapter {
 
       // 🆕 激活技能列表（用于后端 allowedTools fail-closed 判定）
       activeSkillIds: authoritativeActiveSkillIds.length > 0 ? authoritativeActiveSkillIds : undefined,
-      skillAllowedTools: undefined as string[] | undefined,
+      skillAllowedTools: hasSkillToolPolicy ? skillAllowedTools : undefined,
 
       // ========== Canvas 智能笔记选项 ==========
       // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
@@ -3902,20 +4117,11 @@ export class ChatV2TauriAdapter {
     // skill_instruction ContextRef 仅作为 UI / 历史兼容缓存，不再参与运行时权限决策
     const schemaToolResult = collectSchemaToolIds({
       pendingContextRefs,
+      skillAllowedTools: hasSkillToolPolicy ? skillAllowedTools : undefined,
     });
     if (schemaToolResult.schemaToolIds.length > 0) {
       options.schemaToolIds = schemaToolResult.schemaToolIds;
       console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);
-    }
-
-    const skillAllowedTools = Array.from(new Set(
-      authoritativeToolSkillIds.flatMap((skillId) => {
-        const skill = skillRegistry.get(skillId);
-        return skill?.allowedTools ?? skill?.tools ?? [];
-      })
-    )).filter(Boolean);
-    if (skillAllowedTools.length > 0) {
-      options.skillAllowedTools = skillAllowedTools;
     }
 
     // Transient skill injection 需要每轮拿到所有已注册 skills 的正文、依赖和工具定义。
@@ -3928,7 +4134,17 @@ export class ChatV2TauriAdapter {
       const replaySkillContents: Record<string, string> = {};
       const skillDependencies: Record<string, string[]> = {};
       const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
+      const skillPackageRoots: Record<string, string> = {};
       for (const skill of allSkills) {
+        // 🔒 P1（2026-07-08 审阅 22 P1-1）：untrusted 技能的正文/embeddedTools/依赖
+        // 一律不注入 LLM 请求。此前 untrusted 只拦截 packageRoot（包内文件读取），
+        // 指令正文与工具描述仍进入上下文，构成提示注入通道；改为 fail-closed：
+        // 未信任的技能对 LLM 完全不可见，用户显式信任后方可注入。
+        const effectiveTrust = resolveEffectiveTrustStatus(skill);
+        if (effectiveTrust === 'untrusted') {
+          console.log(LOG_PREFIX, '[TransientSkills] Skip untrusted skill injection:', skill.id);
+          continue;
+        }
         if (skill.content) {
           skillContents[skill.id] = skill.content;
           replaySkillContents[skill.id] = skill.content;
@@ -3943,6 +4159,13 @@ export class ChatV2TauriAdapter {
             inputSchema: tool.inputSchema,
           }));
         }
+        if (
+          authoritativeToolSkillIds.includes(skill.id) &&
+          skill.packageRoot &&
+          !skill.packageRoot.startsWith('builtin://')
+        ) {
+          skillPackageRoots[skill.id] = skill.packageRoot;
+        }
       }
       if (Object.keys(skillContents).length > 0) {
         (options as Record<string, unknown>).skillContents = skillContents;
@@ -3955,6 +4178,10 @@ export class ChatV2TauriAdapter {
       if (Object.keys(skillEmbeddedTools).length > 0) {
         (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
         console.log(LOG_PREFIX, '[TransientSkills] Injected skill embeddedTools:', Object.keys(skillEmbeddedTools).length);
+      }
+      if (Object.keys(skillPackageRoots).length > 0) {
+        (options as Record<string, unknown>).skillPackageRoots = skillPackageRoots;
+        console.log(LOG_PREFIX, '[TransientSkills] Injected skill package roots:', Object.keys(skillPackageRoots).length);
       }
     }
 
@@ -3999,7 +4226,8 @@ export class ChatV2TauriAdapter {
    */
   private collectMcpToolSchemas(
     selectedServerIds?: string[],
-    loadedSkillIds?: string[]
+    loadedSkillIds?: string[],
+    skillAllowedTools?: string[]
   ): Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> {
     const schemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [];
 
@@ -4020,8 +4248,12 @@ export class ChatV2TauriAdapter {
       }
     };
 
-    for (const tool of getLoadedToolSchemas(this.sessionId)) {
-      appendLoadedTool(tool);
+    // 🆕 会话中已加载但事后被停用的技能，其工具不再注入 schema（下一条消息生效）
+    for (const loadedSkill of getLoadedSkills(this.sessionId)) {
+      if (isSkillDisabled(loadedSkill.id)) continue;
+      for (const tool of loadedSkill.tools) {
+        appendLoadedTool(tool);
+      }
     }
 
     const effectiveLoadedSkillIds = Array.isArray(loadedSkillIds)
@@ -4038,6 +4270,9 @@ export class ChatV2TauriAdapter {
     const loadedTools = Array.from(loadedToolsByKey.values());
     const availableEngines = getAvailableSearchEngines();
     for (const tool of loadedTools) {
+      if (!this.isToolAllowedBySkillPolicy(tool.name, undefined, skillAllowedTools)) {
+        continue;
+      }
       let inputSchema = tool.inputSchema;
       // 🔧 动态注入可用搜索引擎到 web_search 工具，避免 LLM 尝试未配置的引擎
       if (tool.name === 'builtin-web_search' && availableEngines.length > 0) {
@@ -4072,6 +4307,9 @@ export class ChatV2TauriAdapter {
         // 从 McpService 缓存获取该服务器的工具列表
         const tools = McpService.getCachedToolsFor(serverId);
         for (const tool of tools) {
+          if (!this.isToolAllowedBySkillPolicy(tool.name, serverId, skillAllowedTools)) {
+            continue;
+          }
           schemas.push({
             name: tool.name,
             serverId,
@@ -4102,7 +4340,22 @@ export class ChatV2TauriAdapter {
   ): string | undefined {
     // 渐进披露模式：使用 available_skills 格式，告知 LLM 可用的技能组
     // 🔧 排除已加载的技能，避免 LLM 重复调用 load_skills
-    const skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
+    let skillMetadataPrompt = generateAvailableSkillsPrompt(true, this.sessionId);
+    // 🆕 停用的技能不参与 LLM 自动发现/激活：从 available_skills 元数据中剔除对应条目。
+    // generateAvailableSkillsPrompt 属于共享模块，此处按 <skill id="..."> 块做最小侵入过滤；
+    // 块内描述经过 XML 转义，不会出现 "</skill>"，懒匹配到闭合标签是安全的。
+    if (skillMetadataPrompt) {
+      const disabledSkillIds = skillRegistry.getAll()
+        .filter((skill) => isSkillDisabled(skill.id))
+        .map((skill) => skill.id);
+      for (const skillId of disabledSkillIds) {
+        const escapedId = escapeXmlAttr(skillId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        skillMetadataPrompt = skillMetadataPrompt.replace(
+          new RegExp(`[ \\t]*<skill id="${escapedId}"[^>]*>[\\s\\S]*?</skill>\\n?`),
+          '',
+        );
+      }
+    }
     console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (excludeLoaded=true)');
 
     // 如果没有 skills 元数据，返回原始提示

@@ -106,10 +106,10 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
       detail: {
         id: mindmapId,
         type: 'mindmap',
-        title: title || '思维导图',
+        title: title || t('mindmapCitation.mindmap'),
       },
     }));
-  }, [mindmapId, title, onClick]);
+  }, [mindmapId, title, onClick, t]);
 
   return (
     <NotionButton

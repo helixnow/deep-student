@@ -65,14 +65,7 @@ function isRichDocument(mimeType: string, fileName: string): boolean {
 function openInChatPanel(file: FilePreview): void {
   // 推断资源类型
   const resourceType = 'file'; // 附件统一使用 file 类型
-  
-  console.log('[MessageAttachments] openInChatPanel:', {
-    sourceId: file.sourceId,
-    fileName: file.name,
-    mimeType: file.mimeType,
-    resourceType,
-  });
-  
+
   // 发送事件让 ChatV2Page 在右侧面板打开附件
   window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
     detail: {
@@ -143,9 +136,18 @@ export const MessageAttachments: React.FC<MessageAttachmentsProps> = ({
           {imagePreviews.map((preview) => (
             <div
               key={preview.id}
-              className="relative w-16 h-16 rounded-md overflow-hidden border border-border flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+              role="button"
+              tabIndex={0}
+              aria-label={preview.name}
+              className="relative w-16 h-16 rounded-md overflow-hidden border border-border flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/30 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none transition-all"
               title={preview.name}
               onClick={() => handleOpenImageViewer(preview.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleOpenImageViewer(preview.id);
+                }
+              }}
             >
               <img
                 src={preview.previewUrl}
@@ -163,9 +165,18 @@ export const MessageAttachments: React.FC<MessageAttachmentsProps> = ({
           {filePreviews.map((file) => (
             <div
               key={file.id}
-              className="relative w-16 h-16 rounded-md overflow-hidden border border-border flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all"
+              role="button"
+              tabIndex={0}
+              aria-label={file.name}
+              className="relative w-16 h-16 rounded-md overflow-hidden border border-border flex-shrink-0 cursor-pointer hover:ring-2 hover:ring-primary/30 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none transition-all"
               title={file.name}
               onClick={() => handleFileClick(file)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleFileClick(file);
+                }
+              }}
             >
               <div className="w-full h-full bg-muted flex flex-col items-center justify-center gap-0.5 p-1">
                 {(() => {
@@ -173,7 +184,7 @@ export const MessageAttachments: React.FC<MessageAttachmentsProps> = ({
                   return <FileIcon size={28} />;
                 })()}
                 <span className="text-[10px] text-muted-foreground truncate w-full text-center leading-tight">
-                  {file.name.length > 8 ? `${file.name.slice(0, 6)}...` : file.name}
+                  {file.name}
                 </span>
               </div>
             </div>

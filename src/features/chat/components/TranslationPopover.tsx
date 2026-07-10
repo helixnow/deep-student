@@ -347,32 +347,37 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 const tail = ndjsonParser.flush();
                 if (tail.segments.length > 0) {
                   alignedSegments = [...alignedSegments, ...tail.segments];
-                  setSegments(alignedSegments.slice());
                 }
                 if (alignedSegments.length === 0) {
-                  // 模型完全没遵守 NDJSON 格式 — 兜底：把纯流式累加文本当成单段，
-                  // 并尝试整体解析（处理 LLM 可能输出 {"segments":[...]} 的旧格式）
+                  // 模型完全没遵守 NDJSON 格式 — 兜底：先尝试整体解析
+                  //（处理 LLM 可能输出 {"segments":[...]} 的旧格式），
+                  // 再把纯流式累加文本当成单段
                   const fallback = parseAlignedFallback(streamingAccumulated);
                   if (fallback && fallback.length > 0) {
                     alignedSegments = fallback;
-                    setSegments(alignedSegments.slice());
-                  } else {
-                    setSegments([{ src: sourceText, tgt: streamingAccumulated || '(empty)' }]);
+                  } else if (streamingAccumulated.trim()) {
+                    alignedSegments = [{ src: sourceText, tgt: streamingAccumulated }];
                   }
                 }
-                // 写入缓存
-                buildCacheKey({
-                  mode: 'aligned',
-                  modelId: params.modelId,
-                  srcLang: params.src,
-                  tgtLang: params.tgt,
-                  source: sourceText,
-                  contextBefore,
-                  contextAfter,
-                })
-                  .then((key) => writeCache(key, { mode: 'aligned', segments: alignedSegments }))
-                  .catch(() => {});
-              } else {
+                if (alignedSegments.length > 0) {
+                  setSegments(alignedSegments.slice());
+                  // 写入缓存（空结果不缓存，避免缓存命中后永远空白）
+                  const segmentsToCache = alignedSegments;
+                  buildCacheKey({
+                    mode: 'aligned',
+                    modelId: params.modelId,
+                    srcLang: params.src,
+                    tgtLang: params.tgt,
+                    source: sourceText,
+                    contextBefore,
+                    contextAfter,
+                  })
+                    .then((key) => writeCache(key, { mode: 'aligned', segments: segmentsToCache }))
+                    .catch(() => {});
+                } else {
+                  setError(t('translation:popover.empty_result', '翻译结果为空，请重试'));
+                }
+              } else if (streamingAccumulated.trim()) {
                 buildCacheKey({
                   mode: 'streaming',
                   modelId: params.modelId,
@@ -384,6 +389,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 })
                   .then((key) => writeCache(key, { mode: 'streaming', text: streamingAccumulated }))
                   .catch(() => {});
+              } else {
+                setError(t('translation:popover.empty_result', '翻译结果为空，请重试'));
               }
               setIsLoading(false);
               if (activeUnlistenRef.current) {
@@ -428,6 +435,16 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
             }
           }
         });
+        // 等待 listen 期间可能已被新请求顶替：此时不能覆盖新请求的监听器，
+        // 也不能再发起后端 invoke（否则产生无人消费、无法取消的孤儿流）
+        if (myId !== reqIdRef.current) {
+          try {
+            unlisten();
+          } catch {
+            /* ignore */
+          }
+          return;
+        }
         activeUnlistenRef.current = unlisten;
       } catch (err) {
         if (myId === reqIdRef.current) {
@@ -544,6 +561,11 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       if (top < VIEWPORT_PADDING) {
         top = selectionRect.bottom + POPOVER_GAP;
       }
+      // 翻转到下方后仍可能越出视口底部，钳制回可见范围
+      top = Math.max(
+        VIEWPORT_PADDING,
+        Math.min(top, window.innerHeight - popoverHeight - VIEWPORT_PADDING)
+      );
 
       let left = selectionRect.left + selectionRect.width / 2 - popoverWidth / 2;
       const maxLeft = window.innerWidth - popoverWidth - VIEWPORT_PADDING;
@@ -698,6 +720,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               <button
                 type="button"
                 onClick={onClose}
+                aria-label={t('common:actions.close', '关闭')}
                 className="p-1 rounded-md hover:bg-accent/60 text-muted-foreground/50 hover:text-foreground transition-colors"
               >
                 <X size={13} />
@@ -713,6 +736,8 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
                 <button
                   type="button"
                   onClick={handleRetry}
+                  aria-label={t('common:actions.retry', '重试')}
+                  title={t('common:actions.retry', '重试')}
                   className="shrink-0 p-1 rounded-md hover:bg-accent/60 text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowsClockwise size={14} />

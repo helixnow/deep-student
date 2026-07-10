@@ -68,6 +68,35 @@ function flattenTree(
 }
 
 /**
+ * 文件夹颜色 → 图标类名映射。
+ * 必须使用字面量类名：`text-${color}-500` 这类运行时拼接的类 Tailwind JIT 扫描不到，
+ * 不会生成对应 CSS，导致彩色文件夹图标无色。未知颜色回退 amber。
+ */
+const FOLDER_COLOR_CLASSES: Record<string, string> = {
+  red: 'text-red-500',
+  orange: 'text-orange-500',
+  amber: 'text-amber-500',
+  yellow: 'text-yellow-500',
+  lime: 'text-lime-500',
+  green: 'text-green-500',
+  emerald: 'text-emerald-500',
+  teal: 'text-teal-500',
+  cyan: 'text-cyan-500',
+  sky: 'text-sky-500',
+  blue: 'text-blue-500',
+  indigo: 'text-indigo-500',
+  violet: 'text-violet-500',
+  purple: 'text-purple-500',
+  fuchsia: 'text-fuchsia-500',
+  pink: 'text-pink-500',
+  rose: 'text-rose-500',
+  gray: 'text-gray-500',
+};
+
+const getFolderIconColorClass = (color?: string): string =>
+  (color && FOLDER_COLOR_CLASSES[color]) || 'text-amber-500';
+
+/**
  * 过滤文件夹树
  */
 function filterTree(
@@ -150,18 +179,12 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
         {/* 文件夹图标 */}
         {isExpanded ? (
           <FolderOpen
-            className={cn(
-              'flex-shrink-0',
-              folder.color ? `text-${folder.color}-500` : 'text-amber-500'
-            )}
+            className={cn('flex-shrink-0', getFolderIconColorClass(folder.color))}
             size={16}
           />
         ) : (
           <Folder
-            className={cn(
-              'flex-shrink-0',
-              folder.color ? `text-${folder.color}-500` : 'text-amber-500'
-            )}
+            className={cn('flex-shrink-0', getFolderIconColorClass(folder.color))}
             size={16}
           />
         )}
@@ -247,16 +270,16 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
 
   // 打开时加载数据
   useEffect(() => {
-    if (open) {
-      loadFolderTree();
-      setSearchQuery('');
-      setSelectedIndex(0);
+    if (!open) return;
+    loadFolderTree();
+    setSearchQuery('');
+    setSelectedIndex(0);
 
-      // 聚焦搜索框
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 100);
-    }
+    // 聚焦搜索框
+    const focusTimer = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
+    return () => window.clearTimeout(focusTimer);
   }, [open, loadFolderTree]);
 
   // 切换展开状态
@@ -285,6 +308,8 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (flatFolders.length === 0) return;
+      // IME 安全：中文输入法组合期间的按键（候选词导航/确认）不触发列表操作
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
 
       switch (e.key) {
         case 'ArrowUp':
@@ -331,9 +356,17 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
     setSelectedIndex(0);
   }, [searchQuery]);
 
-  if (!open) return null;
-
   const selectedFolderId = flatFolders[selectedIndex]?.id ?? null;
+
+  // 键盘导航时保持选中项可见
+  useEffect(() => {
+    if (!open || !selectedFolderId) return;
+    containerRef.current
+      ?.querySelector('[role="option"][aria-selected="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [open, selectedFolderId]);
+
+  if (!open) return null;
 
   return (
     <div

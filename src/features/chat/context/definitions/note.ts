@@ -26,6 +26,14 @@ export interface NoteMetadata {
   folderPath?: string;
 }
 
+/** 笔记正文是非可信数据；转义标签边界，避免伪 XML 注入相邻上下文。 */
+function escapeXmlContent(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 /**
  * 笔记类型定义
  * 
@@ -57,7 +65,7 @@ export const noteDefinition: ContextTypeDefinition = {
 
       // 使用实时解析的内容和路径（文档28改造：使用真实路径，移除 subject）
       const resolvedMetadata = resolved.metadata as NoteMetadata | undefined;
-      return [createXmlTextBlock('canvas_note', resolved.content, {
+      return [createXmlTextBlock('canvas_note', escapeXmlContent(resolved.content), {
         title: resolvedMetadata?.title || resolved.name || '',
         'note-id': resolved.sourceId,
         path: resolved.path, // ★ 真实文件夹路径

@@ -261,6 +261,28 @@ fn apply_replay_mode_overrides(mut options: SendOptions) -> SendOptions {
     options
 }
 
+/// 🆕 Headless 基建（2026-07）：可被 headless runner 复用的内部执行路径。
+///
+/// 封装「StreamGuard 保护 + Pipeline::execute」的公共序列，调用方负责：
+/// 1. 预先通过 `chat_v2_state.try_register_stream` 原子注册流并取得 cancel_token；
+/// 2. 决定 fire-and-forget（spawn_tracked，前端命令路径）还是 await（headless 路径）。
+///
+/// StreamGuard 在正常完成、取消或 panic 时都会自动 remove_stream。
+pub(crate) async fn run_send_message_pipeline(
+    pipeline: Arc<ChatV2Pipeline>,
+    chat_v2_state: Arc<ChatV2State>,
+    window: Window,
+    request: SendMessageRequest,
+    cancel_token: tokio_util::sync::CancellationToken,
+) -> Result<String, ChatV2Error> {
+    let session_id = request.session_id.clone();
+    // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
+    let _stream_guard = StreamGuard::new(chat_v2_state.clone(), session_id);
+    pipeline
+        .execute(window, request, cancel_token, Some(chat_v2_state))
+        .await
+}
+
 pub(crate) fn apply_original_skill_snapshot_overrides(
     mut options: SendOptions,
     preferred_meta: Option<&crate::chat_v2::types::MessageMeta>,
@@ -313,6 +335,28 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
 
     if !replay_pinned_skill_ids.is_empty() {
         options.active_skill_ids = Some(replay_pinned_skill_ids);
+    }
+
+    let replay_allowed_tools = runtime_snapshot
+        .and_then(|snapshot| snapshot.skill_allowed_tools.clone())
+        .or_else(|| {
+            snapshot.and_then(|snapshot| {
+                let mut tools = Vec::new();
+                tools.extend(snapshot.effective_allowed_internal_tools.clone());
+                tools.extend(snapshot.effective_allowed_external_tools.clone());
+                tools.sort();
+                tools.dedup();
+                if tools.is_empty() {
+                    None
+                } else {
+                    Some(tools)
+                }
+            })
+        });
+    if let Some(mut replay_allowed_tools) = replay_allowed_tools {
+        replay_allowed_tools.sort();
+        replay_allowed_tools.dedup();
+        options.skill_allowed_tools = Some(replay_allowed_tools);
     }
 
     if let Some(runtime_snapshot) = runtime_snapshot {
@@ -465,7 +509,6 @@ pub async fn chat_v2_send_message(
 
     // 克隆必要的数据用于异步任务
     let session_id = request_with_id.session_id.clone();
-    let session_id_for_cleanup = session_id.clone();
     let window_clone = window.clone();
     let pipeline_clone = pipeline.inner().clone();
     let chat_v2_state_clone = chat_v2_state.inner().clone();
@@ -473,22 +516,19 @@ pub async fn chat_v2_send_message(
     // 🆕 P1修复：使用 TaskTracker 追踪异步任务，确保优雅关闭
     // 异步执行流水线
     // 🔧 P1修复：传递 chat_v2_state 给 Pipeline，用于注册每个变体的 cancel token
+    // 🆕 Headless 基建（2026-07）：改经 run_send_message_pipeline 共享路径执行，
+    // 行为不变（StreamGuard + Pipeline::execute），headless runner 复用同一函数
     chat_v2_state.spawn_tracked(async move {
-        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let _stream_guard =
-            StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let result = run_send_message_pipeline(
+            pipeline_clone,
+            chat_v2_state_clone,
+            window_clone,
+            request_with_id,
+            cancel_token,
+        )
+        .await;
 
-        // 调用真正的 Pipeline 执行
-        let result = pipeline_clone
-            .execute(
-                window_clone,
-                request_with_id,
-                cancel_token,
-                Some(chat_v2_state_clone.clone()),
-            )
-            .await;
-
-        // remove_stream 由 _stream_guard 自动调用，无需手动清理
+        // remove_stream 由 run_send_message_pipeline 内的 StreamGuard 自动调用
 
         match result {
             Ok(returned_msg_id) => {
@@ -1969,6 +2009,10 @@ mod tests {
             updated.active_skill_ids.unwrap(),
             vec!["manual-a".to_string()]
         );
+        assert_eq!(
+            updated.skill_allowed_tools.unwrap(),
+            vec!["builtin-web_search".to_string(), "mcp_fetch".to_string()]
+        );
         assert_eq!(updated.mcp_tools.unwrap(), vec!["server-a".to_string()]);
     }
 
@@ -1981,6 +2025,7 @@ mod tests {
         let meta = MessageMeta {
             skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
                 active_skill_ids: vec!["runtime-skill".to_string()],
+                skill_allowed_tools: Some(vec!["builtin-runtime_tool".to_string()]),
                 skill_contents: std::collections::HashMap::from([(
                     "runtime-skill".to_string(),
                     "runtime body".to_string(),
@@ -2005,6 +2050,10 @@ mod tests {
         assert_eq!(
             updated.active_skill_ids.unwrap(),
             vec!["runtime-skill".to_string()]
+        );
+        assert_eq!(
+            updated.skill_allowed_tools.unwrap(),
+            vec!["builtin-runtime_tool".to_string()]
         );
         assert_eq!(
             updated
@@ -2086,6 +2135,48 @@ mod tests {
         assert_eq!(
             updated.active_skill_ids.unwrap(),
             vec!["variant-skill".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_preserves_explicit_empty_skill_allowed_tools() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            skill_allowed_tools: Some(vec!["current-tool".to_string()]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+                active_skill_ids: vec!["instruction-only".to_string()],
+                skill_allowed_tools: Some(Vec::new()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(updated.skill_allowed_tools, Some(Vec::new()));
+    }
+
+    #[test]
+    fn test_apply_original_skill_snapshot_overrides_does_not_invent_empty_policy_for_legacy_meta() {
+        let options = SendOptions {
+            replay_mode: Some(ReplayMode::Original),
+            skill_allowed_tools: Some(vec!["current-tool".to_string()]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_snapshot_after: Some(crate::chat_v2::types::SkillStateSnapshot {
+                manual_pinned_skill_ids: vec!["legacy-skill".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
+        assert_eq!(
+            updated.skill_allowed_tools,
+            Some(vec!["current-tool".to_string()])
         );
     }
 }

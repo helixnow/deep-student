@@ -68,6 +68,7 @@ export interface SkillStateSnapshot {
 
 export interface ReplaySkillPayloadSnapshot {
   activeSkillIds?: string[];
+  skillAllowedTools?: string[];
   skillContents?: Record<string, string>;
   skillDependencies?: Record<string, string[]>;
   skillEmbeddedTools?: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>>;

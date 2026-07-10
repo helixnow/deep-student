@@ -110,7 +110,7 @@ describe('InputBarUI attachment preview chips', () => {
 
     renderInputBar({ attachments });
 
-    const previewList = screen.getByRole('list', { name: '待发送附件' });
+    const previewList = screen.getByRole('list', { name: 'analysis:input_bar.attachments.title' });
     expect(within(previewList).getByRole('listitem', { name: '1AI_图像 (1).psd' })).toBeInTheDocument();
     expect(within(previewList).getByRole('listitem', { name: '安装教程.txt' })).toBeInTheDocument();
     expect(previewList).toHaveClass('attachment-preview-chips');
@@ -131,7 +131,7 @@ describe('InputBarUI attachment preview chips', () => {
 
     renderInputBar({ attachments, onRemoveAttachment });
 
-    fireEvent.click(screen.getByRole('button', { name: '移除附件 族谱纵向图谱.html' }));
+    fireEvent.click(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove 族谱纵向图谱.html' }));
 
     expect(onRemoveAttachment).toHaveBeenCalledWith('att_html');
   });
@@ -153,7 +153,7 @@ describe('InputBarUI attachment preview chips', () => {
     expect(screen.getByTestId('attachment-chip-icon-att_psd')).toHaveClass('h-5', 'w-5');
     expect(screen.getByTitle('1AI_图像 (1).psd')).not.toHaveClass('pr-8');
     expect(screen.getByTitle('1AI_图像 (1).psd')).toHaveClass('pr-3');
-    expect(screen.getByRole('button', { name: '移除附件 1AI_图像 (1).psd' })).toHaveClass(
+    expect(screen.getByRole('button', { name: 'analysis:input_bar.attachments.remove 1AI_图像 (1).psd' })).toHaveClass(
       'absolute',
       'inset-0',
       'opacity-0',
