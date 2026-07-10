@@ -1,0 +1,42 @@
+/**
+ * SettingsAppWindow — 活树跟手（并入窗壳单层，禁止截图）
+ *
+ * 跟手成本来自窗内 backdrop-filter 每帧重采样（见 workbench.css 拖拽清 blur），
+ * 不是「活树本身不可拖」。此处不再嵌套 contain/translateZ/will-change：
+ * WebView2 上「祖先 transform + 子树 contain:layout/paint」易逼出主线程重绘。
+ *
+ * ANTI-REGRESSION：
+ * - 禁止拖拽 class 下动态增加 contain / content-visibility；
+ * - 禁止 host * 通配；禁止 data-wb-drag-frozen / snap surface。
+ */
+
+[data-wb-settings-host] {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--wb-window-bg, hsl(var(--background)));
+}
+
+[data-wb-settings-layer] {
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* 跟手期停动画：animation-play-state 不继承，必须点名子元素 */
+:root[data-wb-dragging] [data-wb-settings-host] .feature-status-dot,
+:root[data-wb-settling] [data-wb-settings-host] .feature-status-dot,
+:root[data-wb-dragging] [data-wb-settings-host] .settings-loading::after,
+:root[data-wb-settling] [data-wb-settings-host] .settings-loading::after,
+:root[data-wb-dragging] [data-wb-settings-host] .wb-sys-fade,
+:root[data-wb-settling] [data-wb-settings-host] .wb-sys-fade {
+  animation-play-state: paused;
+}
+
+:root[data-wb-dragging] [data-wb-settings-host] .tab-indicator,
+:root[data-wb-settling] [data-wb-settings-host] .tab-indicator {
+  will-change: auto;
+  transition: none;
+}

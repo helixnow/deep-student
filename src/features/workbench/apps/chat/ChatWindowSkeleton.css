@@ -1,0 +1,193 @@
+/**
+ * ChatWindowSkeleton（O16）— wb-chat- 前缀独占，不触碰 workbench.css 契约类。
+ *
+ * 动效纪律：仅 opacity（入场淡入 + 骨架脉冲）；
+ * 时长/曲线引用 O1 motion.css tokens（--wb-motion-quick / --wb-ease-swift /
+ * --wb-ease，均带 fallback）；
+ * prefers-reduced-motion 与 minimal 材质档下动画归零、静态呈现。
+ */
+
+.wb-chat-skeleton {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding: 1.5rem clamp(1rem, 5%, 2rem) 1rem;
+
+  /* 延迟淡入：挂载先保持透明 ~120ms，快速加载等效“骨架从未出现”。
+     时长/曲线引用 O1 token（quick/swift，reduced-motion/minimal 自动归零）；
+     keyframes 用本地 wb-chat- 副本：若 motion.css 未加载，引用缺失的
+     keyframes 会让元素永远停在 opacity:0（骨架隐身），本地定义兜底。 */
+  opacity: 0;
+  animation: wb-chat-skeleton-in var(--wb-motion-quick, 150ms)
+    var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)) 120ms forwards;
+}
+
+@keyframes wb-chat-skeleton-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* 与真实消息流的 thread 宽度契约对齐（max-w-thread → --chat-thread-max-w） */
+.wb-chat-skeleton__thread,
+.wb-chat-skeleton__composer {
+  width: 100%;
+  max-width: var(--chat-thread-max-w, 48rem);
+  margin-inline: auto;
+}
+
+.wb-chat-skeleton__thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.wb-chat-skeleton__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.wb-chat-skeleton__row--user {
+  justify-content: flex-end;
+}
+
+.wb-chat-skeleton__row--assistant {
+  justify-content: flex-start;
+}
+
+/* ==== 骨架“骨骼”基元：底色 + 错峰 opacity 脉冲 ==================== */
+.wb-chat-skeleton__bone {
+  border-radius: 0.5rem;
+  background: hsl(var(--muted, 220 14% 92%) / 0.9);
+  /* backwards：错峰 delay 期间保持 0% 关键帧 opacity，避免逐根从 1 瞬跳到脉冲起点 */
+  /* ease-in-out：呼吸对称，避免单向 ease-out 在峰值处速度不连续的 tick 感 */
+  animation: wb-chat-skeleton-pulse 1.7s ease-in-out infinite backwards;
+  animation-delay: calc(var(--wb-chat-bone-i, 0) * 80ms);
+}
+
+@keyframes wb-chat-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* 尺寸对齐 legacy chat-loading-shell 的骨架比例 */
+.wb-chat-skeleton__bubble {
+  border-radius: 0.625rem;
+}
+
+.wb-chat-skeleton__bubble--lg {
+  height: 4rem;
+  width: 66%;
+}
+
+.wb-chat-skeleton__bubble--sm {
+  height: 3rem;
+  width: 50%;
+}
+
+.wb-chat-skeleton__avatar {
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.wb-chat-skeleton__lines {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wb-chat-skeleton__line {
+  height: 1rem;
+  border-radius: 0.375rem;
+  width: 100%;
+}
+
+.wb-chat-skeleton__line--w83 {
+  width: 83%;
+}
+
+.wb-chat-skeleton__line--w75 {
+  width: 75%;
+}
+
+.wb-chat-skeleton__line--w66 {
+  width: 66%;
+}
+
+.wb-chat-skeleton__line--w50 {
+  width: 50%;
+}
+
+.wb-chat-skeleton__line--w40 {
+  width: 40%;
+}
+
+/* ==== 输入栏骨架面板（与 legacy chat-loading-composer 视觉等位） ==== */
+.wb-chat-skeleton__composer {
+  flex-shrink: 0;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-shell-toolbar, 1rem);
+  border: 1px solid var(--input-shell-border, hsl(var(--border, 220 13% 88%)));
+  background: var(--shell-inspector-panel, hsl(var(--card, 0 0% 100%) / 0.6));
+}
+
+.wb-chat-skeleton__composer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.wb-chat-skeleton__chip {
+  height: 2rem;
+  width: 2rem;
+  border-radius: 9999px;
+}
+
+.wb-chat-skeleton__chip--wide {
+  width: 6rem;
+}
+
+/* ==== 降级：reduced-motion / minimal 材质档 → 静态骨架 ============= */
+@media (prefers-reduced-motion: reduce) {
+  .wb-chat-skeleton {
+    animation: none;
+    opacity: 1;
+  }
+
+  .wb-chat-skeleton__bone {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-chat-skeleton {
+  animation: none;
+  opacity: 1;
+}
+
+:root[data-wb-material='minimal'] .wb-chat-skeleton__bone {
+  animation: none;
+  opacity: 0.6;
+}

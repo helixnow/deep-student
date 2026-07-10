@@ -1,0 +1,265 @@
+/**
+ * PomodoroAppWindow.css（O18）— 番茄钟投射窗计时视觉
+ * ---------------------------------------------------------------------------
+ * wb-sys-pomo- 前缀隔离。模式语义色沿用 legacy PomodoroPanel 的映射：
+ * 专注=warning / 短休=success / 长休=info / 空闲=muted。
+ * 装饰动画仅 transform/opacity；进度环 stroke-dashoffset 的 1s linear
+ * 过渡属状态过渡（对齐 legacy 进度条 width 过渡），已在进度文件向 O20 备案。
+ */
+
+.wb-sys-pomo {
+  --wb-sys-pomo-accent: hsl(var(--muted-foreground) / 0.5);
+}
+
+.wb-sys-pomo[data-mode='work'] {
+  --wb-sys-pomo-accent: hsl(var(--warning));
+}
+
+.wb-sys-pomo[data-mode='short_break'] {
+  --wb-sys-pomo-accent: hsl(var(--success));
+}
+
+.wb-sys-pomo[data-mode='long_break'] {
+  --wb-sys-pomo-accent: hsl(var(--info));
+}
+
+/* ==== Hero 区 ========================================================= */
+
+.wb-sys-pomo-hero {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px 20px;
+  overflow-y: auto;
+}
+
+/* ==== 徽章行 ========================================================== */
+
+.wb-sys-pomo-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.wb-sys-pomo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+
+.wb-sys-pomo-chip-mode {
+  color: var(--wb-sys-pomo-accent);
+  background: color-mix(in hsl, var(--wb-sys-pomo-accent) 12%, transparent 88%);
+  border: 1px solid color-mix(in hsl, var(--wb-sys-pomo-accent) 22%, transparent 78%);
+}
+
+.wb-sys-pomo-chip-paused {
+  color: hsl(var(--muted-foreground));
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  border: 1px solid color-mix(in hsl, hsl(var(--muted-foreground)) 18%, transparent 82%);
+}
+
+.wb-sys-pomo-chip-strict {
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border: 1px dashed color-mix(in hsl, hsl(var(--muted-foreground)) 30%, transparent 70%);
+}
+
+/* ==== 计时盘 ========================================================== */
+
+.wb-sys-pomo-dial-wrap {
+  position: relative;
+  width: 216px;
+  height: 216px;
+  flex-shrink: 0;
+}
+
+/* 短窗：盘面收缩，保证控制坞完整可见 */
+.wb-sys-pomo[data-wb-sys-h='short'] .wb-sys-pomo-dial-wrap {
+  width: 152px;
+  height: 152px;
+}
+
+.wb-sys-pomo-dial {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.wb-sys-pomo-track {
+  fill: none;
+  stroke: color-mix(in hsl, hsl(var(--border)) 72%, transparent 28%);
+  stroke-width: 8;
+}
+
+.wb-sys-pomo-progress {
+  fill: none;
+  stroke: var(--wb-sys-pomo-accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  /* 12 点方向起针 */
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  /* 秒级更新间的平滑衔接（状态过渡，非装饰动画） */
+  transition: stroke-dashoffset 1s linear;
+}
+
+.wb-sys-pomo[data-status='paused'] .wb-sys-pomo-progress {
+  opacity: 0.55;
+}
+
+.wb-sys-pomo[data-mode='idle'] .wb-sys-pomo-progress {
+  opacity: 0;
+}
+
+/* ---- 运行呼吸光晕（transform/opacity only） ---- */
+
+.wb-sys-pomo-glow {
+  position: absolute;
+  inset: -14%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in hsl, var(--wb-sys-pomo-accent) 26%, transparent 74%) 0%,
+    transparent 68%
+  );
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 400ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
+  opacity: 0.2;
+  animation: wb-sys-pomo-breathe 4.2s ease-in-out infinite;
+}
+
+/*
+ * 挂起呼吸：isVisible=false 或拖窗 renderThrottleMs>0 时组件写 data-anim='off'。
+ * ANTI-REGRESSION：拖窗期间必须停 glow，避免与壳层跟手抢合成层。
+ */
+.wb-sys-pomo[data-anim='off'] .wb-sys-pomo-glow {
+  animation-play-state: paused;
+}
+
+/* hint 未刷新时仍靠根旗停呼吸（起拖默认同步挂 data-wb-dragging） */
+:root[data-wb-dragging] .wb-sys-pomo .wb-sys-pomo-glow,
+:root[data-wb-settling] .wb-sys-pomo .wb-sys-pomo-glow {
+  animation-play-state: paused;
+}
+
+@keyframes wb-sys-pomo-breathe {
+  0%,
+  100% {
+    opacity: 0.13;
+    transform: scale(0.985);
+  }
+  50% {
+    opacity: 0.26;
+    transform: scale(1.025);
+  }
+}
+
+/* ==== 中央读数 ======================================================== */
+
+.wb-sys-pomo-readout {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 22px;
+  text-align: center;
+}
+
+.wb-sys-pomo-time {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: hsl(var(--foreground));
+  transition: opacity 200ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-pomo[data-wb-sys-h='short'] .wb-sys-pomo-time {
+  font-size: 30px;
+}
+
+.wb-sys-pomo[data-status='paused'] .wb-sys-pomo-time {
+  opacity: 0.55;
+}
+
+.wb-sys-pomo[data-mode='idle'] .wb-sys-pomo-time {
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-pomo-sub {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==== 任务徽章 ======================================================== */
+
+.wb-sys-pomo-task {
+  max-width: min(320px, 86%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: hsl(var(--foreground) / 0.85);
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 8%, transparent 92%);
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 80%, transparent 20%);
+}
+
+/* ==== 控制坞 ========================================================== */
+
+.wb-sys-pomo-dock {
+  flex-shrink: 0;
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 62%, transparent 38%);
+  background: color-mix(in hsl, hsl(var(--card)) 55%, transparent 45%);
+}
+
+/* ==== 动效降级 ======================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
+    animation: none;
+    opacity: 0.16;
+  }
+
+  .wb-sys-pomo-progress {
+    transition: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo[data-status='running'] .wb-sys-pomo-glow {
+  animation: none;
+  opacity: 0.16;
+}
+
+:root[data-wb-material='minimal'] .wb-sys-pomo-progress {
+  transition: none;
+}

@@ -1,0 +1,117 @@
+/**
+ * ContentAppWindow（O17）— wb-content- 前缀独占，不触碰 workbench.css 契约类。
+ *
+ * 结构：
+ *   .wb-content-host      内容 + 骨架的公共宿主（定位上下文 / 缩放补白底）
+ *   .wb-content-viewport  内容视口；缩放手势中被 useResizeSettle 锁定为固定像素
+ *   .wb-content-empty*    空态占位卡
+ *
+ * 动效纪律（§1.5）：本文件仅 opacity 入场动画；尺寸锁定是布局操作非动效。
+ */
+
+.wb-content-host {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* 缩放手势中内容层锁定尺寸后，多出的区域用窗口底色补白（不露穿帮） */
+  background: var(--wb-window-bg, hsl(var(--background)));
+}
+
+.wb-content-viewport {
+  height: 100%;
+  width: 100%;
+}
+
+/* 缩放手势中：内容不吃指针（避免 hover 抖动），settle 后恢复 */
+.wb-content-host.wb-content-resize-holding .wb-content-viewport {
+  pointer-events: none;
+}
+
+/*
+ * ANTI-REGRESSION：拖/缩期间 scheduler 下发 renderThrottleMs>0 时，
+ * useDragRenderPause 挂上 data-wb-render-paused。只命中宿主自身，
+ * 禁止 `host *` 通配——否则每个可见重内容窗都会在起拖后做全子树样式匹配。
+ * 子树动画靠继承 animation-play-state；transition 用较短列表覆盖常见控件。
+ */
+.wb-content-host[data-wb-render-paused] {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+/* 拖/缩：根旗即可停动画，不依赖延后的 per-host attr */
+:root[data-wb-dragging] .wb-content-host,
+:root[data-wb-settling] .wb-content-host {
+  animation-play-state: paused;
+}
+
+:root[data-wb-dragging] .wb-content-host .wb-content-viewport,
+:root[data-wb-settling] .wb-content-host .wb-content-viewport {
+  animation-play-state: paused;
+}
+
+
+.wb-content-empty {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  padding: 1.5rem;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+  opacity: 0;
+  animation: wb-content-empty-in var(--wb-motion-standard, 220ms) var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) 40ms forwards;
+}
+
+@keyframes wb-content-empty-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.wb-content-empty__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  color: hsl(var(--muted-foreground, 220 9% 46%));
+  background: hsl(var(--muted, 220 14% 92%) / 0.7);
+  border: 1px dashed hsl(var(--border, 220 13% 88%));
+}
+
+.wb-content-empty__title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--foreground, 224 10% 12%) / 0.85);
+}
+
+.wb-content-empty__desc {
+  max-width: 20rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground, 220 9% 46%) / 0.85);
+}
+
+/* ==== 降级 =========================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-content-empty {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-content-empty {
+  animation: none;
+  opacity: 1;
+}

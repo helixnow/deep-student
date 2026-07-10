@@ -1,0 +1,111 @@
+/**
+ * ChatSessionSurface（O16）— wb-chat- 前缀独占；只作用于
+ * [data-wb-chat-session] 作用域内，绝不外溢到 legacy 全屏 Chat 页面。
+ *
+ * 三块职责：
+ * 1. 缩放稳定性辅助：关闭浏览器原生 scroll anchoring（顶部锚定），
+ *    避免与 useResizeScrollAnchor 的距底锚定双重补偿造成抖动；
+ * 2. 窄窗紧凑布局：legacy chat 的紧凑档靠 viewport 媒体查询（md:），
+ *    在宽屏上的窄窗口永远不触发——这里用容器查询按“窗口宽度”补齐；
+ * 3. 多 Chat 窗焦点/输入隔离视觉：非焦点窗输入区淡化（macOS 非 key
+ *    window 控件淡化语义），焦点回归时 opacity 过渡点亮 = 输入确认。
+ *
+ * 动效纪律（§1.5）：仅 opacity 过渡；曲线引用 O1 token --wb-ease（带 fallback）；
+ * reduced-motion / minimal 材质档下过渡归零（状态仍生效）。
+ */
+
+/* 窗口内容根 = 容器查询锚（inline-size 由 WindowShell 决定，安全） */
+.wb-chat-surface {
+  container-type: inline-size;
+  container-name: wb-chat;
+}
+
+/* ==== 1. 缩放稳定性 ==================================================
+ * 原生 scroll anchoring 以“视口顶部附近的块”为锚，chat 是距底锚定语义，
+ * 二者在缩放时会双重校正 scrollTop。此窗口内由 useResizeScrollAnchor 全权接管。
+ */
+.wb-chat-surface [data-overlayscrollbars-viewport],
+.wb-chat-surface .scroll-area--native {
+  overflow-anchor: none;
+}
+
+/* ==== 2. 窄窗紧凑布局（容器查询，按窗口宽度而非屏幕宽度） ============
+ * legacy 的对齐契约：消息行 / 输入栏 / 空态 / 回底按钮共享 px-4 md:px-8。
+ * md: 断点看的是屏幕宽度，宽屏上的窄窗会错误地拿到 2rem 大边距；
+ * 这里在窄窗容器内统一压回紧凑值，保持全部成员左右对齐不破坏契约。
+ * （依赖 tailwind 类名 .md\:px-8，若 legacy 改类名需同步，已列 O20 reconcile。）
+ */
+@container wb-chat (max-width: 640px) {
+  [data-wb-chat-session] .md\:px-8 {
+    padding-inline: 1rem;
+  }
+
+  /* 空态标题原为 vw 基准（clamp 1.6vw），窄窗内改为容器宽度基准 */
+  [data-wb-chat-session] [data-slot='thread-empty-primary-action'] {
+    font-size: clamp(1.05rem, 3.4cqi, 1.4rem);
+  }
+
+  /* 空态 composer 栈的左右留白与移动端媒体查询档对齐 */
+  [data-wb-chat-session] .chat-empty-composer-layout__stack {
+    padding-inline: 0.875rem;
+  }
+}
+
+/* 极窄档（minSize.w = 480）：进一步压缩水平留白，保住内容宽度 */
+@container wb-chat (max-width: 520px) {
+  [data-wb-chat-session] .md\:px-8 {
+    padding-inline: 0.75rem;
+  }
+
+  [data-wb-chat-session] .chat-empty-composer-layout__stack {
+    padding-inline: 0.625rem;
+  }
+}
+
+/* ==== 3. 多 Chat 窗焦点/输入隔离视觉 ================================
+ * 非焦点窗输入区淡化：焦点窗输入栏保持全亮 = “打字会进这里”的视觉确认。
+ * 注意不能直接淡化 .chat-composer-motion-frame 本身——其入场 animation
+ * fill:both 的终帧 opacity:1 会永久压过普通声明；淡化其内层包装 div。
+ */
+.wb-chat-surface .chat-composer-motion-frame > div {
+  /* O1 焦点三态 token：--wb-focus-duration/-ease（reduced-motion/minimal 档自动归零） */
+  transition: opacity var(--wb-focus-duration, 230ms)
+    var(--wb-focus-ease, cubic-bezier(0.3, 1.12, 0.36, 1));
+}
+
+.wb-chat-surface[data-wb-chat-active='false'] .chat-composer-motion-frame > div {
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-chat-surface .chat-composer-motion-frame > div {
+    transition: none;
+  }
+}
+
+:root[data-wb-material='minimal'] .wb-chat-surface .chat-composer-motion-frame > div {
+  transition: none;
+}
+
+/*
+ * 拖/缩/settle：暂停 chat 表面动画与过渡（attr 由 flushHeavyContentPause 同步挂上）。
+ * 禁止通配 *；流式 setState 另由 streamingSmoothing imperative 检查拦截。
+ */
+.wb-chat-surface[data-wb-render-paused] {
+  animation-play-state: paused !important;
+  transition: none !important;
+}
+
+.wb-chat-surface[data-wb-render-paused] .chat-composer-motion-frame > div {
+  transition: none !important;
+}
+
+/* CSS 兜底：即使某宿主漏挂 attr，根旗也能停常见宿主动画 */
+:root[data-wb-dragging] .wb-content-host,
+:root[data-wb-settling] .wb-content-host,
+:root[data-wb-dragging] .wb-files-host,
+:root[data-wb-settling] .wb-files-host,
+:root[data-wb-dragging] .wb-chat-surface,
+:root[data-wb-settling] .wb-chat-surface {
+  animation-play-state: paused;
+}
