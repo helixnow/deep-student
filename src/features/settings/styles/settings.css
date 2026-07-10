@@ -155,7 +155,7 @@
   left: 0;
   height: 2px;
   background: hsl(var(--primary)); /* 主题指示条 */
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--resize-dur, 300ms) var(--ease-material), width var(--resize-dur, 300ms) var(--ease-material);
   z-index: 2; /* 提高层级确保在边框之上 */
   transform-origin: left center;
   border-radius: 0;
@@ -754,4 +754,62 @@
 
 .settings-select-trigger > span:first-of-type[data-placeholder] {
   opacity: 0.6;
+}
+
+/* ============ 模型卡片内联编辑展开/收起 ============ */
+
+/*
+ * grid-template-rows 0fr→1fr 实现内容高度动画（内容高度未知也能平滑过渡）；
+ * 时长/缓动消费 transitions-dev tokens（--panel-open-dur / --panel-close-dur / --panel-ease）。
+ * visibility 参与过渡：收起动画结束后才隐藏（离散插值），保证退场完整可见，
+ * 完全收起后从可访问性树/焦点链中移除。
+ */
+.settings-inline-editor {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    grid-template-rows var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0s linear var(--panel-close-dur, 350ms);
+}
+
+.settings-inline-editor[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    grid-template-rows var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0s;
+}
+
+.settings-inline-editor > .settings-inline-editor-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* 内容展开时从上方轻微落位、收起时轻微上浮，与高度变化形成"抽屉拉开"质感 */
+.settings-inline-editor .settings-inline-editor-body {
+  translate: 0 -8px;
+  transition: translate var(--panel-close-dur, 350ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.settings-inline-editor[data-open='true'] .settings-inline-editor-body {
+  translate: 0 0;
+  transition: translate var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-inline-editor,
+  .settings-inline-editor[data-open='true'] {
+    transition: none;
+  }
+
+  .settings-inline-editor .settings-inline-editor-body,
+  .settings-inline-editor[data-open='true'] .settings-inline-editor-body {
+    translate: 0 0;
+    transition: none;
+  }
 }

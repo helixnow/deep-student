@@ -91,7 +91,7 @@ export const ExternalSearchTab: React.FC<ExternalSearchTabProps> = ({
   const { t } = useTranslation(['settings', 'common']);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection 
         title={t('settings:sections.external_search_title')} 
         description={t('settings:sections.external_search_desc')}

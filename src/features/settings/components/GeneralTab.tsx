@@ -7,6 +7,7 @@ import { SettingSection } from './SettingsCommon';
 import { VoiceInputSettingsSection } from './VoiceInputSettingsSection';
 import { MemorySettingsSection } from './MemorySettingsSection';
 import { MarkdownEditorWindowSettings } from './MarkdownEditorWindowSettings';
+import { WorkbenchSettingsSection } from './WorkbenchSettingsSection';
 import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -131,7 +132,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   ], [t]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="general-settings">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="general-settings">
       <SettingSection
         title={t('settings:tabs.general', '常规')}
         description={t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。')}
@@ -229,6 +230,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           </div>
           <MemorySettingsSection embedded />
         </div>
+
+        <WorkbenchSettingsSection className="mt-8" />
 
         <SettingsGroup
           title={t('settings:cards.developer_options_title')}
@@ -610,8 +613,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   variant="default"
                   size="sm"
                   onClick={() => {
+                    // Settings 已挂载时靠 SETTINGS_NAVIGATE_TAB 事件即时切换；
+                    // pending 值兜底 Settings 尚未挂载的竞态（与 openArchivedSessionsSettings 同模式）
                     setPendingSettingsTab('data-governance');
-                    window.dispatchEvent(new CustomEvent('settingsTabChange', { detail: 'data-governance' }));
+                    window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab: 'data-governance' } }));
                   }}
                 >
                   {t('common:legal.dataRights.goToDataGovernance', '前往数据治理')}

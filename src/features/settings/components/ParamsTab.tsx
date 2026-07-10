@@ -101,7 +101,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
   }, [invoke, setExtra, t]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection
         title=""
         className="overflow-visible"

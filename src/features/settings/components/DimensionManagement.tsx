@@ -368,7 +368,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
       
       {/* 内联新建维度面板 */}
       {isAddingNew && (
-        <div className="mb-4 p-4 rounded-lg border border-border/60 bg-muted/20 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="mb-4 p-4 rounded-lg border border-border/60 bg-muted/20 ui-drop-in">
           <div className="flex items-center justify-between mb-4">
             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t('settings:dimension_management.create_dimension_title')}
@@ -619,7 +619,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           {isExpanded && (
                             <TableRow className="bg-muted/20 border-b border-border/40">
                               <TableCell colSpan={6} className="p-0">
-                                <div className="px-6 py-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                <div className="px-6 py-3 space-y-2 ui-drop-in">
                                   <div className="flex items-start justify-between gap-4">
                                     <div className="space-y-0.5">
                                       <h5 className="text-xs font-semibold text-foreground">
@@ -782,7 +782,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                     </div>
                     
                     {isExpanded && (
-                      <div className="px-3 pb-3 pt-1 border-t border-border/40 animate-in fade-in slide-in-from-top-1 duration-200">
+                      <div className="px-3 pb-3 pt-1 border-t border-border/40 ui-drop-in">
                         <div className="space-y-3">
                           <div className="space-y-1">
                             <p className="text-[10px] text-muted-foreground">

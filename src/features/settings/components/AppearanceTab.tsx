@@ -350,7 +350,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   }, [invoke, thinkingAutoCollapse]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="appearance-settings">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow" data-tour-id="appearance-settings">
       <SettingSection
         title={t('settings:tabs.appearance', '外观')}
         description={t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。')}

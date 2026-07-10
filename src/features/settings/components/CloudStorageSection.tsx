@@ -912,7 +912,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               />
               <p className="text-xs text-muted-foreground">{t('cloudStorage:webdav.endpointHint')}</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="webdav-username">{t('cloudStorage:webdav.username')}</Label>
                 <Input
@@ -942,7 +942,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
           {/* S3 配置 */}
           <TabsContent value="s3" className="space-y-4 mt-0">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="s3-endpoint">{t('cloudStorage:s3.endpoint')}</Label>
                 <Input
@@ -963,7 +963,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="s3-access-key">{t('cloudStorage:s3.accessKeyId')}</Label>
                 <Input
@@ -988,7 +988,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="s3-region">{t('cloudStorage:s3.region')}</Label>
                 <Input
@@ -1030,7 +1030,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               />
               <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.endpointHint')}</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="ftp-username">{t('cloudStorage:ftp.username')}</Label>
                 <Input

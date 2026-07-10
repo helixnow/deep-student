@@ -59,9 +59,7 @@ import { normalizeMcpToolList } from './mcpUtils';
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '@/utils/modelCapabilities';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import {
-  DEFAULT_STDIO_ARGS,
   DEFAULT_STDIO_ARGS_STORAGE,
-  DEFAULT_STDIO_ARGS_PLACEHOLDER,
   CHAT_STREAM_SETTINGS_EVENT,
   UI_ZOOM_STORAGE_KEY,
   DEFAULT_UI_ZOOM,
@@ -764,9 +762,23 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const indicatorRafId = useRef<number | null>(null);
   const updateIndicatorRaf = useCallback((tabId: string) => {
     if (indicatorRafId.current != null) return;
+    // OS 模式拖/缩/settle：禁止读 layout（offsetLeft）抢跟手帧
+    if (
+      typeof document !== 'undefined' &&
+      (document.documentElement.hasAttribute('data-wb-dragging') ||
+        document.documentElement.hasAttribute('data-wb-settling'))
+    ) {
+      return;
+    }
     indicatorRafId.current = requestAnimationFrame(() => {
       indicatorRafId.current = null;
       try {
+        if (
+          document.documentElement.hasAttribute('data-wb-dragging') ||
+          document.documentElement.hasAttribute('data-wb-settling')
+        ) {
+          return;
+        }
         const tabElement = tabsRef.current.get(tabId);
         const buttonsEl = tabButtonsContainerRef.current;
         if (tabElement && buttonsEl) {
@@ -973,7 +985,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           trackOffsetRight={0}
           style={{ textAlign: 'left' }}
         >
-          <div className="mx-auto w-full max-w-[72rem]">
+          {/* key 按 tab：切换时重挂载并播放入场动画（与桌面壳层视图切换同款观感） */}
+          <div key={activeTab} className="desktop-shell-content-enter mx-auto w-full max-w-[72rem]">
             <div className="space-y-6">
         {/* API配置管理 */}
         {/* API配置管理 */}

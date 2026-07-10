@@ -148,7 +148,7 @@ export const AboutTab: React.FC = () => {
   }, [handleFrequencyChange]);
 
   return (
-    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
+    <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
       <SettingSection title="" hideHeader className="overflow-hidden">
         <div className="flex flex-col sm:flex-row gap-6 py-6">
           <div className="flex flex-col items-center justify-center sm:w-1/3 gap-5">
