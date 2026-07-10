@@ -109,7 +109,7 @@
 }
 
 .animate-slide-up {
-  animation: slideUpFade 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUpFade var(--resize-dur, 300ms) var(--ease-standard) forwards;
 }
 
 /* Mobile Adjustments */

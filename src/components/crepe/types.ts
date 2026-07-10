@@ -4,11 +4,14 @@
  */
 
 import type { Crepe } from '@milkdown/crepe';
+import type { AgentHighlightMeta } from './plugins/agentHighlight';
 
 export type CrepeSelectionSnapshot = {
   from: number;
   to: number;
 };
+
+export type { AgentHighlightMeta };
 
 /**
  * Crepe 编辑器对外暴露的 API
@@ -42,11 +45,30 @@ export interface CrepeEditorApi {
   /** 销毁编辑器 */
   destroy: () => Promise<void>;
   
-  /** 
+  /**
    * 在光标位置插入文本
    * @param text 要插入的文本
    */
   insertAtCursor: (text: string) => void;
+
+  /**
+   * ACR agent 在指定文档位置插入文本（不抢焦点、不进用户 undo）— R1-12
+   * @returns 插入后的新光标位置；失败返回原 pos
+   */
+  agentInsert: (text: string, pos: number) => number;
+
+  /**
+   * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）
+   */
+  agentSignal: (meta: AgentHighlightMeta) => void;
+
+  /** 文档可插入末尾位置（doc.content.size） */
+  getDocEndPos: () => number;
+
+  /**
+   * 按标题文本定位插入点（标题节点之后）；未找到返回 null
+   */
+  resolveHeadingPos: (heading: string) => number | null;
   
   /**
    * 用前后标记包裹选中文本，如果没有选中则插入标记并将光标置于中间

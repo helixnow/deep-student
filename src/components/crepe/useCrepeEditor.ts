@@ -11,6 +11,8 @@ import { replaceAll } from '@milkdown/kit/utils';
 import { toggleMark, setBlockType, wrapIn, lift } from '@milkdown/prose/commands';
 import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
 import type { CrepeEditorApi } from './types';
+import type { AgentHighlightMeta } from './plugins/agentHighlight';
+import { agentHighlightKey } from './plugins/agentHighlight';
 import { createImageBlockConfig } from './features/imageUpload';
 import i18next from 'i18next';
 
@@ -192,6 +194,95 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
           });
         } catch (e) {
           console.error('[useCrepeEditor] insertAtCursor failed:', e);
+        }
+      },
+
+      agentInsert: (text: string, pos: number) => {
+        if (!text) return pos;
+        let nextPos = pos;
+        try {
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            const { state, dispatch } = view;
+            const max = state.doc.content.size;
+            const insertPos = Math.max(0, Math.min(pos, max));
+            const tr = state.tr.insertText(text, insertPos);
+            tr.setMeta('addToHistory', false);
+            tr.setMeta(agentHighlightKey, {
+              type: 'insert',
+              from: insertPos,
+              to: insertPos + text.length,
+            } satisfies AgentHighlightMeta);
+            dispatch(tr);
+            nextPos = insertPos + text.length;
+          });
+        } catch (e) {
+          console.error('[useCrepeEditor] agentInsert failed:', e);
+        }
+        return nextPos;
+      },
+
+      agentSignal: (meta: AgentHighlightMeta) => {
+        try {
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            const tr = view.state.tr.setMeta(agentHighlightKey, meta);
+            view.dispatch(tr);
+          });
+        } catch (e) {
+          console.error('[useCrepeEditor] agentSignal failed:', e);
+        }
+      },
+
+      getDocEndPos: () => {
+        try {
+          let size = 0;
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            size = view.state.doc.content.size;
+          });
+          return size;
+        } catch {
+          return 0;
+        }
+      },
+
+      resolveHeadingPos: (heading: string) => {
+        if (!heading.trim()) return null;
+        try {
+          let result: number | null = null;
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            const doc = view.state.doc;
+            const searchText = heading.toLowerCase().trim();
+            let bestMatch: { pos: number; nodeSize: number; score: number } | null = null;
+
+            doc.descendants((node, pos) => {
+              if (node.type.name !== 'heading') return true;
+              const nodeText = node.textContent.toLowerCase().trim();
+              if (nodeText === searchText) {
+                bestMatch = { pos, nodeSize: node.nodeSize, score: 1 };
+                return false;
+              }
+              let score = 0;
+              if (searchText && nodeText.includes(searchText)) {
+                score = searchText.length / Math.max(nodeText.length, 1);
+              } else if (searchText && searchText.includes(nodeText) && nodeText) {
+                score = (nodeText.length / searchText.length) * 0.8;
+              }
+              if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+                bestMatch = { pos, nodeSize: node.nodeSize, score };
+              }
+              return true;
+            });
+
+            if (!bestMatch) return;
+            result = Math.min(bestMatch.pos + bestMatch.nodeSize, doc.content.size);
+          });
+          return result;
+        } catch (e) {
+          console.error('[useCrepeEditor] resolveHeadingPos failed:', e);
+          return null;
         }
       },
       

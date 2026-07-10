@@ -1242,6 +1242,24 @@
   }
 }
 
+/* 移动端：编辑器浮层（斜杠菜单/气泡工具栏/链接浮层）防超屏 */
+@media (max-width: 767.98px) {
+  .crepe-editor-wrapper .milkdown .milkdown-slash-menu {
+    max-width: calc(100vw - 24px) !important;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-toolbar {
+    max-width: calc(100vw - 16px) !important;
+    flex-wrap: wrap !important;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-link-tooltip,
+  .crepe-editor-wrapper .milkdown .milkdown-link-preview,
+  .crepe-editor-wrapper .milkdown .milkdown-link-edit {
+    max-width: calc(100vw - 24px) !important;
+  }
+}
+
 /* ============================================================================
    打印样式 - Print Styles for Crepe Editor
    ============================================================================ */
@@ -1517,4 +1535,87 @@
 .crepe-editor-wrapper .notes-search-match--active {
   background-color: hsl(32 95% 50% / 0.55);
   box-shadow: 0 0 0 1.5px hsl(32 95% 44% / 0.7);
+}
+
+/* ===== ACR agent 高亮（R1-12 agentHighlight） ===== */
+.crepe-editor-wrapper .agent-inserted {
+  background-color: hsl(199 89% 48% / 0.18);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px hsl(199 89% 48% / 0.2);
+}
+
+.crepe-editor-wrapper .agent-inserted-fading {
+  background-color: hsl(199 89% 48% / 0.18);
+  border-radius: 2px;
+  animation: acr-agent-inserted-fade 3s ease-out forwards;
+}
+
+@keyframes acr-agent-inserted-fade {
+  from {
+    background-color: hsl(199 89% 48% / 0.18);
+    opacity: 1;
+  }
+  to {
+    background-color: hsl(199 89% 48% / 0);
+    opacity: 1;
+  }
+}
+
+.crepe-editor-wrapper .acr-ai-caret {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 1.1em;
+  vertical-align: text-bottom;
+  pointer-events: none;
+  user-select: none;
+}
+
+.crepe-editor-wrapper .acr-ai-caret__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background-color: hsl(199 89% 42%);
+  border-radius: 1px;
+  animation: acr-ai-caret-breathe 1.6s ease-in-out infinite;
+}
+
+.crepe-editor-wrapper .acr-ai-caret__label {
+  position: absolute;
+  left: 4px;
+  top: -0.85em;
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: hsl(199 89% 32%);
+  background: hsl(199 89% 96% / 0.92);
+  border: 1px solid hsl(199 70% 70% / 0.55);
+  border-radius: 3px;
+  padding: 1px 3px;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+
+@keyframes acr-ai-caret-breathe {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-editor-wrapper .acr-ai-caret__bar {
+    animation: none;
+    opacity: 1;
+  }
+  .crepe-editor-wrapper .agent-inserted-fading {
+    animation: none;
+    background-color: hsl(199 89% 48% / 0.08);
+  }
 }

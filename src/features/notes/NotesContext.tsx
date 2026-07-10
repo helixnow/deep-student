@@ -983,7 +983,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!loadedContentIds.has(id)) {
             console.warn('[NotesContext] ⚠️ saveNoteContent: 笔记内容尚未加载，先触发加载', { id });
             void ensureNoteContent(id);
-            throw new Error('content_not_loaded');
+            // ★ P1 修复：打 isNonRetryable 标记，避免编辑器对该裸错误空转指数退避重试
+            const notLoadedError = new Error('content_not_loaded') as Error & { isNonRetryable?: boolean };
+            notLoadedError.isNonRetryable = true;
+            throw notLoadedError;
         }
 
         // Normalize image links: replace preview URLs with relative paths
@@ -1025,13 +1028,16 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             if (isConflict) {
                 void ensureNoteContent(id);
             }
-            // 避免留下未加载状态
-            setLoadedContentIds(prev => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-            throw new Error(isConflict ? 'save_conflict' : 'save_failed');
+            // ★ P1 修复：不再从 loadedContentIds 删除 id。
+            // 内容本就已加载（保存失败不改变加载状态），之前的删除会让后续重试
+            // 全部命中 content_not_loaded 守卫而必然失败。
+            // ★ P1 修复：冲突错误打 isNoteConflict 标记，编辑器据此放弃重试，
+            // 避免冲突进入指数退避循环并反复弹冲突提示。
+            const saveError = new Error(isConflict ? 'save_conflict' : 'save_failed') as Error & { isNoteConflict?: boolean };
+            if (isConflict) {
+                saveError.isNoteConflict = true;
+            }
+            throw saveError;
         }
 
         console.log('[NotesContext] ✅ DSTU API 内容保存成功!', { id, updatedAt: updateResult.value.updatedAt });

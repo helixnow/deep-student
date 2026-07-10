@@ -408,11 +408,22 @@ export function useLearningHub(options?: {
     }
   }, [autoLoad, refresh]);
 
-  // 注册菜单动作处理器
+  // 注册菜单动作处理器。
+  // 注意：Learning Hub 主路径删除确认在 LearningHubSidebar 的 共享确认对话框组件，
+  // 本 hook 当前无 live 挂载点；此处仅服务显式调用 useLearningHub 的宿主。
+  // 使用 window.confirm（真·阻塞确认），禁止 unifiedConfirm 双击 toast 冒充对话框。
   useEffect(() => {
     const unregister = registerContextMenuActionHandler({
       confirmDelete: async (path) => {
-        // TODO: 显示确认对话框
+        const message = i18next.t(
+          'notes:learningHub.delete_confirm_message',
+          '确定要删除此资源吗？删除后可在回收站恢复。'
+        );
+        // 此兼容 hook 没有可挂载声明式 Dialog 的渲染面，保留同步确认语义。
+        // eslint-disable-next-line no-alert
+        if (typeof window !== 'undefined' && !window.confirm(message)) {
+          return;
+        }
         await deleteResource(path);
       },
       copyResource: async (path) => {

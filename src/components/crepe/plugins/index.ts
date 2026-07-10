@@ -8,6 +8,7 @@ import type { Crepe } from '@milkdown/crepe';
 // 插件导入
 import { automd } from '@milkdown/plugin-automd';
 import { searchHighlightPlugin } from './searchHighlight';
+import { agentHighlightPlugin } from './agentHighlight';
 
 // Prism 核心必须先导入，组件依赖全局 Prism 对象
 import 'prismjs';
@@ -57,6 +58,9 @@ export const applyCrepePlugins = (
 
   // 查找高亮（FindReplacePanel 通过 transaction meta 驱动）
   crepe.editor.use(searchHighlightPlugin);
+
+  // ACR AI 光标 / 插入高亮（noteDriver 经 agentInsert / agentSignal 驱动）— R1-12
+  crepe.editor.use(agentHighlightPlugin);
 };
 
 /**

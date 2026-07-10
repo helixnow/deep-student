@@ -177,11 +177,48 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
     }, [folders, rootChildren, references, saveStructureToPref]);
 
     const moveItem = useCallback(async (dragIds: string[], parentId: string | null, index: number) => {
+        // ★ P1 修复：写入前环校验。
+        // 把文件夹拖入自身或自身后代会形成 A→…→B→A 的引用环，
+        // buildTreeData 会把环上所有文件夹从侧栏排除，且结构立即持久化、重启不恢复。
+        // 这里过滤掉会成环的 dragId（目标自身 / 目标的祖先文件夹），全部无效则拒绝本次移动。
+        let effectiveDragIds = dragIds;
+        if (parentId) {
+            const isDescendantOf = (ancestorId: string, targetId: string): boolean => {
+                const visited = new Set<string>();
+                const stack = [...(folders[ancestorId]?.children ?? [])];
+                while (stack.length > 0) {
+                    const cur = stack.pop() as string;
+                    if (cur === targetId) return true;
+                    if (visited.has(cur)) continue;
+                    visited.add(cur);
+                    const child = folders[cur];
+                    if (child) stack.push(...child.children);
+                }
+                return false;
+            };
+            effectiveDragIds = dragIds.filter(id => {
+                if (!folders[id]) return true; // 笔记/引用节点不会成环
+                if (id === parentId) return false; // 拖入自身
+                if (isDescendantOf(id, parentId)) return false; // 拖入自身后代
+                return true;
+            });
+            if (effectiveDragIds.length === 0) {
+                console.warn('[useFolderStorage] moveItem rejected: would create circular folder reference', { dragIds, parentId });
+                return;
+            }
+            if (effectiveDragIds.length < dragIds.length) {
+                console.warn('[useFolderStorage] moveItem: filtered drag ids that would create circular folder reference', {
+                    dropped: dragIds.filter(id => !effectiveDragIds.includes(id)),
+                    parentId,
+                });
+            }
+        }
+
         const newFolders = { ...folders };
         let newRoot = [...rootChildren];
 
         // 1. Remove all dragIds from their current parents
-        dragIds.forEach(id => {
+        effectiveDragIds.forEach(id => {
             // Check root
             if (newRoot.includes(id)) {
                 newRoot = newRoot.filter(c => c !== id);
@@ -202,12 +239,12 @@ export function useFolderStorage(notes: NoteItem[], setNotes: React.Dispatch<Rea
             const targetChildren = [...newFolders[parentId].children];
             // Insert at index (clamped)
             const insertIdx = Math.min(Math.max(0, index), targetChildren.length);
-            targetChildren.splice(insertIdx, 0, ...dragIds);
+            targetChildren.splice(insertIdx, 0, ...effectiveDragIds);
             newFolders[parentId] = { ...newFolders[parentId], children: targetChildren };
         } else {
             // Insert into root
             const insertIdx = Math.min(Math.max(0, index), newRoot.length);
-            newRoot.splice(insertIdx, 0, ...dragIds);
+            newRoot.splice(insertIdx, 0, ...effectiveDragIds);
         }
 
         setFolders(newFolders);

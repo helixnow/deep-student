@@ -6,9 +6,16 @@ import { CaretRight, Folder, FileText } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
 
+export type NotesSaveStatus = 'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict';
+
 interface NotesEditorHeaderProps {
     lastSaved: Date | null;
+    /** @deprecated Prefer saveStatus; kept for callers that only pass isSaving */
     isSaving?: boolean;
+    /** Persistent save chrome: Saved / Saving / Unsaved / Failed / Conflict */
+    saveStatus?: NotesSaveStatus;
+    /** Retry after failed/conflict save (flush draft) */
+    onRetrySave?: () => void | Promise<void>;
     /** 字数统计（非空白字符数） */
     charCount?: number;
     // ========== DSTU 模式 Props ==========
@@ -25,6 +32,8 @@ interface NotesEditorHeaderProps {
 export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({ 
     lastSaved, 
     isSaving,
+    saveStatus: saveStatusProp,
+    onRetrySave,
     charCount,
     initialTitle,
     onTitleChange: dstuOnTitleChange,
@@ -65,6 +74,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     // Only show breadcrumbs if not in root (length > 1 means it has parents)
     const showBreadcrumbs = breadcrumbs.length > 1;
+
+    const saveStatus: NotesSaveStatus =
+        saveStatusProp ??
+        (isSaving ? 'saving' : 'saved');
 
     const handleBreadcrumbClick = (item: { id: string; title: string; type: 'folder' | 'note' }) => {
         if (isDstuMode) return; // DSTU 模式下无面包屑导航
@@ -179,6 +192,43 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         };
     }, []);
 
+    const statusLabel = (() => {
+        switch (saveStatus) {
+            case 'saving':
+                return t('notes:editor.save_status.saving');
+            case 'unsaved':
+                return t('notes:editor.save_status.unsaved');
+            case 'failed':
+                return t('notes:editor.save_status.save_failed');
+            case 'conflict':
+                return t('notes:editor.save_status.conflict');
+            case 'saved':
+            default:
+                return lastSaved
+                    ? t('notes:editor.save_status.saved_at', { time: lastSaved.toLocaleTimeString() })
+                    : t('notes:editor.save_status.saved');
+        }
+    })();
+
+    const statusClassName = (() => {
+        switch (saveStatus) {
+            case 'failed':
+            case 'conflict':
+                return 'text-destructive/70';
+            case 'unsaved':
+                return 'text-muted-foreground/55';
+            default:
+                return 'text-muted-foreground/40';
+        }
+    })();
+
+    // 仅 transient 失败提供重试。冲突时外部版本通常已胜出，盲目 flush 会再次撞锁；
+    // 恢复入口在 NoteContentView 的冲突通知「恢复我的版本」。
+    const showRetry =
+        !readOnly &&
+        !!onRetrySave &&
+        saveStatus === 'failed';
+
     if (!noteId) return null;
 
     return (
@@ -233,16 +283,20 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             {t('notes:common.char_count', { count: charCount })}
                         </span>
                     )}
-                    {isSaving && (
-                        <span className="text-muted-foreground/40">
-                            {t('notes:common.saving')}
-                        </span>
-                    )}
-                    {!isSaving && lastSaved && (
-                        <span className="text-muted-foreground/40">
-                            {t('notes:common.saved_at', { time: lastSaved.toLocaleTimeString() })}
-                        </span>
-                    )}
+                    <span className={`inline-flex items-center gap-1.5 ${statusClassName}`}>
+                        <span>{statusLabel}</span>
+                        {showRetry && (
+                            <button
+                                type="button"
+                                className="underline underline-offset-2 hover:text-destructive/90 transition-colors"
+                                onClick={() => {
+                                    void onRetrySave?.();
+                                }}
+                            >
+                                {t('notes:editor.save_status.retry')}
+                            </button>
+                        )}
+                    </span>
                 </div>
             </div>
         </div>

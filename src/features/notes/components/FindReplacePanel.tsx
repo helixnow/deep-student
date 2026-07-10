@@ -11,23 +11,29 @@ import {
   searchHighlightKey,
   collectSearchMatches,
   type SearchMatch,
+  type SearchOptions,
 } from '@/components/crepe/plugins/searchHighlight';
 
 interface FindReplacePanelProps {
   editorApi: CrepeEditorApi | null;
   onClose: () => void;
   className?: string;
+  /** 只读 / 阅读模式：保留查找，禁用替换 */
+  readOnly?: boolean;
 }
 
 export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   editorApi,
   onClose,
-  className
+  className,
+  readOnly = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [isReplaceMode, setIsReplaceMode] = useState(false);
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
   const [matchCount, setMatchCount] = useState(0);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -37,6 +43,11 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   useEffect(() => {
     findInputRef.current?.focus();
   }, []);
+
+  // 进入只读时收起替换区
+  useEffect(() => {
+    if (readOnly) setIsReplaceMode(false);
+  }, [readOnly]);
 
   /** 获取底层 ProseMirror EditorView */
   const getView = useCallback((): EditorView | null => {
@@ -54,12 +65,21 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   }, [editorApi]);
 
   /** 推送查询状态到高亮插件，返回最新匹配列表 */
-  const syncHighlight = useCallback((query: string, activeIndex: number): SearchMatch[] => {
+  const syncHighlight = useCallback((
+    query: string,
+    activeIndex: number,
+    options: SearchOptions = {},
+  ): SearchMatch[] => {
     const view = getView();
     if (!view) return [];
-    const matches = collectSearchMatches(view.state.doc, query);
+    const matches = collectSearchMatches(view.state.doc, query, options);
     const clamped = matches.length === 0 ? 0 : ((activeIndex % matches.length) + matches.length) % matches.length;
-    view.dispatch(view.state.tr.setMeta(searchHighlightKey, { query, activeIndex: clamped }));
+    view.dispatch(view.state.tr.setMeta(searchHighlightKey, {
+      query,
+      activeIndex: clamped,
+      caseSensitive: options.caseSensitive ?? false,
+      wholeWord: options.wholeWord ?? false,
+    }));
     setMatchCount(matches.length);
     setCurrentIndex(clamped);
     return matches;
@@ -81,13 +101,14 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     }
   }, [getView]);
 
-  // 查询词变化时实时刷新高亮
+  // 查询词 / 选项变化时实时刷新高亮
   useEffect(() => {
-    const matches = syncHighlight(findText, 0);
+    const options: SearchOptions = { caseSensitive, wholeWord };
+    const matches = syncHighlight(findText, 0, options);
     if (findText && matches.length > 0) {
       scrollToMatch(matches[0]);
     }
-  }, [findText, syncHighlight, scrollToMatch]);
+  }, [findText, caseSensitive, wholeWord, syncHighlight, scrollToMatch]);
 
   // 卸载时清除高亮
   useEffect(() => {
@@ -103,44 +124,47 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     if (!findText) return;
     const view = getView();
     if (!view) return;
-    const matches = collectSearchMatches(view.state.doc, findText);
+    const options: SearchOptions = { caseSensitive, wholeWord };
+    const matches = collectSearchMatches(view.state.doc, findText, options);
     if (matches.length === 0) return;
     const next = ((currentIndex + direction) % matches.length + matches.length) % matches.length;
-    syncHighlight(findText, next);
+    syncHighlight(findText, next, options);
     scrollToMatch(matches[next]);
-  }, [findText, currentIndex, getView, syncHighlight, scrollToMatch]);
+  }, [findText, caseSensitive, wholeWord, currentIndex, getView, syncHighlight, scrollToMatch]);
 
   /** 替换当前匹配 */
   const handleReplaceCurrent = useCallback(() => {
-    if (!findText) return;
+    if (readOnly || !findText) return;
     const view = getView();
     if (!view) return;
-    const matches = collectSearchMatches(view.state.doc, findText);
+    const options: SearchOptions = { caseSensitive, wholeWord };
+    const matches = collectSearchMatches(view.state.doc, findText, options);
     if (matches.length === 0) return;
     const idx = Math.min(currentIndex, matches.length - 1);
     const target = matches[idx];
     view.dispatch(view.state.tr.insertText(replaceText, target.from, target.to));
     // 替换后重新计算，停留在同一索引（即下一个匹配）
-    const remaining = collectSearchMatches(view.state.doc, findText);
+    const remaining = collectSearchMatches(view.state.doc, findText, options);
     const nextIdx = remaining.length === 0 ? 0 : Math.min(idx, remaining.length - 1);
-    syncHighlight(findText, nextIdx);
+    syncHighlight(findText, nextIdx, options);
     scrollToMatch(remaining[nextIdx]);
-  }, [findText, replaceText, currentIndex, getView, syncHighlight, scrollToMatch]);
+  }, [readOnly, findText, replaceText, caseSensitive, wholeWord, currentIndex, getView, syncHighlight, scrollToMatch]);
 
   /** 全部替换（从后往前避免位置偏移） */
   const handleReplaceAll = useCallback(() => {
-    if (!findText) return;
+    if (readOnly || !findText) return;
     const view = getView();
     if (!view) return;
-    const matches = collectSearchMatches(view.state.doc, findText);
+    const options: SearchOptions = { caseSensitive, wholeWord };
+    const matches = collectSearchMatches(view.state.doc, findText, options);
     if (matches.length === 0) return;
     let tr = view.state.tr;
     for (let i = matches.length - 1; i >= 0; i--) {
       tr = tr.insertText(replaceText, matches[i].from, matches[i].to);
     }
     view.dispatch(tr);
-    syncHighlight(findText, 0);
-  }, [findText, replaceText, getView, syncHighlight]);
+    syncHighlight(findText, 0, options);
+  }, [readOnly, findText, replaceText, caseSensitive, wholeWord, getView, syncHighlight]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
@@ -152,20 +176,26 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     }
   };
 
+  const replaceDisabled = readOnly || !findText || matchCount === 0;
+
   return (
-    <div className={cn("absolute top-4 right-8 z-50 bg-background border border-border/60 shadow-lg rounded-lg w-[320px] overflow-hidden flex flex-col", className)}>
+    <div className={cn("absolute top-4 right-8 z-50 bg-background border border-border/60 shadow-lg rounded-lg w-[320px] max-sm:left-2 max-sm:right-2 max-sm:w-auto overflow-hidden flex flex-col", className)}>
       <div className="flex items-center p-2 border-b border-border/40 gap-2">
-        <NotionButton 
-          variant="ghost" 
-          size="sm" 
-          className="h-6 w-6 p-0" 
-          onClick={() => setIsReplaceMode(!isReplaceMode)}
-          title={isReplaceMode
-            ? t('notes:findReplace.hideReplace', '收起替换')
-            : t('notes:findReplace.showReplace', '展开替换')}
-        >
-          <CaretDown className={cn("h-4 w-4 transition-transform", isReplaceMode && "-rotate-90")} />
-        </NotionButton>
+        {!readOnly ? (
+          <NotionButton 
+            variant="ghost" 
+            size="sm" 
+            className="h-6 w-6 p-0" 
+            onClick={() => setIsReplaceMode(!isReplaceMode)}
+            title={isReplaceMode
+              ? t('notes:findReplace.hideReplace', '收起替换')
+              : t('notes:findReplace.showReplace', '展开替换')}
+          >
+            <CaretDown className={cn("h-4 w-4 transition-transform", isReplaceMode && "-rotate-90")} />
+          </NotionButton>
+        ) : (
+          <div className="w-6" />
+        )}
         
         <div className="flex-1 relative flex items-center">
           <MagnifyingGlass className="absolute left-2 w-3.5 h-3.5 text-muted-foreground" />
@@ -185,6 +215,26 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         </div>
         
         <div className="flex items-center gap-0.5">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className={cn("h-6 w-6 p-0 text-[10px] font-semibold", caseSensitive && "bg-accent text-accent-foreground")}
+            onClick={() => setCaseSensitive((v) => !v)}
+            title={t('notes:editor.case_sensitive')}
+            aria-pressed={caseSensitive}
+          >
+            Aa
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className={cn("h-6 w-6 p-0 text-[10px] font-semibold", wholeWord && "bg-accent text-accent-foreground")}
+            onClick={() => setWholeWord((v) => !v)}
+            title={t('notes:editor.whole_word')}
+            aria-pressed={wholeWord}
+          >
+            W
+          </NotionButton>
           <NotionButton
             variant="ghost"
             size="sm"
@@ -212,7 +262,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         </div>
       </div>
       
-      {isReplaceMode && (
+      {isReplaceMode && !readOnly && (
         <div className="flex items-center p-2 gap-2 bg-muted/10">
           <div className="w-6" /> {/* Spacer to align with input above */}
           <div className="flex-1 relative">
@@ -229,7 +279,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               variant="secondary"
               size="sm"
               className="h-6 text-[10px] px-2"
-              disabled={!findText || matchCount === 0}
+              disabled={replaceDisabled}
               onClick={handleReplaceCurrent}
             >
               {t('notes:findReplace.replace', '替换')}
@@ -238,7 +288,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               variant="secondary"
               size="sm"
               className="h-6 text-[10px] px-2"
-              disabled={!findText || matchCount === 0}
+              disabled={replaceDisabled}
               onClick={handleReplaceAll}
             >
               {t('notes:findReplace.replaceAll', '全部')}

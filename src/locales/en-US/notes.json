@@ -117,7 +117,8 @@
     "share_success_title": "Share success",
     "share_success_message": "Resource path copied, you can send it to others",
     "share_failed_title": "Share failed",
-    "share_failed_message": "Failed to copy share link. Please check clipboard permissions."
+    "share_failed_message": "Failed to copy share link. Please check clipboard permissions.",
+    "delete_confirm_message": "Delete this resource? You can restore it from Trash."
   },
   "mistakeReferenceCard": {
     "title": "Mistake Reference",
@@ -478,7 +479,8 @@
       "saved_at": "Saved at {{time}}",
       "unsaved": "Unsaved",
       "save_failed": "Save failed",
-      "conflict": "Conflict detected, please review the latest version",
+      "conflict": "Conflict detected — refreshed to latest (use “Restore my version” in the notification)",
+      "retry": "Retry",
       "auto_save": "Auto save"
     },
     "placeholder": {
@@ -816,6 +818,9 @@
     "success": "Export successful",
     "success_desc": "Exported {{count}} notes to: {{path}}",
     "failed": "Export failed",
+    "no_active_resource": "No open resource. Open a note or file first, then export.",
+    "not_available_all": "“Export all notes” is not available yet. Use Export Current Note, or export a single item from the sidebar menu.",
+    "fallback_current": "Export all is not available yet — exporting the current open resource instead.",
     "select_format": "Select format",
     "format": {
       "label": "Export format",
@@ -967,8 +972,9 @@
   },
   "context": {
     "open": "Open",
-    "outline": "OUTLINE",
-    "select_hint": "Select a note to view context",
+    "properties": "Properties",
+    "outline": "Outline",
+    "select_hint": "Select a note to view properties",
     "typography_title": "Typography",
     "typography_description": "Adjust size, line height, and font",
     "typography_default": "Default",
@@ -976,10 +982,12 @@
     "created": "Created",
     "updated": "Updated",
     "tags": "Tags",
+    "tags_empty_hint": "Add tags to organize",
     "add_tag": "Add tag",
     "tag_add_failed": "Failed to add tag",
     "tag_remove_failed": "Failed to remove tag",
-    "no_headings": "No headings",
+    "no_headings": "No headings yet",
+    "outline_empty_hint": "Use # or the toolbar to add headings",
     "outgoing": "OUTGOING LINKS",
     "no_outgoing": "No outgoing links",
     "assets": "ATTACHMENTS",

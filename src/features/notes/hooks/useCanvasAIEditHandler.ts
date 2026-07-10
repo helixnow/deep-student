@@ -67,11 +67,14 @@ export function useCanvasAIEditHandler({
   }, [onSave]);
 
   const sendResult = useCallback(async (result: CanvasAIEditResult) => {
+    // ACR R2-03：noteDriver 建议模式经 window CustomEvent 派发，工具已立即回执
+    // suggestionPending；此时 Rust 侧无 oneshot 等待。仍尝试上报（兼容旧
+    // execute_write_frontend 路径），失败仅 debug，不阻断 Accept/Reject UI。
     try {
       await invoke('chat_v2_canvas_edit_result', { result });
       console.log('[useCanvasAIEditHandler] Sent result:', result.requestId, result.success);
     } catch (err) {
-      console.error('[useCanvasAIEditHandler] Failed to send result:', err);
+      console.debug('[useCanvasAIEditHandler] Result notify skipped/failed (ACR suggestion ok):', err);
     }
   }, []);
 
@@ -203,6 +206,15 @@ export function useCanvasAIEditHandler({
     let unlisten: UnlistenFn | null = null;
     let active = true;
 
+    // ACR R1-13：noteDriver 建议模式派发 window CustomEvent（同名）；
+    // Rust execute_write_frontend 仍走 Tauri emit。双通道共用 handleEditRequest。
+    const handleDomCustomEvent = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasAIEditRequest>).detail;
+      if (!detail || typeof detail !== 'object') return;
+      void handleEditRequest(detail);
+    };
+    window.addEventListener('canvas:ai-edit-request', handleDomCustomEvent);
+
     const setup = async () => {
       try {
         const fn = await listen<CanvasAIEditRequest>(
@@ -226,6 +238,7 @@ export function useCanvasAIEditHandler({
 
     return () => {
       active = false;
+      window.removeEventListener('canvas:ai-edit-request', handleDomCustomEvent);
       if (unlisten) {
         unlisten();
         console.log('[useCanvasAIEditHandler] Stopped listening');

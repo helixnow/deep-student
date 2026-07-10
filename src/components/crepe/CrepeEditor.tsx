@@ -31,6 +31,7 @@ import 'katex/contrib/mhchem';
 
 // 本地模块
 import type { CrepeEditorProps, CrepeEditorApi } from './types';
+import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
 import { createImageBlockConfig, createImageUploader, pickImageWithTauriDialog } from './features/imageUpload';
 import { applyCrepePlugins } from './plugins';
 import { createMermaidObserver } from './features/mermaidPreview';
@@ -553,6 +554,129 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] insertAtCursor failed:', e);
+        }
+      },
+
+      // ===== ACR agent API（R1-12）——不抢焦点、不进用户 undo =====
+      agentInsert: (text: string, pos: number) => {
+        const crepe = crepeRef.current;
+        if (!crepe || !text) return pos;
+        let nextPos = pos;
+        try {
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+
+            const { state, dispatch } = view;
+            const max = state.doc.content.size;
+            const insertPos = Math.max(0, Math.min(pos, max));
+            const tr = state.tr.insertText(text, insertPos);
+            tr.setMeta('addToHistory', false);
+            // insert meta：插件追加区间并把 caret 推到 to（不抢焦点）
+            tr.setMeta(agentHighlightKey, {
+              type: 'insert',
+              from: insertPos,
+              to: insertPos + text.length,
+            } satisfies AgentHighlightMeta);
+            dispatch(tr);
+            nextPos = insertPos + text.length;
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentInsert failed:', e);
+        }
+        return nextPos;
+      },
+
+      agentSignal: (meta: AgentHighlightMeta) => {
+        const crepe = crepeRef.current;
+        if (!crepe) return;
+        try {
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+            const tr = view.state.tr.setMeta(agentHighlightKey, meta);
+            view.dispatch(tr);
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentSignal failed:', e);
+        }
+      },
+
+      getDocEndPos: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return 0;
+        try {
+          const view = crepe.editor.ctx.get(editorViewCtx);
+          return view?.state?.doc?.content?.size ?? 0;
+        } catch {
+          try {
+            let size = 0;
+            crepe.editor.action((ctx) => {
+              const view = ctx.get(editorViewCtx);
+              size = view?.state?.doc?.content?.size ?? 0;
+            });
+            return size;
+          } catch {
+            return 0;
+          }
+        }
+      },
+
+      resolveHeadingPos: (heading: string) => {
+        const crepe = crepeRef.current;
+        if (!crepe || !heading.trim()) return null;
+        try {
+          let result: number | null = null;
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view?.state?.doc) return;
+
+            const doc = view.state.doc;
+            const searchText = heading.toLowerCase().trim();
+            let bestMatch: { pos: number; nodeSize: number; score: number } | null = null;
+
+            doc.descendants((node: { type: { name: string }; textContent: string; nodeSize: number }, pos: number) => {
+              if (node.type.name !== 'heading') return true;
+              const nodeText = node.textContent.toLowerCase().trim();
+              if (nodeText === searchText) {
+                bestMatch = { pos, nodeSize: node.nodeSize, score: 1 };
+                return false;
+              }
+              let score = 0;
+              if (searchText && nodeText.includes(searchText)) {
+                score = searchText.length / Math.max(nodeText.length, 1);
+              } else if (searchText && searchText.includes(nodeText) && nodeText) {
+                score = (nodeText.length / searchText.length) * 0.8;
+              }
+              if (score > 0 && (!bestMatch || score > bestMatch.score)) {
+                bestMatch = { pos, nodeSize: node.nodeSize, score };
+              }
+              return true;
+            });
+
+            if (!bestMatch) return;
+            // 标题节点之后：pos + nodeSize 为紧随其后的插入点
+            result = Math.min(bestMatch.pos + bestMatch.nodeSize, doc.content.size);
+          });
+          return result;
+        } catch (e) {
+          debugLog.error('[CrepeEditor] resolveHeadingPos failed:', e);
+          return null;
         }
       },
       

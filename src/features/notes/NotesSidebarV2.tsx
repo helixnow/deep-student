@@ -46,6 +46,7 @@ import { openResource, buildContextMenu } from "@/dstu";
 import type { DstuNode } from "@/dstu/types";
 import type { ContextMenuItem } from "@/dstu/editorTypes";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 
 const stripHtml = (raw: string) => raw.replace(/<[^>]*>/g, '');
 

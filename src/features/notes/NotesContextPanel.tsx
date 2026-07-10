@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from "react-i18next";
-import { TextAlignLeft, Calendar, Tag, Clock, X } from "@phosphor-icons/react";
+import { TextAlignLeft, Calendar, Tag, Clock, X, Plus } from "@phosphor-icons/react";
 import { useNotesOptional } from "./NotesContext";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Separator } from "@/components/ui/shad/Separator";
@@ -18,8 +18,6 @@ const normalizeHeadingText = (raw: string) => {
 };
 
 const isFenceLine = (line: string) => /^(```|~~~)/.test(line.trim());
-
-
 
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 
@@ -45,8 +43,19 @@ export interface NotesContextPanelProps {
     onTagsChange?: (tags: string[]) => Promise<void>;
 }
 
+const formatPanelDate = (value: string | undefined, locale: string) => {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString(locale, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+};
+
 export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
-    const { t } = useTranslation(['notes', 'common']);
+    const { t, i18n } = useTranslation(['notes', 'common']);
     
     // 检测是否为 DSTU 模式（通过是否传入 noteId 判断）
     const isDstuMode = props.noteId !== undefined;
@@ -75,6 +84,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const [headings, setHeadings] = useState<Array<{ level: number; text: string; searchText: string; id: string }>>([]);
     const [tagInput, setTagInput] = useState("");
     const [isAddingTag, setIsAddingTag] = useState(false);
+    const [activeHeadingId, setActiveHeadingId] = useState<string | null>(null);
     const tagInputRef = useRef<HTMLInputElement>(null);
     
     // 实时内容缓存（用于大纲实时更新）
@@ -83,8 +93,11 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const largeContentThreshold = 200_000;
     const largeContentDebounceMs = 1200;
 
+    const lang = i18n.language || 'en-US';
+    const dateLocale = lang.startsWith('zh') ? 'zh-CN' : lang;
 
-
+    const tags = effectiveActive?.tags || [];
+    const hasTags = tags.length > 0;
 
     // 解析标题的工具函数
     const parseHeadings = useCallback((content: string) => {
@@ -153,9 +166,12 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         };
     }, [effectiveActive?.id]);
 
-    // 切换笔记时重置实时内容
+    // 切换笔记时重置实时内容与大纲高亮
     useEffect(() => {
         setLiveContent(null);
+        setActiveHeadingId(null);
+        setIsAddingTag(false);
+        setTagInput("");
     }, [effectiveActive?.id]);
 
     // Parse headings from active note content (支持 1-6 级标题)
@@ -193,7 +209,16 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         setHeadings(parseHeadings(content));
     }, [liveContent, effectiveActive?.content_md, parseHeadings, largeContentThreshold, largeContentDebounceMs]);
 
-    const handleHeadingClick = (heading: { text: string; searchText: string; level: number }) => {
+    // 大纲内容变化时，若当前高亮项已不存在则清除
+    useEffect(() => {
+        if (!activeHeadingId) return;
+        if (!headings.some((h) => h.id === activeHeadingId)) {
+            setActiveHeadingId(null);
+        }
+    }, [headings, activeHeadingId]);
+
+    const handleHeadingClick = (heading: { id: string; text: string; searchText: string; level: number }) => {
+        setActiveHeadingId(heading.id);
         emitOutlineDebugLog({
             category: 'event',
             action: 'outline:headingClick',
@@ -296,79 +321,112 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     if (!effectiveActive) {
         return (
             <div className="flex flex-col h-full items-center justify-center text-muted-foreground/50 bg-muted/5">
-                <p className="text-xs">{t('notes:context.select_hint', 'Select a note to view context')}</p>
+                <p className="text-xs">{t('notes:context.select_hint', 'Select a note to view properties')}</p>
             </div>
         );
     }
 
     return (
         <div className="flex flex-col h-full bg-muted/5 border-l border-border/40 text-xs">
-            {/* Properties Section */}
-            <div className="p-4 space-y-3">
-                <div className="space-y-3">
-                    {/* Dates */}
+            {/* Properties header */}
+            <div className="px-4 pt-3 pb-1">
+                <h2 className="text-[11px] font-semibold text-foreground/80 tracking-wide">
+                    {t('notes:context.properties', 'Properties')}
+                </h2>
+            </div>
+
+            {/* Metadata + Tags */}
+            <div className="px-4 pb-3 space-y-4">
+                {/* Dates — compact, consistent formatting */}
+                <div className="space-y-1.5">
                     <div className="flex items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-3.5 h-3.5 shrink-0" />
-                        <span className="w-16 shrink-0">{t('notes:context.created', 'Created')}</span>
-                        <span className="text-foreground truncate">{effectiveActive.created_at ? new Date(effectiveActive.created_at).toLocaleDateString() : '-'}</span>
+                        <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                        <span className="w-14 shrink-0 text-[11px]">{t('notes:context.created', 'Created')}</span>
+                        <span className="text-foreground/90 tabular-nums truncate">
+                            {formatPanelDate(effectiveActive.created_at, dateLocale)}
+                        </span>
                     </div>
                     <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="w-3.5 h-3.5 shrink-0" />
-                        <span className="w-16 shrink-0">{t('notes:context.updated', 'Updated')}</span>
-                        <span className="text-foreground truncate">{effectiveActive.updated_at ? new Date(effectiveActive.updated_at).toLocaleDateString() : '-'}</span>
+                        <Clock className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                        <span className="w-14 shrink-0 text-[11px]">{t('notes:context.updated', 'Updated')}</span>
+                        <span className="text-foreground/90 tabular-nums truncate">
+                            {formatPanelDate(effectiveActive.updated_at, dateLocale)}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Tags — prominent section */}
+                <div className="space-y-2">
+                    <div className="flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" weight="duotone" />
+                        <h3 className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider">
+                            {t('notes:context.tags', 'Tags')}
+                        </h3>
+                        {hasTags && (
+                            <span className="text-[9px] font-normal text-muted-foreground/50 ml-auto">
+                                {tags.length}
+                            </span>
+                        )}
                     </div>
 
-                    {/* Tags */}
-                    <div className="flex flex-col gap-2 pt-1">
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                            <Tag className="w-3.5 h-3.5 shrink-0" />
-                            <span className="w-16 shrink-0">{t('notes:context.tags', 'Tags')}</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 pl-5">
-                            {(effectiveActive.tags || []).map((tag: string) => (
-                                <Badge
-                                    key={tag}
-                                    variant="secondary"
-                                    className="h-5 px-1.5 text-[10px] font-normal gap-1 hover:bg-[var(--interactive-hover)]-foreground/20 transition-colors cursor-default group"
-                                >
-                                    {tag}
-                                    <X
-                                        className="w-2.5 h-2.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 cursor-pointer hover:text-destructive transition-opacity"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleRemoveTag(tag);
-                                        }}
-                                    />
-                                </Badge>
-                            ))}
+                    {!hasTags && !isAddingTag && (
+                        <p className="text-[11px] text-muted-foreground/55 leading-snug pl-0.5">
+                            {t('notes:context.tags_empty_hint', 'Add tags to organize')}
+                        </p>
+                    )}
 
-                            {isAddingTag ? (
-                                <Input
-                                    ref={tagInputRef}
-                                    className="h-5 w-20 text-[10px] px-1 py-0"
-                                    value={tagInput}
-                                    onChange={e => setTagInput(e.target.value)}
-                                    onKeyDown={e => {
-                                        if (e.key === 'Enter') handleAddTag();
-                                        if (e.key === 'Escape') {
-                                            setIsAddingTag(false);
-                                            setTagInput("");
-                                        }
-                                    }}
-                                    onBlur={() => {
-                                        if (tagInput) handleAddTag();
-                                        else setIsAddingTag(false);
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                        {tags.map((tag: string) => (
+                            <Badge
+                                key={tag}
+                                variant="secondary"
+                                className="h-6 px-2 text-[11px] font-normal gap-1 hover:bg-[var(--interactive-hover)] transition-colors cursor-default group"
+                            >
+                                {tag}
+                                <X
+                                    className="w-3 h-3 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 cursor-pointer hover:text-destructive transition-opacity"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRemoveTag(tag);
                                     }}
                                 />
-                            ) : (
-                                <span
-                                    className="text-[10px] text-muted-foreground/60 italic hover:text-primary cursor-pointer transition-colors px-1"
-                                    onClick={() => setIsAddingTag(true)}
-                                >
-                                    + {t('notes:context.add_tag', 'Add tag')}
-                                </span>
-                            )}
-                        </div>
+                            </Badge>
+                        ))}
+
+                        {isAddingTag ? (
+                            <Input
+                                ref={tagInputRef}
+                                className="h-6 w-28 text-[11px] px-2 py-0"
+                                value={tagInput}
+                                placeholder={t('notes:context.add_tag', 'Add tag')}
+                                onChange={e => setTagInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') handleAddTag();
+                                    if (e.key === 'Escape') {
+                                        setIsAddingTag(false);
+                                        setTagInput("");
+                                    }
+                                }}
+                                onBlur={() => {
+                                    if (tagInput) handleAddTag();
+                                    else setIsAddingTag(false);
+                                }}
+                            />
+                        ) : (
+                            <button
+                                type="button"
+                                className={cn(
+                                    "inline-flex items-center gap-0.5 rounded-md border border-dashed border-border/60",
+                                    "text-[11px] text-muted-foreground hover:text-primary hover:border-primary/40",
+                                    "px-2 h-6 transition-colors",
+                                    "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5"
+                                )}
+                                onClick={() => setIsAddingTag(true)}
+                            >
+                                <Plus className="w-3 h-3" />
+                                {t('notes:context.add_tag', 'Add tag')}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -377,10 +435,10 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
             {/* Outline Section */}
             <div className="flex-1 flex flex-col min-h-0">
-                <div className="p-3 pb-1">
-                    <h3 className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
-                        <TextAlignLeft className="w-3 h-3" />
-                        {t('notes:context.outline', 'OUTLINE')}
+                <div className="px-4 pt-3 pb-1">
+                    <h3 className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
+                        <TextAlignLeft className="w-3.5 h-3.5" />
+                        {t('notes:context.outline', 'Outline')}
                         {headings.length > 0 && (
                             <span className="text-[9px] font-normal text-muted-foreground/50 ml-auto">
                                 {headings.length}
@@ -389,30 +447,50 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                     </h3>
                 </div>
                 <CustomScrollArea className="flex-1">
-                    <div className="p-3 pt-0 space-y-0.5">
+                    <div className="px-3 pb-3 pt-0 space-y-0.5">
                         {headings.length > 0 ? (
-                            headings.map((heading) => (
-                                <NotionButton
-                                    key={heading.id}
-                                    variant="ghost" size="sm"
-                                    className={cn(
-                                        "!w-full !text-left !py-1 !px-2 !h-auto !rounded-md hover:bg-[var(--interactive-hover)] truncate text-[11px]",
-                                        heading.level === 1 && "font-medium text-foreground",
-                                        heading.level === 2 && "!pl-4 text-muted-foreground",
-                                        heading.level === 3 && "!pl-6 text-muted-foreground/80",
-                                        heading.level === 4 && "!pl-8 text-muted-foreground/70 text-[10px]",
-                                        heading.level === 5 && "!pl-10 text-muted-foreground/60 text-[10px]",
-                                        heading.level === 6 && "!pl-12 text-muted-foreground/50 text-[10px]"
-                                    )}
-                                    onClick={() => handleHeadingClick(heading)}
-                                    title={heading.text}
-                                >
-                                    {heading.text}
-                                </NotionButton>
-                            ))
+                            headings.map((heading) => {
+                                const isActive = activeHeadingId === heading.id;
+                                return (
+                                    <NotionButton
+                                        key={heading.id}
+                                        variant="ghost" size="sm"
+                                        className={cn(
+                                            "!w-full !text-left !py-1 !px-2 !h-auto !rounded-md truncate text-[11px]",
+                                            "[@media(pointer:coarse)]:!py-2.5",
+                                            heading.level === 1 && "font-medium",
+                                            heading.level === 2 && "!pl-4",
+                                            heading.level === 3 && "!pl-6",
+                                            heading.level === 4 && "!pl-8 text-[10px]",
+                                            heading.level === 5 && "!pl-10 text-[10px]",
+                                            heading.level === 6 && "!pl-12 text-[10px]",
+                                            isActive
+                                                ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
+                                                : cn(
+                                                    "hover:bg-[var(--interactive-hover)]",
+                                                    heading.level === 1 && "text-foreground",
+                                                    heading.level === 2 && "text-muted-foreground",
+                                                    heading.level === 3 && "text-muted-foreground/80",
+                                                    heading.level === 4 && "text-muted-foreground/70",
+                                                    heading.level === 5 && "text-muted-foreground/60",
+                                                    heading.level === 6 && "text-muted-foreground/50",
+                                                ),
+                                        )}
+                                        onClick={() => handleHeadingClick(heading)}
+                                        title={heading.text}
+                                    >
+                                        {heading.text}
+                                    </NotionButton>
+                                );
+                            })
                         ) : (
-                            <div className="py-4 text-center text-muted-foreground/40 italic">
-                                {t('notes:context.no_headings', 'No headings')}
+                            <div className="py-5 px-1 text-center space-y-1">
+                                <p className="text-[11px] text-muted-foreground/55">
+                                    {t('notes:context.no_headings', 'No headings yet')}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground/40 leading-snug">
+                                    {t('notes:context.outline_empty_hint', 'Use # or the toolbar to add headings')}
+                                </p>
                             </div>
                         )}
                     </div>

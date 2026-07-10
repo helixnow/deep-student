@@ -27,6 +27,7 @@ import {
 } from '@phosphor-icons/react';
 import { useNotesOptional } from '../NotesContext';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { isMacOS } from '@/utils/platform';
 
 interface ToolbarButtonProps {
   icon: React.ReactNode;
@@ -97,6 +98,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   
   const editor = externalEditor ?? contextEditor;
   const isDisabled = !editor || readOnly;
+  const mod = isMacOS() ? '⌘' : 'Ctrl+';
 
   // 使用 ProseMirror 命令直接操作编辑器
   const handleBold = useCallback(() => {
@@ -170,14 +172,14 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
       <ToolbarButton
         icon={<TextB className="w-4 h-4" />}
         label={t('notes:toolbar.bold')}
-        shortcut="⌘B"
+        shortcut={`${mod}B`}
         onClick={handleBold}
         disabled={isDisabled}
       />
       <ToolbarButton
         icon={<TextItalic className="w-4 h-4" />}
         label={t('notes:toolbar.italic')}
-        shortcut="⌘I"
+        shortcut={`${mod}I`}
         onClick={handleItalic}
         disabled={isDisabled}
       />
@@ -190,7 +192,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
       <ToolbarButton
         icon={<Code className="w-4 h-4" />}
         label={t('notes:toolbar.code')}
-        shortcut="⌘E"
+        shortcut={`${mod}E`}
         onClick={handleCode}
         disabled={isDisabled}
       />
@@ -201,21 +203,21 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
       <ToolbarButton
         icon={<TextHOne className="w-4 h-4" />}
         label={t('notes:toolbar.heading1')}
-        shortcut="⌘1"
+        shortcut={`${mod}1`}
         onClick={handleHeading1}
         disabled={isDisabled}
       />
       <ToolbarButton
         icon={<TextHTwo className="w-4 h-4" />}
         label={t('notes:toolbar.heading2')}
-        shortcut="⌘2"
+        shortcut={`${mod}2`}
         onClick={handleHeading2}
         disabled={isDisabled}
       />
       <ToolbarButton
         icon={<TextHThree className="w-4 h-4" />}
         label={t('notes:toolbar.heading3')}
-        shortcut="⌘3"
+        shortcut={`${mod}3`}
         onClick={handleHeading3}
         disabled={isDisabled}
       />
@@ -270,7 +272,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
       <ToolbarButton
         icon={<Link className="w-4 h-4" />}
         label={t('notes:toolbar.link')}
-        shortcut="⌘K"
+        shortcut={`${mod}K`}
         onClick={handleLink}
         disabled={isDisabled}
       />

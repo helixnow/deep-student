@@ -128,7 +128,7 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
-  transition: transform 0.2s cubic-bezier(0.25, 0.1, 0.25, 1), color 0.15s ease, background-color 0.15s ease;
+  transition: transform var(--page-slide-dur, 200ms) var(--ease-shell), color var(--dropdown-close-dur, 150ms) ease, background-color var(--dropdown-close-dur, 150ms) ease;
   color: hsl(var(--muted-foreground) / 0.7);
   border-radius: 4px;
 }

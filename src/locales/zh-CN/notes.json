@@ -117,7 +117,8 @@
     "share_success_title": "分享成功",
     "share_success_message": "已复制资源路径，可发送给其他人",
     "share_failed_title": "分享失败",
-    "share_failed_message": "复制分享链接失败，请检查剪贴板权限"
+    "share_failed_message": "复制分享链接失败，请检查剪贴板权限",
+    "delete_confirm_message": "确定要删除此资源吗？删除后可在回收站恢复。"
   },
   "mistakeReferenceCard": {
     "title": "错题引用",
@@ -405,7 +406,8 @@
       "saved_at": "已保存于 {{time}}",
       "unsaved": "未保存",
       "save_failed": "保存失败",
-      "conflict": "检测到冲突，请检查最新内容",
+      "conflict": "检测到冲突，已刷新为最新版本（见通知中的「恢复我的版本」）",
+      "retry": "重试",
       "auto_save": "自动保存"
     },
     "placeholder": {
@@ -745,6 +747,9 @@
     "success": "导出成功",
     "success_desc": "已导出 {{count}} 条笔记到：{{path}}",
     "failed": "导出失败",
+    "no_active_resource": "没有打开的资源，请先打开要导出的笔记或文件。",
+    "not_available_all": "“导出全部笔记”尚未接入。请用「导出当前笔记」，或从侧栏右键菜单导出单个资源。",
+    "fallback_current": "全部导出尚未接入，已改为导出当前打开的资源。",
     "select_format": "选择格式",
     "format": {
       "label": "导出格式",
@@ -956,20 +961,23 @@
   },
   "context": {
     "open": "打开",
+    "properties": "属性",
     "outline": "大纲",
     "outgoing": "外链",
-    "select_hint": "选择笔记以查看上下文",
+    "select_hint": "选择笔记以查看属性",
     "typography_title": "排版样式",
     "typography_description": "调整字号、行距和字体",
     "typography_default": "默认",
     "typography_markdown_hint": "Markdown 编辑器使用默认样式，不支持富文本格式（字体、字号等）。",
-    "created": "创建时间",
-    "updated": "更新时间",
+    "created": "创建",
+    "updated": "更新",
     "tags": "标签",
+    "tags_empty_hint": "添加标签以便整理",
     "add_tag": "添加标签",
     "tag_add_failed": "添加标签失败",
     "tag_remove_failed": "删除标签失败",
     "no_headings": "暂无标题",
+    "outline_empty_hint": "用 # 或工具栏添加标题",
     "assets": "附件",
     "no_assets": "暂无附件",
     "no_outgoing": "暂无外链",

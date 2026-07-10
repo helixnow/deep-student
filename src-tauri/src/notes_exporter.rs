@@ -1285,9 +1285,85 @@ fn strip_notes_assets_prefix(path: &Path) -> Option<PathBuf> {
 
 fn is_path_traversal(path: &Path) -> bool {
     path.is_absolute()
-        || path
-            .components()
-            .any(|component| matches!(component, Component::ParentDir))
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+}
+
+/// ★ 审阅 14 P0-1：归档相对路径穿越检测（导入侧）。
+/// 统一 `/` 与 `\`，拒绝绝对路径、盘符前缀、`..` 分段与空段。
+fn is_unsafe_archive_relative(path: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    if normalized.is_empty() {
+        return true;
+    }
+    // Windows 盘符（C:/...）或 UNC 风格（//server/...）
+    if normalized.starts_with('/') || normalized.starts_with("//") {
+        return true;
+    }
+    if let Some(first) = normalized.split('/').next() {
+        if first.len() >= 2 && first.as_bytes().get(1) == Some(&b':') {
+            return true;
+        }
+    }
+    let as_path = Path::new(&normalized);
+    if is_path_traversal(as_path) {
+        return true;
+    }
+    // 显式拒绝空段（`a//b`）与纯 `.` 段以外的异常
+    for segment in normalized.split('/') {
+        if segment.is_empty() || segment == ".." {
+            return true;
+        }
+    }
+    false
+}
+
+/// ★ 审阅 14 P0-1：在 `base` 下安全拼接相对路径；越界返回 None。
+/// 落盘前用组件归一化保证结果位于 base 内（不依赖 canonicalize，因目标可能尚不存在）。
+fn resolve_safe_path_under(base: &Path, relative: &str) -> Option<PathBuf> {
+    if is_unsafe_archive_relative(relative) {
+        return None;
+    }
+    let mut resolved = base.to_path_buf();
+    for component in Path::new(&relative.replace('\\', "/")).components() {
+        match component {
+            Component::Normal(part) => resolved.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return None;
+            }
+        }
+    }
+    // 组件拼接后必须仍以 base 为前缀（防止 join 行为异常）
+    if !resolved.starts_with(base) {
+        return None;
+    }
+    Some(resolved)
+}
+
+/// ★ 审阅 14 P0-1：导入附件写盘前的统一校验入口。
+fn resolve_import_attachment_disk_path(
+    assets_base_dir: &Path,
+    relative_path: &str,
+) -> Option<PathBuf> {
+    let notes_assets_root = assets_base_dir.join("notes_assets");
+    // relative_path 形如 notes_assets/<subject>/...
+    let under_notes = relative_path
+        .strip_prefix("notes_assets/")
+        .or_else(|| relative_path.strip_prefix("notes_assets\\"))?;
+    if is_unsafe_archive_relative(under_notes) {
+        return None;
+    }
+    let disk_path = resolve_safe_path_under(&notes_assets_root, under_notes)?;
+    // 再校验完整路径仍在 app data 根内
+    if !disk_path.starts_with(assets_base_dir) {
+        return None;
+    }
+    Some(disk_path)
 }
 
 fn rewrite_content_paths_for_export(content: &str, subject: &str, subject_slug: &str) -> String {
@@ -1998,6 +2074,11 @@ impl NotesImporter {
             }
 
             let path_after_assets = file_name.strip_prefix("assets/").unwrap_or("");
+            // ★ 审阅 14 P0-1：条目名穿越校验（拒绝 ../、绝对路径、盘符、反斜杠变体）
+            if is_unsafe_archive_relative(path_after_assets) {
+                log::warn!("[notes_import] 跳过越界附件条目: {}", file_name);
+                continue;
+            }
             let parts: Vec<&str> = path_after_assets.split('/').collect();
             if parts.len() < 2 {
                 continue;
@@ -2016,7 +2097,16 @@ impl NotesImporter {
             }
 
             let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
-            let disk_path = assets_base_dir.join(&relative_path);
+            let Some(disk_path) =
+                resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
+            else {
+                log::warn!(
+                    "[notes_import] 跳过越界附件落盘路径: {} -> {}",
+                    file_name,
+                    relative_path
+                );
+                continue;
+            };
 
             if let Some(parent) = disk_path.parent() {
                 fs::create_dir_all(parent).ok();
@@ -2399,6 +2489,11 @@ impl NotesImporter {
             }
 
             let path_after_assets = file_name.strip_prefix("assets/").unwrap_or("");
+            // ★ 审阅 14 P0-1：条目名穿越校验
+            if is_unsafe_archive_relative(path_after_assets) {
+                log::warn!("[notes_import] 跳过越界附件条目: {}", file_name);
+                continue;
+            }
             let parts: Vec<&str> = path_after_assets.split('/').collect();
             if parts.len() < 2 {
                 continue;
@@ -2414,7 +2509,16 @@ impl NotesImporter {
             }
 
             let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
-            let disk_path = assets_base_dir.join(&relative_path);
+            let Some(disk_path) =
+                resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
+            else {
+                log::warn!(
+                    "[notes_import] 跳过越界附件落盘路径: {} -> {}",
+                    file_name,
+                    relative_path
+                );
+                continue;
+            };
 
             if let Some(parent) = disk_path.parent() {
                 fs::create_dir_all(parent).ok();
@@ -2716,6 +2820,11 @@ impl NotesImporter {
 
             // 解析路径：assets/subject_slug/...
             let path_after_assets = file_name.strip_prefix("assets/").unwrap_or("");
+            // ★ 审阅 14 P0-1：条目名穿越校验
+            if is_unsafe_archive_relative(path_after_assets) {
+                log::warn!("[notes_import] 跳过越界附件条目: {}", file_name);
+                continue;
+            }
             let parts: Vec<&str> = path_after_assets.split('/').collect();
             if parts.len() < 2 {
                 log::warn!("跳过格式不正确的附件: {}", file_name);
@@ -2741,7 +2850,16 @@ impl NotesImporter {
 
             // 保存附件到磁盘
             let relative_path = format!("notes_assets/{}/{}", subject, relative_in_subject);
-            let disk_path = assets_base_dir.join(&relative_path);
+            let Some(disk_path) =
+                resolve_import_attachment_disk_path(&assets_base_dir, &relative_path)
+            else {
+                log::warn!(
+                    "[notes_import] 跳过越界附件落盘路径: {} -> {}",
+                    file_name,
+                    relative_path
+                );
+                continue;
+            };
 
             if let Some(parent) = disk_path.parent() {
                 fs::create_dir_all(parent)
@@ -3055,4 +3173,149 @@ struct MarkdownMetadata {
     updated_at: String,
     is_favorite: bool,
     folder_path: Option<String>,
+}
+
+#[cfg(test)]
+mod zip_slip_tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+    use zip::write::FileOptions;
+    use zip::ZipWriter;
+
+    fn write_zip_entry(zip: &mut ZipWriter<fs::File>, name: &str, data: &[u8]) {
+        zip.start_file(name, FileOptions::default()).unwrap();
+        zip.write_all(data).unwrap();
+    }
+
+    /// 模拟三条导入路径共用的落盘逻辑：校验后写文件。
+    fn try_import_asset_entry(base: &Path, entry_after_assets: &str, bytes: &[u8]) -> bool {
+        if is_unsafe_archive_relative(entry_after_assets) {
+            return false;
+        }
+        let parts: Vec<&str> = entry_after_assets.split('/').collect();
+        if parts.len() < 2 {
+            return false;
+        }
+        let subject_slug = parts[0];
+        let relative_in_subject = parts[1..].join("/");
+        let relative_path = format!("notes_assets/{}/{}", subject_slug, relative_in_subject);
+        let Some(disk_path) = resolve_import_attachment_disk_path(base, &relative_path) else {
+            return false;
+        };
+        if let Some(parent) = disk_path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        fs::write(&disk_path, bytes).is_ok()
+    }
+
+    #[test]
+    fn rejects_parent_dir_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(!try_import_asset_entry(
+            base,
+            "../evil/payload.txt",
+            b"evil"
+        ));
+        assert!(!try_import_asset_entry(
+            base,
+            "math/../../../evil.txt",
+            b"evil"
+        ));
+        assert!(!base.join("evil").exists());
+        assert!(!base.join("evil.txt").exists());
+    }
+
+    #[test]
+    fn rejects_windows_drive_and_absolute() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(!try_import_asset_entry(base, "C:/evil/x.txt", b"evil"));
+        assert!(!try_import_asset_entry(base, "C:\\evil\\x.txt", b"evil"));
+        assert!(!try_import_asset_entry(base, "/etc/passwd", b"evil"));
+        assert!(!try_import_asset_entry(base, "//server/share/x", b"evil"));
+    }
+
+    #[test]
+    fn rejects_mixed_separator_traversal() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(!try_import_asset_entry(
+            base,
+            "math\\..\\..\\evil.txt",
+            b"evil"
+        ));
+        assert!(!try_import_asset_entry(
+            base,
+            "math/..\\../outside.bin",
+            b"evil"
+        ));
+    }
+
+    #[test]
+    fn accepts_legitimate_asset_entry() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        assert!(try_import_asset_entry(
+            base,
+            "math/note-uuid/img.png",
+            b"pngdata"
+        ));
+        let expected = base.join("notes_assets").join("math").join("note-uuid").join("img.png");
+        assert!(expected.exists());
+        assert_eq!(fs::read(&expected).unwrap(), b"pngdata");
+    }
+
+    #[test]
+    fn is_unsafe_archive_relative_covers_variants() {
+        assert!(is_unsafe_archive_relative("../evil"));
+        assert!(is_unsafe_archive_relative("a/../../b"));
+        assert!(is_unsafe_archive_relative("C:\\evil"));
+        assert!(is_unsafe_archive_relative("/abs"));
+        assert!(is_unsafe_archive_relative("a\\..\\b"));
+        assert!(!is_unsafe_archive_relative("math/note/img.png"));
+        assert!(!is_unsafe_archive_relative("math/note/sub/img.png"));
+    }
+
+    #[test]
+    fn zip_with_malicious_entries_does_not_escape_base() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("payload.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = ZipWriter::new(file);
+            write_zip_entry(&mut zip, "assets/math/note1/ok.png", b"ok");
+            write_zip_entry(&mut zip, "assets/../evil.txt", b"evil");
+            write_zip_entry(&mut zip, "assets/math/../../outside.bin", b"out");
+            zip.finish().unwrap();
+        }
+
+        let base = tmp.path().join("appdata");
+        fs::create_dir_all(&base).unwrap();
+
+        let archive = fs::File::open(&zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(archive).unwrap();
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i).unwrap();
+            let name = file.name().to_string();
+            if !name.starts_with("assets/") || file.is_dir() {
+                continue;
+            }
+            let after = name.strip_prefix("assets/").unwrap_or("");
+            let mut bytes = Vec::new();
+            file.read_to_end(&mut bytes).unwrap();
+            let _ = try_import_asset_entry(&base, after, &bytes);
+        }
+
+        assert!(base
+            .join("notes_assets")
+            .join("math")
+            .join("note1")
+            .join("ok.png")
+            .exists());
+        assert!(!base.join("evil.txt").exists());
+        assert!(!tmp.path().join("evil.txt").exists());
+        assert!(!base.join("outside.bin").exists());
+    }
 }

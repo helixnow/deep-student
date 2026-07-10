@@ -81,7 +81,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
   return (
     <div className={cn(
       'absolute inset-0 z-40 flex flex-col bg-background/95 backdrop-blur-sm',
-      'animate-in fade-in slide-in-from-top-2 duration-200',
+      'ui-drop-in',
       className
     )}>
       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
