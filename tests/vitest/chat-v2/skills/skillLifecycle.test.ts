@@ -144,26 +144,25 @@ describe('P1-B：allowedTools 前端可见性过滤', () => {
     expect(result.schemaToolIds).not.toContain('anki_list_decks');
   });
 
-  it('skillAllowedTools 支持前缀匹配', () => {
+  it('skillAllowedTools 不应使用前缀匹配放大权限', () => {
     const result = collectSchemaToolIds({
       pendingContextRefs: [createSkillContextRef('test')],
       enableAnkiTools: true,
-      skillAllowedTools: ['anki'], // "anki" 前缀匹配所有 anki_* 工具
+      skillAllowedTools: ['anki'],
     });
 
-    // 所有 anki_ 工具都应保留
-    expect(result.schemaToolIds).toContain('anki_create_card');
-    expect(result.schemaToolIds).toContain('anki_list_decks');
+    expect(result.schemaToolIds).not.toContain('anki_create_card');
+    expect(result.schemaToolIds).not.toContain('anki_list_decks');
   });
 
-  it('空 skillAllowedTools 数组不应过滤', () => {
+  it('显式空 skillAllowedTools 数组应阻断所有 schema 工具', () => {
     const result = collectSchemaToolIds({
       pendingContextRefs: [createSkillContextRef('test')],
       enableAnkiTools: true,
-      skillAllowedTools: [], // 空数组不限制
+      skillAllowedTools: [],
     });
 
-    expect(result.schemaToolIds.length).toBeGreaterThan(0);
+    expect(result.schemaToolIds).toEqual([]);
   });
 });
 

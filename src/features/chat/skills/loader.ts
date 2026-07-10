@@ -13,8 +13,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { parseSkillFile } from './parser';
 import { skillRegistry } from './registry';
-import type { SkillDefinition, SkillLocation, SkillLoadConfig } from './types';
+import type { SkillDefinition, SkillLocation, SkillLoadConfig, SkillPackageFile } from './types';
 import { DEFAULT_SKILL_LOAD_CONFIG } from './types';
+import { classifySkillPackageFile, enrichSkillPackageMetadata, getSkillPackageRoot } from './packageMetadata';
+import { applyTrustOverride } from './skillTrustStorage';
+import { applyEnableOverride } from './skillEnableStorage';
 import { getBuiltinSkills } from './builtin';
 import {
   getAllBuiltinSkillCustomizations,
@@ -34,6 +37,14 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
  * SKILL.md 文件名
  */
 const SKILL_FILE_NAME = 'SKILL.md';
+
+/** 项目内兼容 Agent Skills 标准的目录（后者覆盖前者）。 */
+const PROJECT_SKILL_DIRS = [
+  '.skills',
+  '.agents/skills',
+  '.claude/skills',
+  '.github/skills',
+] as const;
 
 /**
  * 是否在 Tauri 运行时
@@ -92,6 +103,31 @@ interface SkillFileContent {
   path: string;
 }
 
+interface SkillPackageFileEntry {
+  path: string;
+  size: number;
+}
+
+async function loadPackageFiles(packageRoot: string): Promise<SkillPackageFile[] | undefined> {
+  if (!packageRoot || packageRoot.startsWith('builtin://')) {
+    return undefined;
+  }
+
+  try {
+    const files = await invoke<SkillPackageFileEntry[]>('skill_list_package_files', {
+      path: packageRoot,
+    });
+    return files.map((file) => ({
+      path: file.path,
+      kind: classifySkillPackageFile(file.path),
+      size: file.size,
+    }));
+  } catch (error: unknown) {
+    console.warn(LOG_PREFIX, 'Failed to index skill package files, using entry file only:', packageRoot, error);
+    return undefined;
+  }
+}
+
 // ============================================================================
 // 加载函数
 // ============================================================================
@@ -146,7 +182,11 @@ async function loadSkillsFromDirectory(
         );
 
         if (parseResult.success && parseResult.skill) {
-          skills.push(parseResult.skill);
+          const packageFiles = await loadPackageFiles(entry.path);
+          const skill = applyEnableOverride(applyTrustOverride(
+            enrichSkillPackageMetadata(parseResult.skill, packageFiles),
+          ));
+          skills.push(skill);
           console.log(
             LOG_PREFIX,
             `已加载 skill: ${parseResult.skill.name} (${entry.name})`
@@ -231,7 +271,9 @@ export async function loadSkillsFromFileSystem(
       // 应用自定义数据并注册
       for (const skill of builtinSkills) {
         const customization = customizations.get(skill.id) ?? null;
-        const finalSkill = applyCustomizationToSkill(skill, customization);
+        const finalSkill = applyEnableOverride(applyTrustOverride(
+          enrichSkillPackageMetadata(applyCustomizationToSkill(skill, customization)),
+        ));
         skillRegistry.register(finalSkill);
         stats.builtin++;
       }
@@ -239,7 +281,7 @@ export async function loadSkillsFromFileSystem(
       // 🆕 加载内置工具组 Skills（渐进披露架构）
       const builtinToolSkills = getBuiltinToolSkills();
       for (const skill of builtinToolSkills) {
-        skillRegistry.register(skill);
+        skillRegistry.register(applyEnableOverride(applyTrustOverride(enrichSkillPackageMetadata(skill))));
         stats.builtin++;
       }
 
@@ -264,7 +306,7 @@ export async function loadSkillsFromFileSystem(
       );
 
       for (const skill of globalSkills) {
-        skillRegistry.register(skill);
+        skillRegistry.register(applyEnableOverride(applyTrustOverride(skill)));
         stats.global++;
       }
     } catch (error: unknown) {
@@ -273,33 +315,38 @@ export async function loadSkillsFromFileSystem(
     }
   }
 
-  // 3. 加载项目 skills（最高优先级）
-  // ★ P0-08 修复：支持 projectRootDir 用于解析相对路径
-  if (mergedConfig.projectPath) {
+  // 3. 加载项目 skills（最高优先级；兼容 Agent Skills 标准目录）
+  {
     try {
-      let projectSkillsPath = mergedConfig.projectPath;
-
-      // 如果未提供 projectRootDir（且为相对路径），尝试在生产环境下提供稳定默认值
       const defaultProjectRootDir = !mergedConfig.projectRootDir
         ? await resolveDefaultProjectRootDir()
         : null;
-
       const effectiveProjectRootDir = mergedConfig.projectRootDir ?? defaultProjectRootDir;
 
-      // 如果提供了（显式或默认）projectRootDir，将相对路径转换为绝对路径
-      if (effectiveProjectRootDir && !projectSkillsPath.startsWith('/') && !projectSkillsPath.startsWith('~')) {
-        projectSkillsPath = `${effectiveProjectRootDir}/${mergedConfig.projectPath}`;
-        console.log(LOG_PREFIX, `Resolved project skills path: ${mergedConfig.projectPath} → ${projectSkillsPath}`);
+      const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
+      if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
+        dirsToScan.push(mergedConfig.projectPath);
       }
 
-      const projectSkills = await loadSkillsFromDirectory(
-        projectSkillsPath,
-        'project'
-      );
+      for (const relDir of dirsToScan) {
+        let projectSkillsPath = relDir;
+        if (
+          effectiveProjectRootDir
+          && !projectSkillsPath.startsWith('/')
+          && !projectSkillsPath.startsWith('~')
+        ) {
+          projectSkillsPath = `${effectiveProjectRootDir}/${relDir}`;
+        }
 
-      for (const skill of projectSkills) {
-        skillRegistry.register(skill);
-        stats.project++;
+        const projectSkills = await loadSkillsFromDirectory(
+          projectSkillsPath,
+          'project',
+        );
+
+        for (const skill of projectSkills) {
+          skillRegistry.register(skill);
+          stats.project++;
+        }
       }
     } catch (error: unknown) {
       console.error(LOG_PREFIX, 'Failed to load project skills:', error);
@@ -371,8 +418,11 @@ export async function loadSingleSkill(
     );
 
     if (parseResult.success && parseResult.skill) {
-      skillRegistry.register(parseResult.skill);
-      console.log(LOG_PREFIX, `Loaded single skill: ${parseResult.skill.name}`);
+      const packageRoot = getSkillPackageRoot(fileResult.path);
+      const packageFiles = packageRoot ? await loadPackageFiles(packageRoot) : undefined;
+      const skill = applyEnableOverride(applyTrustOverride(enrichSkillPackageMetadata(parseResult.skill, packageFiles)));
+      skillRegistry.register(skill);
+      console.log(LOG_PREFIX, `Loaded single skill: ${skill.name}`);
       return true;
     }
 

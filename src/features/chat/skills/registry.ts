@@ -96,13 +96,42 @@ class SkillRegistry {
   // ==========================================================================
 
   /**
+   * 🔒 P1（2026-07-08 审阅 22 P1-1）：builtin 命名空间保护。
+   *
+   * 加载顺序为 builtin → global → project，且项目目录自动扫描
+   * .agents/skills、.claude/skills 等外部目录；若允许同 id 静默覆盖，
+   * 任意仓库放置一个与内置工具组同 id 的 SKILL.md 即可整体替换内置技能的
+   * 指令正文与全部工具 description（SKILL.md 供应链攻击的标准入口）。
+   * 因此：已注册的内置技能不可被非内置来源的同 id 技能覆盖。
+   *
+   * @returns 是否允许写入
+   */
+  private guardRegistration(skill: SkillDefinition): boolean {
+    const existing = this.skills.get(skill.id);
+    if (!existing) return true;
+
+    const existingIsBuiltin = existing.location === 'builtin' || existing.isBuiltin === true;
+    const incomingIsBuiltin = skill.location === 'builtin' || skill.isBuiltin === true;
+    if (existingIsBuiltin && !incomingIsBuiltin) {
+      console.warn(
+        LOG_PREFIX,
+        `Blocked non-builtin skill "${skill.id}" (${skill.sourcePath || 'unknown source'}) from overriding builtin skill with same id`
+      );
+      return false;
+    }
+
+    console.warn(LOG_PREFIX, `Skill "${skill.id}" already exists, will be overwritten`);
+    return true;
+  }
+
+  /**
    * 注册 skill
    *
    * @param skill Skill 定义
    */
   register(skill: SkillDefinition): void {
-    if (this.skills.has(skill.id)) {
-      console.warn(LOG_PREFIX, `Skill "${skill.id}" already exists, will be overwritten`);
+    if (!this.guardRegistration(skill)) {
+      return;
     }
 
     this.skills.set(skill.id, skill);
@@ -116,16 +145,18 @@ class SkillRegistry {
    * @param skills Skill 定义列表
    */
   registerMany(skills: SkillDefinition[]): void {
+    let registeredCount = 0;
     for (const skill of skills) {
       // 内部注册，不触发通知
-      if (this.skills.has(skill.id)) {
-        console.warn(LOG_PREFIX, `Skill "${skill.id}" already exists, will be overwritten`);
+      if (!this.guardRegistration(skill)) {
+        continue;
       }
       this.skills.set(skill.id, skill);
+      registeredCount++;
       console.log(LOG_PREFIX, `Registered skill: ${skill.id} (${skill.name})`);
     }
     // 批量完成后统一通知
-    if (skills.length > 0) {
+    if (registeredCount > 0) {
       notifyUpdate();
     }
   }
@@ -207,6 +238,7 @@ class SkillRegistry {
       skillType: skill.skillType,
       relatedSkills: skill.relatedSkills,
       dependencies: skill.dependencies,
+      manifestVersion: skill.manifestVersion,
     }));
   }
 

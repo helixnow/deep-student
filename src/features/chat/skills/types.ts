@@ -34,6 +34,8 @@ export interface JsonSchemaProperty {
   /** JSON Schema 数组约束 */
   minItems?: number;
   maxItems?: number;
+  /** JSON Schema 字符串正则约束 */
+  pattern?: string;
   /** JSON Schema anyOf/oneOf 支持 */
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
@@ -229,6 +231,26 @@ export interface SkillMetadata {
    * ```
    */
   dependencies?: string[];
+
+  /** Reserved package manifest version, when present in frontmatter. */
+  manifestVersion?: string;
+
+  /**
+   * Runtime dependency declarations (legacy metadata / AgentSkills compatible).
+   *
+   * ```yaml
+   * requires:
+   *   bins: [python, pandoc]
+   *   env: [OPENAI_API_KEY]
+   * ```
+   */
+  requires?: SkillRequires;
+}
+
+/** Declared runtime dependencies from SKILL.md frontmatter. */
+export interface SkillRequires {
+  bins?: string[];
+  env?: string[];
 }
 
 // ============================================================================
@@ -239,6 +261,22 @@ export interface SkillMetadata {
  * Skill 存储位置
  */
 export type SkillLocation = 'global' | 'project' | 'builtin';
+
+export type SkillPackageSource =
+  | 'builtin'
+  | 'global'
+  | 'project'
+  | 'external'
+  | 'unknown';
+
+export type SkillTrustStatus = 'trusted' | 'untrusted' | 'builtin';
+
+export interface SkillPackageFile {
+  /** Path relative to package root, using forward slashes. */
+  path: string;
+  kind: 'entry' | 'reference' | 'script' | 'asset' | 'config' | 'other';
+  size?: number;
+}
 
 /**
  * 完整的 Skill 定义
@@ -253,6 +291,27 @@ export interface SkillDefinition extends SkillMetadata {
 
   /** 来源位置 */
   location: SkillLocation;
+
+  /** Derived package/source classification for management UI and policy. */
+  packageSource?: SkillPackageSource;
+
+  /** Root directory that contains SKILL.md. */
+  packageRoot?: string;
+
+  /** Lightweight package file index. */
+  packageFiles?: SkillPackageFile[];
+
+  /** Trust state surfaced inline in skill management. */
+  trustStatus?: SkillTrustStatus;
+
+  /**
+   * 是否被用户停用（skillEnableStorage 覆盖，非 frontmatter 字段）
+   *
+   * 停用的技能不进入 schema 工具收集、不参与自动激活与手动选择，
+   * UI 置灰但保留。注册时由 applyEnableOverride 附加快照；
+   * 运行时判断请使用 isSkillDisabled(skill.id) 获取最新状态。
+   */
+  disabled?: boolean;
 
   /**
    * 解析后保留的未知 frontmatter 字段

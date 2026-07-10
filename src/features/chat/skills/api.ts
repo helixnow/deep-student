@@ -24,6 +24,13 @@ export interface SkillDirectoryEntry {
   path: string;
 }
 
+export interface SkillPackageFileEntry {
+  /** Path relative to package root, using forward slashes. */
+  path: string;
+  /** File size in bytes. */
+  size: number;
+}
+
 export interface SkillCreateParams {
   /** 基础目录路径（全局或项目） */
   basePath: string;
@@ -62,6 +69,16 @@ export async function listSkillDirectories(path: string): Promise<SkillDirectory
  */
 export async function readSkillFile(path: string): Promise<SkillFileContent> {
   return invoke<SkillFileContent>('skill_read_file', { path });
+}
+
+/**
+ * List package files under a skill directory.
+ *
+ * @param path Skill package root directory
+ * @returns Relative package file paths
+ */
+export async function listSkillPackageFiles(path: string): Promise<SkillPackageFileEntry[]> {
+  return invoke<SkillPackageFileEntry[]>('skill_list_package_files', { path });
 }
 
 /**

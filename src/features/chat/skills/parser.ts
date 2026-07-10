@@ -15,6 +15,7 @@ import type {
   SkillLocation,
   ToolSchema,
   SkillType,
+  SkillRequires,
 } from './types';
 import { validateSkillMetadata, SKILL_DEFAULT_PRIORITY } from './types';
 
@@ -47,6 +48,9 @@ const KNOWN_FRONTMATTER_KEYS = new Set([
   'related-skills',
   'relatedSkills',
   'dependencies',
+  'requires',
+  'manifest-version',
+  'manifestVersion',
 ]);
 
 // ============================================================================
@@ -255,6 +259,71 @@ function parseEmbeddedTools(value: unknown, warnings: string[]): ToolSchema[] | 
   return tools.length > 0 ? tools : undefined;
 }
 
+function mergeUniqueStrings(...lists: Array<string[] | undefined>): string[] | undefined {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    if (!list) continue;
+    for (const item of list) {
+      if (!seen.has(item)) {
+        seen.add(item);
+        merged.push(item);
+      }
+    }
+  }
+  return merged.length > 0 ? merged : undefined;
+}
+
+function parseRequiresMap(value: unknown): SkillRequires | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const bins = coerceStringArrayField(record.bins);
+  const env = coerceStringArrayField(record.env);
+  if (!bins && !env) {
+    return undefined;
+  }
+  return { bins, env };
+}
+
+function parseOpenClawRequiresFromMetadata(metadataValue: unknown): SkillRequires | undefined {
+  if (typeof metadataValue === 'string') {
+    const trimmed = metadataValue.trim();
+    if (!trimmed.startsWith('{')) {
+      return undefined;
+    }
+    try {
+      metadataValue = JSON.parse(trimmed) as unknown;
+    } catch {
+      return undefined;
+    }
+  }
+  if (!metadataValue || typeof metadataValue !== 'object') {
+    return undefined;
+  }
+  const metadata = metadataValue as Record<string, unknown>;
+  const openclaw = metadata.openclaw;
+  if (!openclaw || typeof openclaw !== 'object') {
+    return undefined;
+  }
+  return parseRequiresMap((openclaw as Record<string, unknown>).requires);
+}
+
+function parseRequiresField(
+  requiresRaw: unknown,
+  metadataRaw: unknown,
+): SkillRequires | undefined {
+  const topLevel = parseRequiresMap(requiresRaw);
+  const openclaw = parseOpenClawRequiresFromMetadata(metadataRaw);
+  const bins = mergeUniqueStrings(topLevel?.bins, openclaw?.bins);
+  const env = mergeUniqueStrings(topLevel?.env, openclaw?.env);
+  if (!bins && !env) {
+    return undefined;
+  }
+  return { bins, env };
+}
+
 // ============================================================================
 // Skill 解析
 // ============================================================================
@@ -330,6 +399,9 @@ export function parseSkillFile(
   const relatedSkillsRaw = rawMetadata['related-skills'] ?? rawMetadata.relatedSkills;
   // 支持 dependencies 字段
   const dependenciesRaw = rawMetadata.dependencies;
+  const requiresRaw = rawMetadata.requires;
+  const metadataRaw = rawMetadata.metadata;
+  const manifestVersionRaw = rawMetadata['manifest-version'] ?? rawMetadata.manifestVersion;
 
   const metadata: Partial<SkillMetadata> = {
     id: skillId,
@@ -345,6 +417,8 @@ export function parseSkillFile(
     skillType: parseSkillType(skillTypeRaw),
     relatedSkills: coerceStringArrayField(relatedSkillsRaw),
     dependencies: coerceStringArrayField(dependenciesRaw),
+    requires: parseRequiresField(requiresRaw, metadataRaw),
+    manifestVersion: coerceStringField(manifestVersionRaw),
   };
 
   // 4. 验证元数据
@@ -381,6 +455,8 @@ export function parseSkillFile(
     skillType: metadata.skillType ?? 'standalone', // 默认独立型
     relatedSkills: metadata.relatedSkills,
     dependencies: metadata.dependencies,
+    requires: metadata.requires,
+    manifestVersion: metadata.manifestVersion,
     content: markdownContent,
     sourcePath,
     location,
@@ -453,6 +529,9 @@ export function extractSkillMetadata(
     const relatedSkillsRaw = raw['related-skills'] ?? raw.relatedSkills;
     // 支持 dependencies
     const dependenciesRaw = raw.dependencies;
+    const requiresRaw = raw.requires;
+    const metadataRaw = raw.metadata;
+    const manifestVersionRaw = raw['manifest-version'] ?? raw.manifestVersion;
 
     return {
       id: skillId,
@@ -468,6 +547,8 @@ export function extractSkillMetadata(
       skillType: parseSkillType(skillTypeRaw),
       relatedSkills: coerceStringArrayField(relatedSkillsRaw),
       dependencies: coerceStringArrayField(dependenciesRaw),
+      requires: parseRequiresField(requiresRaw, metadataRaw),
+      manifestVersion: coerceStringField(manifestVersionRaw),
     };
   } catch (e: unknown) {
     console.warn(`[SkillParser]`, i18n.t('skills:parser.extractMetadataFailed', { skillId }), e);
@@ -570,6 +651,22 @@ export function serializeSkillToMarkdown(
     frontmatter.dependencies = metadata.dependencies;
   } else {
     delete frontmatter.dependencies;
+  }
+
+  if (metadata.requires && (metadata.requires.bins?.length || metadata.requires.env?.length)) {
+    frontmatter.requires = {
+      ...(metadata.requires.bins?.length ? { bins: metadata.requires.bins } : {}),
+      ...(metadata.requires.env?.length ? { env: metadata.requires.env } : {}),
+    };
+  } else {
+    delete frontmatter.requires;
+  }
+
+  if (metadata.manifestVersion) {
+    frontmatter['manifest-version'] = metadata.manifestVersion;
+  } else {
+    delete frontmatter['manifest-version'];
+    delete frontmatter.manifestVersion;
   }
 
   if (metadata.embeddedTools && metadata.embeddedTools.length > 0) {

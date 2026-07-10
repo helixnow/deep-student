@@ -9,11 +9,25 @@ export type {
   SkillMetadata,
   SkillDefinition,
   SkillLocation,
+  SkillPackageFile,
+  SkillPackageSource,
+  SkillTrustStatus,
   SkillLoadConfig,
   SkillResourceMetadata,
   SkillParseResult,
   SkillValidationResult,
 } from './types';
+
+export {
+  classifySkillPackageFile,
+  createDefaultPackageFiles,
+  enrichSkillPackageMetadata,
+  getSkillPackageRoot,
+  getSkillPackageSource,
+  getSkillPermissionSummary,
+  getSkillTrustStatus,
+} from './packageMetadata';
+export type { SkillPermissionSummary } from './packageMetadata';
 
 export {
   validateSkillMetadata,
@@ -34,6 +48,7 @@ export {
 // API
 export {
   listSkillDirectories,
+  listSkillPackageFiles,
   readSkillFile,
   createSkill,
   updateSkill,
@@ -42,6 +57,7 @@ export {
 export type {
   SkillFileContent,
   SkillDirectoryEntry,
+  SkillPackageFileEntry,
   SkillCreateParams,
   SkillUpdateParams,
 } from './api';

@@ -6,6 +6,7 @@ describe('skill parser round-trip', () => {
     const raw = `---
 name: Test Skill
 description: Test desc
+manifest-version: "2"
 allowed-tools:
   - builtin-web_search
 x-extra-flag: true
@@ -19,6 +20,7 @@ custom-config:
     const parsed = parseSkillFile(raw, '/tmp/SKILL.md', 'test-skill', 'global');
     expect(parsed.success).toBe(true);
     expect(parsed.skill?.allowedTools).toEqual(['builtin-web_search']);
+    expect(parsed.skill?.manifestVersion).toBe('2');
     expect(parsed.skill?.preservedFrontmatter).toMatchObject({
       'x-extra-flag': true,
       'custom-config': { mode: 'strict' },
@@ -28,6 +30,7 @@ custom-config:
       {
         name: parsed.skill!.name,
         description: parsed.skill!.description,
+        manifestVersion: parsed.skill!.manifestVersion,
         allowedTools: parsed.skill!.allowedTools,
         preservedFrontmatter: parsed.skill!.preservedFrontmatter,
       },
@@ -37,5 +40,6 @@ custom-config:
     expect(serialized).toContain('x-extra-flag: true');
     expect(serialized).toContain('custom-config:');
     expect(serialized).toContain('allowed-tools:');
+    expect(serialized).toContain('manifest-version:');
   });
 });
