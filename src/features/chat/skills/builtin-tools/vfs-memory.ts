@@ -81,6 +81,14 @@ export const vfsMemorySkill: SkillDefinition = {
 ### 删除记忆
 - **builtin-memory_delete**: 删除指定记忆（用户要求忘记时使用）
 
+### 学习者画像（长期策展层）
+- **builtin-learner_profile_get**: 读取学习者画像（薄弱知识点/学习偏好/学习目标/近期状态）
+- **builtin-learner_profile_update**: 结构化增量更新画像（merge 语义，非整体覆盖）
+
+画像与普通记忆的分工：画像是**策展的长期层**（随会话自动注入，总量 ≤4000 字符，宁精勿滥）；
+普通记忆是可检索的事实库。发现**反复出现**的错误模式、明确的偏好/目标变化时才更新画像；
+单次做题流水不要写画像（系统会自动记入每日学习日志，可用 memory_search 检索"学习日志"）。
+
 ## 记忆分类
 
 记忆按文件夹分类存储：
@@ -221,6 +229,79 @@ export const vfsMemorySkill: SkillDefinition = {
           folder: { type: 'string', description: '相对于记忆根目录的文件夹路径，留空表示根目录' },
           limit: { type: 'integer', description: '返回数量限制，默认100条', default: 100, minimum: 1, maximum: 500 },
           offset: { type: 'integer', description: '分页偏移量，默认0', default: 0, minimum: 0 },
+        },
+      },
+    },
+    {
+      name: 'builtin-learner_profile_get',
+      description: '读取学习者画像（长期策展层）：薄弱知识点（科目/知识点/错误模式/证据计数）、学习偏好、学习目标、近期状态。返回结构化 JSON 与渲染后的 Markdown。画像已随会话自动注入 system prompt，仅在需要完整结构（如更新前核对）时调用。',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    {
+      name: 'builtin-learner_profile_update',
+      description: '结构化增量更新学习者画像（merge 语义，非整体覆盖）。仅在发现反复出现的错误模式、明确的偏好/目标变化时使用；单次做题流水不要写入画像。画像总量硬上限 4000 字符，超限会被拒绝并要求精炼。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          weak_points_add: {
+            type: 'array',
+            description: '新增/强化薄弱知识点（按 科目+知识点 upsert，证据计数累加）',
+            items: {
+              type: 'object',
+              properties: {
+                subject: { type: 'string', description: '科目，如"数学"' },
+                knowledge_point: { type: 'string', description: '知识点，如"二次函数"' },
+                error_pattern: { type: 'string', description: '错误模式一句话概括，如"配方时符号处理错误"' },
+                evidence_count: { type: 'integer', description: '本次观察到的证据次数（默认 1）', minimum: 1 },
+                last_seen: { type: 'string', description: '最近观察日期 YYYY-MM-DD（可选）' },
+              },
+              required: ['subject', 'knowledge_point', 'error_pattern'],
+            },
+          },
+          weak_points_remove: {
+            type: 'array',
+            description: '移除已克服的薄弱知识点（按 科目+知识点 匹配）',
+            items: {
+              type: 'object',
+              properties: {
+                subject: { type: 'string' },
+                knowledge_point: { type: 'string' },
+              },
+              required: ['subject', 'knowledge_point'],
+            },
+          },
+          preferences: {
+            type: 'object',
+            description: '学习偏好字段级补丁（仅覆盖提供的字段）',
+            properties: {
+              explanation_style: { type: 'string', description: '讲解风格，如"先结论后推导"' },
+              language: { type: 'string', description: '语言偏好' },
+              pace: { type: 'string', description: '学习节奏' },
+              others_add: { type: 'array', items: { type: 'string' }, description: '追加的其他偏好（去重）' },
+              others_remove: { type: 'array', items: { type: 'string' }, description: '移除的其他偏好（精确匹配）' },
+            },
+          },
+          goals_add: {
+            type: 'array',
+            description: '新增学习目标（按目标文本去重）',
+            items: {
+              type: 'object',
+              properties: {
+                goal: { type: 'string', description: '目标描述，如"高考数学 130+"' },
+                deadline: { type: 'string', description: '期限 YYYY-MM-DD（可选）' },
+              },
+              required: ['goal'],
+            },
+          },
+          goals_remove: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '移除学习目标（按目标文本匹配）',
+          },
+          recent_status: { type: 'string', description: '覆盖近期状态摘要（1-2 句话，可选）' },
         },
       },
     },

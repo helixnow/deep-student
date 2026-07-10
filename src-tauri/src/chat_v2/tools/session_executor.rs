@@ -35,7 +35,7 @@ use serde_json::{json, Value};
 use tauri::Emitter;
 
 use super::arg_utils::{get_json_array_arg, get_string_array_arg};
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -1256,6 +1256,16 @@ impl ToolExecutor for SessionToolExecutor {
                 ToolSensitivity::Low
             }
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        match strip_tool_namespace(tool_name) {
+            // 只读子集：查询/搜索/统计/标签列表/分组列表，可并行 + 自动重试
+            "session_list" | "session_search" | "session_get" | "session_stats"
+            | "tag_list_all" | "group_list" => ToolConcurrency::ReadOnly,
+            // 重命名/移动/归档/打标签/批量操作等写操作，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 

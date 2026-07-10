@@ -17,6 +17,7 @@ export { todoToolsSkill } from './todo-tools';
 export { qbankToolsSkill } from './qbank-tools';
 export { workspaceToolsSkill } from './workspace-tools';
 export { webFetchSkill } from './web-fetch';
+export { browserToolsSkill } from './browser-tools';
 export { subagentWorkerSkill, SUBAGENT_WORKER_SYSTEM_PROMPT } from './subagent-worker';
 export { templateDesignerSkill } from './template-designer';
 export { askUserSkill } from './ask-user';
@@ -28,6 +29,13 @@ export { sessionManagerSkill } from './session-manager';
 export { userTodoToolsSkill } from './user-todo-tools';
 export { imageGenerationSkill } from './image-generation';
 export { toolPackSkill } from './tool-pack';
+export { selfServiceToolsSkill } from './self-service-tools';
+export { automationToolsSkill } from './automation-tools';
+export { rootRequestToolsSkill } from './root-request-tools';
+export { essayGradingSkill } from './essay-grading';
+export { reviewPlanningSkill } from './review-planning';
+export { documentProcessingSkill } from './document-processing';
+export { workbenchToolsSkill } from './workbench-tools';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -39,6 +47,7 @@ import { todoToolsSkill } from './todo-tools';
 import { qbankToolsSkill } from './qbank-tools';
 import { workspaceToolsSkill } from './workspace-tools';
 import { webFetchSkill } from './web-fetch';
+import { browserToolsSkill } from './browser-tools';
 import { subagentWorkerSkill } from './subagent-worker';
 import { templateDesignerSkill } from './template-designer';
 import { askUserSkill } from './ask-user';
@@ -50,6 +59,13 @@ import { sessionManagerSkill } from './session-manager';
 import { userTodoToolsSkill } from './user-todo-tools';
 import { imageGenerationSkill } from './image-generation';
 import { toolPackSkill } from './tool-pack';
+import { selfServiceToolsSkill } from './self-service-tools';
+import { automationToolsSkill } from './automation-tools';
+import { rootRequestToolsSkill } from './root-request-tools';
+import { essayGradingSkill } from './essay-grading';
+import { reviewPlanningSkill } from './review-planning';
+import { documentProcessingSkill } from './document-processing';
+import { workbenchToolsSkill } from './workbench-tools';
 import type { SkillDefinition } from '../types';
 
 /**
@@ -69,6 +85,7 @@ export const builtinToolSkills: SkillDefinition[] = [
   qbankToolsSkill,
   workspaceToolsSkill,
   webFetchSkill,
+  browserToolsSkill,
   subagentWorkerSkill,
   templateDesignerSkill,
   askUserSkill,
@@ -80,6 +97,13 @@ export const builtinToolSkills: SkillDefinition[] = [
   userTodoToolsSkill,
   imageGenerationSkill,
   toolPackSkill,
+  selfServiceToolsSkill,
+  automationToolsSkill,
+  rootRequestToolsSkill,
+  essayGradingSkill,
+  reviewPlanningSkill,
+  documentProcessingSkill,
+  workbenchToolsSkill,
 ];
 
 /**

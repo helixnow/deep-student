@@ -63,6 +63,8 @@ fn create_sub_context(
         skill_state_version: parent.skill_state_version,
         round_id: parent.round_id.clone(),
         block_id,
+        // ACR R2-01：子上下文继承父 runId（toolCallId）
+        tool_call_id: parent.tool_call_id.clone(),
         emitter: parent.emitter.clone(),
         canvas_note_id: parent.canvas_note_id.clone(),
         notes_manager: parent.notes_manager.clone(),
@@ -77,6 +79,8 @@ fn create_sub_context(
         question_bank_service: parent.question_bank_service.clone(),
         skill_contents: parent.skill_contents.clone(),
         skill_embedded_tools: parent.skill_embedded_tools.clone(),
+        skill_package_roots: parent.skill_package_roots.clone(),
+        skill_allowed_tools: parent.skill_allowed_tools.clone(),
         cancellation_token: Some(token),
         rag_top_k: parent.rag_top_k,
         rag_enable_reranking: parent.rag_enable_reranking,
@@ -315,6 +319,26 @@ impl ToolExecutor for ToolPackExecutor {
                 };
 
                 // === Security preflight checks (mirrors pipeline execute_single_tool) ===
+                if !crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy(
+                    &sub.name,
+                    &sub.args,
+                    &sub_ctx.skill_allowed_tools,
+                ) {
+                    let result = ToolResultInfo::failure(
+                        Some(sub_call_id),
+                        Some(sub_block_id),
+                        sub.name.clone(),
+                        sub.args.clone(),
+                        format!(
+                            "Current Skill policy does not allow sub-tool '{}'; blocked before execution",
+                            sub.name
+                        ),
+                        0,
+                    );
+                    finalize_synthetic_sub_result(&sub_ctx, &result, true);
+                    return result;
+                }
+
                 // Feature flag checks
                 let sub_short_name = sub.name.strip_prefix("builtin-").unwrap_or(&sub.name);
                 let is_memory_tool = sub_short_name.starts_with("memory_");
@@ -663,7 +687,6 @@ impl ToolExecutor for ToolPackExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_can_handle() {

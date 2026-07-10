@@ -23,8 +23,16 @@ use crate::vfs::repos::VfsTodoRepo;
 use crate::vfs::types::{VfsCreateTodoItemParams, VfsUpdateTodoItemParams};
 
 /// 通知前端待办数据已被 AI 修改（前端据此刷新打开中的 Todo 页面）
-fn emit_todo_changed(ctx: &ExecutionContext, action: &str) {
-    if let Err(e) = ctx.window.emit("todo://changed", json!({ "source": "ai", "action": action })) {
+///
+/// R1-04 / R2-01 / docs/dev/acr/DESIGN.md §5.6：载荷含 entityIds；runId = toolCallId。
+fn emit_todo_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
+    let payload = json!({
+        "source": "ai",
+        "action": action,
+        "entityIds": entity_ids,
+        "runId": ctx.run_id(),
+    });
+    if let Err(e) = ctx.window.emit("todo://changed", payload) {
         log::debug!("[UserTodoExecutor] Failed to emit todo://changed: {}", e);
     }
 }
@@ -289,7 +297,7 @@ impl UserTodoExecutor {
         };
 
         let item = VfsTodoRepo::create_todo_item(vfs_db, params).map_err(|e| e.to_string())?;
-        emit_todo_changed(ctx, "create_item");
+        emit_todo_changed(ctx, "create_item", &[item.id.clone(), item.todo_list_id.clone()]);
 
         Ok(json!({
             "success": true,
@@ -330,8 +338,12 @@ impl UserTodoExecutor {
             }));
         }
 
-        let item = VfsTodoRepo::toggle_todo_item(vfs_db, item_id).map_err(|e| e.to_string())?;
-        emit_todo_changed(ctx, "complete_item");
+        let item = VfsTodoRepo::toggle_todo_item(vfs_db, item_id, None).map_err(|e| e.to_string())?;
+        emit_todo_changed(
+            ctx,
+            "complete_item",
+            &[item.id.clone(), item.todo_list_id.clone()],
+        );
 
         Ok(json!({
             "success": true,
@@ -470,11 +482,34 @@ impl UserTodoExecutor {
             repeat_json: None,
             estimated_pomodoros: None,
             completed_pomodoros: None,
+            // ACR R2-01：透传可选 OCC 基线（snake / camel）
+            expected_updated_at: args
+                .get("expected_updated_at")
+                .or_else(|| args.get("expectedUpdatedAt"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string()),
         };
 
-        let item =
-            VfsTodoRepo::update_todo_item(vfs_db, item_id, params).map_err(|e| e.to_string())?;
-        emit_todo_changed(ctx, "update_item");
+        let item = VfsTodoRepo::update_todo_item(vfs_db, item_id, params).map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("TODO_CONFLICT") {
+                json!({
+                    "code": "TODO_CONFLICT",
+                    "message": msg,
+                    "hint": "待办已被其他写入更新；请重新读取后再改，勿盲着重试",
+                    "retryable": false,
+                })
+                .to_string()
+            } else {
+                msg
+            }
+        })?;
+        emit_todo_changed(
+            ctx,
+            "update_item",
+            &[item.id.clone(), item.todo_list_id.clone()],
+        );
 
         Ok(json!({
             "success": true,

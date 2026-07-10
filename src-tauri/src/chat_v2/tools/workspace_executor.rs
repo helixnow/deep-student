@@ -331,6 +331,7 @@ impl WorkspaceToolExecutor {
                                 AgentStatus::Running => "running",
                                 AgentStatus::Completed => "completed",
                                 AgentStatus::Failed => "failed",
+                                AgentStatus::Cancelled => "cancelled",
                             },
                             "skill_id": a.skill_id,
                         })

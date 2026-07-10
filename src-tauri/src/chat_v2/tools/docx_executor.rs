@@ -17,7 +17,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -488,6 +488,18 @@ impl ToolExecutor for DocxToolExecutor {
             // 写入/编辑操作中敏感
             "docx_create" | "docx_replace_text" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        match strip_tool_namespace(tool_name) {
+            // 只读子集：结构化读取/表格提取/元数据，可并行 + 自动重试
+            // （docx_to_spec 会生成新 spec 产物，不视为纯只读）
+            "docx_read_structured" | "docx_extract_tables" | "docx_get_metadata" => {
+                ToolConcurrency::ReadOnly
+            }
+            // create/replace_text/to_spec 等有副作用，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 

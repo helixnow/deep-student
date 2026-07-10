@@ -24,7 +24,7 @@ use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
 use serde_json::{json, Value};
 use std::time::Duration;
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -985,6 +985,11 @@ impl ToolExecutor for AcademicSearchExecutor {
 
     fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
         ToolSensitivity::Low
+    }
+
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        // arxiv_search / scholar_search 均为只读外部 API 查询，可并行 + 自动重试
+        ToolConcurrency::ReadOnly
     }
 
     fn name(&self) -> &'static str {

@@ -18,8 +18,13 @@ use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
 use super::arg_utils::get_json_array_arg;
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
+use super::workbench_bridge::{
+    acr_bridge_call, apply_ops_timeout_ms, is_bridge_cancelled, is_valid_apply_receipt,
+    uncertain_apply_receipt, PROBE_TIMEOUT_MS,
+};
+use super::workbench_executor::is_workbench_agent_delegation_enabled;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::dstu::handler_utils::{
@@ -2490,7 +2495,11 @@ impl BuiltinResourceExecutor {
     /// 执行细粒度节点编辑
     ///
     /// 支持批量操作：update_node / add_node / delete_node / move_node
-    /// 无需传入完整 JSON，比 mindmap_update 更高效
+    /// 无需传入完整 JSON，比 mindmap_update 更高效。
+    ///
+    /// ACR R1-05：开窗且 probe∈{clean,dirty,hot} 时委托前端 apply_ops 实时演出；
+    /// closed/frozen/disabled 或桥错误回落既有 OCC 后端路径。
+    /// 设计文档：`docs/dev/acr/DESIGN.md` §1.1 / §5.1
     async fn execute_mindmap_edit_nodes(
         &self,
         call: &ToolCall,
@@ -2521,6 +2530,13 @@ impl BuiltinResourceExecutor {
             mindmap_id,
             operations.len()
         );
+
+        // ★ ACR R1-05：probe → 可委托则 apply_ops；否则回落后端
+        if let Some(frontend_result) =
+            Self::try_mindmap_edit_via_acr(ctx, mindmap_id, &operations).await
+        {
+            return frontend_result;
+        }
 
         let start_time = Instant::now();
 
@@ -2612,6 +2628,11 @@ impl BuiltinResourceExecutor {
             "appliedCount": applied,
             "totalOperations": total,
             "durationMs": duration,
+            // ACR R1-05：回落平面说明（STANDARDS §4 降级不可静默；对齐 R1-03）
+            "mode": "backend",
+            "plane": "backend",
+            "delegated": false,
+            "message": "导图未打开/桌面未就绪，已直接写入后端（OCC + 版本快照）",
         });
 
         if !errors.is_empty() {
@@ -2656,6 +2677,361 @@ impl BuiltinResourceExecutor {
         }
 
         Ok(result)
+    }
+
+    /// ACR R1-05：probe 后尝试前端委托；返回 `Some` 表示已处理（含失败回执），
+    /// `None` 表示应回落既有后端 OCC 路径。
+    async fn try_mindmap_edit_via_acr(
+        ctx: &ExecutionContext,
+        mindmap_id: &str,
+        operations: &[Value],
+    ) -> Option<Result<Value, String>> {
+        match is_workbench_agent_delegation_enabled(ctx).await {
+            Ok(true) => {}
+            Ok(false) => {
+                log::debug!(
+                    "[BuiltinResourceExecutor] mindmap ACR dual gate disabled; use backend data plane"
+                );
+                return None;
+            }
+            Err(error) => {
+                log::warn!(
+                    "[BuiltinResourceExecutor] mindmap ACR dual gate unavailable; fail closed to backend: {}",
+                    error
+                );
+                return None;
+            }
+        }
+
+        let probe_args = json!({
+            "target": {
+                "typeId": "mindmap",
+                "resourceId": mindmap_id,
+            }
+        });
+
+        let probe_resp = match acr_bridge_call(ctx, "probe", probe_args, PROBE_TIMEOUT_MS).await {
+            Ok(resp) => resp,
+            Err(e) if is_bridge_cancelled(&e) => {
+                // R2-01：取消禁止回落后端双写
+                return Some(Ok(json!({
+                    "status": "cancelled",
+                    "mode": "frontend",
+                    "applied": 0,
+                    "totalOps": operations.len(),
+                    "entityIds": [mindmap_id],
+                    "done": [],
+                    "undone": operations.iter().map(|_| "cancelled before probe").collect::<Vec<_>>(),
+                    "message": "用户取消；未写入。请根据 done/undone 继续，勿原样重试。",
+                    "plane": "frontend",
+                    "delegated": true,
+                })));
+            }
+            Err(e) => {
+                log::info!(
+                    "[BuiltinResourceExecutor] mindmap ACR probe bridge error, fallback backend: {}",
+                    e
+                );
+                return None;
+            }
+        };
+
+        if !probe_resp.ok {
+            log::info!(
+                "[BuiltinResourceExecutor] mindmap ACR probe not ok, fallback backend: {:?}",
+                probe_resp.error
+            );
+            return None;
+        }
+
+        let state = probe_resp
+            .data
+            .as_ref()
+            .and_then(|d| d.get("state"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        match state {
+            "clean" | "dirty" | "hot" => {}
+            "closed" | "frozen" | "disabled" | "" => {
+                log::info!(
+                    "[BuiltinResourceExecutor] mindmap ACR probe state='{}', fallback backend",
+                    state
+                );
+                return None;
+            }
+            other => {
+                log::info!(
+                    "[BuiltinResourceExecutor] mindmap ACR probe unknown state='{}', fallback backend",
+                    other
+                );
+                return None;
+            }
+        }
+
+        let ops: Vec<Value> = operations
+            .iter()
+            .map(Self::mindmap_operation_to_agent_op)
+            .collect();
+        let destructive = ops.iter().any(|op| {
+            op.get("destructive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+        });
+
+        let apply_args = json!({
+            "target": {
+                "typeId": "mindmap",
+                "resourceId": mindmap_id,
+            },
+            "ops": ops,
+            "pacing": "normal",
+            "destructive": destructive,
+        });
+
+        // R2-01：DESIGN §6 — 30s + N×pacing，clamp ≤120s（取代固定 60s）
+        let apply_timeout = apply_ops_timeout_ms(ops.len(), Some("normal"));
+        let apply_resp = match acr_bridge_call(ctx, "apply_ops", apply_args, apply_timeout).await {
+            Ok(resp) => resp,
+            Err(e) if is_bridge_cancelled(&e) => {
+                return Some(Ok(json!({
+                    "status": "cancelled",
+                    "mode": "frontend",
+                    "applied": 0,
+                    "totalOps": ops.len(),
+                    "entityIds": [mindmap_id],
+                    "done": [],
+                    "undone": ops.iter()
+                        .map(|op| op.get("label").and_then(|v| v.as_str()).unwrap_or("op").to_string())
+                        .collect::<Vec<_>>(),
+                    "message": "用户取消；请根据 done/undone 继续，勿原样重试。",
+                    "plane": "frontend",
+                    "delegated": true,
+                })));
+            }
+            Err(e) => {
+                log::warn!(
+                    "[BuiltinResourceExecutor] mindmap ACR apply_ops bridge error; no backend fallback: {}",
+                    e
+                );
+                let labels = ops
+                    .iter()
+                    .map(|op| {
+                        op.get("label")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("op")
+                            .to_string()
+                    })
+                    .collect();
+                return Some(Ok(uncertain_apply_receipt(
+                    vec![mindmap_id.to_string()],
+                    labels,
+                    &e,
+                )));
+            }
+        };
+
+        if !apply_resp.ok {
+            let error = apply_resp
+                .error
+                .unwrap_or_else(|| "ACR apply_ops returned ok=false".to_string());
+            log::warn!(
+                "[BuiltinResourceExecutor] mindmap ACR apply_ops not ok; no backend fallback: {}",
+                error
+            );
+            if serde_json::from_str::<Value>(&error)
+                .ok()
+                .and_then(|value| value.get("code").cloned())
+                .is_some()
+            {
+                return Some(Err(error));
+            }
+            let labels = ops
+                .iter()
+                .map(|op| {
+                    op.get("label")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("op")
+                        .to_string()
+                })
+                .collect();
+            return Some(Ok(uncertain_apply_receipt(
+                vec![mindmap_id.to_string()],
+                labels,
+                &error,
+            )));
+        }
+
+        let receipt_labels = || {
+            ops.iter()
+                .map(|op| {
+                    op.get("label")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("op")
+                        .to_string()
+                })
+                .collect::<Vec<_>>()
+        };
+        let Some(mut receipt) = apply_resp.data else {
+            return Some(Ok(uncertain_apply_receipt(
+                vec![mindmap_id.to_string()],
+                receipt_labels(),
+                "ACR apply_ops returned no receipt",
+            )));
+        };
+        if !is_valid_apply_receipt(&receipt) {
+            return Some(Ok(uncertain_apply_receipt(
+                vec![mindmap_id.to_string()],
+                receipt_labels(),
+                "ACR apply_ops returned malformed receipt",
+            )));
+        }
+
+        if let Some(obj) = receipt.as_object_mut() {
+            // ACR R2-02：suggestion 模式勿改写成 frontend/成功落盘语义
+            let mode = obj
+                .get("mode")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let suggestion_pending = obj
+                .get("suggestionPending")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+                || mode == "suggestion";
+
+            if suggestion_pending {
+                obj.insert("mode".to_string(), json!("suggestion"));
+                obj.insert("plane".to_string(), json!("suggestion"));
+                obj.insert("delegated".to_string(), json!(true));
+                // 未改文档：success 仍 true（工具协议完成），LLM 看 suggestionPending
+                obj.insert("success".to_string(), json!(true));
+                let msg = obj
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if msg.is_empty() {
+                    obj.insert(
+                        "message".to_string(),
+                        json!(
+                            "存在未保存编辑，已提交建议（未改文档）；请等待用户空闲或改走后端路径"
+                        ),
+                    );
+                }
+            } else {
+                obj.entry("mode".to_string())
+                    .or_insert_with(|| json!("frontend"));
+                let msg = obj
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if msg.is_empty() {
+                    obj.insert(
+                        "message".to_string(),
+                        json!("已在前端导图窗口实时应用并自动保存（debounceSave + OCC）"),
+                    );
+                } else if !msg.contains("自动保存") && !msg.contains("实时") {
+                    obj.insert(
+                        "message".to_string(),
+                        json!(format!("{}（前端实时应用 + 自动保存）", msg)),
+                    );
+                }
+                obj.insert("success".to_string(), json!(true));
+                obj.insert("delegated".to_string(), json!(true));
+                obj.insert("plane".to_string(), json!("frontend"));
+            }
+        }
+
+        log::info!(
+            "[BuiltinResourceExecutor] mindmap_edit_nodes delegated to frontend: id={}, ops={}",
+            mindmap_id,
+            operations.len()
+        );
+
+        Some(Ok(receipt))
+    }
+
+    /// 将 mindmap_edit_nodes 的单条 operation 转为冻结 AgentOp（DESIGN §2.3）
+    fn mindmap_operation_to_agent_op(op: &Value) -> Value {
+        let kind = op
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let destructive = matches!(kind.as_str(), "delete_node" | "move_node");
+        let label = Self::mindmap_op_label(op, &kind);
+
+        // anchor：定位信息原样放入（node_id / parent_id / new_parent_id）
+        let mut anchor = serde_json::Map::new();
+        for key in ["node_id", "parent_id", "new_parent_id"] {
+            if let Some(v) = op.get(key) {
+                if !v.is_null() {
+                    anchor.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+
+        // payload：patch / data / index 等变更内容
+        let mut payload = serde_json::Map::new();
+        for key in ["patch", "data", "index"] {
+            if let Some(v) = op.get(key) {
+                if !v.is_null() {
+                    payload.insert(key.to_string(), v.clone());
+                }
+            }
+        }
+
+        json!({
+            "kind": kind,
+            "anchor": if anchor.is_empty() { Value::Null } else { Value::Object(anchor) },
+            "payload": Value::Object(payload),
+            "destructive": destructive,
+            "label": label,
+        })
+    }
+
+    /// 生成中文步骤名（progress / done 列表用）
+    fn mindmap_op_label(op: &Value, kind: &str) -> String {
+        match kind {
+            "add_node" => {
+                let text = op
+                    .get("data")
+                    .and_then(|d| d.get("text"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("新节点");
+                let short = safe_truncate_chars(text, 24);
+                format!("添加节点「{}」", short)
+            }
+            "update_node" => {
+                let id = op.get("node_id").and_then(|v| v.as_str()).unwrap_or("?");
+                if let Some(text) = op
+                    .get("patch")
+                    .and_then(|p| p.get("text"))
+                    .and_then(|v| v.as_str())
+                {
+                    let short = safe_truncate_chars(text, 24);
+                    format!("更新节点「{}」", short)
+                } else {
+                    format!("更新节点 {}", id)
+                }
+            }
+            "delete_node" => {
+                let id = op.get("node_id").and_then(|v| v.as_str()).unwrap_or("?");
+                format!("删除节点 {}", id)
+            }
+            "move_node" => {
+                let id = op.get("node_id").and_then(|v| v.as_str()).unwrap_or("?");
+                let parent = op
+                    .get("new_parent_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                format!("移动节点 {} → {}", id, parent)
+            }
+            other => format!("导图操作 {}", other),
+        }
     }
 
     /// 列出思维导图版本
@@ -3268,7 +3644,10 @@ impl BuiltinResourceExecutor {
     /// id 冲突时重新生成（LLM 多轮编辑常复制旧节点 JSON 再 add，会带来重复 id，
     /// 破坏前端 findNodeById / React key 的唯一性假设）。`existing` 随新分配的 id
     /// 一起增长，避免新子树内部自冲突。
-    fn ensure_unique_subtree_ids(node: &mut Value, existing: &mut std::collections::HashSet<String>) {
+    fn ensure_unique_subtree_ids(
+        node: &mut Value,
+        existing: &mut std::collections::HashSet<String>,
+    ) {
         let current = node
             .get("id")
             .and_then(|v| v.as_str())
@@ -3429,6 +3808,18 @@ impl ToolExecutor for BuiltinResourceExecutor {
             "resource_read" | "resource_search" => ToolSensitivity::Low,
             // 其他操作是只读或创建/更新，低敏感
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        let stripped = strip_tool_namespace(tool_name);
+        match stripped {
+            // 读类工具：纯只读 VFS 查询，可并行 + 自动重试
+            "resource_list" | "resource_read" | "resource_search" | "folder_list" => {
+                ToolConcurrency::ReadOnly
+            }
+            // mindmap_* 含创建/更新/删除等写操作，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 
@@ -3733,6 +4124,74 @@ mod tests {
             note_meta.get("isFavorite").and_then(|v| v.as_bool()),
             Some(false),
             "note isFavorite should be preserved"
+        );
+    }
+
+    /// ACR R1-05：operations → AgentOp 转换形状（供 R1-11 对齐）
+    #[test]
+    fn mindmap_operation_to_agent_op_shapes() {
+        let add = json!({
+            "type": "add_node",
+            "parent_id": "n1",
+            "data": { "text": "新子节点" },
+            "index": 0
+        });
+        let add_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&add);
+        assert_eq!(add_op["kind"], "add_node");
+        assert_eq!(add_op["destructive"], false);
+        assert_eq!(add_op["anchor"]["parent_id"], "n1");
+        assert_eq!(add_op["payload"]["data"]["text"], "新子节点");
+        assert_eq!(add_op["payload"]["index"], 0);
+        assert!(add_op["label"].as_str().unwrap().contains("添加节点"));
+
+        let update = json!({
+            "type": "update_node",
+            "node_id": "n2",
+            "patch": { "text": "改名", "completed": true }
+        });
+        let update_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&update);
+        assert_eq!(update_op["kind"], "update_node");
+        assert_eq!(update_op["destructive"], false);
+        assert_eq!(update_op["anchor"]["node_id"], "n2");
+        assert_eq!(update_op["payload"]["patch"]["text"], "改名");
+        assert!(update_op["anchor"].get("parent_id").is_none());
+
+        let delete = json!({
+            "type": "delete_node",
+            "node_id": "n3"
+        });
+        let delete_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&delete);
+        assert_eq!(delete_op["kind"], "delete_node");
+        assert_eq!(delete_op["destructive"], true);
+        assert_eq!(delete_op["anchor"]["node_id"], "n3");
+        assert!(delete_op["payload"].as_object().unwrap().is_empty());
+
+        let move_op_src = json!({
+            "type": "move_node",
+            "node_id": "n4",
+            "new_parent_id": "n5",
+            "index": 2
+        });
+        let move_op = BuiltinResourceExecutor::mindmap_operation_to_agent_op(&move_op_src);
+        assert_eq!(move_op["kind"], "move_node");
+        assert_eq!(move_op["destructive"], true);
+        assert_eq!(move_op["anchor"]["node_id"], "n4");
+        assert_eq!(move_op["anchor"]["new_parent_id"], "n5");
+        assert_eq!(move_op["payload"]["index"], 2);
+        assert!(move_op["label"].as_str().unwrap().contains("移动节点"));
+    }
+
+    #[test]
+    fn mindmap_op_label_chinese() {
+        let add = json!({ "type": "add_node", "data": { "text": "光合作用" } });
+        assert_eq!(
+            BuiltinResourceExecutor::mindmap_op_label(&add, "add_node"),
+            "添加节点「光合作用」"
+        );
+        let del = json!({ "type": "delete_node", "node_id": "abc" });
+        assert_eq!(
+            BuiltinResourceExecutor::mindmap_op_label(&del, "delete_node"),
+            "删除节点 abc"
         );
     }
 }

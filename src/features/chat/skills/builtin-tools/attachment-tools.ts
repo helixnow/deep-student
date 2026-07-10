@@ -94,7 +94,7 @@ type 可选：image/document/audio/video/all
     },
     {
       name: 'builtin-attachment_read',
-      description: '读取指定附件的内容。图片返回 base64 编码，文档返回解析后的文本内容。当用户说"读取那个PDF"、"看看刚才的图片"时使用。',
+      description: '读取指定附件的内容。图片返回 base64 编码，文档返回解析后的文本内容。当用户说"读取那个PDF"、"看看刚才的图片"时使用。二进制或大文件（xlsx/zip/图片等）如需交给 shell/脚本或文件工具处理，应改用 builtin-attachment_stage 物化到 temp root 拿到路径后再处理。',
       inputSchema: {
         type: 'object',
         properties: {

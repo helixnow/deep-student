@@ -22,7 +22,7 @@ use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, USER_AGEN
 use serde_json::{json, Value};
 use std::sync::LazyLock;
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -376,6 +376,77 @@ impl FetchExecutor {
         Self { client }
     }
 
+    /// 下载 HTTPS URL 的原始字节（SSRF 防护 + 大小上限），供 skill_install 等工具复用。
+    pub(crate) async fn download_https_bytes(
+        &self,
+        url: &str,
+        max_bytes: u64,
+    ) -> Result<Vec<u8>, String> {
+        let parsed_url =
+            reqwest::Url::parse(url).map_err(|e| format!("Invalid URL '{}': {}", url, e))?;
+        if parsed_url.scheme() != "https" {
+            return Err(format!(
+                "Only https:// URLs are supported for binary download, got: {}",
+                parsed_url.scheme()
+            ));
+        }
+
+        let host = parsed_url.host_str().ok_or("Invalid URL: no host")?;
+        let port = parsed_url.port().unwrap_or(443);
+        let addrs: Vec<_> = (host, port)
+            .to_socket_addrs()
+            .map_err(|e| format!("DNS resolution failed for '{}': {}", host, e))?
+            .collect();
+        if addrs.is_empty() {
+            return Err(format!(
+                "DNS resolution returned no addresses for '{}'",
+                host
+            ));
+        }
+        for addr in &addrs {
+            if is_internal_ip(&addr.ip()) {
+                return Err("Blocked: URL resolves to internal IP address".to_string());
+            }
+        }
+
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to download URL '{}': {}", url, e))?;
+
+        if !response.status().is_success() {
+            return Err(format!(
+                "Download failed with HTTP {} for '{}'",
+                response.status(),
+                url
+            ));
+        }
+
+        if let Some(len) = response.content_length() {
+            if len > max_bytes {
+                return Err(format!(
+                    "Download too large ({} bytes > {} bytes)",
+                    len, max_bytes
+                ));
+            }
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| format!("Failed to read download body: {}", e))?;
+        if bytes.len() as u64 > max_bytes {
+            return Err(format!(
+                "Download exceeded size limit ({} bytes > {} bytes)",
+                bytes.len(),
+                max_bytes
+            ));
+        }
+        Ok(bytes.to_vec())
+    }
+
     /// 执行 fetch 操作
     async fn execute_fetch(
         &self,
@@ -394,11 +465,14 @@ impl FetchExecutor {
             .and_then(|v| v.as_str())
             .ok_or("Missing 'url' parameter")?;
 
-        let max_length = call
+        // 钳制到 [1, MAX_CONTENT_LENGTH]，防止模型传 usize::MAX 触发整数回绕
+        let max_length = (call
             .arguments
             .get("max_length")
             .and_then(|v| v.as_u64())
-            .unwrap_or(DEFAULT_MAX_LENGTH as u64) as usize;
+            .unwrap_or(DEFAULT_MAX_LENGTH as u64)
+            .min(MAX_CONTENT_LENGTH as u64) as usize)
+            .max(1);
 
         let start_index = call
             .arguments
@@ -629,7 +703,7 @@ impl FetchExecutor {
             self.paginate_content(&content, start_index, max_length);
         let returned_length = paginated_content.chars().count();
         let next_start = if has_more {
-            Some(start_index + max_length)
+            Some(start_index.saturating_add(max_length))
         } else {
             None
         };
@@ -744,15 +818,17 @@ impl FetchExecutor {
             );
         }
 
-        let end_index = (start_index + max_length).min(total);
+        // 🔒 saturating_add：release 下 `start_index + usize::MAX` 会回绕成
+        // `start_index - 1`，导致 chars[start..end] 中 start > end 触发 slice panic。
+        let end_index = start_index.saturating_add(max_length).min(total);
         let mut paginated: String = chars[start_index..end_index].iter().collect();
         let actual_length = paginated.chars().count();
-        let remaining = total.saturating_sub(start_index + actual_length);
+        let remaining = total.saturating_sub(start_index.saturating_add(actual_length));
         let has_more = remaining > 0;
 
         // 官方行为：当内容被截断且还有剩余时，添加提示
         let truncation_notice = if has_more && actual_length == max_length {
-            let next_start = start_index + actual_length;
+            let next_start = start_index.saturating_add(actual_length);
             let notice = format!(
                 "\n\n<truncated>Content truncated. Call the fetch tool with start_index={} to get more content. Remaining: {} characters.</truncated>",
                 next_start, remaining
@@ -856,6 +932,11 @@ impl ToolExecutor for FetchExecutor {
         ToolSensitivity::Low
     }
 
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        // web_fetch 只读取网页内容，无副作用，可并行 + 自动重试
+        ToolConcurrency::ReadOnly
+    }
+
     fn name(&self) -> &'static str {
         "FetchExecutor"
     }
@@ -914,6 +995,24 @@ mod tests {
         assert_eq!(result, content);
         assert!(!has_more);
         assert!(truncation.is_none());
+    }
+
+    /// SECURITY 回归（04 号报告 P2-1）：模型可控的 max_length=usize::MAX
+    /// 曾在 release 下整数回绕触发 slice 越界 panic。
+    #[test]
+    fn test_paginate_content_huge_max_length_does_not_panic() {
+        let executor = FetchExecutor::new();
+        let content = "Hello, World!";
+
+        let (result, has_more, truncation) = executor.paginate_content(content, 1, usize::MAX);
+        assert_eq!(result, "ello, World!");
+        assert!(!has_more);
+        assert!(truncation.is_none());
+
+        // start_index 也为极值时按「超出范围」处理
+        let (result, has_more, _) = executor.paginate_content(content, usize::MAX, usize::MAX);
+        assert!(result.contains("No more content"));
+        assert!(!has_more);
     }
 
     #[test]

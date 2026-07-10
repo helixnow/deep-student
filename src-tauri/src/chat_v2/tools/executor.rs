@@ -57,6 +57,38 @@ impl Default for ToolSensitivity {
 }
 
 // ============================================================================
+// 工具并发等级
+// ============================================================================
+
+/// 工具并发等级（2026-07 并行工具调用改造）
+///
+/// 声明工具在同一批 tool_calls 内的并发安全性，由 Pipeline 的
+/// `execute_tool_calls` 用于决定是否将连续的并行安全工具分段并行执行。
+///
+/// ## 语义
+/// - `ReadOnly`: 纯只读、无副作用（检索/读取/查询类）。可并行执行，
+///   且瞬时失败（超时/网络/429/5xx）允许自动重试。
+/// - `SafeParallel`: 有副作用但相互隔离、可安全并行（如各自写独立资源）。
+///   可并行执行，但**不**自动重试（避免副作用重复）。
+/// - `Serial`: 默认值。顺序执行，绝不自动重试。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolConcurrency {
+    /// 只读工具 - 可并行 + 瞬时错误可自动重试
+    ReadOnly,
+    /// 并行安全（有隔离副作用）- 可并行，不自动重试
+    SafeParallel,
+    /// 串行（默认，保守）
+    Serial,
+}
+
+impl Default for ToolConcurrency {
+    fn default() -> Self {
+        Self::Serial
+    }
+}
+
+// ============================================================================
 // 类型复用说明
 // ============================================================================
 // `ToolCall` 和 `ToolResultInfo` 从 `crate::chat_v2::types` 导入
@@ -82,6 +114,9 @@ pub struct ExecutionContext {
     pub round_id: Option<String>,
     /// 块 ID（由调用方生成）
     pub block_id: String,
+    /// ACR R2-01：工具调用 ID（= LLM tool_call.id）。
+    /// 桥 `runId` / presence / 账本权威来源；缺省时回退 `block_id`。
+    pub tool_call_id: Option<String>,
     /// 事件发射器
     pub emitter: Arc<ChatV2EventEmitter>,
     /// Canvas 笔记 ID（Canvas 工具需要）
@@ -111,6 +146,10 @@ pub struct ExecutionContext {
     pub skill_contents: Option<std::collections::HashMap<String, String>>,
     /// 技能嵌入工具映射（skillId -> embedded tools）
     pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
+    /// Skill package roots exposed as read-only `skill:<skillId>` runtime roots.
+    pub skill_package_roots: Option<std::collections::HashMap<String, String>>,
+    /// 当前 Skill 运行时工具白名单；Some(empty) 表示明确不允许业务工具。
+    pub skill_allowed_tools: Option<Vec<String>>,
     /// 🆕 取消令牌：用于工具执行取消机制
     /// 工具执行器可以检查此令牌以响应取消请求
     pub cancellation_token: Option<CancellationToken>,
@@ -145,6 +184,7 @@ impl ExecutionContext {
             skill_state_version: None,
             round_id: None,
             block_id,
+            tool_call_id: None,
             emitter,
             canvas_note_id: None,
             notes_manager: None,
@@ -160,6 +200,8 @@ impl ExecutionContext {
             question_bank_service: None,
             skill_contents: None,
             skill_embedded_tools: None,
+            skill_package_roots: None,
+            skill_allowed_tools: None,
             cancellation_token: None,
             rag_top_k: None,
             rag_enable_reranking: None,
@@ -189,6 +231,20 @@ impl ExecutionContext {
     pub fn with_cancellation_token(mut self, token: CancellationToken) -> Self {
         self.cancellation_token = Some(token);
         self
+    }
+
+    /// ACR R2-01：注入 toolCallId（与桥 runId 对齐）
+    pub fn with_tool_call_id(mut self, tool_call_id: impl Into<String>) -> Self {
+        self.tool_call_id = Some(tool_call_id.into());
+        self
+    }
+
+    /// ACR R2-01：权威 runId = toolCallId，缺省回退 block_id
+    pub fn run_id(&self) -> &str {
+        self.tool_call_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(self.block_id.as_str())
     }
 
     /// 🆕 检查是否已取消
@@ -285,6 +341,19 @@ impl ExecutionContext {
         self.memory_enabled = memory_enabled;
         self.rag_enabled = rag_enabled;
         self.web_search_enabled = web_search_enabled;
+        self
+    }
+
+    pub fn with_skill_allowed_tools(mut self, skill_allowed_tools: Option<Vec<String>>) -> Self {
+        self.skill_allowed_tools = skill_allowed_tools;
+        self
+    }
+
+    pub fn with_skill_package_roots(
+        mut self,
+        skill_package_roots: Option<std::collections::HashMap<String, String>>,
+    ) -> Self {
+        self.skill_package_roots = skill_package_roots;
         self
     }
 
@@ -577,6 +646,19 @@ pub trait ToolExecutor: Send + Sync {
         ToolSensitivity::Low
     }
 
+    /// 获取工具并发等级（2026-07 并行工具调用改造）
+    ///
+    /// 接收 `tool_name` 是因为同一 executor 可能混合读写工具
+    /// （如 memory_executor 同时处理 memory_search 和 memory_delete），
+    /// 与 `sensitivity_level(&self, tool_name)` 的用法保持一致。
+    ///
+    /// ## 默认实现
+    /// 返回 `ToolConcurrency::Serial`（保守：顺序执行、不自动重试）。
+    /// 只有明确只读/并行安全的 executor 才应覆写此方法。
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        ToolConcurrency::Serial
+    }
+
     /// 获取执行器名称（用于日志）
     fn name(&self) -> &'static str;
 }
@@ -592,5 +674,10 @@ mod tests {
     #[test]
     fn test_tool_sensitivity_default() {
         assert_eq!(ToolSensitivity::default(), ToolSensitivity::Low);
+    }
+
+    #[test]
+    fn test_tool_concurrency_default_is_serial() {
+        assert_eq!(ToolConcurrency::default(), ToolConcurrency::Serial);
     }
 }

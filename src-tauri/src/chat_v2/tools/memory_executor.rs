@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -20,6 +20,8 @@ pub const MEMORY_UPDATE_BY_ID: &str = "builtin-memory_update_by_id";
 pub const MEMORY_DELETE: &str = "builtin-memory_delete";
 pub const MEMORY_WRITE_SMART: &str = "builtin-memory_write_smart";
 pub const MEMORY_WRITE_BATCH: &str = "builtin-memory_write_batch";
+pub const LEARNER_PROFILE_GET: &str = "builtin-learner_profile_get";
+pub const LEARNER_PROFILE_UPDATE: &str = "builtin-learner_profile_update";
 
 pub struct MemoryToolExecutor;
 
@@ -41,6 +43,8 @@ impl MemoryToolExecutor {
                 | "memory_delete"
                 | "memory_write_smart"
                 | "memory_write_batch"
+                | "learner_profile_get"
+                | "learner_profile_update"
         )
     }
 
@@ -905,6 +909,150 @@ impl MemoryToolExecutor {
             "results": results,
         }))
     }
+
+    /// 读取学习者画像（结构化 JSON + 渲染后的 Markdown）
+    async fn execute_learner_profile_get(
+        &self,
+        _call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err("Learner profile get cancelled before start".to_string());
+        }
+
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+
+        let load_task = {
+            let service = service.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::memory::learner_profile::load_profile(&service)
+            })
+        };
+        let profile = load_task
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+
+        match profile {
+            Some(profile) => Ok(json!({
+                "found": true,
+                "version": profile.version,
+                "updated_at": profile.updated_at,
+                "profile": serde_json::to_value(&profile).unwrap_or(Value::Null),
+                "rendered_markdown": profile.render_markdown(),
+            })),
+            None => Ok(json!({
+                "found": false,
+                "hint": "学习者画像尚未建立。可通过 learner_profile_update 写入首批内容，或等待系统从每日学习日志自动晋升。"
+            })),
+        }
+    }
+
+    /// 结构化 merge 更新学习者画像（非整体覆盖）
+    ///
+    /// 超过 4000 字符硬上限时拒绝写入并要求精炼——画像是"策展层"，不是日志。
+    async fn execute_learner_profile_update(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        use crate::memory::learner_profile::{
+            self, LearnerProfileUpdate, LEARNER_PROFILE_MAX_CHARS,
+        };
+
+        if ctx.is_cancelled() {
+            return Err("Learner profile update cancelled before start".to_string());
+        }
+
+        let service = self.get_service(ctx)?;
+        if let Err(hint) = self.ensure_root_configured(&service) {
+            return Ok(hint);
+        }
+
+        let update: LearnerProfileUpdate = serde_json::from_value(call.arguments.clone())
+            .map_err(|e| format!("Invalid learner_profile_update arguments: {}", e))?;
+        if update.is_empty() {
+            return Ok(json!({
+                "success": false,
+                "error": "更新内容为空：请至少提供 weak_points_add / preferences / goals_add / recent_status 之一。"
+            }));
+        }
+
+        // 敏感信息过滤（与其他记忆写路径一致）
+        let update_json = serde_json::to_string(&update).unwrap_or_default();
+        if crate::memory::auto_extractor::MemoryAutoExtractor::contains_sensitive_pattern_pub(
+            &update_json,
+        ) {
+            return Ok(json!({
+                "success": false,
+                "error": "更新内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。"
+            }));
+        }
+
+        let session_id = ctx.session_id.clone();
+        let update_task = {
+            let service = service.clone();
+            tokio::task::spawn_blocking(move || -> Result<Value, String> {
+                let mut profile = learner_profile::load_profile(&service)
+                    .map_err(|e| e.to_string())?
+                    .unwrap_or_default();
+
+                if !profile.merge_update(&update) {
+                    return Ok(json!({
+                        "success": true,
+                        "changed": false,
+                        "version": profile.version,
+                        "reason": "更新与当前画像一致，无变更"
+                    }));
+                }
+
+                // 工具路径：超限即拒绝并要求精炼（不做自动裁剪，把决策权还给模型）
+                let rendered_chars = profile.rendered_char_count();
+                if rendered_chars > LEARNER_PROFILE_MAX_CHARS {
+                    return Ok(json!({
+                        "success": false,
+                        "error": format!(
+                            "合并后画像 {} 字符，超过 {} 字符硬上限。画像是策展层而非日志：请精炼本次更新（减少条目、缩短描述），或先用 weak_points_remove/goals_remove 清理过时内容。",
+                            rendered_chars, LEARNER_PROFILE_MAX_CHARS
+                        ),
+                        "rendered_chars": rendered_chars,
+                        "max_chars": LEARNER_PROFILE_MAX_CHARS,
+                    }));
+                }
+
+                learner_profile::save_profile(
+                    &service,
+                    &mut profile,
+                    MemoryOpSource::ToolCall,
+                    Some(&session_id),
+                    "learner_profile_update 工具更新",
+                )
+                .map_err(|e| e.to_string())?;
+
+                Ok(json!({
+                    "success": true,
+                    "changed": true,
+                    "version": profile.version,
+                    "rendered_chars": profile.rendered_char_count(),
+                }))
+            })
+        };
+
+        if let Some(cancel_token) = ctx.cancellation_token() {
+            tokio::select! {
+                res = update_task => res.map_err(|e| e.to_string())?,
+                _ = cancel_token.cancelled() => {
+                    log::info!("[MemoryToolExecutor] Learner profile update cancelled");
+                    Err("Learner profile update cancelled during execution".to_string())
+                }
+            }
+        } else {
+            update_task.await.map_err(|e| e.to_string())?
+        }
+    }
 }
 
 impl MemoryToolExecutor {
@@ -971,6 +1119,8 @@ impl ToolExecutor for MemoryToolExecutor {
             "memory_delete" => self.execute_delete(call, ctx).await,
             "memory_write_smart" => self.execute_write_smart(call, ctx).await,
             "memory_write_batch" => self.execute_write_batch(call, ctx).await,
+            "learner_profile_get" => self.execute_learner_profile_get(call, ctx).await,
+            "learner_profile_update" => self.execute_learner_profile_update(call, ctx).await,
             _ => Err(format!("Unknown memory tool: {}", call.name)),
         };
 
@@ -1009,7 +1159,19 @@ impl ToolExecutor for MemoryToolExecutor {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
             "memory_delete" => ToolSensitivity::Medium, // 删除操作需要更高敏感度
+            // 学习者画像随每次会话注入 system prompt，读写均为 Medium
+            "learner_profile_get" | "learner_profile_update" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        let stripped = strip_tool_namespace(tool_name);
+        match stripped {
+            // 读类工具：纯只读记忆查询，可并行 + 自动重试
+            "memory_search" | "memory_read" | "memory_list" => ToolConcurrency::ReadOnly,
+            // write/update/delete/write_smart/write_batch 为写操作，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 

@@ -8,7 +8,7 @@
 use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 // ============================================================================
@@ -18,6 +18,28 @@ use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 /// 默认工具执行超时时间（秒）
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const NO_TOOL_TIMEOUT_SECS: u64 = 0;
+/// ACR 最长一次桥事务为 probe(3s) + apply_ops(120s)。外层 watchdog 必须
+/// 留出完整事务预算，不能先于桥层超时丢弃已提交的 apply future。
+const ACR_EXECUTOR_TIMEOUT_FLOOR_SECS: u64 = 180;
+
+fn executor_may_delegate_to_acr(executor_name: &str) -> bool {
+    matches!(
+        executor_name,
+        "WorkbenchToolExecutor" | "CanvasToolExecutor" | "BuiltinResourceExecutor"
+    )
+}
+
+fn get_executor_timeout_secs(tool_name: &str, executor_name: &str) -> u64 {
+    let configured = get_tool_timeout_secs(tool_name);
+    if configured == NO_TOOL_TIMEOUT_SECS {
+        return configured;
+    }
+    if executor_may_delegate_to_acr(executor_name) {
+        configured.max(ACR_EXECUTOR_TIMEOUT_FLOOR_SECS)
+    } else {
+        configured
+    }
+}
 
 /// 获取工具特定的超时时间（秒）
 ///
@@ -50,18 +72,11 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
         // RAG 检索工具（可能涉及大量数据）
         "rag_search" | "multimodal_search" | "unified_search" => 180, // 3 分钟
         // 文档写入/转换工具（大文件处理可能耗时较长）
-        "docx_create"
-        | "pptx_create"
-        | "xlsx_create"
-        | "docx_to_spec"
-        | "pptx_to_spec"
-        | "xlsx_to_spec"
-        | "docx_replace_text"
-        | "pptx_replace_text"
-        | "xlsx_replace_text" => 300, // 5 分钟
+        "docx_create" | "pptx_create" | "xlsx_create" | "docx_to_spec" | "pptx_to_spec"
+        | "xlsx_to_spec" | "docx_replace_text" | "pptx_replace_text" | "xlsx_replace_text" => 300, // 5 分钟
         // 子代理调用工具（可能执行复杂任务）
         "subagent_call" => 300, // 5 分钟
-        "tool_pack" => 600, // 10 minutes (matches ToolPack schema maximum)
+        "tool_pack" => 600,     // 10 minutes (matches ToolPack schema maximum)
         _ => {
             // ChatAnki 工具：chatanki_wait 内部有 30 分钟超时，外层需匹配
             if stripped == "chatanki_wait" {
@@ -70,6 +85,9 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
                 600 // 10 分钟（chatanki_run/start/export/sync 可能涉及大量 IO）
             } else if stripped == "image_generate" {
                 300 // 5 分钟（第三方生图 API 可能排队）
+            } else if stripped.starts_with("workbench_") {
+                // ACR workbench_*：桥调用 + 前端 pacing 演出，外层放宽到 180s（DESIGN §6）
+                180 // 3 分钟
             } else if stripped.starts_with("mcp_") {
                 // 前缀匹配：MCP 工具通常需要网络请求
                 180 // 3 分钟
@@ -186,7 +204,7 @@ impl ToolExecutorRegistry {
         );
 
         // 🆕 P1 修复：获取工具特定的超时时间并添加超时保护
-        let timeout_secs = get_tool_timeout_secs(&call.name);
+        let timeout_secs = get_executor_timeout_secs(&call.name, executor.name());
         // 执行工具（带超时和取消保护）
         // 🆕 取消支持：使用 tokio::select! 同时监听取消信号
         let execute_future = executor.execute(call, ctx);
@@ -282,6 +300,16 @@ impl ToolExecutorRegistry {
     pub fn get_sensitivity(&self, tool_name: &str) -> Option<ToolSensitivity> {
         self.get_executor(tool_name)
             .map(|e| e.sensitivity_level(tool_name))
+    }
+
+    /// 获取工具并发等级（2026-07 并行工具调用改造）
+    ///
+    /// 无匹配执行器时返回 `Serial`（保守兜底，与无执行器时走
+    /// GeneralToolExecutor / 报错路径一致，不影响正确性）。
+    pub fn get_concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        self.get_executor(tool_name)
+            .map(|e| e.concurrency_class(tool_name))
+            .unwrap_or(ToolConcurrency::Serial)
     }
 
     /// 检查是否有执行器能处理指定工具
@@ -427,6 +455,26 @@ mod tests {
     }
 
     #[test]
+    fn test_get_concurrency_class_defaults_to_serial() {
+        let mut registry = ToolExecutorRegistry::new();
+        let executor = Arc::new(TestExecutor {
+            name: "test",
+            handles: vec!["tool_a".to_string()],
+        });
+        registry.register(executor);
+
+        // 未覆写的执行器默认 Serial；未知工具兜底 Serial
+        assert_eq!(
+            registry.get_concurrency_class("tool_a"),
+            ToolConcurrency::Serial
+        );
+        assert_eq!(
+            registry.get_concurrency_class("unknown_tool"),
+            ToolConcurrency::Serial
+        );
+    }
+
+    #[test]
     fn image_generation_tool_uses_five_minute_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-image_generate"), 300);
         assert_eq!(get_tool_timeout_secs("image_generate"), 300);
@@ -451,5 +499,25 @@ mod tests {
     fn tool_pack_uses_ten_minute_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-tool_pack"), 600);
         assert_eq!(get_tool_timeout_secs("tool_pack"), 600);
+    }
+
+    #[test]
+    fn acr_capable_executors_outlive_the_full_bridge_transaction_budget() {
+        assert_eq!(
+            get_executor_timeout_secs("builtin-note_update", "CanvasToolExecutor"),
+            ACR_EXECUTOR_TIMEOUT_FLOOR_SECS
+        );
+        assert_eq!(
+            get_executor_timeout_secs("builtin-resource_update", "BuiltinResourceExecutor"),
+            ACR_EXECUTOR_TIMEOUT_FLOOR_SECS
+        );
+        assert_eq!(
+            get_executor_timeout_secs("builtin-workbench_app_command", "WorkbenchToolExecutor"),
+            ACR_EXECUTOR_TIMEOUT_FLOOR_SECS
+        );
+        assert_eq!(
+            get_executor_timeout_secs("builtin-template_validate", "TemplateExecutor"),
+            DEFAULT_TOOL_TIMEOUT_SECS
+        );
     }
 }

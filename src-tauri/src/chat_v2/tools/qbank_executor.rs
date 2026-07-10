@@ -3,9 +3,10 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::sync::LazyLock;
+use tauri::Emitter;
 use tokio::sync::Mutex;
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -21,6 +22,19 @@ use crate::vfs::repos::{
 };
 
 static QBANK_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
+/// R1-04 / R2-01 / docs/dev/acr/DESIGN.md §5.6：题库写操作成功后通知前端刷新。
+fn emit_qbank_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
+    let payload = json!({
+        "source": "ai",
+        "action": action,
+        "entityIds": entity_ids,
+        "runId": ctx.run_id(),
+    });
+    if let Err(e) = ctx.window.emit("qbank://changed", payload) {
+        log::debug!("[QBankExecutor] Failed to emit qbank://changed: {}", e);
+    }
+}
 
 /// 🆕 2026-01 改造：优先使用 QuestionBankService 查询 questions 表
 /// 如果服务不可用或迁移未完成，回退到解析 preview_json
@@ -519,6 +533,14 @@ impl QBankExecutor {
             if let Ok(Some(question)) = service.get_question_by_card_id(session_id, card_id) {
                 match service.submit_answer(&question.id, user_answer, is_correct_override, None) {
                     Ok(result) => {
+                        emit_qbank_changed(
+                            ctx,
+                            "submit_answer",
+                            &[question
+                                .card_id
+                                .clone()
+                                .unwrap_or_else(|| question.id.clone())],
+                        );
                         return Ok(json!({
                             "is_correct": result.is_correct,
                             "correct_answer": result.correct_answer,
@@ -619,6 +641,8 @@ impl QBankExecutor {
         VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
             .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
 
+        emit_qbank_changed(ctx, "submit_answer", &[card_id.to_string()]);
+
         Ok(json!({
             "is_correct": is_correct,
             "correct_answer": correct_answer,
@@ -657,6 +681,14 @@ impl QBankExecutor {
         if let Some(service) = &ctx.question_bank_service {
             if let Ok(Some(question)) = service.get_question_by_card_id(session_id, card_id) {
                 let mut params = UpdateQuestionParams::default();
+                // ACR R2-01：可选 OCC 基线（snake / camel 兼容）
+                params.expected_updated_at = call
+                    .arguments
+                    .get("expected_updated_at")
+                    .or_else(|| call.arguments.get("expectedUpdatedAt"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(|s| s.to_string());
                 if let Some(answer) = call.arguments.get("answer").and_then(|v| v.as_str()) {
                     params.answer = Some(answer.to_string());
                 }
@@ -714,13 +746,39 @@ impl QBankExecutor {
                     );
                 }
 
-                if service
-                    .update_question(&question.id, &params, false)
-                    .is_ok()
-                {
-                    return Ok(
-                        json!({ "success": true, "message": "题目已更新", "source": "questions_table" }),
-                    );
+                match service.update_question(&question.id, &params, false) {
+                    Ok(updated) => {
+                        emit_qbank_changed(
+                            ctx,
+                            "update_question",
+                            &[updated
+                                .card_id
+                                .clone()
+                                .unwrap_or_else(|| updated.id.clone())],
+                        );
+                        return Ok(json!({
+                            "success": true,
+                            "message": "题目已更新",
+                            "source": "questions_table",
+                            "updatedAt": updated.updated_at,
+                        }));
+                    }
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if msg.contains("QBANK_CONFLICT") {
+                            return Err(json!({
+                                "code": "QBANK_CONFLICT",
+                                "message": msg,
+                                "hint": "题目已被其他写入更新；请重新读取后再改，勿盲着重试",
+                                "retryable": false,
+                            })
+                            .to_string());
+                        }
+                        log::warn!(
+                            "[QBankExecutor] questions_table update failed, fallback preview_json: {}",
+                            msg
+                        );
+                    }
                 }
             }
         }
@@ -792,6 +850,8 @@ impl QBankExecutor {
 
         VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
             .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+
+        emit_qbank_changed(ctx, "update_question", &[card_id.to_string()]);
 
         Ok(
             json!({ "success": true, "message": "题目已更新", "source": "preview_json", "degraded": true }),
@@ -1079,6 +1139,9 @@ impl QBankExecutor {
                 let result = service
                     .reset_questions_progress(&question_ids)
                     .map_err(|e| format!("Failed to reset progress: {}", e))?;
+                let entity_ids: Vec<String> =
+                    card_ids.iter().map(|id| (*id).to_string()).collect();
+                emit_qbank_changed(ctx, "reset_progress", &entity_ids);
                 return Ok(json!({
                     "success": true,
                     "reset_count": result.success_count,
@@ -1089,6 +1152,8 @@ impl QBankExecutor {
                 let stats = service
                     .reset_progress(session_id)
                     .map_err(|e| format!("Failed to reset progress: {}", e))?;
+                // 全量重置：entityIds 用 session_id 作为集合级标识
+                emit_qbank_changed(ctx, "reset_progress", &[session_id.to_string()]);
                 return Ok(json!({
                     "success": true,
                     "reset_count": stats.total_count,
@@ -1131,6 +1196,13 @@ impl QBankExecutor {
 
         VfsExamRepo::update_preview_json(vfs_db, session_id, preview_json)
             .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
+
+        let entity_ids: Vec<String> = if let Some(ids) = &card_ids {
+            ids.iter().map(|id| (*id).to_string()).collect()
+        } else {
+            vec![session_id.to_string()]
+        };
+        emit_qbank_changed(ctx, "reset_progress", &entity_ids);
 
         Ok(json!({
             "success": true,
@@ -1540,6 +1612,8 @@ impl QBankExecutor {
             .await
             .map_err(|e| format!("导入失败: {}", e))?;
 
+        emit_qbank_changed(ctx, "import_document", &[result.session_id.clone()]);
+
         Ok(json!({
             "success": true,
             "session_id": result.session_id,
@@ -1847,6 +1921,8 @@ impl QBankExecutor {
             session_id = actual_exam_id;
         }
 
+        emit_qbank_changed(ctx, "batch_import", &new_card_ids);
+
         Ok(json!({
             "success": true,
             "session_id": session_id,
@@ -1985,6 +2061,19 @@ impl ToolExecutor for QBankExecutor {
             "qbank_reset_progress" | "qbank_export" => ToolSensitivity::Medium,
             // 其他操作（导入/提交答案/更新题目）默认 Low
             _ => ToolSensitivity::Low,
+        }
+    }
+
+    fn concurrency_class(&self, tool_name: &str) -> ToolConcurrency {
+        let stripped = strip_tool_namespace(tool_name);
+        match stripped {
+            // 只读子集：列表/查询/统计，可并行 + 自动重试
+            // （qbank_get_next_question 有推荐状态语义，不视为纯只读）
+            "qbank_list" | "qbank_list_questions" | "qbank_get_question" | "qbank_get_stats" => {
+                ToolConcurrency::ReadOnly
+            }
+            // 提交答案/更新/导入/重置/变式生成等写操作，保持串行（默认）
+            _ => ToolConcurrency::Serial,
         }
     }
 

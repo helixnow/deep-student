@@ -22,6 +22,7 @@ use async_trait::async_trait;
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
+use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
@@ -1749,6 +1750,7 @@ impl ChatAnkiToolExecutor {
             }
         }
 
+        let card_ids: Vec<String> = cards.iter().map(|c| c.id.clone()).collect();
         let report = match crate::anki_connect_service::add_notes_to_anki_detailed(
             cards.clone(),
             deck_name.clone(),
@@ -1809,6 +1811,28 @@ impl ChatAnkiToolExecutor {
             None
         };
 
+        // M4：Sync 非 error 时按卡片回写 note id + export_status='synced'
+        let mut receipt_written = 0usize;
+        if status != "error" && added > 0 {
+            match db.write_anki_export_receipts(&card_ids, &report.note_ids) {
+                Ok(n) => {
+                    receipt_written = n;
+                    if n > 0 {
+                        log::info!(
+                            "[ChatAnkiToolExecutor] export receipt written for {} cards",
+                            n
+                        );
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[ChatAnkiToolExecutor] export receipt writeback failed: {}",
+                        e
+                    );
+                }
+            }
+        }
+
         let output = json!({
             "status": status,
             "documentId": args.document_id,
@@ -1821,6 +1845,7 @@ impl ChatAnkiToolExecutor {
             "failed": failed,
             // 本次自动创建的 Anki 模型（自定义模板首次同步时）
             "createdModels": report.created_models,
+            "receiptWritten": receipt_written,
             "error": error,
             "warning": warning,
         });
@@ -1844,6 +1869,17 @@ impl ChatAnkiToolExecutor {
             };
             let _ = ctx.save_tool_block(&result);
             return Ok(result);
+        }
+
+        // M4：同步成功后把预览块 syncStatus 写成 synced（DB + 实时 chunk）
+        if let Some(chat_db) = ctx.chat_v2_db.as_ref() {
+            patch_anki_cards_block_sync_status(
+                chat_db,
+                &ctx.emitter,
+                &args.document_id,
+                "synced",
+                None,
+            );
         }
 
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -3617,24 +3653,21 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
 
         if !is_in_progress && !is_paused {
             // Done: emit end with full cards list.
-            // 超出 maxCards 的卡片仍按上限裁剪（保持限额语义），但不再静默：
-            // 删除数量记入 warnings，让用户和 AI 都能看到（C1/E3 修复）。
+            // 超出 maxCards 的卡片仍按上限裁剪展示（保持限额语义），但不再物理删除：
+            // 超额卡保留在库中，仅从本批 final_cards / UI 投影中隐藏（P8）。
             if cards.len() > visible_card_count {
-                let removed_count = cards.len() - visible_card_count;
-                for c in cards.iter().skip(visible_card_count) {
-                    let _ = params.anki_db.delete_anki_card(&c.id);
-                }
+                let retained_count = cards.len() - visible_card_count;
                 log::info!(
-                    "[ChatAnkiToolExecutor] removed {} over-limit cards (limit={:?}) for {}",
-                    removed_count,
+                    "[ChatAnkiToolExecutor] over-limit cards retained / hidden from batch: {} (limit={:?}) for {}",
+                    retained_count,
                     global_card_limit,
                     document_id
                 );
                 warnings.push(json!({
-                    "code": "over_limit_cards_removed",
-                    "messageKey": "blocks.ankiCards.warnings.overLimitCardsRemoved",
+                    "code": "over_limit_cards_retained",
+                    "messageKey": "blocks.ankiCards.warnings.overLimitCardsRetained",
                     "messageParams": {
-                        "count": removed_count,
+                        "count": retained_count,
                         "limit": global_card_limit.unwrap_or(0),
                     }
                 }));
@@ -3644,6 +3677,29 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 .take(visible_card_count)
                 .map(convert_backend_card)
                 .collect();
+
+            // R1-04：卡片写库完成点 emit fsrs://changed（DESIGN §5.6）
+            // 仅在非用户取消且确有卡片入库时通知；entityIds = anki card id
+            if !has_user_cancelled && !final_cards.is_empty() {
+                let entity_ids: Vec<String> = cards
+                    .iter()
+                    .take(visible_card_count)
+                    .map(|c| c.id.clone())
+                    .collect();
+                let payload = json!({
+                    "source": "ai",
+                    "action": "cards_persisted",
+                    "entityIds": entity_ids,
+                    "runId": params.anki_block_id,
+                });
+                if let Err(e) = params.window.emit("fsrs://changed", payload) {
+                    log::debug!(
+                        "[ChatAnkiToolExecutor] Failed to emit fsrs://changed: {}",
+                        e
+                    );
+                }
+            }
+
             let has_failed = tasks.iter().any(|t| {
                 matches!(
                     t.status,
@@ -5269,6 +5325,83 @@ fn emit_anki_cards_chunk(
         Err(_) => return,
     };
     emitter.emit_chunk(event_types::ANKI_CARDS, block_id, &chunk, None);
+}
+
+/// Best-effort：按 documentId 找到最新 anki_cards 预览块，回写 syncStatus。
+fn patch_anki_cards_block_sync_status(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    emitter: &crate::chat_v2::events::ChatV2EventEmitter,
+    document_id: &str,
+    sync_status: &str,
+    sync_error: Option<&str>,
+) {
+    let doc_id = document_id.trim();
+    if doc_id.is_empty() {
+        return;
+    }
+
+    // 先在短生命周期内扫出目标 block_id，再释放 conn，避免与 get_block_v2 争用 Mutex。
+    let target_block_id: Option<String> = (|| {
+        let conn = chat_db.get_conn_safe().ok()?;
+        let mut stmt = conn
+            .prepare(
+                r#"
+                SELECT id, tool_output_json
+                FROM chat_v2_blocks
+                WHERE block_type = 'anki_cards' AND tool_output_json IS NOT NULL
+                ORDER BY rowid DESC
+                LIMIT 40
+                "#,
+            )
+            .ok()?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .ok()?;
+        for row in rows.flatten() {
+            let (block_id, tool_output_json) = row;
+            let Ok(parsed) = serde_json::from_str::<Value>(&tool_output_json) else {
+                continue;
+            };
+            let block_doc_id = parsed
+                .get("documentId")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            if block_doc_id == doc_id {
+                return Some(block_id);
+            }
+        }
+        None
+    })();
+
+    let Some(block_id) = target_block_id else {
+        return;
+    };
+
+    if let Ok(Some(mut existing)) = ChatV2Repo::get_block_v2(chat_db, &block_id) {
+        let mut tool_output = existing
+            .tool_output
+            .take()
+            .unwrap_or_else(|| json!({ "cards": [], "documentId": doc_id }));
+        if let Some(obj) = tool_output.as_object_mut() {
+            obj.insert("syncStatus".to_string(), json!(sync_status));
+            if let Some(err) = sync_error {
+                obj.insert("syncError".to_string(), json!(err));
+            } else {
+                obj.remove("syncError");
+            }
+        }
+        existing.tool_output = Some(tool_output);
+        let _ = ChatV2Repo::update_block_v2(chat_db, &existing);
+    }
+
+    emit_anki_cards_chunk(
+        emitter,
+        &block_id,
+        json!({
+            "syncStatus": sync_status,
+            "syncError": sync_error,
+        }),
+    );
 }
 
 fn emit_anki_cards_error(

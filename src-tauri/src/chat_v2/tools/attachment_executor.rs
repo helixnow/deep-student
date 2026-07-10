@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -182,6 +182,10 @@ impl AttachmentToolExecutor {
     }
 
     /// 执行附件读取
+    ///
+    /// 工具描述指引：本工具只返回解析后的文本/base64，不提供磁盘路径。
+    /// 二进制或大文件（xlsx/zip/图片等）应改用 `attachment_stage` 物化到
+    /// temp root 拿到 root_id + relative_path 后，再用 workspace/shell 工具处理。
     async fn execute_read(&self, call: &ToolCall, ctx: &ExecutionContext) -> Result<Value, String> {
         let main_db = ctx.main_db.as_ref().ok_or("Main database not available")?;
 
@@ -495,6 +499,11 @@ impl ToolExecutor for AttachmentToolExecutor {
     fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
         // 附件工具是只读操作，低敏感
         ToolSensitivity::Low
+    }
+
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        // attachment_list / attachment_read 均为只读，可并行 + 自动重试
+        ToolConcurrency::ReadOnly
     }
 
     fn name(&self) -> &'static str {

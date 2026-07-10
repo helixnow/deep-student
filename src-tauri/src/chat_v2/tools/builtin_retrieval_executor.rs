@@ -18,7 +18,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use serde_json::{json, Value};
 
-use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
+use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
@@ -1594,6 +1594,11 @@ impl ToolExecutor for BuiltinRetrievalExecutor {
     fn sensitivity_level(&self, _tool_name: &str) -> ToolSensitivity {
         // 检索工具是只读操作，低敏感
         ToolSensitivity::Low
+    }
+
+    fn concurrency_class(&self, _tool_name: &str) -> ToolConcurrency {
+        // 各类检索（rag/multimodal/unified/web_search）均为纯只读，可并行 + 自动重试
+        ToolConcurrency::ReadOnly
     }
 
     fn name(&self) -> &'static str {
