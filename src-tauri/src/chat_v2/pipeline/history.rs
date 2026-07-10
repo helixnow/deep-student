@@ -283,10 +283,10 @@ impl ChatV2Pipeline {
                 }
             }
 
-            // 跳过空内容消息（但工具调用消息已经添加）
-            if content.is_empty() {
-                continue;
-            }
+            // 🔧 P1-1 修复（07 报告）：不再对"无正文"消息一刀切跳过。
+            // 之前 content 为空即 continue，导致「仅图片附件的用户消息」（附件提取
+            // 逻辑在 continue 之后永远执行不到）和「仅思维链的 assistant 消息」
+            // 从 LLM 上下文中静默消失。改为先提取附件/图片/文档，再综合判断有效载荷。
 
             // 从附件中提取图片 base64（仅用户消息有附件）
             // ★ 2025-12-10 修复：合并旧附件图片和 VFS 图片
@@ -376,6 +376,27 @@ impl ChatV2Pipeline {
                 })
                 .filter(|v| !v.is_empty());
 
+            // 🔧 P1-1 修复：仅当消息完全没有有效载荷（无正文/无图片/无文档/无思维链）
+            // 时才跳过；纯附件的用户消息用占位文本保持 role 交替与 provider 兼容
+            let has_thinking = thinking_content
+                .as_ref()
+                .is_some_and(|t| !t.trim().is_empty());
+            if content.is_empty()
+                && image_base64.is_none()
+                && doc_attachments.is_none()
+                && !has_thinking
+            {
+                continue;
+            }
+
+            let content = if content.is_empty() && role == "user" {
+                // 仅图片/文档附件的用户消息：占位文本（图片本体通过 image_base64 /
+                // doc_attachments 注入多模态请求）
+                "[用户发送了附件]".to_string()
+            } else {
+                content
+            };
+
             let legacy_message = LegacyChatMessage {
                 role: role.to_string(),
                 content: content.clone(),
@@ -411,11 +432,8 @@ impl ChatV2Pipeline {
         validate_tool_chain(&chat_history);
 
         // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
-        let max_tokens = ctx
-            .options
-            .context_limit
-            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
-            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+        let max_tokens = effective_history_token_budget(ctx.options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 🆕 P1: 如果有 compaction 摘要，插到最前面（system 伪消息承载锚定摘要）
@@ -577,6 +595,8 @@ fn is_tool_call_block(block: &MessageBlock) -> bool {
             | block_types::ACADEMIC_SEARCH
             | block_types::SLEEP
             | block_types::SUBAGENT_EMBED
+            // ACR R2-05：workbench_ops 亦为 LLM 工具调用块，需进入历史 tool 回放
+            | block_types::WORKBENCH_OPS
     );
     is_tool_type && block.tool_name.is_some()
 }

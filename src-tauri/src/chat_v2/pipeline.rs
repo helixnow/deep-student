@@ -37,8 +37,10 @@ pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, ImageGenerationExecutor, KnowledgeExecutor,
-    MemoryToolExecutor, SkillsExecutor, TemplateDesignerExecutor, ToolExecutorRegistry,
-    ToolSensitivity, UserTodoExecutor, WorkspaceToolExecutor,
+    LocalShellExecuteExecutor, LocalShellPreflightExecutor, AutomationExecutor, McpProposeExecutor, MemoryToolExecutor, SkillsExecutor,
+    TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
+    WorkspaceFsExecutor,
+    WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -85,6 +87,7 @@ pub mod summary;
 pub mod token_resources;
 pub mod tool_loop;
 pub mod variant_adapter;
+#[cfg(test)] mod parallel_exec_tests;
 
 pub use compaction::*;
 pub use constants::*;
@@ -229,6 +232,9 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(BuiltinResourceExecutor::new()));
         executors.push(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
         executors.push(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
+        executors.push(Arc::new(super::tools::BrowserToolExecutor::new())); // 🆕 内置浏览器 Agent 工具（非 Playwright）
+        executors.push(Arc::new(McpProposeExecutor::new())); // 🆕 MCP server 提案工具（High 敏感度）
+        executors.push(Arc::new(AutomationExecutor::new())); // 🆕 周期自动化工具（propose High / set_enabled Medium）
         executors.push(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
         executors.push(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
         executors.push(Arc::new(KnowledgeExecutor::new()));
@@ -244,6 +250,28 @@ impl ChatV2Pipeline {
         executors.push(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
         executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
         executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
+        executors.push(Arc::new(WorkspaceFsExecutor::new()));
+        executors.push(Arc::new(
+            super::tools::attachment_stage_executor::AttachmentStageExecutor::new(),
+        )); // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径）
+        executors.push(Arc::new(
+            super::tools::skill_install_executor::SkillInstallExecutor::new(),
+        )); // 🆕 skill_scan / skill_install 技能包自装（High 安装必审批 + provenance）
+        executors.push(Arc::new(
+            super::tools::skill_workshop_executor::SkillWorkshopExecutor::new(),
+        )); // 🆕 skill_workshop_propose / skill_workshop_apply 提案式自建/自改技能
+        executors.push(Arc::new(LocalShellPreflightExecutor::new()));
+        executors.push(Arc::new(
+            super::tools::self_inspect_executor::SelfInspectExecutor::new(),
+        )); // 🆕 self_inspect 只读自查工具（Low 敏感度，脱敏输出）
+        executors.push(Arc::new(
+            super::tools::runtime_root_request_executor::RuntimeRootRequestExecutor::new(),
+        )); // 🆕 runtime_root_request 授权请求（High，never-remember，critical 直接拒绝）
+        executors.push(Arc::new(LocalShellExecuteExecutor::new()));
+        executors.push(Arc::new(super::tools::EssayGradingExecutor::new())); // 🆕 作文批改工具执行器（essay_* 异步任务 + 历史查询）
+        executors.push(Arc::new(super::tools::ReviewToolExecutor::new())); // 🆕 间隔重复复习计划工具执行器（review_*，SM-2）
+        executors.push(Arc::new(super::tools::DocumentProcessingExecutor::new())); // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
+        executors.push(Arc::new(super::tools::WorkbenchToolExecutor::new())); // ACR R1-02：workbench_* 桌面操控工具
 
         if let Some(coordinator) = workspace_coordinator {
             executors.push(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
@@ -257,12 +285,10 @@ impl ChatV2Pipeline {
             )));
         }
 
-                // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
+        // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
         let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
             // ToolPackExecutor must be registered before GeneralToolExecutor
-            executors.push(Arc::new(
-                super::tools::ToolPackExecutor::new(weak.clone()),
-            ));
+            executors.push(Arc::new(super::tools::ToolPackExecutor::new(weak.clone())));
             // GeneralToolExecutor must be last (catch-all)
             executors.push(Arc::new(GeneralToolExecutor::new()));
             ToolExecutorRegistry::from_vec(executors)
@@ -289,6 +315,16 @@ impl ChatV2Pipeline {
     /// 对应的 block_type 字符串
     fn tool_name_to_block_type(tool_name: &str) -> String {
         let stripped = Self::normalize_tool_name_for_skill_match(tool_name);
+
+        // ACR R2-05 / R3-01：与 context::get_block_type_for_tool_static / 前端 remap 对齐
+        if stripped.starts_with("workbench_")
+            || matches!(
+                stripped,
+                "note_append" | "note_replace" | "note_set" | "mindmap_edit_nodes"
+            )
+        {
+            return block_types::WORKBENCH_OPS.to_string();
+        }
 
         match stripped {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),
@@ -870,6 +906,136 @@ mod tests {
             executor.name(),
             "ToolPackExecutor",
             "ToolPackExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_workspace_fs_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-workspace_file_read")
+            .expect("builtin-workspace_file_read must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "WorkspaceFsExecutor",
+            "WorkspaceFsExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_attachment_stage_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-attachment_stage")
+            .expect("builtin-attachment_stage must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "AttachmentStageExecutor",
+            "AttachmentStageExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_local_shell_preflight_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-local_shell_preflight")
+            .expect("builtin-local_shell_preflight must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "LocalShellPreflightExecutor",
+            "LocalShellPreflightExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_self_inspect_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-self_inspect")
+            .expect("builtin-self_inspect must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "SelfInspectExecutor",
+            "SelfInspectExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_skill_install_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-skill_scan")
+            .expect("builtin-skill_scan must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "SkillInstallExecutor",
+            "SkillInstallExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_skill_workshop_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-skill_workshop_propose")
+            .expect("builtin-skill_workshop_propose must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "SkillWorkshopExecutor",
+            "SkillWorkshopExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_mcp_propose_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-mcp_server_propose")
+            .expect("builtin-mcp_server_propose must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "McpProposeExecutor",
+            "McpProposeExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_automation_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-automation_propose")
+            .expect("builtin-automation_propose must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "AutomationExecutor",
+            "AutomationExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_runtime_root_request_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-runtime_root_request")
+            .expect("builtin-runtime_root_request must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "RuntimeRootRequestExecutor",
+            "RuntimeRootRequestExecutor must be matched before GeneralToolExecutor"
+        );
+    }
+
+    #[test]
+    fn test_local_shell_execute_registered_before_general_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        let executor = registry
+            .get_executor("builtin-local_shell_execute")
+            .expect("builtin-local_shell_execute must have a registered executor");
+        assert_eq!(
+            executor.name(),
+            "LocalShellExecuteExecutor",
+            "LocalShellExecuteExecutor must be matched before GeneralToolExecutor"
         );
     }
 }

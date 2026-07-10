@@ -21,6 +21,7 @@ fn build_replay_skill_payload_snapshot(
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
+        skill_allowed_tools: options.skill_allowed_tools.clone(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
         skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
@@ -768,10 +769,8 @@ impl ChatV2Pipeline {
         // 加载聊天历史
         let mut chat_history = self.load_variant_chat_history(&session_id).await?;
         // 🔧 Token 预算裁剪（对齐单变体路径）
-        let max_tokens = options
-            .context_limit
-            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
-            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+        let max_tokens = effective_history_token_budget(options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 构建当前用户消息
@@ -814,9 +813,11 @@ impl ChatV2Pipeline {
                 .or(options.skill_contents.as_ref())
                 .unwrap_or(&empty_skill_contents),
             options.skill_dependencies.as_ref(),
+            // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
             options
                 .context_limit
-                .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+                .filter(|v| *v > 0)
+                .map(|v| v as usize),
         );
         insert_transient_skill_messages(&mut messages, base_history_len, transient_skill_messages);
 
@@ -1011,7 +1012,14 @@ impl ChatV2Pipeline {
         attachments: Vec<AttachmentInput>,
         user_context_refs: Vec<SendContextRef>,
     ) -> ChatV2Result<()> {
-        const MAX_TOOL_ROUNDS: u32 = 10;
+        // 🔧 2026-07: 变体工具循环上限与单变体路径统一。
+        // 之前硬编码 `MAX_TOOL_ROUNDS = 10`，与单变体路径「用户可配 1-100、
+        // 默认 MAX_TOOL_RECURSION(30)」不一致（短板 13）。现在与
+        // tool_loop.rs execute_with_tools 共用 constants.rs 的
+        // effective_max_tool_rounds（默认值/clamp 逻辑单点维护）。
+        // 注意：变体内无心跳白名单豁免（coordinator_sleep 在多变体模式下不适用），
+        // 因此不需要 ABSOLUTE_MAX_RECURSION 二级上限。
+        let max_tool_rounds: u32 = effective_max_tool_rounds(options.max_tool_recursion);
 
         options.model_id = Some(config_id.clone());
         options.model2_override_id = Some(config_id.clone());
@@ -1032,10 +1040,8 @@ impl ChatV2Pipeline {
             .await;
         let mut chat_history = self.load_variant_chat_history(&session_id).await?;
         // 🔧 Token 预算裁剪（对齐单变体路径）
-        let max_tokens_budget = options
-            .context_limit
-            .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
-            .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
+        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+        let max_tokens_budget = effective_history_token_budget(options.context_limit);
         trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
         let current_user_message =
             self.build_variant_user_message(&user_content, &attachments, &user_context_refs);
@@ -1166,6 +1172,9 @@ impl ChatV2Pipeline {
             .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
 
         let mut tool_round = 0u32;
+        // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
+        // 与单变体路径共用 apply_doom_loop_guard（tool_loop.rs）
+        let mut doom_loop_guard = crate::chat_v2::context::DoomLoopGuard::default();
         loop {
             if ctx.is_cancelled() {
                 ctx.cancel();
@@ -1340,14 +1349,34 @@ impl ChatV2Pipeline {
             let memory_enabled = options.memory_enabled.unwrap_or(true);
             let rag_enabled = options.rag_enabled.unwrap_or(true);
             let web_search_enabled = options.web_search_enabled.unwrap_or(true);
+            let skill_allowed_tools = if options.disable_tool_whitelist.unwrap_or(false) {
+                None
+            } else {
+                options.skill_allowed_tools.clone()
+            };
             let round_id = format!("variant-tool-round-{}", tool_round);
+
+            // 🆕 2026-07 Doom loop 检测：拦截连续重复调用（同工具同参数第 3 次起），
+            // 合成失败结果回喂 LLM；第 5 次落终止标记，本轮结果回喂后终止变体循环
+            let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
+                &mut doom_loop_guard,
+                &tool_calls,
+                &emitter_arc,
+                ctx.message_id(),
+                Some(ctx.variant_id()),
+                options.skill_state_version,
+                Some(round_id.as_str()),
+            );
+
             // 🔧 F9 修复：传真实 session_id（之前是 "{session}:{variant}" 复合键，
             // 导致所有按 session 查库的工具——子代理/附件/技能状态/所有权校验——在
             // 变体模式下全部失效）。变体间内存状态隔离改由 variant_id 参数承担
             // （todo_executor 内部组合 session_id+variant_id 作为隔离键）。
-            let tool_results = self
-                .execute_tool_calls(
-                    &tool_calls,
+            let executed_results = if calls_to_execute.is_empty() {
+                Vec::new()
+            } else {
+                self.execute_tool_calls(
+                    &calls_to_execute,
                     &emitter_arc,
                     &session_id,
                     ctx.message_id(),
@@ -1357,7 +1386,9 @@ impl ChatV2Pipeline {
                     &canvas_note_id,
                     &skill_contents,
                     &options.skill_embedded_tools,
+                    &options.skill_package_roots,
                     &active_skill_ids,
+                    &skill_allowed_tools,
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
@@ -1366,7 +1397,14 @@ impl ChatV2Pipeline {
                     web_search_enabled,
                     &variant_tool_name_mapping,
                 )
-                .await?;
+                .await?
+            };
+            // 合成失败结果按原始 tool_calls 顺序归并（保证协议完整性与历史确定性）
+            let tool_results = super::tool_loop::merge_round_results_in_call_order(
+                &tool_calls,
+                executed_results,
+                doom_synthetic,
+            );
 
             let success_count = tool_results.iter().filter(|r| r.success).count();
             log::info!(
@@ -1421,7 +1459,7 @@ impl ChatV2Pipeline {
                                         .iter()
                                         .filter_map(|tool| {
                                             let Some(prepared) =
-                                                prepare_external_tool_schema(tool, false)
+                                                prepare_external_tool_schema(tool, true)
                                             else {
                                                 log::warn!(
                                                     "[ChatV2::VariantPipeline] Skipping refreshed MCP tool with blank API name: raw='{}'",
@@ -1429,6 +1467,14 @@ impl ChatV2Pipeline {
                                                 );
                                                 return None;
                                             };
+                                            variant_tool_name_mapping.insert(
+                                                prepared.api_name.clone(),
+                                                super::tool_loop::ExternalToolRoute {
+                                                    raw_tool_name: prepared.raw_tool_name,
+                                                    preferred_server_id: prepared
+                                                        .preferred_server_id,
+                                                },
+                                            );
                                             Some(prepared.schema)
                                         })
                                         .collect();
@@ -1532,14 +1578,26 @@ impl ChatV2Pipeline {
                 break;
             }
 
+            // 🆕 2026-07 Doom loop 终止：同一调用连续第 5 次重复，
+            // 拦截结果已回喂本轮 messages，直接终止变体循环（对齐 max rounds 处理）
+            if doom_loop_guard.abort_triggered() {
+                log::warn!(
+                    "[ChatV2::VariantPipeline] variant={} doom loop abort: tool={:?} repeated identical calls, stopping",
+                    ctx.variant_id(),
+                    doom_loop_guard.abort_tool_name()
+                );
+                ctx.complete();
+                break;
+            }
+
             tool_round += 1;
             ctx.increment_tool_round();
 
-            if tool_round >= MAX_TOOL_ROUNDS {
+            if tool_round >= max_tool_rounds {
                 log::warn!(
                     "[ChatV2::VariantPipeline] variant={} reached max tool rounds ({})",
                     ctx.variant_id(),
-                    MAX_TOOL_ROUNDS
+                    max_tool_rounds
                 );
                 ctx.complete();
                 break;

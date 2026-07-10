@@ -253,8 +253,8 @@ pub(crate) fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> 
 pub(crate) enum ApprovalOutcome {
     /// 用户同意执行
     Approved,
-    /// 用户明确拒绝
-    Rejected,
+    /// 用户明确拒绝（可携带用户填写的拒绝理由，回传给模型）
+    Rejected { reason: Option<String> },
     /// 等待审批超时
     Timeout,
     /// 审批通道异常关闭

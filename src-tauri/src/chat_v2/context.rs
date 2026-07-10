@@ -19,6 +19,109 @@ use super::types::{
 use super::vfs_resolver::escape_xml_content;
 
 // ============================================================
+// 🆕 2026-07 Doom loop 检测（借鉴 参考实现）
+// ============================================================
+
+/// 同一指纹连续出现第 3 次起拦截执行（合成失败结果回喂 LLM）
+pub(crate) const DOOM_LOOP_WARN_THRESHOLD: u32 = 3;
+
+/// 同一指纹连续出现第 5 次时终止本轮工具循环（生成 tool_limit 块）
+pub(crate) const DOOM_LOOP_ABORT_THRESHOLD: u32 = 5;
+
+/// Doom loop 裁决结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DoomLoopVerdict {
+    /// 正常执行
+    Execute,
+    /// 连续第 3/4 次相同调用：拦截执行，合成失败结果告知 LLM 改变策略
+    SkipRepeated { count: u32 },
+    /// 连续第 5 次相同调用：拦截执行并终止本轮工具循环
+    Abort { count: u32 },
+}
+
+/// Doom loop 守卫：跨工具轮次追踪「工具名 + 参数 JSON」指纹的连续重复次数
+///
+/// 借鉴 参考实现 的 doom loop 检测（同工具同参数连续 3 次告警）。
+/// 状态生命周期与 PipelineContext 一致（单次请求内跨递归轮次累计）；
+/// 指纹不同（换工具或换参数）即重置计数。多变体路径在变体循环内各持有独立实例。
+#[derive(Debug, Default)]
+pub(crate) struct DoomLoopGuard {
+    /// 最近一次观察到的调用指纹（sha256(工具名 + 参数 JSON)）
+    last_fingerprint: Option<String>,
+    /// 该指纹的连续出现次数（含当前次）
+    repeat_count: u32,
+    /// 是否已触发终止（达到 DOOM_LOOP_ABORT_THRESHOLD）
+    abort_triggered: bool,
+    /// 触发终止的工具名（用于 tool_limit 块提示文案）
+    abort_tool_name: Option<String>,
+}
+
+impl DoomLoopGuard {
+    /// 按执行顺序观察一次工具调用，返回裁决结果并更新内部计数
+    ///
+    /// 本方法只做计数与裁决，不落终止标记；由 tool_loop 对 Abort 裁决
+    /// 调用 `mark_abort`（心跳白名单工具会忽略裁决，避免误伤合法轮询）。
+    pub(crate) fn observe(
+        &mut self,
+        tool_name: &str,
+        arguments: &serde_json::Value,
+    ) -> DoomLoopVerdict {
+        let fingerprint = Self::fingerprint(tool_name, arguments);
+        if self.last_fingerprint.as_deref() == Some(fingerprint.as_str()) {
+            self.repeat_count += 1;
+        } else {
+            self.last_fingerprint = Some(fingerprint);
+            self.repeat_count = 1;
+        }
+
+        if self.repeat_count >= DOOM_LOOP_ABORT_THRESHOLD {
+            DoomLoopVerdict::Abort {
+                count: self.repeat_count,
+            }
+        } else if self.repeat_count >= DOOM_LOOP_WARN_THRESHOLD {
+            DoomLoopVerdict::SkipRepeated {
+                count: self.repeat_count,
+            }
+        } else {
+            DoomLoopVerdict::Execute
+        }
+    }
+
+    /// 落终止标记（tool_loop 对非心跳工具的 Abort 裁决调用）
+    pub(crate) fn mark_abort(&mut self, tool_name: &str) {
+        self.abort_triggered = true;
+        self.abort_tool_name = Some(tool_name.to_string());
+    }
+
+    /// 是否已达到终止阈值（由 tool_loop 在工具批次执行后检查）
+    pub(crate) fn abort_triggered(&self) -> bool {
+        self.abort_triggered
+    }
+
+    /// 触发终止的工具名
+    pub(crate) fn abort_tool_name(&self) -> Option<&str> {
+        self.abort_tool_name.as_deref()
+    }
+
+    /// 计算调用指纹：sha256(工具名 + 0x1f + 参数 JSON 序列化)
+    ///
+    /// serde_json 启用 preserve_order，同一 LLM 重复输出的相同参数
+    /// 序列化结果稳定，指纹可靠。
+    fn fingerprint(tool_name: &str, arguments: &serde_json::Value) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(tool_name.as_bytes());
+        hasher.update(b"\x1f");
+        hasher.update(
+            serde_json::to_string(arguments)
+                .unwrap_or_default()
+                .as_bytes(),
+        );
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+// ============================================================
 // 内部上下文
 // ============================================================
 
@@ -78,6 +181,11 @@ pub(crate) struct PipelineContext {
     /// 在工具调用迭代中，需要将上一轮的 thinking_content 回传给 API
     pub(crate) pending_reasoning_for_api: Option<String>,
 
+    /// 🔧 P1-2 修复：每轮工具调用的伴随文本（text-before-tool_use）
+    /// 键为该轮第一个工具结果的 tool_call_id。用于在 tool_results_to_messages_impl
+    /// 中回填 assistant(tool_call) 消息的 content，让 LLM 能看到上一轮说过的话
+    pub(crate) round_text_by_tool_call_id: HashMap<String, String>,
+
     /// Gemini 3 思维签名缓存（工具调用迭代时回传）
     /// 在工具调用场景下，API 返回的 thoughtSignature 需要缓存并在后续请求中回传
     pub(crate) pending_thought_signature: Option<String>,
@@ -118,6 +226,10 @@ pub(crate) struct PipelineContext {
     /// provider usage 决定是否设置；外层 pipeline 循环读取并在下一次
     /// LLM 调用前执行 compaction::run，完成后重置为 false。
     pub(crate) needs_compaction: bool,
+
+    /// 🆕 2026-07: Doom loop 守卫 —— 跨工具轮次追踪「工具名+参数」指纹的连续重复，
+    /// 连续第 3 次拦截执行回喂合成失败，连续第 5 次终止本轮循环（见 DoomLoopGuard）
+    pub(crate) doom_loop_guard: DoomLoopGuard,
 }
 
 impl PipelineContext {
@@ -161,6 +273,7 @@ impl PipelineContext {
             interleaved_blocks: Vec::new(),
             global_block_index: 0,
             pending_reasoning_for_api: None,
+            round_text_by_tool_call_id: HashMap::new(),
             pending_thought_signature: None,
             current_adapter: None,
             // 统一上下文注入系统支持
@@ -181,6 +294,7 @@ impl PipelineContext {
             heartbeat_count: 0,
             last_round_heartbeat: false,
             needs_compaction: false,
+            doom_loop_guard: DoomLoopGuard::default(),
         }
     }
 
@@ -334,9 +448,18 @@ impl PipelineContext {
             // 这样多轮工具调用的思维链都能被正确保留和回传
             let thinking_content = result.reasoning_content.clone();
 
+            // 🔧 P1-2 修复：回填该轮的伴随文本（text-before-tool_use），
+            // 使 LLM 在后续轮次能看到自己在发起工具调用前说过的话
+            let round_text = result
+                .tool_call_id
+                .as_ref()
+                .and_then(|id| self.round_text_by_tool_call_id.get(id))
+                .cloned()
+                .unwrap_or_default();
+
             let assistant_msg = LegacyChatMessage {
                 role: "assistant".to_string(),
-                content: String::new(),
+                content: round_text,
                 timestamp: chrono::Utc::now(),
                 thinking_content,
                 thought_signature: result.thought_signature.clone(),
@@ -425,6 +548,16 @@ impl PipelineContext {
     /// ## 返回
     /// 块被分配的 block_index
     pub(crate) fn add_interleaved_block(&mut self, mut block: MessageBlock) -> u32 {
+        // 🔧 幂等保护：同一块 ID 只收集一次。
+        // attempt_completion 路径 / 取消收尾路径可能对同一轮的 thinking/content 块
+        // 重复调用 collect_round_blocks，重复收集会导致 block_ids 列表出现重复项。
+        if let Some(pos) = self
+            .interleaved_blocks
+            .iter()
+            .position(|b| b.id == block.id)
+        {
+            return self.interleaved_blocks[pos].block_index;
+        }
         let index = self.global_block_index;
         block.block_index = index;
         self.global_block_index += 1;
@@ -584,6 +717,16 @@ impl PipelineContext {
 
     pub fn get_block_type_for_tool_static(tool_name: &str) -> String {
         let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
+
+        // ACR R2-05 / R3-01：workbench_* 与域委托写持久化为 workbench_ops（撤销入口）
+        if stripped.starts_with("workbench_")
+            || matches!(
+                stripped,
+                "note_append" | "note_replace" | "note_set" | "mindmap_edit_nodes"
+            )
+        {
+            return block_types::WORKBENCH_OPS.to_string();
+        }
 
         match stripped {
             "rag_search" | "multimodal_search" | "unified_search" => block_types::RAG.to_string(),

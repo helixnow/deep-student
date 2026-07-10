@@ -686,27 +686,26 @@ impl ChatV2Pipeline {
             tail_start_msg.id, tail.tail_start_idx, tail.tail_tokens, tail_budget
         );
 
-        // 4. 读取此前最近一次 compaction summary（锚定链接续）
-        let previous_summary: Option<String> =
-            ChatV2Repo::get_active_compaction_with_conn(&conn, session_id)
-                .map_err(|e| {
-                    warn!(
-                        "[compaction] get_active_compaction failed: {}; treat as no previous",
-                        e
-                    );
+        // 4. 读取此前最近一次 compaction 记录（锚定链接续 + memory flush 增量起点）
+        let previous_record = ChatV2Repo::get_active_compaction_with_conn(&conn, session_id)
+            .map_err(|e| {
+                warn!(
+                    "[compaction] get_active_compaction failed: {}; treat as no previous",
                     e
-                })
+                );
+                e
+            })
+            .ok()
+            .flatten();
+        let previous_summary: Option<String> = previous_record.as_ref().and_then(|prev| {
+            ChatV2Repo::get_message_blocks_with_conn(&conn, &prev.summary_message_id)
                 .ok()
-                .flatten()
-                .and_then(|prev| {
-                    ChatV2Repo::get_message_blocks_with_conn(&conn, &prev.summary_message_id)
-                        .ok()
-                        .and_then(|blks| {
-                            blks.into_iter()
-                                .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
-                                .and_then(|b| b.content)
-                        })
-                });
+                .and_then(|blks| {
+                    blks.into_iter()
+                        .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
+                        .and_then(|b| b.content)
+                })
+        });
 
         // 5. 渲染 head / middle 用于 prompt
         let head_tokens_used = HEAD_USER_TURNS.min(turns.len());
@@ -742,8 +741,39 @@ impl ChatV2Pipeline {
         );
         let prompt = build_compaction_prompt(&head_text, &middle_text, previous_summary.as_deref());
 
+        // 5.5 渲染 memory flush 输入段：只取"本次新被摘要掉"的增量区间。
+        // 上一次 compaction 的 tail 起点之前的内容已在上一轮 flush 过，
+        // 用 prev.tail_start 作为起点避免重复提取/重复写日志。
+        let flush_start = previous_record
+            .as_ref()
+            .and_then(|prev| {
+                messages
+                    .iter()
+                    .position(|m| m.id == prev.tail_start_message_id)
+            })
+            .map(|idx| idx.max(middle_start))
+            .unwrap_or(middle_start);
+        let flush_text = if flush_start < middle_end {
+            render_messages_for_prompt(
+                &messages,
+                &blocks_by_msg,
+                flush_start,
+                middle_end,
+                per_msg_cap,
+                model_id_for_tokens,
+            )
+        } else {
+            String::new()
+        };
+
         // 6. 释放连接，执行 LLM 调用
         drop(conn);
+
+        // 6.1 压缩前 memory flush（借鉴 reference agent runtime）：先把即将被摘要掉的对话段中
+        // 值得长期记住的学习者事实/当日活动落盘，再做摘要。
+        // 约束：失败/超时绝不阻塞压缩（warn 后继续）；每次 compaction 至多一次。
+        self.flush_memory_before_compaction(session_id, &flush_text)
+            .await;
 
         // 🔧 P1-W4 修复：若没有显式 model_id，**跳过压缩**，不要默默回退到 Model2
         let effective_model_id = match model_id.map(str::trim).filter(|s| !s.is_empty()) {
@@ -867,6 +897,86 @@ impl ChatV2Pipeline {
         );
 
         Ok(true)
+    }
+
+    /// 压缩前 memory flush（详见 memory/compaction_flush.rs）
+    ///
+    /// 硬性约束：
+    /// - 任何失败（记忆服务不可用/LLM 失败/解析失败）只 warn，绝不阻塞压缩
+    /// - 30s 超时兜底
+    /// - 隐私模式或自动提取关闭（frequency=off）时跳过
+    async fn flush_memory_before_compaction(&self, session_id: &str, segment_text: &str) {
+        use crate::memory::{CompactionMemoryFlush, MemoryConfig, MemoryService};
+        use crate::vfs::lance_store::VfsLanceStore;
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        const FLUSH_TIMEOUT_SECS: u64 = 30;
+
+        if segment_text.trim().is_empty() {
+            return;
+        }
+        let Some(vfs_db) = self.vfs_db.clone() else {
+            return;
+        };
+
+        let mem_cfg = MemoryConfig::new(vfs_db.clone());
+        // 隐私模式：不把对话内容送入 LLM 提取
+        if mem_cfg.is_privacy_mode().unwrap_or(false) {
+            debug!("[compaction] memory flush skipped: privacy mode");
+            return;
+        }
+        // 自动提取关闭时同样关闭 flush（与 auto_extractor 行为一致）
+        let frequency = mem_cfg
+            .get_auto_extract_frequency()
+            .unwrap_or(crate::memory::AutoExtractFrequency::Balanced);
+        if frequency == crate::memory::AutoExtractFrequency::Off {
+            debug!("[compaction] memory flush skipped: auto extract off");
+            return;
+        }
+
+        let lance_store = match VfsLanceStore::new(vfs_db.clone()) {
+            Ok(store) => Arc::new(store),
+            Err(e) => {
+                warn!(
+                    "[compaction] memory flush skipped: lance store unavailable: {}",
+                    e
+                );
+                return;
+            }
+        };
+        let memory_service = MemoryService::new(vfs_db, lance_store, self.llm_manager.clone());
+        let flusher = CompactionMemoryFlush::new(self.llm_manager.clone());
+
+        match tokio::time::timeout(
+            Duration::from_secs(FLUSH_TIMEOUT_SECS),
+            flusher.flush_segment(&memory_service, segment_text, Some(session_id)),
+        )
+        .await
+        {
+            Ok(Ok(report)) => {
+                if report.facts_stored > 0 || report.activities_stored > 0 {
+                    info!(
+                        "[compaction] memory flush done: facts={}/{} activities={}/{}",
+                        report.facts_stored,
+                        report.facts_extracted,
+                        report.activities_stored,
+                        report.activities_extracted
+                    );
+                } else {
+                    debug!("[compaction] memory flush: nothing worth persisting");
+                }
+            }
+            Ok(Err(e)) => {
+                warn!("[compaction] memory flush failed (non-blocking): {}", e);
+            }
+            Err(_) => {
+                warn!(
+                    "[compaction] memory flush timed out after {}s (non-blocking)",
+                    FLUSH_TIMEOUT_SECS
+                );
+            }
+        }
     }
 
     /// 尝试从 `ctx.options.model_id` 解析活跃的 ApiConfig，用于 usable_tokens 估算

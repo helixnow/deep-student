@@ -386,6 +386,8 @@ pub struct PromptBuilder {
     context_type_hints: Vec<String>,
     /// 用户画像摘要（始终注入，不依赖 query 匹配）
     user_profile: Option<String>,
+    /// 学习者画像（三层记忆的策展长期层，随会话注入；见 memory/learner_profile.rs）
+    learner_profile: Option<String>,
     /// 活跃待办摘要（始终注入）
     active_todos: Option<String>,
 }
@@ -409,6 +411,7 @@ impl PromptBuilder {
             canvas_note: None,
             context_type_hints: Vec::new(),
             user_profile: None,
+            learner_profile: None,
             active_todos: None,
         }
     }
@@ -464,6 +467,12 @@ impl PromptBuilder {
     /// 添加用户画像摘要（始终注入，不依赖检索 query）
     pub fn with_user_profile(mut self, profile: Option<String>) -> Self {
         self.user_profile = profile;
+        self
+    }
+
+    /// 添加学习者画像（策展长期层，随会话注入；内容应已渲染为 Markdown）
+    pub fn with_learner_profile(mut self, profile: Option<String>) -> Self {
+        self.learner_profile = profile;
         self
     }
 
@@ -565,6 +574,15 @@ impl PromptBuilder {
         if let Some(profile) = self.user_profile {
             parts.push(format!(
                 "<user_profile>\n以下是关于当前用户的已知信息，请在回答中自然地运用这些背景：\n{}\n</user_profile>",
+                escape_xml_content(&profile)
+            ));
+        }
+
+        // 1.85 学习者画像（三层记忆的策展长期层，随会话注入）
+        // 同 user_profile 必须 XML 转义（画像内容可被对话/工具写入污染）
+        if let Some(profile) = self.learner_profile {
+            parts.push(format!(
+                "<learner_profile>\n以下是该学习者的长期画像（薄弱知识点/学习偏好/学习目标/近期状态）。请据此调整讲解方式与难度，主动关照薄弱环节；画像可用 learner_profile_update 工具增量更新：\n{}\n</learner_profile>",
                 escape_xml_content(&profile)
             ));
         }
@@ -689,7 +707,64 @@ pub fn build_system_prompt_with_profile(
         .with_options(options)
         .with_canvas_note(canvas_note)
         .with_user_profile(user_profile)
+        .with_learner_profile(load_learner_profile_block(options))
         .build()
+}
+
+/// 加载学习者画像注入内容（三层记忆的策展长期层）
+///
+/// - 通过全局 AppHandle 取 VFS 数据库（prompt_builder 自身无 DB 依赖，
+///   避免为注入改动 pipeline 侧调用签名）
+/// - 尊重 memory_enabled 开关与隐私模式
+/// - 经 injection_budget 以 High 优先级分配预算（类型上限 4000 字符，
+///   与 LEARNER_PROFILE_MAX_CHARS 对齐），超限时智能截断
+fn load_learner_profile_block(options: &SendOptions) -> Option<String> {
+    use crate::injection_budget::{
+        InjectionBudgetManager, InjectionItem, InjectionType, Priority,
+    };
+    use tauri::Manager;
+
+    if options.memory_enabled == Some(false) {
+        return None;
+    }
+
+    let app_handle = crate::get_global_app_handle()?;
+    let vfs_db = app_handle
+        .try_state::<std::sync::Arc<crate::vfs::VfsDatabase>>()?
+        .inner()
+        .clone();
+
+    let mem_cfg = crate::memory::MemoryConfig::new(vfs_db.clone());
+    if mem_cfg.is_privacy_mode().unwrap_or(false) {
+        return None;
+    }
+
+    let profile = match crate::memory::learner_profile::load_profile_from_db(&vfs_db) {
+        Ok(Some(p)) => p,
+        Ok(None) => return None,
+        Err(e) => {
+            log::debug!("[PromptBuilder] Failed to load learner profile: {}", e);
+            return None;
+        }
+    };
+    if profile.is_content_empty() {
+        return None;
+    }
+
+    let rendered = profile.render_markdown();
+    let mut budget_mgr = InjectionBudgetManager::with_default_config();
+    budget_mgr.add_item(InjectionItem::new(
+        InjectionType::LearnerProfile,
+        rendered,
+        Priority::High,
+        "learner_profile".to_string(),
+    ));
+    let allocation = budget_mgr.allocate();
+    allocation
+        .selected_items
+        .into_iter()
+        .next()
+        .map(|item| item.content)
 }
 
 /// 从 SendOptions 和 SharedContext 构建 System Prompt

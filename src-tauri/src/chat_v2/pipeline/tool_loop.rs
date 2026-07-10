@@ -1,9 +1,60 @@
 use super::*;
 
+use super::super::context::{DoomLoopGuard, DoomLoopVerdict, DOOM_LOOP_ABORT_THRESHOLD};
+
 #[derive(Debug, Clone)]
 pub(crate) struct ExternalToolRoute {
     pub raw_tool_name: String,
     pub preferred_server_id: Option<String>,
+}
+
+/// 🔧 P1-3 修复：stream hooks 的 RAII 注销守卫。
+///
+/// 外层 `tokio::select!` 命中取消分支时会直接 drop 整个 `execute_with_tools`
+/// future，导致函数体内的显式 `unregister_stream_hooks` 永远不会执行，
+/// `hooks_registry` 中残留 `Arc<ChatV2LLMAdapter>`（内含 emitter/Window 引用）。
+/// 本守卫在 Drop 时向运行时补一次异步注销；重复 remove 是幂等操作，
+/// 因此与正常路径的显式注销并存不会产生副作用。
+pub(crate) struct StreamHooksGuard {
+    llm_manager: Arc<LLMManager>,
+    stream_event: String,
+    armed: bool,
+}
+
+impl StreamHooksGuard {
+    pub(crate) fn new(llm_manager: Arc<LLMManager>, stream_event: String) -> Self {
+        Self {
+            llm_manager,
+            stream_event,
+            armed: true,
+        }
+    }
+
+    /// 正常路径已显式注销后调用，避免 Drop 再补发一次异步注销
+    /// （防止与后续同键的重新注册产生竞态，如工作区继续轮）。
+    pub(crate) fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for StreamHooksGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let llm_manager = self.llm_manager.clone();
+        let stream_event = std::mem::take(&mut self.stream_event);
+        if stream_event.is_empty() {
+            return;
+        }
+        // drop 通常发生在 tokio worker 线程上；若运行时已关闭（进程退出），
+        // 注册表随进程销毁，跳过即可。
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                llm_manager.unregister_stream_hooks(&stream_event).await;
+            });
+        }
+    }
 }
 
 impl ChatV2Pipeline {
@@ -31,13 +82,46 @@ impl ChatV2Pipeline {
         system_prompt: &str,
         recursion_depth: u32,
     ) -> ChatV2Result<()> {
+        // ============================================================
+        // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
+        // 连续第 5 次出现，不再调用 LLM，生成 tool_limit 块提示用户。
+        // （拦截结果已在上一轮以合成失败回喂，此处只负责终止收尾）
+        // ============================================================
+        if ctx.doom_loop_guard.abort_triggered() {
+            let tool_name = ctx
+                .doom_loop_guard
+                .abort_tool_name()
+                .unwrap_or("<unknown>")
+                .to_string();
+            log::warn!(
+                "[ChatV2::pipeline] Doom loop abort: tool={} repeated {} times with identical arguments, terminating tool loop at depth={}",
+                tool_name,
+                DOOM_LOOP_ABORT_THRESHOLD,
+                recursion_depth
+            );
+            let limit_message = format!(
+                "⚠️ 检测到重复调用循环，已终止本轮执行\n\n\
+                AI 连续 {} 次以完全相同的参数调用工具「{}」，为防止无效死循环已暂停自动执行。\n\n\
+                您可以：\n\
+                • 补充信息或调整指令后重新发送\n\
+                • 发送「继续」让 AI 换一种策略再试\n\
+                • 手动完成剩余步骤",
+                DOOM_LOOP_ABORT_THRESHOLD, tool_name
+            );
+            let result_payload = serde_json::json!({
+                "content": limit_message,
+                "reason": "doom_loop",
+                "toolName": tool_name,
+                "repeatCount": DOOM_LOOP_ABORT_THRESHOLD,
+            });
+            self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
+            return Ok(());
+        }
+
         // 检查递归深度限制
         // 🔧 配置化：使用用户设置的限制值，默认 MAX_TOOL_RECURSION (30)
-        let max_recursion = ctx
-            .options
-            .max_tool_recursion
-            .unwrap_or(MAX_TOOL_RECURSION)
-            .clamp(1, 100); // 限制范围 1-100
+        // 🔧 2026-07（短板 #13）：与多变体路径共用 effective_max_tool_rounds
+        let max_recursion = effective_max_tool_rounds(ctx.options.max_tool_recursion);
 
         // 🔒 安全修复：心跳机制仅信任白名单内部工具
         // 外部/MCP 工具不能通过返回 continue_execution 绕过递归限制
@@ -88,8 +172,6 @@ impl ChatV2Pipeline {
             );
 
             // 创建 tool_limit 块，提示用户达到限制
-            let block_id = MessageBlock::generate_id();
-            let now_ms = chrono::Utc::now().timestamp_millis();
             let limit_message = format!(
                 "⚠️ 已达到工具调用限制（{} 轮）\n\n\
                 AI 已执行了 {} 轮工具调用。为防止无限循环，已暂停自动执行。\n\n\
@@ -99,53 +181,12 @@ impl ChatV2Pipeline {
                 • 手动完成剩余步骤",
                 max_recursion, max_recursion
             );
-
-            // 发送 start 事件
-            emitter.emit_start(
-                event_types::TOOL_LIMIT,
-                &ctx.assistant_message_id,
-                Some(&block_id),
-                None,
-                None,
-            );
-
-            // 发送 end 事件，携带提示内容
             let result_payload = serde_json::json!({
                 "content": limit_message,
                 "recursionDepth": recursion_depth,
                 "maxRecursion": max_recursion,
             });
-            emitter.emit_end(
-                event_types::TOOL_LIMIT,
-                &block_id,
-                Some(result_payload),
-                None,
-            );
-
-            // 创建块并添加到 interleaved 列表
-            let tool_limit_block = MessageBlock {
-                id: block_id.clone(),
-                message_id: ctx.assistant_message_id.clone(),
-                block_type: block_types::TOOL_LIMIT.to_string(),
-                status: block_status::SUCCESS.to_string(),
-                content: Some(limit_message),
-                tool_name: None,
-                tool_input: None,
-                tool_output: None,
-                citations: None,
-                error: None,
-                started_at: Some(now_ms),
-                ended_at: Some(now_ms),
-                first_chunk_at: Some(now_ms),
-                block_index: 0, // 会被 add_interleaved_block 覆盖
-            };
-            ctx.add_interleaved_block(tool_limit_block);
-
-            log::info!(
-                "[ChatV2::pipeline] Created tool_limit block: id={}, message_id={}",
-                block_id,
-                ctx.assistant_message_id
-            );
+            self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
 
             // 正常返回，不抛出错误
             return Ok(());
@@ -194,9 +235,11 @@ impl ChatV2Pipeline {
             &skill_state,
             skill_contents,
             ctx.options.skill_dependencies.as_ref(),
+            // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
             ctx.options
                 .context_limit
-                .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+                .filter(|v| *v > 0)
+                .map(|v| v as usize),
         );
         let skill_audit = transient_skill_messages.audit.clone();
         let injected_skill_count = skill_audit.injected_skill_ids.len();
@@ -579,9 +622,21 @@ impl ChatV2Pipeline {
         }
 
         // 生成流事件标识符
-        let stream_event = format!("chat_v2_event_{}", ctx.session_id);
+        // 🔧 P1-3 修复（键冲突）：键加入请求维度（assistant_message_id），避免同一会话
+        // 两条并发单变体流互相覆盖 hooks 注册表条目导致内容静默丢失。
+        // 使用 `_var_` 分隔符与多变体键（chat_v2_event_{session}_{variant}）约定一致，
+        // 使 model2_pipeline 的 reconnect 事件能通过 rsplit("_var_") 正确还原 session_id，
+        // 前端 llm_request_body 过滤（prefix 或 prefix_ 开头）也保持兼容。
+        let stream_event = format!(
+            "chat_v2_event_{}_var_{}",
+            ctx.session_id, ctx.assistant_message_id
+        );
 
         // 注册 LLM 流式回调 hooks
+        // 🔧 P1-3 修复（取消泄漏）：外层 tokio::select! 命中取消分支时整个 future 被 drop，
+        // 下方的显式 unregister_stream_hooks 永远不会执行。RAII guard 在 Drop 时
+        // 补一次异步注销（重复 remove 幂等无副作用），保证取消路径也能清理注册表。
+        let mut hooks_guard = StreamHooksGuard::new(self.llm_manager.clone(), stream_event.clone());
         self.llm_manager
             .register_stream_hooks(&stream_event, adapter.clone())
             .await;
@@ -823,14 +878,20 @@ impl ChatV2Pipeline {
             }
         }
 
-        // 注销 hooks
+        // 注销 hooks（正常路径显式注销；guard 仅兜底 select! drop 取消路径）
         self.llm_manager
             .unregister_stream_hooks(&stream_event)
             .await;
+        hooks_guard.disarm();
 
         // 处理 LLM 调用结果
+        // 🔧 P1-1 修复：llm_manager 存在与 pipeline CancellationToken 平行的第二条取消通道
+        // （registry / cancel channel），触发时正常返回 Ok(cancelled=true)。
+        // 必须记录该标志并在下方短路，否则「已停止」的会话仍会执行带副作用的工具调用并继续递归。
+        let mut llm_stream_cancelled = false;
         match call_result {
             Ok(output) => {
+                llm_stream_cancelled = output.cancelled;
                 log::info!(
                     "[ChatV2::pipeline] LLM call succeeded, cancelled={}, content_len={}",
                     output.cancelled,
@@ -947,6 +1008,36 @@ impl ChatV2Pipeline {
         }
 
         // ============================================================
+        // 🔧 P1-1 修复：LLM 流被内部取消（cancelled=true）时立即短路。
+        // 丢弃已收集的工具调用（不执行、不递归），把已流出的部分内容收进
+        // interleaved 列表后走取消收尾路径（外层 execute() 会保存部分结果）。
+        // ============================================================
+        if llm_stream_cancelled {
+            let dropped_tool_calls = adapter.take_tool_calls();
+            if !dropped_tool_calls.is_empty() {
+                log::warn!(
+                    "[ChatV2::pipeline] LLM stream cancelled internally, discarding {} pending tool call(s) without execution, session={}",
+                    dropped_tool_calls.len(),
+                    ctx.session_id
+                );
+            }
+            // 已发生过工具轮时，本轮部分内容需进入 interleaved 列表才能被保存
+            // （save_results 检测到 interleaved 块后只保存 interleaved 列表）
+            if ctx.has_interleaved_blocks() {
+                ctx.collect_round_blocks(
+                    adapter.get_thinking_block_id(),
+                    adapter.get_accumulated_reasoning(),
+                    adapter.get_content_block_id(),
+                    Some(ctx.final_content.clone()),
+                    &ctx.assistant_message_id.clone(),
+                );
+            }
+            adapter.finalize_all();
+            ctx.pending_reasoning_for_api = None;
+            return Err(ChatV2Error::Cancelled);
+        }
+
+        // ============================================================
         // 处理 LLM 返回的工具调用
         // 工具调用通过 LLMStreamHooks.on_tool_call() 回调收集到 adapter 中。
         // 在 LLM 调用完成后，从 adapter 取出收集到的工具调用进行处理。
@@ -956,21 +1047,28 @@ impl ChatV2Pipeline {
         // 如果有工具调用，执行并递归
         if !tool_calls.is_empty() {
             log::info!(
-                "[ChatV2::pipeline] LLM returned {} tool calls, executing sequentially...",
+                "[ChatV2::pipeline] LLM returned {} tool calls, executing (parallel-safe calls run concurrently)...",
                 tool_calls.len()
             );
 
             // ============================================================
             // Interleaved Thinking 支持：收集本轮产生的 thinking/content 块
             // 在工具调用之前，将本轮的 thinking 块添加到交替列表
-            // 注意：工具调用模式下，LLM 通常不会返回 content（返回 tool_use 代替）
+            // 🔧 P1-2 修复：Claude/GPT 系模型经常在 tool_use 之前输出一段伴随说明文本
+            // （text-before-tool_use）。该文本已实时流到前端，必须同时收进 interleaved
+            // 列表持久化（否则刷新后消失），并在下方回传给下一轮 LLM。
             // ============================================================
             let current_reasoning = adapter.get_accumulated_reasoning();
+            let round_content = adapter.get_accumulated_content();
             ctx.collect_round_blocks(
                 adapter.get_thinking_block_id(),
                 current_reasoning.clone(),
-                None, // 工具调用模式下，content 块通常为空
-                None,
+                adapter.get_content_block_id(),
+                if round_content.is_empty() {
+                    None
+                } else {
+                    Some(round_content.clone())
+                },
                 &ctx.assistant_message_id.clone(),
             );
 
@@ -1010,18 +1108,44 @@ impl ChatV2Pipeline {
             let canvas_note_id = ctx.options.canvas_note_id.clone();
             let skill_contents = ctx.options.skill_contents.clone();
             let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
+            let skill_package_roots = ctx.options.skill_package_roots.clone();
             let active_skill_ids = ctx.options.active_skill_ids.clone();
+            let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
+                None
+            } else {
+                ctx.options.skill_allowed_tools.clone()
+            };
             let rag_top_k = ctx.options.rag_top_k;
             let rag_enable_reranking = ctx.options.rag_enable_reranking;
             let memory_enabled = ctx.options.memory_enabled.unwrap_or(true);
             let rag_enabled = ctx.options.rag_enabled.unwrap_or(true);
             let web_search_enabled = ctx.options.web_search_enabled.unwrap_or(true);
+            let round_id = format!("tool-round-{}", recursion_depth);
+
+            // ============================================================
+            // 🆕 2026-07 Doom loop 检测（借鉴 参考实现）：按执行顺序观察每个
+            // 调用的「工具名+参数」指纹，连续第 3 次相同的调用被拦截（不执行），
+            // 以合成失败结果回喂 LLM 要求改变策略；连续第 5 次落终止标记，
+            // 下一轮递归入口生成 tool_limit 块终止循环。
+            // 心跳白名单工具（coordinator_sleep）豁免——重复同参调用是合法轮询。
+            // ============================================================
+            let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
+                &mut ctx.doom_loop_guard,
+                &tool_calls,
+                &emitter,
+                &ctx.assistant_message_id,
+                None,
+                ctx.options.skill_state_version,
+                Some(round_id.as_str()),
+            );
+
             // 🆕 取消支持：传递取消令牌给工具执行器
             let cancel_token = ctx.cancellation_token();
-            let round_id = format!("tool-round-{}", recursion_depth);
-            let tool_results = self
-                .execute_tool_calls(
-                    &tool_calls,
+            let executed_results = if calls_to_execute.is_empty() {
+                Vec::new()
+            } else {
+                self.execute_tool_calls(
+                    &calls_to_execute,
                     &emitter,
                     &ctx.session_id,
                     &ctx.assistant_message_id,
@@ -1031,7 +1155,9 @@ impl ChatV2Pipeline {
                     &canvas_note_id,
                     &skill_contents,
                     &skill_embedded_tools,
+                    &skill_package_roots,
                     &active_skill_ids,
+                    &skill_allowed_tools,
                     cancel_token,
                     rag_top_k,
                     rag_enable_reranking,
@@ -1040,7 +1166,12 @@ impl ChatV2Pipeline {
                     web_search_enabled,
                     &mcp_tool_name_mapping,
                 )
-                .await?;
+                .await?
+            };
+            // 拦截的合成失败结果按原始 tool_calls 顺序归并回结果列表，
+            // 保证每个 tool_call 都有对应 tool 消息（协议完整性）且历史确定
+            let tool_results =
+                merge_round_results_in_call_order(&tool_calls, executed_results, doom_synthetic);
 
             // 记录执行结果
             let success_count = tool_results.iter().filter(|r| r.success).count();
@@ -1190,19 +1321,33 @@ impl ChatV2Pipeline {
             // 🔧 Gemini 3 修复：同时附加 thought_signature（工具调用必需）
             let cached_thought_sig = adapter.get_thought_signature();
             let tool_results_count = tool_results.len();
+            let pending_reasoning = ctx.pending_reasoning_for_api.clone();
             let tool_results_with_reasoning: Vec<_> = tool_results
                 .into_iter()
                 .enumerate()
                 .map(|(i, mut result)| {
                     if i == 0 {
                         // 只有第一个工具结果携带这一轮的思维链
-                        result.reasoning_content = ctx.pending_reasoning_for_api.clone();
+                        result.reasoning_content = pending_reasoning.clone();
                         // 🔧 Gemini 3：附加 thought_signature 以便后续请求回传
                         result.thought_signature = cached_thought_sig.clone();
                     }
                     result
                 })
                 .collect();
+            // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
+            // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
+            // content 字段，让下一轮 LLM 能看到自己上一轮说过什么
+            if !round_content.is_empty() {
+                if let Some(first_tool_call_id) = tool_results_with_reasoning
+                    .first()
+                    .and_then(|r| r.tool_call_id.clone())
+                    .filter(|id| !id.is_empty())
+                {
+                    ctx.round_text_by_tool_call_id
+                        .insert(first_tool_call_id, round_content.clone());
+                }
+            }
             ctx.add_tool_results(tool_results_with_reasoning);
 
             // 🆕 P1: 检查点 B — 工具结果累加后，预估下一轮 prompt 是否会溢出
@@ -1349,6 +1494,212 @@ impl ChatV2Pipeline {
     ///
     /// ## 返回
     /// 工具调用结果列表
+    /// 🆕 2026-07: 生成 tool_limit 块（发射 start/end 事件 + 收进 interleaved 列表）
+    ///
+    /// 供两处停机路径共用：递归上限（recursionDepth/maxRecursion payload）
+    /// 与 doom loop 终止（reason=doom_loop payload）。
+    fn push_tool_limit_block(
+        &self,
+        ctx: &mut PipelineContext,
+        emitter: &Arc<ChatV2EventEmitter>,
+        limit_message: String,
+        result_payload: Value,
+    ) {
+        let block_id = MessageBlock::generate_id();
+        let now_ms = chrono::Utc::now().timestamp_millis();
+
+        emitter.emit_start(
+            event_types::TOOL_LIMIT,
+            &ctx.assistant_message_id,
+            Some(&block_id),
+            None,
+            None,
+        );
+        emitter.emit_end(
+            event_types::TOOL_LIMIT,
+            &block_id,
+            Some(result_payload),
+            None,
+        );
+
+        let tool_limit_block = MessageBlock {
+            id: block_id.clone(),
+            message_id: ctx.assistant_message_id.clone(),
+            block_type: block_types::TOOL_LIMIT.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content: Some(limit_message),
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: Some(now_ms),
+            ended_at: Some(now_ms),
+            first_chunk_at: Some(now_ms),
+            block_index: 0, // 会被 add_interleaved_block 覆盖
+        };
+        ctx.add_interleaved_block(tool_limit_block);
+
+        log::info!(
+            "[ChatV2::pipeline] Created tool_limit block: id={}, message_id={}",
+            block_id,
+            ctx.assistant_message_id
+        );
+    }
+
+    /// 🆕 2026-07 Doom loop 检测：按执行顺序观察本轮工具调用，拦截连续重复调用
+    ///
+    /// 返回 `(calls_to_execute, synthetic_results)`：
+    /// - `calls_to_execute`: 通过检测、应正常执行的调用（保持原顺序）；
+    /// - `synthetic_results`: 被拦截调用的合成失败结果（含 block_id，事件已发射），
+    ///   由调用方按原始 tool_calls 顺序归并回结果列表回喂 LLM。
+    ///
+    /// 心跳白名单工具（coordinator_sleep）参与指纹序列（打断其他工具的连续链，
+    /// 使「查询→睡眠→查询」合法轮询不被误伤）但自身豁免拦截。
+    /// 单变体与多变体路径共用（多变体持有变体局部 DoomLoopGuard）。
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn apply_doom_loop_guard(
+        &self,
+        guard: &mut DoomLoopGuard,
+        tool_calls: &[ToolCall],
+        emitter: &Arc<ChatV2EventEmitter>,
+        message_id: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) -> (Vec<ToolCall>, Vec<ToolResultInfo>) {
+        let mut calls_to_execute: Vec<ToolCall> = Vec::with_capacity(tool_calls.len());
+        let mut synthetic_results: Vec<ToolResultInfo> = Vec::new();
+
+        for tc in tool_calls {
+            let verdict = guard.observe(&tc.name, &tc.arguments);
+
+            // 心跳工具豁免拦截（observe 已更新指纹链）
+            if is_doom_loop_exempt_tool(&tc.name) {
+                calls_to_execute.push(tc.clone());
+                continue;
+            }
+
+            match verdict {
+                DoomLoopVerdict::Execute => calls_to_execute.push(tc.clone()),
+                DoomLoopVerdict::SkipRepeated { count } => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Doom loop detected: tool={} repeated {} times with identical arguments, intercepting call (id={})",
+                        tc.name,
+                        count,
+                        tc.id
+                    );
+                    synthetic_results.push(self.emit_doom_loop_interception(
+                        tc,
+                        count,
+                        false,
+                        emitter,
+                        message_id,
+                        variant_id,
+                        skill_state_version,
+                        round_id,
+                    ));
+                }
+                DoomLoopVerdict::Abort { count } => {
+                    log::error!(
+                        "[ChatV2::pipeline] Doom loop abort threshold reached: tool={} repeated {} times, tool loop will terminate (id={})",
+                        tc.name,
+                        count,
+                        tc.id
+                    );
+                    guard.mark_abort(&tc.name);
+                    synthetic_results.push(self.emit_doom_loop_interception(
+                        tc,
+                        count,
+                        true,
+                        emitter,
+                        message_id,
+                        variant_id,
+                        skill_state_version,
+                        round_id,
+                    ));
+                }
+            }
+        }
+
+        (calls_to_execute, synthetic_results)
+    }
+
+    /// 为被 doom loop 拦截的调用发射前端事件并构造合成失败结果
+    #[allow(clippy::too_many_arguments)]
+    fn emit_doom_loop_interception(
+        &self,
+        tc: &ToolCall,
+        count: u32,
+        is_abort: bool,
+        emitter: &Arc<ChatV2EventEmitter>,
+        message_id: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) -> ToolResultInfo {
+        let block_id = MessageBlock::generate_id();
+
+        // 发射 start + error 事件，让用户在前端看到被拦截的调用
+        emitter.emit_start_with_meta(
+            event_types::TOOL_CALL,
+            message_id,
+            Some(&block_id),
+            Some(json!({
+                "toolName": tc.name,
+                "toolInput": tc.arguments,
+                "toolCallId": tc.id,
+                "_doomLoopIntercepted": true,
+                "_repeatCount": count,
+            })),
+            variant_id,
+            skill_state_version,
+            round_id,
+        );
+        let display_msg = format!(
+            "检测到重复调用循环：工具 {} 连续第 {} 次以完全相同的参数被调用，本次调用已被拦截（未执行）。",
+            tc.name, count
+        );
+        emitter.emit_error_with_meta(
+            event_types::TOOL_CALL,
+            &block_id,
+            &display_msg,
+            variant_id,
+            skill_state_version,
+            round_id,
+        );
+
+        // 回喂 LLM 的合成失败结果：明确要求改变策略
+        let llm_error = if is_abort {
+            format!(
+                "LOOP DETECTED — tool call intercepted (NOT executed). You have called '{}' {} times in a row with identical arguments. The tool loop is being terminated and the user will be asked to take over. Do NOT repeat this call.",
+                tc.name, count
+            )
+        } else {
+            format!(
+                "LOOP DETECTED — tool call intercepted (NOT executed). This is the {}th consecutive call to '{}' with identical arguments. Repeating the exact same call will keep failing. You MUST change strategy: adjust the arguments, use a different tool, or ask the user for help (ask_user). If you cannot make progress, explain the blocker to the user instead of retrying.",
+                count, tc.name
+            )
+        };
+
+        ToolResultInfo {
+            tool_call_id: Some(tc.id.clone()),
+            block_id: Some(block_id),
+            tool_name: tc.name.clone(),
+            input: tc.arguments.clone(),
+            output: json!({
+                "error": "doom_loop_detected",
+                "repeat_count": count,
+                "intercepted": true,
+            }),
+            success: false,
+            error: Some(llm_error),
+            duration_ms: Some(0),
+            reasoning_content: None,
+            thought_signature: None,
+        }
+    }
+
     /// 对工具调用列表进行依赖感知排序
     ///
     /// 规则（按优先级从高到低）：
@@ -1470,7 +1821,9 @@ impl ChatV2Pipeline {
         skill_embedded_tools: &Option<
             std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
         >,
+        skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         _active_skill_ids: &Option<Vec<String>>,
+        skill_allowed_tools: &Option<Vec<String>>,
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1506,9 +1859,22 @@ impl ChatV2Pipeline {
             })
             .collect();
         let ordered_tool_calls = self.ordered_tool_calls_for_execution(&tool_calls);
+
+        // 🆕 2026-07 并行工具调用：按 executor 声明的并发等级
+        // （ToolConcurrency::ReadOnly / SafeParallel / Serial）把依赖感知排序后的
+        // 调用列表切成连续分段——连续的并行安全工具组成并行段（有界并发执行），
+        // 其余保持串行。需要进入审批流程的工具一律归入串行段。
+        // 结果按 ordered_tool_calls 顺序回填（与原顺序 for 循环产出顺序一致）。
+        let parallel_flags: Vec<bool> = ordered_tool_calls
+            .iter()
+            .map(|tc| self.is_parallel_eligible_tool_call(tc))
+            .collect();
+        let segments = plan_parallel_segments(&parallel_flags);
         log::debug!(
-            "[ChatV2::pipeline] Executing {} tool calls sequentially",
-            ordered_tool_calls.len()
+            "[ChatV2::pipeline] Executing {} tool calls in {} segment(s), {} parallel-eligible",
+            ordered_tool_calls.len(),
+            segments.len(),
+            parallel_flags.iter().filter(|f| **f).count()
         );
 
         // 🔧 2026-02-16: 追踪本批次 _create 工具返回的 file_id，用于修正依赖工具中
@@ -1519,9 +1885,76 @@ impl ChatV2Pipeline {
         let mut created_file_ids: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
 
-        // 顺序执行工具调用，避免非幂等工具并发导致的数据竞态
-        let mut tool_results = Vec::new();
-        for tc in ordered_tool_calls.iter() {
+        let mut tool_results: Vec<ToolResultInfo> = Vec::with_capacity(ordered_tool_calls.len());
+        for (is_parallel, range) in segments {
+            if is_parallel {
+                // ============================================================
+                // 并行段：有界并发执行（ReadOnly/SafeParallel 工具）
+                // - `buffered(N)` 同时最多驱动 N 个 future，且按输入顺序产出，
+                //   因此结果天然按原始 tool_call 顺序回填历史；
+                // - 每个工具的块 id 独立，start/end 事件乱序到达是可接受的；
+                // - 并行段内不含 _create 类工具（其为 Serial），只需用之前串行段
+                //   已捕获的 created_file_ids 做只读修正；
+                // - CancellationToken 照常传播到每个工具执行。
+                // ============================================================
+                use futures::stream::StreamExt;
+
+                let batch = &ordered_tool_calls[range.clone()];
+                if batch.len() > 1 {
+                    let names: Vec<&str> = batch.iter().map(|c| c.name.as_str()).collect();
+                    log::info!(
+                        "[ChatV2::pipeline] ⚡ Executing {} parallel-safe tools concurrently (limit={}): {:?}",
+                        batch.len(),
+                        PARALLEL_TOOL_CONCURRENCY,
+                        names
+                    );
+                }
+
+                let futs = batch.iter().cloned().map(|tc| {
+                    let fixed_tc = self.fixup_document_tool_resource_id(&tc, &created_file_ids);
+                    let tool_to_execute = fixed_tc.unwrap_or(tc);
+                    // 仅 ReadOnly 工具允许瞬时失败自动重试；SafeParallel 不重试
+                    let allow_retry = self.executor_registry.get_concurrency_class(&tool_to_execute.name)
+                        == crate::chat_v2::tools::executor::ToolConcurrency::ReadOnly;
+                    async move {
+                        self.execute_single_tool_with_transient_retry(
+                            &tool_to_execute,
+                            allow_retry,
+                            emitter,
+                            session_id,
+                            message_id,
+                            variant_id,
+                            skill_state_version,
+                            round_id,
+                            canvas_note_id,
+                            skill_contents,
+                            skill_embedded_tools,
+                            skill_package_roots,
+                            _active_skill_ids,
+                            skill_allowed_tools,
+                            cancellation_token,
+                            rag_top_k,
+                            rag_enable_reranking,
+                            memory_enabled,
+                            rag_enabled,
+                            web_search_enabled,
+                        )
+                        .await
+                    }
+                });
+                let mut batch_results: Vec<ToolResultInfo> = futures::stream::iter(futs)
+                    .buffered(PARALLEL_TOOL_CONCURRENCY)
+                    .collect()
+                    .await;
+                tool_results.append(&mut batch_results);
+                continue;
+            }
+
+            // ============================================================
+            // 串行段：顺序执行（Serial 工具、需审批工具、截断标记调用）
+            // 保留截断检测、file_id 修正与 _create 捕获逻辑
+            // ============================================================
+            for tc in ordered_tool_calls[range.clone()].iter() {
             // 检测截断标记：LLM 输出被 max_tokens 截断导致工具调用 JSON 不完整
             // 此时不执行工具，直接返回错误 tool_result 让 LLM 缩小输出重试
             if tc
@@ -1612,9 +2045,11 @@ impl ChatV2Pipeline {
             let tc_to_execute = self.fixup_document_tool_resource_id(tc, &created_file_ids);
             let tc_ref = tc_to_execute.as_ref().unwrap_or(tc);
 
-            match self
-                .execute_single_tool(
+            // 串行段绝不自动重试（写类工具重复执行有副作用；需审批工具重试会绕过审批语义）
+            let info = self
+                .execute_single_tool_with_transient_retry(
                     tc_ref,
+                    false,
                     emitter,
                     session_id,
                     message_id,
@@ -1624,7 +2059,130 @@ impl ChatV2Pipeline {
                     canvas_note_id,
                     skill_contents,
                     skill_embedded_tools,
+                    skill_package_roots,
                     _active_skill_ids,
+                    skill_allowed_tools,
+                    cancellation_token,
+                    rag_top_k,
+                    rag_enable_reranking,
+                    memory_enabled,
+                    rag_enabled,
+                    web_search_enabled,
+                )
+                .await;
+
+            // 🔧 捕获 _create 工具返回的 file_id，供后续依赖工具使用
+            if info.success {
+                self.capture_created_file_id(&tc_ref.name, &info.output, &mut created_file_ids);
+            }
+            tool_results.push(info);
+            }
+        }
+
+        Ok(tool_results)
+    }
+
+    /// 🆕 2026-07: 判断单个工具调用是否可进入并行段
+    ///
+    /// 全部满足才可并行：
+    /// 1. 未带 `_truncation_error` 标记（截断调用走串行路径的专门处理逻辑）；
+    /// 2. executor 声明的并发等级为 ReadOnly 或 SafeParallel；
+    /// 3. 不会进入审批流程（需审批的工具一律走 Serial 路径，避免并发弹出审批卡片）。
+    fn is_parallel_eligible_tool_call(&self, tc: &ToolCall) -> bool {
+        if tc
+            .arguments
+            .get("_truncation_error")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return false;
+        }
+
+        let class = self.executor_registry.get_concurrency_class(&tc.name);
+        if class == crate::chat_v2::tools::executor::ToolConcurrency::Serial {
+            return false;
+        }
+
+        !self.tool_may_require_approval(&tc.name)
+    }
+
+    /// 🆕 2026-07: 保守判断工具是否可能进入审批流程
+    ///
+    /// 与 `execute_single_tool` 内的 effective_sensitivity 逻辑对齐但方向保守：
+    /// - 注册表敏感度非 Low（或无执行器）→ 可能审批 → 串行。
+    ///   （即使全局旁路 global_bypass 打开也按串行处理，只损失并行度不损失正确性）
+    /// - 敏感度为 Low 但存在把它**升级**为 medium/high 的单工具覆盖 → 串行。
+    fn tool_may_require_approval(&self, tool_name: &str) -> bool {
+        let sensitivity = self.executor_registry.get_sensitivity(tool_name);
+        if sensitivity != Some(ToolSensitivity::Low) {
+            return true;
+        }
+        if let Some(ref db) = self.main_db {
+            let override_key = format!("tool_approval.override.{}", tool_name);
+            if let Some(v) = db.get_setting(&override_key).ok().flatten() {
+                if v == "medium" || v == "high" {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// 🆕 2026-07: 带瞬时失败自动重试的单工具执行封装
+    ///
+    /// - `allow_transient_retry=true` 仅用于 ReadOnly 工具：错误信息匹配瞬时失败
+    ///   特征（timeout/connection/429/5xx 等启发式，见 `is_transient_tool_error`）
+    ///   时自动重试，最多 2 次，指数退避 500ms → 2s。
+    /// - 写类/串行/需审批工具必须传 `false`，绝不自动重试。
+    /// - 每次尝试都走完整的 `execute_single_tool`（独立 block id + start/end/error
+    ///   事件），因此重试过程对前端可见；最终结果通过 `_auto_retry_attempts`
+    ///   字段与错误信息后缀注明重试情况。
+    /// - 退避等待期间监听 CancellationToken，取消时立即返回当前失败结果。
+    /// - `Err`（执行器内部异常）与 `Ok(success=false)` 统一归一化为失败的
+    ///   `ToolResultInfo`，与旧顺序路径行为一致。
+    async fn execute_single_tool_with_transient_retry(
+        &self,
+        tool_call: &ToolCall,
+        allow_transient_retry: bool,
+        emitter: &Arc<ChatV2EventEmitter>,
+        session_id: &str,
+        message_id: &str,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+        canvas_note_id: &Option<String>,
+        skill_contents: &Option<std::collections::HashMap<String, String>>,
+        skill_embedded_tools: &Option<
+            std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
+        >,
+        skill_package_roots: &Option<std::collections::HashMap<String, String>>,
+        active_skill_ids: &Option<Vec<String>>,
+        skill_allowed_tools: &Option<Vec<String>>,
+        cancellation_token: Option<&CancellationToken>,
+        rag_top_k: Option<u32>,
+        rag_enable_reranking: Option<bool>,
+        memory_enabled: bool,
+        rag_enabled: bool,
+        web_search_enabled: bool,
+    ) -> ToolResultInfo {
+        let mut retries_done: usize = 0;
+
+        loop {
+            let outcome = self
+                .execute_single_tool(
+                    tool_call,
+                    emitter,
+                    session_id,
+                    message_id,
+                    variant_id,
+                    skill_state_version,
+                    round_id,
+                    canvas_note_id,
+                    skill_contents,
+                    skill_embedded_tools,
+                    skill_package_roots,
+                    active_skill_ids,
+                    skill_allowed_tools,
                     cancellation_token.cloned(),
                     rag_top_k,
                     rag_enable_reranking,
@@ -1632,42 +2190,76 @@ impl ChatV2Pipeline {
                     rag_enabled,
                     web_search_enabled,
                 )
-                .await
-            {
-                Ok(info) => {
-                    // 🔧 捕获 _create 工具返回的 file_id，供后续依赖工具使用
-                    if info.success {
-                        self.capture_created_file_id(
-                            &tc_ref.name,
-                            &info.output,
-                            &mut created_file_ids,
-                        );
-                    }
-                    tool_results.push(info);
-                }
+                .await;
+
+            // 归一化：Err（执行器内部异常）→ 失败 ToolResultInfo
+            let info = match outcome {
+                Ok(info) => info,
                 Err(e) => {
                     log::error!(
                         "[ChatV2::pipeline] Unexpected tool call error for {}: {}",
-                        tc.name,
+                        tool_call.name,
                         e
                     );
-                    tool_results.push(ToolResultInfo {
-                        tool_call_id: Some(tc.id.clone()),
+                    ToolResultInfo {
+                        tool_call_id: Some(tool_call.id.clone()),
                         block_id: None,
-                        tool_name: tc.name.clone(),
-                        input: tc.arguments.clone(),
+                        tool_name: tool_call.name.clone(),
+                        input: tool_call.arguments.clone(),
                         output: json!(null),
                         success: false,
                         error: Some(e.to_string()),
                         duration_ms: None,
                         reasoning_content: None,
                         thought_signature: None,
-                    });
+                    }
                 }
+            };
+
+            if info.success {
+                return annotate_auto_retry(info, retries_done);
+            }
+            if !allow_transient_retry || retries_done >= TOOL_TRANSIENT_RETRY_BACKOFF_MS.len() {
+                return annotate_auto_retry(info, retries_done);
+            }
+            let error_text = info.error.clone().unwrap_or_default();
+            if !is_transient_tool_error(&error_text) {
+                return annotate_auto_retry(info, retries_done);
+            }
+            if cancellation_token
+                .map(|t| t.is_cancelled())
+                .unwrap_or(false)
+            {
+                return annotate_auto_retry(info, retries_done);
+            }
+
+            let backoff_ms = TOOL_TRANSIENT_RETRY_BACKOFF_MS[retries_done];
+            retries_done += 1;
+            log::info!(
+                "[ChatV2::pipeline] 🔁 Read-only tool {} hit transient failure, auto-retrying ({}/{}) after {}ms: {}",
+                tool_call.name,
+                retries_done,
+                TOOL_TRANSIENT_RETRY_BACKOFF_MS.len(),
+                backoff_ms,
+                error_text
+            );
+
+            // 退避等待（可被取消打断；取消时返回当前失败结果，不再重试）
+            if let Some(token) = cancellation_token {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(backoff_ms)) => {}
+                    _ = token.cancelled() => {
+                        log::info!(
+                            "[ChatV2::pipeline] Auto-retry aborted by cancellation: {}",
+                            tool_call.name
+                        );
+                        return annotate_auto_retry(info, retries_done - 1);
+                    }
+                }
+            } else {
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
             }
         }
-
-        Ok(tool_results)
     }
 
     /// 🔧 2026-02-16: 修正依赖工具的 resource_id
@@ -1831,7 +2423,9 @@ impl ChatV2Pipeline {
         skill_embedded_tools: &Option<
             std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
         >,
+        skill_package_roots: &Option<std::collections::HashMap<String, String>>,
         _active_skill_ids: &Option<Vec<String>>,
+        skill_allowed_tools: &Option<Vec<String>>,
         cancellation_token: Option<CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1886,6 +2480,27 @@ impl ChatV2Pipeline {
 
         // Feature flag checks (memory, RAG, web search)
         let short_name = Self::canonical_tool_short_name(&tool_call.name);
+
+        if !crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy(
+            &tool_call.name,
+            &tool_call.arguments,
+            skill_allowed_tools,
+        ) {
+            let allowed_count = skill_allowed_tools
+                .as_ref()
+                .map(|tools| tools.len())
+                .unwrap_or(0);
+            log::warn!(
+                "[ChatV2::pipeline] Tool blocked by active Skill allowlist: tool={}, allowed_count={}",
+                tool_call.name,
+                allowed_count
+            );
+            return Ok(build_preflight_blocked_result(format!(
+                "当前 Skill 未允许调用工具 '{}'，工具调用已被后端拦截",
+                tool_call.name
+            )));
+        }
+
         let is_memory_tool = short_name.starts_with("memory_");
         let is_rag_tool = short_name.starts_with("rag_");
         let is_web_search_tool = short_name == "web_search";
@@ -1913,6 +2528,8 @@ impl ChatV2Pipeline {
         // 1. 全局开关 tool_approval.global_bypass = "true" → 所有工具跳过审批
         // 2. 单工具覆盖 tool_approval.override.{tool_name} = "low" → 此工具跳过审批
         let effective_sensitivity = if let Some(ref db) = self.main_db {
+            let ignores_broad_bypass =
+                crate::chat_v2::approval_scope::ignores_broad_approval_bypass(&tool_call.name);
             // 检查全局旁路开关
             let global_bypass = db
                 .get_setting("tool_approval.global_bypass")
@@ -1921,14 +2538,21 @@ impl ChatV2Pipeline {
                 .map(|v| v == "true")
                 .unwrap_or(false);
 
-            if global_bypass {
+            if global_bypass && !ignores_broad_bypass {
                 Some(ToolSensitivity::Low)
             } else {
                 // 检查单工具覆盖
                 let override_key = format!("tool_approval.override.{}", tool_call.name);
                 if let Some(override_val) = db.get_setting(&override_key).ok().flatten() {
                     match override_val.as_str() {
-                        "low" => Some(ToolSensitivity::Low),
+                        "low" if !ignores_broad_bypass => Some(ToolSensitivity::Low),
+                        "low" => {
+                            log::warn!(
+                                "[ChatV2::pipeline] Ignoring broad low-sensitivity override for precise-approval runtime tool {}",
+                                tool_call.name
+                            );
+                            sensitivity
+                        }
                         "medium" => Some(ToolSensitivity::Medium),
                         "high" => Some(ToolSensitivity::High),
                         _ => sensitivity,
@@ -1952,7 +2576,13 @@ impl ChatV2Pipeline {
                 // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
                 // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
                 // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
-                let persisted_approval: Option<bool> = self.main_db.as_ref().and_then(|db| {
+                // ADR-B2：权限类工具跳过一切 remember 路径（不可绕过人工审批）。
+                let skip_remember =
+                    crate::chat_v2::approval_scope::never_remember_approval(&tool_call.name);
+                let persisted_approval: Option<bool> = if skip_remember {
+                    None
+                } else {
+                    self.main_db.as_ref().and_then(|db| {
                     use crate::chat_v2::approval_scope;
 
                     // v2 查询（若为已知工具）
@@ -1967,16 +2597,25 @@ impl ChatV2Pipeline {
                     let v1_key =
                         approval_scope::make_setting_key_v1(&tool_call.name, &tool_call.arguments);
                     db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
-                });
+                })
+                };
 
                 // 使用持久化设置、会话级记住（🆕 三档分级中间档）或内存缓存
-                let remembered = persisted_approval
+                let remembered = if skip_remember {
+                    None
+                } else {
+                    persisted_approval
                     .or_else(|| {
-                        approval_manager.check_session_remembered(session_id, &tool_call.name)
+                        approval_manager.check_session_remembered(
+                            session_id,
+                            &tool_call.name,
+                            &tool_call.arguments,
+                        )
                     })
                     .or_else(|| {
                         approval_manager.check_remembered(&tool_call.name, &tool_call.arguments)
-                    });
+                    })
+                };
 
                 if let Some(is_allowed) = remembered {
                     log::info!(
@@ -2012,10 +2651,15 @@ impl ChatV2Pipeline {
                         ApprovalOutcome::Approved => {
                             // 用户同意，继续执行
                         }
-                        ApprovalOutcome::Rejected => {
-                            return Ok(build_preflight_blocked_result(
-                                "用户拒绝执行此工具".to_string(),
-                            ));
+                        ApprovalOutcome::Rejected { reason } => {
+                            let message = match reason {
+                                Some(user_reason) => format!(
+                                    "用户拒绝执行此工具。用户说明：{}",
+                                    user_reason
+                                ),
+                                None => "用户拒绝执行此工具".to_string(),
+                            };
+                            return Ok(build_preflight_blocked_result(message));
                         }
                         ApprovalOutcome::Timeout => {
                             return Ok(build_preflight_blocked_result(
@@ -2047,6 +2691,8 @@ impl ChatV2Pipeline {
             self.tool_registry.clone(),
             window,
         )
+        // ACR R2-01：runId = toolCallId，贯穿桥/presence/账本
+        .with_tool_call_id(tool_call.id.clone())
         .with_canvas(canvas_note_id.clone(), self.notes_manager.clone())
         .with_main_db(self.main_db.clone())
         .with_anki_db(self.anki_db.clone())
@@ -2058,6 +2704,8 @@ impl ChatV2Pipeline {
         .with_rag_config(rag_top_k, rag_enable_reranking)
         .with_variant_id(variant_id.map(|s| s.to_string()))
         .with_event_meta(skill_state_version, round_id.map(|s| s.to_string()))
+        .with_skill_allowed_tools(skill_allowed_tools.clone())
+        .with_skill_package_roots(skill_package_roots.clone())
         .with_feature_flags(memory_enabled, rag_enabled, web_search_enabled);
 
         ctx.emitter.register_block_event_meta(
@@ -2113,6 +2761,8 @@ impl ChatV2Pipeline {
     fn canonical_tool_short_name(tool_name: &str) -> &str {
         tool_name
             .strip_prefix(super::super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .or_else(|| tool_name.strip_prefix("builtin:"))
+            .or_else(|| tool_name.strip_prefix("mcp.tools."))
             .or_else(|| tool_name.strip_prefix("mcp_"))
             .unwrap_or(tool_name)
     }
@@ -2135,6 +2785,11 @@ impl ChatV2Pipeline {
     ) -> ApprovalOutcome {
         let timeout_seconds = approval_manager.default_timeout();
         let approval_block_id = format!("approval_{}", tool_call.id);
+        let sensitivity_label = match sensitivity {
+            ToolSensitivity::Low => "low",
+            ToolSensitivity::Medium => "medium",
+            ToolSensitivity::High => "high",
+        };
 
         // 构建审批请求
         let request = ApprovalRequest {
@@ -2142,16 +2797,17 @@ impl ChatV2Pipeline {
             tool_call_id: tool_call.id.clone(),
             tool_name: tool_call.name.clone(),
             arguments: tool_call.arguments.clone(),
-            sensitivity: match sensitivity {
-                ToolSensitivity::Low => "low".to_string(),
-                ToolSensitivity::Medium => "medium".to_string(),
-                ToolSensitivity::High => "high".to_string(),
-            },
+            sensitivity: sensitivity_label.to_string(),
             description: ApprovalManager::generate_description(
                 &tool_call.name,
                 &tool_call.arguments,
             ),
             timeout_seconds,
+            runtime_scope: crate::chat_v2::approval_scope::make_runtime_approval_scope(
+                &tool_call.name,
+                &tool_call.arguments,
+                sensitivity_label,
+            ),
         };
 
         // 注册等待
@@ -2231,7 +2887,12 @@ impl ChatV2Pipeline {
                 if response.approved {
                     ApprovalOutcome::Approved
                 } else {
-                    ApprovalOutcome::Rejected
+                    // 'user_rejected' / 'timeout' 是前端哨兵值，不算用户填写的理由
+                    let reason = response.reason.filter(|r| {
+                        let trimmed = r.trim();
+                        !trimmed.is_empty() && trimmed != "user_rejected" && trimmed != "timeout"
+                    });
+                    ApprovalOutcome::Rejected { reason }
                 }
             }
             Ok(Err(_)) => {
@@ -2263,4 +2924,173 @@ impl ChatV2Pipeline {
             }
         }
     }
+}
+
+// ============================================================================
+// 🆕 2026-07 并行工具调用：分段计划 / 瞬时错误判定 / 重试标注（纯函数，可单测）
+// ============================================================================
+
+/// 并行段内的最大并发度（有界并发，避免同时打爆下游 API / 本地 IO）
+pub(crate) const PARALLEL_TOOL_CONCURRENCY: usize = 4;
+
+/// ReadOnly 工具瞬时失败自动重试的退避序列（最多重试 2 次：500ms → 2s）
+pub(crate) const TOOL_TRANSIENT_RETRY_BACKOFF_MS: [u64; 2] = [500, 2000];
+
+/// 把按依赖感知排序后的调用列表切成连续分段
+///
+/// 输入：每个调用是否可并行（与调用列表等长、同序）。
+/// 输出：`(is_parallel, index_range)` 列表，range 相互衔接、按原顺序覆盖全部下标。
+/// 连续的可并行调用合并为一个并行段；其余每段为一个串行段（串行段同样合并连续项，
+/// 段内仍逐个顺序执行）。
+pub(crate) fn plan_parallel_segments(
+    parallel_flags: &[bool],
+) -> Vec<(bool, std::ops::Range<usize>)> {
+    let mut segments: Vec<(bool, std::ops::Range<usize>)> = Vec::new();
+    let mut start = 0usize;
+    for i in 1..=parallel_flags.len() {
+        if i == parallel_flags.len() || parallel_flags[i] != parallel_flags[start] {
+            segments.push((parallel_flags[start], start..i));
+            start = i;
+        }
+    }
+    segments
+}
+
+/// 启发式判定工具错误是否为「瞬时失败」（可安全重试只读工具）
+///
+/// 匹配 timeout / 连接类 / 429 限流 / 5xx 网关类关键字；
+/// 显式排除取消（cancel）——用户取消绝不重试。
+/// 仅用于 ReadOnly 工具，写类工具的调用方绝不进入此判定。
+pub(crate) fn is_transient_tool_error(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    // 取消 / ACR 闸门与冲突 / partial 回执：绝不自动重试（避免双写）
+    if lower.contains("cancel")
+        || lower.contains("partial")
+        || lower.contains("workbench_disabled")
+        || lower.contains("workbench_unavailable")
+        || lower.contains("window_busy")
+        || lower.contains("strict_mode")
+        || lower.contains("todo_conflict")
+        || lower.contains("qbank_conflict")
+        || lower.contains("\"retryable\":false")
+        || lower.contains("\"retryable\": false")
+    {
+        return false;
+    }
+
+    const TRANSIENT_PATTERNS: &[&str] = &[
+        // 超时类
+        "timeout",
+        "timed out",
+        // 连接/网络类
+        "connection",
+        "connect error",
+        "network",
+        "reset by peer",
+        "broken pipe",
+        "dns error",
+        "temporarily unavailable",
+        // 限流
+        "429",
+        "too many requests",
+        "rate limit",
+        // 5xx 网关/服务端瞬时错误
+        "500 internal",
+        "internal server error",
+        "502",
+        "bad gateway",
+        "503",
+        "service unavailable",
+        "504",
+        "gateway timeout",
+    ];
+    TRANSIENT_PATTERNS.iter().any(|p| lower.contains(p))
+}
+
+/// 在工具结果中注明自动重试情况
+///
+/// - 发生过重试且输出为 JSON 对象时插入 `_auto_retry_attempts` 字段
+///   （重试后成功/失败均注明，回喂 LLM 与前端均可见）；
+/// - 重试后仍失败时在错误信息末尾追加重试说明。
+pub(crate) fn annotate_auto_retry(mut info: ToolResultInfo, retries: usize) -> ToolResultInfo {
+    if retries == 0 {
+        return info;
+    }
+    if let Some(obj) = info.output.as_object_mut() {
+        obj.insert("_auto_retry_attempts".to_string(), json!(retries));
+    }
+    if !info.success {
+        let base = info.error.take().unwrap_or_default();
+        info.error = Some(format!(
+            "{} (瞬时失败已自动重试 {} 次，仍未成功)",
+            base, retries
+        ));
+    }
+    info
+}
+
+/// 🆕 2026-07: 有界并发、按输入顺序回填结果的执行辅助
+///
+/// `buffered(limit)` 同时最多驱动 `limit` 个 future，并按输入顺序产出结果。
+/// 独立成函数以便单元测试覆盖「顺序回填」语义（execute_tool_calls 的并行段
+/// 使用相同的 `futures::stream::iter(..).buffered(..)` 组合子）。
+#[allow(dead_code)]
+pub(crate) async fn run_bounded_ordered<F, T>(futures_in_order: Vec<F>, limit: usize) -> Vec<T>
+where
+    F: std::future::Future<Output = T>,
+{
+    use futures::stream::StreamExt;
+    futures::stream::iter(futures_in_order)
+        .buffered(limit.max(1))
+        .collect()
+        .await
+}
+
+// ============================================================================
+// 🆕 2026-07 Doom loop 检测辅助（纯函数，可单测）
+// ============================================================================
+
+/// 心跳白名单工具豁免 doom loop 拦截（重复同参轮询是其合法行为）
+///
+/// 与 execute_with_tools 内的 HEARTBEAT_TOOLS 白名单保持一致。
+pub(crate) fn is_doom_loop_exempt_tool(tool_name: &str) -> bool {
+    matches!(tool_name, "coordinator_sleep" | "builtin-coordinator_sleep")
+}
+
+/// 把「已执行结果 + doom loop 合成失败结果」按原始 tool_calls 顺序归并
+///
+/// 归并规则：
+/// - 按原始 tool_calls 顺序逐个用 tool_call_id 匹配结果（重复 id 按先到先得）；
+/// - 保证每个 tool_call 都有对应结果回喂（协议完整性）且顺序确定
+///   （参考 内部审查报告「确定性状态管理防缓存 miss」教训）；
+/// - 防御：任何未匹配上的结果（不应发生）按执行顺序补到末尾，避免结果丢失。
+pub(crate) fn merge_round_results_in_call_order(
+    original_calls: &[ToolCall],
+    executed: Vec<ToolResultInfo>,
+    synthetic: Vec<ToolResultInfo>,
+) -> Vec<ToolResultInfo> {
+    let mut pool: Vec<Option<ToolResultInfo>> = executed
+        .into_iter()
+        .chain(synthetic.into_iter())
+        .map(Some)
+        .collect();
+    let mut merged: Vec<ToolResultInfo> = Vec::with_capacity(pool.len());
+
+    for tc in original_calls {
+        if let Some(slot) = pool.iter_mut().find(|slot| {
+            slot.as_ref()
+                .map(|info| info.tool_call_id.as_deref() == Some(tc.id.as_str()))
+                .unwrap_or(false)
+        }) {
+            if let Some(info) = slot.take() {
+                merged.push(info);
+            }
+        }
+    }
+
+    for slot in pool.into_iter().flatten() {
+        merged.push(slot);
+    }
+
+    merged
 }
