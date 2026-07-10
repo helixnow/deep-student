@@ -4,6 +4,7 @@ import { ResultPanel } from './ResultPanel';
 import { SettingsDrawer } from './SettingsDrawer';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
@@ -232,6 +233,15 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     setDragOffset(0);
   }, [dragOffset, showPromptEditor, settingsPanelWidth, setShowPromptEditor]);
 
+  // 移动端：设置面板打开时注册 Android 返回键处理（返回 = 关闭面板）
+  useEffect(() => {
+    if (!isSmallScreen || !showPromptEditor) return;
+    return registerBackHandler(() => {
+      setShowPromptEditor(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, showPromptEditor, setShowPromptEditor]);
+
   // 绑定触摸事件
   useEffect(() => {
     const container = containerRef.current;
@@ -271,6 +281,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
         ref={containerRef}
         className="relative h-full overflow-hidden bg-background select-none"
         style={{ touchAction: 'pan-y pinch-zoom' }}
+        // 自带横向滑动手势（滑出设置面板），豁免三屏布局手势避免冲突
+        data-no-screen-swipe
       >
         {/* 滑动内容容器：主界面(100%) + 设置面板(settingsPanelWidth) */}
         <div
@@ -278,7 +290,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
           style={{
             width: `calc(100% + ${settingsPanelWidth}px)`,
             transform: `translateX(${translateX}px)`,
-            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: isDragging ? 'none' : 'transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1))',
           }}
         >
           {/* 主界面：批改内容 */}
@@ -322,6 +334,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                   textStats={inputTextStats}
                   currentRound={currentRound}
                   roundNavigation={roundNavigation}
+                  onOpenSettings={() => setShowPromptEditor(true)}
                   uploadedImages={uploadedImages}
                   onRemoveImage={onRemoveImage}
                   topicText={topicText}

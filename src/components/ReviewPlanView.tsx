@@ -48,6 +48,15 @@ import { useQuestionBankStore, type Question } from '../stores/questionBankStore
 // 类型定义
 // ============================================================================
 
+// ★ P1 修复：改用本地日期。之前 toISOString()（UTC）在 UTC+8 本地 00:00-08:00
+// 会得到前一天，导致"今日到期/已逾期"判断整天级错位。
+const formatLocalDate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 interface ReviewPlanViewProps {
   examId?: string;
   className?: string;
@@ -253,7 +262,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
   }, [examId, loadDueReviews, refreshStats]);
 
   // 计算统计数据
-  const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const today = useMemo(() => formatLocalDate(new Date()), []);
 
   const overdueCount = useMemo(
     () => dueReviews.filter((p) => p.next_review_date < today).length,

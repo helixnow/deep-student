@@ -16,7 +16,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { WarningCircle, FileText, CircleNotch, ArrowClockwise, LinkSimple } from '@phosphor-icons/react';
+import { WarningCircle, FileText, CircleNotch, ArrowClockwise, LinkSimple, ArrowSquareOut } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TextbookPdfViewer, type ReadingProgress, type Bookmark } from '@/features/pdf/components/TextbookPdfViewer';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -29,7 +29,6 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { vfsFileApi } from '@/api/vfsFileApi';
 import { usePdfLoader } from '@/hooks/usePdfLoader';
 import {
-  decodeBase64ToText,
   estimateBase64Size,
   LARGE_FILE_THRESHOLD,
   uint8ArrayToBase64,
@@ -39,6 +38,7 @@ import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { resolveTextbookPreviewType } from './textbookPreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
 import { TextFilePreview } from './TextFilePreview';
+import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
 
 const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
@@ -46,6 +46,16 @@ const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
     return type;
   }
   return 'other' as const;
+};
+
+// ★ 模块级定义，保持组件身份跨渲染稳定（避免作为 Suspense fallback 时被反复重挂载）
+const LoadingSpinner: React.FC = () => {
+  const { t } = useTranslation('common');
+  return (
+    <div className="flex items-center justify-center h-full" role="status" aria-label={t('loading', '加载中...')}>
+      <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+    </div>
+  );
 };
 
 /**
@@ -86,7 +96,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     nodeMetadataRef.current = node.metadata;
   }, [node.path, node.id, node.metadata]);
   
-  // 非 PDF 文件的内容状态
+  // 非 PDF 文件的内容状态（富文档为 base64；text 模式为已解码/提取后的文本）
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [contentError, setContentError] = useState<string | null>(null);
@@ -96,6 +106,12 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
   // ★ PDF 初始态 spinner 超时检测（防止无限旋转）
   const [pdfInitTimedOut, setPdfInitTimedOut] = useState(false);
+
+  // ★ 非 PDF 内容加载超时检测（同 PDF 初始态：避免 invoke 挂起时用户被困在 spinner）
+  const [contentLoadTimedOut, setContentLoadTimedOut] = useState(false);
+
+  // 从 node.metadata 提取书签列表（声明提前到渲染期重置块之前）
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
 
   // 处理页面选择变化 + 广播给 Chat InputBar
   const handlePageSelectionChange = useCallback((pages: Set<number>) => {
@@ -153,6 +169,26 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   // ★ 2026-06-12（审阅 UI/UX）：文件失联后的"重新关联"支持
   const [relinkTick, setRelinkTick] = useState(0);
   const [isRelinking, setIsRelinking] = useState(false);
+  // ★ 不支持预览的文件用系统默认应用打开（避免死胡同）
+  const [isOpeningExternal, setIsOpeningExternal] = useState(false);
+
+  // ★ 同一挂载实例可能收到不同的 node（UnifiedAppPanel 未按 node.id 加 key）。
+  // 渲染期重置派生状态，避免旧节点的内容/错误/选页/路径探测结果泄漏到新节点
+  // （例如旧 docx 的 contentError 会让新打开的 PDF 直接显示错误态）。
+  const [prevNodeId, setPrevNodeId] = useState(node.id);
+  if (prevNodeId !== node.id) {
+    setPrevNodeId(node.id);
+    setSelectedPages(new Set());
+    setFileContent(null);
+    setContentError(null);
+    setContentLoading(false);
+    setPdfInitTimedOut(false);
+    setContentLoadTimedOut(false);
+    setFilePathStat(filePath ? { available: true, path: filePath } : { available: false });
+    // ★ 书签也在渲染期同步重置，避免新节点首帧短暂显示旧节点书签
+    const nextBookmarks = node.metadata?.bookmarks as Bookmark[] | undefined;
+    setBookmarks(Array.isArray(nextBookmarks) ? nextBookmarks : []);
+  }
   
   // 根据 previewType 确定渲染模式（优先使用数据库值，若为 none 则根据扩展名推断）
   const resolvedPreviewType = resolveTextbookPreviewType(node.previewType, node.name);
@@ -284,6 +320,61 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     
     const loadContent = async () => {
       try {
+        // ★ text 模式：走后端 DocumentParser 提取（epub/xls/ods/rtf/html）或 UTF-8 解码，
+        // 避免对二进制格式直接 decodeBase64ToText 产生乱码。
+        if (isText) {
+          let rawBase64: string | null = null;
+
+          if (effectiveFilePath) {
+            try {
+              const fileSize = effectiveFileSize ?? await invoke<number>('get_file_size', { path: effectiveFilePath });
+              if (!isMounted) return;
+              if (fileSize > LARGE_FILE_THRESHOLD) {
+                setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+                setContentLoading(false);
+                return;
+              }
+              const buffer = await invoke<ArrayBuffer>('read_file_bytes', { path: effectiveFilePath });
+              if (!isMounted) return;
+              rawBase64 = uint8ArrayToBase64(new Uint8Array(buffer));
+            } catch (err: unknown) {
+              console.warn('[TextbookContentView] Failed to read filePath for text preview, fallback to VFS:', err);
+            }
+          }
+
+          if (!rawBase64) {
+            const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
+              attachmentId: node.id,
+            });
+            if (!isMounted) return;
+            if (result?.found && result?.content) {
+              const estimatedSize = estimateBase64Size(result.content);
+              if (estimatedSize > LARGE_FILE_THRESHOLD) {
+                setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+                setContentLoading(false);
+                return;
+              }
+              rawBase64 = result.content;
+            }
+          }
+
+          const text = await loadTextPreviewContent({
+            nodeId: node.id,
+            fileName: node.name,
+            rawBase64,
+          });
+
+          if (!isMounted) return;
+          if (text) {
+            setFileContent(text);
+            setContentLoading(false);
+          } else {
+            setContentError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
+            setContentLoading(false);
+          }
+          return;
+        }
+
         let base64Content: string | null = null;
         const knownSize = typeof node.size === 'number' ? node.size : null;
         if (knownSize && knownSize > LARGE_FILE_THRESHOLD) {
@@ -292,6 +383,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           return;
         }
 
+        // ★ 用标记区分"内容过大"与"内容不存在"，避免外层用"未找到文件内容"覆盖"文件过大"错误
+        let vfsContentTooLarge = false;
         const loadFromVfs = async () => {
           const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
             attachmentId: node.id,
@@ -301,8 +394,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           if (result?.found && result?.content) {
             const estimatedSize = estimateBase64Size(result.content);
             if (estimatedSize > LARGE_FILE_THRESHOLD) {
-              setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
-              setContentLoading(false);
+              vfsContentTooLarge = true;
               return null;
             }
             return result.content;
@@ -334,11 +426,14 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           base64Content = await loadFromVfs();
         }
         
+        if (!isMounted) return;
         if (base64Content) {
           setFileContent(base64Content);
           setContentLoading(false);
         } else {
-          setContentError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
+          setContentError(vfsContentTooLarge
+            ? t('learningHub:file.previewTooLarge', '文件过大，无法预览')
+            : t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
           setContentLoading(false);
         }
       } catch (err: unknown) {
@@ -356,7 +451,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       isMounted = false;
     };
 
-  }, [needsFileContent, effectiveFilePath, effectiveFileSize, node.id, node.size, t, contentRetryCount]);
+  }, [needsFileContent, isText, effectiveFilePath, effectiveFileSize, node.id, node.name, node.size, t, contentRetryCount]);
   
   // 从 node.metadata 提取阅读进度
   const readingProgress = useMemo<ReadingProgress | undefined>(() => {
@@ -369,9 +464,6 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     }
     return undefined;
   }, [node.metadata?.readingProgress]);
-  
-  // 从 node.metadata 提取书签列表
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   
   // 书签保存的防抖引用
   const saveBookmarksTimerRef = useRef<number | null>(null);
@@ -455,7 +547,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     }, 1000); // 1秒防抖
   }, [t]);
   
-  // ★ 清理定时器并 flush 未保存的数据（防止卸载丢失）
+  // ★ 清理定时器并 flush 未保存的数据（防止卸载丢失）。
+  // 依赖 [node.id]：同一挂载实例切换 node 时也要先 flush 旧节点，
+  // 否则挂起的防抖定时器会在 refs 已指向新节点后触发，把旧文档的进度/书签写到新文档上。
+  // cleanup 阶段各 ref 仍持有旧节点的值（ref 同步发生在所有 cleanup 之后的 setup 阶段）。
   React.useEffect(() => {
     return () => {
       // 清除定时器
@@ -497,12 +592,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         });
       }
     };
-  }, []);
+  }, [node.id]);
 
   // ★ 非 PDF 文件重试加载
   const retryContentLoad = useCallback(() => {
     setFileContent(null);
     setContentError(null);
+    setContentLoadTimedOut(false);
     setContentRetryCount((c) => c + 1);
   }, []);
 
@@ -530,6 +626,19 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     }
   }, [node.id, node.name, t]);
 
+  // ★ 用系统默认应用打开原文件（不支持预览类型的逃生出口）
+  const handleOpenExternal = useCallback(async (path: string) => {
+    setIsOpeningExternal(true);
+    try {
+      const { openPath } = await import('@tauri-apps/plugin-opener');
+      await openPath(path);
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err));
+    } finally {
+      setIsOpeningExternal(false);
+    }
+  }, []);
+
   // 失联场景下的"重新关联"按钮（PDF/非 PDF 错误态共用）
   const relinkButton = (
     <NotionButton
@@ -541,8 +650,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       }}
     >
       {isRelinking
-        ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-        : <LinkSimple className="h-3.5 w-3.5 mr-1.5" />}
+        ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
+        : <LinkSimple className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />}
       {t('textbook:relink.action', '重新关联文件')}
     </NotionButton>
   );
@@ -559,6 +668,47 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return () => window.clearTimeout(timer);
   }, [isPdf, effectiveFilePath, pdfFile, pdfLoading, pdfError]);
 
+  // ★ 非 PDF 内容加载超时检测（读文件 / VFS invoke 挂起时给用户重试出口）
+  useEffect(() => {
+    if (!needsFileContent || fileContent || contentError || !contentLoading) {
+      setContentLoadTimedOut(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setContentLoadTimedOut(true);
+    }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [needsFileContent, fileContent, contentError, contentLoading, contentRetryCount]);
+
+  // 非 PDF 内容首次加载视图（超时后显示提示 + 重试/重新关联按钮，与 PDF 初始态一致）
+  const contentLoadingView = (
+    <div
+      className="flex flex-col items-center justify-center h-full gap-4"
+      role="status"
+      aria-label={t('common:loading', '加载中...')}
+    >
+      <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
+      {contentLoadTimedOut && (
+        <>
+          <p className="text-sm text-muted-foreground text-center">
+            {t('textbook:loading.timeout', '加载时间较长，可能遇到问题')}
+          </p>
+          <div className="flex gap-2">
+            <NotionButton
+              variant="default"
+              size="sm"
+              onClick={retryContentLoad}
+            >
+              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
+              {t('common:retry', '重试')}
+            </NotionButton>
+            {relinkButton}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   // ★ 移除 filePath 为空时的硬性错误，改为在内容加载失败时显示错误
   // 因为从 attachments 迁移的文件可能没有 filePath，但可以通过 vfs_get_attachment_content 获取内容
   
@@ -566,8 +716,12 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   if (isPdf && !effectiveFilePath && !pdfFile) {
     if (pdfLoading) {
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4">
-          <CircleNotch className="h-8 w-8 animate-spin text-primary" />
+        <div
+          className="flex flex-col items-center justify-center h-full gap-4"
+          role="status"
+          aria-label={t('common:loading', '加载中...')}
+        >
+          <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
           {isPdfLargeFile && (
             <p className="text-sm text-muted-foreground">
               {t('textbook:loading.largeFile', '正在加载大文件，请稍候...')}
@@ -578,8 +732,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     }
     if (pdfError) {
       return (
-        <div className="flex flex-col items-center justify-center h-full gap-4">
-          <WarningCircle className="w-12 h-12 text-destructive" />
+        <div className="flex flex-col items-center justify-center h-full gap-4" role="alert">
+          <WarningCircle className="w-12 h-12 text-destructive" aria-hidden="true" />
           <p className="text-destructive text-center">{pdfError}</p>
           <div className="flex gap-2">
             <NotionButton
@@ -587,7 +741,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
               size="sm"
               onClick={retryPdfLoad}
             >
-              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
+              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
               {t('common:retry', '重试')}
             </NotionButton>
             {relinkButton}
@@ -600,8 +754,12 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     }
     // 初始状态，等待加载（超时后显示提示 + 重试按钮）
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <CircleNotch className="h-8 w-8 animate-spin text-primary" />
+      <div
+        className="flex flex-col items-center justify-center h-full gap-4"
+        role="status"
+        aria-label={t('common:loading', '加载中...')}
+      >
+        <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
         {pdfInitTimedOut && (
           <>
             <p className="text-sm text-muted-foreground text-center">
@@ -613,7 +771,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={retryPdfLoad}
               >
-                <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
+                <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
                 {t('common:retry', '重试')}
               </NotionButton>
               {relinkButton}
@@ -624,18 +782,11 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     );
   }
   
-  // 加载中状态
-  const LoadingSpinner = () => (
-    <div className="flex items-center justify-center h-full">
-      <CircleNotch className="h-8 w-8 animate-spin text-primary" />
-    </div>
-  );
-  
   // 错误状态
   if (contentError) {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
-        <WarningCircle className="w-12 h-12 text-destructive" />
+      <div className="flex flex-col items-center justify-center h-full gap-4" role="alert">
+        <WarningCircle className="w-12 h-12 text-destructive" aria-hidden="true" />
         <p className="text-destructive text-center">{contentError}</p>
         <div className="flex gap-2">
           <NotionButton
@@ -643,7 +794,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             size="sm"
             onClick={retryContentLoad}
           >
-            <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
+            <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
             {t('common:retry', '重试')}
           </NotionButton>
           {relinkButton}
@@ -674,40 +825,45 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     />
   );
 
+  // ★ stale-while-revalidate：同一节点重新加载（如重新关联后刷新）时保留已渲染内容，
+  // 仅在完全没有内容时显示加载视图；节点切换时 fileContent 已在渲染期重置为 null，不会串文档。
+
   // DOCX 预览
   if (isDocx) {
-    if (contentLoading || !fileContent) {
-      return <LoadingSpinner />;
+    if (!fileContent) {
+      return contentLoadingView;
     }
     return renderRichDocumentPreview('docx', fileContent);
   }
   
   // XLSX 预览
   if (isXlsx) {
-    if (contentLoading || !fileContent) {
-      return <LoadingSpinner />;
+    if (!fileContent) {
+      return contentLoadingView;
     }
     return renderRichDocumentPreview('xlsx', fileContent);
   }
   
   // PPTX 预览
   if (isPptx) {
-    if (contentLoading || !fileContent) {
-      return <LoadingSpinner />;
+    if (!fileContent) {
+      return contentLoadingView;
     }
     return renderRichDocumentPreview('pptx', fileContent);
   }
 
   // 纯文本预览
   if (isText) {
-    if (contentLoading || !fileContent) {
-      return <LoadingSpinner />;
+    if (!fileContent) {
+      return contentLoadingView;
     }
-    const textContent = decodeBase64ToText(fileContent) ?? fileContent;
     return (
       <div className="flex flex-col h-full bg-background overflow-hidden">
-        <CustomScrollArea className="flex-1">
-          <TextFilePreview content={textContent} fileName={node.name} />
+        {/* orientation="both"：代码类（whitespace-pre）/CSV 表格（w-max）会横向溢出，
+            仅纵向滚动时溢出内容不可达（窄屏尤甚）；真实 overflow-x:auto 同时让
+            三屏手势豁免逻辑正确识别横向可滚动容器 */}
+        <CustomScrollArea className="flex-1" orientation="both">
+          <TextFilePreview content={fileContent} fileName={node.name} />
         </CustomScrollArea>
       </div>
     );
@@ -719,13 +875,28 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     const ext = node.name.split('.').pop()?.toUpperCase() || '';
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <FileText className="w-16 h-16 text-muted-foreground" />
+        <FileText className="w-16 h-16 text-muted-foreground" aria-hidden="true" />
         <div className="text-center space-y-2">
           <p className="text-lg font-medium text-foreground">{node.name}</p>
           <p className="text-muted-foreground">
             {t('learningHub:textbook.unsupportedPreview', { ext })}
           </p>
         </div>
+        {effectiveFilePath && (
+          <NotionButton
+            variant="default"
+            size="sm"
+            disabled={isOpeningExternal}
+            onClick={() => {
+              void handleOpenExternal(effectiveFilePath);
+            }}
+          >
+            {isOpeningExternal
+              ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
+              : <ArrowSquareOut className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />}
+            {t('common:openExternal', '在外部打开')}
+          </NotionButton>
+        )}
       </div>
     );
   }

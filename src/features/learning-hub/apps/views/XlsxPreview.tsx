@@ -6,7 +6,7 @@
  * 本组件保留底部 Sheet 导航栏
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ExcelJS from 'exceljs';
 import DOMPurify from 'dompurify';
@@ -16,6 +16,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   normalizeBase64,
   decodeBase64ToArrayBuffer,
+  waitForNextFrame,
 } from './previewUtils';
 
 /**
@@ -37,22 +38,83 @@ function sanitizeXlsxHtml(rawHtml: string): string {
 function cellToString(cell: ExcelJS.Cell): string {
   const v = cell.value;
   if (v == null) return '';
-  if (typeof v === 'object' && 'result' in v) {
-    // 公式单元格：取 result
-    const r = (v as ExcelJS.CellFormulaValue).result;
-    return r != null ? String(r) : '';
-  }
-  if (typeof v === 'object' && 'richText' in v) {
-    return (v as ExcelJS.CellRichTextValue).richText.map((rt) => rt.text).join('');
-  }
   if (v instanceof Date) {
     return v.toLocaleDateString();
+  }
+  if (typeof v === 'object') {
+    if ('richText' in v) {
+      return (v as ExcelJS.CellRichTextValue).richText.map((rt) => rt.text).join('');
+    }
+    if ('error' in v) {
+      return String((v as ExcelJS.CellErrorValue).error ?? '');
+    }
+    if ('result' in v) {
+      // 公式单元格：取 result（result 本身也可能是日期或错误对象）
+      const r = (v as ExcelJS.CellFormulaValue).result;
+      if (r == null) return '';
+      if (r instanceof Date) return r.toLocaleDateString();
+      if (typeof r === 'object' && 'error' in r) return String(r.error ?? '');
+      return String(r);
+    }
+    if ('hyperlink' in v) {
+      const text = (v as ExcelJS.CellHyperlinkValue).text;
+      return typeof text === 'string' ? text : String((v as ExcelJS.CellHyperlinkValue).hyperlink ?? '');
+    }
   }
   return String(v);
 }
 
 /** 渲染行数上限（超大表格截断展示，避免一次性渲染数十万 DOM 节点卡死页面） */
 const MAX_RENDER_ROWS = 1000;
+/** 渲染列数上限（异常宽表可能声明数千列，同样需要截断） */
+const MAX_RENDER_COLS = 256;
+
+/**
+ * 检查解码后的二进制是否为合法的 OOXML（ZIP）容器。
+ * OLE 复合文档头（D0 CF 11 E0）意味着文件被密码保护（加密 OOXML 的外层包装）
+ * 或是旧版二进制格式（.xls），两者都无法用当前解析器预览。
+ */
+function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'invalid' | null {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return null;
+  if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
+    return 'encrypted-or-legacy';
+  }
+  return 'invalid';
+}
+
+interface CachedWorkbook {
+  workbook: ExcelJS.Workbook;
+  /** 已转换 Sheet 的 HTML 缓存（索引 → SheetData） */
+  sheets: Map<number, SheetData>;
+}
+
+/**
+ * 模块级解析结果缓存（LRU，容量 2）：
+ * 用户在同一会话中切走再切回同一文件（组件被卸载重建）时避免整本重新解析。
+ * 以 base64 字符串为键——键与父组件持有的内容字符串共享引用，不额外复制内存。
+ */
+const workbookCache = new Map<string, CachedWorkbook>();
+const WORKBOOK_CACHE_MAX = 2;
+
+function getCachedWorkbook(key: string): CachedWorkbook | null {
+  const hit = workbookCache.get(key);
+  if (!hit) return null;
+  // LRU：命中后移到末尾
+  workbookCache.delete(key);
+  workbookCache.set(key, hit);
+  return hit;
+}
+
+function setCachedWorkbook(key: string, value: CachedWorkbook): void {
+  workbookCache.delete(key);
+  workbookCache.set(key, value);
+  while (workbookCache.size > WORKBOOK_CACHE_MAX) {
+    const oldest = workbookCache.keys().next().value;
+    if (oldest === undefined) break;
+    workbookCache.delete(oldest);
+  }
+}
 
 /** 解析 A1 格式单元格地址为 {row, col}（1-based） */
 function parseCellAddress(addr: string): { row: number; col: number } | null {
@@ -120,15 +182,18 @@ function escapeHtml(text: string): string {
 function worksheetToHtml(
   worksheet: ExcelJS.Worksheet,
   sheetName: string
-): { html: string; truncatedRows: number } {
+): { html: string; truncatedRows: number; truncatedCols: number } {
   const { masters, covered } = buildMergeMaps(worksheet);
 
   const totalRows = worksheet.actualRowCount;
   const totalCols = worksheet.actualColumnCount;
   const renderRows = Math.min(totalRows, MAX_RENDER_ROWS);
+  const renderCols = Math.min(totalCols, MAX_RENDER_COLS);
 
   const rows: string[] = [];
-  rows.push(`<table id="xlsx-sheet-${escapeHtml(sheetName)}">`);
+  // id 仅允许安全字符，避免工作表名中的空格/引号产生非法 HTML id
+  const safeSheetId = sheetName.replace(/[^\w-]/g, '_');
+  rows.push(`<table id="xlsx-sheet-${safeSheetId}">`);
 
   // 按固定网格遍历（行/列均含空白），保证合并跨度与列对齐正确
   for (let r = 1; r <= renderRows; r++) {
@@ -136,7 +201,7 @@ function worksheetToHtml(
     const tag = r === 1 ? 'th' : 'td';
     const cells: string[] = [];
 
-    for (let c = 1; c <= totalCols; c++) {
+    for (let c = 1; c <= renderCols; c++) {
       const key = `${r}:${c}`;
       if (covered.has(key)) continue;
 
@@ -153,7 +218,11 @@ function worksheetToHtml(
   }
 
   rows.push('</table>');
-  return { html: rows.join(''), truncatedRows: Math.max(0, totalRows - renderRows) };
+  return {
+    html: rows.join(''),
+    truncatedRows: Math.max(0, totalRows - renderRows),
+    truncatedCols: Math.max(0, totalCols - renderCols),
+  };
 }
 
 interface XlsxPreviewProps {
@@ -174,11 +243,16 @@ interface SheetData {
   html: string;
   /** 因超大表格被截断未渲染的行数（0 表示完整渲染） */
   truncatedRows: number;
+  /** 因超宽表格被截断未渲染的列数（0 表示完整渲染） */
+  truncatedCols: number;
 }
 
 /**
  * XLSX 表格预览组件
  * 将 Excel 文件渲染为可视化的 HTML 表格
+ *
+ * 性能：workbook 解析一次；HTML 转换按 Sheet 惰性执行并缓存，
+ * 切换 Sheet / 缩放 / 字号变化不会重新解析文件。
  */
 export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
   base64Content,
@@ -188,10 +262,12 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
   fontScale = 1,
 }) => {
   const { t } = useTranslation(['learningHub']);
-  const [sheets, setSheets] = useState<SheetData[]>([]);
+  const [cachedEntry, setCachedEntry] = useState<CachedWorkbook | null>(null);
   const [currentSheetIndex, setCurrentSheetIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const activeTabRef = useRef<HTMLButtonElement>(null);
 
   // 计算缩放后的布局宽度（用于容器宽度调整）
   const scaledContainerStyle: React.CSSProperties = {
@@ -201,6 +277,18 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
 
   useEffect(() => {
     let isMounted = true;
+
+    // 模块级缓存命中：同一文件在会话内被重新挂载（切走再切回）时跳过解析
+    const cacheHit = getCachedWorkbook(base64Content);
+    if (cacheHit) {
+      setCachedEntry(cacheHit);
+      setCurrentSheetIndex(0);
+      setError(null);
+      setIsLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
 
     const parseXlsx = async () => {
       setIsLoading(true);
@@ -216,22 +304,36 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
           return;
         }
 
+        // 先让加载指示器完成绘制，再进行重解码/解析
+        await waitForNextFrame();
+        if (!isMounted) return;
+
         // 解码 Base64 为 ArrayBuffer
         const arrayBuffer = decodeBase64ToArrayBuffer(normalizedBase64);
 
-        // 使用 ExcelJS 解析 XLSX
-        const workbook = new ExcelJS.Workbook();
-        await workbook.xlsx.load(arrayBuffer);
+        // 提前识别加密/旧版二进制/非 Office 文件，给出可操作的提示
+        const containerIssue = detectContainerIssue(arrayBuffer);
+        if (containerIssue) {
+          if (isMounted) {
+            setError(t(
+              containerIssue === 'encrypted-or-legacy'
+                ? 'learningHub:officePreview.encryptedOrLegacy'
+                : 'learningHub:officePreview.invalidFormat'
+            ));
+            setIsLoading(false);
+          }
+          return;
+        }
 
-        // 转换每个工作表为 HTML（使用 DOMPurify 消毒，防止 XSS）
-        const sheetDataList: SheetData[] = workbook.worksheets.map((worksheet) => {
-          const { html: rawHtml, truncatedRows } = worksheetToHtml(worksheet, worksheet.name);
-          const html = sanitizeXlsxHtml(rawHtml);
-          return { name: worksheet.name, html, truncatedRows };
-        });
+        // 使用 ExcelJS 解析 XLSX
+        const wb = new ExcelJS.Workbook();
+        await wb.xlsx.load(arrayBuffer);
+
+        const entry: CachedWorkbook = { workbook: wb, sheets: new Map() };
+        setCachedWorkbook(base64Content, entry);
 
         if (isMounted) {
-          setSheets(sheetDataList);
+          setCachedEntry(entry);
           setCurrentSheetIndex(0);
           setIsLoading(false);
         }
@@ -252,17 +354,82 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- t 不加入依赖：语言切换不应重新解析文件
   }, [base64Content]);
 
+  const worksheets = cachedEntry?.workbook.worksheets ?? [];
+  const sheetCount = worksheets.length;
+
+  // 惰性转换当前 Sheet（HTML 生成 + DOMPurify 消毒），结果缓存在 LRU 条目上，
+  // 同一文件重新挂载后已转换的 Sheet 也无需重做
+  const currentSheet = useMemo<SheetData | null>(() => {
+    const worksheet = worksheets[currentSheetIndex];
+    if (!worksheet || !cachedEntry) return null;
+
+    const cached = cachedEntry.sheets.get(currentSheetIndex);
+    if (cached) return cached;
+
+    const { html: rawHtml, truncatedRows, truncatedCols } = worksheetToHtml(worksheet, worksheet.name);
+    const data: SheetData = {
+      name: worksheet.name,
+      html: sanitizeXlsxHtml(rawHtml),
+      truncatedRows,
+      truncatedCols,
+    };
+    cachedEntry.sheets.set(currentSheetIndex, data);
+    return data;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- worksheets 派生自 cachedEntry
+  }, [cachedEntry, currentSheetIndex]);
+
   const handlePrevSheet = () => {
     setCurrentSheetIndex((prev) => Math.max(0, prev - 1));
   };
 
   const handleNextSheet = () => {
-    setCurrentSheetIndex((prev) => Math.min(sheets.length - 1, prev + 1));
+    setCurrentSheetIndex((prev) => Math.min(sheetCount - 1, prev + 1));
+  };
+
+  // 活动 Sheet 标签滚入可见区域（多 Sheet 溢出时）
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [currentSheetIndex]);
+
+  // 键盘支持：Ctrl+PageUp/PageDown 切换工作表（Excel 惯例）；
+  // PageUp/PageDown/Home/End 滚动表格（OverlayScrollbars 视口不在焦点链上，需手动路由）
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.metaKey || e.altKey) return;
+    if (e.ctrlKey) {
+      if (e.key === 'PageDown') {
+        handleNextSheet();
+        e.preventDefault();
+      } else if (e.key === 'PageUp') {
+        handlePrevSheet();
+        e.preventDefault();
+      }
+      return;
+    }
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const pageHeight = viewport.clientHeight * 0.9;
+    switch (e.key) {
+      case 'PageDown':
+        viewport.scrollBy({ top: pageHeight, behavior: 'smooth' });
+        break;
+      case 'PageUp':
+        viewport.scrollBy({ top: -pageHeight, behavior: 'smooth' });
+        break;
+      case 'Home':
+        viewport.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+      case 'End':
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
   };
 
   if (error) {
     return (
-      <div className={`flex items-center justify-center p-8 text-destructive ${className}`}>
+      <div className={`flex items-center justify-center p-8 text-destructive ${className}`} role="alert">
         <p>{t('learningHub:docPreview.cannotPreviewDoc')}: {error}</p>
       </div>
     );
@@ -270,40 +437,79 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
 
   if (isLoading) {
     return (
-      <div className={`flex items-center justify-center p-8 ${className}`}>
+      <div className={`flex items-center justify-center p-8 ${className}`} aria-busy="true">
         <CircleNotch size={32} className="animate-spin text-primary" />
       </div>
     );
   }
 
-  const currentSheet = sheets[currentSheetIndex];
+  if (sheetCount === 0) {
+    return (
+      <div className={`flex items-center justify-center p-8 text-muted-foreground ${className}`}>
+        <p>{t('learningHub:officePreview.noSheets')}</p>
+      </div>
+    );
+  }
 
   return (
-    <div className={`relative flex flex-col h-full ${className}`}>
-      {/* 底部工作表导航栏 - 多个 Sheet 时显示 */}
-      {sheets.length > 1 && (
-        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30 flex-shrink-0">
+    <div
+      className={`relative flex flex-col h-full ${className}`}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
+      {/* 底部工作表导航栏 - 多个 Sheet 时显示；标签条可横向滚动以容纳大量 Sheet */}
+      {sheetCount > 1 && (
+        <div className="flex items-center px-4 py-2 border-b bg-muted/30 flex-shrink-0 gap-2">
           <NotionButton
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 flex-shrink-0"
             onClick={handlePrevSheet}
             disabled={currentSheetIndex === 0}
+            title={t('learningHub:officePreview.prevSheet')}
+            aria-label={t('learningHub:officePreview.prevSheet')}
           >
             <CaretLeft size={16} />
           </NotionButton>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{currentSheet?.name}</span>
-            <span className="text-xs text-muted-foreground">
-              ({currentSheetIndex + 1} / {sheets.length})
-            </span>
+          <div
+            role="tablist"
+            aria-label={t('learningHub:officePreview.sheetTabs')}
+            className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0"
+          >
+            {worksheets.map((worksheet, index) => {
+              const isActive = index === currentSheetIndex;
+              return (
+                <NotionButton
+                  key={`${index}-${worksheet.name}`}
+                  ref={isActive ? activeTabRef : undefined}
+                  variant="ghost"
+                  size="sm"
+                  role="tab"
+                  aria-selected={isActive}
+                  title={worksheet.name}
+                  onClick={() => setCurrentSheetIndex(index)}
+                  className={
+                    isActive
+                      ? 'h-6 px-2 py-0 text-xs max-w-[10rem] truncate bg-background text-foreground font-medium border border-border shadow-sm flex-shrink-0'
+                      : 'h-6 px-2 py-0 text-xs max-w-[10rem] truncate text-muted-foreground flex-shrink-0'
+                  }
+                >
+                  {worksheet.name}
+                </NotionButton>
+              );
+            })}
           </div>
+          <span className="text-xs text-muted-foreground flex-shrink-0" aria-live="polite">
+            ({currentSheetIndex + 1} / {sheetCount})
+          </span>
           <NotionButton
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 flex-shrink-0"
             onClick={handleNextSheet}
-            disabled={currentSheetIndex === sheets.length - 1}
+            disabled={currentSheetIndex === sheetCount - 1}
+            title={t('learningHub:officePreview.nextSheet')}
+            aria-label={t('learningHub:officePreview.nextSheet')}
           >
             <CaretRight size={16} />
           </NotionButton>
@@ -311,7 +517,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
       )}
 
       {/* 表格内容 */}
-      <CustomScrollArea className="xlsx-scroll-area flex-1" orientation="both">
+      <CustomScrollArea className="xlsx-scroll-area flex-1" orientation="both" viewportRef={viewportRef}>
         {currentSheet && (
           <>
             {currentSheet.truncatedRows > 0 && (
@@ -320,6 +526,14 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
                   'learningHub:docPreview.xlsxTruncated',
                   '表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染，可下载文件查看完整内容）',
                   { shown: MAX_RENDER_ROWS, hidden: currentSheet.truncatedRows }
+                )}
+              </div>
+            )}
+            {currentSheet.truncatedCols > 0 && (
+              <div className="px-4 pt-3 text-xs text-amber-600 dark:text-amber-400">
+                {t(
+                  'learningHub:officePreview.xlsxColsTruncated',
+                  { shown: MAX_RENDER_COLS, hidden: currentSheet.truncatedCols }
                 )}
               </div>
             )}
@@ -335,8 +549,9 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
 
       <style>{`
         .xlsx-container {
-          transform: scale(var(--xlsx-zoom, 1));
-          transform-origin: top left;
+          /* 使用 zoom 而非 transform:scale——zoom 参与布局，
+             缩小后不残留空白滚动区域、放大后滚动范围完整 */
+          zoom: var(--xlsx-zoom, 1);
           width: max-content;
           min-width: 100%;
         }

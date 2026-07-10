@@ -179,8 +179,9 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
         }
 
         // 3. ★ 只存储引用，不存储内容
+        // ★ 2026-07-08：resources.ResourceType 已补 mindmap，VfsResourceType 全量可直传
         const createResult = await resourceStoreApi.createOrReuse({
-          type: sourceType as 'note' | 'textbook' | 'exam' | 'essay' | 'translation' | 'file',
+          type: sourceType,
           data: JSON.stringify(refData), // ★ 只存引用数据！
           sourceId,
           metadata: {

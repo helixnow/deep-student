@@ -10,13 +10,14 @@
  * @since 2026-01-31
  */
 
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash, PencilSimple, Check, X, ArrowClockwise, ArrowSquareOut, Gear, FolderOpen } from '@phosphor-icons/react';
+import { Plus, Trash, PencilSimple, Check, X, ArrowSquareOut, Gear, FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   NoteIcon,
   TextbookIcon,
@@ -155,8 +156,8 @@ function DesktopContextMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState(state.position);
 
-  // 边界检测
-  useEffect(() => {
+  // 边界检测（useLayoutEffect：在绘制前完成定位，避免菜单先出现在旧位置再跳动）
+  useLayoutEffect(() => {
     if (!state.open || !menuRef.current) return;
 
     const rect = menuRef.current.getBoundingClientRect();
@@ -204,6 +205,15 @@ function DesktopContextMenu({
     };
   }, [state.open, onClose]);
 
+  // 📱 Android 返回键：自绘浮层菜单打开时先关闭菜单（契约第 4 条）
+  useEffect(() => {
+    if (!state.open) return;
+    return registerBackHandler(() => {
+      onClose();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [state.open, onClose]);
+
   if (!state.open) return null;
 
   const MenuItem = ({
@@ -217,7 +227,7 @@ function DesktopContextMenu({
     onClick: () => void;
     danger?: boolean;
   }) => (
-    <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-3 !py-2', danger && 'text-red-500 hover:text-red-500')} onClick={() => { onClick(); onClose(); }}>
+    <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-3 !py-2 [@media(pointer:coarse)]:min-h-[40px]', danger && 'text-red-500 hover:text-red-500')} onClick={() => { onClick(); onClose(); }}>
       {icon}
       <span>{label}</span>
     </NotionButton>
@@ -232,7 +242,7 @@ function DesktopContextMenu({
         'fixed min-w-[160px] overflow-hidden rounded-lg',
         'bg-popover/95 backdrop-blur-md text-popover-foreground',
         'border border-transparent ring-1 ring-border/40 shadow-lg',
-        'py-1 animate-in fade-in-0 zoom-in-95'
+        'py-1 ui-zoom-fade-in'
       )}
       style={{ left: menuPosition.x, top: menuPosition.y, zIndex: Z_INDEX.contextMenu }}
     >
@@ -307,6 +317,7 @@ function ShortcutCard({
   onEditConfirm: (newName: string) => void;
   onEditCancel: () => void;
 }) {
+  const { t } = useTranslation('common');
   const [editName, setEditName] = useState(shortcut.name);
   const Icon = getShortcutIcon(shortcut);
 
@@ -316,28 +327,44 @@ function ShortcutCard({
     }
   }, [isEditing, shortcut.name]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      if (editName.trim() && editName !== shortcut.name) {
-        onEditConfirm(editName.trim());
-      } else {
-        onEditCancel();
-      }
-    } else if (e.key === 'Escape') {
+  // 提交或取消：有有效修改则提交，否则取消（Enter/确认按钮/点击空白共用）
+  const commitOrCancel = useCallback(() => {
+    if (editName.trim() && editName.trim() !== shortcut.name) {
+      onEditConfirm(editName.trim());
+    } else {
       onEditCancel();
     }
   }, [editName, shortcut.name, onEditConfirm, onEditCancel]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      commitOrCancel();
+    } else if (e.key === 'Escape') {
+      onEditCancel();
+    }
+  }, [commitOrCancel, onEditCancel]);
+
   return (
     <div
+      role="button"
+      tabIndex={isEditing ? -1 : 0}
+      aria-label={shortcut.name}
       className={cn(
         'group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl cursor-pointer select-none',
         'w-[88px] shrink-0',
         'transition-all duration-200 ease-out',
         'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]',
-        'active:scale-95'
+        'active:scale-95',
+        'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40'
       )}
       onClick={isEditing ? undefined : onClick}
+      onKeyDown={(e) => {
+        if (isEditing) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onContextMenu={onContextMenu}
     >
       {/* 图标 */}
@@ -353,18 +380,28 @@ function ShortcutCard({
 
       {/* 名称 */}
       {isEditing ? (
-        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+        <div
+          className="flex items-center gap-1"
+          onClick={e => e.stopPropagation()}
+          onBlur={(e) => {
+            // 焦点完全离开编辑区（点击桌面空白等）时提交或取消，避免编辑态悬挂
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+              commitOrCancel();
+            }
+          }}
+        >
           <Input
             value={editName}
             onChange={e => setEditName(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={e => e.target.select()}
             className="h-6 w-24 text-xs text-center px-1"
             autoFocus
           />
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={() => { if (editName.trim() && editName !== shortcut.name) { onEditConfirm(editName.trim()); } else { onEditCancel(); } }} aria-label="confirm">
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={commitOrCancel} aria-label={t('confirm')}>
             <Check size={14} className="text-success" />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={onEditCancel} aria-label="cancel">
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={onEditCancel} aria-label={t('cancel')}>
             <X size={14} className="text-red-500" />
           </NotionButton>
         </div>
@@ -396,6 +433,9 @@ function AddShortcutDialog({
       hasQuickAccessShortcut: state.hasQuickAccessShortcut,
     }))
   );
+  // ★ 订阅 shortcuts 状态本身：添加快捷方式后"已添加"标记才能实时更新
+  // （仅订阅 store 的函数引用不会在状态变化时触发重渲染）
+  const shortcuts = useDesktopStore((state) => state.shortcuts);
 
   const handleAddPreset = useCallback((index: number) => {
     addFromPreset(index);
@@ -409,7 +449,8 @@ function AddShortcutDialog({
       return hasQuickAccessShortcut(preset.target.quickAccessType);
     }
     return false;
-  }, [hasAppShortcut, hasQuickAccessShortcut]);
+    // shortcuts 变化时重新判断"已添加"状态
+  }, [hasAppShortcut, hasQuickAccessShortcut, shortcuts]);
 
   return (
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[500px]">
@@ -456,7 +497,7 @@ function AddShortcutDialog({
         </NotionDialogBody>
         <NotionDialogFooter>
           <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)}>
-            {t('common.close', '关闭')}
+            {t('common:close')}
           </NotionButton>
         </NotionDialogFooter>
     </NotionDialog>
@@ -476,21 +517,25 @@ export function DesktopView({
   const { t } = useTranslation('learningHub');
   const { isSmallScreen } = useBreakpoint();
   const {
-    getSortedShortcuts,
     removeShortcut,
     renameShortcut,
     initDefaultShortcuts,
-    getDesktopRoot,
     setDesktopRoot,
   } = useDesktopStore(
     useShallow((state) => ({
-      getSortedShortcuts: state.getSortedShortcuts,
       removeShortcut: state.removeShortcut,
       renameShortcut: state.renameShortcut,
       initDefaultShortcuts: state.initDefaultShortcuts,
-      getDesktopRoot: state.getDesktopRoot,
       setDesktopRoot: state.setDesktopRoot,
     }))
+  );
+  // ★ 直接订阅状态（而非只订阅 getter 函数引用），
+  // 确保添加/重命名/移除快捷方式后视图立即更新
+  const rawShortcuts = useDesktopStore((state) => state.shortcuts);
+  const desktopRoot = useDesktopStore((state) => state.desktopRoot);
+  const shortcuts = useMemo(
+    () => [...rawShortcuts].sort((a, b) => a.position - b.position),
+    [rawShortcuts]
   );
   
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -506,9 +551,6 @@ export function DesktopView({
   useEffect(() => {
     initDefaultShortcuts();
   }, [initDefaultShortcuts]);
-
-  const shortcuts = getSortedShortcuts();
-  const desktopRoot = getDesktopRoot();
 
   /** 处理设置桌面根目录 */
   const handleSetDesktopRoot = useCallback(async (folderId: string | null) => {

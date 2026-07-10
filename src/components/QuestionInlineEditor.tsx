@@ -410,9 +410,10 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   return (
     <div
       ref={containerRef}
+      data-question-inline-editor
       className={cn(
         'mt-1.5 border border-border/60 rounded-lg bg-card/80 overflow-hidden',
-        'animate-in slide-in-from-top-2 fade-in duration-200',
+        'ui-drop-in',
         className
       )}
     >

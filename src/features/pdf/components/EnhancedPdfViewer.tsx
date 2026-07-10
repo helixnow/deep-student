@@ -41,6 +41,8 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import '../styles/enhanced-pdf.css';
 import { PDF_OPTIONS } from '@/utils/pdfConfig';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
@@ -64,7 +66,13 @@ type ViewMode = 'single' | 'dual';
 /** 侧边栏模式 */
 type SidebarMode = 'none' | 'outline' | 'thumbnails';
 
-/** 高亮批注 */
+/** 高亮批注
+ *
+ * 坐标版本说明：
+ * - `coordVersion === 2`：rects 为相对页面宽高的比例坐标（0–1），与容器尺寸/缩放/视图模式无关；
+ * - 无 coordVersion（历史数据）：rects 为"捕获时容器宽度下除以 scale"的像素坐标，
+ *   仅在与捕获时相同的容器宽度下才对齐，渲染时按旧逻辑乘以当前 scale 兜底显示。
+ */
 interface Highlight {
   id: string;
   pageIndex: number;
@@ -72,6 +80,7 @@ interface Highlight {
   color: string;
   rects: { x: number; y: number; width: number; height: number }[];
   createdAt: number;
+  coordVersion?: number;
 }
 
 /** PDF 书签 */
@@ -150,7 +159,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   bookmarks: externalBookmarks,
   onBookmarksChange,
 }) => {
-  const { t } = useTranslation(['pdf', 'textbook']);
+  const { t } = useTranslation(['pdf', 'textbook', 'common']);
 
   // ========== PDF 设置集成 ==========
   const pdfSettings = usePdfSettingsStore((s) => s.settings);
@@ -173,6 +182,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadErrorHint, setLoadErrorHint] = useState<string | null>(null);
+  const [documentRetryKey, setDocumentRetryKey] = useState(0);
   
   // 新增功能状态
   const [rotation, setRotation] = useState<number>(0); // 0, 90, 180, 270
@@ -245,14 +256,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, []);
 
   // 工具栏响应式：ResizeObserver 检测宽度，窄时切换紧凑模式
-  const TOOLBAR_COMPACT_THRESHOLD = 520;
+  // ★ 2026-07-08（移动端审计 D-3）：触屏设备按钮放大到 40px（pointer: coarse CSS），
+  // 完整工具栏约需 700px，520 阈值会在 520–700px 区间溢出，触屏取更高阈值。
   useEffect(() => {
     const el = toolbarRef.current;
     if (!el) return;
+    const isCoarsePointer =
+      typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+    const threshold = isCoarsePointer ? 700 : 520;
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect.width;
-        setIsToolbarCompact(w < TOOLBAR_COMPACT_THRESHOLD);
+        setIsToolbarCompact(w < threshold);
       }
     });
     ro.observe(el);
@@ -272,15 +287,37 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [showMoreMenu]);
 
   // 稳定的文件源 - 使用 useMemo 确保引用稳定
+  // ★ 2026-07-08（审计 M1）：pdf.js 会把 Uint8Array transfer 给 worker（detach 原 buffer）。
+  // 必须传副本，否则父组件持有的 data 首次装载后即失效，重试/重挂载必然报 detached buffer。
+  // documentRetryKey 加入依赖：重试时基于（未被 detach 的）原 data 重新切副本。
   const file = useMemo(() => {
     if (data && data.byteLength > 0) {
-      return { data };
+      return { data: data.slice() };
     }
     if (url) {
       return url;
     }
     return null;
-  }, [data, url]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- documentRetryKey 触发重新克隆 data
+  }, [data, url, documentRetryKey]);
+
+  // ★ 2026-07-08（审计 M3）：文档源变化时重置阅读状态，
+  // 避免同一挂载实例切换 PDF 后残留旧页码/跳过初始滚动。
+  // （initialScrollDoneRef 在此声明，供下方初始滚动 effect 使用）
+  const initialScrollDoneRef = useRef(false);
+  const fileSourceKey = typeof file === 'string' ? file : file ? 'data' : '';
+  const prevFileSourceKeyRef = useRef(fileSourceKey);
+  useEffect(() => {
+    if (prevFileSourceKeyRef.current === fileSourceKey) return;
+    prevFileSourceKeyRef.current = fileSourceKey;
+    initialScrollDoneRef.current = false;
+    setNumPages(0);
+    setCurrentPage(initialPage + 1);
+    setIsLoading(true);
+    setLoadError(null);
+    setLoadErrorHint(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在文档源变化时重置
+  }, [fileSourceKey]);
 
   // Refs for callbacks
   const numPagesRef = useRef(numPages);
@@ -340,6 +377,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 文档加载成功
   const handleDocumentLoadSuccess = useCallback(({ numPages: pages }: { numPages: number }) => {
     setNumPages(pages);
+    // ★ 2026-07-08（审计 M3）：页码 clamp 到有效范围（initialPage 可能越界，
+    // 否则工具栏显示 "101 / 10" 且持久化进度被污染）
+    setCurrentPage((prev) => Math.max(1, Math.min(prev, pages)));
     setIsLoading(false);
     setLoadError(null);
     onDocumentLoad?.(pages);
@@ -595,6 +635,34 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setIsSearching(false);
   }, [abortSearchTask]);
 
+  // ★ 2026-07-08（移动端审计 D-4）：Android 系统返回键先关闭查看器内的浮层
+  // （书签列表/批注列表/目录缩略图侧栏/搜索栏），而不是直接退出视图。
+  // 仅在有浮层打开时注册；桌面端不触发 handleAndroidBack，无行为变化。
+  useEffect(() => {
+    const hasOverlay =
+      showBookmarkList || showHighlightList || sidebarMode !== 'none' || showSearch;
+    if (!hasOverlay) return;
+    return registerBackHandler(() => {
+      if (showBookmarkList) {
+        setShowBookmarkList(false);
+        return true;
+      }
+      if (showHighlightList) {
+        setShowHighlightList(false);
+        return true;
+      }
+      if (sidebarMode !== 'none') {
+        setSidebarMode('none');
+        return true;
+      }
+      if (showSearch) {
+        handleCloseSearch();
+        return true;
+      }
+      return false;
+    }, BACK_PRIORITY.overlay);
+  }, [showBookmarkList, showHighlightList, sidebarMode, showSearch, handleCloseSearch]);
+
   // 文本选择处理（用于高亮批注）
   const handleTextSelection = useCallback(() => {
     const selection = window.getSelection();
@@ -612,7 +680,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     
     const text = selection.toString().trim();
     if (!text) return;
-    
+
+    // ★ 旋转状态下选区 rect 是旋转后的屏幕坐标，恢复原始角度后会双重错位，
+    // 暂不支持旋转时创建高亮（比错位持久化更可接受）
+    if (rotation !== 0) {
+      setShowHighlightMenu(false);
+      return;
+    }
+
     // 获取选区位置
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
@@ -624,28 +699,30 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       pageIndex = parseInt(pageWrapper.getAttribute('data-page-number') || '1', 10);
     }
     
-    // 获取所有选中文本的矩形位置（相对于页面，归一化到 scale=1）
+    // ★ 2026-07-08（审计 28-P1-2）：按页面实际渲染宽高归一化为 0–1 相对坐标。
+    // 旧做法只除以 scale，实际基准是"捕获瞬间的容器像素宽度"，
+    // 窗口缩放/侧边栏开合/单双页切换后已存高亮全部错位。
     const rects: { x: number; y: number; width: number; height: number }[] = [];
     const clientRects = range.getClientRects();
     if (pageWrapper) {
       const pageRect = pageWrapper.getBoundingClientRect();
-      // 除以当前缩放比例，使坐标与 scale=1 对齐，渲染时再乘回
-      const currentScale = scale;
-      for (let i = 0; i < clientRects.length; i++) {
-        const r = clientRects[i];
-        rects.push({
-          x: (r.left - pageRect.left) / currentScale,
-          y: (r.top - pageRect.top) / currentScale,
-          width: r.width / currentScale,
-          height: r.height / currentScale,
-        });
+      if (pageRect.width > 0 && pageRect.height > 0) {
+        for (let i = 0; i < clientRects.length; i++) {
+          const r = clientRects[i];
+          rects.push({
+            x: (r.left - pageRect.left) / pageRect.width,
+            y: (r.top - pageRect.top) / pageRect.height,
+            width: r.width / pageRect.width,
+            height: r.height / pageRect.height,
+          });
+        }
       }
     }
     
     setPendingHighlight({ text, pageIndex, rects });
     setHighlightMenuPos({ x: rect.left + rect.width / 2, y: rect.top - 10 });
     setShowHighlightMenu(true);
-  }, [currentPage, scale]);
+  }, [currentPage, rotation]);
 
   // 添加高亮
   const addHighlight = useCallback((color: string) => {
@@ -658,6 +735,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       color,
       rects: pendingHighlight.rects,
       createdAt: Date.now(),
+      coordVersion: 2,
     };
     
     setHighlights(prev => [...prev, newHighlight]);
@@ -943,7 +1021,33 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const handleDocumentLoadError = useCallback((error: Error) => {
     console.error('PDF load error:', error);
     setIsLoading(false);
-    setLoadError(error.message || 'PDF 加载失败');
+    const classified = classifyPdfLoadError(error);
+    switch (classified.kind) {
+      case 'password':
+        setLoadError(t('pdf:errors.password_protected', '该 PDF 已加密或需要密码'));
+        setLoadErrorHint(t('pdf:errors.password_protected_hint', '请先在 PDF 阅读器中解除密码保护，再重新导入或保存到本地打开。'));
+        break;
+      case 'invalid':
+        setLoadError(t('pdf:errors.invalid_pdf', 'PDF 文件无效或已损坏'));
+        setLoadErrorHint(t('pdf:errors.invalid_pdf_hint', '文件可能不是有效的 PDF，或传输/存储过程中已损坏。'));
+        break;
+      case 'network':
+        setLoadError(t('pdf:errors.stream_failed', 'PDF 流式加载失败'));
+        setLoadErrorHint(t('pdf:errors.stream_failed_hint', '文件路径可能已失效或不在允许访问的目录内，可尝试重新关联文件。'));
+        break;
+      default:
+        setLoadError(t('pdf:errors.load_failed', 'PDF 加载失败，请重试'));
+        setLoadErrorHint(classified.rawMessage || null);
+        break;
+    }
+  }, [t]);
+
+  const handleRetryLoad = useCallback(() => {
+    setLoadError(null);
+    setLoadErrorHint(null);
+    setIsLoading(true);
+    setNumPages(0);
+    setDocumentRetryKey((k) => k + 1);
   }, []);
 
   const handlePrevPage = useCallback(() => goToPage(currentPage - 1), [currentPage, goToPage]);
@@ -1189,7 +1293,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     if (pageRowCount === 0) return;
     const rafId = requestAnimationFrame(() => pageVirtualizer.measure());
     return () => cancelAnimationFrame(rafId);
-  }, [pageRowCount, pageVirtualizer, pageWidth, viewMode]);
+    // rotation 影响页面布局高度（90°/270° 时宽高互换），需触发重新测量
+  }, [pageRowCount, pageVirtualizer, pageWidth, viewMode, rotation]);
 
   useEffect(() => {
     scrollToPageRef.current = (pageNum: number) => {
@@ -1205,7 +1310,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 旧实现 initialPage 只初始化 currentPage 状态，从不滚动视口：
   // 恢复进度时视口停在第 1 页而页码显示第 N 页，用户一滚动
   // 进度即被覆盖为第 1 页。文档首次就绪时一次性跳转（瞬时，非平滑）。
-  const initialScrollDoneRef = useRef(false);
+  // （initialScrollDoneRef 声明已上移至文档源重置逻辑处）
   useEffect(() => {
     if (initialScrollDoneRef.current) return;
     if (numPages === 0 || pageRowCount === 0) return;
@@ -1324,31 +1429,44 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         id={`pdf-page-${pageNum}`}
         className="ds-pdf__page-wrapper"
         data-page-number={pageNum}
-        style={{ transform: rotation !== 0 ? `rotate(${rotation}deg)` : undefined }}
       >
+        {/* ★ 2026-07-08（审计 M2）：旋转改用 pdf.js 的 rotate 属性（参与布局），
+            替代 CSS transform（不改变布局盒，导致虚拟列表测量与实际视觉高度不一致、
+            相邻页重叠，且高亮取词坐标错位） */}
         <MemoPage
           pageNumber={pageNum}
           width={pageWidth}
           renderTextLayer={enableTextLayer}
           renderAnnotationLayer={enableAnnotationLayer}
-          rotate={0}
+          rotate={rotation}
           devicePixelRatio={renderDpr}
         />
 
-        {/* 高亮覆盖层 — 坐标已归一化到 scale=1，渲染时乘以当前 scale */}
+        {/* 高亮覆盖层 — v2 为 0–1 相对坐标（按百分比渲染，尺寸无关）；
+            历史数据（无 coordVersion）按旧逻辑乘以当前 scale 兜底 */}
         {getPageHighlights(pageNum).map(hl => (
           <div key={hl.id} className="ds-pdf__highlight-layer">
             {hl.rects.map((rect, idx) => (
               <div
                 key={idx}
                 className="ds-pdf__highlight-rect"
-                style={{
-                  left: rect.x * scale,
-                  top: rect.y * scale,
-                  width: rect.width * scale,
-                  height: rect.height * scale,
-                  backgroundColor: hl.color,
-                }}
+                style={
+                  hl.coordVersion === 2
+                    ? {
+                        left: `${rect.x * 100}%`,
+                        top: `${rect.y * 100}%`,
+                        width: `${rect.width * 100}%`,
+                        height: `${rect.height * 100}%`,
+                        backgroundColor: hl.color,
+                      }
+                    : {
+                        left: rect.x * scale,
+                        top: rect.y * scale,
+                        width: rect.width * scale,
+                        height: rect.height * scale,
+                        backgroundColor: hl.color,
+                      }
+                }
                 title={hl.text}
               />
             ))}
@@ -1497,9 +1615,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
       {/* 主体区域（侧边栏 + 内容） */}
       <div className="ds-pdf__main">
-        {/* 侧边栏 */}
+        {/* 侧边栏
+            ★ 2026-07-08（移动端审计 D-1 / P0）：≤640px 的 CSS 将侧栏默认
+            translateX(-100%) 藏到屏外、仅 .visible 时滑入，但此处从未挂过
+            .visible —— 移动端点「目录/缩略图」完全无响应。侧栏本就按需挂载，
+            直接常挂 .visible（桌面无对应样式，零影响）。 */}
         {sidebarMode !== 'none' && (
-          <div className="ds-pdf__sidebar">
+          <div className="ds-pdf__sidebar visible">
             {/* 目录 */}
             {sidebarMode === 'outline' && outline && (
               <div className="ds-pdf__outline">
@@ -1568,11 +1690,20 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         >
           {loadError ? (
             <div className="ds-pdf__error">
-              <p>{t('pdf:errors.load_failed', 'PDF 加载失败，请重试')}</p>
-              <p style={{ fontSize: '12px', opacity: 0.7 }}>{loadError}</p>
+              <p>{loadError}</p>
+              {loadErrorHint && (
+                <p style={{ fontSize: '12px', opacity: 0.7, maxWidth: '28rem', textAlign: 'center' }}>
+                  {loadErrorHint}
+                </p>
+              )}
+              <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2">
+                <ArrowClockwise size={14} />
+                {t('common:retry', '重试')}
+              </NotionButton>
             </div>
           ) : (
             <Document
+              key={documentRetryKey}
               file={file}
               options={PDF_OPTIONS}
               onLoadSuccess={(doc) => {

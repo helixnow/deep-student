@@ -372,6 +372,9 @@ pub struct UpdateQuestionParams {
     pub is_favorite: Option<bool>,
     pub is_bookmarked: Option<bool>,
     pub images: Option<Vec<QuestionImage>>,
+    /// ACR R2-01：可选乐观锁基线；None 时保持旧行为（兼容存量调用）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_updated_at: Option<String>,
 }
 
 /// 历史记录
@@ -1575,6 +1578,28 @@ impl VfsQuestionRepo {
         question_id: &str,
         params: &UpdateQuestionParams,
     ) -> VfsResult<Question> {
+        // ACR R2-01：可选 OCC（照抄 todo_repo expected_updated_at 模板）
+        if let Some(ref expected) = params.expected_updated_at {
+            if !expected.is_empty() {
+                let current = Self::get_question_with_conn(conn, question_id)?.ok_or_else(|| {
+                    VfsError::NotFound {
+                        resource_type: "question".to_string(),
+                        id: question_id.to_string(),
+                    }
+                })?;
+                if *expected != current.updated_at {
+                    warn!(
+                        "[VFS::QuestionRepo] Optimistic lock conflict for question {}: expected updated_at='{}', actual='{}'",
+                        question_id, expected, current.updated_at
+                    );
+                    return Err(VfsError::Other(format!(
+                        "QBANK_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                        expected, current.updated_at
+                    )));
+                }
+            }
+        }
+
         let now = chrono::Utc::now().to_rfc3339();
         let mut set_clauses = vec![
             "updated_at = ?1".to_string(),

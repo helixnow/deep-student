@@ -84,7 +84,8 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
     observer.observe(container);
 
     return () => observer.disconnect();
-  }, [checkOverflow, breadcrumbs]);
+    // rootTitle 变化也会影响测量宽度，需要重新检测
+  }, [checkOverflow, breadcrumbs, rootTitle]);
 
   // 如果没有面包屑，只显示根目录标题
   if (breadcrumbs.length === 0) {

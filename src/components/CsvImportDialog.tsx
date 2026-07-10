@@ -176,8 +176,15 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   // 事件监听清理函数
   const unlistenRef = useRef<UnlistenFn | null>(null);
 
+  // ★ 2026-07-08（审计 29-P1-3）：导入会话代际守卫。
+  // "取消"只解除事件监听，invoke Promise 仍然悬挂；用户关闭对话框再重新打开后，
+  // 旧任务完成时的续体会把上一次的结果写进新会话（并触发 onImportComplete/成功通知）。
+  // 取消/重置时递增代际，续体比对后丢弃过期结果。
+  const importSessionRef = useRef(0);
+
   // 重置状态
   const resetState = useCallback(() => {
+    importSessionRef.current += 1;
     setCurrentStep('select');
     setSelectedFile(null);
     setPreview(null);
@@ -311,6 +318,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const handleStartImport = useCallback(async () => {
     if (!selectedFile || !preview || !isMappingValid) return;
 
+    const session = importSessionRef.current;
+    const isStale = () => importSessionRef.current !== session;
+
     setIsImporting(true);
     setImportError(null);
     setImportProgress({ current: 0, total: preview.total_rows, success: 0, skipped: 0, failed: 0 });
@@ -319,6 +329,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     try {
       // 设置进度事件监听
       const unlisten = await listen<CsvImportProgressEvent>('csv_import_progress', (event) => {
+        if (isStale()) return;
         const payload = event.payload;
 
         // M-022: 会话隔离 - 只处理当前 exam 的事件，防止多任务进度串台
@@ -359,6 +370,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         },
       });
 
+      // ★ 会话代际比对：用户已取消/重开对话框时丢弃过期结果，不污染新会话
+      if (isStale()) return;
+
       setImportResult(result);
       setImportProgress({
         current: result.total_rows,
@@ -380,16 +394,21 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         })
       );
     } catch (error: unknown) {
+      if (isStale()) return;
       console.error('[CsvImport] 导入失败:', error);
       setImportError(String(error));
       showGlobalNotification('error', t('exam_sheet:csv.import_failed', '导入失败：{{error}}', {
         error: String(error),
       }));
     } finally {
-      setIsImporting(false);
-      if (unlistenRef.current) {
-        unlistenRef.current();
-        unlistenRef.current = null;
+      // 过期会话不清 unlistenRef：本会话的监听已在取消时移除，
+      // 此时 ref 中可能已是新会话的监听器，误清会让新会话收不到进度
+      if (!isStale()) {
+        setIsImporting(false);
+        if (unlistenRef.current) {
+          unlistenRef.current();
+          unlistenRef.current = null;
+        }
       }
     }
   }, [selectedFile, preview, isMappingValid, fieldMapping, duplicateStrategy, examId, examName, folderId, onImportComplete, t]);
@@ -398,6 +417,8 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
   const [isCancelled, setIsCancelled] = useState(false);
 
   const handleCancelImport = useCallback(() => {
+    // ★ 作废当前会话：悬挂的 invoke Promise 完成后其续体会被代际比对丢弃
+    importSessionRef.current += 1;
     // 停止监听后端进度事件
     if (unlistenRef.current) {
       unlistenRef.current();

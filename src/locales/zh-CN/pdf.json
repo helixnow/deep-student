@@ -27,7 +27,13 @@
     "load_failed": "PDF 加载失败，请重试",
     "conversion_failed": "文件格式转换失败",
     "content_not_found": "无法加载 PDF 文件内容",
-    "load_pdf_failed": "加载 PDF 失败"
+    "load_pdf_failed": "加载 PDF 失败",
+    "password_protected": "该 PDF 已加密或需要密码",
+    "password_protected_hint": "请先在 PDF 阅读器中解除密码保护，再重新导入或保存到本地打开。",
+    "invalid_pdf": "PDF 文件无效或已损坏",
+    "invalid_pdf_hint": "文件可能不是有效的 PDF，或传输/存储过程中已损坏。",
+    "stream_failed": "PDF 流式加载失败",
+    "stream_failed_hint": "文件路径可能已失效或不在允许访问的目录内，可尝试重新关联文件。"
   },
   "toolbar": {
     "select_this_page": "选择此页",

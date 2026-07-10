@@ -86,6 +86,11 @@ interface FileInfo {
 const IMAGE_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
 const DOCUMENT_EXTENSIONS = ['.docx', '.xlsx', '.xls', '.txt', '.md', '.pdf'];
 
+// ★ 上传文件大小上限：与 UnifiedDragDropZone 的 Tauri 原生拖拽路径保持一致（50MB）。
+// 点击选择 / 浏览器 dataTransfer 拖拽路径不经过原生路径校验，必须在此兜底，
+// 否则超大文件会被整体 FileReader→base64 读入内存。
+const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+
 // 处理步骤
 type ProcessStep = 'select' | 'preview' | 'processing' | 'summary';
 
@@ -581,6 +586,14 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         debugLog.warn(`不支持的文件格式: ${file.name} (${file.type})`);
         continue;
       }
+
+      // ★ 大小校验兜底（点击选择/浏览器拖拽路径不走 UnifiedDragDropZone 的原生路径校验）
+      if (file.size > MAX_UPLOAD_FILE_SIZE) {
+        const sizeMB = (MAX_UPLOAD_FILE_SIZE / (1024 * 1024)).toFixed(0);
+        setError(t('drag_drop:errors.file_too_large', { size: sizeMB, defaultValue: `文件过大，单个文件不能超过 ${sizeMB}MB` }));
+        debugLog.warn(`文件过大被拒绝: ${file.name} (${file.size} bytes)`);
+        return;
+      }
       
       // 如果已经有文件，只接受同类型的
       if (currentCategory && category !== currentCategory) {
@@ -610,7 +623,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     } else {
       setSelectedFiles(prev => [...prev, ...validFiles]);
     }
-  }, [categorizeFile, currentCategory]);
+  }, [categorizeFile, currentCategory, t]);
 
   // 移除已选文件
   const handleRemoveFile = useCallback((index: number) => {
@@ -1071,7 +1084,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     {parsedQuestions.map((q, idx) => (
                       <div
                         key={idx}
-                        className="p-3 rounded-lg bg-card border border-border/50 animate-in fade-in slide-in-from-bottom-2 duration-300"
+                        className="p-3 rounded-lg bg-card border border-border/50 ui-rise-in"
                       >
                         <div className="flex items-start gap-2">
                           <span className="w-6 h-6 flex-shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">

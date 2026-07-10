@@ -138,6 +138,7 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
     <button
       type="button"
       onClick={onOpenIndexStatus}
+      aria-label={label}
       className={cn(
         'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] leading-none transition-colors',
         'hover:bg-[var(--interactive-hover)]',
@@ -145,13 +146,13 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
         toneClass
       )}
     >
-      <span className="shrink-0">{icon}</span>
+      <span className="shrink-0" aria-hidden>{icon}</span>
       {!collapsed && <span className="min-w-0 flex-1 truncate text-left">{label}</span>}
     </button>
   );
 
   return (
-    <div className="shrink-0 px-1.5 pb-1">
+    <div className="shrink-0 px-1.5 pb-1" role="status">
       {collapsed ? (
         <CommonTooltip content={<p>{label}</p>} position="right" offset={8}>
           {button}

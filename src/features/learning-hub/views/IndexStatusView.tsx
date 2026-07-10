@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/shad/Input';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useTranslation } from 'react-i18next';
 import {
   Database,
@@ -45,6 +46,7 @@ import {
   CircleNotch,
   Warning,
   CaretDown,
+  CaretLeft,
   CaretRight,
   Lightning,
   Image,
@@ -83,6 +85,7 @@ import {
 } from '@/api/vfsRagApi';
 import multimodalRagService, { type SourceType as MMSourceType, MULTIMODAL_INDEX_ENABLED } from '@/services/multimodalRagService';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { useDialogFocusManagement } from '../components/FolderSelectorDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Progress } from '@/components/ui/shad/Progress';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -222,10 +225,6 @@ export const IndexStatusView: React.FC = () => {
   const [batchCurrent, setBatchCurrent] = useState(0);
   const [batchTotal, setBatchTotal] = useState(0);
 
-  // ========== 平滑进度动画 ==========
-  const smoothProgressRef = useRef(0);
-  const [smoothProgress, setSmoothProgress] = useState(0);
-
   // ========== 数据透视状态 ==========
   const [inspectingResourceId, setInspectingResourceId] = useState<string | null>(null);
   const [inspectMode, setInspectMode] = useState<'ocr' | 'chunks' | null>(null);
@@ -321,12 +320,37 @@ export const IndexStatusView: React.FC = () => {
     return () => { mountedRef.current = false; };
   }, []);
 
+  // ★ 修复：事件监听器中读取最新 summary，避免闭包捕获过期数据导致资源名解析失败
+  const summaryRef = useRef<IndexStatusSummary | null>(null);
+  useEffect(() => {
+    summaryRef.current = summary;
+  }, [summary]);
+
+  // ★ 通过 ref 调用最新 loadData：事件监听只订阅一次，
+  // 不再随筛选条件变化反复注销/重建（消除订阅间隙丢事件的窗口）
+  const loadDataRef = useRef(loadData);
+  useEffect(() => {
+    loadDataRef.current = loadData;
+  }, [loadData]);
+
+  // 批量索引期间节流刷新列表，缩小长任务过程中列表数据的过期窗口
+  const lastListRefreshRef = useRef(0);
+  const throttledListRefresh = useCallback(() => {
+    const now = Date.now();
+    if (now - lastListRefreshRef.current < 4000) return;
+    lastListRefreshRef.current = now;
+    loadDataRef.current();
+  }, []);
+
   // ========== 监听后端索引进度事件 ==========
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
+    // ★ 修复：listen() 是异步的，若 effect 在其 resolve 前被清理，
+    // 需在 resolve 后立即注销，避免监听器泄漏（筛选变化会重建此 effect）
+    let cancelled = false;
 
     const setupListener = async () => {
-      unlisten = await listen<{
+      const fn = await listen<{
         type: string;
         resourceId?: string;
         progress?: number;
@@ -355,14 +379,19 @@ export const IndexStatusView: React.FC = () => {
             setBatchMessage(payload.message || t('indexStatus.notification.batchStarting'));
             break;
           case 'resource_started':
+            setBatchProgress(Math.round(payload.progress || 0));
+            setBatchMessage(payload.message || '');
+            break;
           case 'resource_completed':
           case 'resource_failed':
-            setBatchProgress(payload.progress || 0);
+            setBatchProgress(Math.round(payload.progress || 0));
             setBatchMessage(payload.message || '');
+            // 长批量任务过程中节流刷新列表，让分组计数/状态徽章跟随进度更新
+            throttledListRefresh();
             break;
           // ★ 嵌入批次级细粒度进度（每 16 块回调一次）
           case 'embedding_progress':
-            setBatchProgress(payload.progress || 0);
+            setBatchProgress(Math.round(payload.progress || 0));
             setBatchMessage(payload.message || '');
             break;
           // ★ 2026-02-19：自动 OCR 细粒度进度事件
@@ -380,7 +409,8 @@ export const IndexStatusView: React.FC = () => {
             setBatchProgress(100);
             setBatchMessage(payload.message || t('indexStatus.notification.batchCompleted'));
             showGlobalNotification('success', t('indexStatus.notification.batchCompleted'), t('indexStatus.notification.batchCompletedDetail', { success: payload.successCount, fail: payload.failCount }));
-            loadData(); // 刷新列表
+            lastListRefreshRef.current = Date.now();
+            loadDataRef.current(); // 刷新列表
             // ★ 2026-02 修复：setTimeout 添加卸载保护
             setTimeout(() => {
               if (!mountedRef.current) return;
@@ -393,21 +423,28 @@ export const IndexStatusView: React.FC = () => {
           case 'failed':
             // 单个资源索引事件
             if (payload.type === 'completed') {
-              loadData();
+              loadDataRef.current();
             }
             break;
         }
       });
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     };
 
     setupListener();
 
     return () => {
+      cancelled = true;
       if (unlisten) {
         unlisten();
       }
     };
-  }, [loadData]);
+    // 通过 loadDataRef 调用最新 loadData，订阅只随语言变化重建
+  }, [t, throttledListRefresh]);
 
   // ========== 监听原生多模态索引进度事件 ==========
   // ★ 多模态索引已禁用时不监听事件，避免无用报错
@@ -415,21 +452,24 @@ export const IndexStatusView: React.FC = () => {
     if (!MULTIMODAL_INDEX_ENABLED) return;
 
     let unlisten: UnlistenFn | null = null;
+    let cancelled = false;
 
     const setupListener = async () => {
       const resolveResourceLabel = (payload: { sourceId: string }) => {
-        if (!summary?.resources?.length) {
+        // 通过 ref 读取最新 summary，避免闭包捕获过期数据
+        const current = summaryRef.current;
+        if (!current?.resources?.length) {
           return payload.sourceId;
         }
 
-        const matched = summary.resources.find((resource) =>
+        const matched = current.resources.find((resource) =>
           resource.resourceId === payload.sourceId || resource.sourceId === payload.sourceId
         );
 
         return matched?.name || matched?.resourceId || payload.sourceId;
       };
 
-      unlisten = await listen<{
+      const fn = await listen<{
         sourceType: string;
         sourceId: string;
         phase: string;
@@ -478,29 +518,36 @@ export const IndexStatusView: React.FC = () => {
         }
 
         // 更新原生多模态索引进度
-        setMmProgress(payload.progressPercent);
+        setMmProgress(Math.round(payload.progressPercent));
         setMmMessage(displayMessage);
 
         if (payload.phase === 'completed') {
           // ★ 2026-02 修复：setTimeout 添加卸载保护
           setTimeout(() => {
             if (!mountedRef.current) return;
-            loadData();
+            loadDataRef.current();
           }, 500);
         } else if (payload.phase === 'failed') {
           showGlobalNotification('error', t('indexStatus.notification.mmIndexFailed'), payload.message);
         }
       });
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     };
 
     setupListener();
 
     return () => {
+      cancelled = true;
       if (unlisten) {
         unlisten();
       }
     };
-  }, [loadData]);
+    // 通过 loadDataRef 调用最新 loadData，订阅只随语言变化重建
+  }, [t]);
 
   // ========== 按模态分组维度 ==========
   const dimensionsByModality = useMemo(() => {
@@ -602,6 +649,29 @@ export const IndexStatusView: React.FC = () => {
     setOcrInfo(null);
     setTextChunks([]);
   }, []);
+
+  // ★ 与其他弹窗行为一致：OCR 数据透视面板支持 Esc 关闭
+  useEffect(() => {
+    if (inspectMode !== 'ocr') return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeInspectPanel();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [inspectMode, closeInspectPanel]);
+
+  // ★ 移动端契约：面板打开时接管 Android 返回键（自绘浮层无 Radix data-state，
+  //   协调器的 Escape 兜底匹配不到，必须显式注册；关闭/卸载时注销）
+  useEffect(() => {
+    if (inspectMode !== 'ocr') return;
+    return registerBackHandler(() => {
+      closeInspectPanel();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [inspectMode, closeInspectPanel]);
+
+  // ★ OCR 面板焦点管理：打开时圈定 Tab 焦点，关闭时还焦到触发按钮
+  const ocrPanelFocusRef = useDialogFocusManagement(inspectMode === 'ocr');
 
   // ========== 批量重新索引（使用后端批量 API，带进度事件）==========
   const handleReindexAll = useCallback(async () => {
@@ -842,8 +912,15 @@ export const IndexStatusView: React.FC = () => {
         setMobileMoreOpen(false);
       }
     };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileMoreOpen(false);
+    };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [mobileMoreOpen]);
   
   const handleResetAllIndexState = useCallback(async () => {
@@ -1099,7 +1176,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 状态标签 - 有 indexError 的显示错误状态 */}
           <div 
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border shadow-sm',
+              'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border shadow-sm shrink-0 whitespace-nowrap',
               isUnsupportedType && state === 'pending' && 'bg-muted/50 text-muted-foreground border-transparent',
               !isUnsupportedType && hasIndexError && !isEmptyContent && 'bg-orange-50/50 text-orange-700 border-orange-200 dark:bg-orange-900/10 dark:text-orange-400 dark:border-orange-800/30',
               !isUnsupportedType && isEmptyContent && 'bg-warning/10 text-warning border-warning/30',
@@ -1400,7 +1477,7 @@ export const IndexStatusView: React.FC = () => {
                     className="text-xs gap-1.5 text-destructive hover:text-destructive"
                   >
                     {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
-                    清除 OCR 并重做
+                    {t('indexStatus.action.clearOcrAndReindex')}
                   </NotionButton>
                 )}
               </div>
@@ -1569,7 +1646,7 @@ export const IndexStatusView: React.FC = () => {
                 <DotsThree className="h-3.5 w-3.5" />
               </NotionButton>
               {mobileMoreOpen && (
-                <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-md border bg-popover shadow-md py-1 animate-in fade-in-0 zoom-in-95">
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-md border bg-popover shadow-md py-1 ui-zoom-fade-in">
                   <button
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--interactive-hover)] transition-colors"
                     onClick={() => { setShowTestPanel(v => !v); setMobileMoreOpen(false); }}
@@ -1824,7 +1901,7 @@ export const IndexStatusView: React.FC = () => {
 
       {/* 召回测试面板 */}
       {showTestPanel && (
-        <div className="border-b bg-background/50 backdrop-blur p-3 md:p-6 animate-in slide-in-from-top-2 duration-200">
+        <div className="border-b bg-background/50 backdrop-blur p-3 md:p-6 ui-drop-in">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-primary/10 text-primary">
@@ -1997,25 +2074,55 @@ export const IndexStatusView: React.FC = () => {
         )}
       </CustomScrollArea>
 
-      {/* ========== 数据透视面板 ========== */}
+      {/* ========== 数据透视面板 ==========
+          移动端契约：全屏子屏形态（顶部返回 + Android 返回键），桌面端保持居中弹窗 */}
       {inspectMode === 'ocr' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={closeInspectPanel}>
+        <div
+          className={cn(
+            'fixed inset-0 z-50 flex',
+            isMobile ? 'items-stretch justify-stretch' : 'items-center justify-center bg-black/40 backdrop-blur-sm'
+          )}
+          onClick={isMobile ? undefined : closeInspectPanel}
+        >
           <div
-            className="bg-background border rounded-xl shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] flex flex-col animate-in fade-in-0 zoom-in-95"
+            ref={ocrPanelFocusRef}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className={cn(
+              'bg-background flex flex-col outline-none',
+              isMobile
+                ? 'w-full h-full pb-[var(--mobile-safe-area-bottom,0px)]'
+                : 'border rounded-xl shadow-2xl w-[90vw] max-w-3xl max-h-[80vh] ui-zoom-fade-in'
+            )}
             onClick={(e: React.MouseEvent) => e.stopPropagation()}
           >
             {/* 面板头部 */}
-            <div className="flex items-center justify-between px-5 py-3 border-b shrink-0">
-              <div className="flex items-center gap-2">
-                <Eye className="h-4 w-4 text-primary" />
-                <h3 className="font-semibold text-sm">
+            <div className={cn('flex items-center justify-between border-b shrink-0', isMobile ? 'pl-1 pr-2 py-1.5' : 'px-5 py-3')}>
+              <div className="flex items-center gap-2 min-w-0">
+                {isMobile && (
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={closeInspectPanel}
+                    aria-label={t('common:back', '返回')}
+                    className="gap-1 min-h-11 px-2 shrink-0"
+                  >
+                    <CaretLeft className="h-4 w-4" aria-hidden="true" />
+                    {t('common:back', '返回')}
+                  </NotionButton>
+                )}
+                <Eye className="h-4 w-4 text-primary shrink-0" />
+                <h3 className="font-semibold text-sm truncate">
                   OCR 文本 / 提取文本
                 </h3>
-                <span className="text-xs text-muted-foreground font-mono">{inspectingResourceId?.slice(0, 12)}...</span>
+                <span className="text-xs text-muted-foreground font-mono shrink-0">{inspectingResourceId?.slice(0, 12)}...</span>
               </div>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={closeInspectPanel} className="h-7 w-7">
-                <X className="h-4 w-4" />
-              </NotionButton>
+              {!isMobile && (
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={closeInspectPanel} className="h-7 w-7">
+                  <X className="h-4 w-4" />
+                </NotionButton>
+              )}
             </div>
 
             {/* 面板内容 */}
@@ -2027,12 +2134,12 @@ export const IndexStatusView: React.FC = () => {
                   </div>
                 ) : ocrInfo ? (
                   <div className="space-y-4">
-                    {/* 来源对比概览 */}
-                    <div className="grid grid-cols-3 gap-3 text-xs">
+                    {/* 来源对比概览（移动端单列堆叠，避免 375px 下三列挤压） */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                       <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'ocr' ? 'border-primary bg-primary/5' : 'border-border/50')}>
                         <div className="text-muted-foreground mb-1">OCR 文本</div>
-                        <div className="font-semibold tabular-nums">{ocrInfo.ocrTextLength.toLocaleString()} 字符</div>
-                        {ocrInfo.activeSource === 'ocr' && <div className="text-primary text-[10px] mt-1">✓ 当前使用</div>}
+                        <div className="font-semibold tabular-nums">{t('indexStatus.detail.chars', { count: ocrInfo.ocrTextLength })}</div>
+                        {ocrInfo.activeSource === 'ocr' && <div className="text-primary text-[10px] mt-1">✓ {t('indexStatus.detail.currentInUse')}</div>}
                       </div>
                       <div className={cn('p-3 rounded-lg border', ocrInfo.activeSource === 'extracted' ? 'border-primary bg-primary/5' : 'border-border/50')}>
                         <div className="text-muted-foreground mb-1">{t('indexStatus.detail.extractedText')}</div>

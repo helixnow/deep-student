@@ -1,19 +1,5 @@
-import React, { useCallback, useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  MagnifyingGlass,
-  List,
-  GridFour,
-  ArrowClockwise,
-  Plus,
-  FolderPlus,
-  FileText,
-  ClipboardText,
-  BookOpen,
-  Translate,
-  PenNib,
-  FlowArrow,
-} from '@phosphor-icons/react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -58,7 +44,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
                 className="cursor-pointer hover:underline text-sm text-muted-foreground"
                 onClick={onNavigateHome}
               >
-                <span>{t('learningHub:title')}</span>
+                <button type="button">{t('learningHub:title')}</button>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
@@ -97,7 +83,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
                       className="cursor-pointer truncate max-w-[150px] hover:underline text-sm"
                       onClick={() => onBreadcrumbClick(index)}
                     >
-                      <span>{crumb.name}</span>
+                      <button type="button">{crumb.name}</button>
                     </BreadcrumbLink>
                   )}
                 </BreadcrumbItem>

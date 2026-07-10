@@ -27,7 +27,13 @@
     "load_failed": "Failed to load PDF. Please retry",
     "conversion_failed": "File format conversion failed",
     "content_not_found": "Unable to load PDF file content",
-    "load_pdf_failed": "Failed to load PDF"
+    "load_pdf_failed": "Failed to load PDF",
+    "password_protected": "This PDF is encrypted or password-protected",
+    "password_protected_hint": "Remove password protection in a PDF reader, then re-import or open locally.",
+    "invalid_pdf": "Invalid or corrupted PDF file",
+    "invalid_pdf_hint": "The file may not be a valid PDF, or it was corrupted during transfer or storage.",
+    "stream_failed": "PDF streaming failed",
+    "stream_failed_hint": "The file path may be invalid or outside allowed directories. Try relinking the file."
   },
   "toolbar": {
     "select_this_page": "Select this page",

@@ -3,6 +3,17 @@
   "sidebar": {
     "title": "访达"
   },
+  "tabBar": {
+    "pin": "固定标签页",
+    "unpin": "取消固定",
+    "closeOthers": "关闭其他标签页",
+    "closeRight": "关闭右侧标签页"
+  },
+  "splitView": {
+    "title": "分屏视图",
+    "openRight": "在右侧打开",
+    "close": "关闭分屏"
+  },
   "contextMenu": {
     "open": "打开",
     "preview": "预览",
@@ -197,8 +208,26 @@
     "previewTooLarge": "文件过大，无法预览",
     "loadFailed": "加载文件失败",
     "mediaDecodeFailed": "媒体文件解码失败",
+    "mediaRenderFailed": "媒体无法播放",
+    "mediaRenderFailedHint": "媒体文件可能已损坏或编码不受支持。",
+    "mediaUnsupportedHint": "当前系统内置浏览器可能不支持该格式，可保存到本地后用系统播放器打开。",
+    "mediaUnsupportedWarning": "该格式可能无法在内置浏览器中播放",
     "saveToDevice": "保存到本地打开",
-    "savedSuccessfully": "文件已保存"
+    "savedSuccessfully": "文件已保存",
+    "contentNotFound": "未找到文件内容 (id: {{id}})"
+  },
+  "filePreview": {
+    "textTruncated": "文件过大，仅显示开头部分内容，可下载文件查看完整内容"
+  },
+  "officePreview": {
+    "toolbarLabel": "预览工具栏",
+    "prevSheet": "上一个工作表",
+    "nextSheet": "下一个工作表",
+    "sheetTabs": "工作表列表",
+    "xlsxColsTruncated": "列数过多，仅显示前 {{shown}} 列（其余 {{hidden}} 列未渲染）",
+    "noSheets": "该工作簿不包含可预览的工作表",
+    "encryptedOrLegacy": "文件已加密（受密码保护）或为旧版二进制格式（.doc/.xls/.ppt），无法在线预览，可下载后用 Office 打开",
+    "invalidFormat": "文件不是有效的 Office 文档，可能已损坏"
   },
   "previewToolbar": {
     "zoomOut": "缩小视图",

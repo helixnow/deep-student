@@ -641,8 +641,8 @@
 /* 高亮覆盖层 */
 .ds-pdf__highlight-layer {
   position: absolute;
-  top: 0;
-  left: 0;
+  /* 铺满页面 wrapper：v2 高亮使用百分比坐标，需要非零尺寸的定位容器 */
+  inset: 0;
   pointer-events: none;
   z-index: 5;
 }
@@ -1254,5 +1254,100 @@
     font-size: 9px;
     min-width: 14px;
     height: 14px;
+  }
+}
+
+/* ============================================================================
+   移动端（<768，与 App shell isSmallScreen 对齐）
+   ★ 2026-07-08 移动端审计：固定浮层避让底部工具栏与手势安全区
+   ============================================================================ */
+
+@media (max-width: 767.98px) {
+  .ds-pdf__highlights-indicator {
+    right: 8px;
+    bottom: calc(64px + var(--mobile-safe-area-bottom, 0px));
+  }
+
+  .ds-pdf__highlights-panel {
+    right: 8px;
+    width: calc(100vw - 16px);
+    max-width: 320px;
+    max-height: 50vh;
+    bottom: calc(112px + var(--mobile-safe-area-bottom, 0px));
+  }
+
+  .ds-pdf__bookmarks-panel {
+    bottom: calc(64px + var(--mobile-safe-area-bottom, 0px));
+  }
+
+  /* 目录/缩略图侧栏：小屏下加宽并压住内容（配合 TSX 的 .visible 常挂） */
+  .ds-pdf__sidebar {
+    width: min(280px, 82vw);
+  }
+}
+
+/* ============================================================================
+   触屏适配（pointer: coarse）
+   ★ 2026-07-08 移动端审计：hover-only 操作常显 + 触控目标放大
+   桌面鼠标环境不受影响
+   ============================================================================ */
+
+@media (pointer: coarse) {
+  /* 工具栏按钮 26px → 40px 触控目标（375px 宽度下核心控件单行仍可容纳） */
+  .ds-btn {
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .ds-btn-sm {
+    min-width: 36px;
+    height: 36px;
+  }
+
+  .ds-pdf__toolbar {
+    height: 48px;
+  }
+
+  .ds-input {
+    width: 46px;
+    height: 34px;
+  }
+
+  .ds-zoom-option,
+  .ds-more-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  .ds-outline-item {
+    padding-top: 11px;
+    padding-bottom: 11px;
+  }
+
+  /* 高亮颜色选择器放大 */
+  .ds-highlight-color {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* hover-only 操作在触屏上永远不可见 → 常显 */
+  .ds-highlight-delete {
+    opacity: 1;
+    width: 28px;
+    height: 28px;
+  }
+
+  .ds-bookmark-actions {
+    opacity: 1;
+  }
+
+  .ds-bookmark-action-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* 「选择此页」按钮依赖 hover 显现，触屏常显 */
+  .ds-pdf__page-overlay {
+    opacity: 1;
   }
 }

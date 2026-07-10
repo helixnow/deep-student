@@ -999,24 +999,31 @@ impl QuestionSyncService {
     // ========================================================================
 
     /// 保留本地版本
+    ///
+    /// P1 修复：保留本地 ≠ 已同步。本服务没有 push 实现，本地内容从未推送到远端，
+    /// 因此不能置 `sync_status='synced'`（否则本地修改被视为"无待推送差异"，
+    /// 下次拉取远程时会被当作"本地未修改"直接覆盖，冲突前的修改永久丢失）。
+    /// 正确语义：保持/置为 `modified`（待推送），并基于**当前行内容**重算 content_hash
+    /// （冲突产生后用户可能又编辑过该题，冲突快照里的哈希已过期，写入会破坏后续哈希比对）。
     fn apply_keep_local(
         conn: &Connection,
         question_id: &str,
-        local_version: &QuestionVersion,
+        _local_version: &QuestionVersion,
         now: &str,
     ) -> VfsResult<()> {
-        // 更新同步状态为 synced，保留本地内容
+        // 基于当前行内容重算哈希（与 apply_merged_version 的 compute_version_hash 口径一致）
+        let current_question = Self::get_question_by_id(conn, question_id)?;
+        let current_hash = Self::compute_content_hash(&current_question);
+
         let affected = conn.execute(
             r#"
             UPDATE questions SET
-                sync_status = 'synced',
-                last_synced_at = ?1,
+                sync_status = 'modified',
                 content_hash = ?2,
-                remote_version = remote_version + 1,
                 updated_at = ?1
             WHERE id = ?3 AND deleted_at IS NULL
             "#,
-            params![now, local_version.content_hash, question_id],
+            params![now, current_hash, question_id],
         )?;
         if affected == 0 {
             return Err(VfsError::NotFound {
@@ -2154,5 +2161,120 @@ mod tests {
             .as_ref()
             .unwrap()
             .contains("Remote note"));
+    }
+
+    /// P1 回归：KeepLocal 不应标记 synced，且 content_hash 应基于当前行内容重算
+    #[test]
+    fn test_apply_keep_local_keeps_pending_push_and_recomputes_hash() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE questions (
+                id TEXT PRIMARY KEY,
+                exam_id TEXT NOT NULL,
+                card_id TEXT,
+                question_label TEXT,
+                content TEXT NOT NULL,
+                options_json TEXT,
+                answer TEXT,
+                explanation TEXT,
+                question_type TEXT,
+                difficulty TEXT,
+                tags TEXT,
+                status TEXT,
+                user_answer TEXT,
+                is_correct INTEGER,
+                attempt_count INTEGER NOT NULL DEFAULT 0,
+                correct_count INTEGER NOT NULL DEFAULT 0,
+                last_attempt_at TEXT,
+                user_note TEXT,
+                is_favorite INTEGER NOT NULL DEFAULT 0,
+                is_bookmarked INTEGER NOT NULL DEFAULT 0,
+                source_type TEXT,
+                source_ref TEXT,
+                images_json TEXT,
+                parent_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                ai_feedback TEXT,
+                ai_score REAL,
+                ai_graded_at TEXT,
+                sync_status TEXT NOT NULL DEFAULT 'local_only',
+                last_synced_at TEXT,
+                content_hash TEXT,
+                remote_version INTEGER NOT NULL DEFAULT 0,
+                deleted_at TEXT
+            );
+            "#,
+        )
+        .expect("create questions table");
+
+        // 模拟：冲突产生后用户又编辑过该题 —— 行内容与冲突快照不一致
+        conn.execute(
+            r#"
+            INSERT INTO questions (
+                id, exam_id, content, answer, question_type, tags,
+                created_at, updated_at, sync_status, content_hash, remote_version
+            ) VALUES (
+                'q_keep_local', 'exam_1', 'Edited after conflict', 'B', 'single_choice', '[]',
+                '2024-01-01T00:00:00Z', '2024-01-03T00:00:00Z', 'modified', 'hash_at_edit', 3
+            )
+            "#,
+            [],
+        )
+        .expect("insert question");
+
+        // 冲突快照（过期）：内容与哈希都是冲突创建时刻的旧值
+        let stale_snapshot = QuestionVersion {
+            id: "q_keep_local".to_string(),
+            content: "Original content before edit".to_string(),
+            options: None,
+            answer: Some("A".to_string()),
+            explanation: None,
+            question_type: QuestionType::SingleChoice,
+            difficulty: None,
+            tags: vec![],
+            status: QuestionStatus::New,
+            user_answer: None,
+            is_correct: None,
+            attempt_count: 0,
+            correct_count: 0,
+            user_note: None,
+            is_favorite: false,
+            is_bookmarked: false,
+            images: vec![],
+            content_hash: "stale_conflict_hash".to_string(),
+            updated_at: "2024-01-02T00:00:00Z".to_string(),
+            remote_version: 3,
+        };
+
+        QuestionSyncService::apply_keep_local(
+            &conn,
+            "q_keep_local",
+            &stale_snapshot,
+            "2024-01-04T00:00:00Z",
+        )
+        .expect("apply_keep_local");
+
+        let (sync_status, content_hash, last_synced_at): (String, String, Option<String>) = conn
+            .query_row(
+                "SELECT sync_status, content_hash, last_synced_at FROM questions WHERE id = 'q_keep_local'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("query updated row");
+
+        // 保留本地 = 本地版本未推送 → 必须保持待推送状态而非 synced
+        assert_eq!(sync_status, "modified");
+        // 不应写入"已同步时间"（本服务无 push 实现）
+        assert!(last_synced_at.is_none());
+        // 哈希基于当前行内容重算，而非冲突快照里的过期哈希
+        assert_ne!(content_hash, "stale_conflict_hash");
+        let current = QuestionSyncService::get_question_by_id(&conn, "q_keep_local")
+            .expect("load current question");
+        assert_eq!(
+            content_hash,
+            QuestionSyncService::compute_content_hash(&current)
+        );
     }
 }

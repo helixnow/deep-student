@@ -13,6 +13,7 @@ import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody }
 import { Progress } from '@/components/ui/shad/Progress';
 import { CircleNotch, CheckCircle, XCircle, FileText } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useDialogFocusManagement } from './FolderSelectorDialog';
 
 /** 导入进度阶段 */
 export type ImportStage = 'hashing' | 'copying' | 'rendering' | 'parsing' | 'indexing' | 'saving' | 'done' | 'error';
@@ -60,6 +61,10 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
 }) => {
   const { t } = useTranslation('learningHub');
   const { isImporting, fileName, stage, currentPage, totalPages, progress, error } = state;
+  // 后端进度事件可能带小数或瞬时越界值，展示前先取整并夹取到 0-100
+  const displayProgress = Math.round(Math.min(100, Math.max(0, progress)));
+  // 导入期间圈定 Tab 焦点在弹窗内，关闭后把焦点还给触发导入的元素
+  const focusScopeRef = useDialogFocusManagement(isImporting);
 
   // 阶段文本映射
   const getStageText = (): string => {
@@ -82,7 +87,8 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
       case 'done':
         return t('import.stage.done');
       case 'error':
-        return error || t('import.stage.error');
+        // 错误详情在下方的错误框中展示，这里只显示阶段标签，避免长错误信息重复出现两次
+        return t('import.stage.error');
       default:
         return t('import.stage.preparing');
     }
@@ -111,7 +117,8 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
         </NotionDialogHeader>
         <NotionDialogBody>
 
-        <div className="space-y-4 py-4">
+        {/* tabIndex=-1：导入中无可聚焦元素时作为焦点兜底容器 */}
+        <div ref={focusScopeRef} tabIndex={-1} className="space-y-4 py-4 outline-none">
           {/* 文件名 */}
           <div className="flex items-center gap-3">
             <StageIcon stage={stage} className="flex-shrink-0" />
@@ -119,10 +126,14 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
               <p className="text-sm font-medium truncate" title={fileName}>
                 {fileName}
               </p>
-              <p className={cn(
-                'text-xs mt-0.5',
-                stage === 'error' ? 'text-destructive' : 'text-muted-foreground'
-              )}>
+              <p
+                className={cn(
+                  'text-xs mt-0.5',
+                  stage === 'error' ? 'text-destructive' : 'text-muted-foreground'
+                )}
+                aria-live="polite"
+                role="status"
+              >
                 {getStageText()}
               </p>
             </div>
@@ -130,9 +141,9 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
 
           {/* 进度条 */}
           <div className="space-y-1.5">
-            <Progress value={progress} className="h-2" />
+            <Progress value={displayProgress} className="h-2" />
             <p className="text-xs text-muted-foreground text-right">
-              {progress}%
+              {displayProgress}%
             </p>
           </div>
 

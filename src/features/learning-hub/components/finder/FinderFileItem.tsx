@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { formatDistanceToNow } from 'date-fns';
@@ -119,7 +119,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   compact = false,
   isHighlighted = false,
 }: FinderFileItemProps) {
-  const { t, i18n } = useTranslation(['learningHub']);
+  const { t, i18n } = useTranslation(['learningHub', 'common']);
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || GenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
   const snippet = item.metadata?.snippet as string | undefined;
@@ -164,10 +164,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   }, [onEditCancel]);
 
   // 格式化相对时间（locale 跟随界面语言）
-  const relativeTime = formatDistanceToNow(item.updatedAt, { 
+  const relativeTime = useMemo(() => formatDistanceToNow(item.updatedAt, { 
     addSuffix: true, 
     locale: i18n.language?.startsWith('zh') ? zhCN : enUS 
-  });
+  }), [item.updatedAt, i18n.language]);
 
   const typeLabel = LABELED_TYPES.has(item.type)
     ? t(`learningHub:indexStatus.resourceType.${item.type}`)
@@ -184,7 +184,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       <div
         className={cn(
           "group relative flex items-center gap-2 px-3 py-1.5 cursor-default select-none rounded-md mx-1 my-0.5",
-          "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
+          "transition-[background-color,box-shadow,border-color,opacity,transform] duration-150 ease-out",
           "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]",
           isSelected && "bg-primary/10 dark:bg-primary/20 hover:bg-primary/15 dark:hover:bg-primary/25",
           isActive && !isSelected && "bg-accent/40 dark:bg-accent/30",
@@ -277,7 +277,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                   : '!h-6 !w-6 !p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
               )}
               onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
-              aria-label="more"
+              aria-label={t('common:more')}
             >
               <DotsThree size={isTouchPrimary ? 20 : 16} className="text-muted-foreground/60" />
             </NotionButton>
@@ -293,8 +293,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       className={cn(
         // Notion 风格的网格卡片 - 更大、更精致
         "group relative flex flex-col items-center p-3 rounded-xl cursor-default select-none",
-        "w-[88px] h-[100px]",
-        "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
+        "box-border w-[88px] max-w-[88px] h-[100px] shrink-0",
+        "transition-[background-color,box-shadow,border-color,opacity,transform] duration-150 ease-out",
         "border border-transparent",
         // 悬停效果
         !isSelected && !isActive && "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)] hover:shadow-notion",
@@ -305,12 +305,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         // 拖拽状态
         isDragging && "opacity-40 scale-95",
         isDragOverlay && "shadow-notion-lg ring-1 ring-primary/30 bg-background scale-105",
-        isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-102 border-primary"
+        isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-[1.02] border-primary"
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
-      title={isEditing ? undefined : (snippet ? `${item.name}\n📄 ${snippet}` : item.name)}
+      title={isEditing ? undefined : rowTitle}
     >
       {/* 已关联标记 */}
       {isHighlighted && (
@@ -330,19 +330,19 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           iconOnly
           className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
           onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
-          aria-label="more"
+          aria-label={t('common:more')}
         >
           <DotsThree size={18} className="text-muted-foreground/70" />
         </NotionButton>
       )}
       
-      {/* 自定义 SVG 图标 */}
-      <div className="mb-2">
-        <CustomIcon size={48} />
+      {/* 自定义 SVG 图标：固定盒，防止被网格单元横向拉伸 */}
+      <div className="mb-2 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden">
+        <CustomIcon size={48} className="h-12 w-12 max-w-full shrink-0" />
       </div>
       
       {/* 文件名 */}
-      <div className="w-full text-center">
+      <div className="w-full min-w-0 text-center">
         {isEditing ? (
           <InlineEditText
             value={item.name}
@@ -354,7 +354,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             inputClassName="text-center !text-[11px]"
           />
         ) : (
-          <span className="text-[11px] leading-tight font-medium text-foreground/85 line-clamp-2 break-words">
+          <span className="block w-full text-[11px] leading-tight font-medium text-foreground/85 line-clamp-2 break-words">
             {item.name}
           </span>
         )}
@@ -406,6 +406,10 @@ export const SortableFinderFileItem = React.memo(function SortableFinderFileItem
       {...listeners}
       data-finder-item
       data-item-id={id}
+      data-agent-entity={`files:${id}`}
+      role="option"
+      aria-selected={props.isSelected}
+      className={props.viewMode === 'grid' ? 'w-[88px] max-w-[88px] min-w-0' : undefined}
     >
       <FinderFileItem
         {...props}

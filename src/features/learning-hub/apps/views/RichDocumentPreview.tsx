@@ -1,8 +1,9 @@
-import React, { Suspense, lazy, useCallback, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 
 import { UnifiedPreviewToolbar, type ToolbarPreviewType, type SlideNavInfo } from './UnifiedPreviewToolbar';
+import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, clampNumber } from './previewUtils';
 
 const DocxPreview = lazy(() => import('./DocxPreview'));
 const XlsxPreview = lazy(() => import('./XlsxPreview'));
@@ -50,8 +51,36 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
     setSlideNav(info);
   }, []);
 
+  // Ctrl+滚轮 / 触控板捏合缩放。
+  // React 的 onWheel 是被动监听器，无法 preventDefault 阻止浏览器整页缩放，
+  // 因此使用原生非被动监听器；用 ref 保存最新值避免反复解绑/重绑
+  const rootRef = useRef<HTMLDivElement>(null);
+  const zoomRef = useRef({ zoomScale, onZoomChange });
+  zoomRef.current = { zoomScale, onZoomChange };
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey || e.deltaY === 0) return;
+      e.preventDefault();
+      const { zoomScale: current, onZoomChange: change } = zoomRef.current;
+      const step = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+      const next = Number(clampNumber(current + step, ZOOM_MIN, ZOOM_MAX).toFixed(2));
+      if (next !== current) {
+        change(next);
+      }
+    };
+
+    root.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      root.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
+
   return (
-    <div className={cn('flex flex-col h-full overflow-hidden', rootClassName)}>
+    <div ref={rootRef} className={cn('flex flex-col h-full overflow-hidden', rootClassName)}>
       <div className={cn('flex-1 overflow-hidden', bodyClassName)}>
         <Suspense fallback={fallback}>
           {kind === 'docx' && (

@@ -4,7 +4,7 @@
  * 用于批量移动资源时选择目标文件夹
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Folder, FolderOpen, CaretRight, CaretDown, CircleNotch } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
@@ -12,6 +12,138 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import type { FolderTreeNode } from '@/dstu/types/folder';
+
+// ============================================================================
+// 对话框焦点管理（共享对话框组件 本身不提供焦点圈定/恢复，这里补齐）
+// ============================================================================
+
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter((el) => el.getClientRects().length > 0);
+}
+
+/**
+ * 对话框焦点管理 Hook：
+ * - 打开时把焦点移入对话框（优先 [data-autofocus]，其次第一个可聚焦元素）
+ * - Tab / Shift+Tab 循环圈定在对话框内
+ * - 关闭时把焦点还给打开前的触发元素
+ *
+ * 返回的 ref 挂在对话框内容内任意稳定元素上，通过 closest('[role="dialog"]')
+ * 找到实际的对话框容器（共享对话框组件 的内容层带 role="dialog"）。
+ */
+export function useDialogFocusManagement(open: boolean) {
+  const scopeRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    let dialogEl: HTMLElement | null = null;
+
+    // 等待 portal + 入场动画首帧后再解析容器与初始焦点
+    const raf = requestAnimationFrame(() => {
+      dialogEl =
+        (scopeRef.current?.closest('[role="dialog"], [role="alertdialog"]') as HTMLElement | null) ??
+        scopeRef.current;
+      if (!dialogEl) return;
+      if (!dialogEl.contains(document.activeElement)) {
+        const target =
+          dialogEl.querySelector<HTMLElement>('[data-autofocus]') ??
+          getFocusable(dialogEl)[0] ??
+          dialogEl;
+        target.focus?.();
+      }
+    });
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab' || !dialogEl) return;
+      const focusables = getFocusable(dialogEl);
+      if (focusables.length === 0) {
+        e.preventDefault();
+        return;
+      }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      const inside = active ? dialogEl.contains(active) : false;
+      if (e.shiftKey) {
+        if (!inside || active === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (!inside || active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus?.();
+      }
+    };
+  }, [open]);
+
+  return scopeRef;
+}
+
+// ============================================================================
+// 树键盘导航（方向键/Home/End，供本对话框的文件夹树使用）
+// ============================================================================
+
+const TREE_NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+
+function handleTreeItemKeyNav(
+  e: React.KeyboardEvent<HTMLElement>,
+  opts: { hasChildren: boolean; isExpanded: boolean; onToggleExpand?: () => void },
+) {
+  if (!TREE_NAV_KEYS.includes(e.key)) return;
+  const current = e.currentTarget as HTMLElement;
+  const root = current.closest('[data-selector-tree-root]');
+  if (!root) return;
+  const items = Array.from(root.querySelectorAll<HTMLElement>('[data-selector-tree-item]'));
+  const idx = items.indexOf(current);
+  if (idx === -1) return;
+  e.preventDefault();
+  e.stopPropagation();
+  switch (e.key) {
+    case 'ArrowDown':
+      items[idx + 1]?.focus();
+      break;
+    case 'ArrowUp':
+      items[idx - 1]?.focus();
+      break;
+    case 'Home':
+      items[0]?.focus();
+      break;
+    case 'End':
+      items[items.length - 1]?.focus();
+      break;
+    case 'ArrowRight':
+      if (opts.hasChildren && !opts.isExpanded) opts.onToggleExpand?.();
+      else items[idx + 1]?.focus();
+      break;
+    case 'ArrowLeft':
+      if (opts.hasChildren && opts.isExpanded) {
+        opts.onToggleExpand?.();
+      } else {
+        // 折叠态/叶子节点：跳到父级（往上找第一个层级更浅的节点）
+        const myDepth = Number(current.dataset.depth ?? 0);
+        for (let i = idx - 1; i >= 0; i--) {
+          if (Number(items[i].dataset.depth ?? 0) < myDepth) {
+            items[i].focus();
+            break;
+          }
+        }
+      }
+      break;
+  }
+}
 
 // ============================================================================
 // 类型定义
@@ -49,7 +181,7 @@ interface FolderTreeItemProps {
   onToggleExpand: (id: string) => void;
 }
 
-const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
+const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
   node,
   depth,
   selectedId,
@@ -66,31 +198,44 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
       <NotionButton
         variant="ghost" size="sm"
         className={cn(
-          'w-full !justify-start !px-2 !py-1.5',
+          // 📱 触屏：树行高 ≥44px（契约第 6 条），桌面不受影响
+          'w-full !justify-start !px-2 !py-1.5 [@media(pointer:coarse)]:min-h-[44px]',
           isSelected
             ? 'bg-primary text-primary-foreground'
             : 'hover:bg-[var(--interactive-hover)] text-foreground',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => onSelect(node.folder.id)}
+        data-selector-tree-item
+        data-depth={depth + 1}
+        role="treeitem"
+        aria-selected={isSelected}
+        aria-expanded={hasChildren ? isExpanded : undefined}
+        aria-level={depth + 2}
+        onKeyDown={(e) => handleTreeItemKeyNav(e, {
+          hasChildren: !!hasChildren,
+          isExpanded,
+          onToggleExpand: () => onToggleExpand(node.folder.id),
+        })}
       >
-        {/* 展开/折叠按钮 */}
+        {/* 展开/折叠按钮 — 不能在 button 内嵌套 button（无效 HTML），改用 span */}
         {hasChildren ? (
-          <NotionButton
-            variant="ghost" size="icon" iconOnly
-            className="shrink-0 !h-5 !w-5 !p-0.5 mr-1"
+          <span
+            role="button"
+            aria-label="toggle"
+            aria-expanded={isExpanded}
+            className="shrink-0 h-5 w-5 p-0.5 mr-1 inline-flex items-center justify-center rounded hover:bg-[var(--interactive-hover)] cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand(node.folder.id);
             }}
-            aria-label="toggle"
           >
             {isExpanded ? (
               <CaretDown size={14} />
             ) : (
               <CaretRight size={14} />
             )}
-          </NotionButton>
+          </span>
         ) : (
           <span className="w-5 shrink-0" />
         )}
@@ -124,7 +269,9 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
       )}
     </>
   );
-};
+});
+
+FolderTreeItem.displayName = 'FolderSelectorTreeItem';
 
 // ============================================================================
 // 主组件
@@ -143,9 +290,18 @@ export function FolderSelectorDialog({
   const { t } = useTranslation('learningHub');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // 焦点圈定 + 关闭时还焦到触发元素
+  const focusScopeRef = useDialogFocusManagement(open);
 
-  // 展开/折叠文件夹
-  const handleToggleExpand = (id: string) => {
+  // 每次打开时重置选择，避免沿用上一次移动操作的目标文件夹
+  useEffect(() => {
+    if (open) {
+      setSelectedId(null);
+    }
+  }, [open]);
+
+  // 展开/折叠文件夹（稳定引用，配合子节点 React.memo）
+  const handleToggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
@@ -155,7 +311,7 @@ export function FolderSelectorDialog({
       }
       return next;
     });
-  };
+  }, []);
 
   // 确认选择
   const handleConfirm = () => {
@@ -168,7 +324,17 @@ export function FolderSelectorDialog({
   }, [folderTree]);
 
   return (
-    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[400px]">
+    <NotionDialog
+      open={open}
+      // 移动过程中禁止通过 Esc/遮罩/关闭按钮中途关闭，与禁用的取消按钮保持一致
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && isMoving) return;
+        onOpenChange(nextOpen);
+      }}
+      closeOnOverlay={!isMoving}
+      showClose={!isMoving}
+      maxWidth="max-w-[400px]"
+    >
         <NotionDialogHeader>
           <NotionDialogTitle>
             {title || t('multiSelect.moveDialogTitle')}
@@ -180,9 +346,9 @@ export function FolderSelectorDialog({
         <NotionDialogBody>
 
         {/* 文件夹列表 */}
-        <div className="min-h-[200px] max-h-[300px] border rounded-md">
+        <div ref={focusScopeRef} className="min-h-[200px] max-h-[300px] border rounded-md">
           <CustomScrollArea className="h-[300px]">
-            <div className="p-2">
+            <div className="p-2" data-selector-tree-root role="tree">
               {isLoading ? (
                 <div className="flex items-center justify-center py-8 text-muted-foreground">
                   <CircleNotch size={20} className="animate-spin mr-2" />
@@ -199,7 +365,18 @@ export function FolderSelectorDialog({
               ) : (
                 <>
                   {/* 根目录选项 */}
-                  <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-2 !py-1.5 mb-1', selectedId === null ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--interactive-hover)] text-foreground')} onClick={() => setSelectedId(null)}>
+                  <NotionButton
+                    variant="ghost" size="sm"
+                    className={cn('w-full !justify-start !px-2 !py-1.5 mb-1 [@media(pointer:coarse)]:min-h-[44px]', selectedId === null ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--interactive-hover)] text-foreground')}
+                    onClick={() => setSelectedId(null)}
+                    data-selector-tree-item
+                    data-depth={0}
+                    data-autofocus
+                    role="treeitem"
+                    aria-selected={selectedId === null}
+                    aria-level={1}
+                    onKeyDown={(e) => handleTreeItemKeyNav(e, { hasChildren: false, isExpanded: false })}
+                  >
                     <span className="w-5 shrink-0" />
                     <Folder size={16} className="mr-2 shrink-0 text-muted-foreground" />
                     <span className="truncate">{t('folder.root')}</span>

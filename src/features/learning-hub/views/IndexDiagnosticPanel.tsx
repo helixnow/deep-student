@@ -63,9 +63,12 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
       data,
       lanceData,
     };
+    // 记录添加前是否贴近底部：用户上翻查看旧日志时不强制拉回底部
+    const el = logContainerRef.current;
+    const wasNearBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     setLogs(prev => [...prev, entry]);
     setTimeout(() => {
-      if (logContainerRef.current) {
+      if (wasNearBottom && logContainerRef.current) {
         logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
       }
     }, 100);
@@ -210,7 +213,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
     }).catch(() => {
       showGlobalNotification('error', t('diagnostic.copyFailed'));
     });
-  }, [logs]);
+  }, [logs, t]);
 
   const handleClearLogs = useCallback(() => {
     setLogs([]);

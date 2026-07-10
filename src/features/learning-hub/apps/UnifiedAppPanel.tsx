@@ -12,7 +12,7 @@
  * - essay: 作文批改
  */
 
-import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -78,6 +78,43 @@ export interface ContentViewProps {
 // 组件实现
 // ============================================================================
 
+/** 可由 node.type 自动纠正路由的资源类型集合 */
+const SUPPORTED_TYPES: readonly ResourceType[] = [
+  'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
+];
+
+/**
+ * 加载指示延迟：快速加载（< 该阈值）不闪现 spinner，切换资源时视觉更平滑。
+ * 延迟期间面板保持空白背景（布局尺寸不变），超时后才显示加载 UI。
+ */
+const LOADING_INDICATOR_DELAY_MS = 150;
+
+/** 统一加载占位（初始加载与懒加载 Suspense 共用，避免两种加载态样式不一致） */
+const PanelLoading: React.FC<{ label: string; delayMs?: number }> = ({
+  label,
+  delayMs = LOADING_INDICATOR_DELAY_MS,
+}) => {
+  const [visible, setVisible] = useState(delayMs <= 0);
+
+  useEffect(() => {
+    if (delayMs <= 0) return;
+    const timer = window.setTimeout(() => setVisible(true), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [delayMs]);
+
+  // 占位容器始终撑满面板（h-full），避免 spinner 出现/消失引起滚动条或布局跳动
+  return (
+    <div className="flex items-center justify-center h-full" role="status" aria-live="polite">
+      {visible && (
+        <>
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
+          <span className="ml-2 text-muted-foreground">{label}</span>
+        </>
+      )}
+    </div>
+  );
+};
+
 /**
  * 统一应用面板
  */
@@ -105,8 +142,25 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   const onTitleChangeRef = useRef(onTitleChange);
   onTitleChangeRef.current = onTitleChange;
 
+  // ★ onClose 同理走 ref，保证传给子视图的 commonProps 引用稳定（避免父级重建闭包导致子视图无谓重渲染）
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // ★ 资源标识变化时在 render 阶段同步进入加载态（React 官方「根据 props 调整 state」模式），
+  //   消除 effect 生效前旧资源内容在新标识下多渲染一帧的问题
+  const loadKey = `${resourceId}:${reloadNonce}:${localReloadNonce}`;
+  const [prevLoadKey, setPrevLoadKey] = useState(loadKey);
+  if (prevLoadKey !== loadKey) {
+    setPrevLoadKey(loadKey);
+    setIsLoading(true);
+    setError(null);
+  }
+
   // 加载资源数据
   useEffect(() => {
+    // ★ 竞态防护：resourceId 快速切换时，丢弃已过期请求的结果，避免旧资源覆盖新资源
+    let cancelled = false;
+
     const loadResource = async () => {
       setIsLoading(true);
       setError(null);
@@ -116,6 +170,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       // 传给 dstu.get() 会导致 "Invalid DSTU path: Path must contain a resource ID" 错误
       const path = resourceId.startsWith('/') ? resourceId : `/${resourceId}`;
       const result = await dstu.get(path);
+      if (cancelled) return;
 
       if (!result.ok) {
         reportError(result.error, '加载资源');
@@ -136,67 +191,47 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     };
 
     void loadResource();
-  }, [dstuPath, resourceId, t, type, reloadNonce, localReloadNonce]);
+    return () => {
+      cancelled = true;
+    };
+    // ★ 仅在资源标识 / 重载计数变化时重新加载；t 变化（切换语言）不应触发资源重取
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resourceId, reloadNonce, localReloadNonce]);
 
-  // 加载状态
-  if (isLoading) {
-    return (
-      <div className={cn('flex items-center justify-center h-full', className)}>
-        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-        <span className="ml-2 text-muted-foreground">
-          {t('common:loading', '加载中...')}
-        </span>
-      </div>
-    );
-  }
+  // 稳定的标题回调：引用不随父级重渲染变化，避免破坏 commonProps 的 memo
+  const handleTitleChange = useCallback((newTitle: string) => {
+    onTitleChangeRef.current?.(newTitle);
+  }, []);
 
-  // 错误状态
-  if (error || !node) {
-    return (
-      <div className={cn('flex flex-col items-center justify-center h-full gap-4', className)}>
-        <WarningCircle size={48} className="text-destructive" />
-        <p className="text-destructive text-center">{error || t('error.resourceNotFound')}</p>
-        <div className="flex items-center gap-2">
-          <NotionButton
-            variant="outline"
-            size="sm"
-            onClick={() => setLocalReloadNonce((n) => n + 1)}
-            className="gap-1.5"
-          >
-            <ArrowClockwise size={14} />
-            {t('common:reload', '重新加载')}
-          </NotionButton>
-          {onClose && (
-            <NotionButton variant="ghost" size="sm" onClick={onClose}>
-              {t('common:close', '关闭')}
-            </NotionButton>
-          )}
-        </div>
-      </div>
-    );
-  }
+  // 稳定的关闭回调；保持「未传 onClose 时子视图收到 undefined」的语义（子视图据此决定是否渲染关闭按钮）
+  const hasOnClose = Boolean(onClose);
+  const handleClose = useCallback(() => {
+    onCloseRef.current?.();
+  }, []);
 
-  const supportedTypes: ResourceType[] = [
-    'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
-  ];
   const shouldPreferExplicitType = type === 'image' || type === 'file';
   const resolvedType: ResourceType = shouldPreferExplicitType
     ? type
-    : (node && supportedTypes.includes(node.type as ResourceType)
+    : (node && SUPPORTED_TYPES.includes(node.type as ResourceType)
       ? (node.type as ResourceType)
       : type);
-  const commonProps: ContentViewProps = {
-    node,
-    onClose,
-    onTitleChange: (newTitle: string) => {
-      onTitleChange?.(newTitle);
-    },
-    readOnly,
-    isActive,
-  };
 
-  // 根据资源类型渲染对应的内容视图
-  const renderContentView = () => {
+  // ★ 性能：memo 化 commonProps，避免每次渲染都传新对象给内容视图（导致其内部 effect/memo 失效）
+  const commonProps = useMemo<ContentViewProps | null>(() => {
+    if (!node) return null;
+    return {
+      node,
+      onClose: hasOnClose ? handleClose : undefined,
+      onTitleChange: handleTitleChange,
+      readOnly,
+      isActive,
+    };
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive]);
+
+  // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
+  //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图
+  const contentView = useMemo(() => {
+    if (!node || !commonProps) return null;
     switch (resolvedType) {
       case 'note':
         return <NoteContentView {...commonProps} />;
@@ -213,30 +248,65 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       case 'file':
         return <FileContentView {...commonProps} />;
       case 'mindmap':
-        return <MindMapContentView resourceId={node.id} onTitleChange={onTitleChange} isActive={isActive} className="h-full" />;
+        return <MindMapContentView resourceId={node.id} onTitleChange={handleTitleChange} isActive={isActive} className="h-full" />;
       default:
         return (
-          <div className="flex items-center justify-center h-full text-muted-foreground">
-            {t('error.unsupportedType', '不支持的资源类型: {{type}}', { type })}
+          <div className="flex items-center justify-center h-full text-muted-foreground" role="alert">
+            {t('error.unsupportedType', '不支持的资源类型: {{type}}', { type: resolvedType })}
           </div>
         );
     }
-  };
+  }, [node, commonProps, resolvedType, isActive, handleTitleChange, t]);
+
+  // 加载状态（spinner 延迟显示，快速加载不闪烁）
+  if (isLoading) {
+    return (
+      <div className={cn('flex flex-col h-full bg-background', className)}>
+        <PanelLoading label={t('common:loading', '加载中...')} />
+      </div>
+    );
+  }
+
+  // 错误状态
+  if (error || !node || !commonProps) {
+    return (
+      <div
+        className={cn('flex flex-col items-center justify-center h-full gap-4 bg-background', className)}
+        role="alert"
+      >
+        <WarningCircle size={48} className="text-destructive" aria-hidden="true" />
+        <p className="text-destructive text-center">{error || t('error.resourceNotFound', '资源未找到')}</p>
+        <div className="flex items-center gap-2">
+          <NotionButton
+            variant="outline"
+            size="sm"
+            onClick={() => setLocalReloadNonce((n) => n + 1)}
+            className="gap-1.5"
+          >
+            <ArrowClockwise size={14} aria-hidden="true" />
+            {t('common:reload', '重新加载')}
+          </NotionButton>
+          {onClose && (
+            <NotionButton variant="ghost" size="sm" onClick={onClose}>
+              {t('common:close', '关闭')}
+            </NotionButton>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
-      <Suspense
-        fallback={
-          <div className="flex items-center justify-center h-full">
-            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-            <span className="ml-2 text-muted-foreground">
-              {t('common:loading', '加载中...')}
-            </span>
-          </div>
-        }
-      >
-        <AppContentErrorBoundary resourceType={resolvedType}>
-          {renderContentView()}
+      <Suspense fallback={<PanelLoading label={t('common:loading', '加载中...')} />}>
+        {/* resetKey：切换到其他资源/类型时自动清除上一个视图的崩溃状态；
+            onClose：移动端崩溃兜底页的返回出路（关闭当前标签页） */}
+        <AppContentErrorBoundary
+          resourceType={resolvedType}
+          resetKey={`${node.id}:${resolvedType}`}
+          onClose={hasOnClose ? handleClose : undefined}
+        >
+          {contentView}
         </AppContentErrorBoundary>
       </Suspense>
     </div>

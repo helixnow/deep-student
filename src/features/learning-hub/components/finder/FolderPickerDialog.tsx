@@ -26,6 +26,8 @@ interface FolderNodeProps {
   expandedIds: Set<string>;
   onSelect: (id: string | null) => void;
   onToggleExpand: (id: string) => void;
+  /** 祖先节点被排除时，整棵子树都不可选（防止移动到自身的子文件夹形成循环） */
+  parentExcluded?: boolean;
 }
 
 function FolderNode({
@@ -36,8 +38,9 @@ function FolderNode({
   expandedIds,
   onSelect,
   onToggleExpand,
+  parentExcluded = false,
 }: FolderNodeProps) {
-  const isExcluded = excludeIds.has(node.folder.id);
+  const isExcluded = parentExcluded || excludeIds.has(node.folder.id);
   const isSelected = selectedId === node.folder.id;
   const isExpanded = expandedIds.has(node.folder.id);
   const hasChildren = node.children.length > 0;
@@ -59,21 +62,42 @@ function FolderNode({
   }, [isExpanded]);
 
   return (
-    <div>
+    <div role="none">
       <div
+        role="treeitem"
+        aria-selected={isSelected && !isExcluded}
+        aria-expanded={hasChildren ? isExpanded : undefined}
+        aria-disabled={isExcluded || undefined}
+        tabIndex={isExcluded ? -1 : 0}
         className={cn(
           'flex items-center gap-1.5 py-2 px-2 rounded-md cursor-pointer',
+          // 📱 触屏：树行高 ≥44px（契约第 6 条），桌面不受影响
+          '[@media(pointer:coarse)]:min-h-[44px]',
           'transition-all duration-150 ease-out',
           'active:scale-[0.99]',
+          'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
           isSelected && !isExcluded && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
           !isSelected && !isExcluded && 'hover:bg-[var(--interactive-hover)]',
           isExcluded && 'opacity-40 cursor-not-allowed'
         )}
         style={{ paddingLeft: `${level * 16 + 12}px` }}
         onClick={() => !isExcluded && onSelect(node.folder.id)}
+        onKeyDown={(e) => {
+          if (isExcluded) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect(node.folder.id);
+          } else if (e.key === 'ArrowRight' && hasChildren && !isExpanded) {
+            e.preventDefault();
+            onToggleExpand(node.folder.id);
+          } else if (e.key === 'ArrowLeft' && hasChildren && isExpanded) {
+            e.preventDefault();
+            onToggleExpand(node.folder.id);
+          }
+        }}
       >
         {hasChildren ? (
-          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+          <NotionButton variant="ghost" size="icon" iconOnly tabIndex={-1} className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
             <CaretRight 
               className={cn(
                 'transition-transform duration-200 ease-out',
@@ -100,7 +124,7 @@ function FolderNode({
           {node.children.map((child, index) => (
             <div
               key={child.folder.id}
-              className="animate-in fade-in-0 slide-in-from-left-1"
+              className="ui-slide-fade-in [--ui-enter-x:-4px]"
               style={{ animationDelay: `${index * 30}ms`, animationFillMode: 'both' }}
             >
               <FolderNode
@@ -111,6 +135,7 @@ function FolderNode({
                 expandedIds={expandedIds}
                 onSelect={onSelect}
                 onToggleExpand={onToggleExpand}
+                parentExcluded={isExcluded}
               />
             </div>
           ))}
@@ -196,16 +221,27 @@ export function FolderPickerDialog({
                 {error}
               </div>
             ) : (
-                <div className="py-1 px-5">
+                <div className="py-1 px-5" role="tree" aria-label={title || t('finder.folderPicker.title')}>
                 {/* 根目录选项 */}
                 <div
+                  role="treeitem"
+                  aria-selected={selectedId === null}
+                  tabIndex={0}
                   className={cn(
                     'flex items-center gap-2 py-2 px-3 rounded-md cursor-pointer',
+                    '[@media(pointer:coarse)]:min-h-[44px]',
                     'transition-all duration-150 ease-out active:scale-[0.99]',
+                    'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
                     selectedId === null && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
                     selectedId !== null && 'hover:bg-[var(--interactive-hover)]'
                   )}
                   onClick={() => setSelectedId(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedId(null);
+                    }
+                  }}
                 >
                   <House size={16} className={cn(
                     'transition-colors duration-150',

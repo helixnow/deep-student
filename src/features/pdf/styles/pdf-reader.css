@@ -252,6 +252,12 @@
 
 /* 响应式设计 */
 @media (max-width: 767.98px) {
+  /* ★ 2026-07-08 移动端审计：独立 pdf-reader 视图贴屏幕底部，
+     底部工具栏需避让 Android 手势条安全区 */
+  .pdf-reader-container {
+    padding-bottom: var(--mobile-safe-area-bottom, 0px);
+  }
+
   .pdf-reader-header {
     flex-direction: column;
     gap: 1rem;

@@ -99,7 +99,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   trashCount,
   fillContainer = false
 }: FinderQuickAccessProps) {
-  const { t } = useTranslation('learningHub');
+  const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const quickAccessItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
@@ -128,8 +128,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     { type: 'indexStatus', CustomIcon: IndexStatusIcon, label: t('finder.quickAccess.indexStatus') },
     { type: 'memory', CustomIcon: MemoryIcon, label: t('memory.title') },
   ];
-
-  const items = [...quickAccessItems, ...resourceTypeItems, ...mediaItems, ...systemItems];
 
   const renderNavButton = (
     type: QuickAccessType,
@@ -237,6 +235,52 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     return button;
   };
 
+  // 新建菜单项（展开/收起两种布局共用）
+  const createMenuItems = (
+    <>
+      {onNewFolder && (
+        <AppMenuItem icon={<FolderIcon size={16} />} onClick={onNewFolder}>
+          {t('finder.toolbar.newFolder')}
+        </AppMenuItem>
+      )}
+      {onNewNote && (
+        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewNote}>
+          {t('finder.toolbar.newNote')}
+        </AppMenuItem>
+      )}
+      {onImportMarkdownNote && (
+        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onImportMarkdownNote}>
+          {t('finder.toolbar.importMarkdown', '导入 Markdown')}
+        </AppMenuItem>
+      )}
+      {onNewExam && (
+        <AppMenuItem icon={<ExamIcon size={16} />} onClick={onNewExam}>
+          {t('finder.toolbar.newExam')}
+        </AppMenuItem>
+      )}
+      {onNewTextbook && (
+        <AppMenuItem icon={<TextbookIcon size={16} />} onClick={onNewTextbook}>
+          {t('finder.toolbar.newTextbook')}
+        </AppMenuItem>
+      )}
+      {onNewTranslation && (
+        <AppMenuItem icon={<TranslationIcon size={16} />} onClick={onNewTranslation}>
+          {t('finder.toolbar.newTranslation')}
+        </AppMenuItem>
+      )}
+      {onNewEssay && (
+        <AppMenuItem icon={<EssayIcon size={16} />} onClick={onNewEssay}>
+          {t('finder.toolbar.newEssay')}
+        </AppMenuItem>
+      )}
+      {onNewMindMap && (
+        <AppMenuItem icon={<MindmapIcon size={16} />} onClick={onNewMindMap}>
+          {t('finder.toolbar.newMindMap')}
+        </AppMenuItem>
+      )}
+    </>
+  );
+
   const renderSectionTitle = (title: string) => {
     if (collapsed) return null;
     if (fillContainer) {
@@ -282,6 +326,13 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   placeholder={t('finder.search.placeholder')}
                   value={searchQuery}
                   onChange={(e) => onSearchChange?.(e.target.value)}
+                  onKeyDown={(e) => {
+                    // Esc 清空搜索词（有内容时拦截，避免误触发外层快捷键）
+                    if (e.key === 'Escape' && searchQuery) {
+                      e.stopPropagation();
+                      onSearchChange?.('');
+                    }
+                  }}
                   onFocus={() => setIsSearchFocused(true)}
                   onBlur={() => setIsSearchFocused(false)}
                   disabled={searchDisabled}
@@ -294,7 +345,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                 />
                 {searchQuery && (
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label="clear">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label={t('common:clear')}>
                     <X size={14} className="text-muted-foreground/60" />
                   </NotionButton>
                 )}
@@ -316,70 +367,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   </NotionButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" className="min-w-[180px]">
-                  {onNewFolder && (
-                    <AppMenuItem 
-                      icon={<FolderIcon size={16} />}
-                      onClick={onNewFolder}
-                    >
-                      {t('finder.toolbar.newFolder')}
-                    </AppMenuItem>
-                  )}
-                  {onNewNote && (
-                    <AppMenuItem 
-                      icon={<NoteIcon size={16} />}
-                      onClick={onNewNote}
-                    >
-                      {t('finder.toolbar.newNote')}
-                    </AppMenuItem>
-                  )}
-                  {onImportMarkdownNote && (
-                    <AppMenuItem
-                      icon={<NoteIcon size={16} />}
-                      onClick={onImportMarkdownNote}
-                    >
-                      {t('finder.toolbar.importMarkdown', '导入 Markdown')}
-                    </AppMenuItem>
-                  )}
-                  {onNewExam && (
-                    <AppMenuItem 
-                      icon={<ExamIcon size={16} />}
-                      onClick={onNewExam}
-                    >
-                      {t('finder.toolbar.newExam')}
-                    </AppMenuItem>
-                  )}
-                  {onNewTextbook && (
-                    <AppMenuItem 
-                      icon={<TextbookIcon size={16} />}
-                      onClick={onNewTextbook}
-                    >
-                      {t('finder.toolbar.newTextbook')}
-                    </AppMenuItem>
-                  )}
-                  {onNewTranslation && (
-                    <AppMenuItem 
-                      icon={<TranslationIcon size={16} />}
-                      onClick={onNewTranslation}
-                    >
-                      {t('finder.toolbar.newTranslation')}
-                    </AppMenuItem>
-                  )}
-                  {onNewEssay && (
-                    <AppMenuItem 
-                      icon={<EssayIcon size={16} />}
-                      onClick={onNewEssay}
-                    >
-                      {t('finder.toolbar.newEssay')}
-                    </AppMenuItem>
-                  )}
-                  {onNewMindMap && (
-                    <AppMenuItem 
-                      icon={<MindmapIcon size={16} />}
-                      onClick={onNewMindMap}
-                    >
-                      {t('finder.toolbar.newMindMap')}
-                    </AppMenuItem>
-                  )}
+                  {createMenuItems}
                 </AppMenuContent>
               </AppMenu>
             </>
@@ -397,71 +385,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 </NotionButton>
               </AppMenuTrigger>
               <AppMenuContent align="start" className="min-w-[180px]">
-                {onNewFolder && (
-                  <AppMenuItem 
-                    icon={<FolderIcon size={16} />}
-                    onClick={onNewFolder}
-                  >
-                    {t('finder.toolbar.newFolder')}
-                  </AppMenuItem>
-                )}
-                {onNewNote && (
-                  <AppMenuItem 
-                    icon={<NoteIcon size={16} />}
-                    onClick={onNewNote}
-                  >
-                    {t('finder.toolbar.newNote')}
-                  </AppMenuItem>
-                )}
-                {onImportMarkdownNote && (
-                  <AppMenuItem
-                    icon={<NoteIcon size={16} />}
-                    onClick={onImportMarkdownNote}
-                  >
-                    {t('finder.toolbar.importMarkdown', '导入 Markdown')}
-                  </AppMenuItem>
-                )}
-                {onNewExam && (
-                  <AppMenuItem 
-                    icon={<ExamIcon size={16} />}
-                    onClick={onNewExam}
-                  >
-                    {t('finder.toolbar.newExam')}
-                  </AppMenuItem>
-                )}
-                {onNewTextbook && (
-                  <AppMenuItem 
-                    icon={<TextbookIcon size={16} />}
-                    onClick={onNewTextbook}
-                  >
-                    {t('finder.toolbar.newTextbook')}
-                  </AppMenuItem>
-                )}
-                {onNewTranslation && (
-                  <AppMenuItem 
-                    icon={<TranslationIcon size={16} />}
-                    onClick={onNewTranslation}
-                  >
-                    {t('finder.toolbar.newTranslation')}
-                  </AppMenuItem>
-                )}
-                {onNewEssay && (
-                  <AppMenuItem 
-                    icon={<EssayIcon size={16} />}
-                    onClick={onNewEssay}
-                  >
-                    {t('finder.toolbar.newEssay')}
-                  </AppMenuItem>
-                )}
-                {onNewMindMap && (
-                  <AppMenuItem 
-                    icon={<MindmapIcon size={16} />}
-                    onClick={onNewMindMap}
-                  >
-                    {t('finder.toolbar.newMindMap')}
-                    </AppMenuItem>
-                  )}
-                </AppMenuContent>
+                {createMenuItems}
+              </AppMenuContent>
             </AppMenu>
           )}
         </div>

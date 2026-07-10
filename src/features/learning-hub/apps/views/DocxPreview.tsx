@@ -17,6 +17,20 @@ import {
 } from './previewUtils';
 import { sanitizeRenderedDom } from './sanitizeRenderedDom';
 
+/**
+ * 检查解码后的二进制是否为合法的 OOXML（ZIP）容器。
+ * OLE 复合文档头（D0 CF 11 E0）意味着文件被密码保护（加密 OOXML 的外层包装）
+ * 或是旧版二进制格式（.doc），两者都无法用当前渲染器预览。
+ */
+function detectContainerIssue(buffer: ArrayBuffer): 'encrypted-or-legacy' | 'invalid' | null {
+  const bytes = new Uint8Array(buffer);
+  if (bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b) return null;
+  if (bytes.length >= 4 && bytes[0] === 0xd0 && bytes[1] === 0xcf && bytes[2] === 0x11 && bytes[3] === 0xe0) {
+    return 'encrypted-or-legacy';
+  }
+  return 'invalid';
+}
+
 interface DocxPreviewProps {
   /** Base64 编码的 DOCX 文件内容 */
   base64Content: string;
@@ -43,12 +57,15 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
 }) => {
   const { t } = useTranslation(['learningHub']);
   const containerRef = useRef<HTMLDivElement>(null);
+  // ★ 独立的样式容器：docx-preview 生成的 <style> 不能进入 sanitizeRenderedDom
+  //   （其 ALLOWED_TAGS 不含 style，混在内容容器里会被整体剥离，导致文档失去
+  //   段落/表格/字体等样式）。样式为库生成的 CSS，与文档原始 HTML 隔离，安全。
+  const styleContainerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const renderTokenRef = useRef(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoScale, setAutoScale] = useState(1);
-  const [docxContentWidth, setDocxContentWidth] = useState<number | null>(null);
   const [docxBaseFontSize, setDocxBaseFontSize] = useState<number | null>(null);
 
   // 使用外部控制值，未提供则使用默认值 1
@@ -59,10 +76,6 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     () => Number((autoScale * zoomScale).toFixed(3)),
     [autoScale, zoomScale]
   );
-  const scaledWidth = useMemo(
-    () => (docxContentWidth ? Math.max(1, docxContentWidth * effectiveScale) : null),
-    [docxContentWidth, effectiveScale]
-  );
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -70,6 +83,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     let isMounted = true;
     const renderToken = ++renderTokenRef.current;
     const container = containerRef.current;
+    const styleContainer = styleContainerRef.current;
 
     const renderDocx = async () => {
       setIsLoading(true);
@@ -77,7 +91,6 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
 
       try {
         setAutoScale(1);
-        setDocxContentWidth(null);
         const normalizedBase64 = normalizeBase64(base64Content);
         if (!normalizedBase64) {
           if (isMounted && renderToken === renderTokenRef.current) {
@@ -93,15 +106,28 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         // 解码 Base64 为 ArrayBuffer
         const arrayBuffer = decodeBase64ToArrayBuffer(normalizedBase64);
 
+        // 提前识别加密/旧版二进制/非 Office 文件，给出可操作的提示
+        const containerIssue = detectContainerIssue(arrayBuffer);
+        if (containerIssue) {
+          if (isMounted && renderToken === renderTokenRef.current) {
+            setError(t(
+              containerIssue === 'encrypted-or-legacy'
+                ? 'learningHub:officePreview.encryptedOrLegacy'
+                : 'learningHub:officePreview.invalidFormat'
+            ));
+            setIsLoading(false);
+          }
+          return;
+        }
+
         if (!isMounted || renderToken !== renderTokenRef.current) return;
 
         // 清空容器
-        if (container) {
-          container.innerHTML = '';
-        }
+        container.innerHTML = '';
+        if (styleContainer) styleContainer.innerHTML = '';
 
-        // 渲染 DOCX
-        await renderAsync(arrayBuffer, container, container, {
+        // 渲染 DOCX（样式写入独立容器，内容容器随后消毒）
+        await renderAsync(arrayBuffer, container, styleContainer ?? container, {
           className: 'docx-preview',
           inWrapper: true,
           ignoreWidth: false,
@@ -128,6 +154,8 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
       } catch (err: unknown) {
         console.error('Failed to render DOCX:', err);
         if (isMounted && renderToken === renderTokenRef.current) {
+          // 清除可能残留的部分渲染内容
+          container.innerHTML = '';
           const message = err instanceof Error ? err.message : t('learningHub:docPreview.renderDocxFailed');
           setError(message);
           setIsLoading(false);
@@ -140,10 +168,9 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     return () => {
       isMounted = false;
       renderTokenRef.current += 1;
-      // 清空容器内容
-      if (containerRef.current) {
-        containerRef.current.innerHTML = '';
-      }
+      // 清空容器内容（使用 effect 内捕获的引用，避免 cleanup 时 ref 已变化）
+      container.innerHTML = '';
+      if (styleContainer) styleContainer.innerHTML = '';
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- t 不加入依赖：语言切换不应重新渲染文档
   }, [base64Content]);
@@ -172,7 +199,6 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         if (Math.abs(prev - nextAutoScale) < 0.01) return prev;
         return Number(nextAutoScale.toFixed(3));
       });
-      setDocxContentWidth((prev) => (prev === contentWidth ? prev : contentWidth));
 
       const section = (container.querySelector('section.docx-preview') ?? container.querySelector('section.docx')) as HTMLElement | null;
       if (section) {
@@ -205,21 +231,52 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     };
   }, [base64Content]);
 
-  if (error) {
-    return (
-      <div className={`flex items-center justify-center p-8 text-destructive ${className}`}>
-        <p>{t('learningHub:docPreview.cannotPreviewDoc')}: {error}</p>
-      </div>
-    );
-  }
+  // 键盘滚动支持：OverlayScrollbars 的视口不在焦点链上，浏览器不会自动
+  // 将按键滚动路由过去，这里手动映射 PageUp/PageDown/Home/End
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const viewport = viewportRef.current;
+    if (!viewport || e.ctrlKey || e.metaKey || e.altKey) return;
+    const pageHeight = viewport.clientHeight * 0.9;
+    switch (e.key) {
+      case 'PageDown':
+        viewport.scrollBy({ top: pageHeight, behavior: 'smooth' });
+        break;
+      case 'PageUp':
+        viewport.scrollBy({ top: -pageHeight, behavior: 'smooth' });
+        break;
+      case 'Home':
+        viewport.scrollTo({ top: 0, behavior: 'smooth' });
+        break;
+      case 'End':
+        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
+        break;
+      default:
+        return;
+    }
+    e.preventDefault();
+  };
 
+  // 注意：出错时不能整体卸载渲染容器（containerRef 需保持挂载，
+  // 否则切换到正常文件后 effect 因拿不到容器而无法恢复渲染）
   return (
-    <div className={`relative ${className}`} aria-busy={isLoading}>
-      {isLoading && (
+    <div
+      className={`relative ${className}`}
+      aria-busy={isLoading && !error}
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
+      {isLoading && !error && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
           <CircleNotch size={32} className="animate-spin text-primary" />
         </div>
       )}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center p-8 text-destructive bg-background z-10" role="alert">
+          <p>{t('learningHub:docPreview.cannotPreviewDoc')}: {error}</p>
+        </div>
+      )}
+      {/* docx-preview 生成的文档样式（<style> 标签），与被消毒的内容容器隔离 */}
+      <div ref={styleContainerRef} aria-hidden="true" />
       <CustomScrollArea
         className="docx-container h-full"
         orientation="both"
@@ -231,8 +288,6 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           aria-label={fileName ? t('learningHub:docPreview.docxPreviewLabel', { name: fileName }) : t('learningHub:docPreview.docxPreviewDefault')}
           style={{
             ['--docx-scale' as string]: effectiveScale.toString(),
-            ['--docx-content-width' as string]: docxContentWidth ? `${docxContentWidth}px` : undefined,
-            ['--docx-scaled-width' as string]: scaledWidth ? `${scaledWidth}px` : undefined,
             ['--docx-font-scale' as string]: fontScale.toString(),
             ['--docx-base-font-size' as string]: docxBaseFontSize ? `${docxBaseFontSize}px` : undefined,
           } as React.CSSProperties}
@@ -244,14 +299,18 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           min-height: 200px;
           border-radius: 8px;
           overflow: visible;
-          width: var(--docx-scaled-width, auto);
+          width: max-content;
           margin: 0 auto;
         }
 
         /* docx-preview 外层包装（可能带内联 padding）
            注意：docx-preview 库根据 className 配置生成 .{className}-wrapper，
            当前配置 className='docx-preview' → 生成 .docx-preview-wrapper
-           同时兼容默认的 .docx-wrapper 以防配置变化 */
+           同时兼容默认的 .docx-wrapper 以防配置变化
+
+           缩放使用 zoom 而非 transform:scale——zoom 参与布局，
+           垂直/水平滚动范围随缩放同步变化，不会出现
+           缩小后残留空白滚动区域、放大后底部内容无法滚动到的问题 */
         .docx-container .docx-preview-wrapper,
         .docx-container .docx-wrapper {
           padding: 0 !important;
@@ -260,18 +319,10 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           border-radius: 8px;
           box-shadow: none !important;
           width: max-content;
+          max-width: none;
           box-sizing: border-box;
           overflow: visible;
-        }
-
-        /* 当宽度不足时按可用宽度缩放 */
-        .docx-container .docx-preview-wrapper,
-        .docx-container .docx-wrapper {
-          transform: scale(var(--docx-scale, 1));
-          transform-origin: top left;
-          width: var(--docx-content-width, max-content);
-          max-width: none;
-          overflow: visible;
+          zoom: var(--docx-scale, 1);
         }
 
         /* 页面分节

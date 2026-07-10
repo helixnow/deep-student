@@ -52,15 +52,21 @@ export const InlineEditText = React.memo(function InlineEditText({
   // 追踪是否已经处理过确认/取消，避免 onBlur 重复触发
   const hasHandledRef = useRef(false);
 
-  // 同步外部值变化
+  // 同步外部值变化（编辑中不覆盖用户正在输入的内容）
   useEffect(() => {
-    setEditValue(value);
-  }, [value]);
+    if (!isEditing) {
+      setEditValue(value);
+    }
+  }, [value, isEditing]);
 
-  // 编辑状态变化时重置 hasHandled 标记
+  // 进入编辑时重置 hasHandled 标记，并以当时的最新值作为编辑起点
+  // （deps 有意不含 value：编辑期间外部值变化不应重置输入）
+  const valueRef = useRef(value);
+  valueRef.current = value;
   useEffect(() => {
     if (isEditing) {
       hasHandledRef.current = false;
+      setEditValue(valueRef.current);
     }
   }, [isEditing]);
 

@@ -3,6 +3,17 @@
   "sidebar": {
     "title": "Finder"
   },
+  "tabBar": {
+    "pin": "Pin Tab",
+    "unpin": "Unpin Tab",
+    "closeOthers": "Close Other Tabs",
+    "closeRight": "Close Tabs to the Right"
+  },
+  "splitView": {
+    "title": "Split View",
+    "openRight": "Open on the Right",
+    "close": "Close Split View"
+  },
   "contextMenu": {
     "open": "Open",
     "preview": "Preview",
@@ -197,8 +208,26 @@
     "previewTooLarge": "File is too large to preview",
     "loadFailed": "Failed to load file",
     "mediaDecodeFailed": "Failed to decode media file",
+    "mediaRenderFailed": "Unable to play media",
+    "mediaRenderFailedHint": "The media file may be corrupted or use an unsupported codec.",
+    "mediaUnsupportedHint": "Your built-in browser may not support this format. Save locally and open with a system player.",
+    "mediaUnsupportedWarning": "This format may not play in the built-in browser",
     "saveToDevice": "Save & Open Locally",
-    "savedSuccessfully": "File saved successfully"
+    "savedSuccessfully": "File saved successfully",
+    "contentNotFound": "File content not found (id: {{id}})"
+  },
+  "filePreview": {
+    "textTruncated": "File is too large; only the beginning is shown. Download the file to view the full content."
+  },
+  "officePreview": {
+    "toolbarLabel": "Preview toolbar",
+    "prevSheet": "Previous sheet",
+    "nextSheet": "Next sheet",
+    "sheetTabs": "Sheet tabs",
+    "xlsxColsTruncated": "Too many columns. Showing first {{shown}} columns ({{hidden}} more columns not rendered)",
+    "noSheets": "This workbook contains no previewable sheets",
+    "encryptedOrLegacy": "This file is encrypted (password-protected) or uses a legacy binary format (.doc/.xls/.ppt) and cannot be previewed. Download it and open with Office",
+    "invalidFormat": "This file is not a valid Office document and may be corrupted"
   },
   "previewToolbar": {
     "zoomOut": "Zoom Out",

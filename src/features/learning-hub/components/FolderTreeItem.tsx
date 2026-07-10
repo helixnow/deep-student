@@ -214,6 +214,12 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
   const inputRef = useRef<HTMLInputElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
+  // 防止 Enter/Escape 处理后 onBlur 再次触发提交（Enter 会导致重复 onRename，
+  // Escape 会导致取消后仍然提交）
+  const editHandledRef = useRef(false);
+  // 中文输入法组合期间不响应 Enter/Escape
+  const isComposingRef = useRef(false);
 
   // 是否选中
   const isSelected = selectedId === folder.id;
@@ -267,6 +273,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
   const handleStartEdit = useCallback(() => {
     setIsEditing(true);
     setEditTitle(folder.title);
+    editHandledRef.current = false;
     setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
@@ -274,23 +281,37 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
   }, [folder.title]);
 
   const handleFinishEdit = useCallback(() => {
+    if (editHandledRef.current) return;
+    editHandledRef.current = true;
     const newTitle = editTitle.trim();
     if (newTitle && newTitle !== folder.title) {
       onRename(folder.id, newTitle);
     }
     setIsEditing(false);
+    // 编辑结束后把焦点还给行，保持键盘导航的连续性
+    requestAnimationFrame(() => rowRef.current?.focus());
   }, [editTitle, folder.id, folder.title, onRename]);
+
+  const handleCancelEdit = useCallback(() => {
+    if (editHandledRef.current) return;
+    editHandledRef.current = true;
+    setIsEditing(false);
+    setEditTitle(folder.title);
+    requestAnimationFrame(() => rowRef.current?.focus());
+  }, [folder.title]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (isComposingRef.current) return;
       if (e.key === 'Enter') {
+        e.preventDefault();
         handleFinishEdit();
       } else if (e.key === 'Escape') {
-        setIsEditing(false);
-        setEditTitle(folder.title);
+        e.stopPropagation();
+        handleCancelEdit();
       }
     },
-    [handleFinishEdit, folder.title]
+    [handleFinishEdit, handleCancelEdit]
   );
 
   const handleDelete = useCallback(() => {
@@ -319,6 +340,81 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
       setContextMenuOpen(true);
     },
     [disabled, isEditing]
+  );
+
+  // ==========================================================================
+  // 键盘导航（treeview 模式：方向键 / Home / End / Enter / F2）
+  // ==========================================================================
+
+  const hasExpandableContent = children.length > 0 || items.length > 0;
+
+  const handleRowKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (disabled || isEditing) return;
+      // 只处理行自身获得焦点时的按键，忽略行内菜单按钮等子元素冒泡
+      if (e.target !== e.currentTarget) return;
+
+      const key = e.key;
+      if (key === 'Enter' || key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect(folder.id, 'folder');
+        return;
+      }
+      if (key === 'F2' && !isBuiltin) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleStartEdit();
+        return;
+      }
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) return;
+
+      const current = e.currentTarget;
+      const scope = (current.closest('[role="tree"]') as HTMLElement | null) ?? document;
+      const rows = Array.from(scope.querySelectorAll<HTMLElement>('[data-folder-tree-item]'))
+        .filter((el) => el.getClientRects().length > 0);
+      const idx = rows.indexOf(current);
+      if (idx === -1) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      switch (key) {
+        case 'ArrowDown':
+          rows[idx + 1]?.focus();
+          break;
+        case 'ArrowUp':
+          rows[idx - 1]?.focus();
+          break;
+        case 'Home':
+          rows[0]?.focus();
+          break;
+        case 'End':
+          rows[rows.length - 1]?.focus();
+          break;
+        case 'ArrowRight':
+          if (hasExpandableContent && !isExpanded) {
+            onToggleExpand(folder.id, true);
+          } else {
+            rows[idx + 1]?.focus();
+          }
+          break;
+        case 'ArrowLeft':
+          if (hasExpandableContent && isExpanded) {
+            onToggleExpand(folder.id, false);
+          } else {
+            // 叶子/已折叠节点：焦点跳到父级（往上找第一个层级更浅的行）
+            const myDepth = Number(current.dataset.depth ?? 0);
+            for (let i = idx - 1; i >= 0; i--) {
+              if (Number(rows[i].dataset.depth ?? 0) < myDepth) {
+                rows[i].focus();
+                break;
+              }
+            }
+          }
+          break;
+      }
+    },
+    [disabled, isEditing, folder.id, onSelect, isBuiltin, handleStartEdit, hasExpandableContent, isExpanded, onToggleExpand]
   );
 
   // ==========================================================================
@@ -370,13 +466,15 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
     <div className="select-none">
       {/* 文件夹节点 */}
       <div
+        ref={rowRef}
         className={cn(
           'group flex items-center h-7 cursor-pointer rounded-md',
           !isSelected && 'hover:bg-[var(--interactive-hover)]',
           'transition-colors',
           isSelected && 'bg-accent',
           isDragOver && 'bg-primary/10 ring-1 ring-primary/30',
-          disabled && 'opacity-50 cursor-not-allowed'
+          disabled && 'opacity-50 cursor-not-allowed',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40'
         )}
         style={{ paddingLeft }}
         onClick={handleClick}
@@ -386,6 +484,14 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDropOnFolder}
+        tabIndex={disabled ? -1 : 0}
+        role="treeitem"
+        aria-selected={isSelected}
+        aria-expanded={hasExpandableContent ? !!isExpanded : undefined}
+        aria-level={depth + 1}
+        data-folder-tree-item
+        data-depth={depth}
+        onKeyDown={handleRowKeyDown}
       >
         {/* 展开/收起按钮 */}
         <NotionButton
@@ -425,6 +531,8 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
             onChange={(e) => setEditTitle(e.target.value)}
             onBlur={handleFinishEdit}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => { isComposingRef.current = true; }}
+            onCompositionEnd={() => { isComposingRef.current = false; }}
             className="h-5 px-1 py-0 text-sm flex-1 min-w-0"
             placeholder={t('folder.folderNamePlaceholder')}
             onClick={(e) => e.stopPropagation()}

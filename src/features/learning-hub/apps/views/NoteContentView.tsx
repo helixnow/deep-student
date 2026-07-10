@@ -8,13 +8,13 @@
  * 所有数据通过 DSTU 节点和 API 获取。
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, WarningCircle, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { WarningCircle } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
-import { reportError, type VfsError, VfsErrorCode } from '@/shared/result';
+import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
 import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -22,10 +22,11 @@ import type { ContentViewProps } from '../UnifiedAppPanel';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/useBreakpoint';
-import { DotsSixVertical, SidebarSimple } from '@phosphor-icons/react';
+import { CaretLeft, DotsSixVertical, SidebarSimple } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import type { CrepeEditorApi } from '@/components/crepe';
 import {
   DEFAULT_INITIAL_LINE_WINDOW,
@@ -38,6 +39,13 @@ import {
   type MarkdownWindow,
 } from '@/features/notes/markdownWindow';
 import { loadInitialLineWindowSetting } from '@/features/notes/markdownWindowSettings';
+import {
+  registerNoteEditor,
+  unregisterNoteEditor,
+} from '@/features/workbench/agent/drivers/noteDriver';
+// 顶部 SWR 刷新条依赖 progress-indeterminate 关键帧（设计系统 Progress 样式），
+// 显式引入确保本视图独立加载时关键帧可用
+import '@/components/ui/shad/Progress.css';
 
 function getMarkdownLineCount(markdown: string): number {
   return markdown.split('\n').length;
@@ -55,6 +63,38 @@ function projectMarkdownWindow(markdown: string, requestedLines: number): Markdo
   }
   return projected;
 }
+
+/**
+ * 笔记编辑器骨架屏。
+ * 模拟真实编辑器的标题 + 工具栏 + 正文行结构，并与 NotesCrepeEditor 的
+ * max-w-[800px] 内容列完全对齐，加载完成时内容原位淡入、无布局跳动
+ * （此前的居中 spinner 会在编辑器挂载时产生整屏布局突变）。
+ */
+const NoteEditorSkeleton: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex-1 min-h-0 overflow-hidden" role="status" aria-label={label}>
+    <div className="max-w-[800px] mx-auto px-4 sm:px-8 sm:pl-24 pt-8 flex flex-col">
+      {/* 标题行 */}
+      <Skeleton className="h-9 w-1/2" />
+      {/* 工具栏行 */}
+      <div className="mt-4 flex items-center gap-1.5">
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-20" />
+      </div>
+      {/* 正文行 */}
+      <div className="mt-8 flex flex-col gap-3">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-11/12" />
+        <Skeleton className="h-4 w-4/5" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-9/12" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    </div>
+  </div>
+);
 
 /**
  * 笔记内容视图
@@ -75,19 +115,30 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
   // ========== 右侧面板状态 ==========
   const [rightPanelVisible, setRightPanelVisible] = useState(true);
-  // 移动端：上下文面板（大纲/标签）以 Sheet 形式呈现
+  // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
   const rightPanelRef = useRef<ImperativePanelHandle>(null);
 
+  // 移动端子屏打开时接管 Android 返回键：先关子屏，不退出笔记
+  useEffect(() => {
+    if (!isSmallScreen || !mobilePanelOpen) return;
+    return registerBackHandler(() => {
+      setMobilePanelOpen(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, mobilePanelOpen]);
+
+  // 稳定回调：折叠状态直接读面板句柄，避免依赖 state 导致回调随切换重建，
+  // 也避免面板真实状态与 state 短暂不同步时切换失效
   const toggleRightPanel = useCallback(() => {
     const panel = rightPanelRef.current;
     if (!panel) return;
-    if (rightPanelVisible) {
-      panel.collapse();
-    } else {
+    if (panel.isCollapsed()) {
       panel.expand();
+    } else {
+      panel.collapse();
     }
-  }, [rightPanelVisible]);
+  }, []);
 
   // ========== 状态 ==========
   const [isLoading, setIsLoading] = useState(true);
@@ -100,6 +151,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const markdownWindowRef = useRef<MarkdownWindow | null>(null);
   const [initialLineWindow, setInitialLineWindow] = useState(DEFAULT_INITIAL_LINE_WINDOW);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // ★ 并发守卫用 ref 而非 state：回调闭包里的 state 可能过期，
+  // 也避免 handleRequestLoadMore 随 isLoadingMore 变化重建
+  const isLoadingMoreRef = useRef(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const fullContentRef = useRef<string>('');
   const setMarkdownWindow = useCallback((nextWindow: MarkdownWindow | null) => {
@@ -128,8 +182,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   }, []);
   // ★ R3：当前已落盘的内容快照（用于冲突时判断外部是否真的改了内容）
   const persistedContentRef = useRef<string | null>(null);
-  // ★ F9：内容保存进行中标志。自身保存触发的 watch 事件无需整页刷新
-  const isSavingContentRef = useRef(false);
+  // 维护模式保存拦截的提示节流（自动保存每 1.5s 触发一次，避免通知刷屏）
+  const maintenanceWarnedAtRef = useRef(0);
+  // ★ F9/R4：正在保存内容的笔记 ID。自身保存触发的 watch 事件无需整页刷新。
+  // 按笔记 ID 记录（而非布尔值）：切换笔记时旧笔记的 unmount-flush 保存
+  // 仍在途，不应压制新笔记的外部更新刷新。
+  const savingContentNoteIdRef = useRef<string | null>(null);
 
   const noteId = node.id;
 
@@ -145,11 +203,23 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // 配合顶部的透明 Loading 指示器，实现无缝切换
 
     // ★ R3：并行获取最新节点（新鲜的 updatedAt/title/tags）与内容
-    const [nodeResult, result, settingValue] = await Promise.all([
-      dstu.get(node.path),
-      dstu.getContent(node.path),
-      loadInitialLineWindowSetting(),
-    ]);
+    let nodeResult: Awaited<ReturnType<typeof dstu.get>>;
+    let result: Awaited<ReturnType<typeof dstu.getContent>>;
+    let settingValue: number;
+    try {
+      [nodeResult, result, settingValue] = await Promise.all([
+        dstu.get(node.path),
+        dstu.getContent(node.path),
+        loadInitialLineWindowSetting(),
+      ]);
+    } catch (unexpected) {
+      // dstu API 均为 Result 语义、正常不抛异常；此处兜底防止
+      // 意外 throw 让 isLoading 永远卡住（无重试入口的死加载态）
+      if (loadingNoteIdRef.current !== currentNoteId) return;
+      setError(toVfsError(unexpected, '加载笔记内容失败'));
+      setIsLoading(false);
+      return;
+    }
 
     // 🔧 修复：检查是否仍在加载同一笔记（防止竞态条件）
     if (loadingNoteIdRef.current !== currentNoteId) {
@@ -175,6 +245,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     setContentNoteId(currentNoteId);
     setInitialLineWindow(settingValue);
     setMarkdownWindow(nextWindow);
+    isLoadingMoreRef.current = false;
     setIsLoadingMore(false);
     setLoadMoreError(null);
     persistedContentRef.current = contentStr;
@@ -185,7 +256,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     setIsLoading(false);
   }, [node.id, node.path, node.name, node.updatedAt, setMarkdownWindow, updateKnownBaseline]);
 
+  const loadNoteContentRef = useRef(loadNoteContent);
+  loadNoteContentRef.current = loadNoteContent;
+
   useEffect(() => {
+    // ★ R4：切换笔记时立即用目标节点的元数据填充侧栏（标题/标签/时间基线），
+    // 避免加载期间侧栏短暂显示上一篇笔记的元数据（跨笔记信息串扰）。
+    // 加载完成后 loadNoteContent 会用磁盘上的新鲜值覆盖。
+    setTitle(node.name || '');
+    setTags((node.metadata?.tags as string[]) || []);
+    updateKnownBaseline(node.updatedAt ?? null);
     void loadNoteContent();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [node.id]); // 只依赖 node.id，避免对象引用变化导致无限循环
@@ -235,7 +315,25 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // ★ R3：监听 DSTU watch 事件，外部更新（其他面板/AI 工具/同步）时自动刷新
   useEffect(() => {
     const currentNoteId = node.id;
+    const currentNotePath = node.path;
     const unwatch = dstu.watch('*', (event) => {
+      // ★ R4：当前笔记被外部删除时立即切换到"不存在"错误态。
+      // 之前用户可继续编辑幽灵笔记，直到自动保存反复失败才有噪音提示。
+      if (
+        (event.type === 'deleted' || event.type === 'purged') &&
+        (event.node?.id === currentNoteId || event.path === currentNotePath)
+      ) {
+        setError(new VfsError(VfsErrorCode.NOT_FOUND, 'Note was deleted externally', true, { noteId: currentNoteId }));
+        return;
+      }
+      // 从回收站恢复：自动走出错误态，重新加载（免去用户手动点重试）
+      if (
+        event.type === 'restored' &&
+        (event.node?.id === currentNoteId || event.path === currentNotePath)
+      ) {
+        void loadNoteContentRef.current();
+        return;
+      }
       if (event.type !== 'updated' || !event.node) return;
       if (event.node.id !== currentNoteId) return;
       const known = lastKnownUpdatedAtRef.current ?? 0;
@@ -243,24 +341,27 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       // 等于/早于已知基线的事件来自自身保存或重复派发，忽略
       if (incoming <= known) return;
       updateKnownBaseline(incoming);
-      // ★ F9：自身保存进行中时跳过刷新。
+      // ★ F9：当前笔记自身保存进行中时跳过刷新。
       // 事件若来自自身保存（emit 先于 invoke 返回），applySuccess 会完成基线同步；
       // 若来自真正的外部更新，进行中的保存会被乐观锁拒绝并走冲突刷新流程。
-      if (isSavingContentRef.current) return;
+      // R4：按笔记 ID 比较——旧笔记的在途保存不应压制新笔记的刷新。
+      if (savingContentNoteIdRef.current === currentNoteId) return;
       void refreshFromDiskRef.current(false);
     });
     return unwatch;
-  }, [node.id, updateKnownBaseline]);
+  }, [node.id, node.path, updateKnownBaseline]);
 
   const handleRequestLoadMore = useCallback(async (
     currentMarkdown: string,
   ): Promise<MarkdownLoadMoreResult | null> => {
+    // 内容未加载时 markdownWindowRef 必为 null，无需再检查 content state
     const currentWindow = markdownWindowRef.current;
-    if (!currentWindow || !currentWindow.hasMore || isLoadingMore || content === null) {
+    if (!currentWindow || !currentWindow.hasMore || isLoadingMoreRef.current) {
       return null;
     }
 
     setLoadMoreError(null);
+    isLoadingMoreRef.current = true;
     setIsLoadingMore(true);
     try {
       const result = expandMarkdownWindow(
@@ -276,28 +377,48 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       setLoadMoreError(t('notes:editor.windowing.load_more_failed', 'Could not load more lines. Retry loading more lines.'));
       return null;
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
     }
-  }, [content, initialLineWindow, isLoadingMore, setMarkdownWindow, t]);
+  }, [initialLineWindow, setMarkdownWindow, t]);
 
   // ========== 保存回调 ==========
   // 内容保存
   const handleSave = useCallback(async (newContent: string) => {
     if (readOnly) return;
-    // S-003: 维护模式拦截，防止 Learning Hub 入口绕过写入
+    // S-003: 维护模式拦截，防止 Learning Hub 入口绕过写入。
+    // ★ R4：必须 throw（且不可重试）而非静默 return——否则编辑器会把
+    // 未写入的内容标记为"已保存"，beforeunload 不再拦截，内容可能丢失。
     if (useSystemStatusStore.getState().maintenanceMode) {
-      showGlobalNotification('warning', t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记'));
-      return;
+      const msg = t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记');
+      const now = Date.now();
+      if (now - maintenanceWarnedAtRef.current > 10_000) {
+        maintenanceWarnedAtRef.current = now;
+        showGlobalNotification('warning', msg);
+      }
+      const blocked = new Error(msg);
+      (blocked as Error & { isNonRetryable?: boolean }).isNonRetryable = true;
+      throw blocked;
     }
+    // ★ R4：调用时点快照。切换笔记时编辑器 unmount-flush 会让本次保存
+    // 与新笔记的加载并发，await 之后的共享 ref（persistedContentRef 等）
+    // 可能已归属新笔记，必须使用保存发起时的快照做冲突判断。
+    const savedNoteId = node.id;
+    const persistedSnapshot = persistedContentRef.current;
+    // 视图状态是否仍归属本次保存的笔记（快速切换后禁止回写视图）
+    const isViewStillCurrent = () => loadingNoteIdRef.current === savedNoteId;
     // ★ R3：携带乐观锁基线，防止静默覆盖其他位置的更新
     const currentWindow = markdownWindowRef.current;
     const saveContent = currentWindow
       ? composeWindowedSave(newContent, fullContentRef.current, currentWindow.loadedLineCount, currentWindow.hasMore)
       : newContent;
     const applySuccess = (updatedAt?: number) => {
+      // ★ R4：磁盘写入已成功；但若用户已切换笔记，绝不能把旧笔记内容
+      // 回写进当前视图（会顶掉新笔记的 content/window/基线，编辑器卡骨架屏）
+      if (!isViewStillCurrent()) return;
       fullContentRef.current = saveContent;
       setContent(saveContent);
-      setContentNoteId(node.id);
+      setContentNoteId(savedNoteId);
       persistedContentRef.current = saveContent;
       if (currentWindow) {
         if (currentWindow.hasMore) {
@@ -322,7 +443,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       updateKnownBaseline(updatedAt ?? lastKnownUpdatedAtRef.current);
     };
 
-    isSavingContentRef.current = true;
+    savingContentNoteIdRef.current = savedNoteId;
     try {
       const result = await dstu.update(node.path, saveContent, node.type, {
         expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
@@ -347,13 +468,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         if (
           latestNode.ok && latestNode.value &&
           latestStr !== null &&
-          latestStr === persistedContentRef.current
+          // ★ R4：与保存发起时的快照比较（await 后共享 ref 可能已归属新笔记）
+          latestStr === persistedSnapshot
         ) {
-          updateKnownBaseline(latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current);
-          setTitle(latestNode.value.name || '');
-          setTags((latestNode.value.metadata?.tags as string[]) || []);
+          if (isViewStillCurrent()) {
+            updateKnownBaseline(latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current);
+            setTitle(latestNode.value.name || '');
+            setTags((latestNode.value.metadata?.tags as string[]) || []);
+          }
           const retry = await dstu.update(node.path, saveContent, node.type, {
-            expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
+            expectedUpdatedAtMs: latestNode.value.updatedAt ?? lastKnownUpdatedAtRef.current ?? undefined,
           });
           if (retry.ok) {
             applySuccess(retry.value.updatedAt);
@@ -364,7 +488,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         // 真实内容冲突：外部已写入更新版本。以外部版本为准刷新编辑器，
         // 但用户版本不丢弃——通知中提供"恢复我的版本"动作。
         console.warn('[NoteContentView] ⚠️ 保存冲突，刷新为最新版本:', result.error);
-        const conflictNoteId = node.id;
+        const conflictNoteId = savedNoteId;
+        const conflictNotePath = node.path;
+        const conflictNoteType = node.type;
         const userVersionFull = saveContent;
         showGlobalNotification(
           'warning',
@@ -374,20 +500,38 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             action: {
               label: t('notes:editor.conflict_restore_mine', '恢复我的版本'),
               onClick: () => {
-                // 把用户版本写回编辑器（force 路径会同步草稿基线），
-                // 并显式入队保存：以已刷新的乐观锁基线覆盖外部版本。
-                const userWindow = projectMarkdownWindow(userVersionFull, initialLineWindow);
-                fullContentRef.current = userVersionFull;
-                setContent(userVersionFull);
-                setContentNoteId(conflictNoteId);
-                setMarkdownWindow(userWindow);
-                persistedContentRef.current = userVersionFull;
-                window.dispatchEvent(new CustomEvent('notes:external-updated', {
-                  detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true },
-                }));
-                window.dispatchEvent(new CustomEvent('notes:request-save', {
-                  detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown },
-                }));
+                if (isViewStillCurrent()) {
+                  // 把用户版本写回编辑器（force 路径会同步草稿基线），
+                  // 并显式入队保存：以已刷新的乐观锁基线覆盖外部版本。
+                  const userWindow = projectMarkdownWindow(userVersionFull, initialLineWindow);
+                  fullContentRef.current = userVersionFull;
+                  setContent(userVersionFull);
+                  setContentNoteId(conflictNoteId);
+                  setMarkdownWindow(userWindow);
+                  persistedContentRef.current = userVersionFull;
+                  window.dispatchEvent(new CustomEvent('notes:external-updated', {
+                    detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown, force: true },
+                  }));
+                  window.dispatchEvent(new CustomEvent('notes:request-save', {
+                    detail: { noteId: conflictNoteId, content: userWindow.loadedMarkdown },
+                  }));
+                  return;
+                }
+                // ★ R4：用户已切换到其他笔记——原路径的视图回写会污染当前视图，
+                // 编辑器事件也会因 noteId 不匹配被丢弃（按钮静默失效）。
+                // 改为以磁盘最新基线直接写回用户版本。
+                void (async () => {
+                  const latest = await dstu.get(conflictNotePath);
+                  const expected = latest.ok && latest.value ? latest.value.updatedAt : undefined;
+                  const restore = await dstu.update(conflictNotePath, userVersionFull, conflictNoteType, {
+                    expectedUpdatedAtMs: expected ?? undefined,
+                  });
+                  if (restore.ok) {
+                    showGlobalNotification('success', t('notes:actions.save_success', '保存成功'));
+                  } else {
+                    showGlobalNotification('error', restore.error.toUserMessage());
+                  }
+                })();
               },
             },
           }
@@ -402,40 +546,86 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       reportError(result.error, '保存笔记');
       throw new Error(result.error.toUserMessage());
     } finally {
-      isSavingContentRef.current = false;
+      // 并发保存（强制保存 + 自动保存）时避免误清对方的标志
+      if (savingContentNoteIdRef.current === savedNoteId) {
+        savingContentNoteIdRef.current = null;
+      }
     }
   }, [initialLineWindow, node.id, node.path, node.type, readOnly, t, refreshFromDisk, setMarkdownWindow, updateKnownBaseline]);
 
   // 标题变更
   const handleTitleChange = useCallback(async (newTitle: string) => {
     if (readOnly) return;
-    // S-003: 维护模式拦截
+    // S-003: 维护模式拦截。
+    // ★ R4：throw 让 NotesEditorHeader 回滚输入框——静默 return 会让
+    // 界面一直显示一个从未持久化的标题。
     if (useSystemStatusStore.getState().maintenanceMode) {
-      showGlobalNotification('warning', t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记'));
-      return;
+      const msg = t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记');
+      showGlobalNotification('warning', msg);
+      throw new Error(msg);
     }
+    const savedNoteId = node.id;
     const result = await dstu.setMetadata(node.path, { title: newTitle });
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update title:', result.error);
       reportError(result.error, '更新标题');
       throw new Error(result.error.toUserMessage());
     }
+    // ★ R4：await 期间可能已切换笔记，禁止把旧笔记标题回写进当前视图
+    if (loadingNoteIdRef.current !== savedNoteId) return;
     setTitle(newTitle);
     // 通知父级面板标题已更新
     onTitleChange?.(newTitle);
-  }, [node.path, readOnly, onTitleChange, t]);
+  }, [node.id, node.path, readOnly, onTitleChange, t]);
 
   // 标签变更
   const handleTagsChange = useCallback(async (newTags: string[]) => {
     if (readOnly) return;
+    const savedNoteId = node.id;
     const result = await dstu.setMetadata(node.path, { tags: newTags });
     if (!result.ok) {
       console.error('[NoteContentView] Failed to update tags:', result.error);
       reportError(result.error, '更新标签');
       throw new Error(result.error.toUserMessage());
     }
+    if (loadingNoteIdRef.current !== savedNoteId) return;
     setTags(newTags);
-  }, [node.path, readOnly]);
+  }, [node.id, node.path, readOnly]);
+
+  // ★ 关键修复：onEditorReady 必须是稳定引用。
+  // NotesCrepeEditor 在该 prop 变化时会先执行 cleanup 调用 onEditorReady(null)，
+  // 之前的内联箭头函数导致每次重渲染（含每次自动保存回流 setContent）
+  // 都把 editorApiRef 清空，Ctrl+S 强制保存与插入类命令随即静默失效。
+  const handleEditorReady = useCallback((api: CrepeEditorApi | null) => {
+    editorApiRef.current = api;
+  }, []);
+
+  // ACR R1-13：向 noteDriver 注册表挂载/卸载 editorApi（供 agentInsert / probe）
+  const handleEditorApiReady = useCallback((api: CrepeEditorApi | null) => {
+    if (api) {
+      registerNoteEditor(node.id, api);
+    } else {
+      unregisterNoteEditor(node.id);
+    }
+  }, [node.id]);
+
+  const handleRetryLoadMore = useCallback(() => {
+    setLoadMoreError(null);
+  }, []);
+
+  // 稳定 windowingState 引用，避免每次渲染生成新对象导致编辑器内
+  // 滚动回调链（handleWindowScroll 等）无谓重建
+  const editorWindowingState = useMemo(
+    () => (markdownWindow ? {
+      enabled: true,
+      loadedLineCount: markdownWindow.loadedLineCount,
+      totalLineCount: markdownWindow.totalLineCount,
+      hasMore: markdownWindow.hasMore,
+      isLoadingMore,
+      loadMoreError,
+    } : undefined),
+    [markdownWindow, isLoadingMore, loadMoreError],
+  );
 
   useCommandEvents(
     {
@@ -498,27 +688,16 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const isContentReady = content !== null && contentNoteId === node.id;
   const visibleContent = markdownWindow?.loadedMarkdown ?? (content ?? '');
 
-  if (isLoading && content === null) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-        <span className="ml-2 text-muted-foreground">
-          {t('notes:editor.windowing.loading_note', 'Loading note...')}
-        </span>
-        <span className="ml-2 text-muted-foreground hidden">
-          {t('common:loading', '加载中...')}
-        </span>
-      </div>
-    );
-  }
+  // ★ R4：首次加载不再整屏 spinner 早退，而是渲染真实布局（侧栏开关行 +
+  // 面板分栏）+ 编辑器位骨架屏：加载完成时内容原位替换，避免整屏布局跳动。
 
   if (error) {
     const message = error.code === VfsErrorCode.NOT_FOUND
       ? t('notes:error.notFound', '笔记不存在或已被删除')
       : error.toUserMessage();
     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <WarningCircle size={32} className="text-destructive mb-2" />
+      <div className="flex flex-col items-center justify-center h-full" role="alert">
+        <WarningCircle size={32} className="text-destructive mb-2" aria-hidden="true" />
         <span className="text-destructive">{message}</span>
         <div className="flex gap-2 mt-3">
           <NotionButton variant="primary" onClick={() => loadNoteContent()}>
@@ -536,16 +715,37 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   
   return (
     <div className="flex flex-col h-full bg-background relative overflow-hidden">
+      {/* 注意：不能用 role="progressbar"，全局样式会对其强制 min-height:8px，改变此 4px 细条的视觉 */}
       {isLoading && content !== null && (
-        <div className="absolute top-0 left-0 right-0 h-1 bg-primary/20 z-50 overflow-hidden">
-          <div className="h-full bg-primary animate-[indeterminate_1.5s_infinite_linear]" />
+        <div
+          className="absolute top-0 left-0 right-0 h-1 bg-primary/20 z-50 overflow-hidden"
+          role="status"
+          aria-label={t('notes:editor.windowing.loading_note', 'Loading note...')}
+        >
+          {/* 🔧 修复：原引用的 indeterminate 关键帧不存在，进度条从未动画过；
+              改用设计系统既有的 progress-indeterminate 关键帧 */}
+          <div className="h-full w-2/5 bg-primary animate-[progress-indeterminate_1.5s_ease-in-out_infinite]" />
         </div>
       )}
-      {/* 桌面端：右侧栏开关；移动端依赖统一顶栏+抽屉，不再单独放侧栏按钮 */}
-      {!isSmallScreen && (
-        <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
+      {/* 桌面端：右侧栏开关；移动端：可见入口打开属性/大纲全屏子屏（不再依赖仅快捷键） */}
+      <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
+        {isSmallScreen ? (
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors min-h-11 px-2 [@media(pointer:coarse)]:min-h-[44px]"
+            onClick={() => setMobilePanelOpen(true)}
+            aria-label={t('notes:contextPanel.title', '属性')}
+            aria-expanded={mobilePanelOpen}
+          >
+            <SidebarSimple size={16} aria-hidden="true" />
+            {t('notes:contextPanel.title', '属性')}
+          </NotionButton>
+        ) : (
+          /* 🔧 修复：原 notes:context.collapse_panel/expand_panel 键不存在，
+              英文界面会显示中文兜底文案；复用既有的 sidebar.collapse/expand 键 */
           <CommonTooltip
-            content={rightPanelVisible ? t('notes:context.collapse_panel', '收起侧边栏') : t('notes:context.expand_panel', '展开侧边栏')}
+            content={rightPanelVisible ? t('notes:sidebar.collapse', '收起侧边栏') : t('notes:sidebar.expand', '展开侧边栏')}
             position="bottom"
           >
             <NotionButton
@@ -557,12 +757,14 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                 !rightPanelVisible && 'text-muted-foreground/70',
               )}
               onClick={toggleRightPanel}
+              aria-label={rightPanelVisible ? t('notes:sidebar.collapse', '收起侧边栏') : t('notes:sidebar.expand', '展开侧边栏')}
+              aria-expanded={rightPanelVisible}
             >
-              <SidebarSimple size={14} />
+              <SidebarSimple size={14} aria-hidden="true" />
             </NotionButton>
           </CommonTooltip>
-        </div>
-      )}
+        )}
+      </div>
       <PanelGroup direction="horizontal" autoSaveId="learning-hub-note-layout" className="flex-1 min-h-0">
         <Panel
           defaultSize={80}
@@ -580,24 +782,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               noteId={noteId}
               className="flex-1 min-h-0"
               readOnly={readOnly}
-              onEditorReady={(api) => {
-                editorApiRef.current = api;
-              }}
-              windowingState={markdownWindow ? {
-                enabled: true,
-                loadedLineCount: markdownWindow.loadedLineCount,
-                totalLineCount: markdownWindow.totalLineCount,
-                hasMore: markdownWindow.hasMore,
-                isLoadingMore,
-                loadMoreError,
-              } : undefined}
+              onEditorReady={handleEditorReady}
+              onEditorApiReady={handleEditorApiReady}
+              dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
+              windowingState={editorWindowingState}
               onRequestLoadMore={handleRequestLoadMore}
-              onRetryLoadMore={() => setLoadMoreError(null)}
+              onRetryLoadMore={handleRetryLoadMore}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center">
-              <CircleNotch size={20} className="animate-spin text-muted-foreground/60" />
-            </div>
+            <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note', 'Loading note...')} />
           )}
         </Panel>
 
@@ -641,10 +834,25 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         )}
       </PanelGroup>
 
-      {/* 移动端：上下文面板 Sheet（大纲/标签/元信息） */}
-      {isSmallScreen && (
-        <Sheet open={mobilePanelOpen} onOpenChange={setMobilePanelOpen}>
-          <SheetContent side="right" className="w-[min(85vw,20rem)] p-0 flex flex-col">
+      {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + 顶部返回 + Android 返回键 */}
+      {isSmallScreen && mobilePanelOpen && (
+        <div className="absolute inset-0 z-40 flex flex-col bg-background">
+          <div className="flex items-center gap-1 px-2 py-1 border-b border-border/40 flex-shrink-0">
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setMobilePanelOpen(false)}
+              aria-label={t('common:back', '返回')}
+              className="gap-1 min-h-11 px-2"
+            >
+              <CaretLeft size={16} aria-hidden="true" />
+              {t('common:back', '返回')}
+            </NotionButton>
+            <span className="text-sm font-medium truncate text-foreground/90">
+              {t('notes:contextPanel.title', '属性')}
+            </span>
+          </div>
+          <div className="flex-1 min-h-0 overflow-hidden pb-[var(--mobile-safe-area-bottom,0px)]">
             <NotesContextPanel
               noteId={noteId}
               title={title}
@@ -654,8 +862,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               content={isContentReady ? (visibleContent) : ''}
               onTagsChange={readOnly ? undefined : handleTagsChange}
             />
-          </SheetContent>
-        </Sheet>
+          </div>
+        </div>
       )}
     </div>
   );

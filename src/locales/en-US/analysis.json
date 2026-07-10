@@ -41,6 +41,8 @@
       "load_failed": "Failed to read file",
       "file_too_large": "File too large (max {{size}})",
       "limit_reached": "Maximum {{count}} attachments allowed",
+      "limit_reached_one": "Maximum {{count}} attachment allowed",
+      "limit_reached_other": "Maximum {{count}} attachments allowed",
       "status": {
         "processing": "Parsing…",
         "success": "Parsed",

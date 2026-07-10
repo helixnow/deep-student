@@ -95,8 +95,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           )}
         </div>
 
-        {/* 操作按钮 - 简洁风格悬浮显示 */}
-        <div className="flex items-center gap-1 opacity-0 group-hover/target:opacity-100 transition-opacity duration-200">
+        {/* 操作按钮 - 简洁风格悬浮显示；触屏无 hover，常驻可见 */}
+        <div className="flex items-center gap-1 opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
           {gradingResult && (
             <>
               <CommonTooltip content={t('essay_grading:result_section.copy')}>

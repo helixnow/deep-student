@@ -142,6 +142,8 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
   return (
     <div
       className={`modern-viewer-toolbar ${className}`}
+      role="toolbar"
+      aria-label={t('learningHub:officePreview.toolbarLabel')}
     >
       {/* 缩放控制区域 */}
       <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomOut} disabled={zoomScale <= ZOOM_MIN} title={t('learningHub:previewToolbar.zoomOut')} aria-label={t('learningHub:previewToolbar.zoomOut')}>
@@ -151,6 +153,8 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
       <span
         className="modern-viewer-zoom-readout"
         title={t('learningHub:previewToolbar.currentZoom', { value: formatPercent(zoomScale) })}
+        aria-label={t('learningHub:previewToolbar.currentZoom', { value: formatPercent(zoomScale) })}
+        aria-live="polite"
       >
         {formatPercent(zoomScale)}
       </span>
@@ -172,7 +176,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
             <CaretLeft size={16} />
           </NotionButton>
 
-          <span className="modern-viewer-zoom-readout">
+          <span className="modern-viewer-zoom-readout" aria-live="polite">
             {t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
           </span>
 
@@ -196,6 +200,8 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           <span
             className="modern-viewer-zoom-readout"
             title={t('learningHub:previewToolbar.currentFont', { value: formatPercent(fontScale) })}
+            aria-label={t('learningHub:previewToolbar.currentFont', { value: formatPercent(fontScale) })}
+            aria-live="polite"
           >
             {formatPercent(fontScale)}
           </span>

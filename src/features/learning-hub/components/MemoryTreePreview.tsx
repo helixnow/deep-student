@@ -26,13 +26,22 @@ interface MemoryTreePreviewProps {
   className?: string;
 }
 
+function isSystemFolder(node: FolderTreeNode): boolean {
+  return node.folder.title.startsWith('__') && node.folder.title.endsWith('__');
+}
+
+// 与可见子树保持一致：__system__ 文件夹在树中被隐藏，其内容不计入数量
 function countRecursive(node: FolderTreeNode): number {
   let count = node.items.filter(i => i.itemType === 'note').length;
   for (const child of node.children) {
+    if (isSystemFolder(child)) continue;
     count += countRecursive(child);
   }
   return count;
 }
+
+/** 树行键盘导航：上下箭头/Home/End 移动焦点，左右箭头收起/展开，Enter/Space 切换 */
+const PREVIEW_NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
 
 const TreeNode: React.FC<{
   node: FolderTreeNode;
@@ -46,10 +55,46 @@ const TreeNode: React.FC<{
   const indent = depth * 20;
 
   // Filter out __system__ folders
-  const visibleChildren = node.children.filter(
-    c => !(c.folder.title.startsWith('__') && c.folder.title.endsWith('__'))
-  );
+  const visibleChildren = node.children.filter(c => !isSystemFolder(c));
   const hasChildren = visibleChildren.length > 0;
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (hasChildren) setExpanded(v => !v);
+      else onNavigate?.(node.folder.id);
+      return;
+    }
+    if (!PREVIEW_NAV_KEYS.includes(e.key)) return;
+    const current = e.currentTarget;
+    const root = current.closest('[data-memory-tree-root]');
+    if (!root) return;
+    const rows = Array.from(root.querySelectorAll<HTMLElement>('[data-memory-tree-item]'));
+    const idx = rows.indexOf(current);
+    if (idx === -1) return;
+    e.preventDefault();
+    switch (e.key) {
+      case 'ArrowDown': rows[idx + 1]?.focus(); break;
+      case 'ArrowUp': rows[idx - 1]?.focus(); break;
+      case 'Home': rows[0]?.focus(); break;
+      case 'End': rows[rows.length - 1]?.focus(); break;
+      case 'ArrowRight':
+        if (hasChildren && !expanded) setExpanded(true);
+        else rows[idx + 1]?.focus();
+        break;
+      case 'ArrowLeft':
+        if (hasChildren && expanded) {
+          setExpanded(false);
+        } else {
+          const myDepth = Number(current.dataset.depth ?? 0);
+          for (let i = idx - 1; i >= 0; i--) {
+            if (Number(rows[i].dataset.depth ?? 0) < myDepth) { rows[i].focus(); break; }
+          }
+        }
+        break;
+    }
+  };
 
   return (
     <div>
@@ -58,6 +103,7 @@ const TreeNode: React.FC<{
         className={cn(
           'group flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer transition-colors',
           'hover:bg-[var(--interactive-hover)]',
+          'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
           isRoot && 'font-medium',
         )}
         style={{ paddingLeft: `${indent + 8}px` }}
@@ -65,6 +111,13 @@ const TreeNode: React.FC<{
           if (hasChildren) setExpanded(!expanded);
         }}
         onDoubleClick={() => onNavigate?.(node.folder.id)}
+        tabIndex={0}
+        role="treeitem"
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-level={depth + 1}
+        data-memory-tree-item
+        data-depth={depth}
+        onKeyDown={handleKeyDown}
       >
         {/* Expand/collapse */}
         {visibleChildren.length > 0 ? (
@@ -154,7 +207,8 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
 
   useEffect(() => { loadTree(); }, [loadTree]);
 
-  if (isLoading) {
+  // 仅首次加载显示整屏 spinner；刷新时保留已有树内容，避免内容跳动
+  if (isLoading && !treeData) {
     return (
       <div className={cn('flex items-center justify-center py-12', className)}>
         <CircleNotch size={20} className="animate-spin text-muted-foreground" />
@@ -162,7 +216,8 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     );
   }
 
-  if (error) {
+  // 刷新失败但已有数据时保留原树（避免可用内容被错误页替换），仅在无数据时显示错误态
+  if (error && !treeData) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 gap-2', className)}>
         <span className="text-sm text-muted-foreground">{error}</span>
@@ -197,14 +252,14 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
           {totalMemories} {t('memory.items', '条')}
         </span>
         <div className="flex-1" />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} className="!h-5 !w-5">
-          <ArrowClockwise size={12} />
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5" aria-label="refresh">
+          <ArrowClockwise size={12} className={cn(isLoading && 'animate-spin')} />
         </NotionButton>
       </div>
 
       {/* Tree */}
       <CustomScrollArea className="flex-1">
-        <div className="py-1">
+        <div className="py-1" data-memory-tree-root role="tree">
           <TreeNode
             node={treeData}
             depth={0}

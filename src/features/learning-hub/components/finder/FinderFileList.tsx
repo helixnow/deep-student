@@ -1,7 +1,7 @@
-import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
+﻿import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { CircleNotch, FolderOpen, Plus, FileText, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
+import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -25,16 +25,21 @@ import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useSelectionBox, getSelectionBoxStyle, SelectionBoxRect } from './useSelectionBox';
-import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { debugLog, debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
+import './finder-animations.css';
 
 // 紧凑列表项高度
 const LIST_ITEM_HEIGHT = 40;
 
 // 网格模式虚拟滚动常量
-const GRID_ITEM_MIN_WIDTH = 88;  // minmax(88px, 1fr)
+// 列宽与 FinderFileItem 网格卡片同宽；用固定 px 轨道，避免 1fr 把列压窄后卡片溢出重叠
+const GRID_ITEM_WIDTH = 88;
 const GRID_GAP = 8;              // gap-2 = 0.5rem = 8px
 const GRID_ROW_HEIGHT = 120;     // 网格行高度（包含内容）
 const GRID_PADDING = 12;         // p-3 = 0.75rem = 12px
+
+// Type-ahead 缓冲超时（与 Windows Explorer 一致约 1s）
+const TYPE_AHEAD_TIMEOUT_MS = 1000;
 
 /**
  * 选择框覆盖层组件 - 使用 Portal 渲染到 body 下避免父元素 transform 影响
@@ -44,6 +49,9 @@ function SelectionBoxOverlay({ rect }: { rect: SelectionBoxRect }) {
   const lastDebugTimeRef = useRef<number>(0);
   
   useEffect(() => {
+    // 调试开关关闭时跳过：避免框选过程中每帧 getBoundingClientRect 造成布局抖动
+    if (!debugMasterSwitch.isEnabled()) return;
+
     const now = Date.now();
     // 节流：每 100ms 最多发一次
     if (now - lastDebugTimeRef.current < 100) return;
@@ -81,6 +89,77 @@ function SelectionBoxOverlay({ rect }: { rect: SelectionBoxRect }) {
     document.body
   );
 }
+
+interface FinderFileRowProps {
+  item: DstuNode;
+  viewMode: ViewMode;
+  isSelected: boolean;
+  isActive: boolean;
+  isHighlighted?: boolean;
+  isEditing: boolean;
+  enableDrag: boolean;
+  compact: boolean;
+  onSelect: (id: string, mode: 'single' | 'toggle' | 'range') => void;
+  onOpen: (item: DstuNode) => void;
+  onContextMenu: (e: React.MouseEvent, item: DstuNode) => void;
+  onEditConfirm?: (id: string, newName: string) => void;
+  onEditCancel?: () => void;
+}
+
+/**
+ * 每行/每格的稳定包装组件。
+ * 把「列表级回调 + item」绑定成对 item 稳定的回调，
+ * 使 SortableFinderFileItem 的 React.memo 真正生效：
+ * 选中集变化时只有 isSelected 变化的项会重渲染，而不是整个列表。
+ */
+const FinderFileRow = React.memo(function FinderFileRow({
+  item,
+  viewMode,
+  isSelected,
+  isActive,
+  isHighlighted,
+  isEditing,
+  enableDrag,
+  compact,
+  onSelect,
+  onOpen,
+  onContextMenu,
+  onEditConfirm,
+  onEditCancel,
+}: FinderFileRowProps) {
+  const handleSelect = useCallback(
+    (mode: 'single' | 'toggle' | 'range') => onSelect(item.id, mode),
+    [onSelect, item.id]
+  );
+  const handleOpen = useCallback(() => onOpen(item), [onOpen, item]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => onContextMenu(e, item),
+    [onContextMenu, item]
+  );
+  const handleEditConfirm = useCallback(
+    (newName: string) => onEditConfirm?.(item.id, newName),
+    [onEditConfirm, item.id]
+  );
+
+  return (
+    <SortableFinderFileItem
+      id={item.id}
+      item={item}
+      viewMode={viewMode}
+      isSelected={isSelected}
+      isActive={isActive}
+      isHighlighted={isHighlighted}
+      onSelect={handleSelect}
+      onOpen={handleOpen}
+      onContextMenu={handleContextMenu}
+      enableDrag={enableDrag}
+      isEditing={isEditing}
+      onEditConfirm={handleEditConfirm}
+      onEditCancel={onEditCancel}
+      compact={compact}
+    />
+  );
+});
 
 interface FinderFileListProps {
   items: DstuNode[];
@@ -159,26 +238,22 @@ export function FinderFileList({
   // ★ 网格模式虚拟滚动：容器宽度状态
   const [gridContainerWidth, setGridContainerWidth] = useState(0);
   
-  // ★ 计算网格列数
+  // 网格 DOM 是否已挂载（loading/empty/list 早退时 ref 为 null）
+  const gridDomReady =
+    viewMode === 'grid' && !isLoading && !error && items.length > 0;
+
+  // ★ 计算网格列数（固定卡片宽度，右侧留白）
   const gridColumns = useMemo(() => {
-    // 计算可容纳的列数：(containerWidth + gap) / (minItemWidth + gap)
-    // 这与 CSS grid auto-fill 的行为一致
-    let availableWidth = gridContainerWidth;
-    
-    // ★ Fallback：如果容器宽度尚未测量，使用窗口宽度的估算值
-    // 假设左侧边栏约 260px，减去 padding 后的主内容区域宽度
-    if (availableWidth === 0 && typeof window !== 'undefined') {
-      availableWidth = Math.max(window.innerWidth - 300, 400);
-    }
-    
-    const cols = Math.floor((availableWidth + GRID_GAP) / (GRID_ITEM_MIN_WIDTH + GRID_GAP));
+    const availableWidth = gridContainerWidth;
+    if (availableWidth <= 0) return 1;
+    const cols = Math.floor((availableWidth + GRID_GAP) / (GRID_ITEM_WIDTH + GRID_GAP));
     return Math.max(1, cols);
   }, [gridContainerWidth]);
   
-  // ★ 网格模式虚拟滚动：使用 useLayoutEffect 在绘制前获取初始宽度
-  // 这比 useEffect 更早执行，可以避免首次渲染时显示单列布局
+  // ★ 网格模式虚拟滚动：网格真正挂载后再量宽
+  // 依赖 gridDomReady：loading→有数据时 viewMode 不变，必须重跑，否则列数会卡在 1
   useLayoutEffect(() => {
-    if (viewMode !== 'grid') return;
+    if (!gridDomReady) return;
     
     const container = gridContainerRef.current;
     if (!container) return;
@@ -188,11 +263,11 @@ export function FinderFileList({
     if (initialWidth > 0) {
       setGridContainerWidth(initialWidth);
     }
-  }, [viewMode]);
+  }, [gridDomReady]);
 
   // ★ 网格模式虚拟滚动：监听容器宽度变化（用于响应式调整）
   useEffect(() => {
-    if (viewMode !== 'grid') return;
+    if (!gridDomReady) return;
     
     const container = gridContainerRef.current;
     if (!container) return;
@@ -206,7 +281,7 @@ export function FinderFileList({
     
     observer.observe(container);
     return () => observer.disconnect();
-  }, [viewMode]);
+  }, [gridDomReady]);
 
   // ★ 框选功能：获取所有文件项的边界信息
   const getItemRects = useCallback(() => {
@@ -244,8 +319,25 @@ export function FinderFileList({
     minDistance: 10,
   });
 
+  // ★ 框选结束时会紧跟一个 click 事件，需要抑制它，避免清掉刚框选的内容。
+  // 流程：mousedown 复位标记 → 框选进行中置位 → 随后的 click 消费标记并跳过
+  const suppressContainerClickRef = useRef(false);
+  useEffect(() => {
+    if (isSelecting) {
+      suppressContainerClickRef.current = true;
+    }
+  }, [isSelecting]);
+
+  const handleContainerMouseDown = useCallback((e: React.MouseEvent) => {
+    suppressContainerClickRef.current = false;
+    handleMouseDown(e);
+  }, [handleMouseDown]);
+
   // DnD 传感器配置（N-9/DND-1: 触屏长按激活，避免与滚动/单击打开冲突）
   const sensors = useTouchFriendlyDndSensors();
+
+  // ★ SortableContext 的 items 引用稳定化，避免每次渲染都重建数组
+  const itemIds = useMemo(() => items.map(item => item.id), [items]);
 
   // ★ 列表模式虚拟滚动配置
   const listVirtualizer = useVirtualizer({
@@ -272,13 +364,15 @@ export function FinderFileList({
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id);
     debugLog.info('[FinderFileList] DragStart:', { activeId: event.active.id });
-    window.dispatchEvent(new CustomEvent('finder-drag-debug', {
-      detail: {
-        type: 'drag_start',
-        activeId: event.active.id,
-        timestamp: Date.now(),
-      }
-    }));
+    if (debugMasterSwitch.isEnabled()) {
+      window.dispatchEvent(new CustomEvent('finder-drag-debug', {
+        detail: {
+          type: 'drag_start',
+          activeId: event.active.id,
+          timestamp: Date.now(),
+        }
+      }));
+    }
   }, []);
 
   // 拖拽结束
@@ -291,14 +385,16 @@ export function FinderFileList({
       overId: over?.id ?? null,
       hasOver: !!over,
     });
-    window.dispatchEvent(new CustomEvent('finder-drag-debug', {
-      detail: {
-        type: 'drag_end',
-        activeId: active.id,
-        overId: over?.id ?? null,
-        timestamp: Date.now(),
-      }
-    }));
+    if (debugMasterSwitch.isEnabled()) {
+      window.dispatchEvent(new CustomEvent('finder-drag-debug', {
+        detail: {
+          type: 'drag_end',
+          activeId: active.id,
+          overId: over?.id ?? null,
+          timestamp: Date.now(),
+        }
+      }));
+    }
 
     if (!over || active.id === over.id) {
       debugLog.info('[FinderFileList] DragEnd: No valid drop target');
@@ -357,11 +453,22 @@ export function FinderFileList({
     return 1;
   }, [activeId, selectedIds]);
 
-  // 容器点击
+  // 容器点击：点击空白区域清除选择（Finder/Explorer 惯例）。
+  // 原实现要求 e.target === e.currentTarget，但虚拟滚动的内层容器会挡住绝大多数
+  // 空白点击，导致"点空白取消选择"几乎不可用
   const handleContainerClick = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget && onContainerClick) {
-      onContainerClick();
+    if (!onContainerClick) return;
+    // 框选刚结束时的 click 不算"点击空白"（消费一次标记）
+    if (suppressContainerClickRef.current) {
+      suppressContainerClickRef.current = false;
+      return;
     }
+    // 按住修饰键的点击不清除（用户可能在做加选操作）
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+    const target = e.target as HTMLElement;
+    // 点击文件项或滚动条时不处理
+    if (target.closest('[data-finder-item]') || target.closest('.os-scrollbar')) return;
+    onContainerClick();
   }, [onContainerClick]);
 
   // ★ 容器双击清除选择
@@ -385,20 +492,28 @@ export function FinderFileList({
 
   // ========================================================================
   // ★ 2026-06-12（审阅问题 FE-S2）：键盘导航核心集
-  // 方向键移动焦点 / Shift+方向键扩展选择 / Enter 打开 / F2 重命名
+  // 方向键移动焦点 / Shift+方向键区间选择 / Enter 打开 / F2 重命名
+  // / PageUp/PageDown 翻页 / 字母键 type-ahead 定位
   // ========================================================================
 
-  // 键盘导航锚点（最近一次键盘/点击聚焦的项）
+  // 键盘导航锚点（最近一次键盘/点击聚焦的项，即"焦点"）
   const keyboardAnchorRef = useRef<string | null>(null);
+  // Shift 区间选择的固定端点（pivot）：普通移动时跟随焦点，Shift 移动时保持不动
+  const selectionPivotRef = useRef<string | null>(null);
+  // Type-ahead 输入缓冲
+  const typeAheadRef = useRef<{ buffer: string; lastTime: number }>({ buffer: '', lastTime: 0 });
 
   // 选中集变化时校正锚点：锚点必须始终在选中集内
   useEffect(() => {
     if (selectedIds.size === 0) {
       keyboardAnchorRef.current = null;
+      selectionPivotRef.current = null;
     } else if (!keyboardAnchorRef.current || !selectedIds.has(keyboardAnchorRef.current)) {
       // 取选中集中在 items 顺序里最靠前的一项作为锚点
       const first = items.find(item => selectedIds.has(item.id));
       keyboardAnchorRef.current = first?.id ?? null;
+      // 选中集被外部（鼠标点击等）重置时，pivot 跟随新锚点
+      selectionPivotRef.current = first?.id ?? null;
     }
   }, [selectedIds, items]);
 
@@ -431,11 +546,22 @@ export function FinderFileList({
       const nextItem = items[nextIndex];
       keyboardAnchorRef.current = nextItem.id;
       if (e.shiftKey && onSelectionChange) {
-        // Shift+方向键：扩展选择
-        const newSelection = new Set(selectedIds);
-        newSelection.add(nextItem.id);
+        // Shift+方向键：以 pivot 为固定端点做连续区间选择（Finder/Explorer 语义，
+        // 反向移动时自动收缩选区）
+        const pivotId = selectionPivotRef.current ?? anchorId;
+        let pivotIndex = pivotId ? items.findIndex(item => item.id === pivotId) : -1;
+        if (pivotIndex < 0) pivotIndex = nextIndex;
+        selectionPivotRef.current = items[pivotIndex].id;
+
+        const lo = Math.min(pivotIndex, nextIndex);
+        const hi = Math.max(pivotIndex, nextIndex);
+        const newSelection = new Set<string>();
+        for (let i = lo; i <= hi; i++) {
+          newSelection.add(items[i].id);
+        }
         onSelectionChange(newSelection);
       } else {
+        selectionPivotRef.current = nextItem.id;
         onSelect(nextItem.id, 'single');
       }
       scrollItemIntoView(nextIndex);
@@ -448,6 +574,16 @@ export function FinderFileList({
       } else {
         focusIndex(anchorIndex + delta);
       }
+    };
+
+    // 一页可容纳的项数（PageUp/PageDown 步长）
+    const getPageDelta = () => {
+      const viewportHeight = viewportRef.current?.clientHeight ?? 0;
+      if (viewMode === 'grid') {
+        const rowsPerPage = Math.max(1, Math.floor(viewportHeight / (GRID_ROW_HEIGHT + GRID_GAP)));
+        return rowsPerPage * Math.max(1, gridColumns);
+      }
+      return Math.max(1, Math.floor(viewportHeight / LIST_ITEM_HEIGHT));
     };
 
     switch (e.key) {
@@ -469,6 +605,12 @@ export function FinderFileList({
       case 'End':
         focusIndex(items.length - 1);
         break;
+      case 'PageDown':
+        moveFocus(getPageDelta());
+        break;
+      case 'PageUp':
+        moveFocus(-getPageDelta());
+        break;
       case 'Enter': {
         if (anchorIndex >= 0 && selectedIds.size === 1) {
           e.preventDefault();
@@ -483,8 +625,45 @@ export function FinderFileList({
         }
         break;
       }
-      default:
+      default: {
+        // ★ Type-ahead：输入字符跳转到名称前缀匹配的项（文件管理器标配）
+        if (
+          e.key.length === 1 &&
+          !e.ctrlKey && !e.metaKey && !e.altKey &&
+          // 空缓冲时保留空格的默认行为（页面滚动）
+          !(e.key === ' ' && typeAheadRef.current.buffer === '')
+        ) {
+          const now = Date.now();
+          const state = typeAheadRef.current;
+          if (now - state.lastTime > TYPE_AHEAD_TIMEOUT_MS) {
+            state.buffer = '';
+          }
+          state.lastTime = now;
+          state.buffer += e.key.toLowerCase();
+
+          // 重复敲同一个字母 = 在以该字母开头的项之间循环（Explorer 语义）
+          const isRepeatedChar = state.buffer.length > 1 &&
+            state.buffer.split('').every(c => c === state.buffer[0]);
+          const prefix = isRepeatedChar ? state.buffer[0] : state.buffer;
+          // 累积前缀从当前项开始找（含当前项）；单字符/循环模式从下一项开始找
+          const startIndex = anchorIndex < 0
+            ? 0
+            : (prefix.length === 1 ? anchorIndex + 1 : anchorIndex);
+
+          for (let offset = 0; offset < items.length; offset++) {
+            const idx = (startIndex + offset) % items.length;
+            if (items[idx].name.toLowerCase().startsWith(prefix)) {
+              e.preventDefault();
+              keyboardAnchorRef.current = items[idx].id;
+              selectionPivotRef.current = items[idx].id;
+              onSelect(items[idx].id, 'single');
+              scrollItemIntoView(idx);
+              break;
+            }
+          }
+        }
         break;
+      }
     }
   }, [editingId, items, selectedIds, viewMode, gridColumns, onSelect, onSelectionChange, onOpen, onRequestRename, scrollItemIntoView]);
 
@@ -498,7 +677,7 @@ export function FinderFileList({
             <CircleNotch size={24} className="text-primary animate-spin" />
           </div>
         </div>
-        <p className="mt-4 text-sm text-muted-foreground/70 animate-fade-in">
+        <p className="mt-4 text-sm text-muted-foreground/70 finder-fade-in">
           {t('finder.loading.resources')}
         </p>
       </div>
@@ -547,7 +726,23 @@ export function FinderFileList({
         <p className="text-[13px] text-muted-foreground/60 text-center max-w-[240px]">
           {t(isSmallScreen ? 'finder.empty.dropHintTouch' : 'finder.empty.dropHint')}
         </p>
-        
+
+        {/* ★ 可操作的新建入口：直接在点击位置打开与右键相同的新建菜单 */}
+        {onContainerContextMenu && (
+          <NotionButton
+            variant="default"
+            size="sm"
+            className="mt-4"
+            onClick={(e) => {
+              e.stopPropagation();
+              onContainerContextMenu(e);
+            }}
+          >
+            <Plus size={14} className="mr-1.5" />
+            {t('finder.toolbar.new')}
+          </NotionButton>
+        )}
+
         {/* 快捷操作提示（桌面端） */}
         {!isSmallScreen && (
         <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground/40">
@@ -575,12 +770,14 @@ export function FinderFileList({
           onClick={handleContainerClick}
           onDoubleClick={handleContainerDoubleClick}
           onContextMenu={handleContainerContextMenu}
-          onMouseDown={handleMouseDown}
+          onMouseDown={handleContainerMouseDown}
           tabIndex={0}
           onKeyDown={handleKeyboardNavigation}
+          role="listbox"
+          aria-multiselectable={true}
         >
           <SortableContext
-            items={items.map(item => item.id)}
+            items={itemIds}
             strategy={verticalListSortingStrategy}
           >
             {/* Notion 风格：添加少量内边距 */}
@@ -610,19 +807,18 @@ export function FinderFileList({
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                   >
-                    <SortableFinderFileItem
-                      id={item.id}
+                    <FinderFileRow
                       item={item}
                       viewMode={viewMode}
                       isSelected={selectedIds.has(item.id)}
                       isActive={activeFileId === item.id}
                       isHighlighted={highlightedIds?.has(item.id)}
-                      onSelect={(mode) => onSelect(item.id, mode)}
-                      onOpen={() => onOpen(item)}
-                      onContextMenu={(e) => onContextMenu(e, item)}
+                      onSelect={onSelect}
+                      onOpen={onOpen}
+                      onContextMenu={onContextMenu}
                       enableDrag={enableDragDrop && editingId !== item.id}
                       isEditing={editingId === item.id}
-                      onEditConfirm={(newName) => onEditConfirm?.(item.id, newName)}
+                      onEditConfirm={onEditConfirm}
                       onEditCancel={onEditCancel}
                       compact={compact}
                     />
@@ -636,7 +832,7 @@ export function FinderFileList({
         {/* Notion 风格的拖拽覆盖层 */}
         <DragOverlay dropAnimation={{
           duration: 200,
-          easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)', // transitions-dev 主缓动（WAAPI 不支持 var()）
         }}>
           {activeItem && (
             <div className="relative">
@@ -655,7 +851,7 @@ export function FinderFileList({
                   "absolute -top-2 -right-2 bg-primary text-primary-foreground",
                   "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
                   "flex items-center justify-center shadow-notion-lg",
-                  "animate-pop-in"
+                  "finder-pop-in"
                 )}>
                   {dragCount}
                 </div>
@@ -688,12 +884,14 @@ export function FinderFileList({
         onClick={handleContainerClick}
         onDoubleClick={handleContainerDoubleClick}
         onContextMenu={handleContainerContextMenu}
-        onMouseDown={handleMouseDown}
+        onMouseDown={handleContainerMouseDown}
         tabIndex={0}
         onKeyDown={handleKeyboardNavigation}
+        role="listbox"
+        aria-multiselectable={true}
       >
         <SortableContext
-          items={items.map(item => item.id)}
+          items={itemIds}
           strategy={rectSortingStrategy}
         >
           {/* ★ 网格模式虚拟滚动：外层容器用于 ResizeObserver */}
@@ -716,28 +914,28 @@ export function FinderFileList({
                 return (
                   <div
                     key={virtualRow.key}
-                    className="absolute left-0 right-0 grid gap-2"
+                    className="absolute top-0 left-0 right-0 grid gap-2 justify-items-start"
                     style={{
-                      top: `${virtualRow.start}px`,
+                      // 与列表模式一致：用 transform 定位虚拟行，避免 top 变化触发布局
+                      transform: `translateY(${virtualRow.start}px)`,
                       height: `${GRID_ROW_HEIGHT}px`,
-                      gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
+                      gridTemplateColumns: `repeat(${gridColumns}, ${GRID_ITEM_WIDTH}px)`,
                     }}
                   >
                     {rowItems.map(item => (
-                      <SortableFinderFileItem
+                      <FinderFileRow
                         key={item.id}
-                        id={item.id}
                         item={item}
                         viewMode={viewMode}
                         isSelected={selectedIds.has(item.id)}
                         isActive={activeFileId === item.id}
                         isHighlighted={highlightedIds?.has(item.id)}
-                        onSelect={(mode) => onSelect(item.id, mode)}
-                        onOpen={() => onOpen(item)}
-                        onContextMenu={(e) => onContextMenu(e, item)}
+                        onSelect={onSelect}
+                        onOpen={onOpen}
+                        onContextMenu={onContextMenu}
                         enableDrag={enableDragDrop && editingId !== item.id}
                         isEditing={editingId === item.id}
-                        onEditConfirm={(newName) => onEditConfirm?.(item.id, newName)}
+                        onEditConfirm={onEditConfirm}
                         onEditCancel={onEditCancel}
                         compact={compact}
                       />
@@ -753,7 +951,7 @@ export function FinderFileList({
       {/* Notion 风格的拖拽覆盖层 */}
       <DragOverlay dropAnimation={{
         duration: 200,
-        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)', // transitions-dev 主缓动（WAAPI 不支持 var()）
       }}>
         {activeItem && (
           <div className="relative">
@@ -772,7 +970,7 @@ export function FinderFileList({
                 "absolute -top-2 -right-2 bg-primary text-primary-foreground",
                 "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
                 "flex items-center justify-center shadow-notion-lg",
-                "animate-pop-in"
+                "finder-pop-in"
               )}>
                 {dragCount}
               </div>

@@ -279,24 +279,13 @@ export function LearningHeatmap({
             value={maxCount}
             index={2}
 />
-          <StatsCard
-            icon={<Calendar size={16} />}
-            label={t('heatmap.stats.activeDays', '活跃天数')}
-            value={activeDays}
-            index={1}
-/>
-          <StatsCard
-            icon={<Lightning size={16} />}
-            label={t('heatmap.stats.maxDaily', '单日峰值')}
-            value={maxCount}
-            index={2}
-/>
         </div>
       )}
 
-      {/* 热力图容器 — overflow-hidden + direction:rtl 保留最新日期，截断最旧 */}
+      {/* 热力图容器 — 横向可滚动（direction:rtl 让初始位置停在最新日期，
+          旧数据在窄屏上通过横滑仍可达，替代原 overflow-hidden 直接截断） */}
       <div
-        className="w-full overflow-hidden pb-2"
+        className="w-full overflow-x-auto overflow-y-hidden pb-2"
         style={{ direction: 'rtl' }}
       >
         <div style={{ minWidth: heatmapWidth, direction: 'ltr' }}>

@@ -227,19 +227,19 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         {/* 填充空间 */}
         <div className="flex-1 min-w-0" />
         
-        {/* 右侧：操作按钮组 - 不收缩 */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* 右侧：操作按钮组 - 桌面端不收缩；移动端允许收缩以防溢出（统计文本可截断） */}
+        <div className="flex min-w-0 items-center gap-1 sm:shrink-0">
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="hidden sm:flex h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40">
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40">
               <Image size={14} />
               <span className="text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
             </NotionButton>
           </CommonTooltip>
           
-          {/* 非移动端：设置按钮（始终显示图标，大屏显示文字） */}
+          {/* 设置按钮（始终显示图标，大屏显示文字） */}
           {onOpenSettings && (
             <CommonTooltip content={t('essay_grading:settings.title')}>
-              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
+              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <PenNib size={14} />
                 <span className="text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
               </NotionButton>
@@ -278,8 +278,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           )}
           
           {/* 移动端：字符统计 + 清空 + 批改按钮 */}
-          <div className="sm:hidden flex items-center gap-1">
-            <span className="text-xs text-muted-foreground/60 tabular-nums">
+          <div className="sm:hidden flex min-w-0 items-center gap-1">
+            <span className="text-xs text-muted-foreground/60 tabular-nums truncate min-w-0">
               {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
               {' · '}
               {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
@@ -287,12 +287,12 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
             </span>
             {safeInputText && !isGrading && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 shrink-0 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <Trash size={14} />
               </NotionButton>
             )}
             {isGrading ? (
-              <NotionButton variant="ghost" size="sm" onClick={onCancelGrading} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+              <NotionButton variant="ghost" size="sm" onClick={onCancelGrading} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 shrink-0 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <CircleNotch size={14} className="animate-spin" />
               </NotionButton>
             ) : (
@@ -301,6 +301,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 size="sm"
                 onClick={onGrade}
                 disabled={!safeInputText.trim()}
+                className="shrink-0"
               >
                 {t('essay_grading:actions.grade')}
               </NotionButton>

@@ -53,6 +53,16 @@ interface DayDetailProps {
 
 // Weekday/month names are now loaded from i18n locale files (review:calendar.weekdaysShort, etc.)
 
+// ★ P1 修复：日期字符串统一用本地日期拼接。
+// 之前使用 toISOString().split('T')[0]（UTC 日期），对 UTC+8 用户本地 00:00-08:00
+// 会得到前一天，导致热力图格子取数与"今天"判断整天级错位。
+const formatLocalDate = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 // ============================================================================
 // 热力图颜色等级
 // ============================================================================
@@ -290,7 +300,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = formatLocalDate(new Date());
 
     for (let i = 0; i < sortedData.length; i++) {
       const item = sortedData[i];
@@ -403,8 +413,8 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
     const endDate = new Date();
 
     loadCalendarData(
-      startDate.toISOString().split('T')[0],
-      endDate.toISOString().split('T')[0],
+      formatLocalDate(startDate),
+      formatLocalDate(endDate),
       examId
     );
   }, [examId, loadCalendarData]);
@@ -485,7 +495,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
 
   // 选择日期
   const handleSelectDate = useCallback((date: Date) => {
-    const dateStr = date.toISOString().split('T')[0];
+    const dateStr = formatLocalDate(date);
     setSelectedDate(dateStr);
     // 这里可以加载当日的复习历史
     setSelectedHistories([]);
@@ -572,7 +582,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         {/* 日历网格 */}
         <div className="grid grid-cols-7 gap-1">
           {calendarDays.map((day, index) => {
-            const dateStr = day.date.toISOString().split('T')[0];
+            const dateStr = formatLocalDate(day.date);
             const data = dataMap.get(dateStr) || null;
             const isToday = day.date.getTime() === today.getTime();
             const isSelected = dateStr === selectedDate;

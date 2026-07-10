@@ -78,9 +78,13 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
   const [newType, setNewType] = useState<MemoryTypeValue>('study');
   const [isCreating, setIsCreating] = useState(false);
 
-  // 加载配置
+  // 加载配置（卸载后不再 setState）
   useEffect(() => {
-    getMemoryConfig().then(setConfig).catch(() => {});
+    let cancelled = false;
+    getMemoryConfig()
+      .then((cfg) => { if (!cancelled) setConfig(cfg); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   // 自动提取频率
@@ -229,8 +233,8 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
 
   return (
     <div className={cn('border-b border-border/40', className)}>
-      {/* 工具栏 */}
-      <div className="flex items-center gap-1.5 px-3 py-1.5">
+      {/* 工具栏（📱 允许换行：窄屏下按钮过多会横向溢出导致部分功能不可达） */}
+      <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5">
         <MemoryIcon size={14} className="text-muted-foreground shrink-0" />
         <span className="text-[11px] text-muted-foreground mr-1">{t('memory.auto_extract', '自动提取')}:</span>
         <div className="flex items-center gap-0.5">
@@ -362,6 +366,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             placeholder={t('memory.batch_import_placeholder', '每行一条，格式：标题\\t内容 或 标题：内容')}
             value={batchImportText}
             onChange={(e) => setBatchImportText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowBatchImport(false); } }}
             rows={4}
             className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
           />
@@ -394,6 +399,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             placeholder={t('memory.title_placeholder', '记忆标题')}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowNewMemory(false); } }}
             autoFocus
             className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
           />
@@ -401,6 +407,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             placeholder={t('memory.content_placeholder_study', '学习内容...')}
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowNewMemory(false); } }}
             rows={3}
             className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
           />

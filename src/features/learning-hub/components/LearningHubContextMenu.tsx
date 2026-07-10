@@ -37,6 +37,8 @@ import {
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
   AppMenuItem,
   AppMenuSeparator,
@@ -148,8 +150,11 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   const { t } = useTranslation('learningHub');
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ x: position.x, y: position.y });
+  // 触屏设备（长按/更多按钮打开）：菜单项高提升到 ≥40px（契约第 3 条）
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   // 边界检测：当菜单向下展示不全时，向上展示
+  // ★ target 变化会改变菜单项数量/高度，需一并重新测量
   useLayoutEffect(() => {
     if (!open || !menuRef.current) return;
 
@@ -175,7 +180,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     y = Math.max(8, y);
 
     setMenuPosition({ x, y });
-  }, [open, position]);
+  }, [open, position, target]);
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -204,6 +209,16 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
+  }, [open, onOpenChange]);
+
+  // 📱 Android 返回键：自绘浮层菜单打开时先关闭菜单（契约第 4 条）。
+  // 该菜单不带 data-state="open"，androidBackCoordinator 的 Radix 兜底匹配不到，必须显式注册。
+  useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      onOpenChange(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
   }, [open, onOpenChange]);
 
   // 关闭菜单的辅助函数
@@ -702,11 +717,16 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   return createPortal(
     <div
       ref={menuRef}
+      role="menu"
       className={cn(
-        'fixed min-w-[180px] overflow-hidden rounded-lg',
+        'fixed min-w-[180px] rounded-lg',
+        // ★ 小视口下限制高度并允许内部滚动，避免长菜单被裁剪不可达
+        'max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',
         'bg-popover/95 backdrop-blur-md text-popover-foreground',
         'border border-transparent ring-1 ring-border/40 shadow-lg',
-        'py-1.5 animate-in fade-in-0 zoom-in-95'
+        'py-1.5 ui-zoom-fade-in',
+        // 📱 触屏：菜单不超屏宽、项高 ≥40px（契约第 3 条）
+        isTouchPrimary && 'max-w-[calc(100vw-16px)] [&_[role=menuitem]]:min-h-[40px]'
       )}
       style={{
         left: menuPosition.x,

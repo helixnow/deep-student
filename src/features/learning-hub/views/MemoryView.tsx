@@ -14,7 +14,7 @@ import { consumePendingMemoryLocate } from '@/utils/pendingMemoryLocate';
  * 5. 内联展开预览，点击跳转到笔记编辑器
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -90,6 +90,7 @@ import {
 import { folderApi } from '@/dstu';
 import type { FolderTreeNode as DstuFolderTreeNode } from '@/dstu/types/folder';
 import type { ResourceListItem } from '../types';
+import { useDialogFocusManagement } from '../components/FolderSelectorDialog';
 
 // ============================================================================
 // 类型定义
@@ -127,6 +128,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [folderList, setFolderList] = useState<Array<{ id: string; title: string }>>([]);
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+
+  // 对话框焦点圈定 + 关闭时还焦到触发元素
+  const createRootFocusRef = useDialogFocusManagement(showCreateRootDialog);
+  const pickerFocusRef = useDialogFocusManagement(isPickerOpen);
 
   // ★ 画像状态
   const [profileSections, setProfileSections] = useState<MemoryProfileSection[]>([]);
@@ -167,8 +172,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [auditLogs, setAuditLogs] = useState<MemoryAuditLogItem[]>([]);
   const [isLoadingAuditLog, setIsLoadingAuditLog] = useState(false);
-  const [auditSourceFilter, setAuditSourceFilter] = useState<string>('');
-  const [auditSuccessFilter, setAuditSuccessFilter] = useState<string>('');
+  // ★ Radix Select 不允许空字符串 value，使用 'all' 作为“无筛选”哨兵值
+  const [auditSourceFilter, setAuditSourceFilter] = useState<string>('all');
+  const [auditSuccessFilter, setAuditSuccessFilter] = useState<string>('all');
   const [auditLogOffset, setAuditLogOffset] = useState(0);
   const [auditLoadError, setAuditLoadError] = useState<string | null>(null);
 
@@ -245,8 +251,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
   // ========== 搜索 ==========
   const viewModeBeforeSearch = React.useRef<'list' | 'tree'>('list');
+  // 请求版本号：防止慢的旧搜索结果覆盖新搜索/已清空的状态
+  const searchReqIdRef = React.useRef(0);
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
+      searchReqIdRef.current++;
       setIsSearchMode(false);
       setSearchResults([]);
       return;
@@ -255,22 +264,28 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     if (!isSearchMode) {
       viewModeBeforeSearch.current = viewMode;
     }
+    const reqId = ++searchReqIdRef.current;
     setIsLoading(true);
     setIsSearchMode(true);
     setViewMode('list');
     try {
       const results = await searchMemory(searchQuery, 20);
+      if (reqId !== searchReqIdRef.current) return;
       setSearchResults(results);
     } catch (error: unknown) {
+      if (reqId !== searchReqIdRef.current) return;
       console.error('[MemoryView] Search failed:', error);
       setSearchResults([]);
       showGlobalNotification('error', t('memory.search_error', '搜索失败'));
     } finally {
-      setIsLoading(false);
+      if (reqId === searchReqIdRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [searchQuery, isSearchMode, viewMode, t]);
 
   const handleClearSearch = useCallback(() => {
+    searchReqIdRef.current++; // 使在途搜索请求失效
     setSearchQuery('');
     setIsSearchMode(false);
     setSearchResults([]);
@@ -402,18 +417,24 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   }, [batchImportPurpose, batchImportText, batchImportType, handleCancelBatchImport, loadMemories, parseBatchImportItems, t]);
 
   // ========== 内联展开预览 ==========
+  // 请求版本号：快速切换展开目标时，防止慢的旧请求把内容写到新展开的条目下
+  const expandReqIdRef = React.useRef(0);
   const handleToggleExpand = useCallback(async (noteId: string) => {
     // 如果已经展开，则收起
     if (expandedMemoryId === noteId) {
+      expandReqIdRef.current++;
       setExpandedMemoryId(null);
       setExpandedContent(null);
       return;
     }
 
+    const reqId = ++expandReqIdRef.current;
     setExpandedMemoryId(noteId);
+    setExpandedContent(null);
     setIsLoadingContent(true);
     try {
       const memory = await readMemory(noteId);
+      if (reqId !== expandReqIdRef.current) return;
       if (memory) {
         setExpandedContent(memory);
       } else {
@@ -424,11 +445,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         setExpandedMemoryId(null);
       }
     } catch (error: unknown) {
+      if (reqId !== expandReqIdRef.current) return;
       console.error('[MemoryView] Read failed:', error);
       showGlobalNotification('error', t('memory.read_error', '读取失败'));
       setExpandedMemoryId(null);
     } finally {
-      setIsLoadingContent(false);
+      if (reqId === expandReqIdRef.current) {
+        setIsLoadingContent(false);
+      }
     }
   }, [expandedMemoryId, t]);
 
@@ -584,6 +608,24 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setEditContent('');
   }, []);
 
+  // ★ 性能：树状视图的 note 元数据映射与折叠回调保持稳定引用，
+  // 避免每次渲染都重建导致 MemoryTreeNode 的 React.memo 失效
+  const noteTitleMap = useMemo(() => {
+    const map: Record<string, NoteMetaInfo> = {};
+    for (const m of memories) {
+      map[m.id] = { title: m.title, memoryType: m.memoryType, memoryPurpose: m.memoryPurpose, isImportant: m.isImportant, isStale: m.isStale };
+    }
+    return map;
+  }, [memories]);
+
+  const handleToggleFolder = useCallback((folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId); else next.add(folderId);
+      return next;
+    });
+  }, []);
+
   // ========== 加载画像 ==========
   const handleToggleProfile = useCallback(async () => {
     if (showProfile) {
@@ -612,8 +654,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       const logs = await getMemoryAuditLogs({
         limit: AUDIT_LOG_PAGE_SIZE,
         offset,
-        sourceFilter: auditSourceFilter || undefined,
-        successFilter: auditSuccessFilter === '' ? undefined : auditSuccessFilter === 'true',
+        sourceFilter: auditSourceFilter === 'all' ? undefined : auditSourceFilter,
+        successFilter: auditSuccessFilter === 'all' ? undefined : auditSuccessFilter === 'true',
       });
       setAuditLoadError(null);
       if (resetOffset) {
@@ -830,12 +872,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </NotionDialogTitle>
           </NotionDialogHeader>
           <NotionDialogBody>
-            <Input
-              placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
-              value={newRootFolderTitle}
-              onChange={(e) => setNewRootFolderTitle(e.target.value)}
-              className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
-            />
+            <div ref={createRootFocusRef}>
+              <Input
+                placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
+                value={newRootFolderTitle}
+                onChange={(e) => setNewRootFolderTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newRootFolderTitle.trim() && !isLoading) {
+                    e.preventDefault();
+                    handleCreateRootFolder();
+                  }
+                }}
+                data-autofocus
+                className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
+              />
+            </div>
           </NotionDialogBody>
           <NotionDialogFooter>
             <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(false)}>
@@ -863,7 +914,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             placeholder={t('memory.search_placeholder', '搜索记忆...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSearch();
+              else if (e.key === 'Escape' && searchQuery) handleClearSearch();
+            }}
             className="w-full h-9 pl-9 pr-8 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
           />
           {searchQuery && (
@@ -1069,7 +1123,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">{t('memory.audit_all_sources', '全部来源')}</SelectItem>
+                      <SelectItem value="all">{t('memory.audit_all_sources', '全部来源')}</SelectItem>
                       <SelectItem value="tool_call">{t('memory.audit_source_tool', '工具调用')}</SelectItem>
                       <SelectItem value="auto_extract">{t('memory.audit_source_auto', '自动提取')}</SelectItem>
                       <SelectItem value="handler">{t('memory.audit_source_handler', '前端操作')}</SelectItem>
@@ -1082,7 +1136,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">{t('memory.audit_all_status', '全部状态')}</SelectItem>
+                      <SelectItem value="all">{t('memory.audit_all_status', '全部状态')}</SelectItem>
                       <SelectItem value="true">{t('memory.audit_success', '成功')}</SelectItem>
                       <SelectItem value="false">{t('memory.audit_failed', '失败')}</SelectItem>
                     </SelectContent>
@@ -1101,7 +1155,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <div>{auditLoadError}</div>
                   <div>
                     <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(true)} className="text-xs">
-                      {t('common.retry', '重试')}
+                      {t('common:retry', '重试')}
                     </NotionButton>
                   </div>
                 </div>
@@ -1320,14 +1374,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 <MemoryTreeNode
                   node={treeData}
                   expandedFolders={expandedFolders}
-                  noteTitleMap={Object.fromEntries(memories.map(m => [m.id, { title: m.title, memoryType: m.memoryType, memoryPurpose: m.memoryPurpose, isImportant: m.isImportant, isStale: m.isStale } as NoteMetaInfo]))}
-                  onToggleFolder={(folderId) => {
-                    setExpandedFolders(prev => {
-                      const next = new Set(prev);
-                      if (next.has(folderId)) next.delete(folderId); else next.add(folderId);
-                      return next;
-                    });
-                  }}
+                  noteTitleMap={noteTitleMap}
+                  onToggleFolder={handleToggleFolder}
                   onClickNote={handleToggleExpand}
                   onDeleteNote={handleDeleteMemory}
                   onOpenInEditor={handleOpenInEditor}
@@ -1451,7 +1499,6 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               {memories.map((memory) => {
                 const isExpanded = expandedMemoryId === memory.id;
                 const isSelected = selectedIds.has(memory.id);
-                const isEditing = editingMemoryId === memory.id;
                 return (
                   <div key={memory.id} className="rounded-lg transition-colors">
                     <div
@@ -1553,7 +1600,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           </NotionDialogTitle>
         </NotionDialogHeader>
         <NotionDialogBody>
-          <div className="py-1">
+          <div className="py-1" ref={pickerFocusRef}>
             {folderList.map((folder) => (
               <NotionButton
                 key={folder.id}
@@ -1801,6 +1848,12 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                   const el = e.target;
                   el.style.height = 'auto';
                   el.style.height = el.scrollHeight + 'px';
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.stopPropagation();
+                    onCancelEdit();
+                  }
                 }}
                 autoFocus
                 className="w-full px-3 py-2 text-xs bg-muted/30 border-transparent rounded-md resize-none overflow-hidden focus:border-border focus:bg-background focus:outline-none transition-colors"

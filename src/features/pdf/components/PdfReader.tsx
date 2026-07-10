@@ -27,9 +27,25 @@ export const PdfReader: React.FC = () => {
   const { t } = useTranslation(['pdf', 'common']);
   const { isDarkMode } = useTheme();
 
+  // 供 useMobileHeader rightActions 调用（handleSelectFile 在下方定义）
+  const handleSelectFileRef = useRef<() => void>(() => {});
+
   // D-1: 移动端顶栏标题（pdf-reader 视图直挂本组件）
+  // ★ 2026-07-08（移动端审计 D-2）：文件打开后页内不再有「选择文件」入口，
+  // 换文件只能退出视图重进 —— 把打开文件动作收进统一顶栏右侧。
   useMobileHeader('pdf-reader', {
     title: t('common:navigation.pdf_reader', 'PDF 阅读器'),
+    rightActions: (
+      <NotionButton
+        variant="ghost"
+        size="sm"
+        iconOnly
+        aria-label={t('pdf:empty.select_button', '选择 PDF 文件')}
+        onClick={() => handleSelectFileRef.current()}
+      >
+        <UploadSimple size={18} />
+      </NotionButton>
+    ),
   }, [t]);
   
   const [file, setFile] = useState<File | null>(null);
@@ -197,6 +213,7 @@ export const PdfReader: React.FC = () => {
       fileInputRef.current?.click();
     }
   }, []);
+  handleSelectFileRef.current = handleSelectFile;
 
   const handleClearFile = useCallback(() => {
     // 清理 blob URL

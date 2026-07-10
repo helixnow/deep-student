@@ -107,10 +107,15 @@ pub enum QuestionImportProgress {
         session_id: String,
         name: String,
         total_questions: usize,
-        /// VLM 直提中途失败但已保存部分题时为 true（"可能缺题"），前端据此提示用户。
-        /// 其余完成路径均为 false；serde 默认 false 以兼容旧前端反序列化。
+        /// 导入过程"可能缺题"时为 true：VLM 直提中途失败但已保存部分题，
+        /// 或流式导入中存在写库失败的题目。前端据此提示用户。
+        /// serde 默认 false 以兼容旧前端反序列化。
         #[serde(default)]
         partial: bool,
+        /// 解析成功但写库失败的题目数（P1 修复：失败不再静默计入 total_questions）。
+        /// serde 默认 0 以兼容旧前端反序列化。
+        #[serde(default)]
+        failed_count: usize,
     },
     /// 导入失败
     Failed {
@@ -513,6 +518,7 @@ impl QuestionImportService {
                         name: qbank_name.clone(),
                         total_questions: already_saved,
                         partial: false,
+                        failed_count: 0,
                     });
                 }
                 return Ok(ImportResult {
@@ -565,7 +571,7 @@ impl QuestionImportService {
                 });
             }
 
-            let (total_saved, vlm_partial) = self
+            let (total_saved, vlm_partial, save_failed) = self
                 .run_vlm_direct_extraction(
                     vfs_db,
                     session_id,
@@ -592,7 +598,8 @@ impl QuestionImportService {
                     session_id: session_id.to_string(),
                     name: qbank_name.clone(),
                     total_questions: total_saved,
-                    partial: vlm_partial,
+                    partial: vlm_partial || save_failed > 0,
+                    failed_count: save_failed,
                 });
             }
             return Ok(ImportResult {
@@ -675,6 +682,8 @@ impl QuestionImportService {
             .unwrap_or(0);
 
             let mut all_questions: Vec<Value> = Vec::new();
+            // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
+            let mut total_save_failed: usize = 0;
 
             for (chunk_idx, chunk) in chunks.iter().enumerate() {
                 if chunk_idx < chunks_start {
@@ -708,6 +717,8 @@ impl QuestionImportService {
 
                             if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                                 log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                                total_save_failed += 1;
+                                return true;
                             }
 
                             total_parsed += 1;
@@ -751,6 +762,12 @@ impl QuestionImportService {
             if total_parsed == 0 {
                 let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
                 let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
+                if total_save_failed > 0 {
+                    return Err(AppError::database(format!(
+                        "解析到 {} 道题目但全部写入失败",
+                        total_save_failed
+                    )));
+                }
                 return Err(AppError::validation("未能提取到题目"));
             }
 
@@ -768,7 +785,8 @@ impl QuestionImportService {
                     session_id: session_id.to_string(),
                     name: qbank_name.clone(),
                     total_questions: total_parsed,
-                    partial: false,
+                    partial: total_save_failed > 0,
+                    failed_count: total_save_failed,
                 });
             }
 
@@ -1196,7 +1214,7 @@ impl QuestionImportService {
         }
 
         // ===== Stage 2: VLM 流式提取 → 逐题保存 =====
-        let (total_saved, vlm_partial) = self
+        let (total_saved, vlm_partial, save_failed) = self
             .run_vlm_direct_extraction(
                 vfs_db,
                 &session_id,
@@ -1226,7 +1244,8 @@ impl QuestionImportService {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
                 total_questions: total_saved,
-                partial: vlm_partial,
+                partial: vlm_partial || save_failed > 0,
+                failed_count: save_failed,
             });
         }
 
@@ -1260,13 +1279,15 @@ impl QuestionImportService {
         checkpoint: &mut ImportCheckpointState,
         skip_count: usize,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
-    ) -> Result<(usize, bool), AppError> {
+    ) -> Result<(usize, bool, usize), AppError> {
         let vlm_service = VlmGroundingService::new(Arc::clone(&self.llm_manager));
 
         let mut total_saved = skip_count;
         // ★ #6(round2): VLM 中途失败但已保存部分题时置 true，向上层/前端传达"可能缺题"
         let mut vlm_partial = false;
         let mut vlm_question_index: usize = 0;
+        // P1 修复：单题写库失败单独计数，向上层透出而非静默跳过
+        let mut save_failed: usize = 0;
 
         // 恢复时按内容去重：位置跳过(skip_count)假设两轮 VLM 输出完全一致，
         // 但首轮的空题/写库失败不计入已保存数、且 VLM 输出顺序可能漂移，
@@ -1366,6 +1387,7 @@ impl QuestionImportService {
                         vlm_question_index,
                         e
                     );
+                    save_failed += 1;
                     return true; // 跳过失败的题目，继续处理
                 }
 
@@ -1421,17 +1443,22 @@ impl QuestionImportService {
         save_checkpoint(vfs_db, session_id, checkpoint);
 
         if total_saved == 0 {
+            let error_msg = if save_failed > 0 {
+                format!("VLM 提取到 {} 道题目但全部写入失败", save_failed)
+            } else {
+                "VLM 未能提取到任何题目".to_string()
+            };
             if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.to_string()),
-                    error: "VLM 未能提取到任何题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
-            return Err(AppError::validation("VLM 未能提取到任何题目"));
+            return Err(AppError::validation(error_msg));
         }
 
-        Ok((total_saved, vlm_partial))
+        Ok((total_saved, vlm_partial, save_failed))
     }
 
     /// [DEPRECATED] DOCX 原生导入路径 — text+marker 方案，已被 import_docx_via_vlm 取代
@@ -1761,6 +1788,8 @@ impl QuestionImportService {
 
         let mut question_text_offsets: Vec<(usize, usize)> = Vec::new();
         let mut chunk_char_offset: usize = chunks.iter().take(chunks_start).map(|c| c.len()).sum();
+        // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
+        let mut total_save_failed: usize = 0;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if chunk_idx < chunks_start {
@@ -1828,6 +1857,12 @@ impl QuestionImportService {
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                             log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                            total_save_failed += 1;
+                            // 回收为该题预留的文本偏移，避免孤儿图片关联到不存在的题
+                            if has_images {
+                                question_text_offsets.pop();
+                            }
+                            return true;
                         }
 
                         total_parsed += 1;
@@ -1881,14 +1916,19 @@ impl QuestionImportService {
         if total_parsed == 0 {
             let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
             let _ = VfsExamRepo::clear_import_state(vfs_db, session_id);
+            let error_msg = if total_save_failed > 0 {
+                format!("解析到 {} 道题目但全部写入失败", total_save_failed)
+            } else {
+                "未能提取到题目".to_string()
+            };
             if let Some(ref tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.to_string()),
-                    error: "未能提取到题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
-            return Err(AppError::validation("未能提取到题目"));
+            return Err(AppError::validation(error_msg));
         }
 
         let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
@@ -1903,7 +1943,8 @@ impl QuestionImportService {
                 session_id: session_id.to_string(),
                 name: qbank_name.clone(),
                 total_questions: total_parsed,
-                partial: false,
+                partial: total_save_failed > 0,
+                failed_count: total_save_failed,
             });
         }
 
@@ -2158,6 +2199,8 @@ impl QuestionImportService {
         // 逐块 LLM 解析
         let mut all_questions: Vec<Value> = Vec::new();
         let mut total_parsed = 0;
+        // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
+        let mut total_save_failed: usize = 0;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if let Some(ref tx) = progress_tx {
@@ -2187,6 +2230,8 @@ impl QuestionImportService {
 
                         if let Err(e) = VfsQuestionRepo::create_question(vfs_db, &params) {
                             log::warn!("[QuestionImport] 保存题目失败: {}", e);
+                            total_save_failed += 1;
+                            return true;
                         }
 
                         total_parsed += 1;
@@ -2230,14 +2275,19 @@ impl QuestionImportService {
 
         if total_parsed == 0 {
             let _ = VfsExamRepo::update_status(vfs_db, &session_id, "completed");
+            let error_msg = if total_save_failed > 0 {
+                format!("解析到 {} 道题目但全部写入失败", total_save_failed)
+            } else {
+                "未能提取到题目".to_string()
+            };
             if let Some(ref tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.clone()),
-                    error: "未能提取到题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
-            return Err(AppError::validation("未能提取到题目"));
+            return Err(AppError::validation(error_msg));
         }
 
         rebuild_preview_from_questions(vfs_db, &session_id);
@@ -2254,7 +2304,8 @@ impl QuestionImportService {
                 session_id: session_id.clone(),
                 name: qbank_name.clone(),
                 total_questions: total_parsed,
-                partial: false,
+                partial: total_save_failed > 0,
+                failed_count: total_save_failed,
             });
         }
 
@@ -2445,6 +2496,7 @@ impl QuestionImportService {
                         name: qbank_name.to_string(),
                         total_questions: total_saved,
                         partial: false,
+                        failed_count: 0,
                     });
                 }
 
@@ -3749,9 +3801,11 @@ impl CsvImportService {
             folder_id: request.folder_id.clone(),
         };
 
-        VfsExamRepo::create_exam_sheet(vfs_db, params)
+        // P1 修复：create_exam_sheet 内部会用 generate_id() 生成新 ID（request.exam_id 仅作 temp_id），
+        // 必须返回实际生成的 ID，否则后续题目会挂到不存在的 exam_id 下成为孤儿数据。
+        let exam_sheet = VfsExamRepo::create_exam_sheet(vfs_db, params)
             .map_err(|e| AppError::database(format!("创建题目集失败: {}", e)))?;
-        Ok(request.exam_id.clone())
+        Ok(exam_sheet.id)
     }
 
     fn get_existing_content_hashes(

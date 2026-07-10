@@ -3,7 +3,15 @@
     "noFile": "未指定教材文件"
   },
   "loading": {
-    "largeFile": "正在加载大文件，请稍候..."
+    "largeFile": "正在加载大文件，请稍候...",
+    "timeout": "加载时间较长，可能遇到问题"
+  },
+  "relink": {
+    "action": "重新关联文件",
+    "hint": "若原文件已被移动或重命名，可点击\"重新关联文件\"选择它的新位置。",
+    "dialogTitle": "选择文件的新位置",
+    "success": "文件已重新关联",
+    "failed": "重新关联失败"
   },
   "open_study_mode": "教材导学",
   "no_textbook_loaded": "未加载教材",

@@ -41,6 +41,8 @@
       "load_failed": "文件读取失败",
       "file_too_large": "文件过大（最大 {{size}}）",
       "limit_reached": "最多添加 {{count}} 个附件",
+      "limit_reached_one": "最多添加 {{count}} 个附件",
+      "limit_reached_other": "最多添加 {{count}} 个附件",
       "status": {
         "processing": "解析中…",
         "success": "解析完成",

@@ -334,11 +334,30 @@ fn parse_score_from_result(result: &str, mode: &GradingMode) -> Option<ParsedSco
     let total = total.max(0.0).min(mode_max);
 
     // 解析维度评分
+    // ★ P1-1 修复：循环体内不再用 `?` 传播——单个坏维度（如 score="8分"、"8.5/10"
+    // 等 LLM 格式漂移）此前会使整个函数返回 None，把已成功解析的总分一并丢弃。
+    // 改为容错解析：跳过坏维度，保留总分与其余已解析维度（与下方 NaN 检查的
+    // `continue` 语义一致）。
     let mut dimensions = Vec::new();
     for cap in dim_regex.captures_iter(dims_content) {
-        let name = cap.get(1)?.as_str().to_string();
-        let score: f32 = cap.get(2)?.as_str().parse().ok()?;
-        let max_score: f32 = cap.get(3)?.as_str().parse().ok()?;
+        let Some(name_match) = cap.get(1) else {
+            continue;
+        };
+        let name = name_match.as_str().to_string();
+        let Some(score) = cap.get(2).and_then(|m| m.as_str().parse::<f32>().ok()) else {
+            log::warn!(
+                "[EssayGrading] 维度 '{}' 的 score 属性无法解析为数字，跳过该维度",
+                name
+            );
+            continue;
+        };
+        let Some(max_score) = cap.get(3).and_then(|m| m.as_str().parse::<f32>().ok()) else {
+            log::warn!(
+                "[EssayGrading] 维度 '{}' 的 max 属性无法解析为数字，跳过该维度",
+                name
+            );
+            continue;
+        };
         let comment = cap
             .get(4)
             .map(|m| m.as_str().trim().to_string())
@@ -972,6 +991,41 @@ mod tests {
         assert!(out.chars().count() <= 8000 + 32);
         // 不超长时原样返回
         assert_eq!(truncate_keep_head_tail("short", 8000), "short");
+    }
+
+    // ★ P1-1 回归：单个坏 <dim>（score 非纯数字）不应使整个评分归零
+    #[test]
+    fn parse_score_tolerates_single_bad_dimension() {
+        let mode = get_default_grading_mode();
+        let max = mode.total_max_score;
+        let result = format!(
+            r#"<score total="42" max="{max}">
+<dim name="内容" score="8分" max="10">格式漂移的坏维度</dim>
+<dim name="结构" score="7" max="10">正常维度</dim>
+</score>"#
+        );
+        let parsed = parse_score_from_result(&result, &mode)
+            .expect("总分解析成功时不应因单个坏维度整体归零");
+        assert_eq!(parsed.total, 42.0);
+        // 坏维度被跳过，好维度保留
+        assert_eq!(parsed.dimensions.len(), 1);
+        assert_eq!(parsed.dimensions[0].name, "结构");
+        assert_eq!(parsed.dimensions[0].score, 7.0);
+    }
+
+    // ★ P1-1 回归：全部维度损坏时仍保留总分（维度列表为空）
+    #[test]
+    fn parse_score_keeps_total_when_all_dimensions_bad() {
+        let mode = get_default_grading_mode();
+        let max = mode.total_max_score;
+        let result = format!(
+            r#"<score total="30" max="{max}">
+<dim name="内容" score="8.5/10" max="10">坏</dim>
+</score>"#
+        );
+        let parsed = parse_score_from_result(&result, &mode).expect("总分应保留");
+        assert_eq!(parsed.total, 30.0);
+        assert!(parsed.dimensions.is_empty());
     }
 
     #[test]

@@ -1354,6 +1354,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     return (
       <div
         ref={containerRef}
+        data-agent-qbank-editor
         className={cn('relative h-full overflow-hidden bg-background select-none', className)}
         style={{ touchAction: 'pan-y pinch-zoom' }}
       >
@@ -1370,7 +1371,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           style={{
             width: `calc(100% + ${settingsPanelWidth}px)`,
             transform: `translateX(${translateX}px)`,
-            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: isDragging ? 'none' : 'transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1))',
           }}
         >
           {/* 主界面 - 顶栏由 Learning Hub 统一管理 */}
@@ -1754,7 +1755,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // ========== 桌面端布局（去 head 化） ==========
   return (
-    <div className={cn('relative flex flex-col h-full bg-gradient-to-b from-background to-muted/20', className)}>
+    <div
+      data-agent-qbank-editor
+      className={cn('relative flex flex-col h-full bg-gradient-to-b from-background to-muted/20', className)}
+    >
       <style>{`
         @keyframes fadeSlideUp {
           from { opacity: 0; transform: translateY(8px); }

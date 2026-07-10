@@ -53,13 +53,64 @@ const PanelLoading: React.FC<{ label?: string }> = ({ label }) => (
 );
 
 // ============================================================================
+// 单个保活面板（memo：切换标签时不重渲染其余隐藏面板）
+// ============================================================================
+
+interface TabPanelItemProps {
+  tab: OpenTab;
+  visible: boolean;
+  reloadNonce: number;
+  loadingLabel: string;
+  onClose: (tabId: string) => void;
+  onTitleChange: (tabId: string, title: string) => void;
+}
+
+/**
+ * ★ 2026-07-08（保活审计）：之前每次 TabPanelContainer 渲染都为所有保活
+ * tab 新建 onClose/onTitleChange 闭包，导致切换标签时全部隐藏面板跟着
+ * 重渲染。抽成 memo 组件 + 稳定回调后，切换只重渲染显隐状态变化的两个面板。
+ */
+const TabPanelItem = React.memo<TabPanelItemProps>(({
+  tab, visible, reloadNonce, loadingLabel, onClose, onTitleChange,
+}) => {
+  const handleClose = useCallback(() => onClose(tab.tabId), [onClose, tab.tabId]);
+  const handleTitleChange = useCallback(
+    (title: string) => onTitleChange(tab.tabId, title),
+    [onTitleChange, tab.tabId]
+  );
+
+  return (
+    <div
+      className="absolute inset-0"
+      style={{ display: visible ? 'flex' : 'none' }}
+    >
+      <Suspense fallback={<PanelLoading label={loadingLabel} />}>
+        <UnifiedAppPanel
+          type={tab.type}
+          resourceId={tab.resourceId}
+          dstuPath={tab.dstuPath}
+          onClose={handleClose}
+          onTitleChange={handleTitleChange}
+          isActive={visible}
+          reloadNonce={reloadNonce}
+          className="h-full w-full"
+        />
+      </Suspense>
+    </div>
+  );
+});
+
+TabPanelItem.displayName = 'TabPanelItem';
+
+// ============================================================================
 // 组件实现
 // ============================================================================
 
 export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
   tabs, activeTabId, splitView, onClose, onTitleChange, onCloseSplitView, tabReloadKeys, className,
 }) => {
-  const { t } = useTranslation('common');
+  // 同时加载 learningHub 命名空间（分屏标题使用 learningHub:splitView.title）
+  const { t } = useTranslation(['common', 'learningHub']);
 
   const handleClose = useCallback((tabId: string) => onClose(tabId), [onClose]);
   const handleTitleChange = useCallback((tabId: string, title: string) => onTitleChange(tabId, title), [onTitleChange]);
@@ -87,26 +138,18 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
       .map(([id]) => id)
   );
 
-  // 渲染单个 tab 面板内容（保活逻辑）
+  // 渲染单个 tab 面板内容（保活逻辑，见 TabPanelItem）
+  const loadingLabel = t('loading', '加载中...');
   const renderTabPanel = (tab: OpenTab, visible: boolean) => (
-    <div
+    <TabPanelItem
       key={tab.tabId}
-      className="absolute inset-0"
-      style={{ display: visible ? 'flex' : 'none' }}
-    >
-      <Suspense fallback={<PanelLoading label={t('loading', '加载中...')} />}>
-        <UnifiedAppPanel
-          type={tab.type}
-          resourceId={tab.resourceId}
-          dstuPath={tab.dstuPath}
-          onClose={() => handleClose(tab.tabId)}
-          onTitleChange={(title) => handleTitleChange(tab.tabId, title)}
-          isActive={visible}
-          reloadNonce={tabReloadKeys?.[tab.tabId] ?? 0}
-          className="h-full w-full"
-        />
-      </Suspense>
-    </div>
+      tab={tab}
+      visible={visible}
+      reloadNonce={tabReloadKeys?.[tab.tabId] ?? 0}
+      loadingLabel={loadingLabel}
+      onClose={handleClose}
+      onTitleChange={handleTitleChange}
+    />
   );
 
   // ★ F7 修复：普通模式与分屏模式共用同一棵 PanelGroup 树。
@@ -153,9 +196,11 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
                   {t('learningHub:splitView.title', '分屏视图')}
                 </div>
                 <button
+                  type="button"
                   onClick={onCloseSplitView}
                   className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
-                  title={t('actions.close', '关闭分屏')}
+                  title={t('learningHub:splitView.close', '关闭分屏')}
+                  aria-label={t('learningHub:splitView.close', '关闭分屏')}
                 >
                   <X size={14} />
                 </button>

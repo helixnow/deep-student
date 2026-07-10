@@ -11,7 +11,7 @@
  * - 退出多选模式
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   X,
@@ -78,6 +78,19 @@ export const MultiSelectActionBar = React.memo(function MultiSelectActionBar({
 
   const isAllSelected = selectionCount > 0 && selectionCount === totalCount;
   const hasSelection = selectionCount > 0;
+
+  // Esc 退出多选模式（有弹窗打开时不响应，把 Esc 让给弹窗关闭）
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('[data-overlay-container="true"], .app-menu-content')) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      onExit();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onExit]);
 
   // 处理删除
   const handleDelete = useCallback(async () => {

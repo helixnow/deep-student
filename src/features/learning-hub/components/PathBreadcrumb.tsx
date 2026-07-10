@@ -161,27 +161,50 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
   const { t } = useTranslation('learningHub');
   const [isOpen, setIsOpen] = React.useState(false);
 
+  // 焦点移出容器（而非仅触发按钮）时关闭，避免 Tab 到菜单项时被 150ms 定时器误关
+  const handleBlur = React.useCallback((e: React.FocusEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+      setIsOpen(false);
+    }
+  }, []);
+
+  const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      setIsOpen(false);
+    }
+  }, []);
+
   if (items.length === 0) {
     return null;
   }
 
   return (
-    <div className="relative">
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} onBlur={() => setTimeout(() => setIsOpen(false), 150)} className="!h-auto !px-1.5 !py-0.5" title={t('breadcrumb.hiddenFolders', '{{count}} 个隐藏文件夹', { count: items.length })}>
+    <div className="relative" onBlur={handleBlur} onKeyDown={handleKeyDown}>
+      <NotionButton
+        variant="ghost"
+        size="sm"
+        onClick={() => setIsOpen(!isOpen)}
+        className="!h-auto !px-1.5 !py-0.5"
+        title={t('breadcrumb.hiddenFolders', '{{count}} 个隐藏文件夹', { count: items.length })}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+      >
         <span className="text-muted-foreground">...</span>
       </NotionButton>
 
       {isOpen && (
         <div
+          role="menu"
           className={cn(
             'absolute top-full left-0 mt-1 z-50',
             'min-w-[140px] max-w-[200px] py-1',
             'bg-popover border border-border rounded-md shadow-md',
-            'animate-in fade-in-0 zoom-in-95'
+            'ui-zoom-fade-in'
           )}
         >
           {items.map((item, index) => (
-            <NotionButton key={item.fullPath} variant="ghost" size="sm" onClick={() => { onNavigate(index); setIsOpen(false); }} className="w-full !justify-start !px-3 !py-1.5 truncate" title={item.name}>
+            <NotionButton key={item.fullPath} role="menuitem" variant="ghost" size="sm" onClick={() => { onNavigate(index); setIsOpen(false); }} className="w-full !justify-start !px-3 !py-1.5 truncate" title={item.name}>
               {item.name}
             </NotionButton>
           ))}

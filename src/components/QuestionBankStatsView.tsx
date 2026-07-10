@@ -276,7 +276,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
 
           {/* 图表内容 */}
           {expandedCharts && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="space-y-6 ui-drop-in">
               {/* 学习趋势图 */}
               <LearningTrendChart 
                 examId={examId} 

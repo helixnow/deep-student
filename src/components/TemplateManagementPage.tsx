@@ -134,7 +134,8 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const [editingTemplate, setEditingTemplate] = useState<CustomAnkiTemplate | null>(null);
   // 编辑器内部 tab 状态（集成到左侧栏）
   const [editorTab, setEditorTab] = useState<EditorTabType>('basic');
-  const isCodeMode = !isSelectingMode && (editorTab === 'templates' || editorTab === 'styles') && (activeTab === 'create' || activeTab === 'edit');
+  const isCodeEditorTab = editorTab === 'templates' || editorTab === 'styles';
+  const isCodeMode = !isSelectingMode && isCodeEditorTab && (activeTab === 'create' || activeTab === 'edit');
 
   useEffect(() => {
     onDesktopShellBackVisibilityChange?.(!isSelectingMode && activeTab === 'browse');
@@ -562,7 +563,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           left: 0;
           height: 2px;
           background: hsl(var(--primary));
-          transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1)), width var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1));
           z-index: 2;
           transform-origin: left center;
           border-radius: 0;
@@ -753,27 +754,55 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           </div>
         )}
 
-        {/* 主内容 - 代码编辑模式直接填满，其他模式用 ScrollArea */}
-        {(editorTab === 'templates' || editorTab === 'styles') && !isSelectingMode && (activeTab === 'create' || activeTab === 'edit') ? (
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {activeTab === 'create' && (
+        {/* 主内容 - 创建/编辑模式渲染单一编辑器实例；浏览模式用 ScrollArea */}
+        {/* ★ P1 修复：MinimalTemplateEditor 之前在"代码 Tab"与"其他 Tab"两个不同 JSX
+            分支中各渲染一份，切换侧栏 Tab 会导致编辑器重挂载、未保存的编辑静默丢失。
+            现在编辑器固定在同一 JSX 位置（key 只随 create/edit 与模板 id 变化），
+            仅通过 className 切换代码模式（撑满）与表单模式（卡片布局）的外层样式。 */}
+        {!isSelectingMode && (activeTab === 'create' || (activeTab === 'edit' && editingTemplate)) ? (
+          <div
+            className={cn(
+              'flex-1 min-h-0 flex flex-col overflow-hidden',
+              !isCodeEditorTab && (isSmallScreen ? 'py-2 px-0' : 'p-4')
+            )}
+          >
+            <div className={cn('flex-1 min-h-0 overflow-hidden', !isCodeEditorTab && 'study-shell-pane ui-rise-in')}>
               <MinimalTemplateEditor
+                key={`${activeTab}-${editingTemplate?.id ?? 'blank'}`}
                 template={editingTemplate}
-                mode="create"
+                mode={activeTab === 'create' ? 'create' : 'edit'}
                 externalActiveTab={editorTab}
                 onExternalTabChange={setEditorTab}
                 hideSidebar={true}
                 mobileEditorPortalTarget={editorPortalTarget}
                 onSave={async (templateData) => {
-                  try {
-                    await templateManager.createTemplate(templateData);
-                    setActiveTab('browse');
-                    setEditingTemplate(null);
-                    setEditorTab('basic');
-                    setError(null);
-                  } catch (err: unknown) {
-                    logError('创建模板失败', err);
-                    setError(formatErrorMessage(t('create_failed'), err));
+                  if (activeTab === 'create') {
+                    try {
+                      await templateManager.createTemplate(templateData);
+                      setActiveTab('browse');
+                      setEditingTemplate(null);
+                      setEditorTab('basic');
+                      setError(null);
+                    } catch (err: unknown) {
+                      logError('创建模板失败', err);
+                      setError(formatErrorMessage(t('create_failed'), err));
+                    }
+                  } else if (editingTemplate) {
+                    try {
+                      setIsLoading(true);
+                      await templateManager.updateTemplate(editingTemplate.id, templateData);
+                      setActiveTab('browse');
+                      setEditingTemplate(null);
+                      setEditorTab('basic');
+                      setError(null);
+                      const templates = templateManager.getAllTemplates();
+                      setTemplates(templates);
+                    } catch (err: unknown) {
+                      logError('更新模板失败', err);
+                      setError(formatErrorMessage(t('update_failed'), err));
+                    } finally {
+                      setIsLoading(false);
+                    }
                   }
                 }}
                 onCancel={() => {
@@ -782,39 +811,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   setEditorTab('basic');
                 }}
 />
-            )}
-            {activeTab === 'edit' && editingTemplate && (
-              <MinimalTemplateEditor
-                template={editingTemplate}
-                mode="edit"
-                externalActiveTab={editorTab}
-                onExternalTabChange={setEditorTab}
-                hideSidebar={true}
-                mobileEditorPortalTarget={editorPortalTarget}
-                onSave={async (templateData) => {
-                  try {
-                    setIsLoading(true);
-                    await templateManager.updateTemplate(editingTemplate.id, templateData);
-                    setActiveTab('browse');
-                    setEditingTemplate(null);
-                    setEditorTab('basic');
-                    setError(null);
-                    const templates = templateManager.getAllTemplates();
-                    setTemplates(templates);
-                  } catch (err: unknown) {
-                    logError('更新模板失败', err);
-                    setError(formatErrorMessage(t('update_failed'), err));
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-                onCancel={() => {
-                  setActiveTab('browse');
-                  setEditingTemplate(null);
-                  setEditorTab('basic');
-                }}
-/>
-            )}
+            </div>
           </div>
         ) : (
         <CustomScrollArea
@@ -823,7 +820,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           trackOffsetRight={isSmallScreen ? 0 : 6}
         >
         {(isSelectingMode || activeTab === 'browse') && (
-          <div className="study-shell-pane animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="study-shell-pane ui-rise-in">
             <TemplateBrowser
               templates={filteredTemplates}
               selectedTemplate={selectedTemplate}
@@ -839,69 +836,6 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               renderPreview={renderTemplatePreview}
               onExportTemplate={handleExportTemplate}
               isSmallScreen={isSmallScreen}
-/>
-          </div>
-        )}
-
-        {!isSelectingMode && activeTab === 'create' && (
-          <div className="study-shell-pane animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <MinimalTemplateEditor
-              template={editingTemplate}
-              mode="create"
-              externalActiveTab={editorTab}
-              onExternalTabChange={setEditorTab}
-              hideSidebar={true}
-              onSave={async (templateData) => {
-                try {
-                  await templateManager.createTemplate(templateData);
-                  setActiveTab('browse');
-                  setEditingTemplate(null);
-                  setEditorTab('basic');
-                  setError(null);
-                } catch (err: unknown) {
-                  logError('创建模板失败', err);
-                  setError(formatErrorMessage(t('create_failed'), err));
-                }
-              }}
-              onCancel={() => {
-                setActiveTab('browse');
-                setEditingTemplate(null);
-                setEditorTab('basic');
-              }}
-/>
-          </div>
-        )}
-
-        {!isSelectingMode && activeTab === 'edit' && editingTemplate && (
-          <div className="study-shell-pane animate-in fade-in slide-in-from-bottom-2 duration-200">
-            <MinimalTemplateEditor
-              template={editingTemplate}
-              mode="edit"
-              externalActiveTab={editorTab}
-              onExternalTabChange={setEditorTab}
-              hideSidebar={true}
-              onSave={async (templateData) => {
-                try {
-                  setIsLoading(true);
-                  await templateManager.updateTemplate(editingTemplate.id, templateData);
-                  setActiveTab('browse');
-                  setEditingTemplate(null);
-                  setEditorTab('basic');
-                  setError(null);
-                  const templates = templateManager.getAllTemplates();
-                  setTemplates(templates);
-                } catch (err: unknown) {
-                  logError('更新模板失败', err);
-                  setError(formatErrorMessage(t('update_failed'), err));
-                } finally {
-                  setIsLoading(false);
-                }
-              }}
-              onCancel={() => {
-                setActiveTab('browse');
-                setEditingTemplate(null);
-                setEditorTab('basic');
-              }}
 />
           </div>
         )}

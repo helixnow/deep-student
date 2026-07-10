@@ -492,7 +492,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
           {/* 模式内容：查看态 or 编辑态 */}
           {isEditing ? (
             /* ========== 内联编辑表单 ========== */
-            <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="space-y-5 ui-rise-in">
               {/* 基本信息 */}
               <div className="space-y-2">
                 <label className="text-xs font-medium text-muted-foreground/60">

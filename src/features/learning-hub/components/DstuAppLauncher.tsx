@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
   mobileDrawerNavRowClassName,
   mobileDrawerRowIconWrapClassName,
@@ -45,6 +46,10 @@ import {
   getQuickAccessTypeFromLauncherType,
   type QuickAccessType,
 } from '../learningHubContracts';
+
+/** 新建菜单项样式：触屏下项高 ≥44px（契约第 3/6 条），桌面保持原尺寸 */
+const CREATE_MENU_ITEM_CLASS =
+  'w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground [@media(pointer:coarse)]:min-h-[44px]';
 
 interface DstuAppLauncherProps {
   /** 当前选中的应用/类型 */
@@ -99,19 +104,34 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
 
-  // 点击外部关闭新建菜单
+  // 点击外部 / Escape 关闭新建菜单
   useEffect(() => {
+    if (!showCreateMenu) return;
     const handleClickOutside = (event: MouseEvent) => {
       if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
         setShowCreateMenu(false);
       }
     };
-    if (showCreateMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowCreateMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
     };
+  }, [showCreateMenu]);
+
+  // 📱 Android 返回键：新建菜单打开时先关闭菜单，而不是收起整个抽屉（契约第 4 条）
+  useEffect(() => {
+    if (!showCreateMenu) return;
+    return registerBackHandler(() => {
+      setShowCreateMenu(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
   }, [showCreateMenu]);
 
   // 规范化 activeType
@@ -266,6 +286,12 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           onChange={(e) => onSearchChange?.(e.target.value)}
           onFocus={() => setIsSearchFocused(true)}
           onBlur={() => setIsSearchFocused(false)}
+          // 📱 操作闭环：搜索结果显示在中间屏文件列表，回车后收起抽屉查看结果
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && searchQuery.trim()) {
+              onClose?.();
+            }
+          }}
           disabled={searchDisabled}
           className={cn(
             'w-full pl-9 pr-9',
@@ -279,7 +305,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             iconOnly
             onClick={() => onSearchChange?.('')}
             className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)]"
-            aria-label="clear"
+            aria-label={t('common:clear', '清除')}
           >
             <X size={14} className="text-muted-foreground/60" />
           </NotionButton>
@@ -295,38 +321,40 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             showCreateMenu ? 'bg-accent text-foreground' : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]',
           )}
           title={t('learningHub:finder.toolbar.new')}
-          aria-label="new"
+          aria-label={t('learningHub:finder.toolbar.new')}
+          aria-haspopup="menu"
+          aria-expanded={showCreateMenu}
           disabled={createDisabled}
         >
           <Plus size={embedded ? 18 : 20} />
         </NotionButton>
         {showCreateMenu && (
-          <div className="absolute right-0 top-full z-50 mt-1 w-48 animate-in fade-in zoom-in-95 rounded-lg border border-border bg-popover py-1 shadow-lg duration-100">
+          <div role="menu" className="absolute right-0 top-full z-50 mt-1 w-48 ui-zoom-fade-in rounded-lg border border-border bg-popover py-1 shadow-lg">
             <div className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               {t('learningHub:quickCreate.title')}
             </div>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('folder')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('folder')} className={CREATE_MENU_ITEM_CLASS}>
               <FolderPlus size={16} className="text-blue-500" />
               {t('learningHub:finder.toolbar.newFolder')}
             </NotionButton>
             <div className="mx-2 my-1 h-px bg-border/50" />
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('note')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('note')} className={CREATE_MENU_ITEM_CLASS}>
               <FileText size={16} className="text-emerald-500" />
               {t('learningHub:finder.toolbar.newNote')}
             </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('exam')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('exam')} className={CREATE_MENU_ITEM_CLASS}>
               <ClipboardText size={16} className="text-purple-500" />
               {t('learningHub:finder.toolbar.newExam')}
             </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('essay')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('essay')} className={CREATE_MENU_ITEM_CLASS}>
               <PenNib size={16} className="text-pink-500" />
               {t('learningHub:finder.toolbar.newEssay')}
             </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('translation')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('translation')} className={CREATE_MENU_ITEM_CLASS}>
               <Translate size={16} className="text-indigo-500" />
               {t('learningHub:finder.toolbar.newTranslation')}
             </NotionButton>
-            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('mindmap')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
+            <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('mindmap')} className={CREATE_MENU_ITEM_CLASS}>
               <FlowArrow size={16} className="text-teal-500" />
               {t('learningHub:finder.toolbar.newMindMap')}
             </NotionButton>
