@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
 use super::approval_scope;
+use super::approval_scope::RuntimeApprovalScope;
 
 // ============================================================================
 // 审批请求/响应数据结构
@@ -42,6 +43,9 @@ pub struct ApprovalRequest {
     pub description: String,
     /// 超时时间（秒）
     pub timeout_seconds: u32,
+    /// 本地 runtime 审批作用域摘要（例如 shell 的 root/cwd/command scope）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_scope: Option<RuntimeApprovalScope>,
 }
 
 /// 审批响应（从前端接收）
@@ -63,6 +67,12 @@ pub struct ApprovalResponse {
     /// 🆕 审批三档分级：是否仅在本会话内记住选择（工具级，内存态，不持久化）
     #[serde(default)]
     pub remember_session: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ApprovalRespondResult {
+    pub delivered: bool,
+    pub setting_key: Option<String>,
 }
 
 impl ApprovalResponse {
@@ -123,12 +133,17 @@ pub struct ApprovalManager {
     pending: Arc<Mutex<HashMap<String, oneshot::Sender<ApprovalResponse>>>>,
     /// 待审批工具调用对应的作用域 key（用于 remember 参数隔离）
     pending_scope_keys: Arc<Mutex<HashMap<String, String>>>,
+    /// 待审批工具调用对应的持久化 setting key。由后端原始参数生成，避免信任前端回传 arguments。
+    pending_setting_keys: Arc<Mutex<HashMap<String, String>>>,
+    /// 待审批工具原始名称。响应时以前端回传 tool_name 为辅，后端 pending 名称为准。
+    pending_tool_names: Arc<Mutex<HashMap<String, String>>>,
     /// 默认超时时间（秒）
     default_timeout: u32,
     /// 记住的审批选择 Map<scope_key, approved>
     remembered: Arc<Mutex<HashMap<String, bool>>>,
-    /// 🆕 会话级记住的审批选择 Map<"session_id\ntool_name", approved>
-    /// 工具级粒度（语义：本会话允许该工具），仅内存态，应用重启后失效
+    /// 🆕 会话级记住的审批选择 Map<session-scoped-key, approved>
+    /// 普通工具保持工具级粒度；shell/runtime 工具按精确 scope 粒度，避免一次批准
+    /// 放行同会话内所有命令。仅内存态，应用重启后失效。
     session_remembered: Arc<Mutex<HashMap<String, bool>>>,
 }
 
@@ -138,6 +153,8 @@ impl ApprovalManager {
         Self {
             pending: Arc::new(Mutex::new(HashMap::new())),
             pending_scope_keys: Arc::new(Mutex::new(HashMap::new())),
+            pending_setting_keys: Arc::new(Mutex::new(HashMap::new())),
+            pending_tool_names: Arc::new(Mutex::new(HashMap::new())),
             default_timeout: 60,
             remembered: Arc::new(Mutex::new(HashMap::new())),
             session_remembered: Arc::new(Mutex::new(HashMap::new())),
@@ -166,7 +183,24 @@ impl ApprovalManager {
 
     /// 会话级记住选择的 key（同样用换行符防碰撞）
     fn make_session_remember_key(session_id: &str, tool_name: &str) -> String {
-        format!("{}\n{}", session_id, tool_name)
+        format!("{}\ntool\n{}", session_id, tool_name)
+    }
+
+    fn make_scoped_session_remember_key(session_id: &str, scope_key: &str) -> String {
+        format!("{}\nscope\n{}", session_id, scope_key)
+    }
+
+    fn session_remember_key_for(
+        session_id: &str,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> String {
+        if approval_scope::requires_precise_approval_scope(tool_name) {
+            let scope_key = approval_scope::make_runtime_scope_key(tool_name, arguments);
+            Self::make_scoped_session_remember_key(session_id, &scope_key)
+        } else {
+            Self::make_session_remember_key(session_id, tool_name)
+        }
     }
 
     /// 无 session / 无参数版本的 register — **仅供单测使用**。
@@ -214,13 +248,28 @@ impl ApprovalManager {
 
         // 🔧 M-081 修复：统一入口 make_runtime_scope_key（v2 优先，未知工具 fallback v1）
         let scope_key = approval_scope::make_runtime_scope_key(tool_name, arguments);
+        let setting_key = approval_scope::make_setting_key(tool_name, arguments);
         self.pending_scope_keys
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .insert(pending_key, scope_key);
+            .insert(pending_key.clone(), scope_key);
+        self.pending_setting_keys
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .insert(pending_key.clone(), setting_key);
+        self.pending_tool_names
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .insert(pending_key, tool_name.to_string());
 
         rx
     }
@@ -234,6 +283,10 @@ impl ApprovalManager {
     /// - `true`: 成功发送
     /// - `false`: 未找到对应的等待者（可能已超时）
     pub fn respond(&self, response: ApprovalResponse) -> bool {
+        self.respond_with_result(response).delivered
+    }
+
+    pub fn respond_with_result(&self, mut response: ApprovalResponse) -> ApprovalRespondResult {
         let pending_key = Self::make_pending_key(&response.session_id, &response.tool_call_id);
 
         // 🔧 M-081 修复（P2 - H4）：先弹出 pending 通道，确认请求仍存活。
@@ -261,7 +314,24 @@ impl ApprovalManager {
                     poisoned.into_inner()
                 })
                 .remove(&pending_key);
-            return false;
+            self.pending_setting_keys
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                    poisoned.into_inner()
+                })
+                .remove(&pending_key);
+            self.pending_tool_names
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                    poisoned.into_inner()
+                })
+                .remove(&pending_key);
+            return ApprovalRespondResult {
+                delivered: false,
+                setting_key: None,
+            };
         };
 
         // 请求仍在等待：先取走 scope_key，再考虑是否 remember
@@ -273,9 +343,53 @@ impl ApprovalManager {
                 poisoned.into_inner()
             })
             .remove(&pending_key);
+        let setting_key_opt = self
+            .pending_setting_keys
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .remove(&pending_key);
+        let original_tool_name_opt = self
+            .pending_tool_names
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .remove(&pending_key);
+
+        if let Some(original_tool_name) = original_tool_name_opt {
+            if original_tool_name != response.tool_name {
+                log::warn!(
+                    "[ApprovalManager] Approval response tool_name mismatch for session={}, tool_call_id={}: response='{}', pending='{}'; using pending tool name",
+                    response.session_id,
+                    response.tool_call_id,
+                    response.tool_name,
+                    original_tool_name
+                );
+                response.tool_name = original_tool_name;
+            }
+        }
+
+        // ADR-B2：权限类工具（skill_install / mcp_server_propose / runtime_root_request）
+        // 永不写入 remember —— 即使用户点了「始终允许 / 本会话允许」也降级为单次批准。
+        if approval_scope::never_remember_approval(&response.tool_name) {
+            if response.remember || response.remember_session {
+                log::info!(
+                    "[ApprovalManager] Downgrading remember flags for privilege tool '{}' (session={}, tool_call_id={})",
+                    response.tool_name,
+                    response.session_id,
+                    response.tool_call_id
+                );
+                response.remember = false;
+                response.remember_session = false;
+            }
+        }
 
         if response.remember {
-            match scope_key_opt {
+            match scope_key_opt.as_ref() {
                 Some(scope_key) => {
                     log::info!(
                         "[ApprovalManager] Remembering approval choice for scope '{}': approved={}",
@@ -288,7 +402,7 @@ impl ApprovalManager {
                             log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                             poisoned.into_inner()
                         })
-                        .insert(scope_key, response.approved);
+                        .insert(scope_key.clone(), response.approved);
                 }
                 None => {
                     // H4：不允许在作用域键缺失时用 Null 合成作用域。
@@ -303,25 +417,59 @@ impl ApprovalManager {
             }
         }
 
-        // 🆕 审批三档分级：会话级记住（工具级粒度，不依赖 scope_key）
+        // 🆕 审批三档分级：会话级记住。
+        // 普通工具沿用工具级粒度；shell/runtime 类工具必须按 pending scope 记住。
         if response.remember_session && !response.session_id.is_empty() {
-            let session_key = Self::make_session_remember_key(&response.session_id, &response.tool_name);
-            log::info!(
-                "[ApprovalManager] Remembering approval for this session: '{}' approved={}",
-                session_key.replace('\n', " / "),
-                response.approved
-            );
-            self.session_remembered
-                .lock()
-                .unwrap_or_else(|poisoned| {
-                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
-                    poisoned.into_inner()
-                })
-                .insert(session_key, response.approved);
+            let session_key = if approval_scope::requires_precise_approval_scope(&response.tool_name)
+            {
+                match scope_key_opt.as_ref() {
+                    Some(scope_key) => {
+                        Self::make_scoped_session_remember_key(&response.session_id, scope_key)
+                    }
+                    None => {
+                        log::warn!(
+                            "[ApprovalManager] respond(remember_session=true) but scope_key missing for precise tool; dropping session remember (session={}, tool_call_id={}, tool={})",
+                            response.session_id,
+                            response.tool_call_id,
+                            response.tool_name
+                        );
+                        String::new()
+                    }
+                }
+            } else {
+                Self::make_session_remember_key(&response.session_id, &response.tool_name)
+            };
+
+            if !session_key.is_empty() {
+                log::info!(
+                    "[ApprovalManager] Remembering approval for this session: '{}' approved={}",
+                    session_key.replace('\n', " / "),
+                    response.approved
+                );
+                self.session_remembered
+                    .lock()
+                    .unwrap_or_else(|poisoned| {
+                        log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                        poisoned.into_inner()
+                    })
+                    .insert(session_key, response.approved);
+            }
         }
 
+        // ADR-B2：权限类工具不返回 setting_key，从源头阻断「始终允许」的 DB 持久化，
+        // 即使 handler 层的 tool_name 判断被伪造的前端响应绕过也 fail-closed。
+        let setting_key_for_persistence =
+            if approval_scope::never_remember_approval(&response.tool_name) {
+                None
+            } else {
+                setting_key_opt
+            };
+
         // 送达等待方
-        tx.send(response).is_ok()
+        ApprovalRespondResult {
+            delivered: tx.send(response).is_ok(),
+            setting_key: setting_key_for_persistence,
+        }
     }
 
     /// 取消待审批（超时或取消时调用）
@@ -335,6 +483,20 @@ impl ApprovalManager {
             })
             .remove(&pending_key);
         self.pending_scope_keys
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .remove(&pending_key);
+        self.pending_setting_keys
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                poisoned.into_inner()
+            })
+            .remove(&pending_key);
+        self.pending_tool_names
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
@@ -362,6 +524,20 @@ impl ApprovalManager {
             return;
         }
 
+        // 🔒 02 号报告 P2-3：tool_call_id 不保证跨会话唯一。命中多个 pending
+        // 必然意味着分属不同会话（同会话同 id 是同一个 key），此时拒绝宽匹配取消，
+        // 避免一个会话的取消误清另一会话的审批（fail-safe：留待超时或
+        // `cancel_with_session` 精确处理）。
+        if pending_keys.len() > 1 {
+            log::warn!(
+                "[ApprovalManager] cancel('{}') matched {} pending approvals across sessions; \
+                 refusing broad cancellation — use cancel_with_session",
+                tool_call_id,
+                pending_keys.len()
+            );
+            return;
+        }
+
         let mut pending = self.pending.lock().unwrap_or_else(|poisoned| {
             log::error!("[ApprovalManager] Mutex poisoned (pending)! Attempting recovery");
             poisoned.into_inner()
@@ -370,10 +546,20 @@ impl ApprovalManager {
             log::error!("[ApprovalManager] Mutex poisoned (scope_keys)! Attempting recovery");
             poisoned.into_inner()
         });
+        let mut setting = self.pending_setting_keys.lock().unwrap_or_else(|poisoned| {
+            log::error!("[ApprovalManager] Mutex poisoned (setting_keys)! Attempting recovery");
+            poisoned.into_inner()
+        });
+        let mut tool_names = self.pending_tool_names.lock().unwrap_or_else(|poisoned| {
+            log::error!("[ApprovalManager] Mutex poisoned (tool_names)! Attempting recovery");
+            poisoned.into_inner()
+        });
 
         for key in pending_keys {
             pending.remove(&key);
             scope.remove(&key);
+            setting.remove(&key);
+            tool_names.remove(&key);
         }
     }
 
@@ -413,8 +599,13 @@ impl ApprovalManager {
     /// - `Some(true)`: 本会话内自动批准
     /// - `Some(false)`: 本会话内自动拒绝
     /// - `None`: 未记住
-    pub fn check_session_remembered(&self, session_id: &str, tool_name: &str) -> Option<bool> {
-        let key = Self::make_session_remember_key(session_id, tool_name);
+    pub fn check_session_remembered(
+        &self,
+        session_id: &str,
+        tool_name: &str,
+        arguments: &Value,
+    ) -> Option<bool> {
+        let key = Self::session_remember_key_for(session_id, tool_name, arguments);
         self.session_remembered
             .lock()
             .unwrap_or_else(|poisoned| {
@@ -513,6 +704,13 @@ impl ApprovalManager {
                     .unwrap_or("未知路径");
                 format!("将写入文件: {}", path)
             }
+            "workspace_artifact_write" => {
+                let path = arguments
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知路径");
+                format!("将写入会话产物文件: {}", path)
+            }
             "file_delete" => {
                 let path = arguments
                     .get("path")
@@ -526,6 +724,56 @@ impl ApprovalManager {
                     .and_then(|v| v.as_str())
                     .unwrap_or("...");
                 format!("将执行命令: {}", cmd)
+            }
+            "browser_open" | "builtin-browser_open" => {
+                let url = arguments
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知地址");
+                format!("将打开内置浏览器: {}", url)
+            }
+            "browser_navigate" | "builtin-browser_navigate" => {
+                let url = arguments
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("未知地址");
+                format!("将导航至: {}", url)
+            }
+            "browser_click" | "builtin-browser_click" => {
+                let element = arguments
+                    .get("element")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("页面元素");
+                let r#ref = arguments
+                    .get("ref")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                format!("将点击网页元素: {} (ref={})", element, r#ref)
+            }
+            "browser_type" | "builtin-browser_type" => {
+                let element = arguments
+                    .get("element")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("输入框");
+                let r#ref = arguments
+                    .get("ref")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                // 不把 text 写入审批文案，避免密码/PII 泄露到通知面
+                format!(
+                    "将向网页元素输入文本: {} (ref={})（内容已隐藏）",
+                    element, r#ref
+                )
+            }
+            "browser_snapshot"
+            | "builtin-browser_snapshot"
+            | "browser_scroll"
+            | "builtin-browser_scroll"
+            | "browser_back"
+            | "builtin-browser_back"
+            | "browser_close"
+            | "builtin-browser_close" => {
+                format!("将执行浏览器操作: {}", tool_name)
             }
             _ => format!("将执行工具: {}", tool_name),
         }
@@ -633,5 +881,156 @@ mod tests {
         assert!(manager
             .check_remembered("test_tool", &serde_json::json!({"path":"/a"}))
             .is_none());
+    }
+
+    /// SECURITY 回归（02 号报告 P2-3）：两个会话共享同一 tool_call_id 时，
+    /// 无 session 的宽匹配取消必须拒绝执行，避免跨会话误取消；
+    /// 单一命中时行为不变；`cancel_with_session` 始终精确。
+    #[tokio::test]
+    async fn cancel_without_session_refuses_ambiguous_cross_session_match() {
+        let manager = ApprovalManager::new();
+        let _rx_a = manager.register_with_scope("sess_a", "call_dup", "test_tool", &Value::Null);
+        let _rx_b = manager.register_with_scope("sess_b", "call_dup", "test_tool", &Value::Null);
+        assert_eq!(manager.pending_count(), 2);
+
+        // 命中两个会话 → 拒绝宽匹配取消
+        manager.cancel("call_dup");
+        assert_eq!(manager.pending_count(), 2, "ambiguous cancel must be a no-op");
+
+        // 带 session 的取消精确生效
+        manager.cancel_with_session("sess_a", "call_dup");
+        assert_eq!(manager.pending_count(), 1);
+
+        // 只剩单一命中时，宽匹配取消恢复可用
+        manager.cancel("call_dup");
+        assert_eq!(manager.pending_count(), 0);
+    }
+
+    #[test]
+    fn session_remember_for_shell_is_scoped_to_root_cwd_and_command() {
+        let manager = ApprovalManager::new();
+        let approved_args = serde_json::json!({
+            "command": "git status --short",
+            "root_id": "workspace",
+            "cwd": "."
+        });
+
+        let _rx =
+            manager.register_with_scope("sess_1", "call_shell", "execute_command", &approved_args);
+        let mut response = ApprovalResponse::approved(
+            "sess_1".to_string(),
+            "call_shell".to_string(),
+            "execute_command".to_string(),
+        );
+        response.remember_session = true;
+        assert!(manager.respond(response));
+
+        assert_eq!(
+            manager.check_session_remembered("sess_1", "execute_command", &approved_args),
+            Some(true)
+        );
+        assert!(
+            manager
+                .check_session_remembered(
+                    "sess_1",
+                    "execute_command",
+                    &serde_json::json!({
+                        "command": "git status --short",
+                        "root_id": "workspace",
+                        "cwd": "notes"
+                    })
+                )
+                .is_none(),
+            "same command in another cwd must ask again"
+        );
+        assert!(
+            manager
+                .check_session_remembered(
+                    "sess_1",
+                    "execute_command",
+                    &serde_json::json!({
+                        "command": "git push origin main",
+                        "root_id": "workspace",
+                        "cwd": "."
+                    })
+                )
+                .is_none(),
+            "different command prefix must ask again"
+        );
+    }
+
+    #[test]
+    fn session_remember_for_regular_tools_keeps_tool_level_semantics() {
+        let manager = ApprovalManager::new();
+        let first_args = serde_json::json!({"noteId": "n1", "content": "v1"});
+
+        let _rx = manager.register_with_scope("sess_1", "call_note", "note_set", &first_args);
+        let mut response = ApprovalResponse::approved(
+            "sess_1".to_string(),
+            "call_note".to_string(),
+            "note_set".to_string(),
+        );
+        response.remember_session = true;
+        assert!(manager.respond(response));
+
+        assert_eq!(
+            manager.check_session_remembered(
+                "sess_1",
+                "note_set",
+                &serde_json::json!({"noteId": "n2", "content": "v2"})
+            ),
+            Some(true),
+            "existing session-level tool approval semantics should remain unchanged for regular tools"
+        );
+    }
+
+    #[tokio::test]
+    async fn response_tool_name_cannot_poison_shell_session_or_setting_scope() {
+        let manager = ApprovalManager::new();
+        let shell_args = serde_json::json!({
+            "command": "git status --short",
+            "root_id": "workspace",
+            "cwd": "."
+        });
+
+        let rx =
+            manager.register_with_scope("sess_1", "call_shell", "execute_command", &shell_args);
+        let mut response = ApprovalResponse::approved(
+            "sess_1".to_string(),
+            "call_shell".to_string(),
+            "note_set".to_string(),
+        );
+        response.remember = true;
+        response.remember_session = true;
+
+        let result = manager.respond_with_result(response);
+        assert!(result.delivered);
+        let expected_setting_key =
+            crate::chat_v2::approval_scope::make_setting_key("execute_command", &shell_args);
+        assert_eq!(
+            result.setting_key.as_deref(),
+            Some(expected_setting_key.as_str()),
+            "persistent approval key must be derived from pending server-side arguments"
+        );
+
+        let delivered = rx.await.unwrap();
+        assert_eq!(
+            delivered.tool_name, "execute_command",
+            "waiting pipeline should receive the pending tool name, not client-supplied spoof"
+        );
+        assert_eq!(
+            manager.check_session_remembered("sess_1", "execute_command", &shell_args),
+            Some(true)
+        );
+        assert!(
+            manager
+                .check_session_remembered(
+                    "sess_1",
+                    "note_set",
+                    &serde_json::json!({"noteId": "n1"})
+                )
+                .is_none(),
+            "spoofed response tool_name must not create a broad regular-tool session approval"
+        );
     }
 }

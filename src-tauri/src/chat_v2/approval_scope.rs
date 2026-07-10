@@ -19,6 +19,7 @@
 //! 所有查询先用 v2 键，命中返回；未命中再回退查 v1 键，保证旧记住选择仍然生效。
 //! 写入只使用 v2 键（不再增加 v1 记录）。
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -35,6 +36,9 @@ use sha2::{Digest, Sha256};
 pub(crate) fn tool_source_namespace<'a>(tool_name: &'a str, args: &Value) -> (String, &'a str) {
     // builtin 不分 server（都是本地静态注册）
     if let Some(n) = tool_name.strip_prefix("builtin-") {
+        return ("builtin".to_string(), n);
+    }
+    if let Some(n) = tool_name.strip_prefix("builtin:") {
         return ("builtin".to_string(), n);
     }
     // MCP：尝试从 args 的 `_serverId` / `serverId` 字段提取
@@ -79,6 +83,114 @@ pub fn normalize_tool_name(tool_name: &str) -> &str {
 fn build_tool_key(tool_name: &str, args: &Value) -> String {
     let (ns, short) = tool_source_namespace(tool_name, args);
     format!("{}:{}", ns, short)
+}
+
+fn is_shell_runtime_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    matches!(
+        short,
+        "execute_command"
+            | "bash"
+            | "shell"
+            | "shell_execute"
+            | "local_shell_execute"
+            | "local_shell_preflight"
+    )
+}
+
+fn is_file_mutation_runtime_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    matches!(
+        short,
+        "file_write"
+            | "file_delete"
+            | "file_patch"
+            | "file_append"
+            | "file_create"
+            | "workspace_artifact_write"
+            | "workspace_file_write"
+            | "workspace_file_delete"
+            | "workspace_file_patch"
+            | "workspace_file_append"
+            | "workspace_file_create"
+    )
+}
+
+/// 权限升级类工具短名清单（ADR-B2 never-remember）。
+const PRIVILEGE_ESCALATION_TOOLS: &[&str] = &[
+    "skill_install",
+    "skill_workshop_apply",
+    "mcp_server_propose",
+    "runtime_root_request",
+    "automation_propose",
+];
+
+fn is_privilege_escalation_tool(tool_name: &str) -> bool {
+    // 🔒 02 号报告 P2-1：判定不得依赖 `builtin-` 前缀。裸名 `mcp_server_propose`
+    // 会被 tool_source_namespace 误剥 `mcp_` 前缀成 `server_propose` 而绕过匹配，
+    // 因此先对完整工具名做一次直接比对（fail-closed 方向）。
+    if PRIVILEGE_ESCALATION_TOOLS.contains(&tool_name) {
+        return true;
+    }
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    PRIVILEGE_ESCALATION_TOOLS.contains(&short)
+}
+
+/// 权限类工具审批永不进入 remember / 本会话允许 / 始终允许。
+pub fn never_remember_approval(tool_name: &str) -> bool {
+    is_privilege_escalation_tool(tool_name)
+}
+
+/// Tools in this family can execute local commands or mutate local files. They
+/// must never be remembered only by tool name.
+pub fn requires_precise_approval_scope(tool_name: &str) -> bool {
+    is_shell_runtime_tool(tool_name)
+        || is_file_mutation_runtime_tool(tool_name)
+        || is_privilege_escalation_tool(tool_name)
+}
+
+/// Broad approval bypasses are intentionally ignored for local runtime tools
+/// that can execute commands or write/delete files. These operations should be
+/// approved by precise command/path scope, not by a process-wide "all tools are
+/// low risk" switch.
+pub fn ignores_broad_approval_bypass(tool_name: &str) -> bool {
+    requires_precise_approval_scope(tool_name)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeApprovalScope {
+    pub kind: String,
+    pub tool_source: String,
+    pub tool_name: String,
+    pub root_id: String,
+    pub cwd: String,
+    pub command_prefix: String,
+    pub command_hash: String,
+    pub risk_level: String,
+    pub network_allowed: bool,
+    pub has_shell_operators: bool,
+    pub uses_script_runner: bool,
+    pub first_token: Option<String>,
+    /// Skill package root whose absolute path is injected as `SKILL_DIR`.
+    /// Executions with a SKILL_DIR injection must not reuse approvals granted
+    /// to the same command prefix without one (and vice versa).
+    pub skill_root_id: Option<String>,
+    /// 为 true 时前端隐藏「本会话允许 / 始终允许」（权限类审批不可 remember）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remember_disabled: Option<bool>,
+    /// skill_install 等：来源摘要（url 或 temp:path）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_summary: Option<String>,
+    /// skill_install：expected_sha256 前 12 位预览
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_sha256_prefix: Option<String>,
+    /// skill_install：扫描阶段声明的风险等级
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declared_risk_level: Option<String>,
+    /// skill_install：目标 skill_id（若参数已携带）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_id: Option<String>,
 }
 
 /// 从 arguments 里按字段名列表依次尝试提取字符串值
@@ -141,6 +253,232 @@ fn extract_generic_scope_identity(args: &Value) -> Option<String> {
         args.get("command")
             .and_then(|v| v.as_str())
             .map(command_prefix)
+    })
+}
+
+fn normalized_shell_runtime_location(args: &Value) -> (String, String) {
+    let root_id = extract_str_field(args, &["root_id", "rootId"])
+        .unwrap_or_else(|| "workspace".to_string());
+    let cwd = extract_str_field(args, &["cwd", "working_dir", "workingDir"])
+        .unwrap_or_else(|| ".".to_string());
+    (root_id, cwd)
+}
+
+/// Optional `skill_root_id` argument (SKILL_DIR injection target). Must be part
+/// of the shell scope fingerprint: approving `python x.py` without SKILL_DIR
+/// must not auto-approve the same prefix with a skill package path injected.
+fn shell_skill_root_id(args: &Value) -> Option<String> {
+    extract_str_field(args, &["skill_root_id", "skillRootId"])
+}
+
+fn shell_scope_fingerprint(args: &Value) -> Option<String> {
+    let command = args.get("command").and_then(|v| v.as_str())?;
+    let analysis = analyze_shell_command(command);
+    let (root_id, cwd) = normalized_shell_runtime_location(args);
+    let network_allowed = args
+        .get("allow_network")
+        .or_else(|| args.get("allowNetwork"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let skill_root_id = shell_skill_root_id(args).unwrap_or_else(|| "-".to_string());
+    Some(format!(
+        "root={};cwd={};net={};skill={};cmd={}",
+        root_id, cwd, network_allowed, skill_root_id, analysis.command_prefix
+    ))
+}
+
+fn skill_install_source_summary(args: &Value) -> Option<String> {
+    let source = args.get("source")?;
+    if let Some(url) = source.get("url").and_then(|v| v.as_str()) {
+        let trimmed = url.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        return Some(if trimmed.len() > 80 {
+            format!("{}…", &trimmed[..80])
+        } else {
+            trimmed.to_string()
+        });
+    }
+    let root_id = extract_str_field(source, &["root_id", "rootId"])?;
+    let path = extract_str_field(source, &["path"])?;
+    Some(format!(
+        "{}:{}",
+        root_id.to_ascii_lowercase(),
+        path.replace('\\', "/")
+    ))
+}
+
+fn make_skill_install_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    if short != "skill_install" {
+        return None;
+    }
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let expected_sha256 = extract_str_field(args, &["expected_sha256", "expectedSha256"])?;
+    let declared_risk = extract_str_field(args, &["declared_risk_level", "declaredRiskLevel"])
+        .unwrap_or_else(|| "low".to_string());
+    let skill_id = extract_str_field(args, &["skill_id", "skillId"]);
+    let sha_prefix: String = expected_sha256.chars().take(12).collect();
+    Some(RuntimeApprovalScope {
+        kind: "skill_install".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id: "-".to_string(),
+        cwd: "-".to_string(),
+        command_prefix: "-".to_string(),
+        command_hash: raw_hash(&expected_sha256)
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        risk_level: risk_level.to_string(),
+        network_allowed: false,
+        has_shell_operators: false,
+        uses_script_runner: false,
+        first_token: None,
+        skill_root_id: None,
+        remember_disabled: Some(true),
+        source_summary: skill_install_source_summary(args),
+        expected_sha256_prefix: Some(sha_prefix),
+        declared_risk_level: Some(declared_risk),
+        skill_id,
+    })
+}
+
+fn make_skill_workshop_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    if short != "skill_workshop_apply" {
+        return None;
+    }
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let proposal_id = extract_str_field(args, &["proposal_id", "proposalId"])?;
+    let content_sha256 = extract_str_field(args, &["content_sha256", "contentSha256"]);
+    let sha_prefix = content_sha256
+        .as_deref()
+        .map(|sha| sha.chars().take(12).collect::<String>());
+    Some(RuntimeApprovalScope {
+        kind: "skill_workshop".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id: "-".to_string(),
+        cwd: "-".to_string(),
+        command_prefix: "-".to_string(),
+        command_hash: raw_hash(&proposal_id)
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        risk_level: risk_level.to_string(),
+        network_allowed: false,
+        has_shell_operators: false,
+        uses_script_runner: false,
+        first_token: None,
+        skill_root_id: None,
+        remember_disabled: Some(true),
+        source_summary: Some(proposal_id),
+        expected_sha256_prefix: sha_prefix,
+        declared_risk_level: None,
+        skill_id: extract_str_field(args, &["skill_id", "skillId"]),
+    })
+}
+
+/// automation_propose 的审批 scope：无 shell 语义，仅用于把 `remember_disabled`
+/// 带到前端审批卡（隐藏「本会话允许 / 始终允许」），与 never-remember 三层防线对齐。
+fn make_automation_propose_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    if short != "automation_propose" && tool_name != "automation_propose" {
+        return None;
+    }
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let name = extract_str_field(args, &["name"])?;
+    let schedule_summary = args
+        .get("schedule")
+        .map(|schedule| schedule.to_string())
+        .unwrap_or_else(|| "-".to_string());
+    Some(RuntimeApprovalScope {
+        kind: "automation".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id: "-".to_string(),
+        cwd: "-".to_string(),
+        command_prefix: "-".to_string(),
+        command_hash: raw_hash(&format!("{}|{}", name, schedule_summary))
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        risk_level: risk_level.to_string(),
+        network_allowed: false,
+        has_shell_operators: false,
+        uses_script_runner: false,
+        first_token: None,
+        skill_root_id: None,
+        remember_disabled: Some(true),
+        source_summary: Some(name),
+        expected_sha256_prefix: None,
+        declared_risk_level: None,
+        skill_id: None,
+    })
+}
+
+pub fn make_runtime_approval_scope(
+    tool_name: &str,
+    args: &Value,
+    risk_level: &str,
+) -> Option<RuntimeApprovalScope> {
+    if let Some(scope) = make_skill_install_approval_scope(tool_name, args, risk_level) {
+        return Some(scope);
+    }
+    if let Some(scope) = make_skill_workshop_approval_scope(tool_name, args, risk_level) {
+        return Some(scope);
+    }
+    if let Some(scope) = make_automation_propose_approval_scope(tool_name, args, risk_level) {
+        return Some(scope);
+    }
+    if !is_shell_runtime_tool(tool_name) {
+        return None;
+    }
+    let command = args.get("command").and_then(|v| v.as_str())?;
+    let analysis = analyze_shell_command(command);
+    let (root_id, cwd) = normalized_shell_runtime_location(args);
+    let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
+    let network_allowed = args
+        .get("allow_network")
+        .or_else(|| args.get("allowNetwork"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    Some(RuntimeApprovalScope {
+        kind: "shell".to_string(),
+        tool_source,
+        tool_name: short_tool_name.to_string(),
+        root_id,
+        cwd,
+        command_prefix: analysis.command_prefix,
+        command_hash: raw_hash(&analysis.trimmed)
+            .strip_prefix("raw:")
+            .unwrap_or("")
+            .to_string(),
+        risk_level: risk_level.to_string(),
+        network_allowed,
+        has_shell_operators: analysis.has_shell_operators,
+        uses_script_runner: analysis.uses_script_runner,
+        first_token: analysis.first_token,
+        skill_root_id: shell_skill_root_id(args),
+        remember_disabled: None,
+        source_summary: None,
+        expected_sha256_prefix: None,
+        declared_risk_level: None,
+        skill_id: None,
     })
 }
 
@@ -214,6 +552,14 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
             extract_str_field(args, &["resourceId", "resource_id", "id"])
         }
 
+        // --- Workspace filesystem runtime ---
+        "workspace_artifact_write" => extract_str_field(args, &["path", "file_path", "filepath"])
+            .map(|path| {
+                let root = extract_str_field(args, &["root_id", "rootId"])
+                    .unwrap_or_else(|| "artifacts".to_string());
+                format!("{}:{}", root, path)
+            }),
+
         // --- 办公文档：create / read / edit / replace 等 ---
         "docx_create" | "docx_edit" | "docx_replace_text" | "docx_replace" | "docx_patch" => {
             extract_str_field(
@@ -235,10 +581,18 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         }
 
         // --- Shell / 命令：command_prefix 已做安全处理（见该函数注释）---
-        "execute_command" | "bash" | "shell" | "shell_execute" => args
-            .get("command")
-            .and_then(|v| v.as_str())
-            .map(command_prefix),
+        "execute_command"
+        | "bash"
+        | "shell"
+        | "shell_execute"
+        |         "local_shell_execute"
+        | "local_shell_preflight" => shell_scope_fingerprint(args),
+
+        "skill_install" => extract_str_field(args, &["expected_sha256", "expectedSha256"])
+            .map(|sha| format!("sha={}", sha)),
+
+        "skill_workshop_apply" => extract_str_field(args, &["proposal_id", "proposalId"])
+            .map(|id| format!("proposal={}", id)),
 
         // --- 未知工具：尝试从通用资源字段中保守提取；否则 fallback v1 ---
         _ => extract_generic_scope_identity(args),
@@ -264,10 +618,83 @@ const DANGEROUS_SHELL_OPERATORS: &[&str] = &[
 ///
 /// 🔧 R2-B2：`bash -c 'rm -rf /'` 单看前两个 token 都是 `bash -c`，
 /// 但 payload 完全由参数决定。这类命令必须走完整命令哈希。
+///
+/// 🔒 02 号报告 P1-1：补齐 Windows 主平台运行器（powershell/pwsh/cmd/iex 等），
+/// 否则 `pwsh -c '<任意脚本>'` 会塌陷成 `pwsh -c` 前缀，remember 后放行任意命令。
 const ARBITRARY_CODE_RUNNERS: &[&str] = &[
     "bash", "sh", "zsh", "fish", "ash", "dash", "ksh", "csh", "tcsh", "python", "python3",
     "python2", "ruby", "perl", "lua", "node", "deno", "bun", "eval", "exec", "source",
+    // Windows 脚本解释器 / 任意代码入口
+    "powershell", "pwsh", "cmd", "command", "iex", "invoke-expression", "invoke-command",
+    "wscript", "cscript", "mshta",
 ];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShellCommandAnalysis {
+    pub trimmed: String,
+    pub command_prefix: String,
+    pub has_shell_operators: bool,
+    pub uses_script_runner: bool,
+    pub first_token: Option<String>,
+}
+
+pub fn analyze_shell_command(cmd: &str) -> ShellCommandAnalysis {
+    let trimmed = cmd.trim().to_string();
+    let has_shell_operators = contains_shell_operator(&trimmed);
+    let first_token = trimmed.split_whitespace().next().map(str::to_string);
+    let uses_script_runner = first_token
+        .as_deref()
+        .map(is_script_runner_token)
+        .unwrap_or(false);
+    let command_prefix = if trimmed.is_empty() {
+        "__empty__".to_string()
+    } else if has_shell_operators || uses_script_runner {
+        raw_hash(&trimmed)
+    } else {
+        trimmed
+            .split_whitespace()
+            .take(2)
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+
+    ShellCommandAnalysis {
+        trimmed,
+        command_prefix,
+        has_shell_operators,
+        uses_script_runner,
+        first_token,
+    }
+}
+
+fn contains_shell_operator(trimmed: &str) -> bool {
+    DANGEROUS_SHELL_OPERATORS
+        .iter()
+        .any(|op| trimmed.contains(op))
+}
+
+fn is_script_runner_token(token: &str) -> bool {
+    let basename = token
+        .rsplit(|ch| ch == '/' || ch == '\\')
+        .next()
+        .unwrap_or(token);
+    let basename_lower = basename.to_ascii_lowercase();
+    // 🔒 直接调用的批处理/脚本文件本身就是任意代码载体（`evil.bat args`），
+    // 一律按完整命令哈希，不做 2-token 前缀归一化。
+    if basename_lower.ends_with(".bat")
+        || basename_lower.ends_with(".cmd")
+        || basename_lower.ends_with(".ps1")
+        || basename_lower.ends_with(".vbs")
+        || basename_lower.ends_with(".jse")
+        || basename_lower.ends_with(".wsf")
+    {
+        return true;
+    }
+    let normalized = basename_lower
+        .strip_suffix(".exe")
+        .unwrap_or(&basename_lower);
+    ARBITRARY_CODE_RUNNERS.contains(&normalized)
+}
 
 /// 把命令字符串归一化为作用域前缀
 ///
@@ -279,38 +706,7 @@ const ARBITRARY_CODE_RUNNERS: &[&str] = &[
 ///   `bash -c 'rm -rf /'` → `raw:<sha256>`
 ///   `git status\nrm`  → `raw:<sha256>`
 fn command_prefix(cmd: &str) -> String {
-    let trimmed = cmd.trim();
-    if trimmed.is_empty() {
-        return "__empty__".to_string();
-    }
-
-    // 1) shell 操作符检测（含换行、全宽）
-    if DANGEROUS_SHELL_OPERATORS
-        .iter()
-        .any(|op| trimmed.contains(op))
-    {
-        return raw_hash(trimmed);
-    }
-
-    // 2) 脚本运行器（`bash -c ...`、`python -c ...`）整体走 raw hash
-    // 注意：检查第一个 token，不区分参数（`bash foo.sh` 也走 raw 更安全）
-    if let Some(first) = trimmed.split_whitespace().next() {
-        // 支持路径形式：/usr/bin/bash 或 /opt/homebrew/bin/bash
-        let basename = first.rsplit('/').next().unwrap_or(first);
-        if ARBITRARY_CODE_RUNNERS.contains(&basename) {
-            return raw_hash(trimmed);
-        }
-    }
-
-    // 3) 普通命令：前 2 个 token
-    let mut tokens = Vec::with_capacity(2);
-    for tok in trimmed.split_whitespace() {
-        tokens.push(tok);
-        if tokens.len() >= 2 {
-            break;
-        }
-    }
-    tokens.join(" ")
+    analyze_shell_command(cmd).command_prefix
 }
 
 fn raw_hash(input: &str) -> String {
@@ -458,6 +854,46 @@ mod tests {
     }
 
     #[test]
+    fn workspace_artifact_write_uses_root_and_path_without_content() {
+        let args1 = json!({"root_id": "artifacts", "path": "reports/a.md", "content": "A"});
+        let args2 = json!({"root_id": "artifacts", "path": "reports/a.md", "content": "B"});
+        let args3 = json!({"root_id": "workspace", "path": "reports/a.md", "content": "A"});
+
+        assert_eq!(
+            make_runtime_scope_key_v2("workspace_artifact_write", &args1),
+            make_runtime_scope_key_v2("workspace_artifact_write", &args2),
+        );
+        assert_ne!(
+            make_runtime_scope_key_v2("workspace_artifact_write", &args1),
+            make_runtime_scope_key_v2("workspace_artifact_write", &args3),
+        );
+    }
+
+    #[test]
+    fn file_mutation_tools_ignore_broad_bypass_and_use_precise_scope() {
+        assert!(requires_precise_approval_scope("mcp_file_write"));
+        assert!(requires_precise_approval_scope(
+            "builtin-workspace_artifact_write"
+        ));
+        assert!(ignores_broad_approval_bypass("mcp_file_delete"));
+        assert!(ignores_broad_approval_bypass(
+            "builtin-workspace_artifact_write"
+        ));
+        assert!(!ignores_broad_approval_bypass("workspace_file_read"));
+
+        let args = json!({"path": "reports/a.md", "content": "v1"});
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-workspace_artifact_write", &args).as_deref(),
+            Some("builtin:workspace_artifact_write::artifacts:reports/a.md")
+        );
+        assert!(
+            make_runtime_approval_scope("builtin-workspace_artifact_write", &args, "medium")
+                .is_none(),
+            "file mutation tools use path-scoped approval memory, not shell runtimeScope UI"
+        );
+    }
+
+    #[test]
     fn execute_command_prefix_scope() {
         let args1 = json!({"command": "git status"});
         let args2 = json!({"command": "git status --porcelain"});
@@ -470,6 +906,158 @@ mod tests {
             make_runtime_scope_key_v2("execute_command", &args1),
             make_runtime_scope_key_v2("execute_command", &args3),
         );
+    }
+
+    #[test]
+    fn shell_scope_includes_runtime_root_and_cwd() {
+        let workspace_root = json!({
+            "command": "git status --short",
+            "root_id": "workspace",
+            "cwd": "."
+        });
+        let skill_root = json!({
+            "command": "git status --short",
+            "root_id": "skill:math-rubric",
+            "cwd": "."
+        });
+        let nested_cwd = json!({
+            "command": "git status --short",
+            "root_id": "workspace",
+            "cwd": "notes"
+        });
+
+        let workspace_key = make_runtime_scope_key_v2("execute_command", &workspace_root).unwrap();
+        assert_eq!(
+            workspace_key,
+            "local:execute_command::root=workspace;cwd=.;net=false;skill=-;cmd=git status"
+        );
+        assert_ne!(
+            make_runtime_scope_key_v2("execute_command", &workspace_root),
+            make_runtime_scope_key_v2("execute_command", &skill_root),
+            "same command prefix in different runtime roots must not share approval"
+        );
+        assert_ne!(
+            make_runtime_scope_key_v2("execute_command", &workspace_root),
+            make_runtime_scope_key_v2("execute_command", &nested_cwd),
+            "same command prefix in different cwd must not share approval"
+        );
+    }
+
+    #[test]
+    fn shell_scope_supports_builtin_local_shell_execute_name() {
+        let args = json!({
+            "command": "cargo test --lib",
+            "rootId": "workspace",
+            "cwd": "src-tauri"
+        });
+
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &args).as_deref(),
+            Some("builtin:local_shell_execute::root=workspace;cwd=src-tauri;net=false;skill=-;cmd=cargo test")
+        );
+        assert!(requires_precise_approval_scope(
+            "builtin-local_shell_execute"
+        ));
+        assert!(ignores_broad_approval_bypass(
+            "builtin-local_shell_execute"
+        ));
+    }
+
+    #[test]
+    fn runtime_approval_scope_exposes_shell_summary() {
+        let args = json!({
+            "command": "git status --short",
+            "root_id": "workspace",
+            "cwd": "."
+        });
+        let scope = make_runtime_approval_scope("builtin-local_shell_execute", &args, "medium")
+            .expect("shell runtime scope");
+
+        assert_eq!(scope.kind, "shell");
+        assert_eq!(scope.tool_source, "builtin");
+        assert_eq!(scope.tool_name, "local_shell_execute");
+        assert_eq!(scope.root_id, "workspace");
+        assert_eq!(scope.cwd, ".");
+        assert_eq!(scope.command_prefix, "git status");
+        assert_eq!(scope.risk_level, "medium");
+        assert!(!scope.network_allowed);
+        assert!(!scope.has_shell_operators);
+        assert!(!scope.uses_script_runner);
+        assert_eq!(scope.first_token.as_deref(), Some("git"));
+        assert_eq!(scope.command_hash.len(), 64);
+    }
+
+    /// SECURITY: 带 SKILL_DIR 注入（skill_root_id）的执行必须与不带的隔离，
+    /// 避免「先批了普通命令，换成带 SKILL_DIR 的同前缀命令被自动放行」。
+    #[test]
+    fn shell_scope_isolates_skill_root_id_injection() {
+        let plain = json!({
+            "command": "python scripts/convert.py",
+            "root_id": "temp",
+            "cwd": "."
+        });
+        let with_skill = json!({
+            "command": "python scripts/convert.py",
+            "root_id": "temp",
+            "cwd": ".",
+            "skill_root_id": "skill:pdf-tools"
+        });
+        let with_other_skill = json!({
+            "command": "python scripts/convert.py",
+            "root_id": "temp",
+            "cwd": ".",
+            "skill_root_id": "skill:doc-tools"
+        });
+
+        let plain_key =
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &plain).unwrap();
+        let skill_key =
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &with_skill).unwrap();
+        let other_skill_key =
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &with_other_skill).unwrap();
+
+        assert_ne!(
+            plain_key, skill_key,
+            "approving a plain command must not auto-approve the SKILL_DIR-injected variant"
+        );
+        assert_ne!(
+            skill_key, other_skill_key,
+            "different skill packages must not share SKILL_DIR-injected approvals"
+        );
+
+        let scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &with_skill, "medium")
+                .expect("runtime scope");
+        assert_eq!(scope.skill_root_id.as_deref(), Some("skill:pdf-tools"));
+        let plain_scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &plain, "medium")
+                .expect("runtime scope");
+        assert_eq!(plain_scope.skill_root_id, None);
+    }
+
+    #[test]
+    fn shell_scope_distinguishes_network_permission() {
+        let denied = json!({
+            "command": "curl https://example.com",
+            "root_id": "workspace",
+            "cwd": ".",
+            "allow_network": false,
+        });
+        let allowed = json!({
+            "command": "curl https://example.com",
+            "root_id": "workspace",
+            "cwd": ".",
+            "allow_network": true,
+        });
+
+        assert_ne!(
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &denied),
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &allowed),
+            "network-enabled commands must not reuse a no-network approval"
+        );
+        let scope = make_runtime_approval_scope("builtin-local_shell_execute", &allowed, "high")
+            .expect("runtime scope");
+        assert!(scope.network_allowed);
     }
 
     /// SECURITY: shell 链式 / 管道 / 重定向 不得与同前缀命令共享作用域
@@ -552,6 +1140,20 @@ mod tests {
                 ka
             );
         }
+    }
+
+    #[test]
+    fn shell_analysis_detects_windows_path_script_runner() {
+        let analysis = analyze_shell_command(r"C:\tools\python.exe -c print(1)");
+        assert_eq!(
+            analysis.first_token.as_deref(),
+            Some(r"C:\tools\python.exe")
+        );
+        assert!(
+            analysis.uses_script_runner,
+            "Windows path script runners must be treated like arbitrary code runners"
+        );
+        assert!(analysis.command_prefix.starts_with("raw:"));
     }
 
     /// SECURITY: 缺关键字段 → fail-closed（v2 返回 None，由调用方 fallback v1）
@@ -685,5 +1287,156 @@ mod tests {
         assert_eq!(normalize_tool_name("mcp_note_set"), "note_set");
         assert_eq!(normalize_tool_name("mcp.tools.note_set"), "note_set");
         assert_eq!(normalize_tool_name("note_set"), "note_set");
+    }
+
+    #[test]
+    fn never_remember_approval_covers_privilege_tools() {
+        assert!(never_remember_approval("builtin-skill_install"));
+        assert!(never_remember_approval("builtin-skill_workshop_apply"));
+        assert!(never_remember_approval("mcp_server_propose"));
+        assert!(never_remember_approval("runtime_root_request"));
+        assert!(never_remember_approval("automation_propose"));
+        assert!(!never_remember_approval("builtin-local_shell_execute"));
+    }
+
+    /// SECURITY 回归（02 号报告 P2-1）：never-remember 判定不得依赖 `builtin-` 前缀。
+    /// 裸名 `mcp_server_propose` 会被 `strip_prefix("mcp_")` 剥成 `server_propose`，
+    /// 修复前保护失效；带前缀 / 裸名 / `builtin:` 冒号形式必须全部命中。
+    #[test]
+    fn never_remember_is_not_coupled_to_builtin_prefix() {
+        for name in [
+            "mcp_server_propose",
+            "builtin-mcp_server_propose",
+            "builtin:mcp_server_propose",
+            "runtime_root_request",
+            "builtin-runtime_root_request",
+            "automation_propose",
+            "skill_install",
+            "skill_workshop_apply",
+        ] {
+            assert!(
+                never_remember_approval(name),
+                "privilege tool must be never-remember regardless of prefix: {}",
+                name
+            );
+        }
+        // 非权限工具不误伤
+        assert!(!never_remember_approval("mcp_server_list"));
+        assert!(!never_remember_approval("note_set"));
+    }
+
+    /// SECURITY 回归（02 号报告 P1-1）：Windows 脚本解释器必须走完整命令哈希，
+    /// 否则 `pwsh -c '<脚本>'` remember 后放行任意 `pwsh -c` 命令。
+    #[test]
+    fn windows_script_runners_do_not_collapse_to_prefix() {
+        let victims = [
+            ("pwsh -c 'echo hi'", "pwsh -c 'rm -rf C:/'"),
+            ("powershell -Command Get-Date", "powershell -Command Remove-Item -Recurse C:/"),
+            (
+                "powershell.exe -Command Get-Date",
+                "powershell.exe -Command Remove-Item -Recurse C:/",
+            ),
+            ("cmd /c dir", "cmd /c del /f /s /q C:\\"),
+            ("iex 'echo 1'", "iex 'evil'"),
+            ("wscript run.vbs a", "wscript run.vbs b"),
+            ("cscript run.vbs a", "cscript run.vbs b"),
+            ("build.bat debug", "build.bat release-and-exfiltrate"),
+            ("deploy.cmd staging", "deploy.cmd prod"),
+            ("setup.ps1 -Quiet", "setup.ps1 -Evil"),
+        ];
+        for (a, b) in &victims {
+            let ka = make_runtime_scope_key_v2("execute_command", &json!({"command": a})).unwrap();
+            let kb = make_runtime_scope_key_v2("execute_command", &json!({"command": b})).unwrap();
+            assert_ne!(
+                ka, kb,
+                "Windows 运行器必须按完整命令哈希：`{}` vs `{}` 产生了相同作用域键",
+                a, b
+            );
+            assert!(
+                ka.contains("raw:") && kb.contains("raw:"),
+                "Windows 运行器必须走 raw: 分支，实际 `{}` -> `{}`",
+                a,
+                ka
+            );
+        }
+        // 普通命令仍保持 2-token 前缀（不误伤）
+        let plain = make_runtime_scope_key_v2("execute_command", &json!({"command": "git status --short"}))
+            .unwrap();
+        assert!(plain.ends_with("cmd=git status"));
+    }
+
+    /// 08 号报告：automation_propose 审批卡必须带 remember_disabled scope。
+    #[test]
+    fn automation_propose_scope_disables_remember() {
+        let args = json!({
+            "name": "daily-review",
+            "prompt": "review my notes",
+            "schedule": {"kind": "daily", "time": "08:00"}
+        });
+        let scope = make_runtime_approval_scope("builtin-automation_propose", &args, "high")
+            .expect("automation_propose scope");
+        assert_eq!(scope.kind, "automation");
+        assert_eq!(scope.remember_disabled, Some(true));
+        assert_eq!(scope.source_summary.as_deref(), Some("daily-review"));
+
+        // 裸名同样生效
+        let bare = make_runtime_approval_scope("automation_propose", &args, "high")
+            .expect("bare automation_propose scope");
+        assert_eq!(bare.remember_disabled, Some(true));
+    }
+
+    #[test]
+    fn skill_install_runtime_scope_carries_provenance_summary() {
+        let args = json!({
+            "source": { "root_id": "temp", "path": "attachments/pkg.zip" },
+            "expected_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "declared_risk_level": "medium",
+            "skill_id": "pdf-tools"
+        });
+        let scope = make_runtime_approval_scope("builtin-skill_install", &args, "high")
+            .expect("skill_install scope");
+        assert_eq!(scope.kind, "skill_install");
+        assert_eq!(scope.remember_disabled, Some(true));
+        assert_eq!(scope.expected_sha256_prefix.as_deref(), Some("0123456789ab"));
+        assert_eq!(scope.declared_risk_level.as_deref(), Some("medium"));
+        assert_eq!(scope.skill_id.as_deref(), Some("pdf-tools"));
+        assert!(scope.source_summary.unwrap().contains("temp:"));
+    }
+
+    #[test]
+    fn skill_install_scope_fingerprint_uses_expected_sha256() {
+        let args = json!({
+            "source": { "url": "https://example.com/skill.zip" },
+            "expected_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-skill_install", &args).as_deref(),
+            Some("builtin:skill_install::sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        );
+    }
+
+    #[test]
+    fn skill_workshop_apply_runtime_scope_carries_proposal_summary() {
+        let args = json!({
+            "proposal_id": "wp_1234567890_abcd",
+            "skill_id": "my-workflow",
+            "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+        });
+        let scope = make_runtime_approval_scope("builtin-skill_workshop_apply", &args, "high")
+            .expect("skill_workshop_apply scope");
+        assert_eq!(scope.kind, "skill_workshop");
+        assert_eq!(scope.remember_disabled, Some(true));
+        assert_eq!(scope.source_summary.as_deref(), Some("wp_1234567890_abcd"));
+        assert_eq!(scope.skill_id.as_deref(), Some("my-workflow"));
+        assert_eq!(scope.expected_sha256_prefix.as_deref(), Some("0123456789ab"));
+    }
+
+    #[test]
+    fn skill_workshop_apply_scope_fingerprint_uses_proposal_id() {
+        let args = json!({ "proposal_id": "wp_1234567890_abcd" });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-skill_workshop_apply", &args).as_deref(),
+            Some("builtin:skill_workshop_apply::proposal=wp_1234567890_abcd")
+        );
     }
 }

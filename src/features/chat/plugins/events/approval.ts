@@ -11,10 +11,36 @@
 import type { EventHandler } from '../../registry/eventRegistry';
 import { eventRegistry } from '../../registry/eventRegistry';
 import type { ChatStore } from '../../core/types';
+import type { ShellRuntimeApprovalScope } from '../../core/types/store';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18n from 'i18next';
 // 🆕 2026-02-17: 工具调用生命周期追踪
 import { emitToolCallDebug, trackStart, trackEnd } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
+import { workbenchBus } from '@/features/workbench';
+
+/**
+ * ACR R2-05 / DESIGN §6：High 审批前聚焦会话所属 chat 窗，
+ * 避免审批栏在后台窗不可见（生命周期调研 #12 / SCENARIOS S-CLOSE）。
+ */
+function focusChatWindowForApproval(store: ChatStore, sensitivity: string | undefined): void {
+  if (sensitivity !== 'high') return;
+  const sessionId = store.sessionId;
+  if (!sessionId) return;
+  try {
+    workbenchBus.activate({
+      typeId: 'chat',
+      instanceKey: sessionId,
+      action: 'focus',
+      fallbackLaunch: {
+        typeId: 'chat',
+        instanceKey: sessionId,
+        reason: 'api',
+      },
+    });
+  } catch (err) {
+    console.warn('[ApprovalEventHandler] Failed to focus chat window for High approval:', err);
+  }
+}
 
 // ============================================================================
 // 审批请求数据类型
@@ -27,6 +53,7 @@ interface ApprovalRequestPayload {
   sensitivity: 'low' | 'medium' | 'high';
   description: string;
   timeoutSeconds: number;
+  runtimeScope?: ShellRuntimeApprovalScope;
 }
 
 type ApprovalResolutionStatus = 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
@@ -51,6 +78,7 @@ function toStoreApproval(request: ApprovalRequestPayload) {
     sensitivity: request.sensitivity || 'medium',
     description: request.description || '',
     timeoutSeconds: request.timeoutSeconds || 30,
+    runtimeScope: request.runtimeScope,
   };
 }
 
@@ -93,7 +121,9 @@ function scheduleAdvanceQueue(store: ChatStore) {
     store.clearPendingApproval();
     const next = approvalQueue.shift();
     if (next) {
-      store.setPendingApproval(toStoreApproval(next));
+      const normalized = toStoreApproval(next);
+      focusChatWindowForApproval(store, normalized.sensitivity);
+      store.setPendingApproval(normalized);
     }
   }, APPROVAL_RESOLUTION_DISPLAY_MS);
 }
@@ -166,6 +196,11 @@ export const approvalEventHandler: EventHandler = {
     if (request.toolCallId) trackStart(request.toolCallId, undefined, `approval:${request.toolName}`);
 
     const normalized = toStoreApproval(request);
+
+    // ACR R2-05：High 审批到达时先 focus 本会话 chat 窗（队列中的请求在出队时再 focus）
+    if (!store.pendingBlockingInteraction) {
+      focusChatWindowForApproval(store, normalized.sensitivity);
+    }
 
     // 已有待审批请求时进入队列，避免覆盖
     if (store.pendingBlockingInteraction) {

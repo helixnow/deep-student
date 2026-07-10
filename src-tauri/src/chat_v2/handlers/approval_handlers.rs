@@ -10,7 +10,6 @@ use std::sync::Arc;
 use tauri::{State, Window};
 
 use crate::chat_v2::approval_manager::{ApprovalManager, ApprovalResponse};
-use crate::chat_v2::approval_scope;
 use crate::chat_v2::events::{event_types, ChatV2EventEmitter};
 // 🔧 P1-51: 引入数据库用于持久化审批选择
 use crate::database::Database;
@@ -72,9 +71,8 @@ pub async fn chat_v2_tool_approval_respond(
     };
 
     // 发送响应到等待的 Pipeline
-    // ★ respond 返回 bool，不是 Result
-    let success = approval_manager.respond(response);
-    if !success {
+    let respond_result = approval_manager.respond_with_result(response);
+    if !respond_result.delivered {
         log::warn!(
             "[ChatV2::approval] No waiting approval found for tool_call_id={}",
             tool_call_id
@@ -90,25 +88,44 @@ pub async fn chat_v2_tool_approval_respond(
         return Err("approval_expired".to_string());
     }
 
-    // 🔧 P1-51: 如果用户选择"记住选择"，持久化到数据库
-    if remember {
-        let args_value = arguments.unwrap_or(Value::Null);
-        // 🔧 M-081 修复（P2）：统一入口，v2 优先，未知工具 fallback v1
-        let setting_key = approval_scope::make_setting_key(&tool_name, &args_value);
-        let setting_value = if approved { "allow" } else { "deny" };
-
-        log::info!(
-            "[ChatV2::approval] Persisting approval choice: {}={} (tool_call_id={})",
-            setting_key,
-            setting_value,
-            tool_call_id
+    if arguments.is_some() {
+        log::debug!(
+            "[ChatV2::approval] Ignoring client-supplied approval arguments; using server-side pending scope for persistence"
         );
+    }
 
-        if let Err(e) = db.save_setting(&setting_key, setting_value) {
-            log::error!(
-                "[ChatV2::approval] Failed to persist approval choice for '{}': {}",
-                tool_name,
-                e
+    // 🔧 P1-51: 如果用户选择"记住选择"，持久化到数据库。
+    // 安全约束：setting key 必须来自 ApprovalManager 中的 pending 原始参数，
+    // 不能用前端回传 arguments 重新计算，避免写入未审批 scope。
+    // ADR-B2：权限类工具（skill_install / mcp_server_propose / runtime_root_request）
+    // 永不持久化审批授权——即使前端绕过 UI 传了 remember=true 也在此 fail-closed。
+    if remember && crate::chat_v2::approval_scope::never_remember_approval(&tool_name) {
+        log::warn!(
+            "[ChatV2::approval] Ignoring remember=true for privilege tool '{}' (never-remember policy)",
+            tool_name
+        );
+    } else if remember {
+        if let Some(setting_key) = respond_result.setting_key {
+            let setting_value = if approved { "allow" } else { "deny" };
+
+            log::info!(
+                "[ChatV2::approval] Persisting approval choice: {}={} (tool_call_id={})",
+                setting_key,
+                setting_value,
+                tool_call_id
+            );
+
+            if let Err(e) = db.save_setting(&setting_key, setting_value) {
+                log::error!(
+                    "[ChatV2::approval] Failed to persist approval choice for '{}': {}",
+                    tool_name,
+                    e
+                );
+            }
+        } else {
+            log::warn!(
+                "[ChatV2::approval] remember=true but no server-side setting key was available; approval choice was not persisted (tool_call_id={})",
+                tool_call_id
             );
         }
     }
