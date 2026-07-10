@@ -87,6 +87,7 @@
   "popover": {
     "translating": "Translating...",
     "unknown_error": "Translation failed",
+    "empty_result": "Translation result is empty, please retry",
     "model_hint": "Current translation model (change in Settings → Models): {{name}}",
     "copy_source": "Copy source",
     "copy_translation": "Copy translation",
@@ -180,6 +181,7 @@
     "no_text_to_speak": "No text to speak",
     "tts_failed": "Speech synthesis failed: {{error}}",
     "load_failed": "Failed to load translation: {{error}}",
+    "load_failed_generic": "Failed to load translation data",
     "offline": "Network disconnected, please check your connection and try again",
     "offline_save": "Cannot save while offline, please check your connection",
     "offline_rate": "Cannot rate while offline, please check your connection",

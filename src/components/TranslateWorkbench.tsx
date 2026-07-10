@@ -244,6 +244,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     const file = files[0]; // 只处理第一个文件
     const fileName = file.name.toLowerCase();
 
+    // ★ 大小校验兜底：浏览器拖拽/点击选择路径不经过原生路径校验，
+    // 避免超大文件被 FileReader 整体读入内存
+    const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_UPLOAD_FILE_SIZE) {
+      const sizeMB = (MAX_UPLOAD_FILE_SIZE / (1024 * 1024)).toFixed(0);
+      showGlobalNotification('error', t('drag_drop:errors.file_too_large', { size: sizeMB, defaultValue: `文件过大，单个文件不能超过 ${sizeMB}MB` }));
+      return;
+    }
+
     try {
       if (fileName.match(/\.(png|jpg|jpeg|webp)$/)) {
         // 图片：OCR识别
@@ -273,9 +282,10 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           try {
             const dataUrl = e.target?.result as string;
             const base64Content = dataUrl.split(',')[1];
+            // Tauri v2 默认要求 JS 侧以 camelCase 传参（后端未声明 rename_all = "snake_case"）
             const extracted = await invoke<string>('parse_document_from_base64', {
-              file_name: file.name,
-              base64_content: base64Content,
+              fileName: file.name,
+              base64Content,
             });
             handleSetSourceText(extracted);
             showGlobalNotification('success', t('translation:toast.parse_success'));

@@ -107,8 +107,28 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             }))} />
                     </div>
 
-                    {/* 移动端：翻译按钮（无容器风格） */}
-                    <div className="sm:hidden shrink-0">
+                    {/* 移动端：清空 + 设置 + 翻译按钮 */}
+                    <div className="sm:hidden shrink-0 flex items-center gap-0.5">
+                        {sourceText && !isTranslating && (
+                            <NotionButton
+                                variant="ghost"
+                                size="icon"
+                                onClick={onClear}
+                                className="h-8 w-8 text-muted-foreground/60 hover:text-destructive"
+                                aria-label={t('translation:actions.clear')}
+                            >
+                                <Trash size={16} />
+                            </NotionButton>
+                        )}
+                        <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowPromptEditor(true)}
+                            className="h-8 w-8 text-muted-foreground/60 hover:text-foreground"
+                            aria-label={t('translation:prompt_editor.title')}
+                        >
+                            <GearSix size={16} />
+                        </NotionButton>
                         {isTranslating ? (
                             <NotionButton
                                 variant="ghost"

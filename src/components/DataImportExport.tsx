@@ -147,14 +147,16 @@ const BackupListItem: React.FC<{
           <span>{formatFileSize(backup.size)}</span>
         </div>
       </div>
-      <div className="flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+      {/* ★ 2026-07-08（移动端审计 D-5 / P0）：恢复/保存按钮原为 hover 显现，
+          触屏没有 hover —— 备份恢复入口完全不可达。<md 常显，桌面保持 hover 交互。 */}
+      <div className="flex gap-2 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
         {onSave && (
           <NotionButton
             variant="ghost"
             size="sm"
             onClick={() => onSave(backup.backup_id)}
             title={t('data:backup_list.save_button')}
-            className="h-9 px-3"
+            className="h-11 px-3 md:h-9"
           >
             <FloppyDisk className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
             {t('data:backup_list.save_button')}
@@ -164,7 +166,7 @@ const BackupListItem: React.FC<{
           variant="ghost"
           size="sm"
           onClick={() => onRestore(backup.backup_id)}
-          className="h-9 px-3"
+          className="h-11 px-3 md:h-9"
         >
           <DownloadSimple className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
           {t('data:backup_list.restore_button')}
@@ -738,11 +740,10 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
         status: 'queued',
       });
 
-      const { listen } = await import('@tauri-apps/api/event');
-      const unlisten = await listen<BackupJobEventPayload>('backup-job-progress', (event) => {
-        const p = event?.payload as BackupJobEventPayload;
-        if (!p || getEventJobId(p) !== jobId || p.kind !== 'export') return;
-
+      // ★ 2026-07-08（审计 29-P1-1）：第二阶段改用 waitForJobTerminal（事件 + 1s 轮询 + 超时三保险）。
+      // 旧实现"先启动任务再注册 listen"存在竞态：小备份的终态事件可能在监听注册前发出，
+      // 之后再无事件到达，isExporting 与维护模式永久卡死，用户只能重启应用。
+      const updateExportJobFromPayload = (p: BackupJobEventPayload) => {
         setExportJob({
           jobId,
           progress: p.progress ?? 0,
@@ -755,44 +756,27 @@ export const DataImportExport: React.FC<DataImportExportProps> = ({ onClose, emb
           processedItems: p.processedItems ?? p.processed_items,
           totalItems: p.totalItems ?? p.total_items,
         });
-
-        if (p.status === 'completed') {
-          if (p.result?.success === false) {
-            const errMsg = p.result?.error || p.message || t('data:errors.export_fallback');
-            debugLog.error(t('export_failed'), errMsg);
-            showGlobalNotification('warning', `${t('export_failed')}: ${errMsg}`);
-            setExportError(errMsg);
-            finalizeExport(jobId, { status: 'failed', message: errMsg });
-            return;
-          }
-          const resolvedPath =
-            p.result?.resolvedPath ||
-            p.result?.resolved_path ||
-            p.result?.outputPath ||
-            p.result?.output_path;
-          if (resolvedPath) {
-            showGlobalNotification('success', `${t('export_success')}
-${resolvedPath}`);
-          } else {
-            showGlobalNotification('success', t('export_success'));
-          }
-          loadBackupList();
-          finalizeExport(jobId, { status: 'completed', message: t('data:console.export_success') });
-          window.setTimeout(() => {
-            setExportJob(current => (current && current.jobId === jobId && current.status === 'completed' ? null : current));
-          }, 1200);
-        } else if (p.status === 'failed' || p.status === 'cancelled') {
-          const errMsg = p.result?.error || p.message || t('data:errors.export_fallback');
-          debugLog.error(t('export_failed'), errMsg);
-          showGlobalNotification('error', `${t('export_failed')}: ${errMsg}`);
-          setExportError(errMsg);
-          finalizeExport(jobId, { status: p.status, message: errMsg });
-        }
-      });
-
-      exportListenerRef.current = () => {
-        (unlisten as unknown as () => void)();
       };
+
+      const finalPayload = await waitForJobTerminal(jobId, 'export', 600000, updateExportJobFromPayload);
+      // waitForJobTerminal 仅在成功完成时 resolve；failed/cancelled/completed-with-issues 会 reject 进入下方 catch
+      updateExportJobFromPayload(finalPayload);
+      const resolvedPath =
+        finalPayload.result?.resolvedPath ||
+        finalPayload.result?.resolved_path ||
+        finalPayload.result?.outputPath ||
+        finalPayload.result?.output_path;
+      if (resolvedPath) {
+        showGlobalNotification('success', `${t('export_success')}
+${resolvedPath}`);
+      } else {
+        showGlobalNotification('success', t('export_success'));
+      }
+      loadBackupList();
+      finalizeExport(jobId, { status: 'completed', message: t('data:console.export_success') });
+      window.setTimeout(() => {
+        setExportJob(current => (current && current.jobId === jobId && current.status === 'completed' ? null : current));
+      }, 1200);
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       debugLog.error(t('export_failed'), error);
@@ -1619,8 +1603,14 @@ ${resolvedPath}`);
             min-height: 0;
           }
           @media (max-width: 767.98px) {
+            /* ★ 2026-07-08 移动端审计：视图层已被 56px 统一顶栏 + 安全区约束，
+               calc(100vh - 40px) 假设的是桌面 40px 标题栏，移动端会向下溢出
+               ~16px+安全区导致底部内容被裁切；改跟随父容器高度。 */
+            .data-management-container {
+              height: 100%;
+            }
             .data-management-content {
-              padding: 1rem 1rem 2rem 1rem;
+              padding: 1rem 1rem calc(2rem + var(--mobile-safe-area-bottom, 0px)) 1rem;
             }
           }
           .data-management-container.embedded .data-management-content {
@@ -1693,7 +1683,7 @@ ${resolvedPath}`);
               </div>
 
               {/* 学习热力图 */}
-              <div className="mb-10 p-1">
+              <div className="mb-5 rounded-xl bg-card ring-1 ring-border/40 shadow-sm p-5">
                 <LearningHeatmap months={12} showStats={false} showLegend={true} />
               </div>
 

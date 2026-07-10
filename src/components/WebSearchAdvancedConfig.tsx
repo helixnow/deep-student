@@ -369,7 +369,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
         onCheckedChange={handleRerankerToggle}
 />
       {rerankerConfig.enabled && (
-        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-px animate-in slide-in-from-top-2 duration-200">
+        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-px ui-drop-in">
           <SettingRow
             title={t('settings:advanced_search.reranker.current_model')}
             description={t('settings:advanced_search.reranker.model_hint')}
@@ -422,7 +422,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
         onCheckedChange={handleCnWhitelistToggle}
 />
       {cnWhitelistConfig.enabled && (
-        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-2 animate-in slide-in-from-top-2 duration-200">
+        <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-2 ui-drop-in">
           {/* 使用默认列表开关 */}
           <SwitchRow
             title={t('settings:advanced_search.whitelist.use_default_label')}

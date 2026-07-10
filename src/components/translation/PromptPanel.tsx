@@ -275,7 +275,22 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
   if (mobileFullscreen) {
     return (
       <div className="h-full flex flex-col bg-background">
-        <CustomScrollArea className="flex-1" viewportClassName="p-4">
+        {/* 头部：标题 + 关闭按钮（可见的退出路径，与滑动返回互补） */}
+        <div className="flex items-center justify-between pl-4 pr-2 h-12 border-b border-border/30 shrink-0">
+          <span className="text-sm font-medium text-foreground/80">
+            {t('translation:prompt_editor.title')}
+          </span>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsOpen(false)}
+            className="h-10 w-10 text-muted-foreground/60 hover:text-foreground"
+            aria-label={t('common:close', '关闭')}
+          >
+            <X size={18} />
+          </NotionButton>
+        </div>
+        <CustomScrollArea className="flex-1" viewportClassName="p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">
           {/* 翻译选项开关 */}
           <div className="space-y-4 mb-6 pb-4 border-b">
             <h3 className="text-sm font-medium text-muted-foreground">{t('translation:options_title')}</h3>

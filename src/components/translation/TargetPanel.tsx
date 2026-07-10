@@ -168,6 +168,54 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                 </div>
             </div>
 
+            {/* 移动端：结果操作栏（桌面端工具栏被隐藏，复制/编辑/朗读/导出在此闭环） */}
+            {translatedText && !isEditingTranslation && (
+                <div className="sm:hidden flex items-center justify-between px-3 h-10 border-b bg-background/50 shrink-0">
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Translate size={13} />
+                        {t('translation:target_section.title')}
+                    </span>
+                    <div className="flex items-center gap-0.5">
+                        <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={onEditTranslation}
+                            className="h-8 w-8 text-muted-foreground"
+                            aria-label={t('translation:target_section.edit')}
+                        >
+                            <PencilSimple size={16} />
+                        </NotionButton>
+                        <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={onSpeak}
+                            className={`h-8 w-8 ${isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground'}`}
+                            aria-label={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}
+                        >
+                            <SpeakerHigh size={16} className={isSpeaking ? 'animate-pulse' : ''} />
+                        </NotionButton>
+                        <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={onCopyResult}
+                            className="h-8 w-8 text-muted-foreground"
+                            aria-label={t('translation:target_section.copy')}
+                        >
+                            <Copy size={16} />
+                        </NotionButton>
+                        <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={onExportTranslation}
+                            className="h-8 w-8 text-muted-foreground"
+                            aria-label={t('translation:target_section.export')}
+                        >
+                            <Download size={16} />
+                        </NotionButton>
+                    </div>
+                </div>
+            )}
+
             {/* Target Content */}
             <div className="flex-1 min-h-0 flex flex-col relative">
                 {isEditingTranslation ? (
@@ -226,7 +274,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
 
                         {/* Floating Status Bar (Target) */}
                         {translatedText && (
-                            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-0 group-hover/target:opacity-100 transition-opacity duration-200">
+                            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
                                 <div className="pointer-events-auto bg-background/80 backdrop-blur-sm border rounded-full shadow-sm px-1 py-0.5 flex items-center">
                                     {[1, 2, 3, 4, 5].map((rating) => (
                                         <NotionButton

@@ -5,6 +5,7 @@ import { TargetPanel } from './TargetPanel';
 import { PromptPanel } from './PromptPanel';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { cn } from '@/utils/cn';
 
 interface TranslationMainProps {
@@ -274,6 +275,15 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
     setDragOffset(0);
   }, [dragOffset, showPromptEditor, promptPanelWidth, setShowPromptEditor]);
 
+  // 移动端：提示词面板打开时注册 Android 返回键处理（返回 = 关闭面板）
+  useEffect(() => {
+    if (!isSmallScreen || !showPromptEditor) return;
+    return registerBackHandler(() => {
+      setShowPromptEditor(false);
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isSmallScreen, showPromptEditor, setShowPromptEditor]);
+
   // 绑定触摸事件
   useEffect(() => {
     const container = containerRef.current;
@@ -364,6 +374,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         ref={containerRef}
         className="relative h-full overflow-hidden bg-background select-none"
         style={{ touchAction: 'pan-y pinch-zoom' }}
+        // 自带横向滑动手势（滑出提示词面板），豁免三屏布局手势避免冲突
+        data-no-screen-swipe
       >
         {/* 滑动内容容器：主界面(100%) + 提示词面板(promptPanelWidth) */}
         <div
@@ -371,7 +383,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           style={{
             width: `calc(100% + ${promptPanelWidth}px)`,
             transform: `translateX(${translateX}px)`,
-            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: isDragging ? 'none' : 'transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1))',
           }}
         >
           {/* 主界面：翻译内容 */}

@@ -87,6 +87,7 @@
   "popover": {
     "translating": "翻译中...",
     "unknown_error": "翻译失败",
+    "empty_result": "翻译结果为空，请重试",
     "model_hint": "当前翻译模型（在系统设置 → 模型 中修改）：{{name}}",
     "copy_source": "复制原文",
     "copy_translation": "复制译文",
@@ -180,6 +181,7 @@
     "no_text_to_speak": "没有可朗读的文本",
     "tts_failed": "语音合成失败：{{error}}",
     "load_failed": "加载翻译记录失败：{{error}}",
+    "load_failed_generic": "加载翻译数据失败",
     "offline": "网络连接已断开，请检查网络后重试",
     "offline_save": "离线状态下无法保存，请检查网络连接",
     "offline_rate": "离线状态下无法评分，请检查网络连接",
