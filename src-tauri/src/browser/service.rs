@@ -27,11 +27,12 @@ use super::events::{
 };
 use super::policy::{self, NavigationDenyReason};
 use super::repository::BrowserRepository;
-use super::session::{BrowserSession, BrowserSessionState, OpenSessionOptions};
+use super::session::{BrowserSession, BrowserSessionState, HistoryEntry, OpenSessionOptions};
 use super::types::{BrowserHistoryPush, BrowserSessionUpsert};
 use super::window::{
     self, boot_cleanup_orphan_windows, ContentWindowHooks, ContentWindowOptions,
-    BROWSER_CONTENT_LABEL, DEFAULT_HEIGHT, DEFAULT_PROFILE_ID, DEFAULT_WIDTH,
+    NavigationPolicyHandle, BROWSER_CONTENT_LABEL, DEFAULT_HEIGHT, DEFAULT_PROFILE_ID,
+    DEFAULT_WIDTH,
 };
 
 /// 用户设置：Workbench 父闸
@@ -49,6 +50,7 @@ pub struct BrowserService {
     /// Lazy：构造时可不打开；`open_session` 内 `ensure_open`
     db: Arc<BrowserDatabase>,
     session: Mutex<Option<BrowserSession>>,
+    navigation_policy: NavigationPolicyHandle,
 }
 
 impl BrowserService {
@@ -58,6 +60,7 @@ impl BrowserService {
             app,
             db,
             session: Mutex::new(None),
+            navigation_policy: NavigationPolicyHandle::new(),
         })
     }
 
@@ -97,9 +100,10 @@ impl BrowserService {
             .map_err(|e| BrowserError::Database(e.to_string()))?
             .unwrap_or_else(|| "false".into());
         if !is_truthy(&workbench) {
-            return Err(BrowserError::Validation(
-                "browser disabled: desktop.workbenchMode is off".into(),
-            ));
+            drop(app_state);
+            return self
+                .reject_closed_gate("browser disabled: desktop.workbenchMode is off")
+                .await;
         }
 
         let enabled = app_state
@@ -108,9 +112,10 @@ impl BrowserService {
             .map_err(|e| BrowserError::Database(e.to_string()))?
             .unwrap_or_else(|| "false".into());
         if !is_truthy(&enabled) {
-            return Err(BrowserError::Validation(
-                "browser disabled: desktop.workbenchBrowserEnabled is off".into(),
-            ));
+            drop(app_state);
+            return self
+                .reject_closed_gate("browser disabled: desktop.workbenchBrowserEnabled is off")
+                .await;
         }
 
         let app_version = env!("CARGO_PKG_VERSION").to_string();
@@ -119,12 +124,41 @@ impl BrowserService {
             .await
             .map_err(BrowserError::Validation)?;
         if !manager.is_feature_enabled(FLAG_UI_WORKBENCH_BROWSER) {
-            return Err(BrowserError::Validation(
-                "browser disabled: feature flag ui.workbench_browser is off".into(),
-            ));
+            drop(manager);
+            drop(app_state);
+            return self
+                .reject_closed_gate("browser disabled: feature flag ui.workbench_browser is off")
+                .await;
         }
 
         Ok(())
+    }
+
+    async fn reject_closed_gate(&self, message: &str) -> BrowserResult<()> {
+        // Gate 关闭后不能留下仍可访问网络的 native content window。
+        if let Some(win) = window::content_window(&self.app) {
+            let _ = win.hide();
+        }
+        if let Err(error) = self.close_session_inner("gates_closed").await {
+            warn!("[browser] gate-close cleanup failed: {}", error);
+        }
+        Err(BrowserError::Validation(message.to_string()))
+    }
+
+    /// 当前平台是否支持带结果回执的 Agent 浏览器桥。
+    pub fn agent_automation_supported() -> bool {
+        cfg!(target_os = "windows")
+    }
+
+    fn ensure_agent_automation_supported(&self) -> BrowserResult<()> {
+        if Self::agent_automation_supported() {
+            Ok(())
+        } else {
+            Err(BrowserError::Validation(
+                "browser agent automation unsupported: result bridge is available on Windows only"
+                    .into(),
+            ))
+        }
     }
 
     /// `desktop.workbenchBrowserNetworkMode == "full"` → 允许非 loopback http
@@ -132,10 +166,7 @@ impl BrowserService {
         let Some(app_state) = self.app.try_state::<AppState>() else {
             return false;
         };
-        match app_state
-            .database
-            .get_setting(SETTING_BROWSER_NETWORK_MODE)
-        {
+        match app_state.database.get_setting(SETTING_BROWSER_NETWORK_MODE) {
             Ok(Some(mode)) => mode.trim().eq_ignore_ascii_case("full"),
             _ => false,
         }
@@ -153,7 +184,11 @@ impl BrowserService {
         self.assert_gates_open().await?;
 
         let allow_http = self.allow_insecure_http();
-        self.check_navigation_url(&options.url, allow_http, options.from_agent.unwrap_or(false))?;
+        let from_agent = options.from_agent.unwrap_or(false);
+        if from_agent {
+            self.ensure_agent_automation_supported()?;
+        }
+        self.check_navigation_url(&options.url, allow_http, from_agent)?;
 
         // Lazy DB：双闸已过 → 首次建库迁移
         self.db.ensure_open()?;
@@ -166,6 +201,17 @@ impl BrowserService {
             };
             if let Some(id) = existing_id {
                 if window::content_window(&self.app).is_some() {
+                    if from_agent {
+                        self.set_agent_control()?;
+                    } else {
+                        self.navigation_policy
+                            .set_agent_private_network_guard(false);
+                        if self.get_active_state().is_some_and(|state| {
+                            state.control_mode == crate::browser::ControlMode::Agent
+                        }) {
+                            self.take_over_with_reason("user_navigation")?;
+                        }
+                    }
                     let state = self.navigate_inner(&id, &options.url, true).await?;
                     let _ = window::focus_content_window(&self.app);
                     return Ok(state);
@@ -218,7 +264,8 @@ impl BrowserService {
                 current_url: Some(options.url.clone()),
                 favicon_url: None,
                 user_agent_override: None,
-                history_index: Some(0),
+                // `push_history` appends at current + 1, so the first row starts at seq=0.
+                history_index: Some(-1),
                 is_active: Some(true),
                 last_focused_at: Some(now_rfc3339()),
             },
@@ -239,6 +286,8 @@ impl BrowserService {
         }
 
         let hooks = self.make_window_hooks();
+        self.navigation_policy
+            .set_agent_private_network_guard(from_agent);
         let win = window::get_or_create_content_window(
             &self.app,
             ContentWindowOptions {
@@ -249,6 +298,7 @@ impl BrowserService {
                 focused,
                 profile_dir,
                 allow_insecure_http: allow_http,
+                navigation_policy: self.navigation_policy.clone(),
                 initialization_script: window::bridge_init_script(),
             },
             Some(hooks),
@@ -262,7 +312,11 @@ impl BrowserService {
             *guard = Some(session.clone());
         }
 
-        let state = session.snapshot();
+        let state = if from_agent {
+            self.set_agent_control()?
+        } else {
+            session.snapshot()
+        };
         emit_navigated(
             &self.app,
             &BrowserNavigatedPayload {
@@ -277,10 +331,7 @@ impl BrowserService {
             },
         );
 
-        info!(
-            "[browser] open_session id={} url={}",
-            state.id, state.url
-        );
+        info!("[browser] open_session id={} url={}", state.id, state.url);
         Ok(state)
     }
 
@@ -289,15 +340,16 @@ impl BrowserService {
     }
 
     async fn close_session_inner(&self, reason: &str) -> BrowserResult<()> {
+        self.navigation_policy
+            .set_agent_private_network_guard(false);
         let session_id = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            let Some(session) = guard.as_mut() else {
+            let Some(mut session) = guard.take() else {
                 // 仍尝试毁窗，避免孤儿
-                let _ = window::destroy_content_window(&self.app);
-                return Ok(());
+                return window::destroy_content_window(&self.app).map_err(BrowserError::Validation);
             };
             session.mark_closed();
-            session.id.clone()
+            session.id
         };
 
         if self.db.is_open() {
@@ -306,12 +358,8 @@ impl BrowserService {
             }
         }
 
-        window::destroy_content_window(&self.app).map_err(BrowserError::Validation)?;
-
-        {
-            let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            *guard = None;
-        }
+        let destroy_result =
+            window::destroy_content_window(&self.app).map_err(BrowserError::Validation);
 
         emit_closed(
             &self.app,
@@ -322,7 +370,7 @@ impl BrowserService {
                 at: now_rfc3339(),
             },
         );
-        Ok(())
+        destroy_result
     }
 
     pub async fn navigate(
@@ -332,6 +380,14 @@ impl BrowserService {
         replace: bool,
     ) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        self.navigation_policy
+            .set_agent_private_network_guard(false);
+        if self
+            .get_active_state()
+            .is_some_and(|state| state.control_mode == crate::browser::ControlMode::Agent)
+        {
+            self.take_over_with_reason("user_navigation")?;
+        }
         let allow_http = self.allow_insecure_http();
         self.check_navigation_url(url, allow_http, false)?;
         self.navigate_inner(session_id, url, replace).await
@@ -345,8 +401,10 @@ impl BrowserService {
         replace: bool,
     ) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        self.ensure_agent_automation_supported()?;
         let allow_http = self.allow_insecure_http();
         self.check_navigation_url(url, allow_http, true)?;
+        self.set_agent_control()?;
         self.navigate_inner(session_id, url, replace).await
     }
 
@@ -356,20 +414,25 @@ impl BrowserService {
         url: &str,
         replace: bool,
     ) -> BrowserResult<BrowserSessionState> {
-        let parsed = Url::parse(url)
-            .map_err(|e| BrowserError::Validation(format!("invalid URL: {e}")))?;
+        let parsed =
+            Url::parse(url).map_err(|e| BrowserError::Validation(format!("invalid URL: {e}")))?;
 
+        let win = window::content_window(&self.app)
+            .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
         let state = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            let session = guard.as_mut().ok_or_else(|| {
-                BrowserError::NotFound(format!("session {session_id}"))
-            })?;
+            let session = guard
+                .as_mut()
+                .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
             if session.id != session_id {
                 return Err(BrowserError::NotFound(format!(
                     "session {session_id} (active is {})",
                     session.id
                 )));
             }
+            // Do not commit history until the WebView accepts the navigation call.
+            win.navigate(parsed)
+                .map_err(|e| BrowserError::Validation(format!("navigate failed: {e}")))?;
             if replace {
                 session.replace_url(url.to_string(), None);
             } else {
@@ -379,22 +442,17 @@ impl BrowserService {
         };
 
         if self.db.is_open() {
-            let _ = BrowserRepository::upsert_session(
-                &self.db,
-                &BrowserSessionUpsert {
-                    id: session_id.to_string(),
-                    profile_id: None,
-                    title: None,
-                    current_url: Some(url.to_string()),
-                    favicon_url: None,
-                    user_agent_override: None,
-                    history_index: Some(state.history_index as i64),
-                    is_active: Some(true),
-                    last_focused_at: None,
-                },
-            );
-            if !replace {
-                let _ = BrowserRepository::push_history(
+            let persist_result = if replace {
+                BrowserRepository::update_current_history(
+                    &self.db,
+                    session_id,
+                    state.history_index as i64,
+                    Some(url),
+                    None,
+                )
+            } else {
+                // Push against the previously persisted index before mirroring the new state.
+                BrowserRepository::push_history(
                     &self.db,
                     session_id,
                     &BrowserHistoryPush {
@@ -403,15 +461,13 @@ impl BrowserService {
                         transition: Some("link".into()),
                         typed: false,
                     },
-                );
+                )
+                .map(|_| ())
+            };
+            if let Err(error) = persist_result {
+                warn!("[browser] persist navigation failed: {}", error);
             }
         }
-
-        let win = window::content_window(&self.app).ok_or_else(|| {
-            BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}"))
-        })?;
-        win.navigate(parsed)
-            .map_err(|e| BrowserError::Validation(format!("navigate failed: {e}")))?;
 
         emit_navigated(
             &self.app,
@@ -431,44 +487,64 @@ impl BrowserService {
 
     pub async fn back(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        let allow_http = self.allow_insecure_http();
+        let win = window::content_window(&self.app)
+            .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
         let (url, state) = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let session = self.require_session_mut(&mut guard, session_id)?;
-            let url = session
-                .go_back()
-                .ok_or_else(|| BrowserError::Validation("cannot go back".into()))?;
+            if !session.can_go_back() {
+                return Err(BrowserError::Validation("cannot go back".into()));
+            }
+            let target = session.history[session.history_index - 1].url.clone();
+            self.check_navigation_url(
+                &target,
+                allow_http,
+                session.control_mode == crate::browser::ControlMode::Agent,
+            )?;
+            let parsed = Url::parse(&target)
+                .map_err(|e| BrowserError::Validation(format!("invalid URL: {e}")))?;
+            win.navigate(parsed)
+                .map_err(|e| BrowserError::Validation(format!("navigate failed: {e}")))?;
+            let url = session.go_back().expect("can_go_back checked above");
             (url, session.snapshot())
         };
-        self.apply_webview_navigation(&url, &state).await
+        self.persist_history_navigation(&url, &state)
     }
 
     pub async fn forward(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        let allow_http = self.allow_insecure_http();
+        let win = window::content_window(&self.app)
+            .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
         let (url, state) = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let session = self.require_session_mut(&mut guard, session_id)?;
-            let url = session
-                .go_forward()
-                .ok_or_else(|| BrowserError::Validation("cannot go forward".into()))?;
+            if !session.can_go_forward() {
+                return Err(BrowserError::Validation("cannot go forward".into()));
+            }
+            let target = session.history[session.history_index + 1].url.clone();
+            self.check_navigation_url(
+                &target,
+                allow_http,
+                session.control_mode == crate::browser::ControlMode::Agent,
+            )?;
+            let parsed = Url::parse(&target)
+                .map_err(|e| BrowserError::Validation(format!("invalid URL: {e}")))?;
+            win.navigate(parsed)
+                .map_err(|e| BrowserError::Validation(format!("navigate failed: {e}")))?;
+            let url = session.go_forward().expect("can_go_forward checked above");
             (url, session.snapshot())
         };
-        self.apply_webview_navigation(&url, &state).await
+        self.persist_history_navigation(&url, &state)
     }
 
-    /// 历史栈已更新后，仅驱动 webview 导航并发事件（不再改 history）
-    async fn apply_webview_navigation(
+    /// WebView 接受历史导航且内存栈已更新后，持久化并发事件。
+    fn persist_history_navigation(
         &self,
         url: &str,
         state: &BrowserSessionState,
     ) -> BrowserResult<BrowserSessionState> {
-        let parsed = Url::parse(url)
-            .map_err(|e| BrowserError::Validation(format!("invalid URL: {e}")))?;
-        let win = window::content_window(&self.app).ok_or_else(|| {
-            BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}"))
-        })?;
-        win.navigate(parsed)
-            .map_err(|e| BrowserError::Validation(format!("navigate failed: {e}")))?;
-
         if self.db.is_open() {
             let _ = BrowserRepository::upsert_session(
                 &self.db,
@@ -504,19 +580,23 @@ impl BrowserService {
 
     pub async fn reload(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        let allow_http = self.allow_insecure_http();
+        let win = window::content_window(&self.app)
+            .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
         let state = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let session = self.require_session_mut(&mut guard, session_id)?;
+            self.check_navigation_url(
+                &session.url,
+                allow_http,
+                session.control_mode == crate::browser::ControlMode::Agent,
+            )?;
+            win.reload()
+                .map_err(|e| BrowserError::Validation(format!("reload failed: {e}")))?;
             session.loading = true;
             session.updated_at = chrono::Utc::now();
             session.snapshot()
         };
-
-        let win = window::content_window(&self.app).ok_or_else(|| {
-            BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}"))
-        })?;
-        win.reload()
-            .map_err(|e| BrowserError::Validation(format!("reload failed: {e}")))?;
 
         emit_navigated(
             &self.app,
@@ -537,9 +617,9 @@ impl BrowserService {
     pub async fn focus(&self, session_id: &str) -> BrowserResult<()> {
         {
             let guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            let session = guard.as_ref().ok_or_else(|| {
-                BrowserError::NotFound(format!("session {session_id}"))
-            })?;
+            let session = guard
+                .as_ref()
+                .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
             if session.id != session_id {
                 return Err(BrowserError::NotFound(format!("session {session_id}")));
             }
@@ -549,13 +629,24 @@ impl BrowserService {
 
     pub fn get_state(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         let guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-        let session = guard.as_ref().ok_or_else(|| {
-            BrowserError::NotFound(format!("session {session_id}"))
-        })?;
+        let session = guard
+            .as_ref()
+            .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
         if session.id != session_id {
             return Err(BrowserError::NotFound(format!("session {session_id}")));
         }
         Ok(session.snapshot())
+    }
+
+    pub fn get_history(&self, session_id: &str) -> BrowserResult<Vec<HistoryEntry>> {
+        let guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        let session = guard
+            .as_ref()
+            .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
+        if session.id != session_id {
+            return Err(BrowserError::NotFound(format!("session {session_id}")));
+        }
+        Ok(session.history.clone())
     }
 
     /// 当前活跃 session（若有）
@@ -574,9 +665,12 @@ impl BrowserService {
     /// 密码硬拒等场景强制交还用户（reason 区分事件来源）
     pub fn take_over_with_reason(&self, reason: &str) -> BrowserResult<BrowserSessionState> {
         let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-        let session = guard.as_mut().filter(|s| s.alive).ok_or_else(|| {
-            BrowserError::NotFound("no active browser session".into())
-        })?;
+        let session = guard
+            .as_mut()
+            .filter(|s| s.alive)
+            .ok_or_else(|| BrowserError::NotFound("no active browser session".into()))?;
+        self.navigation_policy
+            .set_agent_private_network_guard(false);
         session.take_over();
         let state = session.snapshot();
         drop(guard);
@@ -595,10 +689,21 @@ impl BrowserService {
 
     /// Agent 工具开始操控时切到 Agent 控制态（清除接管闩锁）并 emit 事件
     pub fn set_agent_control(&self) -> BrowserResult<BrowserSessionState> {
+        self.ensure_agent_automation_supported()?;
         let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-        let session = guard.as_mut().filter(|s| s.alive).ok_or_else(|| {
-            BrowserError::NotFound("no active browser session".into())
-        })?;
+        let session = guard
+            .as_mut()
+            .filter(|s| s.alive)
+            .ok_or_else(|| BrowserError::NotFound("no active browser session".into()))?;
+        if session.is_blocked_by_user_takeover() {
+            return Err(BrowserError::Validation(
+                "user_takeover: user recently took control of the browser".into(),
+            ));
+        }
+        self.navigation_policy.set_agent_private_network_guard(true);
+        if session.control_mode == crate::browser::ControlMode::Agent {
+            return Ok(session.snapshot());
+        }
         session.set_control_mode(crate::browser::ControlMode::Agent);
         let state = session.snapshot();
         drop(guard);
@@ -639,16 +744,26 @@ impl BrowserService {
         allow_insecure_http: bool,
         from_agent: bool,
     ) -> BrowserResult<()> {
-        policy::allow_navigation_with_options(url, allow_insecure_http).map_err(|e| {
-            BrowserError::Validation(format!("navigation_blocked: {e}"))
-        })?;
+        policy::allow_navigation_with_options(url, allow_insecure_http)
+            .map_err(|e| BrowserError::Validation(format!("navigation_blocked: {e}")))?;
         if from_agent && policy::is_blocked_for_agent(url) {
             return Err(BrowserError::Validation(format!(
                 "navigation_blocked: {}",
                 NavigationDenyReason::AgentPrivateNetwork
             )));
         }
+        if from_agent {
+            self.check_agent_dns_target(url)?;
+        }
         Ok(())
+    }
+
+    fn check_agent_dns_target(&self, raw_url: &str) -> BrowserResult<()> {
+        let parsed = Url::parse(raw_url)
+            .map_err(|e| BrowserError::Validation(format!("invalid URL: {e}")))?;
+        self.navigation_policy
+            .validate_agent_target_for_agent(&parsed)
+            .map_err(|reason| BrowserError::Validation(format!("navigation_blocked: {reason}")))
     }
 
     fn require_session_mut<'a>(
@@ -674,23 +789,57 @@ impl BrowserService {
                     svc.on_page_finished(url);
                 }
             }),
-            on_title_changed: Arc::new(move |title| {
+            on_title_changed: Arc::new(move |title, url| {
                 if let Some(svc) = weak_title.upgrade() {
-                    svc.on_title_changed(title);
+                    svc.on_title_changed(title, url);
                 }
             }),
         }
     }
 
     fn on_page_finished(&self, url: String) {
-        let state = {
+        let (state, page_initiated_navigation) = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let Some(session) = guard.as_mut() else {
                 return;
             };
-            session.mark_loaded(Some(url));
-            session.snapshot()
+            let page_initiated_navigation = !session.loading && session.url != url;
+            if page_initiated_navigation {
+                session.push_url(url.clone(), None);
+                session.mark_loaded(None);
+            } else {
+                // Service 导航 / redirect：替换当前条目的最终 URL，不额外压栈。
+                session.mark_loaded(Some(url.clone()));
+            }
+            (session.snapshot(), page_initiated_navigation)
         };
+
+        if self.db.is_open() {
+            let persist_result = if page_initiated_navigation {
+                BrowserRepository::push_history(
+                    &self.db,
+                    &state.id,
+                    &BrowserHistoryPush {
+                        url: state.url.clone(),
+                        title: None,
+                        transition: Some("link".into()),
+                        typed: false,
+                    },
+                )
+                .map(|_| ())
+            } else {
+                BrowserRepository::update_current_history(
+                    &self.db,
+                    &state.id,
+                    state.history_index as i64,
+                    Some(&state.url),
+                    None,
+                )
+            };
+            if let Err(error) = persist_result {
+                warn!("[browser] persist finished navigation failed: {}", error);
+            }
+        }
         emit_navigated(
             &self.app,
             &BrowserNavigatedPayload {
@@ -706,15 +855,64 @@ impl BrowserService {
         );
     }
 
-    fn on_title_changed(&self, title: String) {
-        let state = {
+    fn on_title_changed(&self, title: String, webview_url: Option<String>) {
+        let (state, page_initiated_navigation) = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let Some(session) = guard.as_mut() else {
                 return;
             };
+            let page_navigation_url =
+                webview_url.filter(|url| !session.loading && url.as_str() != session.url.as_str());
+            let page_initiated_navigation = page_navigation_url.is_some();
+            if let Some(url) = page_navigation_url {
+                // Title changes can precede PageLoadEvent::Finished. Capture the
+                // new URL now so the title is not written onto the previous row.
+                session.push_url(url, None);
+            }
             session.set_title(title);
-            session.snapshot()
+            (session.snapshot(), page_initiated_navigation)
         };
+        if self.db.is_open() {
+            let persist_result = if page_initiated_navigation {
+                BrowserRepository::push_history(
+                    &self.db,
+                    &state.id,
+                    &BrowserHistoryPush {
+                        url: state.url.clone(),
+                        title: Some(state.title.clone()),
+                        transition: Some("link".into()),
+                        typed: false,
+                    },
+                )
+                .map(|_| ())
+            } else {
+                BrowserRepository::update_current_history(
+                    &self.db,
+                    &state.id,
+                    state.history_index as i64,
+                    None,
+                    Some(&state.title),
+                )
+            };
+            if let Err(error) = persist_result {
+                warn!("[browser] persist title failed: {}", error);
+            }
+        }
+        if page_initiated_navigation {
+            emit_navigated(
+                &self.app,
+                &BrowserNavigatedPayload {
+                    session_id: state.id.clone(),
+                    label: state.label.clone(),
+                    url: state.url.clone(),
+                    title: state.title.clone(),
+                    can_go_back: state.can_go_back,
+                    can_go_forward: state.can_go_forward,
+                    loading: state.loading,
+                    at: now_rfc3339(),
+                },
+            );
+        }
         emit_title_changed(
             &self.app,
             &BrowserTitleChangedPayload {
@@ -729,8 +927,10 @@ impl BrowserService {
 
     fn attach_destroy_listener(&self, win: &tauri::WebviewWindow, session_id: String) {
         let app = self.app.clone();
+        let navigation_policy = self.navigation_policy.clone();
         win.on_window_event(move |event| {
             if let WindowEvent::Destroyed = event {
+                navigation_policy.set_agent_private_network_guard(false);
                 // 用户点关 content 窗：清内存 session + 发 closed
                 // 通过 try_state 取服务，避免循环持有
                 if let Some(svc) = app.try_state::<Arc<BrowserService>>() {
@@ -784,5 +984,13 @@ mod tests {
     #[test]
     fn content_label_is_fixed() {
         assert_eq!(BrowserService::content_label(), "browser-content");
+    }
+
+    #[test]
+    fn agent_automation_capability_matches_platform() {
+        assert_eq!(
+            BrowserService::agent_automation_supported(),
+            cfg!(target_os = "windows")
+        );
     }
 }

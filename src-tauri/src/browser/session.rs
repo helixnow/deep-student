@@ -369,7 +369,8 @@ mod tests {
         );
         s.take_over();
         // 模拟冷却已过
-        s.user_takeover_at = Some(Utc::now() - chrono::Duration::seconds(USER_TAKEOVER_BLOCK_SECS + 1));
+        s.user_takeover_at =
+            Some(Utc::now() - chrono::Duration::seconds(USER_TAKEOVER_BLOCK_SECS + 1));
         assert!(!s.is_blocked_by_user_takeover());
         assert!(s.user_takeover_at.is_none());
     }

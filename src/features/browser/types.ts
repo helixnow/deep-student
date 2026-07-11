@@ -22,6 +22,11 @@ export interface BrowserLaunchPayload {
   showContent?: boolean;
   /** 立即接管控制权（打断 agent） */
   takeOver?: boolean;
+  /**
+   * 导航是否来自 Agent。未显式标记的带 URL Workbench launch 按 Agent 处理，
+   * 防止 open_app/fallbackLaunch 丢失来源后绕过私网策略。
+   */
+  fromAgent?: boolean;
 }
 
 /** 历史栈条目（Rust 镜像；前端不权威写入） */
@@ -46,6 +51,8 @@ export interface BrowserSessionSnapshot {
   loading: boolean;
   history: BrowserHistoryEntry[];
   historyIndex: number;
+  /** 当前平台是否支持带结果回执的 Agent 浏览器自动化。 */
+  agentAutomationSupported: boolean;
   error: string | null;
 }
 

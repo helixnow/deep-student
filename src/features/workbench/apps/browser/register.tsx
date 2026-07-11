@@ -7,9 +7,10 @@
  */
 import React from 'react';
 import { Globe } from '@phosphor-icons/react';
+import { BrowserApiError } from '@/features/browser/browserApi';
 import { getBrowserSessionState } from '@/features/browser/sessionStore';
 import { appRegistry } from '../../core/appRegistry';
-import type { ActivationContext } from '../../core/types';
+import type { ActivationContext, ActivationResult } from '../../core/types';
 import { BROWSER_FOCUS_ADDRESS_EVENT } from './browserChromeEvents';
 
 export const BROWSER_APP_TYPE_ID = 'browser';
@@ -24,48 +25,71 @@ function payloadUrl(payload: unknown): string | null {
   return null;
 }
 
-/** onActivation：navigate / focusAddress / takeOver / showContent */
-export function handleBrowserActivation(ctx: ActivationContext): void {
+function activationError(err: unknown): ActivationResult {
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    handled: false,
+    code: err instanceof BrowserApiError ? err.code : 'BROWSER_ACTION_FAILED',
+    message,
+    hint: message,
+  };
+}
+
+/** onActivation：await navigate / focusAddress / takeOver / showContent 的真实结果 */
+export async function handleBrowserActivation(ctx: ActivationContext): Promise<ActivationResult> {
   const api = getBrowserSessionState();
-  switch (ctx.action) {
-    case 'navigate': {
-      const url = payloadUrl(ctx.payload);
-      if (!url) {
-        console.warn('[workbench:browser] navigate ignored: missing url');
-        return;
+  try {
+    switch (ctx.action) {
+      case 'navigate': {
+        const url = payloadUrl(ctx.payload);
+        if (!url) {
+          return {
+            handled: false,
+            code: 'INVALID_ARGS',
+            message: 'browser navigate 缺少 url',
+          };
+        }
+        // Agent app_command：不打 user_takeover 闩锁，同时必须保留来源供 Rust 私网硬拦。
+        await api.navigate(url, { forceUserControl: false, fromAgent: true });
+        return { handled: true };
       }
-      // Agent app_command：勿 forceUserControl，否则会误打接管冷却闩锁（R2-10）
-      void api.navigate(url, { forceUserControl: false }).catch((err) =>
-        console.warn('[workbench:browser] navigate failed:', err),
-      );
-      break;
-    }
-    case 'focusAddress': {
-      if (typeof window === 'undefined') return;
-      const emit = () => {
-        if (typeof window === 'undefined') return;
-        window.dispatchEvent(new CustomEvent(BROWSER_FOCUS_ADDRESS_EVENT));
-      };
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(emit);
+      case 'focusAddress': {
+        if (typeof window === 'undefined') {
+          return { handled: false, code: 'WINDOW_UNAVAILABLE' };
+        }
+        const emit = () => {
+          if (typeof window === 'undefined') return;
+          window.dispatchEvent(new CustomEvent(BROWSER_FOCUS_ADDRESS_EVENT));
+        };
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(emit);
+        }
+        window.setTimeout(emit, 120);
+        return { handled: true };
       }
-      window.setTimeout(emit, 120);
-      break;
+      case 'takeOver':
+        await api.takeOver();
+        return { handled: true };
+      case 'showContent': {
+        const shown = await api.showContent();
+        return shown
+          ? { handled: true }
+          : {
+              handled: false,
+              code: 'CONTENT_WINDOW_NOT_FOUND',
+              message: '浏览器页面窗口不存在',
+            };
+      }
+      default:
+        return {
+          handled: false,
+          code: 'UNKNOWN_ACTION',
+          message: `未知 browser action: ${ctx.action}`,
+        };
     }
-    case 'takeOver': {
-      void api.takeOver().catch((err) =>
-        console.warn('[workbench:browser] takeOver failed:', err),
-      );
-      break;
-    }
-    case 'showContent': {
-      void api.showContent().catch((err) =>
-        console.warn('[workbench:browser] showContent failed:', err),
-      );
-      break;
-    }
-    default:
-      console.warn(`[workbench:browser] unknown activation action: ${ctx.action}`);
+  } catch (err) {
+    console.warn(`[workbench:browser] ${ctx.action} failed:`, err);
+    return activationError(err);
   }
 }
 
@@ -75,6 +99,7 @@ async function canCloseBrowser(_instanceKey: string | null): Promise<boolean> {
     await getBrowserSessionState().closeSession();
   } catch (err) {
     console.warn('[workbench:browser] closeSession failed:', err);
+    return false;
   }
   return true;
 }

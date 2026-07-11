@@ -240,9 +240,7 @@ impl BrowserDatabase {
 pub fn resolve_active_dir() -> BrowserResult<PathBuf> {
     crate::data_space::get_data_space_manager()
         .map(|mgr| mgr.active_dir())
-        .ok_or_else(|| {
-            BrowserError::DataSpace("DataSpaceManager not initialized".to_string())
-        })
+        .ok_or_else(|| BrowserError::DataSpace("DataSpaceManager not initialized".to_string()))
 }
 
 #[cfg(test)]

@@ -330,16 +330,20 @@
     el.dispatchEvent(new MouseEvent('mousedown', opts));
     el.dispatchEvent(new PointerEvent('pointerup', opts));
     el.dispatchEvent(new MouseEvent('mouseup', opts));
-    el.dispatchEvent(new MouseEvent('click', opts));
-    if (doubleClick) {
-      el.dispatchEvent(new MouseEvent('dblclick', opts));
-    }
+    // HTMLElement.click() already dispatches the click event and performs the
+    // element's default activation. Dispatching a synthetic click before it
+    // caused buttons/links to fire twice.
     if (typeof /** @type {HTMLElement} */ (el).click === 'function') {
       try {
         /** @type {HTMLElement} */ (el).click();
       } catch (_) {
         /* ignore */
       }
+    } else {
+      el.dispatchEvent(new MouseEvent('click', opts));
+    }
+    if (doubleClick) {
+      el.dispatchEvent(new MouseEvent('dblclick', opts));
     }
     return { x: Math.round(x), y: Math.round(y) };
   }

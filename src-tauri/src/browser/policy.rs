@@ -85,40 +85,78 @@ fn is_loopback_ip(ip: &IpAddr) -> bool {
 /// - 6to4 与 IPv4-mapped 中的内网嵌入地址
 pub fn is_internal_ip(ip: &IpAddr) -> bool {
     match ip {
-        IpAddr::V4(ipv4) => {
-            ipv4.is_loopback()
-                || ipv4.is_private()
-                || ipv4.is_link_local()
-                || ipv4.octets() == [169, 254, 169, 254]
-        }
+        IpAddr::V4(ipv4) => is_non_global_ipv4(*ipv4),
         IpAddr::V6(ipv6) => {
-            ipv6.is_loopback()
-                || (ipv6.segments()[0] & 0xfe00) == 0xfc00
-                || (ipv6.segments()[0] & 0xffc0) == 0xfe80
-                || (ipv6.segments()[0] & 0xffc0) == 0xfec0
-                || (ipv6.segments()[0] == 0x2002 && {
+            let segments = ipv6.segments();
+            ipv6.is_unspecified()
+                || ipv6.is_loopback()
+                || ipv6.is_multicast()
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80
+                || (segments[0] & 0xffc0) == 0xfec0
+                // Discard-only, benchmarking, ORCHID and documentation prefixes.
+                || (segments[0] == 0x0100 && segments[1..4] == [0, 0, 0])
+                || (segments[0] == 0x2001 && segments[1] == 0x0002)
+                || (segments[0] == 0x2001 && (segments[1] & 0xfff0) == 0x0010)
+                || (segments[0] == 0x2001 && (segments[1] & 0xfff0) == 0x0020)
+                || (segments[0] == 0x2001 && segments[1] == 0x0db8)
+                || (segments[0] & 0xfff0) == 0x3ff0
+                || (segments[0] == 0x2002 && {
                     let embedded_v4 = Ipv4Addr::new(
-                        (ipv6.segments()[1] >> 8) as u8,
-                        (ipv6.segments()[1] & 0xff) as u8,
-                        (ipv6.segments()[2] >> 8) as u8,
-                        (ipv6.segments()[2] & 0xff) as u8,
+                        (segments[1] >> 8) as u8,
+                        (segments[1] & 0xff) as u8,
+                        (segments[2] >> 8) as u8,
+                        (segments[2] & 0xff) as u8,
                     );
-                    embedded_v4.is_private()
-                        || embedded_v4.is_loopback()
-                        || embedded_v4.is_link_local()
-                        || embedded_v4.octets() == [169, 254, 169, 254]
+                    is_non_global_ipv4(embedded_v4)
+                })
+                // Deprecated IPv4-compatible form (::a.b.c.d).
+                || (segments[..6] == [0, 0, 0, 0, 0, 0] && {
+                    is_non_global_ipv4(ipv4_from_segments(segments[6], segments[7]))
+                })
+                // Well-known NAT64 prefix (64:ff9b::/96).
+                || (segments[..6] == [0x0064, 0xff9b, 0, 0, 0, 0] && {
+                    is_non_global_ipv4(ipv4_from_segments(segments[6], segments[7]))
                 })
                 || ipv6
                     .to_ipv4_mapped()
-                    .map(|v4| {
-                        v4.is_private()
-                            || v4.is_loopback()
-                            || v4.is_link_local()
-                            || v4.octets() == [169, 254, 169, 254]
-                    })
+                    .map(is_non_global_ipv4)
                     .unwrap_or(false)
         }
     }
+}
+
+fn ipv4_from_segments(high: u16, low: u16) -> Ipv4Addr {
+    Ipv4Addr::new(
+        (high >> 8) as u8,
+        (high & 0xff) as u8,
+        (low >> 8) as u8,
+        (low & 0xff) as u8,
+    )
+}
+
+/// Reject addresses that are not globally routable. Some operating systems map
+/// unspecified or special-use ranges back to the local host/network, so checking
+/// only RFC1918 space is insufficient for SSRF prevention.
+fn is_non_global_ipv4(ip: Ipv4Addr) -> bool {
+    let [a, b, c, _] = ip.octets();
+    ip.is_unspecified()
+        || ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_multicast()
+        || ip.is_broadcast()
+        // 0.0.0.0/8 ("this" network) and shared CGNAT space.
+        || a == 0
+        || (a == 100 && (64..=127).contains(&b))
+        // IETF protocol assignments and documentation-only networks.
+        || (a == 192 && b == 0 && c == 0)
+        || (a == 192 && b == 0 && c == 2)
+        || (a == 198 && (b == 18 || b == 19))
+        || (a == 198 && b == 51 && c == 100)
+        || (a == 203 && b == 0 && c == 113)
+        // Multicast plus reserved/future-use space, including limited broadcast.
+        || a >= 224
 }
 
 /// Agent 是否应对该 URL 硬拦（私网 / localhost 字面量 / 字面内网 IP）
@@ -287,13 +325,33 @@ mod tests {
 
     #[test]
     fn internal_ip_ipv4_and_ipv6() {
+        assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::UNSPECIFIED)));
         assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
         assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
         assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+        assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))));
+        assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::new(198, 18, 0, 1))));
+        assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::new(224, 0, 0, 1))));
+        assert!(is_internal_ip(&IpAddr::V4(Ipv4Addr::BROADCAST)));
         assert!(!is_internal_ip(&IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
 
+        assert!(is_internal_ip(&IpAddr::V6(Ipv6Addr::UNSPECIFIED)));
         assert!(is_internal_ip(&IpAddr::V6(Ipv6Addr::LOCALHOST)));
+        assert!(is_internal_ip(&IpAddr::V6(Ipv6Addr::new(
+            0xff02, 0, 0, 0, 0, 0, 0, 1
+        ))));
         let ula = Ipv6Addr::new(0xfc00, 0, 0, 0, 0, 0, 0, 1);
         assert!(is_internal_ip(&IpAddr::V6(ula)));
+
+        let mapped_loopback = Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped();
+        assert!(is_internal_ip(&IpAddr::V6(mapped_loopback)));
+        let compatible_loopback = Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0x7f00, 0x0001);
+        assert!(is_internal_ip(&IpAddr::V6(compatible_loopback)));
+        let nat64_loopback = Ipv6Addr::new(0x0064, 0xff9b, 0, 0, 0, 0, 0x7f00, 0x0001);
+        assert!(is_internal_ip(&IpAddr::V6(nat64_loopback)));
+        let six_to_four_private = Ipv6Addr::new(0x2002, 0x0a00, 0x0001, 0, 0, 0, 0, 1);
+        assert!(is_internal_ip(&IpAddr::V6(six_to_four_private)));
+        let six_to_four_public = Ipv6Addr::new(0x2002, 0x0808, 0x0808, 0, 0, 0, 0, 1);
+        assert!(!is_internal_ip(&IpAddr::V6(six_to_four_public)));
     }
 }

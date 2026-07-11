@@ -36,6 +36,9 @@ export {
 
 export {
   BROWSER_CONTROL_MODE_CHANGED_EVENT,
+  BROWSER_NAVIGATED_EVENT,
+  BROWSER_TITLE_CHANGED_EVENT,
+  BROWSER_CLOSED_EVENT,
   ensureBrowserControlModeSync,
   type BrowserControlModeChangedPayload,
 } from './controlModeSync';

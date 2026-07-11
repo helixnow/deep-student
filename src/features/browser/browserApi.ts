@@ -67,7 +67,12 @@ export function toBrowserApiError(
       'BROWSER_COMMAND_MISSING',
     );
   }
-  return new BrowserApiError(command, msg || `浏览器命令失败：${command}`, 'BROWSER_API_ERROR');
+  const structuredCode = msg.match(/^([A-Z][A-Z0-9_]+):/)?.[1];
+  return new BrowserApiError(
+    command,
+    msg || `浏览器命令失败：${command}`,
+    structuredCode ?? 'BROWSER_API_ERROR',
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -148,6 +153,7 @@ export function parseBrowserSessionSnapshot(
       loading: fallback?.loading ?? false,
       history: fallback?.history ?? [],
       historyIndex: fallback?.historyIndex ?? -1,
+      agentAutomationSupported: fallback?.agentAutomationSupported ?? false,
       error: fallback?.error ?? null,
     };
   }
@@ -179,6 +185,10 @@ export function parseBrowserSessionSnapshot(
     history,
     historyIndex:
       pickNumber(obj, 'historyIndex', 'history_index') ?? fallback?.historyIndex ?? -1,
+    agentAutomationSupported:
+      pickBool(obj, 'agentAutomationSupported', 'agent_automation_supported') ??
+      fallback?.agentAutomationSupported ??
+      false,
     error: pickString(obj, 'error', 'lastError', 'last_error') ?? fallback?.error ?? null,
   };
 }
@@ -204,9 +214,15 @@ async function invokeState(
   return parseBrowserSessionSnapshot(raw);
 }
 
-export async function openSession(url?: string): Promise<BrowserSessionSnapshot> {
+export async function openSession(
+  url?: string,
+  opts?: { fromAgent?: boolean },
+): Promise<BrowserSessionSnapshot> {
   const normalized = url ? normalizeNavigationInput(url) : 'https://example.com';
-  return invokeState('browser_open_session', { url: normalized });
+  return invokeState('browser_open_session', {
+    url: normalized,
+    ...(opts?.fromAgent != null ? { fromAgent: opts.fromAgent } : {}),
+  });
 }
 
 export async function closeSession(sessionId?: string | null): Promise<void> {

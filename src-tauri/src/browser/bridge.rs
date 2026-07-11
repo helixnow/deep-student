@@ -127,14 +127,16 @@ pub fn parse_bridge_json(raw: &str) -> BridgeResult<BridgeEnvelope> {
         return Err(BridgeError::InvalidJson("empty script result".into()));
     }
 
-    let value: Value = serde_json::from_str(trimmed).map_err(|e| {
-        BridgeError::InvalidJson(format!("{e}; raw={}", truncate(trimmed, 200)))
-    })?;
+    let value: Value = serde_json::from_str(trimmed)
+        .map_err(|e| BridgeError::InvalidJson(format!("{e}; raw={}", truncate(trimmed, 200))))?;
 
     // 若结果是 JSON 字符串，再解一层
     let value = match value {
         Value::String(s) => serde_json::from_str(&s).map_err(|e| {
-            BridgeError::InvalidJson(format!("nested string parse: {e}; inner={}", truncate(&s, 200)))
+            BridgeError::InvalidJson(format!(
+                "nested string parse: {e}; inner={}",
+                truncate(&s, 200)
+            ))
         })?,
         other => other,
     };
@@ -265,9 +267,7 @@ async fn eval_with_result_inner<R: Runtime>(
             }));
 
             // Param<PCWSTR> accepts PCWSTR by value
-            if let Err(e) = unsafe {
-                webview2.ExecuteScript(*js.as_ref().as_pcwstr(), &handler)
-            } {
+            if let Err(e) = unsafe { webview2.ExecuteScript(*js.as_ref().as_pcwstr(), &handler) } {
                 send_outer(Err(format!("ExecuteScript call failed: {e}")));
             }
         })
@@ -378,8 +378,7 @@ impl<R: Runtime> BridgeClient<R> {
     }
 
     pub async fn snapshot_opts(&self, opts: Value) -> BridgeResult<Value> {
-        let args =
-            serde_json::to_string(&opts).map_err(|e| BridgeError::Other(e.to_string()))?;
+        let args = serde_json::to_string(&opts).map_err(|e| BridgeError::Other(e.to_string()))?;
         self.call("snapshot", &args, DEFAULT_SNAPSHOT_TIMEOUT).await
     }
 
@@ -421,8 +420,7 @@ impl<R: Runtime> BridgeClient<R> {
     }
 
     pub async fn scroll(&self, opts: Value) -> BridgeResult<Value> {
-        let args =
-            serde_json::to_string(&opts).map_err(|e| BridgeError::Other(e.to_string()))?;
+        let args = serde_json::to_string(&opts).map_err(|e| BridgeError::Other(e.to_string()))?;
         self.call("scroll", &args, DEFAULT_ACTION_TIMEOUT).await
     }
 
@@ -519,7 +517,11 @@ mod tests {
         }"#;
         let env = parse_bridge_json(raw).expect("parse");
         match env.into_result() {
-            Err(BridgeError::Bridge { code, message, details }) => {
+            Err(BridgeError::Bridge {
+                code,
+                message,
+                details,
+            }) => {
                 assert_eq!(code, "BLOCKED");
                 assert!(message.contains("password"));
                 assert_eq!(details.unwrap()["reason"], "password_field");
@@ -550,7 +552,9 @@ mod tests {
     #[test]
     fn unsupported_message_mentions_platforms() {
         let msg = BridgeError::Unsupported("macOS WKWebView / Linux WebKitGTK".into()).to_string();
-        assert!(msg.contains("Unsupported") || msg.contains("unsupported") || msg.contains("macOS"));
+        assert!(
+            msg.contains("Unsupported") || msg.contains("unsupported") || msg.contains("macOS")
+        );
     }
 
     #[cfg(not(windows))]

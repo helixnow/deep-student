@@ -183,14 +183,16 @@ describe('useBrowserSessionStore', () => {
     expect(useBrowserSessionStore.getState().loading).toBe(false);
   });
 
-  it('takeOver still switches to user when command is missing', async () => {
+  it('takeOver switches to user and propagates command-missing failure', async () => {
     useBrowserSessionStore.setState({
       ...INITIAL_BROWSER_SESSION_STATE,
       controlMode: 'agent',
     });
     invokeMock.mockRejectedValueOnce(new Error('Command browser_take_over not found'));
 
-    await useBrowserSessionStore.getState().takeOver();
+    await expect(useBrowserSessionStore.getState().takeOver()).rejects.toMatchObject({
+      code: 'BROWSER_COMMAND_MISSING',
+    });
 
     const state = useBrowserSessionStore.getState();
     expect(state.controlMode).toBe('user');
@@ -242,6 +244,7 @@ describe('useBrowserSessionStore', () => {
     expect(invokeMock).toHaveBeenCalledWith('browser_navigate', {
       sessionId: 's1',
       url: 'https://b.test',
+      fromAgent: false,
     });
     const state = useBrowserSessionStore.getState();
     expect(state.currentUrl).toBe('https://b.test');
@@ -273,6 +276,7 @@ describe('useBrowserSessionStore', () => {
 
     expect(invokeMock).toHaveBeenCalledWith('browser_open_session', {
       url: 'https://baidu.com',
+      fromAgent: false,
     });
     expect(useBrowserSessionStore.getState().sessionId).toBe('bs_new');
     expect(useBrowserSessionStore.getState().currentUrl).toBe('https://baidu.com');

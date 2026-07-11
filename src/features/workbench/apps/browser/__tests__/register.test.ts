@@ -45,29 +45,49 @@ describe('registerBrowserApp', () => {
   });
 
   it('onActivation 分发 navigate / takeOver / showContent', async () => {
-    handleBrowserActivation({
+    await handleBrowserActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'navigate',
       payload: { url: 'https://example.com' },
     });
-    handleBrowserActivation({
+    await handleBrowserActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'takeOver',
     });
-    handleBrowserActivation({
+    await handleBrowserActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'showContent',
     });
 
-    await vi.waitFor(() => {
-      expect(mockState.navigate).toHaveBeenCalledWith('https://example.com', {
-        forceUserControl: false,
-      });
-      expect(mockState.takeOver).toHaveBeenCalledTimes(1);
-      expect(mockState.showContent).toHaveBeenCalledTimes(1);
+    expect(mockState.navigate).toHaveBeenCalledWith('https://example.com', {
+      forceUserControl: false,
+      fromAgent: true,
+    });
+    expect(mockState.takeOver).toHaveBeenCalledTimes(1);
+    expect(mockState.showContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('onActivation await 后端真实结果并返回失败回执', async () => {
+    let rejectNavigate!: (reason: unknown) => void;
+    mockState.navigate.mockImplementationOnce(
+      () => new Promise<void>((_resolve, reject) => {
+        rejectNavigate = reject;
+      }),
+    );
+    const pending = handleBrowserActivation({
+      windowId: 'w1',
+      instanceKey: null,
+      action: 'navigate',
+      payload: { url: 'https://example.com' },
+    });
+    rejectNavigate(new Error('NAVIGATION_BLOCKED: private network'));
+    await expect(pending).resolves.toMatchObject({
+      handled: false,
+      code: 'BROWSER_ACTION_FAILED',
+      message: 'NAVIGATION_BLOCKED: private network',
     });
   });
 
@@ -76,5 +96,11 @@ describe('registerBrowserApp', () => {
     const ok = await def!.canClose!(null);
     expect(ok).toBe(true);
     expect(mockState.closeSession).toHaveBeenCalled();
+  });
+
+  it('closeSession 失败时阻止关闭 chrome，避免遗留 native window', async () => {
+    mockState.closeSession.mockRejectedValueOnce(new Error('close failed'));
+    const def = appRegistry.get(BROWSER_APP_TYPE_ID);
+    await expect(def!.canClose!(null)).resolves.toBe(false);
   });
 });

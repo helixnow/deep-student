@@ -40,4 +40,16 @@ describe('browser_bridge.js source contracts', () => {
     assert.match(src, /ok:\s*false/);
     assert.match(src, /error:\s*\{\s*code:/);
   });
+
+  it('activates click targets exactly once', () => {
+    const pointerClick = src.match(/function pointerClick\([\s\S]*?\n  }\n\n  function click/)?.[0];
+    assert.ok(pointerClick, 'pointerClick source should be present');
+    assert.doesNotMatch(
+      pointerClick,
+      /dispatchEvent\(new MouseEvent\(['"]click['"], opts\)\);[\s\S]*?\.click\(\)/,
+      'must not dispatch click and then call HTMLElement.click on the same path',
+    );
+    assert.match(pointerClick, /if \(typeof[\s\S]*?\.click === ['"]function['"]\)/);
+    assert.match(pointerClick, /else \{\s*el\.dispatchEvent\(new MouseEvent\(['"]click['"], opts\)\)/);
+  });
 });

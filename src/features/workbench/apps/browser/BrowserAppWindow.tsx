@@ -198,13 +198,17 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
 
   const handleNavigate = useCallback(
     (url: string) => {
-      void session.navigate(url);
+      void session.navigate(url).catch(() => {
+        // Store 已记录 lastError；用户路径无需制造 unhandled rejection。
+      });
     },
     [session],
   );
 
   const handleTakeOver = useCallback(() => {
-    void session.takeOver();
+    void session.takeOver().catch(() => {
+      // Store 已记录 lastError。
+    });
   }, [session]);
 
   const handleShowContent = useCallback(() => {
@@ -223,9 +227,9 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
           canGoBack={session.canGoBack}
           canGoForward={session.canGoForward}
           loading={session.loading}
-          onBack={() => void session.back()}
-          onForward={() => void session.forward()}
-          onReload={() => void session.reload()}
+          onBack={() => void session.back().catch(() => {})}
+          onForward={() => void session.forward().catch(() => {})}
+          onReload={() => void session.reload().catch(() => {})}
         />
         <AddressBar
           draft={session.addressDraft}

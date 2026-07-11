@@ -75,13 +75,12 @@ pub use service::{
     SETTING_BROWSER_NETWORK_MODE, SETTING_WORKBENCH_MODE,
 };
 pub use session::{
-    BrowserSession, BrowserSessionState, ControlMode, HistoryEntry, OpenSessionOptions,
-    MAX_HISTORY,
+    BrowserSession, BrowserSessionState, ControlMode, HistoryEntry, OpenSessionOptions, MAX_HISTORY,
 };
 pub use types::*;
 pub use window::{
     boot_cleanup_orphan_windows, bridge_init_script, default_profile_dir,
-    BROWSER_CONTENT_LABEL, BRIDGE_INIT_SCRIPT_PLACEHOLDER, DEFAULT_PROFILE_ID,
+    BRIDGE_INIT_SCRIPT_PLACEHOLDER, BROWSER_CONTENT_LABEL, DEFAULT_PROFILE_ID,
 };
 
 /// 供后续 Service / commands 接线的最小出口：确保 `browser.db` 已打开并完成迁移。

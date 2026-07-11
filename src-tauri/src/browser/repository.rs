@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::database::BrowserDatabase;
 use super::error::{BrowserError, BrowserResult};
+use super::session::MAX_HISTORY;
 use super::types::{
     BrowserHistoryPush, BrowserHistoryRow, BrowserSessionRow, BrowserSessionUpsert,
     BrowserSettingRow, SitePermissionRow, SitePermissionUpsert,
@@ -46,10 +47,7 @@ impl BrowserRepository {
         }
 
         if let Some(prev) = existing {
-            let profile_id = upsert
-                .profile_id
-                .clone()
-                .unwrap_or(prev.profile_id);
+            let profile_id = upsert.profile_id.clone().unwrap_or(prev.profile_id);
             let title = upsert.title.clone().or(prev.title);
             let current_url = upsert.current_url.clone().or(prev.current_url);
             let favicon_url = upsert.favicon_url.clone().or(prev.favicon_url);
@@ -58,10 +56,7 @@ impl BrowserRepository {
                 .clone()
                 .or(prev.user_agent_override);
             let history_index = upsert.history_index.unwrap_or(prev.history_index);
-            let last_focused_at = upsert
-                .last_focused_at
-                .clone()
-                .or(prev.last_focused_at);
+            let last_focused_at = upsert.last_focused_at.clone().or(prev.last_focused_at);
             let is_active = if make_active { 1 } else { 0 };
 
             conn.execute(
@@ -175,16 +170,17 @@ impl BrowserRepository {
         entry: &BrowserHistoryPush,
     ) -> BrowserResult<BrowserHistoryRow> {
         if entry.url.trim().is_empty() {
-            return Err(BrowserError::Validation("history url must not be empty".into()));
+            return Err(BrowserError::Validation(
+                "history url must not be empty".into(),
+            ));
         }
 
         let mut conn = db.get_conn()?;
         let tx = conn.transaction()?;
         let now = Utc::now().to_rfc3339();
 
-        let session = Self::get_session_by_id(&tx, session_id)?.ok_or_else(|| {
-            BrowserError::NotFound(format!("session {session_id}"))
-        })?;
+        let session = Self::get_session_by_id(&tx, session_id)?
+            .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
 
         let current_index = session.history_index;
         if current_index >= 0 {
@@ -217,6 +213,29 @@ impl BrowserRepository {
             ],
         )?;
 
+        // Keep persisted seq values aligned with BrowserSession's bounded,
+        // zero-based in-memory stack. Without rebasing, the 51st navigation
+        // leaves SQLite at seq=50 while the runtime index has wrapped to 49.
+        let max_history = MAX_HISTORY as i64;
+        let overflow = (next_seq - max_history + 1).max(0);
+        let persisted_seq = next_seq - overflow;
+        if overflow > 0 {
+            tx.execute(
+                "DELETE FROM history WHERE session_id = ?1 AND seq < ?2",
+                params![session_id, overflow],
+            )?;
+            // Rebase in two phases so the UNIQUE(session_id, seq) index never
+            // sees transient collisions while positive seq values move down.
+            tx.execute(
+                "UPDATE history SET seq = -seq - 1 WHERE session_id = ?1 AND seq IS NOT NULL",
+                params![session_id],
+            )?;
+            tx.execute(
+                "UPDATE history SET seq = (-seq - 1) - ?2 WHERE session_id = ?1 AND seq IS NOT NULL",
+                params![session_id, overflow],
+            )?;
+        }
+
         tx.execute(
             r#"
             UPDATE sessions
@@ -224,7 +243,7 @@ impl BrowserRepository {
                 updated_at = ?5, closed_at = NULL
             WHERE id = ?1
             "#,
-            params![session_id, next_seq, entry.url, entry.title, now],
+            params![session_id, persisted_seq, entry.url, entry.title, now],
         )?;
 
         tx.commit()?;
@@ -282,6 +301,64 @@ impl BrowserRepository {
 
         tx.commit()?;
         Ok(n)
+    }
+
+    /// Replace URL/title on the current stack entry and mirror the same values
+    /// to the session row in one transaction. Used for replace navigation,
+    /// redirects, and document-title changes, none of which should push a row.
+    pub fn update_current_history(
+        db: &BrowserDatabase,
+        session_id: &str,
+        history_index: i64,
+        url: Option<&str>,
+        title: Option<&str>,
+    ) -> BrowserResult<()> {
+        if history_index < 0 {
+            return Err(BrowserError::Validation(
+                "history index must not be negative".into(),
+            ));
+        }
+        if url.is_none() && title.is_none() {
+            return Ok(());
+        }
+
+        let mut conn = db.get_conn()?;
+        let tx = conn.transaction()?;
+        let now = Utc::now().to_rfc3339();
+        let updated = tx.execute(
+            r#"
+            UPDATE history SET
+                url = COALESCE(?3, url),
+                title = COALESCE(?4, title),
+                last_visit_at = CASE WHEN ?3 IS NULL THEN last_visit_at ELSE ?5 END
+            WHERE session_id = ?1 AND seq = ?2
+            "#,
+            params![session_id, history_index, url, title, now],
+        )?;
+        if updated == 0 {
+            return Err(BrowserError::NotFound(format!(
+                "history entry {session_id}:{history_index}"
+            )));
+        }
+
+        let updated_session = tx.execute(
+            r#"
+            UPDATE sessions SET
+                current_url = COALESCE(?3, current_url),
+                title = COALESCE(?4, title),
+                history_index = ?2,
+                updated_at = ?5,
+                closed_at = NULL
+            WHERE id = ?1
+            "#,
+            params![session_id, history_index, url, title, now],
+        )?;
+        if updated_session == 0 {
+            return Err(BrowserError::NotFound(format!("session {session_id}")));
+        }
+
+        tx.commit()?;
+        Ok(())
     }
 
     /// 按 session 列出历史（`seq` 升序；无 session 过滤时按 `last_visit_at` 降序）
@@ -353,7 +430,9 @@ impl BrowserRepository {
 
     pub fn set_setting(db: &BrowserDatabase, key: &str, value: &str) -> BrowserResult<()> {
         if key.trim().is_empty() {
-            return Err(BrowserError::Validation("setting key must not be empty".into()));
+            return Err(BrowserError::Validation(
+                "setting key must not be empty".into(),
+            ));
         }
         let conn = db.get_conn()?;
         let now = Utc::now().to_rfc3339();
@@ -402,14 +481,7 @@ impl BrowserRepository {
                     expires_at = ?5, updated_at = ?6
                 WHERE id = ?1
                 "#,
-                params![
-                    id,
-                    upsert.decision,
-                    scope,
-                    source,
-                    upsert.expires_at,
-                    now,
-                ],
+                params![id, upsert.decision, scope, source, upsert.expires_at, now,],
             )?;
             id
         } else {
@@ -463,10 +535,7 @@ impl BrowserRepository {
     // mappers / helpers
     // ------------------------------------------------------------------
 
-    fn get_session_by_id(
-        conn: &Connection,
-        id: &str,
-    ) -> BrowserResult<Option<BrowserSessionRow>> {
+    fn get_session_by_id(conn: &Connection, id: &str) -> BrowserResult<Option<BrowserSessionRow>> {
         conn.query_row(
             r#"
             SELECT id, profile_id, title, current_url, favicon_url,
@@ -481,10 +550,7 @@ impl BrowserRepository {
         .map_err(BrowserError::from)
     }
 
-    fn get_history_by_id(
-        conn: &Connection,
-        id: &str,
-    ) -> BrowserResult<Option<BrowserHistoryRow>> {
+    fn get_history_by_id(conn: &Connection, id: &str) -> BrowserResult<Option<BrowserHistoryRow>> {
         conn.query_row(
             r#"
             SELECT id, session_id, url, title, seq, visit_count, typed_count,
@@ -745,6 +811,156 @@ mod tests {
     }
 
     #[test]
+    fn push_history_rebases_at_runtime_history_limit() {
+        let (_t, db) = setup();
+        BrowserRepository::upsert_session(
+            &db,
+            &BrowserSessionUpsert {
+                id: "sess_bounded".into(),
+                history_index: Some(-1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let total = MAX_HISTORY + 5;
+        let mut last = None;
+        for index in 0..total {
+            last = Some(
+                BrowserRepository::push_history(
+                    &db,
+                    "sess_bounded",
+                    &BrowserHistoryPush {
+                        url: format!("https://example.com/{index}"),
+                        title: None,
+                        transition: Some("link".into()),
+                        typed: false,
+                    },
+                )
+                .unwrap(),
+            );
+        }
+
+        let history = BrowserRepository::list_history(&db, Some("sess_bounded"), None).unwrap();
+        assert_eq!(history.len(), MAX_HISTORY);
+        assert_eq!(history[0].url, "https://example.com/5");
+        assert_eq!(history.last().unwrap().url, "https://example.com/54");
+        for (index, row) in history.iter().enumerate() {
+            assert_eq!(row.seq, Some(index as i64));
+        }
+
+        let session = BrowserRepository::get_active(&db).unwrap().unwrap();
+        assert_eq!(session.history_index, (MAX_HISTORY - 1) as i64);
+        assert_eq!(
+            session.current_url.as_deref(),
+            Some("https://example.com/54")
+        );
+        assert_eq!(last.unwrap().seq, Some((MAX_HISTORY - 1) as i64));
+    }
+
+    #[test]
+    fn navigation_and_current_entry_updates_survive_database_reopen() {
+        let (temp, db) = setup();
+        BrowserRepository::upsert_session(
+            &db,
+            &BrowserSessionUpsert {
+                id: "sess_reopen".into(),
+                history_index: Some(-1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for (url, title) in [
+            ("https://a.example", "A"),
+            ("https://b.example", "B"),
+            ("https://c.example", "C"),
+        ] {
+            BrowserRepository::push_history(
+                &db,
+                "sess_reopen",
+                &BrowserHistoryPush {
+                    url: url.into(),
+                    title: Some(title.into()),
+                    transition: Some("link".into()),
+                    typed: false,
+                },
+            )
+            .unwrap();
+        }
+
+        // Persist a back navigation, then reopen the database as a process
+        // restart would and verify the selected stack entry remains authoritative.
+        BrowserRepository::upsert_session(
+            &db,
+            &BrowserSessionUpsert {
+                id: "sess_reopen".into(),
+                current_url: Some("https://b.example".into()),
+                title: Some("B".into()),
+                history_index: Some(1),
+                is_active: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        db.close().unwrap();
+
+        let reopened = BrowserDatabase::new(temp.path());
+        let after_back = BrowserRepository::get_active(&reopened).unwrap().unwrap();
+        assert_eq!(after_back.history_index, 1);
+        assert_eq!(after_back.current_url.as_deref(), Some("https://b.example"));
+
+        // Forward, then replace/redirect the current URL and update its title.
+        BrowserRepository::upsert_session(
+            &reopened,
+            &BrowserSessionUpsert {
+                id: "sess_reopen".into(),
+                current_url: Some("https://c.example".into()),
+                title: Some("C".into()),
+                history_index: Some(2),
+                is_active: Some(true),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        BrowserRepository::update_current_history(
+            &reopened,
+            "sess_reopen",
+            2,
+            Some("https://c.example/final"),
+            None,
+        )
+        .unwrap();
+        BrowserRepository::update_current_history(
+            &reopened,
+            "sess_reopen",
+            2,
+            None,
+            Some("Final C"),
+        )
+        .unwrap();
+        reopened.close().unwrap();
+
+        let reopened_again = BrowserDatabase::new(temp.path());
+        let session = BrowserRepository::get_active(&reopened_again)
+            .unwrap()
+            .unwrap();
+        assert_eq!(session.history_index, 2);
+        assert_eq!(
+            session.current_url.as_deref(),
+            Some("https://c.example/final")
+        );
+        assert_eq!(session.title.as_deref(), Some("Final C"));
+
+        let history =
+            BrowserRepository::list_history(&reopened_again, Some("sess_reopen"), None).unwrap();
+        assert_eq!(history.len(), 3, "replace/redirect must not push history");
+        assert_eq!(history[1].url, "https://b.example");
+        assert_eq!(history[1].title.as_deref(), Some("B"));
+        assert_eq!(history[2].url, "https://c.example/final");
+        assert_eq!(history[2].title.as_deref(), Some("Final C"));
+    }
+
+    #[test]
     fn settings_get_set() {
         let (_t, db) = setup();
         assert!(BrowserRepository::get_setting(&db, "homepage")
@@ -779,13 +995,9 @@ mod tests {
         .unwrap();
         assert_eq!(row.decision, "allow");
 
-        let got = BrowserRepository::get_site_permission(
-            &db,
-            "https://example.com",
-            "navigate",
-        )
-        .unwrap()
-        .unwrap();
+        let got = BrowserRepository::get_site_permission(&db, "https://example.com", "navigate")
+            .unwrap()
+            .unwrap();
         assert_eq!(got.id, row.id);
 
         let updated = BrowserRepository::upsert_site_permission(

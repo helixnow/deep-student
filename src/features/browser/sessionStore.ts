@@ -33,7 +33,10 @@ export interface BrowserSessionStore extends BrowserSessionState {
    * @param opts.forceUserControl 默认 true（地址栏/用户手势）；
    *   agent app_command 应传 false，避免误打 user_takeover 闩锁（R2-10）
    */
-  navigate: (url: string, opts?: { forceUserControl?: boolean }) => Promise<void>;
+  navigate: (
+    url: string,
+    opts?: { forceUserControl?: boolean; fromAgent?: boolean },
+  ) => Promise<void>;
   back: () => Promise<void>;
   forward: () => Promise<void>;
   reload: () => Promise<void>;
@@ -50,6 +53,40 @@ export interface BrowserSessionStore extends BrowserSessionState {
 
 const EMPTY_HISTORY: BrowserHistoryEntry[] = [];
 
+interface PendingNavigation {
+  key: string;
+  promise: Promise<void>;
+}
+
+let pendingNavigation: PendingNavigation | null = null;
+let snapshotGeneration = 0;
+const CLOSED_SESSION_LIMIT = 512;
+const closedSessionIds = new Set<string>();
+const closedSessionOrder: string[] = [];
+
+export function markBrowserSessionClosed(sessionId: string): void {
+  if (!sessionId || closedSessionIds.has(sessionId)) return;
+  closedSessionIds.add(sessionId);
+  closedSessionOrder.push(sessionId);
+  while (closedSessionOrder.length > CLOSED_SESSION_LIMIT) {
+    const expired = closedSessionOrder.shift();
+    if (expired) closedSessionIds.delete(expired);
+  }
+}
+
+export function isBrowserSessionClosed(sessionId: string | null | undefined): boolean {
+  return !!sessionId && closedSessionIds.has(sessionId);
+}
+
+export function hasPendingBrowserNavigation(): boolean {
+  return pendingNavigation !== null;
+}
+
+export function __resetClosedBrowserSessionsForTest(): void {
+  closedSessionIds.clear();
+  closedSessionOrder.length = 0;
+}
+
 export const INITIAL_BROWSER_SESSION_STATE: BrowserSessionState = {
   sessionId: null,
   currentUrl: '',
@@ -60,6 +97,7 @@ export const INITIAL_BROWSER_SESSION_STATE: BrowserSessionState = {
   loading: false,
   history: EMPTY_HISTORY,
   historyIndex: -1,
+  agentAutomationSupported: false,
   error: null,
   contentVisible: false,
   addressDraft: '',
@@ -86,6 +124,7 @@ function applySnapshot(
     // 历史镜像：整表替换，不在前端 push/pop
     history: snapshot.history,
     historyIndex: snapshot.historyIndex,
+    agentAutomationSupported: snapshot.agentAutomationSupported,
     error: snapshot.error,
     addressDraft: snapshot.currentUrl || '',
     lastError: snapshot.error,
@@ -105,8 +144,11 @@ async function runNav(
   get: () => BrowserSessionStore,
   action: () => Promise<BrowserSessionSnapshot>,
   opts?: { forceUserControl?: boolean },
-): Promise<void> {
-  if (get().loading) return;
+): Promise<boolean> {
+  if (get().loading) {
+    throw new BrowserApiError('browser_navigate', '浏览器正在处理上一项操作', 'BROWSER_BUSY');
+  }
+  const generation = ++snapshotGeneration;
   set({ loading: true, lastError: null, error: null });
   try {
     // ACR R1-05：用户导航硬打断 agent — 同步权威侧 take_over（打 user_takeover_at）
@@ -118,20 +160,30 @@ async function runNav(
       }
     }
     const snapshot = await action();
+    if (generation !== snapshotGeneration) return false;
+    if (isBrowserSessionClosed(snapshot.sessionId)) {
+      snapshotGeneration += 1;
+      set({ ...INITIAL_BROWSER_SESSION_STATE });
+      return false;
+    }
     set(
       applySnapshot(snapshot, {
         loading: false,
         ...(opts?.forceUserControl ? { controlMode: 'user' as const } : {}),
       }),
     );
+    return true;
   } catch (err) {
-    const message = errorMessage(err);
-    set({
-      loading: false,
-      lastError: message,
-      error: message,
-      ...(opts?.forceUserControl ? { controlMode: 'user' as const } : {}),
-    });
+    if (generation === snapshotGeneration) {
+      const message = errorMessage(err);
+      set({
+        loading: false,
+        lastError: message,
+        error: message,
+        ...(opts?.forceUserControl ? { controlMode: 'user' as const } : {}),
+      });
+    }
+    throw err;
   }
 }
 
@@ -139,16 +191,29 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
   ...INITIAL_BROWSER_SESSION_STATE,
 
   hydrateFromRust: async (snapshot) => {
+    const generation = ++snapshotGeneration;
     if (snapshot !== undefined && snapshot !== null) {
       const parsed = browserApi.parseBrowserSessionSnapshot(snapshot);
+      if (isBrowserSessionClosed(parsed.sessionId)) {
+        set({ ...INITIAL_BROWSER_SESSION_STATE });
+        return;
+      }
       set(applySnapshot(parsed, { loading: false }));
       return;
     }
-    set({ loading: true, lastError: null });
+    // Hydration must not claim the navigation busy flag: a freshly mounted
+    // fallbackLaunch can otherwise race its own app_command and fail as busy.
+    set({ lastError: null });
     try {
       const state = await browserApi.getState();
+      if (generation !== snapshotGeneration) return;
+      if (isBrowserSessionClosed(state.sessionId)) {
+        set({ ...INITIAL_BROWSER_SESSION_STATE });
+        return;
+      }
       set(applySnapshot(state, { loading: false }));
     } catch (err) {
+      if (generation !== snapshotGeneration) return;
       const message = errorMessage(err);
       // 无 session / 命令未就绪：保持空镜像，记录友好错误
       set({
@@ -163,34 +228,59 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
   applyLaunchPayload: (payload) => {
     const parsed = parseLaunchPayload(payload);
     if (!parsed) return;
-    if (parsed.takeOver) {
-      void get().takeOver();
-    }
-    if (typeof parsed.url === 'string' && parsed.url.length > 0) {
-      void get().navigate(parsed.url);
-    }
-    if (parsed.showContent) {
-      void get().showContent();
-    }
+    void (async () => {
+      if (parsed.takeOver) {
+        await get().takeOver();
+      }
+      if (typeof parsed.url === 'string' && parsed.url.length > 0) {
+        // Workbench 带 URL 的 launch 主要来自 Agent open_app/fallbackLaunch。
+        // 来源缺失时 fail-safe 按 Agent 导航，避免私网策略被静默绕过。
+        const fromAgent = parsed.fromAgent ?? !parsed.takeOver;
+        await get().navigate(parsed.url, {
+          forceUserControl: !fromAgent,
+          fromAgent,
+        });
+      }
+      if (parsed.showContent) {
+        await get().showContent();
+      }
+    })().catch((err) => {
+      console.warn('[BrowserSession] launch payload failed:', err);
+    });
     if (parsed.focusAddress) {
       set({ addressDraft: get().currentUrl || parsed.url || get().addressDraft });
     }
   },
 
   openSession: async (url) => {
-    await runNav(set, get, () => browserApi.openSession(url));
+    const applied = await runNav(set, get, () =>
+      browserApi.openSession(url, { fromAgent: false }),
+    );
+    if (!applied) return;
     const ok = await ensureBrowserContentWindow();
     if (ok) set({ contentVisible: true });
   },
 
   closeSession: async () => {
+    const inFlightNavigation = pendingNavigation?.promise;
+    if (inFlightNavigation) {
+      try {
+        await inFlightNavigation;
+      } catch {
+        // Failed navigation may still have created a native window; cleanup continues.
+      }
+    }
+    snapshotGeneration += 1;
+    pendingNavigation = null;
     set({ loading: true, lastError: null });
+    let closeError: unknown = null;
     try {
       await browserApi.closeSession(get().sessionId);
     } catch (err) {
-      // 命令缺失时仍清本地镜像，避免孤儿 chrome 态
+      // 仍尝试直接关闭 native content window，但保留失败供 canClose 决策。
       const message = errorMessage(err);
       set({ lastError: message, error: message });
+      closeError = err;
     }
     try {
       await closeBrowserContentWindow();
@@ -203,26 +293,49 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
       lastError: get().lastError,
       error: get().error,
     });
+    if (closeError) throw closeError;
   },
 
   navigate: async (url, opts) => {
     const trimmed = url.trim();
     if (!trimmed) return;
     const forceUserControl = opts?.forceUserControl !== false;
-    const sessionId = get().sessionId;
-    // 无 session 时先 open（建库 + content 窗）；已有则 navigate
-    if (!sessionId) {
-      await runNav(set, get, () => browserApi.openSession(trimmed), {
-        forceUserControl,
-      });
-      const ok = await ensureBrowserContentWindow();
-      if (ok) set({ contentVisible: true });
-      return;
+    const fromAgent = opts?.fromAgent ?? false;
+    const key = `${forceUserControl ? 'user' : 'agent'}:${fromAgent}:${browserApi.normalizeNavigationInput(trimmed)}`;
+    if (pendingNavigation) {
+      if (pendingNavigation.key === key) return pendingNavigation.promise;
+      throw new BrowserApiError('browser_navigate', '浏览器正在处理上一项操作', 'BROWSER_BUSY');
     }
-    // 用户导航硬打断 agent（design §2 UX）；agent app_command 传 forceUserControl:false
-    await runNav(set, get, () => browserApi.navigate(trimmed, sessionId), {
-      forceUserControl,
-    });
+
+    const promise = (async () => {
+      const sessionId = get().sessionId;
+      // 无 session 时先 open（建库 + content 窗）；已有则 navigate
+      if (!sessionId) {
+        const applied = await runNav(
+          set,
+          get,
+          () => browserApi.openSession(trimmed, { fromAgent }),
+          { forceUserControl },
+        );
+        if (!applied) return;
+        const ok = await ensureBrowserContentWindow();
+        if (ok) set({ contentVisible: true });
+        return;
+      }
+      // 用户导航硬打断 agent（design §2 UX）；agent app_command 传 forceUserControl:false
+      await runNav(
+        set,
+        get,
+        () => browserApi.navigate(trimmed, sessionId, { fromAgent }),
+        { forceUserControl },
+      );
+    })();
+    pendingNavigation = { key, promise };
+    try {
+      await promise;
+    } finally {
+      if (pendingNavigation?.promise === promise) pendingNavigation = null;
+    }
   },
 
   back: async () => {
@@ -244,13 +357,20 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
   reload: async () => {
     const sessionId = get().sessionId;
     if (!sessionId) return;
-    await runNav(set, get, () => browserApi.reload(sessionId));
+    await runNav(set, get, () => browserApi.reload(sessionId), { forceUserControl: true });
   },
 
   takeOver: async () => {
+    const generation = ++snapshotGeneration;
     set({ loading: true, lastError: null, error: null });
     try {
       const snapshot = await browserApi.takeOver();
+      if (generation !== snapshotGeneration) return;
+      if (isBrowserSessionClosed(snapshot.sessionId)) {
+        snapshotGeneration += 1;
+        set({ ...INITIAL_BROWSER_SESSION_STATE });
+        return;
+      }
       // 权威回执优先；本地强制 user 仅作兜底（与 Rust take_over 一致）
       set(
         applySnapshot(snapshot, {
@@ -259,6 +379,7 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
         }),
       );
     } catch (err) {
+      if (generation !== snapshotGeneration) throw err;
       // 命令未就绪时仍本地切到 user，保证 UX「接管」可点
       const message = errorMessage(err);
       set({
@@ -267,6 +388,7 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
         lastError: message,
         error: message,
       });
+      throw err;
     }
   },
 
@@ -306,7 +428,11 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
 
   clearError: () => set({ lastError: null, error: null }),
 
-  reset: () => set({ ...INITIAL_BROWSER_SESSION_STATE }),
+  reset: () => {
+    snapshotGeneration += 1;
+    pendingNavigation = null;
+    set({ ...INITIAL_BROWSER_SESSION_STATE });
+  },
 }));
 
 /** 非 hook 访问（register / canClose） */
