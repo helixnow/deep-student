@@ -16,7 +16,18 @@ import type { AppWindowProps } from '@/features/workbench/core/types';
 
 // ---- mocks（legacy 重页面全部换成轻量桩，只测适配层行为） ----
 
-const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn(async () => [] as unknown) }));
+const { invokeMock } = vi.hoisted(() => {
+  const storage = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+    clear: () => storage.clear(),
+    key: (index: number) => Array.from(storage.keys())[index] ?? null,
+    get length() { return storage.size; },
+  });
+  return { invokeMock: vi.fn(async () => [] as unknown) };
+});
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: async () => () => {} }));
@@ -60,16 +71,38 @@ vi.mock('@/features/pomodoro', () => ({
 }));
 
 vi.mock('@/features/sandbox/components/SandboxWorkbenchSurface', () => {
-  const Surface = ({ className }: { className?: string }) => (
-    <div data-testid="mock-sandbox-surface" className={className} />
+  const Surface = ({ className, ownerKey }: { className?: string; ownerKey?: string }) => (
+    <div
+      data-testid="mock-sandbox-surface"
+      data-owner-key={ownerKey}
+      className={className}
+    />
   );
   return { default: Surface, SandboxWorkbenchSurface: Surface };
 });
 
-vi.mock('@/features/sandbox/store/useSandboxWorkbenchStore', () => ({
-  useSandboxWorkbenchStore: (selector: (s: { activeSession: { title: string } | null }) => unknown) =>
-    selector({ activeSession: null }),
-}));
+vi.mock('@/features/sandbox/store/useSandboxWorkbenchStore', () => {
+  const legacyOwnerKey = 'sandbox:legacy';
+  const emptyOwnerState = {
+    activeSession: null,
+    isOpen: false,
+    viewportPreset: 'desktop',
+    inspectorOpen: false,
+  };
+  const state = {
+    ...emptyOwnerState,
+    ownerStates: { [legacyOwnerKey]: emptyOwnerState },
+    activeOwnerKey: legacyOwnerKey,
+  };
+  return {
+    LEGACY_SANDBOX_OWNER_KEY: legacyOwnerKey,
+    selectSandboxWorkbenchOwnerState: (
+      store: typeof state,
+      ownerKey: string,
+    ) => store.ownerStates[ownerKey as keyof typeof store.ownerStates] ?? emptyOwnerState,
+    useSandboxWorkbenchStore: (selector: (store: typeof state) => unknown) => selector(state),
+  };
+});
 
 import {
   classifyWbSysWidth,
@@ -414,6 +447,10 @@ describe('O18 SandboxAppWindow 焦点守卫', () => {
     const { container, rerender } = render(<SandboxAppWindow {...props} />);
 
     expect(await screen.findByTestId('mock-sandbox-surface')).toBeInTheDocument();
+    expect(screen.getByTestId('mock-sandbox-surface')).toHaveAttribute(
+      'data-owner-key',
+      'sandbox:legacy',
+    );
     expect(container.querySelector('[data-wb-sandbox-focus-guard]')).not.toBeNull();
 
     rerender(<SandboxAppWindow {...makeProps({ isActive: true })} />);

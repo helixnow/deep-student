@@ -30,6 +30,7 @@ import {
 import {
   buildTileSettleKeyframes,
   computeTiledFrame,
+  getTilingRatioForWindow,
   zoneToDisplayMode,
 } from '../core/tiling';
 import { prefersReducedMotion } from '../core/pointerEngine';
@@ -315,17 +316,6 @@ export const useDefaultWindowPointer: WindowShellPointerHook = ({
 // WindowShell
 // ============================================================================
 
-function selectRatioForWindow(
-  ratios: Record<string, number>,
-  windowId: string,
-): number | undefined {
-  for (const key of Object.keys(ratios)) {
-    const [left, right] = key.split(':');
-    if (left === windowId || right === windowId) return ratios[key];
-  }
-  return undefined;
-}
-
 const FALLBACK_MIN_SIZE: Size = { w: 320, h: 240 };
 const DEFAULT_TILE_MARGIN = 8;
 
@@ -356,7 +346,9 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   const { t } = useTranslation('workbench');
   const win = useWindowStore((s) => s.windows[windowId]);
   const desktopSize = useWindowStore((s) => s.desktopSize);
-  const ratio = useWindowStore((s) => selectRatioForWindow(s.tilingRatios, windowId));
+  const ratio = useWindowStore((s) =>
+    getTilingRatioForWindow(s.windows, s.tilingRatios, windowId),
+  );
   const focused = useWindowStore(
     (s) => s.focusStack[s.focusStack.length - 1] === windowId,
   );
@@ -681,6 +673,13 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
    */
   useEffect(() => {
     let prevTop = useWindowStore.getState().focusStack.at(-1);
+    if (prevTop === windowId) {
+      queueMicrotask(() => {
+        const state = useWindowStore.getState();
+        if (state.focusStack.at(-1) !== windowId || state.windows[windowId]?.minimized) return;
+        bringDomFocusToShell();
+      });
+    }
     return useWindowStore.subscribe((state) => {
       const top = state.focusStack.at(-1);
       if (top === prevTop) return;
@@ -689,6 +688,8 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       if (gestureRef.current || pendingFocusRef.current) return;
       queueMicrotask(() => {
         if (gestureRef.current) return;
+        const latest = useWindowStore.getState();
+        if (latest.focusStack.at(-1) !== windowId || latest.windows[windowId]?.minimized) return;
         bringDomFocusToShell();
       });
     });
@@ -892,6 +893,17 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     });
   }, [windowId, bringDomFocusToShell]);
 
+  /** Tab / 程序化 focus 进入非顶层窗口时同步提升 store，但保留子控件焦点。 */
+  const handleFocusCapture = useCallback(() => {
+    if (gestureRef.current) return;
+    const store = useWindowStore.getState();
+    if (store.focusStack.at(-1) === windowId) return;
+    pendingFocusRef.current = false;
+    dragZRef.current = null;
+    store.focusWindow(windowId);
+    requestAnimationFrame(() => recomputeLifecycles());
+  }, [windowId]);
+
   const handleMovePointerDown = useCallback(
     (e: React.PointerEvent<HTMLElement>) => {
       // 适配器已在 pointerdown 抬升壳层；引擎过阈值后才 tear-out / commit
@@ -1075,6 +1087,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       data-agent-paused={presence?.status === 'pausedByUser' ? '' : undefined}
       {...a11y}
       onPointerDownCapture={focusSelf}
+      onFocusCapture={handleFocusCapture}
     >
       <WindowTitleBar
         windowId={windowId}

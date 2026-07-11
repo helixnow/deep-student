@@ -9,6 +9,7 @@ import {
   useDesktopDrop,
   setWorkbenchDragData,
   parseWorkbenchDragData,
+  resolveWorkbenchDesktopDropPoint,
   WB_RESOURCE_MIME,
   type WorkbenchDropPayload,
   type WorkbenchDropState,
@@ -36,7 +37,11 @@ function makeDataTransfer(init: FakeDataTransferInit = {}): DataTransfer {
   } as unknown as DataTransfer;
 }
 
-const resourceJson = JSON.stringify({ resourceId: 'note_1', resourceType: 'note' });
+const resourceJson = JSON.stringify({
+  resourceId: 'note_1',
+  resourceType: 'note',
+  title: '测试笔记',
+});
 
 /** jsdom 无 DragEvent 构造器，fireEvent.drop 会丢 clientX/Y；手工派发带坐标的 drop */
 function dispatchDrop(
@@ -44,10 +49,11 @@ function dispatchDrop(
   dataTransfer: DataTransfer,
   clientX: number,
   clientY: number,
-): void {
+): MouseEvent {
   const event = new MouseEvent('drop', { bubbles: true, cancelable: true, clientX, clientY });
   Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
   el.dispatchEvent(event);
+  return event;
 }
 
 describe('useDesktopDrop', () => {
@@ -144,7 +150,7 @@ describe('useDesktopDrop', () => {
     expect(drops).toHaveLength(1);
     expect(drops[0].payload).toEqual({
       kind: 'resource',
-      resource: { resourceId: 'note_1', resourceType: 'note' },
+      resource: { resourceId: 'note_1', resourceType: 'note', title: '测试笔记' },
     });
     expect(drops[0].x).toBe(120);
     expect(drops[0].y).toBe(80);
@@ -175,6 +181,58 @@ describe('useDesktopDrop', () => {
     const dataTransfer = makeDataTransfer({ data: { [WB_RESOURCE_MIME]: resourceJson } });
     fireEvent.drop(target, { dataTransfer, clientX: 0, clientY: 0 });
     expect(onDrop).not.toHaveBeenCalled();
+  });
+
+  it('桌面根节点仅接受空白落点，窗口与 Dock 子树不冒泡开窗', () => {
+    target.setAttribute('data-wb-desktop', '');
+    const windowSurface = document.createElement('div');
+    windowSurface.setAttribute('data-wb-window', '');
+    const dockSurface = document.createElement('div');
+    dockSurface.setAttribute('data-testid', 'wb-dock');
+    target.append(windowSurface, dockSurface);
+
+    const onDrop = vi.fn();
+    renderHook(() => useDesktopDrop({ target, onDrop }));
+
+    const dataTransfer = makeDataTransfer({ data: { [WB_RESOURCE_MIME]: resourceJson } });
+    const windowDrop = dispatchDrop(windowSurface, dataTransfer, 180, 120);
+    const dockDrop = dispatchDrop(dockSurface, dataTransfer, 200, 300);
+    expect(windowDrop.defaultPrevented).toBe(false);
+    expect(dockDrop.defaultPrevented).toBe(false);
+    expect(onDrop).not.toHaveBeenCalled();
+
+    const blankDrop = dispatchDrop(target, dataTransfer, 220, 130);
+    expect(blankDrop.defaultPrevented).toBe(true);
+    expect(onDrop).toHaveBeenCalledTimes(1);
+  });
+
+  it('同步 throw 与异步 reject 的 onDrop 都被收口，不产生未处理拒绝', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const dataTransfer = makeDataTransfer({ data: { [WB_RESOURCE_MIME]: resourceJson } });
+
+    const sync = renderHook(() =>
+      useDesktopDrop({
+        target,
+        onDrop: () => {
+          throw new Error('sync drop failure');
+        },
+      }),
+    );
+    dispatchDrop(target, dataTransfer, 10, 10);
+    sync.unmount();
+
+    const asyncDrop = renderHook(() =>
+      useDesktopDrop({
+        target,
+        onDrop: async () => {
+          throw new Error('async drop failure');
+        },
+      }),
+    );
+    dispatchDrop(target, dataTransfer, 10, 10);
+    await vi.waitFor(() => expect(errorSpy).toHaveBeenCalledTimes(2));
+    asyncDrop.unmount();
+    errorSpy.mockRestore();
   });
 
   it('window dragend 兜底复位残留高亮', () => {
@@ -228,5 +286,73 @@ describe('拖源辅助', () => {
         makeDataTransfer({ data: { [WB_RESOURCE_MIME]: '{"noId":true}' } }),
       ),
     ).toBeNull();
+  });
+
+  it('严格拒绝 MIME 缺失、空 id/type/title、数组和额外字段', () => {
+    const withoutMime = makeDataTransfer();
+    vi.spyOn(withoutMime, 'getData').mockReturnValue(resourceJson);
+    expect(parseWorkbenchDragData(withoutMime)).toBeNull();
+
+    for (const payload of [
+      { resourceId: '', resourceType: 'note', title: 'n' },
+      { resourceId: 'note_1', resourceType: ' ', title: 'n' },
+      { resourceId: 'note_1', resourceType: 'note', title: '' },
+      { resourceId: 'note_1', resourceType: 'note' },
+      [{ resourceId: 'note_1', resourceType: 'note', title: 'n' }],
+      { resourceId: 'note_1', resourceType: 'note', title: 'n', extra: true },
+    ]) {
+      expect(
+        parseWorkbenchDragData(
+          makeDataTransfer({ data: { [WB_RESOURCE_MIME]: JSON.stringify(payload) } }),
+        ),
+      ).toBeNull();
+    }
+
+    expect(() =>
+      setWorkbenchDragData(makeDataTransfer(), {
+        resourceId: ' ',
+        resourceType: 'note',
+        title: 'n',
+      }),
+    ).toThrow(TypeError);
+  });
+
+  it('pointer 桌面坐标只解析空白根节点并转换为 desktop-relative point', () => {
+    const desktop = document.createElement('div');
+    desktop.setAttribute('data-wb-desktop', '');
+    const win = document.createElement('div');
+    win.setAttribute('data-wb-window', '');
+    const dock = document.createElement('div');
+    dock.setAttribute('data-testid', 'wb-dock');
+    desktop.append(win, dock);
+    vi.spyOn(desktop, 'getBoundingClientRect').mockReturnValue({
+      left: 40,
+      top: 30,
+      right: 840,
+      bottom: 630,
+      width: 800,
+      height: 600,
+      x: 40,
+      y: 30,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    let hit: Element | null = desktop;
+    const doc = {
+      elementFromPoint: () => hit,
+    } as unknown as Document;
+    expect(resolveWorkbenchDesktopDropPoint(240, 180, doc)).toEqual({
+      x: 200,
+      y: 150,
+      clientX: 240,
+      clientY: 180,
+    });
+    hit = win;
+    expect(resolveWorkbenchDesktopDropPoint(240, 180, doc)).toBeNull();
+    hit = dock;
+    expect(resolveWorkbenchDesktopDropPoint(240, 180, doc)).toBeNull();
+    hit = null;
+    expect(resolveWorkbenchDesktopDropPoint(240, 180, doc)).toBeNull();
+    expect(resolveWorkbenchDesktopDropPoint(Number.NaN, 180, doc)).toBeNull();
   });
 });

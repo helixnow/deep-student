@@ -29,6 +29,8 @@
   gap: 4px;
   min-width: 176px;
   max-width: min(92vw, 520px);
+  max-height: calc(100vh - 32px);
+  overflow: hidden;
   padding: 8px;
   border-radius: 14px;
   border: 1px solid var(--wb-glass-border);
@@ -71,6 +73,10 @@
   flex-wrap: wrap;
   gap: 6px;
   justify-content: center;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  align-content: flex-start;
 }
 
 .wb-docklist-item {

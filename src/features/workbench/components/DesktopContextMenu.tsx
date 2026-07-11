@@ -185,6 +185,7 @@ export interface DesktopGestures {
   /** show desktop 往返：有可见窗 → 全部最小化；否则恢复上次批量最小化的窗口 */
   toggleShowDesktop: () => void;
   onDesktopContextMenu: React.MouseEventHandler<HTMLElement>;
+  onDesktopKeyDown: React.KeyboardEventHandler<HTMLElement>;
   onDesktopDoubleClick: React.MouseEventHandler<HTMLElement>;
 }
 
@@ -221,7 +222,29 @@ export function useDesktopGestures(
     [toggleShowDesktop],
   );
 
-  return { menuAnchor, closeMenu, toggleShowDesktop, onDesktopContextMenu, onDesktopDoubleClick };
+  const onDesktopKeyDown = useCallback<React.KeyboardEventHandler<HTMLElement>>(
+    (e) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key !== 'ContextMenu' && !(e.shiftKey && e.key === 'F10')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = rootRef.current?.getBoundingClientRect();
+      setMenuAnchor({
+        x: Math.min(32, Math.max(0, (rect?.width ?? 0) / 2)),
+        y: Math.min(32, Math.max(0, (rect?.height ?? 0) / 2)),
+      });
+    },
+    [rootRef],
+  );
+
+  return {
+    menuAnchor,
+    closeMenu,
+    toggleShowDesktop,
+    onDesktopContextMenu,
+    onDesktopKeyDown,
+    onDesktopDoubleClick,
+  };
 }
 
 // ---------------------------------------------------------------------------

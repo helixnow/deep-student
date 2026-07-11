@@ -9,7 +9,9 @@
  */
 import i18n from 'i18next';
 import {
+  normalizeWorkbenchResourceDragData,
   parseWorkbenchDragData,
+  resolveWorkbenchDesktopDropPoint,
   setWorkbenchDragData,
   WB_RESOURCE_MIME,
   type WorkbenchDropPoint,
@@ -20,7 +22,7 @@ import { announceWorkbench } from '../../hooks/useWorkbenchA11y';
 import { resourceTypeToAppTypeId } from '../content/typeMap';
 
 function announceDropOpened(resource: WorkbenchResourceDragData): void {
-  const title = resource.title?.trim() || resource.resourceId;
+  const title = resource.title;
   announceWorkbench(
     i18n.t('workbench:a11y.dropOpened', {
       title,
@@ -29,8 +31,28 @@ function announceDropOpened(resource: WorkbenchResourceDragData): void {
   );
 }
 
-export { WB_RESOURCE_MIME, setWorkbenchDragData, parseWorkbenchDragData };
+export {
+  WB_RESOURCE_MIME,
+  normalizeWorkbenchResourceDragData,
+  parseWorkbenchDragData,
+  resolveWorkbenchDesktopDropPoint,
+  setWorkbenchDragData,
+};
 export type { WorkbenchResourceDragData, WorkbenchDropPoint };
+
+function normalizeDropPoint(point: WorkbenchDropPoint | undefined): WorkbenchDropPoint | undefined {
+  try {
+    return point &&
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.y) &&
+      Number.isFinite(point.clientX) &&
+      Number.isFinite(point.clientY)
+      ? { x: point.x, y: point.y, clientX: point.clientX, clientY: point.clientY }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface DesktopResourceDropContext {
   resource: WorkbenchResourceDragData;
@@ -41,7 +63,7 @@ export interface DesktopResourceDropContext {
 
 export type DesktopResourceDropHandler = (
   ctx: DesktopResourceDropContext,
-) => boolean | void | Promise<boolean | void>;
+) => boolean | Promise<boolean>;
 
 let registeredHandler: DesktopResourceDropHandler | null = null;
 
@@ -70,34 +92,65 @@ export function getDesktopResourceDropHandler(): DesktopResourceDropHandler | nu
  */
 export function launchResourceFromDragData(
   resource: WorkbenchResourceDragData,
+  point?: WorkbenchDropPoint,
 ): string | null {
-  const typeId = resource.resourceType
-    ? resourceTypeToAppTypeId(resource.resourceType)
-    : null;
+  const normalized = normalizeWorkbenchResourceDragData(resource);
+  if (!normalized) return null;
+  const typeId = resourceTypeToAppTypeId(normalized.resourceType);
   if (!typeId) return null;
+  const normalizedPoint = normalizeDropPoint(point);
   return workbenchBus.launch({
     typeId,
-    instanceKey: resource.resourceId,
+    instanceKey: normalized.resourceId,
+    dropPoint: normalizedPoint
+      ? { x: normalizedPoint.x, y: normalizedPoint.y }
+      : undefined,
     // core LaunchReason 未扩 desktop-drop；与 files 双击开窗同语义
     reason: 'files',
   });
 }
 
 /**
- * 处理桌面资源落点：优先走已注册 handler；未注册或 handler 返回 false
- * 时兜底 launch。返回是否已处理（开窗或 handler 认领）。
+ * 处理桌面资源落点：仅 handler 明确返回 true 时视为认领；未注册、
+ * 返回 false/void 或抛错时均兜底 launch。返回是否最终处理成功。
  */
 export async function handleDesktopResourceDrop(
   ctx: DesktopResourceDropContext,
 ): Promise<boolean> {
+  let resource: WorkbenchResourceDragData | null = null;
+  let point: WorkbenchDropPoint | undefined;
+  let sourceWindowId: string | null = null;
+  try {
+    resource = normalizeWorkbenchResourceDragData(ctx.resource);
+    point = normalizeDropPoint(ctx.point);
+    sourceWindowId = ctx.sourceWindowId ?? null;
+  } catch {
+    return false;
+  }
+  if (!resource) return false;
+  const normalizedCtx: DesktopResourceDropContext = {
+    resource,
+    point,
+    sourceWindowId,
+  };
+
   const handler = registeredHandler;
   if (handler) {
-    const result = await handler(ctx);
-    if (result !== false) return true;
+    try {
+      const result = await handler(normalizedCtx);
+      if (result === true) return true;
+    } catch (error) {
+      console.error('[workbench:drop] desktop resource handler failed; using fallback', error);
+    }
   }
-  const opened = launchResourceFromDragData(ctx.resource) !== null;
-  if (opened) announceDropOpened(ctx.resource);
-  return opened;
+  try {
+    const opened = launchResourceFromDragData(resource, point) !== null;
+    if (opened) announceDropOpened(resource);
+    return opened;
+  } catch (error) {
+    console.error('[workbench:drop] resource launch fallback failed', error);
+    return false;
+  }
 }
 
 /**

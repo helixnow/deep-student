@@ -5,14 +5,22 @@ import { ArrowClockwise, SidebarSimple } from '@phosphor-icons/react';
 import { useMobileHeader } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { useSandboxWorkbenchStore } from '../store/useSandboxWorkbenchStore';
+import {
+  LEGACY_SANDBOX_OWNER_KEY,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '../store/useSandboxWorkbenchStore';
 import { SandboxWorkbenchSurface } from '../components/SandboxWorkbenchSurface';
 
 export function SandboxWorkbenchPage() {
   const { t } = useTranslation('common');
   const { isSmallScreen } = useBreakpoint();
-  const hasSession = useSandboxWorkbenchStore((state) => state.activeSession !== null);
-  const inspectorOpen = useSandboxWorkbenchStore((state) => state.inspectorOpen);
+  const hasSession = useSandboxWorkbenchStore((state) => (
+    selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).activeSession !== null
+  ));
+  const inspectorOpen = useSandboxWorkbenchStore((state) => (
+    selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).inspectorOpen
+  ));
   const refreshSession = useSandboxWorkbenchStore((state) => state.refreshSession);
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
 
@@ -29,7 +37,7 @@ export function SandboxWorkbenchPage() {
           size="sm"
           iconOnly
           aria-label={t('actions.refresh', '刷新')}
-          onClick={refreshSession}
+          onClick={() => refreshSession(LEGACY_SANDBOX_OWNER_KEY)}
         >
           <ArrowClockwise size={18} />
         </NotionButton>
@@ -38,7 +46,7 @@ export function SandboxWorkbenchPage() {
           size="sm"
           iconOnly
           aria-label={inspectorOpen ? t('sandbox_workbench.close_inspector', '收起检查器') : t('sandbox_workbench.open_inspector', '打开检查器')}
-          onClick={() => setInspectorOpen(!inspectorOpen)}
+          onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
         >
           <SidebarSimple size={18} />
         </NotionButton>
@@ -46,7 +54,13 @@ export function SandboxWorkbenchPage() {
     ) : undefined,
   }, [t, hasSession, inspectorOpen, refreshSession, setInspectorOpen]);
 
-  return <SandboxWorkbenchSurface className="h-full" hideToolbar={isSmallScreen} />;
+  return (
+    <SandboxWorkbenchSurface
+      className="h-full"
+      hideToolbar={isSmallScreen}
+      ownerKey={LEGACY_SANDBOX_OWNER_KEY}
+    />
+  );
 }
 
 export default SandboxWorkbenchPage;

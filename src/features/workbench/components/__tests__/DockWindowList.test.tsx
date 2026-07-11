@@ -221,6 +221,49 @@ describe('DockWindowList', () => {
     expect(onCloseWindow).toHaveBeenCalledWith('w1');
   });
 
+  it.each([
+    ['返回 false', () => Promise.resolve(false)],
+    ['抛出异常', () => Promise.reject(new Error('close rejected'))],
+  ])('关闭被拒绝（%s）后，标题更新不会抢回列表焦点', async (_case, closeImpl) => {
+    const ownerRef = { current: document.createElement('button') };
+    document.body.appendChild(ownerRef.current);
+    const onCloseWindow = vi.fn(closeImpl);
+    const original = makeWin({ id: 'w1', typeId: 'chat', title: '会话 A' });
+    const { rerender } = render(
+      <DockWindowList
+        appLabel="chat"
+        windows={[original]}
+        ownerRef={ownerRef}
+        onSelect={vi.fn()}
+        onDismiss={vi.fn()}
+        onCloseWindow={onCloseWindow}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('wb-docklist-close-w1'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    ownerRef.current.focus();
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
+    rafSpy.mockClear();
+
+    rerender(
+      <DockWindowList
+        appLabel="chat"
+        windows={[{ ...original, title: '会话 A（已更新）' }]}
+        ownerRef={ownerRef}
+        onSelect={vi.fn()}
+        onDismiss={vi.fn()}
+        onCloseWindow={onCloseWindow}
+      />,
+    );
+
+    expect(rafSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(ownerRef.current);
+    rafSpy.mockRestore();
+  });
+
   it('role=menu 与 aria-label', () => {
     const ownerRef = { current: document.createElement('div') };
     document.body.appendChild(ownerRef.current);

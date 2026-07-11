@@ -291,29 +291,41 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingLayer: SnapshotSaveLayer | null = null;
 /** 上次成功落盘的序列化内容；防抖保存内容未变时跳过写盘（IO 去重） */
 let lastPersistedPayload: string | null = null;
+/** 串行化底层写入，防止旧防抖写在退出 flush 之后完成并覆盖新快照。 */
+let activePersist: Promise<void> | null = null;
 
-async function persistNow(force: boolean): Promise<void> {
-  try {
-    // 双保险：采集结果再过一次 sanitizer，确保落盘永远是纯净白名单数据
-    const snapshot = sanitizeSnapshot(buildSnapshot());
-    if (!snapshot) return;
-    const payload = JSON.stringify(snapshot);
-    if (!force && payload === lastPersistedPayload) return;
-    await writeSetting(WORKBENCH_SNAPSHOT_KEY, payload);
-    lastPersistedPayload = payload;
-    // P11 接线：通知 DevPanel（P10）快照保存时间
-    if (typeof window !== 'undefined') {
-      try {
-        window.dispatchEvent(
-          new CustomEvent('workbench:snapshot-saved', { detail: { at: Date.now() } }),
-        );
-      } catch {
-        /* 非浏览器环境忽略 */
+function persistNow(force: boolean): Promise<void> {
+  const persist = async () => {
+    try {
+      // 双保险：采集结果再过一次 sanitizer，确保落盘永远是纯净白名单数据
+      const snapshot = sanitizeSnapshot(buildSnapshot());
+      if (!snapshot) return;
+      const payload = JSON.stringify(snapshot);
+      if (!force && payload === lastPersistedPayload) return;
+      await writeSetting(WORKBENCH_SNAPSHOT_KEY, payload);
+      lastPersistedPayload = payload;
+      // P11 接线：通知 DevPanel（P10）快照保存时间
+      if (typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('workbench:snapshot-saved', { detail: { at: Date.now() } }),
+          );
+        } catch {
+          /* 非浏览器环境忽略 */
+        }
       }
+    } catch (error) {
+      console.warn('[workbench] snapshot save failed:', error);
     }
-  } catch (error) {
-    console.warn('[workbench] snapshot save failed:', error);
-  }
+  };
+  // 首笔直接执行，保持 localStorage 同步落盘与既有假时钟契约；仅在已有
+  // 异步 Tauri 写入时排队，确保旧 payload 不会晚于退出 flush 覆盖新值。
+  const queued = activePersist ? activePersist.then(persist, persist) : persist();
+  activePersist = queued;
+  void queued.finally(() => {
+    if (activePersist === queued) activePersist = null;
+  });
+  return queued;
 }
 
 /**

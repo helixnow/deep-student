@@ -18,7 +18,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import i18n from 'i18next';
 import { getDockIconCenter } from '../components/dockGeometry';
-import { appRegistry } from '../core/appRegistry';
+import { confirmWindowClose } from '../core/windowCloseGuard';
 import { recomputeLifecycles } from '../core/scheduler';
 import {
   useWindowStore,
@@ -200,18 +200,17 @@ export async function requestCloseAnimated(windowId: string): Promise<boolean> {
   const store = useWindowStore.getState();
   const win = store.windows[windowId];
   if (!win) return true;
-  const def = appRegistry.get(win.typeId);
-  if (def?.canClose) {
-    const ok = await def.canClose(win.instanceKey);
-    if (!ok) return false;
-  }
   if (store.transientPhases?.[windowId] === 'closing') return true;
-  if (typeof store.setWindowTransient === 'function') {
-    store.setWindowTransient(windowId, 'closing');
+  if (!(await confirmWindowClose(windowId))) return false;
+  const fresh = useWindowStore.getState();
+  if (!fresh.windows[windowId]) return true;
+  if (fresh.transientPhases?.[windowId] === 'closing') return true;
+  if (typeof fresh.setWindowTransient === 'function') {
+    fresh.setWindowTransient(windowId, 'closing');
     scheduleOrphanPhaseFinish(windowId, 'closing');
     return true;
   }
-  store.closeWindow(windowId);
+  fresh.closeWindow(windowId);
   recomputeLifecycles();
   announceWindowClosed(win.title);
   return true;

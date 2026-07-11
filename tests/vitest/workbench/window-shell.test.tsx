@@ -282,7 +282,7 @@ describe('WindowShell 指针契约（stub 驱动 WindowPointerCallbacks）', () 
     expect(useWindowStore.getState().windows[id].frame).toEqual(before);
   });
 
-  it('拖拽会话：wb-shell-dragging + 锚点 left/top + translate3d 跟手；结束折回 left/top，store 落位', () => {
+  it('拖拽会话：wb-shell-dragging + 锚点 left/top + translate3d 跟手；结束折回 left/top，store 落位', async () => {
     const { captured, useStub } = makeStubPointer();
     const id = openTestWindow();
     const start = { ...useWindowStore.getState().windows[id].frame };
@@ -293,6 +293,10 @@ describe('WindowShell 指针契约（stub 驱动 WindowPointerCallbacks）', () 
       captured.args!.onDragStateChange!(true);
     });
     expect(el.classList.contains('wb-shell-dragging')).toBe(true);
+    // 光标盾故意延后一帧，避免与 pointerdown 首帧的合成层提升抢布局。
+    await act(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    });
     expect(getActiveWorkbenchCursor()).toBe('grabbing');
 
     act(() => {

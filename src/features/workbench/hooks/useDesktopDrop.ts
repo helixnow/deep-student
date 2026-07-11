@@ -32,9 +32,9 @@ export interface WorkbenchResourceDragData {
   /** 业务资源 id（如 'note_xxx' / 'pdf_xxx'，与 instanceKey 同构） */
   resourceId: string;
   /** 资源类型（files 应用的类型标识，如 'note' / 'pdf' / 'image'） */
-  resourceType?: string;
+  resourceType: string;
   /** 展示标题（拖拽预览 / 落点提示用） */
-  title?: string;
+  title: string;
 }
 
 export type WorkbenchDropPayload =
@@ -60,6 +60,68 @@ export interface WorkbenchDropPoint {
 
 export type WorkbenchDropState = 'idle' | 'over' | 'denied';
 
+const RESOURCE_DRAG_KEYS = new Set(['resourceId', 'resourceType', 'title']);
+
+function normalizeRequiredField(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+/**
+ * Runtime boundary for internal drag payloads. Always returns a fresh object so
+ * untrusted JSON properties/prototypes never cross into workbench launch code.
+ */
+export function normalizeWorkbenchResourceDragData(
+  value: unknown,
+): WorkbenchResourceDragData | null {
+  try {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    if (Object.keys(value).some((key) => !RESOURCE_DRAG_KEYS.has(key))) return null;
+
+    const candidate = value as Record<string, unknown>;
+    if (
+      !Object.prototype.hasOwnProperty.call(candidate, 'resourceId') ||
+      !Object.prototype.hasOwnProperty.call(candidate, 'resourceType') ||
+      !Object.prototype.hasOwnProperty.call(candidate, 'title')
+    ) {
+      return null;
+    }
+    const resourceId = normalizeRequiredField(candidate.resourceId);
+    const resourceType = normalizeRequiredField(candidate.resourceType);
+    const title = normalizeRequiredField(candidate.title);
+    if (!resourceId || !resourceType || !title) return null;
+
+    return { resourceId, resourceType, title };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a viewport pointer into the workbench desktop coordinate system.
+ * A valid point must hit the desktop root itself; windows, Dock and overlays
+ * are deliberately not treated as desktop drop targets.
+ */
+export function resolveWorkbenchDesktopDropPoint(
+  clientX: number,
+  clientY: number,
+  ownerDocument: Document = document,
+): WorkbenchDropPoint | null {
+  if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return null;
+  if (typeof ownerDocument.elementFromPoint !== 'function') return null;
+
+  const hit = ownerDocument.elementFromPoint(clientX, clientY);
+  if (!hit?.matches('[data-wb-desktop]')) return null;
+
+  const rect = hit.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  if (x < 0 || y < 0 || x > rect.width || y > rect.height) return null;
+  return { x, y, clientX, clientY };
+}
+
 // ============================================================================
 // 拖源辅助（O17 files 列表 dragstart 调用）
 // ============================================================================
@@ -72,9 +134,13 @@ export function setWorkbenchDragData(
   dataTransfer: DataTransfer,
   data: WorkbenchResourceDragData,
 ): void {
-  dataTransfer.setData(WB_RESOURCE_MIME, JSON.stringify(data));
-  // 兜底：拖到外部应用 / 不识别自定义 MIME 的落点时至少携带标题或 id
-  dataTransfer.setData('text/plain', data.title ?? data.resourceId);
+  const normalized = normalizeWorkbenchResourceDragData(data);
+  if (!normalized) {
+    throw new TypeError('Invalid workbench resource drag data');
+  }
+  dataTransfer.setData(WB_RESOURCE_MIME, JSON.stringify(normalized));
+  // 兜底：拖到外部应用 / 不识别自定义 MIME 的落点时至少携带标题
+  dataTransfer.setData('text/plain', normalized.title);
   dataTransfer.effectAllowed = 'copyMove';
 }
 
@@ -84,6 +150,8 @@ export function parseWorkbenchDragData(
 ): WorkbenchResourceDragData | null {
   let raw = '';
   try {
+    const types = Array.from(dataTransfer.types ?? []);
+    if (!types.includes(WB_RESOURCE_MIME)) return null;
     raw = dataTransfer.getData(WB_RESOURCE_MIME);
   } catch {
     return null;
@@ -91,13 +159,7 @@ export function parseWorkbenchDragData(
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof (parsed as WorkbenchResourceDragData).resourceId === 'string'
-    ) {
-      return parsed as WorkbenchResourceDragData;
-    }
+    return normalizeWorkbenchResourceDragData(parsed);
   } catch {
     /* 非法 JSON → 视作非资源拖拽 */
   }
@@ -105,7 +167,12 @@ export function parseWorkbenchDragData(
 }
 
 function readDragInfo(dataTransfer: DataTransfer | null): WorkbenchDragInfo {
-  const types: readonly string[] = dataTransfer?.types ?? [];
+  let types: readonly string[] = [];
+  try {
+    types = Array.from(dataTransfer?.types ?? []);
+  } catch {
+    // 浏览器/原生拖源拒绝读取摘要时按无可接受负载处理。
+  }
   return {
     hasFiles: types.includes('Files'),
     hasResource: types.includes(WB_RESOURCE_MIME),
@@ -148,6 +215,10 @@ function defaultAccept(info: WorkbenchDragInfo): boolean {
   return info.hasFiles || info.hasResource;
 }
 
+function reportDropError(scope: string, error: unknown): void {
+  console.error(`[workbench:drop] ${scope}`, error);
+}
+
 export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropResult {
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -176,13 +247,22 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
       optionsRef.current.onDragStateChange?.(state);
     };
 
+    const isEligibleTarget = (event: DragEvent): boolean =>
+      !el.hasAttribute('data-wb-desktop') || event.target === el;
+
     const evaluate = (event: DragEvent): boolean => {
       const info = readDragInfo(event.dataTransfer);
       const accept = optionsRef.current.accept ?? defaultAccept;
-      return accept(info);
+      try {
+        return accept(info);
+      } catch (error) {
+        reportDropError('accept predicate failed', error);
+        return false;
+      }
     };
 
     const onDragEnter = (event: DragEvent) => {
+      if (!isEligibleTarget(event)) return;
       enterDepth += 1;
       const accepted = evaluate(event);
       if (accepted) {
@@ -194,6 +274,11 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
     };
 
     const onDragOver = (event: DragEvent) => {
+      if (!isEligibleTarget(event)) {
+        enterDepth = 0;
+        applyState('idle');
+        return;
+      }
       const accepted = evaluate(event);
       if (accepted) {
         // preventDefault = 声明本元素为合法落点（否则浏览器禁止 drop）
@@ -208,13 +293,18 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
       }
     };
 
-    const onDragLeave = () => {
+    const onDragLeave = (event: DragEvent) => {
+      if (!isEligibleTarget(event)) return;
       enterDepth = Math.max(0, enterDepth - 1);
       if (enterDepth === 0) applyState('idle');
     };
 
     const onDrop = (event: DragEvent) => {
       enterDepth = 0;
+      if (!isEligibleTarget(event)) {
+        applyState('idle');
+        return;
+      }
       const wasAccepted = evaluate(event);
       applyState('idle');
       if (!wasAccepted) return;
@@ -225,14 +315,20 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
       if (!dataTransfer) return;
 
       let payload: WorkbenchDropPayload | null = null;
-      const resource = parseWorkbenchDragData(dataTransfer);
-      if (resource) {
-        payload = { kind: 'resource', resource };
-      } else if (dataTransfer.files && dataTransfer.files.length > 0) {
-        payload = { kind: 'os-files', files: Array.from(dataTransfer.files) };
-      } else {
-        const text = dataTransfer.getData('text/plain');
-        if (text) payload = { kind: 'text', text };
+      try {
+        const resource = parseWorkbenchDragData(dataTransfer);
+        if (resource) {
+          payload = { kind: 'resource', resource };
+        } else if (dataTransfer.files && dataTransfer.files.length > 0) {
+          payload = { kind: 'os-files', files: Array.from(dataTransfer.files) };
+        } else {
+          let text = '';
+          text = dataTransfer.getData('text/plain');
+          if (text) payload = { kind: 'text', text };
+        }
+      } catch (error) {
+        reportDropError('payload read failed', error);
+        return;
       }
       if (!payload) return;
 
@@ -243,7 +339,13 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
         clientX: event.clientX,
         clientY: event.clientY,
       };
-      void optionsRef.current.onDrop(payload, point);
+      try {
+        void Promise.resolve(optionsRef.current.onDrop(payload, point)).catch((error) => {
+          reportDropError('onDrop handler rejected', error);
+        });
+      } catch (error) {
+        reportDropError('onDrop handler threw', error);
+      }
     };
 
     /** 拖拽被取消（Esc / 拖出浏览器窗口）时浏览器发 dragend 给拖源；
@@ -270,7 +372,6 @@ export function useDesktopDrop(options: UseDesktopDropOptions): UseDesktopDropRe
       el.classList.remove(CLASS_OVER, CLASS_DENIED);
       stateRef.current = 'idle';
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.disabled, options.target]);
 
   return {

@@ -253,6 +253,52 @@ describe('ExposeOverlay', () => {
     expect(useWorkbenchOverlay.getState().exposeOpen).toBe(false);
   });
 
+  it('Tab/Shift+Tab 限制在选中缩略与关闭按钮之间', () => {
+    setup();
+    act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    const cellA = document.querySelector('[data-wb-expose-cell="a"]') as HTMLElement;
+    const pick = within(cellA).getByRole('button', { name: 'Alpha' });
+    const close = within(cellA).getByRole('button', { name: '关闭窗口' });
+    expect(pick).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(close).toHaveFocus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(pick).toHaveFocus();
+  });
+
+  it('关闭按钮 Enter 由原生按钮处理，不被全局 Enter 误当成选中窗口', () => {
+    setup();
+    act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    const cellA = document.querySelector('[data-wb-expose-cell="a"]') as HTMLElement;
+    const close = within(cellA).getByRole('button', { name: '关闭窗口' });
+    close.focus();
+    fireEvent.keyDown(close, { key: 'Enter' });
+    expect(useWorkbenchOverlay.getState().exposeOpen).toBe(true);
+  });
+
+  it('无窗口时把焦点落到 dialog，Tab 不逃出 overlay', () => {
+    seedWindows([]);
+    render(<ExposeOverlay />);
+    act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    const dialog = screen.getByRole('dialog', { name: '窗口俯瞰' });
+    expect(dialog).toHaveFocus();
+    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(dialog).toHaveFocus();
+  });
+
+  it('关闭动画未结束便重开时取消旧 restore timer，不污染新会话样式', () => {
+    const els = setup();
+    act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    act(() => { useWorkbenchOverlay.getState().closeExpose(); });
+    act(() => { useWorkbenchOverlay.getState().openExpose(); });
+    act(() => { vi.advanceTimersByTime(350); });
+    expect(els.a.getAttribute('data-expose-transform')).toBe('true');
+    expect(els.a.style.transformOrigin).toBe('top left');
+    expect(els.a.style.willChange).toBe('transform');
+  });
+
   it('关闭按钮走 requestCloseAnimated：dissolve + 关窗且不退出俯瞰', async () => {
     const els = setup();
     act(() => { useWorkbenchOverlay.getState().openExpose(); });

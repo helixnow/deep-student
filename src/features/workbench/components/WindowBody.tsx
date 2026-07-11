@@ -24,6 +24,26 @@ import {
   useWindowLifecycleAnim,
 } from '../hooks/useWindowLifecycleAnim';
 import './WindowLifecycle.css';
+import {
+  markWindowActivationPending,
+  markWindowActivationReady,
+} from '../core/workbenchBus';
+
+const ActivationPendingMarker: React.FC<{ windowId: string }> = ({ windowId }) => {
+  useEffect(() => {
+    markWindowActivationPending(windowId);
+    return () => markWindowActivationPending(windowId);
+  }, [windowId]);
+  return null;
+};
+
+const ActivationReadyMarker: React.FC<{ windowId: string }> = ({ windowId }) => {
+  useEffect(() => {
+    markWindowActivationReady(windowId);
+    return () => markWindowActivationPending(windowId);
+  }, [windowId]);
+  return null;
+};
 
 const SuspenseFallback: React.FC = () => {
   const { t } = useTranslation('workbench');
@@ -164,18 +184,22 @@ export const WindowBody: React.FC<WindowBodyProps> = ({ windowId }) => {
           : undefined
       }
     >
+      <ActivationPendingMarker windowId={windowId} />
       <WindowErrorBoundary windowId={windowId}>
         <Suspense fallback={<SuspenseFallback />}>
-          <App
-            windowId={windowId}
-            instanceKey={win.instanceKey}
-            launchPayload={launchPayload}
-            isActive={isActive}
-            isVisible={isVisible}
-            renderThrottleMs={renderThrottleMs}
-            onTitleChange={handleTitleChange}
-            requestClose={handleRequestClose}
-          />
+          <>
+            <App
+              windowId={windowId}
+              instanceKey={win.instanceKey}
+              launchPayload={launchPayload}
+              isActive={isActive}
+              isVisible={isVisible}
+              renderThrottleMs={renderThrottleMs}
+              onTitleChange={handleTitleChange}
+              requestClose={handleRequestClose}
+            />
+            <ActivationReadyMarker windowId={windowId} />
+          </>
         </Suspense>
       </WindowErrorBoundary>
     </div>

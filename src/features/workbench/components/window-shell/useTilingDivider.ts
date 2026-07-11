@@ -16,7 +16,7 @@
  *     onKeyDown={divider.onKeyDown}
  *   />
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type React from 'react';
 import { useWindowStore } from '../../core/windowStore';
 import {
@@ -73,6 +73,10 @@ interface DividerDrag {
   lastSoftRatio: number;
   leftEl: HTMLElement | null;
   rightEl: HTMLElement | null;
+  pointerLock: DomPointerLock;
+  key: string;
+  leftId: string;
+  rightId: string;
   margin: number;
 }
 
@@ -81,11 +85,31 @@ interface SettleAnim {
   from: number;
   to: number;
   startMs: number;
+  key: string;
+  leftEl: HTMLElement | null;
+  rightEl: HTMLElement | null;
+  margin: number;
+  pointerLock: DomPointerLock;
+}
+
+interface DomPointerLock {
+  left: string | null;
+  right: string | null;
 }
 
 interface LastClick {
   timeMs: number;
   clientX: number;
+  key: string;
+}
+
+interface DividerPairSnapshot {
+  key: string;
+  leftId: string;
+  rightId: string;
+  leftEl: HTMLElement | null;
+  rightEl: HTMLElement | null;
+  margin: number;
 }
 
 /** ease-out cubic：1 - (1-t)^3 */
@@ -118,18 +142,33 @@ function applyRatioToDom(
   if (leftEl && left) {
     leftEl.style.left = `${left.x}px`;
     leftEl.style.width = `${left.w}px`;
-    leftEl.style.pointerEvents = 'none';
   }
   if (rightEl && right) {
     rightEl.style.left = `${right.x}px`;
     rightEl.style.width = `${right.w}px`;
-    rightEl.style.pointerEvents = 'none';
   }
 }
 
-function clearDomPointerLock(leftEl: HTMLElement | null, rightEl: HTMLElement | null): void {
-  if (leftEl) leftEl.style.pointerEvents = '';
-  if (rightEl) rightEl.style.pointerEvents = '';
+function lockDomPointerEvents(
+  leftEl: HTMLElement | null,
+  rightEl: HTMLElement | null,
+): DomPointerLock {
+  const lock = {
+    left: leftEl?.style.pointerEvents ?? null,
+    right: rightEl?.style.pointerEvents ?? null,
+  };
+  if (leftEl) leftEl.style.pointerEvents = 'none';
+  if (rightEl) rightEl.style.pointerEvents = 'none';
+  return lock;
+}
+
+function restoreDomPointerEvents(
+  leftEl: HTMLElement | null,
+  rightEl: HTMLElement | null,
+  lock: DomPointerLock,
+): void {
+  if (leftEl && lock.left !== null) leftEl.style.pointerEvents = lock.left;
+  if (rightEl && lock.right !== null) rightEl.style.pointerEvents = lock.right;
 }
 
 export function useTilingDivider(
@@ -153,37 +192,69 @@ export function useTilingDivider(
   const lastClickRef = useRef<LastClick | null>(null);
 
   const handlers = useMemo(() => {
-    const stopSettle = () => {
+    const readRatio = (targetKey: string): number =>
+      clampTilingRatio(useWindowStore.getState().tilingRatios[targetKey] ?? 0.5);
+
+    const stopSettle = (restorePersisted = false) => {
       const settle = settleRef.current;
       if (!settle) return;
       if (settle.rafId !== 0) cancelAnimationFrame(settle.rafId);
       settleRef.current = null;
+      restoreDomPointerEvents(
+        settle.leftEl,
+        settle.rightEl,
+        settle.pointerLock,
+      );
+      if (restorePersisted) {
+        applyRatioToDom(
+          settle.leftEl,
+          settle.rightEl,
+          readRatio(settle.key),
+          settle.margin,
+        );
+      }
     };
 
-    const writeRatio = (next: number) => {
+    const writeRatio = (targetKey: string, next: number) => {
       const s = useWindowStore.getState();
-      const cur = s.tilingRatios[keyRef.current] ?? 0.5;
-      if (next !== cur) s.setTilingRatio(keyRef.current, next);
+      const cur = s.tilingRatios[targetKey] ?? 0.5;
+      if (next !== cur) s.setTilingRatio(targetKey, next);
     };
 
-    const settleTo = (fromRatio: number, target: number) => {
+    const currentPair = (): DividerPairSnapshot => ({
+      key: keyRef.current,
+      leftId: leftIdRef.current,
+      rightId: rightIdRef.current,
+      leftEl: queryWindowEl(leftIdRef.current),
+      rightEl: queryWindowEl(rightIdRef.current),
+      margin: optionsRef.current?.margin ?? DEFAULT_TILE_MARGIN,
+    });
+
+    const settleTo = (
+      fromRatio: number,
+      target: number,
+      pair: DividerPairSnapshot = currentPair(),
+    ) => {
       stopSettle();
       const to = clampTilingRatio(target);
       const from = clampTilingRatio(fromRatio);
-      const margin = optionsRef.current?.margin ?? DEFAULT_TILE_MARGIN;
-      const leftEl = queryWindowEl(leftIdRef.current);
-      const rightEl = queryWindowEl(rightIdRef.current);
+      const { leftEl, rightEl, margin } = pair;
       if (from === to || prefersReducedMotion()) {
         applyRatioToDom(leftEl, rightEl, to, margin);
-        clearDomPointerLock(leftEl, rightEl);
-        writeRatio(to);
+        writeRatio(pair.key, to);
         return;
       }
+      const pointerLock = lockDomPointerEvents(leftEl, rightEl);
       const anim: SettleAnim = {
         rafId: 0,
         from,
         to,
         startMs: performance.now(),
+        key: pair.key,
+        leftEl,
+        rightEl,
+        margin,
+        pointerLock,
       };
       settleRef.current = anim;
       // settle 期继续锁内容命中，避免缓动中途点穿
@@ -195,8 +266,8 @@ export function useTilingDivider(
         applyRatioToDom(leftEl, rightEl, t >= 1 ? anim.to : next, margin);
         if (t >= 1) {
           settleRef.current = null;
-          clearDomPointerLock(leftEl, rightEl);
-          writeRatio(anim.to);
+          restoreDomPointerEvents(leftEl, rightEl, pointerLock);
+          writeRatio(pair.key, anim.to);
           return;
         }
         anim.rafId = requestAnimationFrame(step);
@@ -254,9 +325,18 @@ export function useTilingDivider(
           // 已自动释放
         }
       }
-      clearDomPointerLock(drag.leftEl, drag.rightEl);
+      restoreDomPointerEvents(drag.leftEl, drag.rightEl, drag.pointerLock);
       setActiveClass(drag.captureTarget, false);
       dragRef.current = null;
+    };
+
+    const abortDragToPersisted = () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const persisted = readRatio(drag.key);
+      const { leftEl, rightEl, margin } = drag;
+      teardown();
+      applyRatioToDom(leftEl, rightEl, persisted, margin);
     };
 
     const cancelDrag = () => {
@@ -270,8 +350,7 @@ export function useTilingDivider(
       stopSettle();
       // 回退：先 DOM 回起始，再写 store（store 会驱动 React 与 DOM 对齐）
       applyRatioToDom(leftEl, rightEl, startRatio, margin);
-      clearDomPointerLock(leftEl, rightEl);
-      writeRatio(startRatio);
+      writeRatio(drag.key, startRatio);
     };
 
     const onMove = (e: PointerEvent) => {
@@ -304,6 +383,14 @@ export function useTilingDivider(
       const clientX = drag.lastClientX;
       const rawForSettle = drag.lastRawRatio;
       const softForCommit = drag.lastSoftRatio;
+      const pair: DividerPairSnapshot = {
+        key: drag.key,
+        leftId: drag.leftId,
+        rightId: drag.rightId,
+        leftEl: drag.leftEl,
+        rightEl: drag.rightEl,
+        margin: drag.margin,
+      };
       teardown();
 
       if (wasClick) {
@@ -311,24 +398,25 @@ export function useTilingDivider(
         const now = performance.now();
         if (
           prev &&
+          prev.key === pair.key &&
           now - prev.timeMs <= DBLCLICK_MS &&
           Math.abs(clientX - prev.clientX) <= CLICK_MOVE_TOLERANCE_PX
         ) {
           lastClickRef.current = null;
           const cur = clampTilingRatio(
-            useWindowStore.getState().tilingRatios[keyRef.current] ?? 0.5,
+            useWindowStore.getState().tilingRatios[pair.key] ?? 0.5,
           );
-          settleTo(cur, 0.5);
+          settleTo(cur, 0.5, pair);
           return;
         }
-        lastClickRef.current = { timeMs: now, clientX };
+        lastClickRef.current = { timeMs: now, clientX, key: pair.key };
         // 单击不改比例（避免点按中缝误写 store）
         return;
       }
 
       lastClickRef.current = null;
       // 松手：DOM settle 软区 → 硬约束，末帧才写 store
-      settleTo(softForCommit, clampTilingRatio(rawForSettle));
+      settleTo(softForCommit, clampTilingRatio(rawForSettle), pair);
     };
 
     const onCancel = (e: PointerEvent) => {
@@ -347,7 +435,7 @@ export function useTilingDivider(
     const onPointerDown = (e: React.PointerEvent) => {
       if (dragRef.current) return;
       if (e.button != null && e.button > 0) return;
-      stopSettle();
+      stopSettle(true);
       const s = useWindowStore.getState();
       const target = e.currentTarget as Element;
       if (target && typeof target.setPointerCapture === 'function') {
@@ -361,6 +449,8 @@ export function useTilingDivider(
       const startRatio = clampTilingRatio(s.tilingRatios[keyRef.current] ?? 0.5);
       const margin = optionsRef.current?.margin ?? DEFAULT_TILE_MARGIN;
       setActiveClass(target, true);
+      const leftEl = queryWindowEl(leftIdRef.current);
+      const rightEl = queryWindowEl(rightIdRef.current);
       dragRef.current = {
         pointerId: e.pointerId,
         captureTarget: target,
@@ -372,8 +462,12 @@ export function useTilingDivider(
         pendingClientX: null,
         lastRawRatio: startRaw,
         lastSoftRatio: startRatio,
-        leftEl: queryWindowEl(leftIdRef.current),
-        rightEl: queryWindowEl(rightIdRef.current),
+        leftEl,
+        rightEl,
+        pointerLock: lockDomPointerEvents(leftEl, rightEl),
+        key: keyRef.current,
+        leftId: leftIdRef.current,
+        rightId: rightIdRef.current,
         margin,
       };
       window.addEventListener('pointermove', onMove);
@@ -388,24 +482,37 @@ export function useTilingDivider(
       if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
       e.preventDefault();
       e.stopPropagation();
-      stopSettle();
+      stopSettle(true);
       const cur = clampTilingRatio(
         useWindowStore.getState().tilingRatios[keyRef.current] ?? 0.5,
       );
       const delta = e.key === 'ArrowLeft' ? -KEYBOARD_RATIO_STEP : KEYBOARD_RATIO_STEP;
-      writeRatio(clampTilingRatio(cur + delta));
+      writeRatio(keyRef.current, clampTilingRatio(cur + delta));
+    };
+
+    const rebindPair = () => {
+      abortDragToPersisted();
+      stopSettle(true);
+      lastClickRef.current = null;
+
+      const pair = currentPair();
+      applyRatioToDom(pair.leftEl, pair.rightEl, readRatio(pair.key), pair.margin);
     };
 
     return {
       onPointerDown,
       onKeyDown: onDividerKeyDown,
       teardown: () => {
-        stopSettle();
-        teardown();
+        stopSettle(true);
+        abortDragToPersisted();
       },
-      settleTo,
+      rebindPair,
     };
   }, []);
+
+  useLayoutEffect(() => {
+    handlers.rebindPair();
+  }, [handlers, key, leftId, rightId]);
 
   useEffect(() => {
     return () => {

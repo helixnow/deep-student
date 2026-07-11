@@ -50,6 +50,7 @@ import { announceWorkbench } from './useWorkbenchA11y';
 import { toggleShowDesktop } from './showDesktop';
 import { computeTiledFrame, DEFAULT_TILE_MARGIN } from '../core/tiling';
 import type { DisplayMode, Frame } from '../core/types';
+import { closeAppsPanel } from '../components/appsPanelStore';
 
 export interface UseWorkbenchShortcutsOptions {
   /** workbench 桌面是否激活；false 时不监听任何按键 */
@@ -299,6 +300,7 @@ function runShortcut(id: WorkbenchShortcutId): void {
       return;
     }
     case 'cheatsheet':
+      closeAppsPanel();
       overlay.toggleCheatsheet();
       return;
     case 'show-desktop':
@@ -430,6 +432,7 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
         holdTimer = null;
         const overlay = useWorkbenchOverlay.getState();
         if (overlay.switcherOpen || overlay.cheatsheetOpen) return;
+        closeAppsPanel();
         overlay.openCheatsheet({ sticky: false });
       }, CHEATSHEET_HOLD_MS);
     };
@@ -480,6 +483,11 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
       if (!def) return;
       if (def.id === 'close-window' && !closeEnabledRef.current) return;
       cancelHold();
+      if (e.repeat && def.id !== 'cycle-next' && def.id !== 'cycle-prev') {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       runShortcut(def.id);

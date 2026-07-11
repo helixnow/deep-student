@@ -16,7 +16,8 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain(": !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;");
     expect(appSource).not.toContain("currentView !== 'settings' && leftPanelCollapsed ? 0 : shellSidebarWidth");
     expect(appSource).toContain("'--shell-navigation-width': `${desktopNavigationWidth}px`");
-    expect(appSource).toContain('className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none"');
+    expect(appSource).toContain("'desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none'");
+    expect(appSource).toContain("workbenchActive && 'desktop-shell-titlebar--workbench-chrome'");
     expect(appSource).toContain('width: `${desktopNavigationWidth}px`');
     expect(appSource).toContain('transition-[width,padding] duration-200 ease-[var(--panel-ease)] motion-reduce:transition-none');
   });

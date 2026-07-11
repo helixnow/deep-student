@@ -35,7 +35,12 @@ import {
 import { resyncProjections } from '../core/projection';
 import { registerSystemProjections } from '../apps/system/projections';
 import { setMaterialTier, useMaterialTier, type MaterialTierSetting } from '../core/materialTier';
-import { computeTiledFrame, MAX_TILING_RATIO, MIN_TILING_RATIO } from '../core/tiling';
+import {
+  computeTiledFrame,
+  getActiveTilingPair,
+  MAX_TILING_RATIO,
+  MIN_TILING_RATIO,
+} from '../core/tiling';
 import { RESOURCE_APP_TYPE_IDS } from '../apps/content/typeMap';
 import type { SnapZone, WorkbenchWindow } from '../core/types';
 import { setActiveSnapZone } from '../core/snapZoneStore';
@@ -223,6 +228,7 @@ const TilingDivider: React.FC<{ leftId: string; rightId: string; margin: number 
 // ---------------------------------------------------------------------------
 
 export const WorkbenchDesktop: React.FC = () => {
+  const { t } = useTranslation('workbench');
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [desktopOffset, setDesktopOffset] = useState({ x: 0, y: 0 });
@@ -371,6 +377,23 @@ export const WorkbenchDesktop: React.FC = () => {
         saveSnapshot();
       }
     });
+    let unlistenCloseRequested: (() => void) | null = null;
+    if (isTauriRuntime()) {
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) =>
+          getCurrentWindow().onCloseRequested(async () => {
+            // Tauri 会 await handler 后再 destroy；这里是真正可等待的退出屏障。
+            await flushSnapshot();
+          }),
+        )
+        .then((unlisten) => {
+          if (disposed) unlisten();
+          else unlistenCloseRequested = unlisten;
+        })
+        .catch((error) => {
+          console.warn('[workbench] close-request snapshot hook failed:', error);
+        });
+    }
 
     void (async () => {
       const snapshot = await loadSnapshot();
@@ -378,7 +401,9 @@ export const WorkbenchDesktop: React.FC = () => {
       if (snapshot) {
         const windows = await pruneSnapshotWindows(snapshot.windows);
         if (disposed) return;
-        useWindowStore.getState().hydrate(windows, snapshot.tilingRatios);
+        useWindowStore.getState().hydrate(windows, snapshot.tilingRatios, {
+          preserveExisting: true,
+        });
         setDockPinned(
           snapshot.dockPinned.length > 0 ? snapshot.dockPinned : [...DEFAULT_DOCK_PINNED],
         );
@@ -394,6 +419,7 @@ export const WorkbenchDesktop: React.FC = () => {
       disposed = true;
       unsubscribeStore();
       unsubscribePinned();
+      unlistenCloseRequested?.();
       // 先落盘（buildSnapshot 同步采集，provider 仍在）再注销
       void flushSnapshot();
       registerDockPinnedProvider(null);
@@ -446,13 +472,8 @@ export const WorkbenchDesktop: React.FC = () => {
 
   // 左右平铺对（各取 zIndex 最高者）→ 中缝
   const tilingPair = useMemo(() => {
-    const pick = (mode: 'tiled-left' | 'tiled-right') =>
-      orderedWindows
-        .filter((w) => w.displayMode === mode && !w.minimized)
-        .sort((a, b) => b.zIndex - a.zIndex)[0];
-    const left = pick('tiled-left');
-    const right = pick('tiled-right');
-    return left && right ? { leftId: left.id, rightId: right.id } : null;
+    const pair = getActiveTilingPair(orderedWindows);
+    return pair ? { leftId: pair.left.id, rightId: pair.right.id } : null;
   }, [orderedWindows]);
 
   return (
@@ -461,7 +482,10 @@ export const WorkbenchDesktop: React.FC = () => {
       data-wb-desktop
       // absolute inset-0：不依赖百分比高度链，避免父级 flex/contain 抖动时桌面只占半屏
       className="absolute inset-0 overflow-hidden"
+      tabIndex={0}
+      aria-label={t('a11y.desktop', '工作台桌面')}
       onContextMenu={gestures.onDesktopContextMenu}
+      onKeyDown={gestures.onDesktopKeyDown}
       onDoubleClick={gestures.onDesktopDoubleClick}
     >
       {/* O13：视差包裹层（JS 直写 transform；关闭时透明包裹不影响层序 z:0） */}

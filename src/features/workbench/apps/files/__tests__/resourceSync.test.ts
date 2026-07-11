@@ -6,6 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DstuWatchEvent } from '@/dstu/types';
+import { VfsError, VfsErrorCode } from '@/shared/result';
 
 type WatchCallback = (event: DstuWatchEvent) => void;
 
@@ -13,9 +14,20 @@ const watchState: { callbacks: WatchCallback[]; unwatchCount: number } = {
   callbacks: [],
   unwatchCount: 0,
 };
+const missingResourceIds = new Set<string>();
+const failingResourceIds = new Set<string>();
 
 vi.mock('@/dstu', () => ({
   dstu: {
+    get: vi.fn(async (path: string) => {
+      const id = path.split('/').filter(Boolean).pop() ?? '';
+      if (failingResourceIds.has(id)) {
+        return { ok: false, error: new VfsError(VfsErrorCode.UNKNOWN, 'temporary failure') };
+      }
+      return missingResourceIds.has(id)
+        ? { ok: false, error: new VfsError(VfsErrorCode.NOT_FOUND, 'not found') }
+        : { ok: true, value: { id } };
+    }),
     watch: (_path: string, cb: WatchCallback) => {
       watchState.callbacks.push(cb);
       return () => {
@@ -27,9 +39,16 @@ vi.mock('@/dstu', () => ({
 }));
 
 import { useWindowStore } from '../../../core/windowStore';
+import { appRegistry } from '../../../core/appRegistry';
+import { createContentApp } from '../../content/createContentApp';
+import {
+  __resetContentDirtyRegistry,
+  registerContentDirtyChecker,
+} from '../../content/contentDirtyRegistry';
 import {
   closeWindowsForDeletedResource,
   extractResourceIdFromPath,
+  reconcileDeletedResourceWindows,
   startResourceSync,
   stopResourceSync,
 } from '../resourceSync';
@@ -64,11 +83,16 @@ describe('resourceSync', () => {
     stopResourceSync();
     watchState.callbacks = [];
     watchState.unwatchCount = 0;
+    missingResourceIds.clear();
+    failingResourceIds.clear();
+    __resetContentDirtyRegistry();
     resetStore();
   });
 
   afterEach(() => {
     stopResourceSync();
+    vi.restoreAllMocks();
+    __resetContentDirtyRegistry();
     resetStore();
   });
 
@@ -119,6 +143,61 @@ describe('resourceSync', () => {
     const windows = useWindowStore.getState().windows;
     expect(windows[a]).toBeUndefined();
     expect(windows[b]).toBeUndefined();
+  });
+
+  it('路径别名按同一资源处理', () => {
+    const store = useWindowStore.getState();
+    const noteWin = store.openWindow({ typeId: 'note', instanceKey: '/folder/note_alias' });
+
+    expect(closeWindowsForDeletedResource('note_alias')).toBe(1);
+    expect(useWindowStore.getState().windows[noteWin]).toBeUndefined();
+  });
+
+  it('dirty checker 取消关闭时保留窗口与内存草稿', () => {
+    const store = useWindowStore.getState();
+    const noteWin = store.openWindow({ typeId: 'note', instanceKey: 'note_dirty' });
+    const definition = createContentApp({
+      typeId: 'note',
+      nameKey: 'workbench:apps.note',
+      icon: null,
+      memoryWeight: 2,
+      defaultFrame: { w: 800, h: 600 },
+      confirmUnsavedOnClose: true,
+    });
+    vi.spyOn(appRegistry, 'get').mockImplementation((typeId) =>
+      typeId === 'note' ? definition : undefined,
+    );
+    registerContentDirtyChecker('note', '/folder/note_dirty', () => true);
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    expect(closeWindowsForDeletedResource('/note_dirty')).toBe(0);
+    expect(useWindowStore.getState().windows[noteWin]).toBeDefined();
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('文件夹或批量事件通过存活性复核关闭后代资源窗', async () => {
+    const store = useWindowStore.getState();
+    const noteWin = store.openWindow({ typeId: 'note', instanceKey: '/folder/note_gone' });
+    const mapWin = store.openWindow({ typeId: 'mindmap', instanceKey: 'map_gone' });
+    missingResourceIds.add('note_gone');
+    missingResourceIds.add('map_gone');
+
+    startResourceSync();
+    emit({ type: 'purged', path: '/_trash' });
+    await reconcileDeletedResourceWindows();
+
+    expect(useWindowStore.getState().windows[noteWin]).toBeUndefined();
+    expect(useWindowStore.getState().windows[mapWin]).toBeUndefined();
+  });
+
+  it('存活性复核遇到临时读取错误时不误关窗口', async () => {
+    const store = useWindowStore.getState();
+    const noteWin = store.openWindow({ typeId: 'note', instanceKey: 'note_busy' });
+    failingResourceIds.add('note_busy');
+
+    await reconcileDeletedResourceWindows();
+
+    expect(useWindowStore.getState().windows[noteWin]).toBeDefined();
   });
 
   it('start 幂等：重复调用只保持一个订阅；stop 后退订', () => {

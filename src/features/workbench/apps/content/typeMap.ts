@@ -33,21 +33,24 @@ export const RESOURCE_APP_TYPE_IDS: ReadonlySet<string> = new Set([
   MINDMAP_APP_TYPE_ID,
 ]);
 
-const RESOURCE_TYPE_TO_APP_TYPE_ID: Partial<Record<ResourceType, string>> = {
-  note: 'note',
-  textbook: 'textbook',
-  exam: 'exam',
-  translation: 'translation',
-  essay: 'essay',
-  image: 'image',
-  file: 'file',
-  mindmap: MINDMAP_APP_TYPE_ID,
-};
+const RESOURCE_TYPE_TO_APP_TYPE_ID = Object.freeze(
+  Object.assign(Object.create(null) as Record<string, string>, {
+    note: 'note',
+    textbook: 'textbook',
+    exam: 'exam',
+    translation: 'translation',
+    essay: 'essay',
+    image: 'image',
+    file: 'file',
+    mindmap: MINDMAP_APP_TYPE_ID,
+  } satisfies Partial<Record<ResourceType, string>>),
+);
 
 /**
  * learning-hub ResourceType → workbench typeId。
  * 不可开窗的类型（'all' 等聚合视图）返回 null。
  */
 export function resourceTypeToAppTypeId(type: ResourceType | string): string | null {
-  return RESOURCE_TYPE_TO_APP_TYPE_ID[type as ResourceType] ?? null;
+  if (typeof type !== 'string' || !type) return null;
+  return RESOURCE_TYPE_TO_APP_TYPE_ID[type] ?? null;
 }

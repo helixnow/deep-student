@@ -58,6 +58,10 @@ function pointerEvent(
 
 const apiRef: { current: UseTilingDividerResult | null } = { current: null };
 
+function queryWindowWidth(id: string): string {
+  return document.querySelector<HTMLElement>(`[data-wb-window-id="${id}"]`)?.style.width ?? '';
+}
+
 const Harness: React.FC = () => {
   const divider = useTilingDivider(LEFT_ID, RIGHT_ID);
   apiRef.current = divider;
@@ -122,6 +126,139 @@ afterEach(() => {
 });
 
 describe('useTilingDivider', () => {
+  it('拖动中 pair props 重配会取消旧拖拽并按 store 比例绑定新 pair', () => {
+    const newLeftId = 'winL2';
+    const newRightId = 'winR2';
+    const newKey = tilingPairKey(newLeftId, newRightId);
+    useWindowStore.getState().setTilingRatio(newKey, 0.6);
+
+    for (const id of [LEFT_ID, RIGHT_ID, newLeftId, newRightId]) {
+      const el = document.createElement('div');
+      el.setAttribute('data-wb-window-id', id);
+      if (id === LEFT_ID) el.style.pointerEvents = 'auto';
+      if (id === RIGHT_ID) el.style.pointerEvents = 'all';
+      if (id === newLeftId || id === newRightId) el.style.width = '123px';
+      document.body.appendChild(el);
+    }
+
+    const PairHarness: React.FC<{ leftId: string; rightId: string }> = ({ leftId, rightId }) => {
+      const divider = useTilingDivider(leftId, rightId);
+      apiRef.current = divider;
+      return <div data-testid="wb-divider-pair" onPointerDown={divider.onPointerDown} />;
+    };
+    const utils = render(<PairHarness leftId={LEFT_ID} rightId={RIGHT_ID} />);
+    const divider = screen.getByTestId('wb-divider-pair');
+    startDrag(divider, 800);
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointermove', { clientX: 1120 }));
+      flushRaf();
+    });
+
+    utils.rerender(<PairHarness leftId={newLeftId} rightId={newRightId} />);
+    act(() => window.dispatchEvent(pointerEvent('pointerup', { clientX: 1120 })));
+
+    expect(apiRef.current!.isDragging()).toBe(false);
+    expect(divider).not.toHaveClass(TILING_DIVIDER_ACTIVE_CLASS);
+    expect(useWindowStore.getState().tilingRatios[KEY]).toBe(0.5);
+    expect(useWindowStore.getState().tilingRatios[newKey]).toBe(0.6);
+    expect(queryWindowWidth(LEFT_ID)).toBe(`${Math.round((1600 - 24) * 0.5)}px`);
+    expect(queryWindowWidth(newLeftId)).toBe(`${Math.round((1600 - 24) * 0.6)}px`);
+    expect(document.querySelector<HTMLElement>(`[data-wb-window-id="${LEFT_ID}"]`)?.style.pointerEvents)
+      .toBe('auto');
+    expect(document.querySelector<HTMLElement>(`[data-wb-window-id="${RIGHT_ID}"]`)?.style.pointerEvents)
+      .toBe('all');
+  });
+
+  it('settle 中 pair props 重配会失效旧 RAF，且不提交旧 pair', () => {
+    const newLeftId = 'winL2';
+    const newRightId = 'winR2';
+    const newKey = tilingPairKey(newLeftId, newRightId);
+    useWindowStore.getState().setTilingRatio(newKey, 0.6);
+
+    for (const id of [LEFT_ID, RIGHT_ID, newLeftId, newRightId]) {
+      const el = document.createElement('div');
+      el.setAttribute('data-wb-window-id', id);
+      document.body.appendChild(el);
+    }
+
+    const PairHarness: React.FC<{ leftId: string; rightId: string }> = ({ leftId, rightId }) => {
+      const divider = useTilingDivider(leftId, rightId);
+      apiRef.current = divider;
+      return <div data-testid="wb-divider-settle-pair" onPointerDown={divider.onPointerDown} />;
+    };
+    const utils = render(<PairHarness leftId={LEFT_ID} rightId={RIGHT_ID} />);
+    const divider = screen.getByTestId('wb-divider-settle-pair');
+    startDrag(divider, 800);
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointermove', { clientX: 1590 }));
+      flushRaf();
+      window.dispatchEvent(pointerEvent('pointerup', { clientX: 1590 }));
+    });
+
+    const staleSettleFrame = Array.from(rafCallbacks.values())[0];
+    expect(staleSettleFrame).toBeTypeOf('function');
+    utils.rerender(<PairHarness leftId={newLeftId} rightId={newRightId} />);
+    act(() => staleSettleFrame(nowMs + 500));
+
+    expect(useWindowStore.getState().tilingRatios[KEY]).toBe(0.5);
+    expect(useWindowStore.getState().tilingRatios[newKey]).toBe(0.6);
+    expect(queryWindowWidth(LEFT_ID)).toBe(`${Math.round((1600 - 24) * 0.5)}px`);
+    expect(queryWindowWidth(newLeftId)).toBe(`${Math.round((1600 - 24) * 0.6)}px`);
+    expect(rafCallbacks.size).toBe(0);
+  });
+
+  it('新点按中断 settle 时恢复持久化比例，不留下中间 DOM 帧', () => {
+    const left = document.createElement('div');
+    left.setAttribute('data-wb-window-id', LEFT_ID);
+    const right = document.createElement('div');
+    right.setAttribute('data-wb-window-id', RIGHT_ID);
+    document.body.append(left, right);
+
+    render(<Harness />);
+    const divider = screen.getByTestId('wb-divider');
+    startDrag(divider, 800);
+    act(() => {
+      window.dispatchEvent(pointerEvent('pointermove', { clientX: 1590 }));
+      flushRaf();
+      window.dispatchEvent(pointerEvent('pointerup', { clientX: 1590 }));
+      flushRaf(40);
+    });
+    expect(queryWindowWidth(LEFT_ID)).not.toBe(`${Math.round((1600 - 24) * 0.5)}px`);
+
+    clickDivider(divider, 800, 2);
+
+    expect(useWindowStore.getState().tilingRatios[KEY]).toBe(0.5);
+    expect(queryWindowWidth(LEFT_ID)).toBe(`${Math.round((1600 - 24) * 0.5)}px`);
+    expect(rafCallbacks.size).toBe(0);
+  });
+
+  it('拖拽与 settle 结束/取消后精确恢复原 inline pointer-events', () => {
+    const left = document.createElement('div');
+    left.setAttribute('data-wb-window-id', LEFT_ID);
+    left.style.pointerEvents = 'auto';
+    const right = document.createElement('div');
+    right.setAttribute('data-wb-window-id', RIGHT_ID);
+    right.style.pointerEvents = 'all';
+    document.body.append(left, right);
+
+    const utils = render(<Harness />);
+    const el = screen.getByTestId('wb-divider');
+    startDrag(el, 800);
+    expect(left.style.pointerEvents).toBe('none');
+    expect(right.style.pointerEvents).toBe('none');
+    act(() => window.dispatchEvent(pointerEvent('pointerup', { clientX: 800 })));
+    expect(left.style.pointerEvents).toBe('auto');
+    expect(right.style.pointerEvents).toBe('all');
+
+    useWindowStore.getState().setTilingRatio(KEY, 0.7);
+    nowMs += 50;
+    clickDivider(el, 800, 2);
+    expect(left.style.pointerEvents).toBe('none');
+    utils.unmount();
+    expect(left.style.pointerEvents).toBe('auto');
+    expect(right.style.pointerEvents).toBe('all');
+  });
+
   it('拖动中缝 rAF 合帧直写 DOM，松手才 commit store', () => {
     // 挂载左右窗 DOM，供 divider 直写
     const left = document.createElement('div');

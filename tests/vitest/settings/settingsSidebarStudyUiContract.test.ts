@@ -31,7 +31,7 @@ describe('settings sidebar study-ui contract', () => {
   });
 
   it('collapses the desktop settings sidebar fully out of view instead of leaving an icon rail', () => {
-    expect(settingsSidebarSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
+    expect(settingsSidebarSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[var(--panel-ease)]'");
     expect(settingsSidebarSource).toContain("globalLeftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'");
     expect(settingsSidebarSource).not.toContain("globalLeftPanelCollapsed ? 'w-14' : 'w-[var(--shell-navigation-width)]'");
   });

@@ -106,6 +106,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
 }) => {
   const { t } = useTranslation('workbench');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuAutoFocus, setMenuAutoFocus] = useState(false);
   const [titleOverflow, setTitleOverflow] = useState(false);
   const [ripples, setRipples] = useState<RippleSpec[]>([]);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,6 +154,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       closeTimer.current = null;
     }
     if (menuOpen || openTimer.current) return;
+    setMenuAutoFocus(false);
     openTimer.current = setTimeout(() => {
       openTimer.current = null;
       setMenuOpen(true);
@@ -168,6 +170,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
     closeTimer.current = setTimeout(() => {
       closeTimer.current = null;
       setMenuOpen(false);
+      setMenuAutoFocus(false);
     }, TILE_MENU_CLOSE_GRACE);
   }, [menuOpen]);
 
@@ -363,6 +366,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 clearTimers();
+                setMenuAutoFocus(true);
                 setMenuOpen(true);
               }
             }}
@@ -371,9 +375,10 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
           </button>
           <TileMenuPopover
             open={menuOpen}
+            autoFocus={menuAutoFocus}
             currentMode={displayMode}
             onSelect={handleTileSelect}
-            onRequestClose={() => closeMenu(true)}
+            onRequestClose={(options) => closeMenu(options?.returnFocus ?? true)}
             onHoverChange={(hovering) => {
               if (hovering) scheduleOpen();
               else scheduleClose();

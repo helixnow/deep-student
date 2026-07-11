@@ -120,6 +120,22 @@ describe('recomputeLifecycles — 四档判定', () => {
     expect(store().lifecycles[peeking]).toBe('visible'); // 右侧露出 100px
   });
 
+  it('左右平铺遮挡使用当前 pair ratio，而非固定 50/50', () => {
+    const left = store().openWindow({ typeId: 'sched-light' });
+    const right = store().openWindow({ typeId: 'sched-light' });
+    const cover = store().openWindow({
+      typeId: 'sched-light',
+      initialFrame: { x: 0, y: 0, w: 320, h: 900 },
+    });
+    store().setDisplayMode(left, 'tiled-left');
+    store().setDisplayMode(right, 'tiled-right');
+    store().setTilingRatio(`${left}:${right}`, 0.2);
+    store().focusWindow(cover);
+    recomputeLifecycles();
+    expect(store().lifecycles[left]).toBe('background');
+    expect(store().lifecycles[right]).toBe('visible');
+  });
+
   it('全空桌面 → 空 lifecycles', () => {
     recomputeLifecycles();
     expect(store().lifecycles).toEqual({});

@@ -101,7 +101,7 @@ export const WorkbenchEventBridge: React.FC = () => {
       if (!content) return;
       const sessionId = findRecentChatSessionId();
       if (sessionId) {
-        workbenchBus.activate({
+        void workbenchBus.activate({
           typeId: CHAT_APP_TYPE_ID,
           instanceKey: sessionId,
           action: 'setInput',
@@ -110,7 +110,7 @@ export const WorkbenchEventBridge: React.FC = () => {
         return;
       }
       void launchNewChatSession({ reason: 'api' }).then((result) => {
-        workbenchBus.activate({
+        void workbenchBus.activate({
           typeId: CHAT_APP_TYPE_ID,
           instanceKey: result.sessionId,
           action: 'setInput',

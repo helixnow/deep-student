@@ -4,15 +4,16 @@
  * AppDefinition.canClose 的未保存拦截挂点：编辑类视图（note/essay/translation）
  * 可在此注册"当前是否有未保存修改"的查询函数，关窗前由 canClose 询问。
  *
- * 现状：现有 views/*ContentView 未暴露脏状态查询接口（NotesCrepeEditor 的
- * isDirty 为组件内部状态），因此本注册表暂时不会被现有视图填充——
- * 已在 P8 进度文件记录为遗留项，交由 P11/后续在视图层接线。
+ * 同一资源允许正文、标题、附件等多个编辑面分别注册 checker；任一 dirty
+ * 即触发关闭确认。资源键统一规范化为 DSTU 叶 ID，避免路径别名绕过保护。
  */
 
-const checkers = new Map<string, () => boolean>();
+import { normalizeResourceInstanceKey } from './resourceIdentity';
+
+const checkers = new Map<string, Set<() => boolean>>();
 
 function keyOf(typeId: string, instanceKey: string | null): string {
-  return `${typeId}::${instanceKey ?? ''}`;
+  return `${typeId}::${normalizeResourceInstanceKey(instanceKey) ?? ''}`;
 }
 
 /**
@@ -25,9 +26,13 @@ export function registerContentDirtyChecker(
   isDirty: () => boolean,
 ): () => void {
   const key = keyOf(typeId, instanceKey);
-  checkers.set(key, isDirty);
+  const existing = checkers.get(key) ?? new Set<() => boolean>();
+  existing.add(isDirty);
+  checkers.set(key, existing);
   return () => {
-    if (checkers.get(key) === isDirty) {
+    const registered = checkers.get(key);
+    registered?.delete(isDirty);
+    if (registered?.size === 0) {
       checkers.delete(key);
     }
   };
@@ -35,12 +40,18 @@ export function registerContentDirtyChecker(
 
 /** 查询某个资源实例是否有未保存修改（未注册 = 视为干净） */
 export function isContentDirty(typeId: string, instanceKey: string | null): boolean {
-  try {
-    return checkers.get(keyOf(typeId, instanceKey))?.() ?? false;
-  } catch {
-    // 查询函数异常时宁可放行关闭，也不要把窗口锁死
-    return false;
+  const registered = checkers.get(keyOf(typeId, instanceKey));
+  if (!registered) return false;
+  for (const checker of registered) {
+    try {
+      if (checker()) return true;
+    } catch {
+      // A broken checker must still surface the close confirmation. The user
+      // can explicitly confirm, while silently treating it as clean loses data.
+      return true;
+    }
   }
+  return false;
 }
 
 /** 仅供测试：清空注册表 */

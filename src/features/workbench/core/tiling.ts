@@ -12,7 +12,13 @@
  * - left.x + left.w + m === right.x；right.x + right.w + m === W；
  * - 四分屏同理在两个轴向上互补，不重叠、不超界。
  */
-import type { DisplayMode, Frame, SnapZone, TilingContext } from './types';
+import type {
+  DisplayMode,
+  Frame,
+  SnapZone,
+  TilingContext,
+  WorkbenchWindow,
+} from './types';
 
 /** 平铺间距默认值（px），对标 macOS Sequoia "Tiled windows have margins" 默认开 */
 export const DEFAULT_TILE_MARGIN = 8;
@@ -55,6 +61,43 @@ export function isTiledMode(mode: DisplayMode): boolean {
 /** 快照 tilingRatios 的 key（见 WorkbenchSnapshotV1）：`${leftWindowId}:${rightWindowId}` */
 export function tilingPairKey(leftWindowId: string, rightWindowId: string): string {
   return `${leftWindowId}:${rightWindowId}`;
+}
+
+export interface ActiveTilingPair {
+  left: WorkbenchWindow;
+  right: WorkbenchWindow;
+  key: string;
+}
+
+/**
+ * 当前可交互的左右平铺对。桌面允许同一侧暂存多扇窗口（例如先后吸附），
+ * 视觉上真正组成一对的是左右两侧各自 zIndex 最高且未最小化的窗口。
+ */
+export function getActiveTilingPair(
+  windows: Record<string, WorkbenchWindow> | readonly WorkbenchWindow[],
+): ActiveTilingPair | null {
+  const list = Array.isArray(windows) ? windows : Object.values(windows);
+  let left: WorkbenchWindow | undefined;
+  let right: WorkbenchWindow | undefined;
+  for (const win of list) {
+    if (win.minimized) continue;
+    if (win.displayMode === 'tiled-left' && (!left || win.zIndex > left.zIndex)) left = win;
+    if (win.displayMode === 'tiled-right' && (!right || win.zIndex > right.zIndex)) right = win;
+  }
+  return left && right
+    ? { left, right, key: tilingPairKey(left.id, right.id) }
+    : null;
+}
+
+/** 仅当前左右配对共享其 ratio；被遮在同侧后方的窗口使用默认 50/50。 */
+export function getTilingRatioForWindow(
+  windows: Record<string, WorkbenchWindow> | readonly WorkbenchWindow[],
+  ratios: Record<string, number>,
+  windowId: string,
+): number | undefined {
+  const pair = getActiveTilingPair(windows);
+  if (!pair || (pair.left.id !== windowId && pair.right.id !== windowId)) return undefined;
+  return clampTilingRatio(ratios[pair.key] ?? 0.5);
 }
 
 /** 吸附区 → 显示模式（松手落位 / SnapPreview 共用） */

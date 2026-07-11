@@ -124,6 +124,18 @@ function nextFrame(
   if (input.initialFrame?.x != null && input.initialFrame?.y != null) {
     return { x: input.initialFrame.x, y: input.initialFrame.y, w, h };
   }
+  if (
+    input.dropPoint &&
+    Number.isFinite(input.dropPoint.x) &&
+    Number.isFinite(input.dropPoint.y)
+  ) {
+    return {
+      x: clampNumber(input.dropPoint.x - w / 2, 0, Math.max(0, desktopSize.w - w)),
+      y: clampNumber(input.dropPoint.y - h / 2, 0, Math.max(0, desktopSize.h - h)),
+      w,
+      h,
+    };
+  }
   const cascade = nextCascadeOrigin(w, h, desktopSize, windows);
   return {
     x: input.initialFrame?.x ?? cascade.x,
@@ -220,6 +232,45 @@ function deriveFocusStack(windows: Record<string, WorkbenchWindow>): string[] {
     .map((win) => win.id);
 }
 
+/** 删除已失效的左右配对比例，避免窗口换搭档后沿用旧 pair 的几何。 */
+function pruneTilingRatios(
+  ratios: Record<string, number>,
+  windows: Record<string, WorkbenchWindow>,
+): Record<string, number> {
+  let next: Record<string, number> | null = null;
+  for (const key of Object.keys(ratios)) {
+    const separator = key.indexOf(':');
+    const leftId = separator >= 0 ? key.slice(0, separator) : '';
+    const rightId = separator >= 0 ? key.slice(separator + 1) : '';
+    const valid =
+      windows[leftId]?.displayMode === 'tiled-left' &&
+      windows[rightId]?.displayMode === 'tiled-right';
+    if (valid) continue;
+    if (!next) next = { ...ratios };
+    delete next[key];
+  }
+  return next ?? ratios;
+}
+
+function mergeHydratedWindows(
+  snapshotWindows: WorkbenchWindow[],
+  liveWindows: Record<string, WorkbenchWindow>,
+): WorkbenchWindow[] {
+  const live = Object.values(liveWindows).sort((a, b) => a.zIndex - b.zIndex);
+  if (live.length === 0) return snapshotWindows;
+  const identity = (win: WorkbenchWindow) => `${win.typeId}\u0000${win.instanceKey ?? ''}`;
+  const liveIdentities = new Set(live.map(identity));
+  const survivors = snapshotWindows.filter(
+    (win) => !liveWindows[win.id] && !liveIdentities.has(identity(win)),
+  );
+  // 启动期间新开的窗口必须保留为顶层焦点，不能被快照里的历史大 zIndex 压住。
+  const maxSnapshotZ = survivors.reduce((max, win) => Math.max(max, win.zIndex), Z_BASE);
+  return [
+    ...survivors,
+    ...live.map((win, index) => ({ ...win, zIndex: maxSnapshotZ + index + 1 })),
+  ];
+}
+
 export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
   windows: {},
   focusStack: [],
@@ -296,6 +347,7 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
         lifecycles,
         transientPhases,
         focusStack: deriveFocusStack(windows),
+        tilingRatios: pruneTilingRatios(s.tilingRatios, windows),
       };
     });
   },
@@ -364,12 +416,11 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     set((s) => {
       const win = s.windows[id];
       if (!win || win.displayMode === mode) return s;
-      return {
-        windows: {
-          ...s.windows,
-          [id]: applyDisplayModeTransition(win, mode),
-        },
+      const windows = {
+        ...s.windows,
+        [id]: applyDisplayModeTransition(win, mode),
       };
+      return { windows, tilingRatios: pruneTilingRatios(s.tilingRatios, windows) };
     });
   },
 
@@ -384,7 +435,9 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
         windows[id] = applyDisplayModeTransition(win, mode);
         changed = true;
       }
-      return changed ? { windows } : s;
+      return changed
+        ? { windows, tilingRatios: pruneTilingRatios(s.tilingRatios, windows) }
+        : s;
     });
   },
 
@@ -424,7 +477,12 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     });
   },
 
-  hydrate: (windows, tilingRatios) => {
+  hydrate: (windows, tilingRatios, options) => {
+    const beforeHydrate = get();
+    const preserveExisting = options?.preserveExisting === true;
+    const incoming = preserveExisting
+      ? mergeHydratedWindows(windows, beforeHydrate.windows)
+      : windows;
     // 多显示器 / 分辨率自适应：快照桌面尺寸（loadSnapshot 停放）→ 当前桌面
     const savedDesktop = pendingRestoreDesktopSize;
     pendingRestoreDesktopSize = null;
@@ -432,7 +490,7 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
 
     // zIndex 归一化：按快照 z 序（同 z 按 lastFocusedAt）重排为紧凑序列，
     // focusStack 由归一化后的 z 序派生 → 结构性满足「focus 必最高 zIndex」。
-    const sorted = [...windows].sort(
+    const sorted = [...incoming].sort(
       (a, b) => a.zIndex - b.zIndex || a.lastFocusedAt - b.lastFocusedAt,
     );
     const map: Record<string, WorkbenchWindow> = {};
@@ -464,11 +522,24 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     set({
       windows: map,
       focusStack,
-      tilingRatios,
+      tilingRatios: pruneTilingRatios(
+        preserveExisting
+          ? { ...tilingRatios, ...beforeHydrate.tilingRatios }
+          : tilingRatios,
+        map,
+      ),
       lifecycles,
       // 快照绝不含 payload / 瞬态标记；整体替换时清空
-      launchPayloads: {},
-      transientPhases: {},
+      launchPayloads: preserveExisting
+        ? Object.fromEntries(
+            Object.entries(beforeHydrate.launchPayloads).filter(([id]) => Boolean(map[id])),
+          )
+        : {},
+      transientPhases: preserveExisting
+        ? Object.fromEntries(
+            Object.entries(beforeHydrate.transientPhases ?? {}).filter(([id]) => Boolean(map[id])),
+          )
+        : {},
     });
     postHydrateHook?.();
   },

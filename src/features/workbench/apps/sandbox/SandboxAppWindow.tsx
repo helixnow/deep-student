@@ -1,8 +1,8 @@
 /**
  * 沙箱工作台应用窗口（P9 薄包装 → O18 窗口化边界打磨）
  *
- * 复用 `SandboxWorkbenchSurface`。其状态源 `useSandboxWorkbenchStore` 是
- * 全局单 activeSession（一次只有一个预览会话）→ 应用为 single 单例窗口。
+ * 复用 `SandboxWorkbenchSurface`。应用保持 single 单例窗口，并显式绑定
+ * legacy/standalone owner；chat owner 的激活不会切换本窗口正在展示的预览。
  * embedded=false：无会话时渲染引导空态而非 null；
  * 工具栏关闭按钮 → requestClose（关窗），会话数据留在 store。
  * 窗口标题跟随当前会话标题。
@@ -18,7 +18,11 @@
  */
 import React, { Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import {
+  LEGACY_SANDBOX_OWNER_KEY,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import type { AppWindowProps } from '../../core/types';
 import { WbSysFade, WbSysSkeleton } from '../system/SystemWindowShared';
 import { useWbSysSize } from '../system/useWbSysSize';
@@ -31,7 +35,9 @@ const SandboxWorkbenchSurface = React.lazy(
 const SandboxAppWindow: React.FC<AppWindowProps> = ({ onTitleChange, requestClose, isActive }) => {
   const { t } = useTranslation('workbench');
   const { ref } = useWbSysSize();
-  const sessionTitle = useSandboxWorkbenchStore((s) => s.activeSession?.title ?? null);
+  const sessionTitle = useSandboxWorkbenchStore((state) => (
+    selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).activeSession?.title ?? null
+  ));
 
   useEffect(() => {
     onTitleChange(sessionTitle || t('workbench:apps.sandbox', '沙箱工作台'));
@@ -45,7 +51,11 @@ const SandboxAppWindow: React.FC<AppWindowProps> = ({ onTitleChange, requestClos
     >
       <Suspense fallback={<WbSysSkeleton variant="surface" />}>
         <WbSysFade>
-          <SandboxWorkbenchSurface className="h-full" onClose={requestClose} />
+          <SandboxWorkbenchSurface
+            className="h-full"
+            onClose={requestClose}
+            ownerKey={LEGACY_SANDBOX_OWNER_KEY}
+          />
         </WbSysFade>
       </Suspense>
       {!isActive && (

@@ -9,15 +9,20 @@ import { cn } from '@/lib/utils';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
-import { useSandboxWorkbenchStore } from '../store/useSandboxWorkbenchStore';
+import {
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '../store/useSandboxWorkbenchStore';
 import { SandboxInspectorPanel } from './SandboxInspectorPanel';
 import { SandboxStatusRail } from './SandboxStatusRail';
 import { SandboxToolbar } from './SandboxToolbar';
+import type { SandboxOwnerKey } from '../types';
 
 export interface SandboxWorkbenchSurfaceProps {
   embedded?: boolean;
   className?: string;
   onClose?: () => void;
+  ownerKey?: SandboxOwnerKey;
   /**
    * 隐藏自绘的 SandboxToolbar。
    * ★ 2026-07-08（移动端审计 D-6）：独立视图形态下移动端已有统一顶栏
@@ -37,14 +42,23 @@ export function SandboxWorkbenchSurface({
   embedded = false,
   className,
   onClose,
+  ownerKey,
   hideToolbar = false,
 }: SandboxWorkbenchSurfaceProps) {
   const { t } = useTranslation('common');
   const { isSmallScreen } = useBreakpoint();
-  const activeSession = useSandboxWorkbenchStore((state) => state.activeSession);
-  const isOpen = useSandboxWorkbenchStore((state) => state.isOpen);
-  const inspectorOpen = useSandboxWorkbenchStore((state) => state.inspectorOpen);
-  const viewportPreset = useSandboxWorkbenchStore((state) => state.viewportPreset);
+  const activeSession = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).activeSession
+    : state.activeSession);
+  const isOpen = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).isOpen
+    : state.isOpen);
+  const inspectorOpen = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).inspectorOpen
+    : state.inspectorOpen);
+  const viewportPreset = useSandboxWorkbenchStore((state) => ownerKey
+    ? selectSandboxWorkbenchOwnerState(state, ownerKey).viewportPreset
+    : state.viewportPreset);
   const refreshSession = useSandboxWorkbenchStore((state) => state.refreshSession);
   const closeSession = useSandboxWorkbenchStore((state) => state.closeSession);
   const openWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
@@ -54,16 +68,16 @@ export function SandboxWorkbenchSurface({
 
   const handleClose = useCallback(() => {
     onClose?.();
-    closeWorkbench();
-  }, [closeWorkbench, onClose]);
+    closeWorkbench(ownerKey);
+  }, [closeWorkbench, onClose, ownerKey]);
 
   const handleClear = useCallback(() => {
-    closeSession();
-  }, [closeSession]);
+    closeSession(ownerKey);
+  }, [closeSession, ownerKey]);
 
   const handleToggleInspector = useCallback(() => {
-    setInspectorOpen(!inspectorOpen);
-  }, [inspectorOpen, setInspectorOpen]);
+    setInspectorOpen(!inspectorOpen, ownerKey);
+  }, [inspectorOpen, ownerKey, setInspectorOpen]);
 
   const subtitle = activeSession
     ? `${activeSession.language.toUpperCase()} · 安全预览`
@@ -88,7 +102,7 @@ export function SandboxWorkbenchSurface({
             title="沙箱工作台"
             subtitle={subtitle}
             inspectorOpen={inspectorOpen}
-            onReload={refreshSession}
+            onReload={() => refreshSession(ownerKey)}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
           />
@@ -115,7 +129,7 @@ export function SandboxWorkbenchSurface({
             title={activeSession.title}
             meta="已收起"
             inspectorOpen={inspectorOpen}
-            onReload={refreshSession}
+            onReload={() => refreshSession(ownerKey)}
             onToggleInspector={handleToggleInspector}
             onClose={handleClose}
           />
@@ -126,7 +140,7 @@ export function SandboxWorkbenchSurface({
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={openWorkbench}
+              onClick={() => openWorkbench(ownerKey)}
               aria-label="打开沙箱工作台"
               title="打开沙箱工作台"
               className="!h-12 !w-12 rounded-2xl border border-border/80 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
@@ -161,7 +175,7 @@ export function SandboxWorkbenchSurface({
             <button
               key={preset}
               type="button"
-              onClick={() => setViewportPreset(preset)}
+              onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
                 'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
                 viewportPreset === preset
@@ -203,8 +217,8 @@ export function SandboxWorkbenchSurface({
       viewportPreset={viewportPreset}
       lineCount={lineCount}
       charCount={charCount}
-      onClose={() => setInspectorOpen(false)}
-      onSetViewportPreset={setViewportPreset}
+      onClose={() => setInspectorOpen(false, ownerKey)}
+      onSetViewportPreset={(preset) => setViewportPreset(preset, ownerKey)}
       compact={isSmallScreen}
     />
   );
@@ -216,7 +230,7 @@ export function SandboxWorkbenchSurface({
           title={activeSession.title}
           subtitle={toolbarSubtitle}
           inspectorOpen={inspectorOpen}
-          onReload={refreshSession}
+          onReload={() => refreshSession(ownerKey)}
           onToggleInspector={handleToggleInspector}
           onClose={handleClose}
         />

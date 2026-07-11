@@ -5,6 +5,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeTiledFrame,
+  getActiveTilingPair,
+  getTilingRatioForWindow,
   zoneToDisplayMode,
   clampTilingRatio,
   tilingPairKey,
@@ -13,6 +15,7 @@ import {
   MAX_TILING_RATIO,
 } from '@/features/workbench/core/tiling';
 import type { DisplayMode, SnapZone, TilingContext } from '@/features/workbench/core/types';
+import type { WorkbenchWindow } from '@/features/workbench/core/types';
 
 const DESKTOP = { w: 1600, h: 1000 };
 
@@ -166,5 +169,36 @@ describe('tilingPairKey / 常量', () => {
   });
   it('默认 margin 为 8', () => {
     expect(DEFAULT_TILE_MARGIN).toBe(8);
+  });
+});
+
+describe('active tiling pair', () => {
+  const win = (id: string, mode: DisplayMode, zIndex: number): WorkbenchWindow => ({
+    id,
+    typeId: 'test',
+    instanceKey: null,
+    title: id,
+    frame: { x: 0, y: 0, w: 100, h: 100 },
+    restoreFrame: null,
+    displayMode: mode,
+    minimized: false,
+    zIndex,
+    createdAt: zIndex,
+    lastFocusedAt: zIndex,
+  });
+
+  it('同侧多窗时只选择左右各自顶层窗口，并按新 pair key 取比例', () => {
+    const oldLeft = win('old-left', 'tiled-left', 10);
+    const activeLeft = win('active-left', 'tiled-left', 30);
+    const right = win('right', 'tiled-right', 20);
+    const windows = { [oldLeft.id]: oldLeft, [activeLeft.id]: activeLeft, [right.id]: right };
+    const pair = getActiveTilingPair(windows);
+    expect(pair?.key).toBe('active-left:right');
+    expect(getTilingRatioForWindow(windows, {
+      'old-left:right': 0.7,
+      'active-left:right': 0.6,
+    }, activeLeft.id)).toBe(0.6);
+    expect(getTilingRatioForWindow(windows, { 'old-left:right': 0.7 }, right.id)).toBe(0.5);
+    expect(getTilingRatioForWindow(windows, { 'old-left:right': 0.7 }, oldLeft.id)).toBeUndefined();
   });
 });

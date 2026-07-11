@@ -23,9 +23,11 @@ import { createContentWindowComponent } from '../ContentAppWindow';
 import { createContentApp } from '../createContentApp';
 import {
   __resetContentDirtyRegistry,
+  isContentDirty,
   registerContentDirtyChecker,
 } from '../contentDirtyRegistry';
 import type { AppWindowProps } from '../../../core/types';
+import { useWindowStore } from '../../../core/windowStore';
 
 function makeWindowProps(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -43,10 +45,14 @@ function makeWindowProps(overrides: Partial<AppWindowProps> = {}): AppWindowProp
 describe('createContentWindowComponent', () => {
   beforeEach(() => {
     panelProps.length = 0;
+    const store = useWindowStore.getState();
+    for (const id of Object.keys(store.windows)) store.closeWindow(id);
   });
 
   afterEach(() => {
     cleanup();
+    const store = useWindowStore.getState();
+    for (const id of Object.keys(store.windows)) store.closeWindow(id);
   });
 
   it('把 AppWindowProps 映射为 UnifiedAppPanel props', () => {
@@ -59,6 +65,7 @@ describe('createContentWindowComponent', () => {
     expect(mapped.type).toBe('note');
     expect(mapped.resourceId).toBe('note_123');
     expect(mapped.dstuPath).toBe('/note_123');
+    expect(mapped.strictType).toBe(true);
     expect(mapped.isActive).toBe(true);
     // O17 wraps onTitleChange（首调 markReady）；仍须转发到壳回调
     expect(mapped.onTitleChange).toBeTypeOf('function');
@@ -67,6 +74,26 @@ describe('createContentWindowComponent', () => {
     expect(props.onTitleChange).toHaveBeenCalledWith('标题');
     expect(mapped.onClose).toBe(props.requestClose);
     expect(screen.getByTestId('unified-app-panel')).toBeTruthy();
+  });
+
+  it('把完整 DSTU 路径规范化为叶资源 ID', () => {
+    const NoteWindow = createContentWindowComponent('note');
+    render(<NoteWindow {...makeWindowProps({ instanceKey: '/folder/sub/note_123' })} />);
+
+    expect(panelProps[0].resourceId).toBe('note_123');
+    expect(panelProps[0].dstuPath).toBe('/note_123');
+  });
+
+  it('同类型路径别名窗口只保留最早实例', () => {
+    const store = useWindowStore.getState();
+    const keeper = store.openWindow({ typeId: 'note', instanceKey: '/folder/note_123' });
+    const duplicate = store.openWindow({ typeId: 'note', instanceKey: 'note_123' });
+    const NoteWindow = createContentWindowComponent('note');
+
+    render(<NoteWindow {...makeWindowProps({ windowId: duplicate, instanceKey: 'note_123' })} />);
+
+    expect(useWindowStore.getState().windows[keeper]).toBeDefined();
+    expect(useWindowStore.getState().windows[duplicate]).toBeUndefined();
   });
 
   it('isActive=false 透传（visible 非焦点窗口不冒充活跃标签页）', () => {
@@ -152,5 +179,15 @@ describe('createContentApp', () => {
     unregister();
     expect(def.canClose?.('essay_1')).toBe(true);
     confirmSpy.mockRestore();
+  });
+
+  it('同一资源的多个 checker 聚合，且路径别名共享 dirty 状态', () => {
+    const unregisterBody = registerContentDirtyChecker('note', 'note_multi', () => false);
+    const unregisterTitle = registerContentDirtyChecker('note', '/folder/note_multi', () => true);
+
+    expect(isContentDirty('note', '/note_multi')).toBe(true);
+    unregisterTitle();
+    expect(isContentDirty('note', 'note_multi')).toBe(false);
+    unregisterBody();
   });
 });

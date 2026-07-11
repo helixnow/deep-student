@@ -1,9 +1,8 @@
 /**
  * 沙箱工作台应用注册（P9）
  *
- * instanceMode 决策：`useSandboxWorkbenchStore` 是全局单 activeSession store
- * （openSession 直接覆盖当前会话），多窗会互相踩会话 → single。
- * 若未来 store 升级为 by-workspaceId 多会话，再切 multi（instanceKey=workspaceId）。
+ * instanceMode 决策：独立工作台固定绑定 standalone owner，产品上只需要一个
+ * 宿主窗口；chat 内嵌预览使用各自 owner，不与该单例窗口共享活动指针。
  */
 import React from 'react';
 import { CodeBlock } from '@phosphor-icons/react';

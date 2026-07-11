@@ -40,7 +40,7 @@ export interface DockWindowListProps {
   onSelect: (windowId: string) => void;
   onDismiss: () => void;
   /** 关闭单个窗口（默认走 requestCloseAnimated） */
-  onCloseWindow?: (windowId: string) => void;
+  onCloseWindow?: (windowId: string) => boolean | void | Promise<boolean | void>;
 }
 
 function countDescendants(root: Node, budget: number): number {
@@ -170,6 +170,8 @@ export function DockWindowList({
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const surfaceRef = React.useRef<HTMLDivElement | null>(null);
   const itemRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const refocusAfterCloseRef = React.useRef<string | null>(null);
+  const refocusRafRef = React.useRef(0);
   const exitTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const exitAfterRef = React.useRef<(() => void) | null>(null);
   useLiquidGlassLens(surfaceRef);
@@ -178,7 +180,26 @@ export function DockWindowList({
   /** open = 入场；closing = 退场中，结束后再 onDismiss */
   const [phase, setPhase] = React.useState<'open' | 'closing'>('open');
 
-  const closeWindow = onCloseWindow ?? ((id: string) => void requestCloseAnimated(id));
+  const closeWindow = onCloseWindow ?? requestCloseAnimated;
+
+  const requestWindowClose = React.useCallback(
+    async (windowId: string) => {
+      refocusAfterCloseRef.current = windowId;
+      try {
+        const closed = await closeWindow(windowId);
+        if (closed === false && refocusAfterCloseRef.current === windowId) {
+          refocusAfterCloseRef.current = null;
+        }
+        return closed;
+      } catch {
+        if (refocusAfterCloseRef.current === windowId) {
+          refocusAfterCloseRef.current = null;
+        }
+        return false;
+      }
+    },
+    [closeWindow],
+  );
 
   const finishExit = React.useCallback(() => {
     if (exitTimerRef.current) {
@@ -213,6 +234,7 @@ export function DockWindowList({
         clearTimeout(exitTimerRef.current);
         exitTimerRef.current = null;
       }
+      if (refocusRafRef.current) cancelAnimationFrame(refocusRafRef.current);
     };
   }, []);
 
@@ -251,6 +273,25 @@ export function DockWindowList({
   React.useEffect(() => {
     itemRefs.current[0]?.focus();
   }, []);
+
+  // 关闭当前项后列表会缩短：钳制 roving index，并把焦点落到相邻存活项。
+  React.useLayoutEffect(() => {
+    itemRefs.current.length = windows.length;
+    const next = windows.length > 0 ? Math.min(activeIndex, windows.length - 1) : 0;
+    if (next !== activeIndex) setActiveIndex(next);
+    const closedWindowId = refocusAfterCloseRef.current;
+    if (!closedWindowId || windows.some((win) => win.id === closedWindowId)) return;
+    refocusAfterCloseRef.current = null;
+    if (windows.length === 0) {
+      ownerRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (refocusRafRef.current) cancelAnimationFrame(refocusRafRef.current);
+    refocusRafRef.current = requestAnimationFrame(() => {
+      refocusRafRef.current = 0;
+      itemRefs.current[next]?.focus({ preventScroll: true });
+    });
+  }, [windows, activeIndex, ownerRef]);
 
   const moveFocus = (index: number) => {
     if (phase === 'closing') return;
@@ -303,7 +344,9 @@ export function DockWindowList({
       case 'Delete':
       case 'Backspace':
         event.preventDefault();
-        if (windows[activeIndex]) void closeWindow(windows[activeIndex].id);
+        if (windows[activeIndex]) {
+          void requestWindowClose(windows[activeIndex].id);
+        }
         break;
       default:
         break;
@@ -392,7 +435,7 @@ export function DockWindowList({
                   disabled={phase === 'closing'}
                   onClick={(e) => {
                     e.stopPropagation();
-                    void closeWindow(win.id);
+                    void requestWindowClose(win.id);
                   }}
                 >
                   <X size={12} weight="bold" aria-hidden />

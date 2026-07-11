@@ -196,6 +196,17 @@ describe('缩放键 hover 350ms 弹出', () => {
     expect(screen.queryByRole('menu')).toBeNull();
   });
 
+  it('hover 打开不窃取缩放键焦点', () => {
+    vi.useFakeTimers();
+    renderBar();
+    const zoom = screen.getByRole('button', { name: '缩放窗口' });
+    zoom.focus();
+    fireEvent.pointerEnter(zoom);
+    act(() => vi.advanceTimersByTime(TILE_MENU_HOVER_DELAY + 10));
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(zoom).toHaveFocus();
+  });
+
   it('离开缩放键但进入菜单本体时保持打开', () => {
     vi.useFakeTimers();
     renderBar();
@@ -231,6 +242,18 @@ describe('缩放键 hover 350ms 弹出', () => {
       vi.advanceTimersByTime(TILE_MENU_EXIT_FALLBACK_MS + 10);
     });
     expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('键盘菜单 Tab 关闭时不强制把焦点抢回缩放键', () => {
+    vi.useFakeTimers();
+    renderBar();
+    const zoom = screen.getByRole('button', { name: '缩放窗口' });
+    fireEvent.keyDown(zoom, { key: 'ArrowDown' });
+    act(() => vi.runOnlyPendingTimers());
+    const item = screen.getByRole('menuitem', { name: '居中' });
+    expect(item).toHaveFocus();
+    fireEvent.keyDown(item, { key: 'Tab' });
+    expect(screen.getByRole('menu')).toHaveAttribute('data-phase', 'closing');
   });
 
   it('缩放键直接点击 = onZoom 且不弹菜单', () => {

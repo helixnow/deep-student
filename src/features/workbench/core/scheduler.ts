@@ -39,6 +39,7 @@ import {
 } from './occlusion';
 import { recordSchedulerSample } from './perfMonitor';
 import type { WindowLifecycle, WorkbenchWindow } from './types';
+import { computeTiledFrame, getTilingRatioForWindow } from './tiling';
 
 export const DEFAULT_MEMORY_BUDGET = 12;
 export const MACOS_MEMORY_BUDGET = 9;
@@ -493,7 +494,25 @@ export function recomputeLifecycles(): void {
   let usedWeight = 0;
   let frozenCount = 0;
 
-  lastOcclusionDetail = computeOcclusionIncremental(occlusionCache, wins, state.desktopSize);
+  // occlusion 的冻结签名只接收窗口自身 frame。把受管窗口的当前派生几何
+  // 物化为 floating clone，使遮挡计算与 WindowShell 的 active pair ratio 一致。
+  const occlusionWins = wins.map((win) => {
+    if (win.displayMode === 'floating') return win;
+    const frame = computeTiledFrame(win.displayMode, {
+      desktopSize: state.desktopSize,
+      margin: 0,
+      ratio:
+        win.displayMode === 'tiled-left' || win.displayMode === 'tiled-right'
+          ? getTilingRatioForWindow(state.windows, state.tilingRatios, win.id)
+          : undefined,
+    });
+    return frame ? { ...win, frame, displayMode: 'floating' as const } : win;
+  });
+  lastOcclusionDetail = computeOcclusionIncremental(
+    occlusionCache,
+    occlusionWins,
+    state.desktopSize,
+  );
   const occlusionStats = getLastOcclusionStats(occlusionCache);
 
   if (wins.length > 0) {
@@ -648,7 +667,11 @@ export function startScheduler(): () => void {
   activeLoop = loop;
 
   const unsubscribe = useWindowStore.subscribe((state, prev) => {
-    if (state.windows !== prev.windows || state.focusStack !== prev.focusStack) {
+    if (
+      state.windows !== prev.windows ||
+      state.focusStack !== prev.focusStack ||
+      state.tilingRatios !== prev.tilingRatios
+    ) {
       if (desktopSizeDebounce != null) {
         clearTimeout(desktopSizeDebounce);
         desktopSizeDebounce = null;

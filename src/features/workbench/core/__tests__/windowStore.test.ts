@@ -64,6 +64,41 @@ describe('windowStore — 打开与级联', () => {
     expect(store().windows[b].frame).toMatchObject({ x: 48, y: 48 });
   });
 
+  it('dropPoint 以最终窗口尺寸居中落位', () => {
+    const id = store().openWindow({
+      typeId: 'test-app',
+      dropPoint: { x: 700, y: 250 },
+      initialFrame: { w: 400, h: 300 },
+    });
+    expect(store().windows[id].frame).toEqual({ x: 500, y: 100, w: 400, h: 300 });
+  });
+
+  it('dropPoint 在桌面四边完整钳制窗口', () => {
+    const points = [
+      [{ x: 0, y: 0 }, { x: 0, y: 0 }],
+      [{ x: 1400, y: 0 }, { x: 1000, y: 0 }],
+      [{ x: 0, y: 500 }, { x: 0, y: 200 }],
+      [{ x: 1400, y: 500 }, { x: 1000, y: 200 }],
+    ] as const;
+    for (const [dropPoint, expected] of points) {
+      const id = store().openWindow({
+        typeId: 'test-app',
+        dropPoint,
+        initialFrame: { w: 400, h: 300 },
+      });
+      expect(store().windows[id].frame).toMatchObject(expected);
+    }
+  });
+
+  it('非法 dropPoint 忽略并回退 cascade', () => {
+    const id = store().openWindow({
+      typeId: 'test-app',
+      dropPoint: { x: Number.NaN, y: 100 },
+      initialFrame: { w: 400, h: 300 },
+    });
+    expect(store().windows[id].frame).toMatchObject({ x: 48, y: 48 });
+  });
+
   it('小桌面（<1280px）新窗默认 maximized', () => {
     resetWindowStoreForTests({ w: 1000, h: 700 });
     const id = store().openWindow({ typeId: 'test-app' });
@@ -93,6 +128,21 @@ describe('windowStore — 打开与级联', () => {
     expect(again).toBe(a);
     expect(Object.keys(store().windows)).toHaveLength(2);
     expect(store().focusStack[store().focusStack.length - 1]).toBe(a);
+  });
+
+  it('dropPoint 命中已有 instanceKey 时只聚焦，不移动原窗口', () => {
+    const id = store().openWindow({
+      typeId: 'test-app',
+      instanceKey: 'same',
+      initialFrame: { x: 120, y: 80, w: 400, h: 300 },
+    });
+    const again = store().openWindow({
+      typeId: 'test-app',
+      instanceKey: 'same',
+      dropPoint: { x: 1300, y: 450 },
+    });
+    expect(again).toBe(id);
+    expect(store().windows[id].frame).toEqual({ x: 120, y: 80, w: 400, h: 300 });
   });
 
   it('single 应用只保留一个实例', () => {
@@ -274,6 +324,22 @@ describe('windowStore — restoreFrame 恢复语义', () => {
     store().setDisplayMode(id, 'floating');
     expect(store().windows[id].frame).toEqual(original);
   });
+
+  it('关窗或离开对应平铺侧会清理失效 pair ratio', () => {
+    const left = store().openWindow({ typeId: 'test-app' });
+    const right = store().openWindow({ typeId: 'test-app' });
+    store().setDisplayMode(left, 'tiled-left');
+    store().setDisplayMode(right, 'tiled-right');
+    const key = `${left}:${right}`;
+    store().setTilingRatio(key, 0.7);
+    store().setDisplayMode(right, 'floating');
+    expect(store().tilingRatios[key]).toBeUndefined();
+
+    store().setDisplayMode(right, 'tiled-right');
+    store().setTilingRatio(key, 0.6);
+    store().closeWindow(left);
+    expect(store().tilingRatios[key]).toBeUndefined();
+  });
 });
 
 describe('windowStore — hydrate 与 desktopSize', () => {
@@ -281,8 +347,8 @@ describe('windowStore — hydrate 与 desktopSize', () => {
 
   it('hydrate 把 zIndex 归一化为紧凑序列且不变量成立', () => {
     const wins: WorkbenchWindow[] = [
-      makeWin({ id: 'a', zIndex: 500, lastFocusedAt: 30 }),
-      makeWin({ id: 'b', zIndex: 5, lastFocusedAt: 10 }),
+      makeWin({ id: 'a', zIndex: 500, lastFocusedAt: 30, displayMode: 'tiled-left' }),
+      makeWin({ id: 'b', zIndex: 5, lastFocusedAt: 10, displayMode: 'tiled-right' }),
       makeWin({ id: 'c', zIndex: 42, lastFocusedAt: 20 }),
     ];
     store().hydrate(wins, { 'a:b': 0.6 });
@@ -300,6 +366,28 @@ describe('windowStore — hydrate 与 desktopSize', () => {
     store().hydrate([makeWin({ id: 'a', zIndex: 999 })], {});
     const b = store().openWindow({ typeId: 'test-app' });
     expect(store().windows[b].zIndex).toBeGreaterThan(store().windows['a'].zIndex);
+  });
+
+  it('启动恢复 preserveExisting：live 窗覆盖同实例快照、保持 payload 且位于栈顶', () => {
+    const liveId = store().openWindow({
+      typeId: 'test-app',
+      instanceKey: 'live',
+      payload: { from: 'startup' },
+    });
+    store().hydrate(
+      [
+        makeWin({ id: 'snapshot-duplicate', typeId: 'test-app', instanceKey: 'live', zIndex: 999 }),
+        makeWin({ id: 'snapshot-other', typeId: 'test-app', instanceKey: 'other', zIndex: 5 }),
+      ],
+      {},
+      { preserveExisting: true },
+    );
+    const s = store();
+    expect(s.windows['snapshot-duplicate']).toBeUndefined();
+    expect(s.windows['snapshot-other']).toBeDefined();
+    expect(s.windows[liveId]).toBeDefined();
+    expect(s.launchPayloads[liveId]).toEqual({ from: 'startup' });
+    expect(s.focusStack.at(-1)).toBe(liveId);
   });
 
   it('hydrate 清空瞬态 launchPayloads，lifecycles 重置为分层唤醒初值', () => {

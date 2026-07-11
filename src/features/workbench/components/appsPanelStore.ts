@@ -5,6 +5,7 @@
  * 伪 typeId `__apps__` 仅作 Dock 入口标识，**禁止**注册进 appRegistry。
  */
 import { useSyncExternalStore } from 'react';
+import { useWorkbenchOverlay } from '../core/shortcuts';
 
 export const APPS_DOCK_TYPE_ID = '__apps__' as const;
 
@@ -24,6 +25,10 @@ export function isAppsPanelOpen(): boolean {
 /** 打开全部应用面板（供 Dock / 右键菜单 / 日后 EmptyDesktop 接线） */
 export function openAppsPanel(): void {
   if (open) return;
+  const overlay = useWorkbenchOverlay.getState();
+  overlay.closeExpose();
+  overlay.closeSwitcher();
+  overlay.closeCheatsheet();
   open = true;
   emit();
 }
@@ -35,7 +40,14 @@ export function closeAppsPanel(): void {
 }
 
 export function toggleAppsPanel(): void {
-  open = !open;
+  const next = !open;
+  if (next) {
+    const overlay = useWorkbenchOverlay.getState();
+    overlay.closeExpose();
+    overlay.closeSwitcher();
+    overlay.closeCheatsheet();
+  }
+  open = next;
   emit();
 }
 

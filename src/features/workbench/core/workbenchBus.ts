@@ -9,12 +9,14 @@
  */
 import type {
   ActivateRequest,
+  ActivationHandlerResult,
   ActivationResult,
   LaunchRequest,
   ProjectRequest,
 } from './types';
 import { appRegistry } from './appRegistry';
 import { useWindowStore } from './windowStore';
+import { confirmWindowClose } from './windowCloseGuard';
 
 export type LegacyFallbackHandler = (req: LaunchRequest | ActivateRequest, kind: 'launch' | 'activate') => void;
 
@@ -24,7 +26,80 @@ let legacyFallback: LegacyFallbackHandler | null = null;
 /** 最近一次 activate 的 onActivation 结构化回执（供 StageManager app_command） */
 let lastActivationResult: ActivationResult | null = null;
 
-function normalizeActivationResult(raw: void | ActivationResult | boolean): ActivationResult {
+const activationReadiness = new Map<string, boolean>();
+interface ActivationWaiter {
+  resolve: (ready: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+const activationWaiters = new Map<string, Set<ActivationWaiter>>();
+const ACTIVATION_READY_TIMEOUT_MS = 10_000;
+
+export interface ActivationDispatchResult {
+  /** false 表示目标不存在、未能挂载，或指令未送达处理器。 */
+  delivered: boolean;
+  result: ActivationResult;
+}
+
+function settleActivationWaiters(windowId: string, ready: boolean): void {
+  const waiters = activationWaiters.get(windowId);
+  if (!waiters) return;
+  activationWaiters.delete(windowId);
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timer);
+    waiter.resolve(ready);
+  }
+}
+
+/** WindowBody 在 Suspense fallback 提交时标记 pending。 */
+export function markWindowActivationPending(windowId: string): void {
+  activationReadiness.set(windowId, false);
+}
+
+/** lazy App 真正提交、其子树 effects 已安装后标记 ready 并冲刷等待请求。 */
+export function markWindowActivationReady(windowId: string): void {
+  activationReadiness.set(windowId, true);
+  settleActivationWaiters(windowId, true);
+}
+
+async function waitForActivationTarget(windowId: string): Promise<boolean> {
+  // 刚 launch 的窗口尚未经过一次 React commit；先让 WindowBody 有机会登记 pending。
+  if (!activationReadiness.has(windowId)) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
+  if (!useWindowStore.getState().windows[windowId]) return false;
+  const readiness = activationReadiness.get(windowId);
+  // unknown 表示无 WindowBody 宿主（core/legacy 场景），保持旧契约直接送达。
+  if (readiness !== false) return true;
+  return new Promise<boolean>((resolve) => {
+    const waiter: ActivationWaiter = {
+      resolve,
+      timer: setTimeout(() => {
+        const set = activationWaiters.get(windowId);
+        set?.delete(waiter);
+        if (set?.size === 0) activationWaiters.delete(windowId);
+        resolve(false);
+      }, ACTIVATION_READY_TIMEOUT_MS),
+    };
+    const set = activationWaiters.get(windowId) ?? new Set<ActivationWaiter>();
+    set.add(waiter);
+    activationWaiters.set(windowId, set);
+    // ready 可能在创建 waiter 前一刻到达，二次确认封住竞态窗口。
+    if (activationReadiness.get(windowId) === true) {
+      settleActivationWaiters(windowId, true);
+    }
+  });
+}
+
+useWindowStore.subscribe((state, prev) => {
+  if (state.windows === prev.windows) return;
+  for (const windowId of activationReadiness.keys()) {
+    if (state.windows[windowId]) continue;
+    activationReadiness.delete(windowId);
+    settleActivationWaiters(windowId, false);
+  }
+});
+
+function normalizeActivationResult(raw: ActivationHandlerResult): ActivationResult {
   if (raw === false) return { handled: false };
   if (raw && typeof raw === 'object' && 'handled' in raw) {
     return {
@@ -63,6 +138,7 @@ export const workbenchBus = {
       typeId: req.typeId,
       instanceKey: req.instanceKey ?? null,
       payload: req.payload,
+      dropPoint: req.dropPoint,
     });
   },
 
@@ -74,7 +150,7 @@ export const workbenchBus = {
   },
 
   /** 对已存在窗口发一次性指令；不存在且有 fallbackLaunch 则先 launch */
-  activate(req: ActivateRequest): boolean {
+  async activateDetailed(req: ActivateRequest): Promise<ActivationDispatchResult> {
     lastActivationResult = null;
     if (!enabled) {
       legacyFallback?.(req, 'activate');
@@ -83,7 +159,7 @@ export const workbenchBus = {
         code: 'WORKBENCH_DISABLED',
         hint: '桌面模式未开启',
       };
-      return false;
+      return { delivered: false, result: lastActivationResult };
     }
     const store = useWindowStore.getState();
     // R2-04：single 按 typeId；multi 精确 instanceKey；空 key 回落焦点窗/同 type 首窗
@@ -114,10 +190,19 @@ export const workbenchBus = {
         code: 'WINDOW_NOT_FOUND',
         hint: '目标窗口未打开；可先 open_app 或带 fallbackLaunch',
       };
-      return false;
+      return { delivered: false, result: lastActivationResult };
     }
     useWindowStore.getState().focusWindow(win.id);
-    const raw = def?.onActivation?.({
+    if (def?.onActivation && !(await waitForActivationTarget(win.id))) {
+      const result: ActivationResult = {
+        handled: false,
+        code: 'ACTIVATION_NOT_READY',
+        hint: '目标窗口内容未能完成挂载，请稍后重试',
+      };
+      lastActivationResult = result;
+      return { delivered: false, result };
+    }
+    const raw = await def?.onActivation?.({
       windowId: win.id,
       instanceKey: win.instanceKey,
       action: req.action,
@@ -125,8 +210,24 @@ export const workbenchBus = {
     });
     const detail = normalizeActivationResult(raw);
     lastActivationResult = detail;
-    // 布尔返回值仍表示「窗已命中并送达指令」；业务拒绝看 consumeLastActivationResult().handled
-    return true;
+    return { delivered: true, result: detail };
+  },
+
+  /** 兼容布尔交付语义；需要无竞态结构化回执的调用方使用 activateDetailed。 */
+  async activate(req: ActivateRequest): Promise<boolean> {
+    try {
+      return (await workbenchBus.activateDetailed(req)).delivered;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      lastActivationResult = {
+        handled: false,
+        code: 'ACTIVATION_FAILED',
+        hint: '目标应用拒绝了激活指令',
+        message,
+      };
+      console.warn('[workbench] activation failed:', error);
+      return false;
+    }
   },
 
   /** 长活业务实例投射：实例出现 → 保证有窗；结束由宿主 closeWindow */
@@ -148,13 +249,9 @@ export const workbenchBus = {
   /** 关闭（走 canClose 拦截） */
   async closeWindow(id: string): Promise<boolean> {
     const store = useWindowStore.getState();
-    const win = store.windows[id];
-    if (!win) return true;
-    const def = appRegistry.get(win.typeId);
-    if (def?.canClose) {
-      const ok = await def.canClose(win.instanceKey);
-      if (!ok) return false;
-    }
+    if (!store.windows[id]) return true;
+    if (!(await confirmWindowClose(id))) return false;
+    if (!useWindowStore.getState().windows[id]) return true;
     useWindowStore.getState().closeWindow(id);
     return true;
   },

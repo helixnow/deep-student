@@ -59,6 +59,8 @@ export interface UnifiedAppPanelProps {
   reloadNonce?: number;
   /** 自定义类名 */
   className?: string;
+  /** Workbench resource windows must not render a different app behind their shell. */
+  strictType?: boolean;
 }
 
 export interface ContentViewProps {
@@ -128,6 +130,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   isActive,
   reloadNonce = 0,
   className,
+  strictType = false,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -148,7 +151,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
 
   // ★ 资源标识变化时在 render 阶段同步进入加载态（React 官方「根据 props 调整 state」模式），
   //   消除 effect 生效前旧资源内容在新标识下多渲染一帧的问题
-  const loadKey = `${resourceId}:${reloadNonce}:${localReloadNonce}`;
+  const loadKey = `${resourceId}:${dstuPath}:${reloadNonce}:${localReloadNonce}`;
   const [prevLoadKey, setPrevLoadKey] = useState(loadKey);
   if (prevLoadKey !== loadKey) {
     setPrevLoadKey(loadKey);
@@ -194,9 +197,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     return () => {
       cancelled = true;
     };
-    // ★ 仅在资源标识 / 重载计数变化时重新加载；t 变化（切换语言）不应触发资源重取
+    // ★ 资源标识、真实路径或重载计数变化时重新加载；t 变化不触发资源重取
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resourceId, reloadNonce, localReloadNonce]);
+  }, [resourceId, dstuPath, reloadNonce, localReloadNonce]);
 
   // 稳定的标题回调：引用不随父级重渲染变化，避免破坏 commonProps 的 memo
   const handleTitleChange = useCallback((newTitle: string) => {
@@ -210,10 +213,25 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   }, []);
 
   const shouldPreferExplicitType = type === 'image' || type === 'file';
+  const rawNodeType = node?.type;
+  const nodeType = node && SUPPORTED_TYPES.includes(node.type as ResourceType)
+    ? (node.type as ResourceType)
+    : null;
+  const fileTypesAreCompatible =
+    nodeType != null &&
+    (type === 'image' || type === 'file') &&
+    (nodeType === 'image' || nodeType === 'file');
+  const typeMismatch =
+    strictType && node != null && (nodeType == null || (nodeType !== type && !fileTypesAreCompatible))
+      ? t('error.resourceTypeMismatch', '资源类型不匹配：窗口需要 {{expected}}，实际为 {{actual}}', {
+          expected: type,
+          actual: rawNodeType || 'unknown',
+        })
+      : null;
   const resolvedType: ResourceType = shouldPreferExplicitType
     ? type
-    : (node && SUPPORTED_TYPES.includes(node.type as ResourceType)
-      ? (node.type as ResourceType)
+    : (nodeType
+      ? nodeType
       : type);
 
   // ★ 性能：memo 化 commonProps，避免每次渲染都传新对象给内容视图（导致其内部 effect/memo 失效）
@@ -268,14 +286,16 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   }
 
   // 错误状态
-  if (error || !node || !commonProps) {
+  if (error || typeMismatch || !node || !commonProps) {
     return (
       <div
         className={cn('flex flex-col items-center justify-center h-full gap-4 bg-background', className)}
         role="alert"
       >
         <WarningCircle size={48} className="text-destructive" aria-hidden="true" />
-        <p className="text-destructive text-center">{error || t('error.resourceNotFound', '资源未找到')}</p>
+        <p className="text-destructive text-center">
+          {error || typeMismatch || t('error.resourceNotFound', '资源未找到')}
+        </p>
         <div className="flex items-center gap-2">
           <NotionButton
             variant="outline"

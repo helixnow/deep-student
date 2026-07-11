@@ -88,6 +88,15 @@ function dispatchSettingsChanged(key: string, value: unknown): void {
   }
 }
 
+async function closeBrowserForDisabledGate(): Promise<void> {
+  try {
+    await tauriInvoke('browser_close', {});
+  } catch (error) {
+    // Browser may be unavailable or already closed; the persisted gate remains authoritative.
+    console.warn('[WorkbenchSettings] browser gate cleanup failed:', getErrorMessage(error));
+  }
+}
+
 function parseJsonSetting<T>(raw: unknown, fallback: T): T {
   if (typeof raw !== 'string' || !raw.trim()) return fallback;
   try {
@@ -249,6 +258,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         setMode(!enabled);
         return;
       }
+      if (!enabled) await closeBrowserForDisabledGate();
       workbenchBus.setEnabled(enabled);
       try {
         window.dispatchEvent(new CustomEvent('workbench:mode-changed', { detail: { enabled } }));
@@ -621,7 +631,10 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         onCheckedChange={(next) => {
           if (!loaded || browserControlsDisabled) return;
           setBrowserEnabled(next);
-          void persist(WORKBENCH_SETTING_KEYS.browserEnabled, String(next), next);
+          void (async () => {
+            const ok = await persist(WORKBENCH_SETTING_KEYS.browserEnabled, String(next), next);
+            if (ok && !next) await closeBrowserForDisabledGate();
+          })();
         }}
       />
 

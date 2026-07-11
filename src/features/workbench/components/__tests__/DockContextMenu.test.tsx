@@ -107,6 +107,24 @@ describe('DockContextMenu', () => {
     expect(itemB).not.toHaveClass('app-menu-item-checked');
   });
 
+  it('键盘 ContextMenu 打开并聚焦首个可用项，方向键跳过禁用项', async () => {
+    openWin('files', 'f', '资源库');
+    render(<Dock />);
+    const trigger = dockButton('files');
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: 'ContextMenu' });
+    const menu = await screen.findByRole('menu');
+    const firstEnabled = within(menu).getByText('资源库').closest('button')!;
+    await waitFor(() => expect(firstEnabled).toHaveFocus());
+
+    fireEvent.keyDown(firstEnabled, { key: 'ArrowDown' });
+    expect(within(menu).getByText('固定到 Dock').closest('button')).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(within(menu).getByText('关闭全部窗口').closest('button')).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(trigger).toHaveFocus();
+  });
+
   it('固定 / 取消固定', () => {
     openWin('chat', 'a');
     render(<Dock />);

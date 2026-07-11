@@ -228,7 +228,7 @@ describe('loadSnapshot — 坏数据恢复', () => {
 describe('saveSnapshot — 防抖与采集', () => {
   it('2s 防抖合并：多次调用只落盘一次', async () => {
     vi.useFakeTimers();
-    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const setItem = vi.spyOn(localStorage, 'setItem');
     store().openWindow({ typeId: 'snap-app' });
     saveSnapshot();
     await vi.advanceTimersByTimeAsync(1000);
@@ -269,7 +269,7 @@ describe('saveSnapshot — 防抖与采集', () => {
 
   it('O11 分层保存：meta 层 10s 首次请求优先，不被后续 meta 顺延', async () => {
     vi.useFakeTimers();
-    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const setItem = vi.spyOn(localStorage, 'setItem');
     store().openWindow({ typeId: 'snap-app' });
     saveSnapshot('meta');
     await vi.advanceTimersByTimeAsync(SNAPSHOT_SAVE_DEBOUNCE_MS);
@@ -281,7 +281,7 @@ describe('saveSnapshot — 防抖与采集', () => {
 
   it('O11 分层保存：layout 请求接管排队中的 meta（提前到 2s 落盘）', async () => {
     vi.useFakeTimers();
-    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const setItem = vi.spyOn(localStorage, 'setItem');
     store().openWindow({ typeId: 'snap-app' });
     saveSnapshot('meta');
     saveSnapshot(); // layout 接管
@@ -297,7 +297,7 @@ describe('saveSnapshot — 防抖与采集', () => {
 
   it('O11 写盘去重：内容未变的防抖保存跳过 IO（flush 强制写）', async () => {
     vi.useFakeTimers();
-    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const setItem = vi.spyOn(localStorage, 'setItem');
     const id = store().openWindow({ typeId: 'snap-app' });
     saveSnapshot();
     await vi.advanceTimersByTimeAsync(SNAPSHOT_SAVE_DEBOUNCE_MS);
@@ -328,6 +328,7 @@ describe('快照往返（DoD）', () => {
       initialFrame: { x: 300, y: 200, w: 500, h: 400 },
     });
     store().setDisplayMode(b, 'tiled-left');
+    store().setDisplayMode(a, 'tiled-right');
     store().setTilingRatio(`${b}:${a}`, 0.62);
     store().minimizeWindow(a);
 

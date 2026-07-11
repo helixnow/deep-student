@@ -16,16 +16,18 @@
  * 键盘监听后又在松手瞬间重绑，比冻动画更伤。壳层已关 pointer-events。
  * 禁止在本层动态切 contain/content-visibility（由 WindowShell 纪律约束）。
  */
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import type { ResourceType } from '@/features/learning-hub/types';
 import type { AppWindowProps } from '../../core/types';
+import { useWindowStore } from '../../core/windowStore';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
 import { ContentEmptyState } from './ContentEmptyState';
 import { ContentSkeleton, skeletonVariantForType } from './ContentSkeleton';
 import { useContentLoadPhase } from './useContentLoadPhase';
 import { useResizeSettle } from './useResizeSettle';
+import { normalizeResourceInstanceKey } from './resourceIdentity';
 import './ContentAppWindow.css';
 
 /**
@@ -34,6 +36,7 @@ import './ContentAppWindow.css';
  */
 export function createContentWindowComponent(type: ResourceType): React.FC<AppWindowProps> {
   const ContentAppWindow: React.FC<AppWindowProps> = ({
+    windowId,
     instanceKey,
     isActive,
     renderThrottleMs = 0,
@@ -45,7 +48,8 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
     const contentRef = useRef<HTMLDivElement>(null);
     const titleReadyRef = useRef(false);
 
-    const hasResource = Boolean(instanceKey);
+    const resourceId = normalizeResourceInstanceKey(instanceKey);
+    const hasResource = Boolean(resourceId);
     const { phase, markReady } = useContentLoadPhase({
       hostRef,
       enabled: hasResource,
@@ -53,6 +57,23 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
 
     useResizeSettle(hostRef, contentRef, hasResource);
     useDragRenderPause(hostRef, renderThrottleMs);
+
+    useEffect(() => {
+      if (!resourceId) return;
+      const store = useWindowStore.getState();
+      const aliases = Object.values(store.windows)
+        .filter(
+          (win) =>
+            win.typeId === type &&
+            normalizeResourceInstanceKey(win.instanceKey) === resourceId,
+        );
+      const keeper = aliases[0];
+      if (!keeper || keeper.id === windowId) return;
+      store.focusWindow(keeper.id);
+      // This component is the just-created alias of an already open resource.
+      // It has not accepted edits, so removing only this duplicate is safe.
+      store.closeWindow(windowId);
+    }, [resourceId, windowId]);
 
     const handleTitleChange = useCallback(
       (title: string) => {
@@ -65,7 +86,7 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
       [onTitleChange, markReady],
     );
 
-    if (!instanceKey) {
+    if (!resourceId) {
       return (
         <ContentEmptyState
           title={t('workbench:content.missingResource', '缺少资源标识，无法打开该窗口')}
@@ -84,8 +105,9 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
         <div ref={contentRef} className="wb-content-viewport">
           <UnifiedAppPanel
             type={type}
-            resourceId={instanceKey}
-            dstuPath={`/${instanceKey}`}
+            resourceId={resourceId}
+            dstuPath={`/${resourceId}`}
+            strictType
             isActive={isActive}
             onTitleChange={handleTitleChange}
             onClose={requestClose}

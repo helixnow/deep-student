@@ -33,6 +33,10 @@ describe('workbench content typeMap', () => {
   it('不可开窗类型返回 null', () => {
     expect(resourceTypeToAppTypeId('all')).toBeNull();
     expect(resourceTypeToAppTypeId('unknown-type')).toBeNull();
+    expect(resourceTypeToAppTypeId('__proto__')).toBeNull();
+    expect(resourceTypeToAppTypeId('constructor')).toBeNull();
+    expect(resourceTypeToAppTypeId('toString')).toBeNull();
+    expect(resourceTypeToAppTypeId('')).toBeNull();
   });
 
   it('RESOURCE_APP_TYPE_IDS = 七类内容 + mindmap，不含 files/chat', () => {

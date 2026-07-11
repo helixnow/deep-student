@@ -19,6 +19,7 @@ import {
 } from '../appsPanelStore';
 import { Dock } from '../Dock';
 import { setDockPinned } from '../DockPinnedStore';
+import { useWorkbenchOverlay } from '../../core/shortcuts';
 
 const NullApp: React.FC<AppWindowProps> = () => null;
 
@@ -240,6 +241,34 @@ describe('AppsPanel', () => {
       'data-wb-apps-index',
       '0',
     );
+  });
+
+  it('搜索框 Left/Right/Home/End 保留原生 caret 行为，不移动应用选中项', () => {
+    render(<AppsPanel />);
+    act(() => openAppsPanel());
+    const search = screen.getByTestId('wb-apps-search');
+    const root = screen.getByTestId('wb-apps-panel');
+    fireEvent.change(search, { target: { value: 'a' } });
+    const before = root.querySelector('[data-wb-apps-active="true"]')?.getAttribute(
+      'data-wb-apps-index',
+    );
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Home', 'End']) {
+      const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      search.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
+    expect(root.querySelector('[data-wb-apps-active="true"]')).toHaveAttribute(
+      'data-wb-apps-index',
+      before,
+    );
+  });
+
+  it('打开 Apps 面板会关闭同层 Workbench overlay', () => {
+    useWorkbenchOverlay.getState().openCheatsheet({ sticky: true });
+    expect(useWorkbenchOverlay.getState().cheatsheetOpen).toBe(true);
+    act(() => openAppsPanel());
+    expect(useWorkbenchOverlay.getState().cheatsheetOpen).toBe(false);
+    expect(isAppsPanelOpen()).toBe(true);
   });
 
   it('列表视图忽略 ←/→，仅 ↑↓ 步进', () => {

@@ -120,7 +120,9 @@ export interface TileMenuPopoverProps {
   /** 当前窗口显示模式（用于高亮当前态） */
   currentMode: DisplayMode;
   onSelect: (action: TileMenuAction) => void;
-  onRequestClose: () => void;
+  onRequestClose: (options?: { returnFocus?: boolean }) => void;
+  /** 键盘打开时聚焦网格；纯 hover 打开必须保留原焦点。 */
+  autoFocus?: boolean;
   /** 指针进出弹层（父级用于维持 hover 打开状态） */
   onHoverChange?: (hovering: boolean) => void;
 }
@@ -130,6 +132,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
   currentMode,
   onSelect,
   onRequestClose,
+  autoFocus = true,
   onHoverChange,
 }) => {
   const { t } = useTranslation('workbench');
@@ -160,10 +163,13 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
       }
       setPhase('open');
       setActive({ row: 1, col: 1 });
-      const raf = requestAnimationFrame(() => {
-        itemRefs.current.get('1:1')?.focus();
-      });
-      return () => cancelAnimationFrame(raf);
+      if (autoFocus) {
+        const raf = requestAnimationFrame(() => {
+          itemRefs.current.get('1:1')?.focus();
+        });
+        return () => cancelAnimationFrame(raf);
+      }
+      return undefined;
     }
     if (phase === null) return undefined;
     setPhase('closing');
@@ -176,7 +182,7 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
     };
     // phase 故意不入依赖：关闭路径只由 open 翻转驱动，避免 closing→null 再入
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see above
-  }, [open]);
+  }, [open, autoFocus]);
 
   const move = (dRow: number, dCol: number) => {
     setActive((prev) => {
@@ -221,7 +227,11 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
       case 'Escape':
         e.preventDefault();
         e.stopPropagation();
-        onRequestClose();
+        onRequestClose({ returnFocus: true });
+        break;
+      case 'Tab':
+        // 允许浏览器执行正常 Tab 顺序，只关闭弹层且不抢回缩放键。
+        onRequestClose({ returnFocus: false });
         break;
       default:
         break;
@@ -254,6 +264,11 @@ export const TileMenuPopover: React.FC<TileMenuPopoverProps> = ({
       className="wb-tilemenu wb-glass wb-glass-lens"
       onKeyDown={handleKeyDown}
       onAnimationEnd={handleAnimationEnd}
+      onBlur={(e) => {
+        const next = e.relatedTarget;
+        if (next instanceof Node && e.currentTarget.contains(next)) return;
+        onRequestClose({ returnFocus: false });
+      }}
       onPointerEnter={() => {
         if (phase === 'open') onHoverChange?.(true);
       }}

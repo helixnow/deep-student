@@ -210,6 +210,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     }
 
     if (apps.length === 0) return;
+    const targetIsSearch = e.target === searchRef.current;
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -232,23 +233,27 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       return;
     }
     if (e.key === 'ArrowRight') {
+      if (targetIsSearch) return;
       if (viewMode !== 'grid') return;
       e.preventDefault();
       setActiveIndex((i) => wrapIndex(i + 1, apps.length));
       return;
     }
     if (e.key === 'ArrowLeft') {
+      if (targetIsSearch) return;
       if (viewMode !== 'grid') return;
       e.preventDefault();
       setActiveIndex((i) => wrapIndex(i - 1, apps.length));
       return;
     }
     if (e.key === 'Home') {
+      if (targetIsSearch) return;
       e.preventDefault();
       setActiveIndex(0);
       return;
     }
     if (e.key === 'End') {
+      if (targetIsSearch) return;
       e.preventDefault();
       setActiveIndex(apps.length - 1);
       return;

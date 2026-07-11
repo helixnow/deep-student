@@ -2,9 +2,9 @@
  * useResourceDragOut — 指针拖出 files 窗检测 + 随行反馈徽标（O17）
  *
  * 在宿主上委托 pointerdown → 跟踪 pointermove：
- * - 越过窗口边界后显示跟随徽标（直写 DOM，不进 React state）；
- * - 松手时若落在窗外且带资源负载，走 desktopDragBridge 兜底开窗
- *   （O13 未注册 handler 时仍可用）；窗内松手不干预 legacy 行为。
+ * - 指针进入桌面空白区后显示跟随徽标（直写 DOM，不进 React state）；
+ * - 松手时仅当实际命中空白桌面才走 desktopDragBridge 开窗；窗口、Dock、
+ *   overlay 与桌面外均不处理，窗内松手也不干预 legacy 行为。
  *
  * 同时在 pointerdown 命中 `[data-finder-item]` 时，若浏览器提供
  * DataTransfer（原生 drag），由 bridge 的 setWorkbenchDragData 写入 MIME——
@@ -12,9 +12,10 @@
  */
 import { useEffect, useRef } from 'react';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
-import { useTranslation } from 'react-i18next';
 import {
   handleDesktopResourceDrop,
+  normalizeWorkbenchResourceDragData,
+  resolveWorkbenchDesktopDropPoint,
   type WorkbenchResourceDragData,
 } from './desktopDragBridge';
 
@@ -26,7 +27,7 @@ export interface UseResourceDragOutOptions {
   enabled?: boolean;
 }
 
-function glyphForType(type: string | undefined): string {
+function glyphForType(type: string): string {
   switch (type) {
     case 'note':
       return 'N';
@@ -49,14 +50,12 @@ function glyphForType(type: string | undefined): string {
 
 export function useResourceDragOut(options: UseResourceDragOutOptions): void {
   const { hostRef, windowId, enabled = true } = options;
-  const { t } = useTranslation('workbench');
   const badgeRef = useRef<HTMLDivElement | null>(null);
   const sessionRef = useRef<{
     pointerId: number;
     startX: number;
     startY: number;
     active: boolean;
-    outside: boolean;
     resource: WorkbenchResourceDragData | null;
   } | null>(null);
 
@@ -87,9 +86,7 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
 
     const showBadge = (resource: WorkbenchResourceDragData, x: number, y: number) => {
       glyphEl.textContent = glyphForType(resource.resourceType);
-      labelEl.textContent =
-        resource.title ||
-        t('workbench:files.dragOut.openOnDesktop', '拖到桌面打开');
+      labelEl.textContent = resource.title;
       badge.style.left = `${x}px`;
       badge.style.top = `${y}px`;
       badge.setAttribute('data-visible', 'true');
@@ -109,11 +106,11 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
     const resolveResource = (itemId: string): WorkbenchResourceDragData | null => {
       const item = useFinderStore.getState().items.find((n) => n.id === itemId);
       if (!item || item.type === 'folder') return null;
-      return {
+      return normalizeWorkbenchResourceDragData({
         resourceId: item.id,
         resourceType: item.type,
         title: item.name,
-      };
+      });
     };
 
     const onPointerDown = (event: PointerEvent) => {
@@ -132,7 +129,6 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
         startX: event.clientX,
         startY: event.clientY,
         active: false,
-        outside: false,
         resource,
       };
     };
@@ -148,15 +144,8 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
         session.active = true;
       }
 
-      const rect = host.getBoundingClientRect();
-      const outside =
-        event.clientX < rect.left ||
-        event.clientX > rect.right ||
-        event.clientY < rect.top ||
-        event.clientY > rect.bottom;
-      session.outside = outside;
-
-      if (outside && session.resource) {
+      const point = resolveWorkbenchDesktopDropPoint(event.clientX, event.clientY);
+      if (point && session.resource) {
         showBadge(session.resource, event.clientX, event.clientY);
       } else {
         hideBadge();
@@ -170,20 +159,19 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
       const session = sessionRef.current;
       if (!session || session.pointerId !== event.pointerId) return;
 
-      const shouldLaunch = session.active && session.outside && session.resource;
+      const point = session.active
+        ? resolveWorkbenchDesktopDropPoint(event.clientX, event.clientY)
+        : null;
       const resource = session.resource;
       endSession();
 
-      if (shouldLaunch && resource) {
+      if (point && resource) {
         void handleDesktopResourceDrop({
           resource,
-          point: {
-            x: event.clientX,
-            y: event.clientY,
-            clientX: event.clientX,
-            clientY: event.clientY,
-          },
+          point,
           sourceWindowId: windowId ?? null,
+        }).catch((error) => {
+          console.error('[workbench:drop] pointer resource drop failed', error);
         });
       }
     };
@@ -208,5 +196,5 @@ export function useResourceDragOut(options: UseResourceDragOutOptions): void {
       badgeRef.current = null;
       sessionRef.current = null;
     };
-  }, [enabled, hostRef, t, windowId]);
+  }, [enabled, hostRef, windowId]);
 }

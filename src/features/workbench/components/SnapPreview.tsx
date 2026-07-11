@@ -26,6 +26,7 @@ import type { Frame, SnapZone } from '../core/types';
 import {
   buildTileSettleKeyframes,
   computeTiledFrame,
+  getTilingRatioForWindow,
   isTiledMode,
   zoneToDisplayMode,
   DEFAULT_TILE_MARGIN,
@@ -143,18 +144,6 @@ function runTileSettle(windowId: string, el: HTMLElement, from: Frame, to: Frame
   };
   anim.addEventListener('finish', () => cleanup(false));
   anim.addEventListener('cancel', () => cleanup(true));
-}
-
-/** windowId → 左右平铺对分割比（与 WindowShell 的查找逻辑一致） */
-function selectRatioForWindow(
-  ratios: Record<string, number>,
-  windowId: string,
-): number | undefined {
-  for (const key of Object.keys(ratios)) {
-    const [left, right] = key.split(':');
-    if (left === windowId || right === windowId) return ratios[key];
-  }
-  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -335,7 +324,7 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
           margin: cur.displayMode === 'maximized' ? 0 : ctx.margin,
           ratio:
             cur.displayMode === 'tiled-left' || cur.displayMode === 'tiled-right'
-              ? selectRatioForWindow(state.tilingRatios, id)
+              ? getTilingRatioForWindow(state.windows, state.tilingRatios, id)
               : undefined,
         });
         if (!to) continue;

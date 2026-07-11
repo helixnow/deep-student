@@ -250,6 +250,25 @@ describe('WorkbenchSettingsSection', () => {
     }
   });
 
+  it('closes native browser content when either settings gate is disabled', async () => {
+    settingsStore.set('desktop.workbenchMode', 'true');
+    settingsStore.set('desktop.workbenchBrowserEnabled', 'true');
+    render(<WorkbenchSettingsSection />);
+
+    const browserSwitch = await screen.findByRole('switch', { name: '内置浏览器' });
+    fireEvent.click(browserSwitch);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('browser_close', {});
+    });
+
+    invokeMock.mockClear();
+    const modeSwitch = screen.getByRole('switch', { name: '启用学习桌面' });
+    fireEvent.click(modeSwitch);
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('browser_close', {});
+    });
+  });
+
   it('restores browser settings and uses a modal confirmation before switching network mode to full', async () => {
     settingsStore.set('desktop.workbenchMode', 'true');
     settingsStore.set('desktop.workbenchBrowserEnabled', 'true');

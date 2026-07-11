@@ -79,6 +79,8 @@ export interface ActivationResult {
   message?: string;
 }
 
+export type ActivationHandlerResult = void | boolean | ActivationResult;
+
 export interface AppBadge {
   kind: 'count' | 'dot';
   value?: number;
@@ -116,7 +118,9 @@ export interface AppDefinition {
   minSize: Size;
   render: React.LazyExoticComponent<React.FC<AppWindowProps>>;
   /** 一次性指令送达（scrollToMessage / gotoPage 等）；可返回结构化回执 */
-  onActivation?: (ctx: ActivationContext) => void | ActivationResult;
+  onActivation?: (
+    ctx: ActivationContext,
+  ) => ActivationHandlerResult | Promise<ActivationHandlerResult>;
   /** Dock 角标数据源（拉模式，Dock 轮询/订阅由 Dock 实现决定） */
   badgeSource?: () => AppBadge | null;
   /** 关闭拦截（未保存提示）；返回 false 阻止关闭。缺省 = 直接关 */
@@ -134,6 +138,8 @@ export interface LaunchRequest {
   instanceKey?: string;
   /** 瞬态，不进快照 */
   payload?: unknown;
+  /** 桌面坐标系落点；仅新建窗口生效，窗口以该点为中心并钳制进桌面。 */
+  dropPoint?: { x: number; y: number };
   reason: LaunchReason;
 }
 
@@ -190,6 +196,8 @@ export interface OpenWindowInput {
   title?: string;
   payload?: unknown;
   initialFrame?: Partial<Frame>;
+  /** 桌面坐标系落点；仅新建窗口生效。非法坐标忽略并回退级联落位。 */
+  dropPoint?: { x: number; y: number };
 }
 
 export interface WorkbenchStoreState {
@@ -219,7 +227,11 @@ export interface WorkbenchStoreState {
   setTilingRatio: (key: string, ratio: number) => void;
   setDesktopSize: (size: Size) => void;
   /** 快照恢复：整体替换窗口集合 */
-  hydrate: (windows: WorkbenchWindow[], tilingRatios: Record<string, number>) => void;
+  hydrate: (
+    windows: WorkbenchWindow[],
+    tilingRatios: Record<string, number>,
+    options?: { preserveExisting?: boolean },
+  ) => void;
 
   // —— O11 追加（可选字段，冻结部分之外的扩展；实现始终提供）——
   /**

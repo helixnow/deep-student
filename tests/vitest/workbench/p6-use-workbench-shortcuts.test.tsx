@@ -46,6 +46,22 @@ describe('窗口管理快捷键', () => {
     hook.unmount();
   });
 
+  it('按键 repeat 不重复执行布局命令，但 Ctrl+Tab 循环仍允许 repeat', () => {
+    seedThree();
+    const hook = renderHook(() => useWorkbenchShortcuts());
+    const before = useWindowStore.getState().windows.a;
+    act(() => {
+      keydown({ key: 'ArrowLeft', ctrlKey: true, altKey: true, repeat: true });
+    });
+    expect(useWindowStore.getState().windows.a).toBe(before);
+
+    act(() => { keydown({ key: 'Tab', ctrlKey: true }); });
+    expect(useWorkbenchOverlay.getState().switcherIndex).toBe(1);
+    act(() => { keydown({ key: 'Tab', ctrlKey: true, repeat: true }); });
+    expect(useWorkbenchOverlay.getState().switcherIndex).toBe(2);
+    hook.unmount();
+  });
+
   it('Ctrl+Alt+↓：非 floating 恢复原尺寸，floating 最小化', async () => {
     seedThree();
     const hook = renderHook(() => useWorkbenchShortcuts());

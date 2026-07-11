@@ -28,7 +28,7 @@ const TaskDashboardPage = React.lazy(() =>
 
 const getServerAnkiCount = () => 0;
 
-const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
+const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange, isVisible }) => {
   const { t } = useTranslation('workbench');
   const { ref } = useWbSysSize();
   const activeCount = useSyncExternalStore(
@@ -57,6 +57,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => 
       <Suspense fallback={<WbSysSkeleton variant="dashboard" />}>
         <WbSysFade>
           <TaskDashboardPage
+            isVisible={isVisible}
             onNavigateToChat={(sessionId) =>
               workbenchBus.launch({ typeId: 'chat', instanceKey: sessionId, reason: 'api' })
             }

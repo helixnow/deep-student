@@ -137,6 +137,14 @@ interface AppliedEntry {
   prevClassName: string;
 }
 
+interface PendingRestore {
+  timer: number;
+  el: HTMLElement;
+  transition: string;
+  origin: string;
+  willChange: string;
+}
+
 function parseCssDurationMs(raw: string): number | null {
   const v = raw.trim();
   if (!v) return null;
@@ -262,16 +270,30 @@ const ExposeOverlayComponent: React.FC = () => {
   const [dissolvingId, setDissolvingId] = useState<string | null>(null);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const hitLayerRef = useRef<HTMLDivElement | null>(null);
   /** 已施加 transform 的窗口（用于恢复原状） */
   const appliedRef = useRef<Map<string, AppliedEntry>>(new Map());
   /** 会话内缓存的原始视觉矩形（元素已被 transform 后不可再量测） */
   const sourceRectsRef = useRef<Map<string, Frame>>(new Map());
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dissolveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dissolveUnsubscribeRef = useRef<(() => void) | null>(null);
+  const restoreTimersRef = useRef<Map<string, PendingRestore>>(new Map());
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
 
+  const finishPendingRestore = useCallback((id: string) => {
+    const pending = restoreTimersRef.current.get(id);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    pending.el.style.transition = pending.transition;
+    pending.el.style.transformOrigin = pending.origin;
+    pending.el.style.willChange = pending.willChange;
+    restoreTimersRef.current.delete(id);
+  }, []);
+
   const restoreOne = useCallback((id: string, animate: boolean) => {
+    finishPendingRestore(id);
     const entry = appliedRef.current.get(id);
     if (!entry) return;
     const { el } = entry;
@@ -281,14 +303,26 @@ const ExposeOverlayComponent: React.FC = () => {
     el.removeAttribute('data-expose-transform');
     el.style.removeProperty('--wb-expose-scale');
     el.classList.remove('wb-expose-flip');
-    window.setTimeout(() => {
+    appliedRef.current.delete(id);
+    sourceRectsRef.current.delete(id);
+    if (duration <= 0) {
       el.style.transition = entry.prevTransition;
       el.style.transformOrigin = entry.prevOrigin;
       el.style.willChange = entry.prevWillChange;
-    }, duration);
-    appliedRef.current.delete(id);
-    sourceRectsRef.current.delete(id);
-  }, []);
+      return;
+    }
+    const pending: PendingRestore = {
+      timer: window.setTimeout(() => {
+        if (restoreTimersRef.current.get(id) !== pending) return;
+        finishPendingRestore(id);
+      }, duration),
+      el,
+      transition: entry.prevTransition,
+      origin: entry.prevOrigin,
+      willChange: entry.prevWillChange,
+    };
+    restoreTimersRef.current.set(id, pending);
+  }, [finishPendingRestore]);
 
   const restoreAll = useCallback((animate: boolean) => {
     const ids = [...appliedRef.current.keys()];
@@ -346,6 +380,9 @@ const ExposeOverlayComponent: React.FC = () => {
     for (const target of layout) {
       const el = elements.get(target.id);
       if (!el) continue;
+      // 关闭动画尚未收尾便重新打开：先完成旧会话恢复，防止旧 timer
+      // 在新会话中途覆盖 transition/origin/will-change。
+      finishPendingRestore(target.id);
       const source = sourceRectsRef.current.get(target.id);
       if (!source) continue;
       if (!appliedRef.current.has(target.id)) {
@@ -395,7 +432,7 @@ const ExposeOverlayComponent: React.FC = () => {
       return () => window.clearTimeout(tOpen);
     }
     return undefined;
-  }, [exposeOpen, windows, desktopSize, t, restoreOne]);
+  }, [exposeOpen, windows, desktopSize, t, restoreOne, finishPendingRestore]);
 
   // 关闭 → 反向 FLIP 飞回原位后卸载
   useEffect(() => {
@@ -424,8 +461,11 @@ const ExposeOverlayComponent: React.FC = () => {
   // 组件卸载兜底恢复
   useEffect(() => () => {
     restoreAll(false);
+    for (const id of [...restoreTimersRef.current.keys()]) finishPendingRestore(id);
     if (dissolveTimerRef.current) clearTimeout(dissolveTimerRef.current);
-  }, [restoreAll]);
+    dissolveUnsubscribeRef.current?.();
+    dissolveUnsubscribeRef.current = null;
+  }, [restoreAll, finishPendingRestore]);
 
   const focusWindowShell = useCallback((id: string) => {
     const esc =
@@ -473,6 +513,7 @@ const ExposeOverlayComponent: React.FC = () => {
         dissolveTimerRef.current = null;
       }
       unsub();
+      if (dissolveUnsubscribeRef.current === unsub) dissolveUnsubscribeRef.current = null;
       restoreOne(id, false);
       setDissolvingId((cur) => (cur === id ? null : cur));
     };
@@ -480,6 +521,8 @@ const ExposeOverlayComponent: React.FC = () => {
     const unsub = useWindowStore.subscribe((s) => {
       if (!s.windows[id]) settle();
     });
+    dissolveUnsubscribeRef.current?.();
+    dissolveUnsubscribeRef.current = unsub;
     // 已关闭（同步路径）或兜底超时
     if (!useWindowStore.getState().windows[id]) {
       settle();
@@ -506,7 +549,34 @@ const ExposeOverlayComponent: React.FC = () => {
         closeExpose();
         return;
       }
+      if (e.key === 'Tab') {
+        const dialog = hitLayerRef.current;
+        if (!dialog) return;
+        const focusables = Array.from(
+          dialog.querySelectorAll<HTMLElement>(
+            'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        if (focusables.length === 0) {
+          e.preventDefault();
+          dialog.focus({ preventScroll: true });
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const activeElement = document.activeElement;
+        const inside = activeElement instanceof Node && dialog.contains(activeElement);
+        if (e.shiftKey ? !inside || activeElement === first : !inside || activeElement === last) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus({ preventScroll: true });
+        }
+        return;
+      }
       if (e.key === 'Enter') {
+        const target = e.target;
+        if (target instanceof HTMLElement && target.closest('button, a, input, select, textarea')) {
+          return;
+        }
         const id = selectedIdRef.current;
         if (id) {
           e.preventDefault();
@@ -535,9 +605,13 @@ const ExposeOverlayComponent: React.FC = () => {
 
   // 选中项变化时把焦点落到对应 pick 按钮（焦点环 + 键盘可达）
   useEffect(() => {
-    if (!exposeOpen || !selectedId || phase === 'closing') return;
+    if (!exposeOpen || phase === 'closing') return;
     const root = rootRef.current;
     if (!root) return;
+    if (!selectedId) {
+      hitLayerRef.current?.focus({ preventScroll: true });
+      return;
+    }
     const pick = root.querySelector<HTMLElement>(
       `[data-wb-expose-cell="${selectedId}"] .wb-expose-cell-pick`,
     );
@@ -569,10 +643,12 @@ const ExposeOverlayComponent: React.FC = () => {
       />
       {/* 命中层：覆盖所有窗口，点击空白退出、点击缩略聚焦 */}
       <div
+        ref={hitLayerRef}
         className="wb-expose-hitlayer"
         style={{ zIndex: 'var(--wb-z-overlay)' }}
         data-dim={hoveredId ? 'true' : undefined}
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-label={t('workbench:expose.title', '窗口俯瞰')}
         onClick={() => closeExpose()}
