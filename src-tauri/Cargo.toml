@@ -18,6 +18,8 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = "1.0"
+syn = { version = "2", features = ["full", "parsing", "visit"] }
 # 使用内置的 protoc 可执行文件，避免系统依赖
 protoc-bin-vendored = "3.0"
 
@@ -37,6 +39,7 @@ tokio-util = { version = "0.7", features = ["rt"] }
 rusqlite = { version = "0.29.0", features = ["bundled", "chrono", "backup"] }  # Android必须使用bundled
 base64 = "0.21.7"
 tempfile = "3.10.1"
+cap-std = "3.4.5"
 chrono = { version = "0.4.38", features = ["serde"] }
 anyhow = "1.0.80"
 thiserror = "1.0"
@@ -167,6 +170,9 @@ pkce = "0.2"
 tauri-plugin-mcp-bridge = { version = "0.8", optional = true }
 
 [dev-dependencies]
+# Tauri mock runtime for ACL boundary tests.
+tauri = { version = "2", features = ["test", "macos-private-api", "protocol-asset"] }
+syn = { version = "2", features = ["full", "parsing", "visit"] }
 # 测试框架
 tokio-test = "0.4"
 # 断言增强

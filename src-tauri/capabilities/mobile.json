@@ -5,6 +5,7 @@
   "platforms": ["android", "iOS"],
   "windows": ["main"],
   "permissions": [
+    "allow-application-commands",
     "core:default",
     "core:event:default",
     "core:window:default",

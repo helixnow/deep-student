@@ -52,11 +52,7 @@ pub fn init_crash_logging(app_data_dir: PathBuf) {
                 sentry::capture_event(Event {
                     message: Some(scrub_pii(&payload)),
                     level: sentry::Level::Fatal,
-                    release: Some(Cow::Owned(format!(
-                        "{}+{}",
-                        env!("CARGO_PKG_VERSION"),
-                        env!("BUILD_NUMBER"),
-                    ))),
+                    release: Some(Cow::Borrowed(env!("SENTRY_RELEASE"))),
                     fingerprint: Cow::Owned(fingerprint),
                     extra: {
                         let mut map = std::collections::BTreeMap::new();

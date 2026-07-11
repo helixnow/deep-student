@@ -29,6 +29,7 @@ pub mod anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿�
 pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
+pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 #[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 #[allow(dead_code)]
@@ -47,9 +48,9 @@ pub mod essay_grading;
 #[allow(dead_code)]
 pub mod exam_sheet_service;
 pub mod feature_flags;
-pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 pub mod figure_extractor;
 pub mod file_manager;
+pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod injection_budget;
 pub mod json_validator;
 #[allow(dead_code)]
@@ -86,7 +87,6 @@ pub mod question_import_service;
 pub mod question_sync_service;
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
-pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
@@ -221,7 +221,7 @@ pub fn run() {
             let guard = sentry::init((
                 dsn,
                 sentry::ClientOptions {
-                    release: Some(env!("CARGO_PKG_VERSION").into()),
+                    release: Some(env!("SENTRY_RELEASE").into()),
                     ..Default::default()
                 },
             ));
@@ -706,6 +706,10 @@ pub fn run() {
                         .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
                         .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
                     );
+                    let recovery_pipeline = chat_v2_pipeline.clone();
+                    tauri::async_runtime::spawn(async move {
+                        recovery_pipeline.recover_pending_memory_flushes().await;
+                    });
                     app.manage(chat_v2_pipeline);
                     info!("✅ Chat V2 Pipeline 初始化成功（已启用敏感工具审批、工作区协作）");
                 }
@@ -2133,10 +2137,7 @@ fn build_app_state(
                     }
                 }
                 Err(e) => {
-                    tracing::warn!(
-                        "[AppSetup] Retrieval sweep skipped (no connection): {}",
-                        e
-                    );
+                    tracing::warn!("[AppSetup] Retrieval sweep skipped (no connection): {}", e);
                 }
             }
         });

@@ -2,6 +2,32 @@ import '@testing-library/jest-dom/vitest';
 import { afterEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 
+// Node 26 exposes a configurable global `localStorage` getter that returns
+// undefined unless `--localstorage-file` is set. That getter can shadow the
+// JSDOM storage installed on `window`, so bind tests to the browser-like store.
+if (typeof window !== 'undefined') {
+  const values = new Map<string, string>();
+  const browserStorage: Storage = {
+    get length() {
+      return values.size;
+    },
+    clear: () => values.clear(),
+    getItem: (key: string) => values.get(String(key)) ?? null,
+    key: (index: number) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key: string) => {
+      values.delete(String(key));
+    },
+    setItem: (key: string, value: string) => {
+      values.set(String(key), String(value));
+    },
+  };
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    enumerable: true,
+    value: browserStorage,
+  });
+}
+
 // Force i18n language for deterministic snapshot/labels in tests.
 try {
   localStorage.setItem('i18nextLng', 'zh-CN');
