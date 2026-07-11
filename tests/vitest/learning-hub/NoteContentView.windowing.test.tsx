@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NoteContentView from '@/features/learning-hub/apps/views/NoteContentView';
 import type { DstuNode } from '@/dstu/types';
+import {
+  __resetContentDirtyRegistry,
+  registerContentDirtyChecker,
+} from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -123,6 +127,14 @@ function lineCount(markdown: string) {
   return markdown.split('\n').length;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
 async function renderWindowedNote(markdown = makeLines(1000)) {
   mocks.get.mockResolvedValue(ok(node));
   mocks.getContent.mockResolvedValue(ok(markdown));
@@ -142,9 +154,36 @@ async function renderWindowedNote(markdown = makeLines(1000)) {
 describe('NoteContentView windowing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetContentDirtyRegistry();
     mocks.latestEditorProps = null;
     mocks.contextPanelContents = [];
     mocks.watchCallback = null;
+  });
+
+  it('reads the initial OCC token before requesting note content', async () => {
+    const pendingNode = deferred<ReturnType<typeof ok<DstuNode>>>();
+    const markdown = makeLines(1000);
+    mocks.get.mockReturnValueOnce(pendingNode.promise);
+    mocks.getContent.mockResolvedValue(ok(markdown));
+    mocks.update.mockResolvedValue(ok({ ...node, updatedAt: node.updatedAt + 1000 }));
+    mocks.setMetadata.mockResolvedValue(ok(undefined));
+    mocks.loadInitialLineWindowSetting.mockResolvedValue(100);
+    mocks.watch.mockImplementation((_path: string, callback: (event: any) => void) => {
+      mocks.watchCallback = callback;
+      return vi.fn();
+    });
+
+    render(<NoteContentView node={node} isActive />);
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(1));
+    expect(mocks.getContent).not.toHaveBeenCalled();
+
+    await act(async () => {
+      pendingNode.resolve(ok(node));
+      await pendingNode.promise;
+    });
+
+    await waitFor(() => expect(mocks.latestEditorProps).not.toBeNull());
+    expect(mocks.getContent).toHaveBeenCalledTimes(1);
   });
 
   it('passes only the configured initial markdown window to the editor and context panel', async () => {
@@ -195,6 +234,43 @@ describe('NoteContentView windowing', () => {
     expect(updateContent).not.toContain('line 1\nline 2');
   });
 
+  it('preserves a newer load-more projection when an older save completes', async () => {
+    const props = await renderWindowedNote();
+    const pendingUpdate = deferred<ReturnType<typeof ok<DstuNode>>>();
+    mocks.update.mockReset();
+    mocks.update.mockReturnValueOnce(pendingUpdate.promise);
+
+    let savePromise!: Promise<void>;
+    act(() => {
+      savePromise = props.onSave('edited loaded prefix');
+    });
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledTimes(1));
+
+    const expanded = await act(async () => (
+      mocks.latestEditorProps.onRequestLoadMore('edited loaded prefix')
+    ));
+    expect(expanded.loadedMarkdown).toContain('line 400');
+
+    pendingUpdate.resolve(ok({ ...node, updatedAt: node.updatedAt + 1000 }));
+    await act(async () => savePromise);
+
+    await waitFor(() => {
+      expect(mocks.latestEditorProps.initialContent).toContain('line 400');
+      expect(mocks.latestEditorProps.windowingState.loadedLineCount).toBe(301);
+    });
+
+    mocks.update.mockReset();
+    mocks.update.mockResolvedValue(ok({ ...node, updatedAt: node.updatedAt + 2000 }));
+    await act(async () => {
+      await mocks.latestEditorProps.onSave(expanded.loadedMarkdown);
+    });
+
+    const recomposed = mocks.update.mock.calls.at(-1)?.[1] as string;
+    expect(recomposed).toContain('line 1000');
+    expect(recomposed.split('\n').filter((line) => line === 'line 101')).toHaveLength(1);
+    expect(recomposed.split('\n').filter((line) => line === 'line 401')).toHaveLength(1);
+  });
+
   it('dispatches only projected loaded markdown on external refresh', async () => {
     await renderWindowedNote();
     const externalMarkdown = makeLines(1000, 'external line');
@@ -221,6 +297,134 @@ describe('NoteContentView windowing', () => {
     expect(event.detail.content).toContain('external line 100');
     expect(event.detail.content).not.toContain('external line 1000');
     dispatchSpy.mockRestore();
+  });
+
+  it('keeps window A baseline stale so A conflicts after dirty window B saves', async () => {
+    const props = await renderWindowedNote();
+    const unregisterDirty = registerContentDirtyChecker('note', node.id, () => true);
+    const externalUpdatedAt = node.updatedAt + 3000;
+    const externalMarkdown = makeLines(1000, 'window B');
+    mocks.get.mockResolvedValue(ok({ ...node, updatedAt: externalUpdatedAt }));
+    mocks.getContent.mockResolvedValue(ok(externalMarkdown));
+    mocks.update.mockReset();
+    mocks.update.mockResolvedValue(err({ code: 'CONFLICT', toUserMessage: () => 'Conflict' }));
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    act(() => {
+      mocks.watchCallback?.({
+        type: 'updated',
+        path: node.path,
+        node: { ...node, updatedAt: externalUpdatedAt },
+      });
+    });
+
+    expect(dispatchSpy.mock.calls.some(([event]) => event.type === 'notes:external-updated')).toBe(false);
+    await expect(props.onSave('window A dirty edit')).rejects.toThrow('Conflict');
+
+    const firstUpdateOptions = mocks.update.mock.calls[0]?.[3];
+    expect(firstUpdateOptions).toMatchObject({ expectedUpdatedAtMs: node.updatedAt });
+    expect(firstUpdateOptions.expectedUpdatedAtMs).not.toBe(externalUpdatedAt);
+
+    unregisterDirty();
+    dispatchSpy.mockRestore();
+  });
+
+  it('abandons an external refresh if the editor becomes dirty while disk reads are pending', async () => {
+    const props = await renderWindowedNote();
+    const pendingNode = deferred<ReturnType<typeof ok<DstuNode>>>();
+    const pendingContent = deferred<ReturnType<typeof ok<string>>>();
+    const externalUpdatedAt = node.updatedAt + 5000;
+    mocks.get.mockReturnValueOnce(pendingNode.promise);
+    mocks.getContent.mockReturnValueOnce(pendingContent.promise);
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    act(() => {
+      mocks.watchCallback?.({
+        type: 'updated',
+        path: node.path,
+        node: { ...node, updatedAt: externalUpdatedAt },
+      });
+    });
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
+    expect(mocks.getContent).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingNode.resolve(ok({ ...node, updatedAt: externalUpdatedAt }));
+      await pendingNode.promise;
+    });
+    await waitFor(() => expect(mocks.getContent).toHaveBeenCalledTimes(2));
+    const unregisterDirty = registerContentDirtyChecker('note', node.id, () => true);
+
+    await act(async () => {
+      pendingContent.resolve(ok(makeLines(1000, 'external pending')));
+      await pendingContent.promise;
+    });
+
+    expect(dispatchSpy.mock.calls.some(([event]) => event.type === 'notes:external-updated')).toBe(false);
+    mocks.update.mockReset();
+    mocks.update.mockResolvedValue(err({ code: 'CONFLICT', toUserMessage: () => 'Conflict' }));
+    mocks.get.mockResolvedValue(ok({ ...node, updatedAt: externalUpdatedAt }));
+    mocks.getContent.mockResolvedValue(ok(makeLines(1000, 'external pending')));
+    await expect(props.onSave('local edit after pending refresh')).rejects.toThrow('Conflict');
+    expect(mocks.update.mock.calls[0]?.[3]).toMatchObject({ expectedUpdatedAtMs: node.updatedAt });
+
+    unregisterDirty();
+    dispatchSpy.mockRestore();
+  });
+
+  it('does not advance the save baseline when an external content refresh fails', async () => {
+    const props = await renderWindowedNote();
+    const externalUpdatedAt = node.updatedAt + 6000;
+    mocks.get.mockResolvedValue(ok({ ...node, updatedAt: externalUpdatedAt }));
+    mocks.getContent.mockResolvedValueOnce(err({ code: 'IO_ERROR' }));
+
+    act(() => {
+      mocks.watchCallback?.({
+        type: 'updated',
+        path: node.path,
+        node: { ...node, updatedAt: externalUpdatedAt },
+      });
+    });
+    await waitFor(() => expect(mocks.getContent).toHaveBeenCalledTimes(2));
+
+    mocks.update.mockReset();
+    mocks.update.mockResolvedValue(err({ code: 'CONFLICT', toUserMessage: () => 'Conflict' }));
+    mocks.getContent.mockResolvedValue(ok(makeLines(1000, 'external after failure')));
+    await expect(props.onSave('local edit after failed refresh')).rejects.toThrow('Conflict');
+
+    expect(mocks.update.mock.calls[0]?.[3]).toMatchObject({ expectedUpdatedAtMs: node.updatedAt });
+  });
+
+  it('reads the conflict token before content when classifying a metadata-only conflict', async () => {
+    const originalMarkdown = makeLines(1000);
+    const props = await renderWindowedNote(originalMarkdown);
+    const pendingNode = deferred<ReturnType<typeof ok<DstuNode>>>();
+    const metadataUpdatedAt = node.updatedAt + 7000;
+    mocks.get.mockReturnValueOnce(pendingNode.promise);
+    mocks.update.mockReset();
+    mocks.update
+      .mockResolvedValueOnce(err({ code: 'CONFLICT', toUserMessage: () => 'Conflict' }))
+      .mockResolvedValueOnce(ok({ ...node, updatedAt: metadataUpdatedAt + 1000 }));
+
+    let savePromise!: Promise<void>;
+    act(() => {
+      savePromise = props.onSave('local edit after metadata change');
+    });
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
+    // The initial load is the only content read until the fresh OCC token resolves.
+    expect(mocks.getContent).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingNode.resolve(ok({ ...node, updatedAt: metadataUpdatedAt }));
+      await pendingNode.promise;
+    });
+    await waitFor(() => expect(mocks.getContent).toHaveBeenCalledTimes(2));
+    await act(async () => savePromise);
+
+    expect(mocks.update).toHaveBeenCalledTimes(2);
+    expect(mocks.update.mock.calls[1]?.[3]).toMatchObject({
+      expectedUpdatedAtMs: metadataUpdatedAt,
+    });
   });
 
   it('restores conflict user content through a loaded window and recomposes it on save retry', async () => {

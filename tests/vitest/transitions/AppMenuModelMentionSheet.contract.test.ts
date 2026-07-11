@@ -44,12 +44,19 @@ describe('AppMenu / ModelMentionPopover / Sheet transition contracts', () => {
   });
 
   it('lets Sheet read the shared transition tokens for overlay and panel motion', () => {
-    const source = readSource('src/components/ui/shad/Sheet.tsx');
+    const sheetSource = readSource('src/components/ui/shad/Sheet.tsx');
+    const motionSource = readSource('src/styles/ui-motion.css');
+    const tailwindSource = readSource('src/styles/tailwind.css');
 
-    expect(source).toContain('--modal-open-dur');
-    expect(source).toContain('--modal-close-dur');
-    expect(source).toContain('--panel-open-dur');
-    expect(source).toContain('data-[state=open]:animate-in');
-    expect(source).toContain('data-[state=closed]:animate-out');
+    expect(tailwindSource).toContain("@import './ui-motion.css';");
+    expect(sheetSource).toContain('ui-fade-in ui-fade-out');
+    expect(motionSource).toContain('var(--modal-open-dur');
+    expect(motionSource).toContain('.ui-fade-out[data-state="closed"]');
+    expect(motionSource).toContain('var(--modal-close-dur');
+
+    expect(sheetSource).toContain('ui-slide-in-right ui-slide-out-right');
+    expect(motionSource).toContain('var(--panel-open-dur');
+    expect(motionSource).toContain('.ui-slide-out-right[data-state="closed"]');
+    expect(motionSource).toContain('var(--panel-close-dur');
   });
 });

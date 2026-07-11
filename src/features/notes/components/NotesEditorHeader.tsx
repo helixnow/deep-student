@@ -5,6 +5,7 @@ import { getPathToNote } from '../notesUtils';
 import { CaretRight, Folder, FileText } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
+import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 export type NotesSaveStatus = 'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict';
 
@@ -65,6 +66,20 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     
     // Determine display title
     const displayTitle = isDstuMode ? (initialTitle || "") : (contextActive?.title || "");
+
+    const titleDirtyRef = useRef(false);
+    const trimmedInput = titleInput.trim();
+    titleDirtyRef.current =
+        !readOnly &&
+        Boolean(noteId) &&
+        Boolean(trimmedInput) &&
+        trimmedInput !== (displayTitle || '').trim() &&
+        (isEditing || pendingTitleRef.current !== null);
+
+    useEffect(() => {
+        if (!isDstuMode || !noteId || readOnly) return;
+        return registerContentDirtyChecker('note', noteId, () => titleDirtyRef.current);
+    }, [isDstuMode, noteId, readOnly]);
 
     // Calculate Breadcrumbs（仅 Context 模式）
     const breadcrumbs = useMemo(() => {

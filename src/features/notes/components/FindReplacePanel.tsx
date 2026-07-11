@@ -10,6 +10,7 @@ import type { EditorView } from '@milkdown/prose/view';
 import {
   searchHighlightKey,
   collectSearchMatches,
+  replaceAllSearchMatches,
   type SearchMatch,
   type SearchOptions,
 } from '@/components/crepe/plugins/searchHighlight';
@@ -158,10 +159,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     const options: SearchOptions = { caseSensitive, wholeWord };
     const matches = collectSearchMatches(view.state.doc, findText, options);
     if (matches.length === 0) return;
-    let tr = view.state.tr;
-    for (let i = matches.length - 1; i >= 0; i--) {
-      tr = tr.insertText(replaceText, matches[i].from, matches[i].to);
-    }
+    const tr = replaceAllSearchMatches(view.state.tr, matches, replaceText);
     view.dispatch(tr);
     syncHighlight(findText, 0, options);
   }, [readOnly, findText, replaceText, caseSensitive, wholeWord, getView, syncHighlight]);
@@ -177,9 +175,16 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   };
 
   const replaceDisabled = readOnly || !findText || matchCount === 0;
+  const panelLabel = t('notes:findReplace.panelLabel', '查找和替换');
+  const findLabel = t('notes:findReplace.findLabel', '查找');
+  const replaceLabel = t('notes:findReplace.replaceLabel', '替换为');
 
   return (
-    <div className={cn("absolute top-4 right-8 z-50 bg-background border border-border/60 shadow-lg rounded-lg w-[320px] max-sm:left-2 max-sm:right-2 max-sm:w-auto overflow-hidden flex flex-col", className)}>
+    <div
+      role="search"
+      aria-label={panelLabel}
+      className={cn("absolute top-4 right-8 z-50 bg-background border border-border/60 shadow-lg rounded-lg w-[320px] max-sm:left-2 max-sm:right-2 max-sm:w-auto overflow-hidden flex flex-col", className)}
+    >
       <div className="flex items-center p-2 border-b border-border/40 gap-2">
         {!readOnly ? (
           <NotionButton 
@@ -190,6 +195,10 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             title={isReplaceMode
               ? t('notes:findReplace.hideReplace', '收起替换')
               : t('notes:findReplace.showReplace', '展开替换')}
+            aria-label={isReplaceMode
+              ? t('notes:findReplace.hideReplace', '收起替换')
+              : t('notes:findReplace.showReplace', '展开替换')}
+            aria-expanded={isReplaceMode}
           >
             <CaretDown className={cn("h-4 w-4 transition-transform", isReplaceMode && "-rotate-90")} />
           </NotionButton>
@@ -203,12 +212,17 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             ref={findInputRef}
             className="h-7 text-xs pl-7 pr-12 bg-transparent border-none focus-visible:ring-1"
             placeholder={t('notes:findReplace.findPlaceholder', '查找…')}
+            aria-label={findLabel}
             value={findText}
             onChange={(e) => setFindText(e.target.value)}
             onKeyDown={handleKeyDown}
           />
           {findText && (
-            <span className="absolute right-2 text-[10px] text-muted-foreground tabular-nums">
+            <span
+              className="absolute right-2 text-[10px] text-muted-foreground tabular-nums"
+              aria-live="polite"
+              aria-atomic="true"
+            >
               {matchCount > 0 ? `${currentIndex + 1}/${matchCount}` : '0/0'}
             </span>
           )}
@@ -221,6 +235,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             className={cn("h-6 w-6 p-0 text-[10px] font-semibold", caseSensitive && "bg-accent text-accent-foreground")}
             onClick={() => setCaseSensitive((v) => !v)}
             title={t('notes:editor.case_sensitive')}
+            aria-label={t('notes:editor.case_sensitive', '区分大小写')}
             aria-pressed={caseSensitive}
           >
             Aa
@@ -231,6 +246,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             className={cn("h-6 w-6 p-0 text-[10px] font-semibold", wholeWord && "bg-accent text-accent-foreground")}
             onClick={() => setWholeWord((v) => !v)}
             title={t('notes:editor.whole_word')}
+            aria-label={t('notes:editor.whole_word', '全字匹配')}
             aria-pressed={wholeWord}
           >
             W
@@ -242,6 +258,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             onClick={() => navigate(-1)}
             disabled={matchCount === 0}
             title={t('notes:findReplace.prev', '上一个 (Shift+Enter)')}
+            aria-label={t('notes:findReplace.prev', '上一个 (Shift+Enter)')}
           >
             <CaretUp className="h-4 w-4" />
           </NotionButton>
@@ -252,11 +269,18 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             onClick={() => navigate(1)}
             disabled={matchCount === 0}
             title={t('notes:findReplace.next', '下一个 (Enter)')}
+            aria-label={t('notes:findReplace.next', '下一个 (Enter)')}
           >
             <CaretDown className="h-4 w-4" />
           </NotionButton>
           <div className="w-[1px] h-4 bg-border/60 mx-0.5" />
-          <NotionButton variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground" onClick={onClose}>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+            onClick={onClose}
+            aria-label={t('common:close', '关闭')}
+          >
             <X className="h-4 w-4" />
           </NotionButton>
         </div>
@@ -269,6 +293,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             <Input 
               className="h-7 text-xs pl-2 bg-transparent border-none focus-visible:ring-1"
               placeholder={t('notes:findReplace.replacePlaceholder', '替换为…')}
+              aria-label={replaceLabel}
               value={replaceText}
               onChange={(e) => setReplaceText(e.target.value)}
               onKeyDown={handleKeyDown}

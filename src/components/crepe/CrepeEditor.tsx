@@ -48,6 +48,7 @@ import {
 import './CrepeEditor.css';
 import { useCrepeBlockDrag } from './hooks/useCrepeBlockDrag';
 import { useSlashMenuCustomScrollbar } from './hooks/useSlashMenuCustomScrollbar';
+import { createAgentInsertTransaction } from './useCrepeEditor';
 
 /**
  * Crepe 编辑器组件
@@ -573,18 +574,22 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             if (!view) return;
 
             const { state, dispatch } = view;
-            const max = state.doc.content.size;
-            const insertPos = Math.max(0, Math.min(pos, max));
-            const tr = state.tr.insertText(text, insertPos);
+            const { transaction: tr, from, to, cursor } = createAgentInsertTransaction(state, text, pos);
             tr.setMeta('addToHistory', false);
-            // insert meta：插件追加区间并把 caret 推到 to（不抢焦点）
+            // 记录完整结构插入范围；块边界插入时再把 caret 拉回文本块内。
             tr.setMeta(agentHighlightKey, {
               type: 'insert',
-              from: insertPos,
-              to: insertPos + text.length,
+              from,
+              to,
             } satisfies AgentHighlightMeta);
             dispatch(tr);
-            nextPos = insertPos + text.length;
+            if (cursor !== to) {
+              dispatch(view.state.tr.setMeta(agentHighlightKey, {
+                type: 'caret',
+                pos: cursor,
+              } satisfies AgentHighlightMeta));
+            }
+            nextPos = cursor;
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] agentInsert failed:', e);

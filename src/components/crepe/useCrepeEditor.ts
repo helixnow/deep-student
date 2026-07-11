@@ -8,6 +8,7 @@ import 'katex/contrib/mhchem';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { editorViewCtx, commandsCtx } from '@milkdown/kit/core';
 import { replaceAll } from '@milkdown/kit/utils';
+import type { EditorState, Transaction } from '@milkdown/prose/state';
 import { toggleMark, setBlockType, wrapIn, lift } from '@milkdown/prose/commands';
 import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
 import type { CrepeEditorApi } from './types';
@@ -54,6 +55,50 @@ export interface UseCrepeEditorReturn {
   
   /** 手动销毁 */
   destroy: () => Promise<void>;
+}
+
+export interface AgentInsertTransaction {
+  transaction: Transaction;
+  /** Full structural range inserted by ProseMirror (used for undo/ledger). */
+  from: number;
+  to: number;
+  /** Textblock position where the next batch should continue. */
+  cursor: number;
+}
+
+/**
+ * Insert agent text and derive its final range from the transaction mapping.
+ * At a block document boundary, ProseMirror may wrap inserted text in a new
+ * paragraph, so the resulting position can advance by more than text.length.
+ */
+export function createAgentInsertTransaction(
+  state: EditorState,
+  text: string,
+  pos: number,
+): AgentInsertTransaction {
+  const max = state.doc.content.size;
+  const insertPos = Math.max(0, Math.min(pos, max));
+  const transaction = state.tr.insertText(text, insertPos);
+  const from = transaction.mapping.map(insertPos, -1);
+  const to = transaction.mapping.map(insertPos, 1);
+  let cursor = to;
+
+  // Inserting inline text at a block boundary wraps it in a textblock. The
+  // mapped right edge is then after that block; continue one position earlier,
+  // inside the textblock, so the next batch does not create another paragraph.
+  if (transaction.docChanged && cursor > 0) {
+    const $to = transaction.doc.resolve(cursor);
+    if (!$to.parent.inlineContent && $to.nodeBefore?.isTextblock) {
+      cursor -= 1;
+    }
+  }
+
+  return {
+    transaction,
+    from,
+    to,
+    cursor,
+  };
 }
 
 /**
@@ -204,17 +249,21 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
           crepe.editor.action((ctx) => {
             const view = ctx.get(editorViewCtx);
             const { state, dispatch } = view;
-            const max = state.doc.content.size;
-            const insertPos = Math.max(0, Math.min(pos, max));
-            const tr = state.tr.insertText(text, insertPos);
+            const { transaction: tr, from, to, cursor } = createAgentInsertTransaction(state, text, pos);
             tr.setMeta('addToHistory', false);
             tr.setMeta(agentHighlightKey, {
               type: 'insert',
-              from: insertPos,
-              to: insertPos + text.length,
+              from,
+              to,
             } satisfies AgentHighlightMeta);
             dispatch(tr);
-            nextPos = insertPos + text.length;
+            if (cursor !== to) {
+              dispatch(view.state.tr.setMeta(agentHighlightKey, {
+                type: 'caret',
+                pos: cursor,
+              } satisfies AgentHighlightMeta));
+            }
+            nextPos = cursor;
           });
         } catch (e) {
           console.error('[useCrepeEditor] agentInsert failed:', e);

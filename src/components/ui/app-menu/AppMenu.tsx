@@ -134,7 +134,7 @@ export interface AppMenuTriggerProps extends React.HTMLAttributes<HTMLElement> {
 }
 
 export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>(
-  ({ asChild, children, className, onClick, onContextMenu, ...rest }, ref) => {
+  ({ asChild, children, className, onClick, onContextMenu, onKeyDown, ...rest }, ref) => {
   const ctx = React.useContext(AppMenuContext);
   const Comp = (asChild ? Slot : 'button') as React.ElementType;
   
@@ -166,6 +166,29 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
     }
   };
 
+  const handleTriggerKeyDown = (e: React.KeyboardEvent) => {
+    onKeyDown?.(e as React.KeyboardEvent<HTMLElement>);
+    if (e.defaultPrevented) return;
+    const keyboardContext = e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10');
+    if (ctx.mode === 'context' && keyboardContext) {
+      e.preventDefault();
+      const rect = e.currentTarget.getBoundingClientRect();
+      ctx.setPosition({
+        x: rect.left + Math.min(16, rect.width / 2),
+        y: rect.top + Math.min(16, rect.height / 2),
+      });
+      ctx.setOpen(true);
+      return;
+    }
+    if (
+      ctx.mode === 'dropdown' &&
+      (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')
+    ) {
+      e.preventDefault();
+      ctx.setOpen(true);
+    }
+  };
+
   return (
     <Comp
       ref={ref}
@@ -174,6 +197,7 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
       aria-expanded={ctx.open}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
+      onKeyDown={handleTriggerKeyDown}
       className={cn('app-menu-trigger', className)}
       {...rest}
     >
@@ -213,6 +237,7 @@ export function AppMenuContent({
   onSearchChange,
   children,
   style,
+  onKeyDown,
   ...rest
 }: AppMenuContentProps) {
   const ctx = React.useContext(AppMenuContext);
@@ -345,12 +370,93 @@ export function AppMenuContent({
     };
   }, [align, ctx, shouldRender]);
 
-  // 自动聚焦搜索框
+  const getEnabledItems = React.useCallback((): HTMLElement[] => {
+    const root = contentRef.current;
+    if (!root) return [];
+    return Array.from(
+      root.querySelectorAll<HTMLElement>(
+        '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+      ),
+    ).filter(
+      (item) =>
+        !item.hasAttribute('disabled') &&
+        item.getAttribute('aria-disabled') !== 'true' &&
+        !item.closest('[data-app-menu-sub-content]'),
+    );
+  }, [contentRef]);
+
+  // 打开后建立键盘入口；timer 必须随 close/reopen 清理，避免旧会话抢焦点。
   React.useEffect(() => {
-    if (isOpen && showSearch && searchInputRef.current) {
-      setTimeout(() => searchInputRef.current?.focus(), 50);
+    if (!isOpen || !shouldRender) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!isOpen) return;
+      if (showSearch && searchInputRef.current) {
+        searchInputRef.current.focus({ preventScroll: true });
+        return;
+      }
+      const first = getEnabledItems()[0];
+      (first ?? contentRef.current)?.focus({ preventScroll: true });
+    }, showSearch ? 50 : 0);
+    return () => window.clearTimeout(timer);
+  }, [contentRef, getEnabledItems, isOpen, shouldRender, showSearch]);
+
+  const handleContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(event);
+    if (event.defaultPrevented || !ctx) return;
+    const items = getEnabledItems();
+    const active = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest<HTMLElement>(
+          '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+        )
+      : null;
+    const index = active ? items.indexOf(active) : -1;
+    const focusAt = (next: number) => {
+      if (items.length === 0) return;
+      const item = items[((next % items.length) + items.length) % items.length];
+      item.focus({ preventScroll: true });
+      item.scrollIntoView({ block: 'nearest' });
+    };
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(index + 1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(index < 0 ? items.length - 1 : index - 1);
+        break;
+      case 'Home':
+        if (event.target === searchInputRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(0);
+        break;
+      case 'End':
+        if (event.target === searchInputRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(items.length - 1);
+        break;
+      case 'Escape': {
+        event.preventDefault();
+        event.stopPropagation();
+        ctx.setOpen(false);
+        const trigger = ctx.triggerRef.current?.querySelector<HTMLElement>(
+          'button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled])',
+        );
+        trigger?.focus({ preventScroll: true });
+        break;
+      }
+      case 'Tab':
+        event.stopPropagation();
+        ctx.setOpen(false);
+        break;
+      default:
+        break;
     }
-  }, [isOpen, showSearch]);
+  };
 
   if (!ctx || !shouldRender) return null;
   if (typeof document === 'undefined') return null;
@@ -380,6 +486,7 @@ export function AppMenuContent({
         ...(maxHeight ? { maxHeight, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' } : {}),
         ...style,
       }}
+      onKeyDown={handleContentKeyDown}
       {...rest}
     >
       {showSearch && (
@@ -442,7 +549,7 @@ export interface AppMenuItemProps extends React.ButtonHTMLAttributes<HTMLButtonE
 }
 
 export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>(
-  ({ className, icon, children, shortcut, destructive, disabled, checked, suffix, onClick, ...rest }, ref) => {
+  ({ className, icon, children, shortcut, destructive, disabled, checked, suffix, onClick, tabIndex = -1, ...rest }, ref) => {
     const ctx = React.useContext(AppMenuContext);
     
     return (
@@ -450,6 +557,7 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
         ref={ref}
         role="menuitem"
         disabled={disabled}
+        tabIndex={tabIndex}
         className={cn(
           'app-menu-item',
           destructive && 'app-menu-item-destructive',
@@ -492,7 +600,9 @@ interface AppMenuSubContextValue {
   triggerRef: React.RefObject<HTMLDivElement>;
   contentRef: React.RefObject<HTMLDivElement>;
   openOnClick: boolean;
+  keyboardFocusRequest: number;
   openSub: () => void;
+  openSubWithKeyboard: () => void;
   closeSub: () => void;
   toggleSub: () => void;
   scheduleClose: () => void;
@@ -502,6 +612,7 @@ const AppMenuSubContext = React.createContext<AppMenuSubContextValue | null>(nul
 
 export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   const [open, setOpen] = React.useState(false);
+  const [keyboardFocusRequest, setKeyboardFocusRequest] = React.useState(0);
   const triggerRef = React.useRef<HTMLDivElement>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
   const closeTimerRef = React.useRef<number | null>(null);
@@ -516,6 +627,12 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   const openSub = React.useCallback(() => {
     clearCloseTimer();
     setOpen(true);
+  }, [clearCloseTimer]);
+
+  const openSubWithKeyboard = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen(true);
+    setKeyboardFocusRequest((request) => request + 1);
   }, [clearCloseTimer]);
 
   const closeSub = React.useCallback(() => {
@@ -544,12 +661,23 @@ export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   }, [clearCloseTimer]);
   
   return (
-    <AppMenuSubContext.Provider value={{ open, setOpen, triggerRef, contentRef, openOnClick, openSub, closeSub, toggleSub, scheduleClose }}>
+    <AppMenuSubContext.Provider value={{
+      open,
+      setOpen,
+      triggerRef,
+      contentRef,
+      openOnClick,
+      keyboardFocusRequest,
+      openSub,
+      openSubWithKeyboard,
+      closeSub,
+      toggleSub,
+      scheduleClose,
+    }}>
       <div 
         className="app-menu-sub"
         onMouseEnter={openOnClick ? undefined : openSub}
         onMouseLeave={openOnClick ? undefined : scheduleClose}
-        onFocus={openOnClick ? undefined : openSub}
         onBlur={openOnClick ? undefined : scheduleClose}
       >
         {children}
@@ -572,6 +700,8 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, onClick
       role="menuitem"
       aria-haspopup="menu"
       aria-expanded={subCtx?.open}
+      aria-disabled={disabled || undefined}
+      tabIndex={-1}
       className={cn(
         'app-menu-item app-menu-sub-trigger',
         disabled && 'app-menu-item-disabled',
@@ -592,14 +722,17 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, onClick
       }}
       onKeyDown={(event) => {
         onKeyDown?.(event);
-        if (event.defaultPrevented || disabled || !subCtx?.openOnClick) return;
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.defaultPrevented || disabled || !subCtx) return;
+        if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowRight') {
           event.preventDefault();
-          subCtx.toggleSub();
+          event.stopPropagation();
+          subCtx.openSubWithKeyboard();
         }
-        if (event.key === 'Escape') {
+        if (event.key === 'Escape' || event.key === 'ArrowLeft') {
           event.preventDefault();
+          event.stopPropagation();
           subCtx.closeSub();
+          subCtx.triggerRef.current?.focus({ preventScroll: true });
         }
       }}
       {...rest}
@@ -613,10 +746,46 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, onClick
 
 export type AppMenuSubContentProps = React.HTMLAttributes<HTMLDivElement>;
 
-export function AppMenuSubContent({ className, children, ...rest }: AppMenuSubContentProps) {
+export function AppMenuSubContent({
+  className,
+  children,
+  onKeyDown,
+  onFocusCapture,
+  onBlur,
+  ...rest
+}: AppMenuSubContentProps) {
   const subCtx = React.useContext(AppMenuSubContext);
   const rootMenuCtx = React.useContext(AppMenuContext);
   const [position, setPosition] = React.useState<{ left: number; top: number } | null>(null);
+
+  const getEnabledItems = React.useCallback((): HTMLElement[] => {
+    const root = subCtx?.contentRef.current;
+    if (!root) return [];
+    return Array.from(
+      root.querySelectorAll<HTMLElement>(
+        '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+      ),
+    ).filter(
+      (item) =>
+        !item.hasAttribute('disabled') &&
+        item.getAttribute('aria-disabled') !== 'true',
+    );
+  }, [subCtx?.contentRef]);
+
+  React.useEffect(() => {
+    if (!subCtx?.open || subCtx.keyboardFocusRequest === 0) return undefined;
+    const timer = window.setTimeout(() => {
+      if (!subCtx.open) return;
+      const target = getEnabledItems()[0] ?? subCtx.contentRef.current;
+      target?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    getEnabledItems,
+    subCtx?.contentRef,
+    subCtx?.keyboardFocusRequest,
+    subCtx?.open,
+  ]);
 
   React.useLayoutEffect(() => {
     if (!subCtx?.open || typeof window === 'undefined') return;
@@ -662,15 +831,76 @@ export function AppMenuSubContent({ className, children, ...rest }: AppMenuSubCo
   }, [subCtx]);
 
   if (!subCtx?.open) return null;
+
+  const handleSubContentKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    onKeyDown?.(event);
+    if (event.defaultPrevented) return;
+    const items = getEnabledItems();
+    const active = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest<HTMLElement>(
+          '[role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"]',
+        )
+      : null;
+    const index = active ? items.indexOf(active) : -1;
+    const focusAt = (next: number) => {
+      if (items.length === 0) return;
+      const item = items[((next % items.length) + items.length) % items.length];
+      item.focus({ preventScroll: true });
+      item.scrollIntoView({ block: 'nearest' });
+    };
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(index + 1);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(index < 0 ? items.length - 1 : index - 1);
+        break;
+      case 'Home':
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        event.stopPropagation();
+        focusAt(items.length - 1);
+        break;
+      case 'ArrowLeft':
+      case 'Escape':
+        event.preventDefault();
+        event.stopPropagation();
+        subCtx.closeSub();
+        subCtx.triggerRef.current?.focus({ preventScroll: true });
+        break;
+      default:
+        break;
+    }
+  };
   
   return createPortal(
     <div
       ref={subCtx.contentRef}
       role="menu"
+      tabIndex={-1}
       data-app-menu-id={rootMenuCtx?.menuId}
+      data-app-menu-sub-content=""
       className={cn('app-menu-sub-content', className)}
       onMouseEnter={subCtx.openOnClick ? undefined : subCtx.openSub}
       onMouseLeave={subCtx.openOnClick ? undefined : subCtx.scheduleClose}
+      onFocusCapture={(event) => {
+        onFocusCapture?.(event);
+        if (!event.defaultPrevented) subCtx.openSub();
+      }}
+      onBlur={(event) => {
+        onBlur?.(event);
+        if (!event.defaultPrevented) subCtx.scheduleClose();
+      }}
+      onKeyDown={handleSubContentKeyDown}
       style={{
         position: 'fixed',
         left: position?.left ?? 8,
@@ -736,12 +966,15 @@ export function AppMenuSwitchItem({
   onCheckedChange,
   disabled,
   className,
+  onKeyDown,
   ...rest
 }: AppMenuSwitchItemProps) {
   return (
     <div
       role="menuitemcheckbox"
       aria-checked={checked}
+      aria-disabled={disabled || undefined}
+      tabIndex={-1}
       className={cn(
         'app-menu-item app-menu-switch-item',
         disabled && 'app-menu-item-disabled',
@@ -750,6 +983,14 @@ export function AppMenuSwitchItem({
       onClick={(e) => {
         e.stopPropagation();
         if (!disabled) {
+          onCheckedChange?.(!checked);
+        }
+      }}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (e.defaultPrevented || disabled) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
           onCheckedChange?.(!checked);
         }
       }}
@@ -762,6 +1003,7 @@ export function AppMenuSwitchItem({
         role="switch"
         aria-checked={checked}
         disabled={disabled}
+        tabIndex={-1}
         className={cn(
           'app-menu-switch',
           checked && 'app-menu-switch-checked'
@@ -796,12 +1038,15 @@ export function AppMenuCheckboxItem({
   onCheckedChange,
   disabled,
   className,
+  onKeyDown,
   ...rest
 }: AppMenuCheckboxItemProps) {
   return (
     <div
       role="menuitemcheckbox"
       aria-checked={checked}
+      aria-disabled={disabled || undefined}
+      tabIndex={-1}
       className={cn(
         'app-menu-item app-menu-checkbox-item',
         checked && 'app-menu-checkbox-item-checked',
@@ -811,6 +1056,14 @@ export function AppMenuCheckboxItem({
       onClick={(e) => {
         e.stopPropagation();
         if (!disabled) {
+          onCheckedChange?.(!checked);
+        }
+      }}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (e.defaultPrevented || disabled) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
           onCheckedChange?.(!checked);
         }
       }}
@@ -873,6 +1126,7 @@ export function AppMenuOptionGroup({
           key={option.value}
           type="button"
           role="menuitemradio"
+          tabIndex={-1}
           aria-checked={value === option.value}
           className={cn(
             'app-menu-option-item',

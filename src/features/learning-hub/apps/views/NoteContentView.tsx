@@ -43,6 +43,8 @@ import {
   registerNoteEditor,
   unregisterNoteEditor,
 } from '@/features/workbench/agent/drivers/noteDriver';
+import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 // 顶部 SWR 刷新条依赖 progress-indeterminate 关键帧（设计系统 Progress 样式），
 // 显式引入确保本视图独立加载时关键帧可用
 import '@/components/ui/shad/Progress.css';
@@ -62,6 +64,19 @@ function projectMarkdownWindow(markdown: string, requestedLines: number): Markdo
     };
   }
   return projected;
+}
+
+/**
+ * Read the OCC token before reading content. The two calls are not an atomic
+ * database snapshot, but this order preserves the safety invariant: a write
+ * racing the reads can only leave us with an older token, so the next save is
+ * rejected. Starting both calls together could pair a newer token with older
+ * content and let a later save silently overwrite that newer content.
+ */
+async function readOccSafeNoteSnapshot(path: string) {
+  const nodeResult = await dstu.get(path);
+  const contentResult = await dstu.getContent(path);
+  return { nodeResult, contentResult };
 }
 
 /**
@@ -156,7 +171,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const isLoadingMoreRef = useRef(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const fullContentRef = useRef<string>('');
+  // 每次窗口投影变化都推进 revision。保存发起后若又加载了更多内容，
+  // 成功回流只能更新持久化基线，不能把编辑器窗口回退到旧快照。
+  const markdownWindowRevisionRef = useRef(0);
   const setMarkdownWindow = useCallback((nextWindow: MarkdownWindow | null) => {
+    markdownWindowRevisionRef.current += 1;
     markdownWindowRef.current = nextWindow;
     setMarkdownWindowState(nextWindow);
   }, []);
@@ -182,6 +201,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   }, []);
   // ★ R3：当前已落盘的内容快照（用于冲突时判断外部是否真的改了内容）
   const persistedContentRef = useRef<string | null>(null);
+  // 外部 watch 在本窗口 dirty / saving 时只记住新版本，绝不能提前推进
+  // expectedUpdatedAt 基线，否则下一次自动保存会静默覆盖外部内容。
+  const pendingExternalUpdatedAtRef = useRef<number | null>(null);
   // 维护模式保存拦截的提示节流（自动保存每 1.5s 触发一次，避免通知刷屏）
   const maintenanceWarnedAtRef = useRef(0);
   // ★ F9/R4：正在保存内容的笔记 ID。自身保存触发的 watch 事件无需整页刷新。
@@ -202,16 +224,18 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // ★ 优化体验：不再粗暴地 setContent(null)，保留旧内容（Stale-While-Revalidate），
     // 配合顶部的透明 Loading 指示器，实现无缝切换
 
-    // ★ R3：并行获取最新节点（新鲜的 updatedAt/title/tags）与内容
+    // ★ R3：设置读取可并行；node/content 必须由 OCC-safe helper 顺序读取。
     let nodeResult: Awaited<ReturnType<typeof dstu.get>>;
     let result: Awaited<ReturnType<typeof dstu.getContent>>;
     let settingValue: number;
     try {
-      [nodeResult, result, settingValue] = await Promise.all([
-        dstu.get(node.path),
-        dstu.getContent(node.path),
+      const [snapshot, loadedSettingValue] = await Promise.all([
+        readOccSafeNoteSnapshot(node.path),
         loadInitialLineWindowSetting(),
       ]);
+      nodeResult = snapshot.nodeResult;
+      result = snapshot.contentResult;
+      settingValue = loadedSettingValue;
     } catch (unexpected) {
       // dstu API 均为 Result 语义、正常不抛异常；此处兜底防止
       // 意外 throw 让 isLoading 永远卡住（无重试入口的死加载态）
@@ -249,6 +273,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     setIsLoadingMore(false);
     setLoadMoreError(null);
     persistedContentRef.current = contentStr;
+    pendingExternalUpdatedAtRef.current = null;
     updateKnownBaseline(freshNode?.updatedAt ?? node.updatedAt ?? null);
     setTitle(freshNode?.name ?? node.name ?? '');
     // 重新加载时同步最新的 tags（node 可能已更新）
@@ -265,6 +290,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // 加载完成后 loadNoteContent 会用磁盘上的新鲜值覆盖。
     setTitle(node.name || '');
     setTags((node.metadata?.tags as string[]) || []);
+    pendingExternalUpdatedAtRef.current = null;
     updateKnownBaseline(node.updatedAt ?? null);
     void loadNoteContent();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -279,12 +305,35 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
   const refreshFromDisk = useCallback(async (forceApply: boolean) => {
     const currentNoteId = node.id;
-    const [nodeResult, contentResult] = await Promise.all([
-      dstu.get(node.path),
-      dstu.getContent(node.path),
-    ]);
+    const { nodeResult, contentResult } = await readOccSafeNoteSnapshot(node.path);
     // 防竞态：期间切换了笔记则放弃
     if (loadingNoteIdRef.current !== null && loadingNoteIdRef.current !== currentNoteId) {
+      return;
+    }
+    const diskUpdatedAt = nodeResult.ok && nodeResult.value
+      ? (nodeResult.value.updatedAt ?? null)
+      : null;
+    // 请求发起时可能还是 clean，但 I/O 返回前用户已经开始输入。此时整次
+    // 刷新都必须放弃，包括 metadata/baseline/full-content refs。
+    if (
+      !forceApply &&
+      (savingContentNoteIdRef.current === currentNoteId || isContentDirty('note', currentNoteId))
+    ) {
+      if (diskUpdatedAt !== null) {
+        pendingExternalUpdatedAtRef.current = Math.max(
+          pendingExternalUpdatedAtRef.current ?? 0,
+          diskUpdatedAt,
+        );
+      }
+      return;
+    }
+    if (!contentResult.ok) {
+      if (diskUpdatedAt !== null) {
+        pendingExternalUpdatedAtRef.current = Math.max(
+          pendingExternalUpdatedAtRef.current ?? 0,
+          diskUpdatedAt,
+        );
+      }
       return;
     }
     if (nodeResult.ok && nodeResult.value) {
@@ -293,9 +342,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       setTags((nodeResult.value.metadata?.tags as string[]) || []);
       onTitleChangeRef.current?.(nodeResult.value.name || '');
     }
-    if (!contentResult.ok) {
-      return;
-    }
     const latest = typeof contentResult.value === 'string' ? contentResult.value : '';
     const nextWindow = projectMarkdownWindow(latest, initialLineWindow);
     fullContentRef.current = latest;
@@ -303,6 +349,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     setContentNoteId(currentNoteId);
     setMarkdownWindow(nextWindow);
     persistedContentRef.current = latest;
+    pendingExternalUpdatedAtRef.current = null;
     // 通知编辑器原位刷新（由 NotesCrepeEditor 监听，带脏检查）
     window.dispatchEvent(new CustomEvent('notes:external-updated', {
       detail: { noteId: currentNoteId, content: nextWindow.loadedMarkdown, force: forceApply },
@@ -321,8 +368,22 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       // 之前用户可继续编辑幽灵笔记，直到自动保存反复失败才有噪音提示。
       if (
         (event.type === 'deleted' || event.type === 'purged') &&
-        (event.node?.id === currentNoteId || event.path === currentNotePath)
+        (
+          event.node?.id === currentNoteId ||
+          event.path === currentNotePath ||
+          normalizeResourceInstanceKey(event.path) === currentNoteId
+        )
       ) {
+        if (isContentDirty('note', currentNoteId)) {
+          showGlobalNotification(
+            'warning',
+            t(
+              'notes:editor.deleted_with_unsaved_changes',
+              '资源已被删除；窗口保留未保存内容，请复制内容后再关闭。',
+            ),
+          );
+          return;
+        }
         setError(new VfsError(VfsErrorCode.NOT_FOUND, 'Note was deleted externally', true, { noteId: currentNoteId }));
         return;
       }
@@ -340,16 +401,24 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       const incoming = event.node.updatedAt ?? 0;
       // 等于/早于已知基线的事件来自自身保存或重复派发，忽略
       if (incoming <= known) return;
-      updateKnownBaseline(incoming);
       // ★ F9：当前笔记自身保存进行中时跳过刷新。
       // 事件若来自自身保存（emit 先于 invoke 返回），applySuccess 会完成基线同步；
       // 若来自真正的外部更新，进行中的保存会被乐观锁拒绝并走冲突刷新流程。
       // R4：按笔记 ID 比较——旧笔记的在途保存不应压制新笔记的刷新。
-      if (savingContentNoteIdRef.current === currentNoteId) return;
+      if (
+        savingContentNoteIdRef.current === currentNoteId ||
+        isContentDirty('note', currentNoteId)
+      ) {
+        pendingExternalUpdatedAtRef.current = Math.max(
+          pendingExternalUpdatedAtRef.current ?? 0,
+          incoming,
+        );
+        return;
+      }
       void refreshFromDiskRef.current(false);
     });
     return unwatch;
-  }, [node.id, node.path, updateKnownBaseline]);
+  }, [node.id, node.path, t, updateKnownBaseline]);
 
   const handleRequestLoadMore = useCallback(async (
     currentMarkdown: string,
@@ -409,8 +478,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     const isViewStillCurrent = () => loadingNoteIdRef.current === savedNoteId;
     // ★ R3：携带乐观锁基线，防止静默覆盖其他位置的更新
     const currentWindow = markdownWindowRef.current;
+    const currentWindowRevision = markdownWindowRevisionRef.current;
+    const fullContentSnapshot = fullContentRef.current;
     const saveContent = currentWindow
-      ? composeWindowedSave(newContent, fullContentRef.current, currentWindow.loadedLineCount, currentWindow.hasMore)
+      ? composeWindowedSave(newContent, fullContentSnapshot, currentWindow.loadedLineCount, currentWindow.hasMore)
       : newContent;
     const applySuccess = (updatedAt?: number) => {
       // ★ R4：磁盘写入已成功；但若用户已切换笔记，绝不能把旧笔记内容
@@ -421,7 +492,31 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       setContentNoteId(savedNoteId);
       persistedContentRef.current = saveContent;
       if (currentWindow) {
-        if (currentWindow.hasMore) {
+        if (markdownWindowRevisionRef.current !== currentWindowRevision) {
+          const liveWindow = markdownWindowRef.current;
+          if (liveWindow) {
+            const editorMarkdown = editorApiRef.current?.getMarkdown();
+            // load-more 已更新 parent ref、但编辑器可能尚未应用返回值；这种
+            // 极短窗口内旧 editor markdown 等于保存入参，应采用新投影。
+            const liveMarkdown = editorMarkdown && (
+              editorMarkdown !== newContent || liveWindow.loadedMarkdown === newContent
+            )
+              ? editorMarkdown
+              : liveWindow.loadedMarkdown;
+            const totalLineCount = getMarkdownLineCount(saveContent);
+            const previousTotalLineCount = getMarkdownLineCount(fullContentSnapshot);
+            const hiddenSuffixLineCount = liveWindow.hasMore
+              ? Math.max(0, previousTotalLineCount - liveWindow.loadedLineCount)
+              : 0;
+            const loadedLineCount = Math.max(0, totalLineCount - hiddenSuffixLineCount);
+            setMarkdownWindow({
+              loadedMarkdown: liveMarkdown,
+              loadedLineCount,
+              totalLineCount,
+              hasMore: hiddenSuffixLineCount > 0,
+            });
+          }
+        } else if (currentWindow.hasMore) {
           const loadedLineCount = getMarkdownLineCount(newContent);
           const totalLineCount = getMarkdownLineCount(saveContent);
           setMarkdownWindow({
@@ -441,6 +536,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         }
       }
       updateKnownBaseline(updatedAt ?? lastKnownUpdatedAtRef.current);
+      if (
+        updatedAt !== undefined &&
+        (pendingExternalUpdatedAtRef.current ?? 0) <= updatedAt
+      ) {
+        pendingExternalUpdatedAtRef.current = null;
+      }
     };
 
     savingContentNoteIdRef.current = savedNoteId;
@@ -457,10 +558,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         // 冲突：先判断磁盘内容是否真的变化。
         // 标题/标签更新（setMetadata）也会推进 updated_at，但内容基线未变，
         // 此时以新基线重试即可，不应丢弃用户输入。
-        const [latestNode, latestContent] = await Promise.all([
-          dstu.get(node.path),
-          dstu.getContent(node.path),
-        ]);
+        const {
+          nodeResult: latestNode,
+          contentResult: latestContent,
+        } = await readOccSafeNoteSnapshot(node.path);
         const latestStr = latestContent.ok && typeof latestContent.value === 'string'
           ? latestContent.value
           : null;

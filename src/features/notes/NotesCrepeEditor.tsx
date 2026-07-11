@@ -130,6 +130,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [editorApi, setEditorApi] = useState<CrepeEditorApi | null>(null);
   const pendingSaveQueueRef = useRef<PendingSavePayload[]>([]);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
+  const activeSavePayloadRef = useRef<PendingSavePayload | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   /** 当前笔记草稿是否与上次成功保存快照不同 */
   const [isDirty, setIsDirty] = useState(false);
@@ -260,79 +261,87 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (inFlightSaveRef.current) {
       return inFlightSaveRef.current;
     }
-    const payload = dequeuePending();
-    if (!payload) {
+    if (pendingSaveQueueRef.current.length === 0) {
       return Promise.resolve();
     }
 
     if (!savingTimerRef.current) {
       savingTimerRef.current = setTimeout(() => {
-        setIsSaving(true);
+        if (!isUnmountedRef.current) {
+          setIsSaving(true);
+        }
       }, SAVING_INDICATOR_DELAY_MS);
     }
-    const promise = executeSave(payload)
-      .then(() => {
-        // 保存成功，重置重试计数
-        saveRetryCountRef.current = 0;
-      })
-      .catch((error) => {
-        // ★ R3/Y8 修复：冲突（外部版本已胜出并刷新）与不可重试错误（内容超限）
-        // 直接丢弃该 payload，不进入重试循环。
-        const flagged = error as Error & { isNoteConflict?: boolean; isNonRetryable?: boolean };
-        if (flagged?.isNoteConflict || flagged?.isNonRetryable) {
-          console.warn('[NotesCrepeEditor] ⚠️ 保存已放弃（冲突或不可重试）:', error);
-          saveRetryCountRef.current = 0;
-          if (!isUnmountedRef.current && payload.noteId === noteIdRef.current) {
-            setSaveError(flagged?.isNoteConflict ? 'conflict' : 'failed');
+
+    // One shared promise drains every payload queued while a save is in flight.
+    // This is important during unmount: cleanup can enqueue the latest draft and
+    // the already-running save will still await and persist it before settling.
+    const promise = (async () => {
+      const terminalErrorsByNote = new Map<string, unknown>();
+      try {
+        let payload = dequeuePending();
+        while (payload) {
+          activeSavePayloadRef.current = payload;
+          try {
+            await executeSave(payload);
+            saveRetryCountRef.current = 0;
+            terminalErrorsByNote.delete(payload.noteId);
+          } catch (error) {
+            const flagged = error as Error & { isNoteConflict?: boolean; isNonRetryable?: boolean };
+            if (flagged?.isNoteConflict || flagged?.isNonRetryable) {
+              console.warn('[NotesCrepeEditor] ⚠️ 保存已放弃（冲突或不可重试）:', error);
+              saveRetryCountRef.current = 0;
+              if (!isUnmountedRef.current && payload.noteId === noteIdRef.current) {
+                setSaveError(flagged?.isNoteConflict ? 'conflict' : 'failed');
+              }
+              terminalErrorsByNote.set(payload.noteId, error);
+            } else {
+              console.error('[NotesCrepeEditor] ❌ 自动保存失败', error);
+              const MAX_RETRIES = 5;
+              if (saveRetryCountRef.current < MAX_RETRIES) {
+                pendingSaveQueueRef.current.unshift(payload);
+                saveRetryCountRef.current++;
+                const backoffMs = Math.min(
+                  1000 * Math.pow(2, saveRetryCountRef.current - 1),
+                  16000,
+                );
+                await new Promise<void>((resolve) => setTimeout(resolve, backoffMs));
+              } else {
+                console.error('[NotesCrepeEditor] ❌ 自动保存达到最大重试次数，放弃重试');
+                saveRetryCountRef.current = 0;
+                if (!isUnmountedRef.current && payload.noteId === noteIdRef.current) {
+                  setSaveError('failed');
+                }
+                showGlobalNotification(
+                  'error',
+                  t('notes:actions.auto_save_failed', '笔记自动保存失败，请尝试手动保存（Ctrl+S）或复制内容到安全位置。')
+                );
+                terminalErrorsByNote.set(payload.noteId, error);
+              }
+            }
           }
-          throw error;
+          activeSavePayloadRef.current = null;
+          payload = dequeuePending();
         }
-        console.error('[NotesCrepeEditor] ❌ 自动保存失败', error);
-        // 🔒 审计修复: 添加指数退避和最大重试次数，防止保存失败时无限高频重试
-        const MAX_RETRIES = 5;
-        if (saveRetryCountRef.current < MAX_RETRIES) {
-          pendingSaveQueueRef.current.unshift(payload);
-          saveRetryCountRef.current++;
-        } else {
-          console.error('[NotesCrepeEditor] ❌ 自动保存达到最大重试次数，放弃重试');
-          saveRetryCountRef.current = 0;
-          if (!isUnmountedRef.current && payload.noteId === noteIdRef.current) {
-            setSaveError('failed');
-          }
-          // [S-001] 修复：通知用户保存失败，建议手动操作
-          showGlobalNotification(
-            'error',
-            t('notes:actions.auto_save_failed', '笔记自动保存失败，请尝试手动保存（Ctrl+S）或复制内容到安全位置。')
-          );
+
+        if (terminalErrorsByNote.size > 0) {
+          throw terminalErrorsByNote.values().next().value;
         }
-        throw error;
-      })
-      .finally(() => {
+      } finally {
+        activeSavePayloadRef.current = null;
         inFlightSaveRef.current = null;
         if (savingTimerRef.current) {
           clearTimeout(savingTimerRef.current);
           savingTimerRef.current = null;
         }
-        setIsSaving(false);
-        if (pendingSaveQueueRef.current.length > 0 && !isUnmountedRef.current) {
-          // 🔒 审计修复 + 审阅修复: 仅在有重试计数时才延迟（成功后的新保存立即执行）
-          if (saveRetryCountRef.current > 0) {
-            // 指数退避延迟（1s, 2s, 4s, 8s, 16s）
-            const backoffMs = Math.min(1000 * Math.pow(2, saveRetryCountRef.current - 1), 16000);
-            setTimeout(() => {
-              if (!isUnmountedRef.current) {
-                void runPendingSave();
-              }
-            }, backoffMs);
-          } else {
-            // 成功后的正常排队保存，立即执行
-            void runPendingSave();
-          }
+        if (!isUnmountedRef.current) {
+          setIsSaving(false);
         }
-      });
+      }
+    })();
     inFlightSaveRef.current = promise;
     return promise;
-  }, [executeSave]);
+  }, [executeSave, t]);
 
   const queueSave = useCallback((content: string, overrideNoteId?: string | null) => {
     const resolvedNoteId = overrideNoteId ?? noteIdRef.current;
@@ -341,12 +350,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
     draftByNoteRef.current.set(resolvedNoteId, content);
     const lastSavedSnapshot = lastSavedMapRef.current.get(resolvedNoteId) ?? '';
-    if (resolvedNoteId === noteIdRef.current) {
+    if (!isUnmountedRef.current && resolvedNoteId === noteIdRef.current) {
       setIsDirty(lastSavedSnapshot !== content);
     }
 
-    if (lastSavedSnapshot === content) {
-      return Promise.resolve();
+    const queuedTarget = [...pendingSaveQueueRef.current]
+      .reverse()
+      .find((item) => item.noteId === resolvedNoteId);
+    const activeTarget = activeSavePayloadRef.current?.noteId === resolvedNoteId
+      ? activeSavePayloadRef.current
+      : null;
+    const pipelineTarget = queuedTarget?.content ?? activeTarget?.content ?? lastSavedSnapshot;
+    if (pipelineTarget === content) {
+      return runPendingSave();
     }
     
     pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((item) => item.noteId !== resolvedNoteId);
@@ -542,6 +558,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 清理
   useEffect(() => {
+    isUnmountedRef.current = false;
     return () => {
       isUnmountedRef.current = true;
       cancelDebounce();
@@ -1233,7 +1250,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                     const next = !readingMode;
                     // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
                     if (next) {
-                      void flushNoteDraft();
+                      void flushNoteDraft().catch(() => {});
                     }
                     setReadingMode(next);
                     // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly

@@ -8,7 +8,7 @@
  * 文档变更时自动重新计算匹配（支持边输入边更新计数）。
  */
 
-import { Plugin, PluginKey } from '@milkdown/prose/state';
+import { Plugin, PluginKey, type Transaction } from '@milkdown/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { $prose } from '@milkdown/utils';
@@ -59,10 +59,148 @@ function queryHasCjk(query: string): boolean {
   return false;
 }
 
+function codePointBefore(text: string, index: number): string | undefined {
+  if (index <= 0) return undefined;
+  const trailingUnit = text.charCodeAt(index - 1);
+  if (trailingUnit >= 0xDC00 && trailingUnit <= 0xDFFF && index > 1) {
+    const leadingUnit = text.charCodeAt(index - 2);
+    if (leadingUnit >= 0xD800 && leadingUnit <= 0xDBFF) {
+      return text.slice(index - 2, index);
+    }
+  }
+  return text[index - 1];
+}
+
+function codePointAt(text: string, index: number): string | undefined {
+  if (index >= text.length) return undefined;
+  const value = text.codePointAt(index);
+  return value === undefined ? undefined : String.fromCodePoint(value);
+}
+
 function isWholeWordMatch(text: string, start: number, end: number): boolean {
-  const before = start > 0 ? text[start - 1] : undefined;
-  const after = end < text.length ? text[end] : undefined;
+  const before = codePointBefore(text, start);
+  const after = codePointAt(text, end);
   return !isWordChar(before) && !isWordChar(after);
+}
+
+interface FoldedText {
+  text: string;
+  rawStartByUnit?: number[];
+  rawEndByUnit?: number[];
+}
+
+interface TextblockProjection {
+  text: string;
+  docStartByUnit: number[];
+  docEndByUnit: number[];
+  barrierPrefix: number[];
+}
+
+const INLINE_BARRIER = '\uFFFC';
+
+/** Lowercase text while retaining a map back to the original UTF-16 offsets. */
+function foldTextWithOffsets(raw: string): FoldedText {
+  const text = raw.toLowerCase();
+  if (text.length === raw.length) {
+    return { text };
+  }
+
+  const rawStartByUnit: number[] = [];
+  const rawEndByUnit: number[] = [];
+
+  for (let rawStart = 0; rawStart < raw.length;) {
+    const codePoint = raw.codePointAt(rawStart);
+    if (codePoint === undefined) break;
+    const originalUnit = String.fromCodePoint(codePoint);
+    const rawEnd = rawStart + originalUnit.length;
+    const foldedUnit = originalUnit.toLowerCase();
+    for (let i = 0; i < foldedUnit.length; i++) {
+      rawStartByUnit.push(rawStart);
+      rawEndByUnit.push(rawEnd);
+    }
+    rawStart = rawEnd;
+  }
+
+  return { text, rawStartByUnit, rawEndByUnit };
+}
+
+/**
+ * Flatten one textblock so adjacent text nodes separated only by marks remain
+ * searchable as a single string. Non-text inline nodes are explicit barriers:
+ * a match must never jump across a hard break, image, mention, or other atom.
+ */
+function projectTextblock(node: ProseNode, blockPos: number): TextblockProjection {
+  let text = '';
+  const docStartByUnit: number[] = [];
+  const docEndByUnit: number[] = [];
+  const barriers: number[] = [];
+
+  node.forEach((child, childOffset) => {
+    if (child.isText && child.text) {
+      text += child.text;
+      for (let i = 0; i < child.text.length; i += 1) {
+        docStartByUnit.push(blockPos + 1 + childOffset + i);
+        docEndByUnit.push(blockPos + 1 + childOffset + i + 1);
+        barriers.push(0);
+      }
+      return;
+    }
+
+    text += INLINE_BARRIER;
+    docStartByUnit.push(-1);
+    docEndByUnit.push(-1);
+    barriers.push(1);
+  });
+
+  const barrierPrefix = new Array<number>(barriers.length + 1).fill(0);
+  for (let i = 0; i < barriers.length; i += 1) {
+    barrierPrefix[i + 1] = barrierPrefix[i] + barriers[i];
+  }
+
+  return { text, docStartByUnit, docEndByUnit, barrierPrefix };
+}
+
+function collectMatchesInTextblock(
+  projection: TextblockProjection,
+  query: string,
+  caseSensitive: boolean,
+  wholeWord: boolean,
+): SearchMatch[] {
+  const raw = projection.text;
+  const folded = caseSensitive ? null : foldTextWithOffsets(raw);
+  const text = folded?.text ?? raw;
+  const q = caseSensitive ? query : query.toLowerCase();
+  const matches: SearchMatch[] = [];
+  let previousRawTo = -1;
+  let idx = text.indexOf(q);
+
+  while (idx !== -1) {
+    const end = idx + q.length;
+    const rawStart = folded?.rawStartByUnit?.[idx] ?? idx;
+    const rawEnd = folded?.rawEndByUnit?.[end - 1] ?? end;
+    const crossesBarrier =
+      projection.barrierPrefix[rawEnd] !== projection.barrierPrefix[rawStart];
+    const accepted =
+      rawStart >= previousRawTo &&
+      !crossesBarrier &&
+      (!wholeWord || isWholeWordMatch(raw, rawStart, rawEnd));
+
+    if (accepted) {
+      const from = projection.docStartByUnit[rawStart];
+      const to = projection.docEndByUnit[rawEnd - 1];
+      if (from >= 0 && to >= from) {
+        matches.push({ from, to });
+        previousRawTo = rawEnd;
+      }
+    }
+
+    // Search/replace semantics use non-overlapping matches. Advancing one
+    // character after an accepted match makes replace-all ranges overlap
+    // (for example, "aaaa" / "aa") and corrupts the transaction.
+    idx = text.indexOf(q, idx + (accepted ? q.length : 1));
+  }
+
+  return matches;
 }
 
 /** 按选项收集文档中所有匹配区间 */
@@ -75,22 +213,42 @@ export function collectSearchMatches(
   const caseSensitive = options.caseSensitive ?? false;
   // CJK 无空格分词：整词边界对汉字几乎总是误伤，含 CJK 时退回子串匹配
   const wholeWord = (options.wholeWord ?? false) && !queryHasCjk(query);
-  const q = caseSensitive ? query : query.toLowerCase();
   const matches: SearchMatch[] = [];
   doc.descendants((node, pos) => {
-    if (!node.isText || !node.text) return;
-    const raw = node.text;
-    const text = caseSensitive ? raw : raw.toLowerCase();
-    let idx = text.indexOf(q);
-    while (idx !== -1) {
-      const end = idx + q.length;
-      if (!wholeWord || isWholeWordMatch(raw, idx, end)) {
-        matches.push({ from: pos + idx, to: pos + end });
-      }
-      idx = text.indexOf(q, idx + 1);
-    }
+    if (!node.isTextblock) return true;
+    matches.push(...collectMatchesInTextblock(
+      projectTextblock(node, pos),
+      query,
+      caseSensitive,
+      wholeWord,
+    ));
+    // Text children were consumed as one projection; do not visit them again.
+    return false;
   });
   return matches;
+}
+
+/** Apply a replace-all operation from the end of the document. */
+export function replaceAllSearchMatches(
+  transaction: Transaction,
+  matches: SearchMatch[],
+  replacement: string,
+): Transaction {
+  const nonOverlapping: SearchMatch[] = [];
+  let previousTo = -1;
+  for (const match of [...matches].sort((a, b) => a.from - b.from || a.to - b.to)) {
+    if (match.from < match.to && match.from >= previousTo) {
+      nonOverlapping.push(match);
+      previousTo = match.to;
+    }
+  }
+
+  let next = transaction;
+  for (let i = nonOverlapping.length - 1; i >= 0; i--) {
+    const match = nonOverlapping[i];
+    next = next.insertText(replacement, match.from, match.to);
+  }
+  return next;
 }
 
 function buildState(
