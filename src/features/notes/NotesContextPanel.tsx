@@ -327,16 +327,9 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     }
 
     return (
-        <div className="flex flex-col h-full bg-muted/5 border-l border-border/40 text-xs">
-            {/* Properties header */}
-            <div className="px-4 pt-3 pb-1">
-                <h2 className="text-[11px] font-semibold text-foreground/80 tracking-wide">
-                    {t('notes:context.properties', 'Properties')}
-                </h2>
-            </div>
-
+        <div className="flex flex-col h-full bg-background text-xs">
             {/* Metadata + Tags */}
-            <div className="px-4 pb-3 space-y-4">
+            <div className="px-3 py-3 space-y-3">
                 {/* Dates — compact, consistent formatting */}
                 <div className="space-y-1.5">
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -358,8 +351,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 {/* Tags — prominent section */}
                 <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
-                        <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" weight="duotone" />
-                        <h3 className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider">
+                        <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <h3 className="text-xs font-medium text-muted-foreground">
                             {t('notes:context.tags', 'Tags')}
                         </h3>
                         {hasTags && (
@@ -380,16 +373,20 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="h-6 px-2 text-[11px] font-normal gap-1 hover:bg-[var(--interactive-hover)] transition-colors cursor-default group"
+                                className="h-5 rounded px-1.5 text-[11px] font-normal gap-1 hover:bg-[var(--interactive-hover)] transition-colors cursor-default group"
                             >
                                 {tag}
-                                <X
-                                    className="w-3 h-3 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 cursor-pointer hover:text-destructive transition-opacity"
+                                <NotionButton
+                                    variant="ghost" iconOnly size="sm"
+                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         handleRemoveTag(tag);
                                     }}
-                                />
+                                    aria-label={`${t('notes:context.tag_remove', 'Remove tag')} ${tag}`}
+                                >
+                                    <X className="w-3 h-3" aria-hidden="true" />
+                                </NotionButton>
                             </Badge>
                         ))}
 
@@ -413,19 +410,18 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 }}
                             />
                         ) : (
-                            <button
-                                type="button"
+                            <NotionButton
+                                variant="ghost" size="sm"
                                 className={cn(
-                                    "inline-flex items-center gap-0.5 rounded-md border border-dashed border-border/60",
-                                    "text-[11px] text-muted-foreground hover:text-primary hover:border-primary/40",
-                                    "px-2 h-6 transition-colors",
+                                    "inline-flex items-center gap-0.5 rounded text-[11px] text-muted-foreground hover:text-foreground",
+                                    "px-1.5 h-6 transition-colors",
                                     "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5"
                                 )}
                                 onClick={() => setIsAddingTag(true)}
                             >
                                 <Plus className="w-3 h-3" />
                                 {t('notes:context.add_tag', 'Add tag')}
-                            </button>
+                            </NotionButton>
                         )}
                     </div>
                 </div>
@@ -435,8 +431,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
             {/* Outline Section */}
             <div className="flex-1 flex flex-col min-h-0">
-                <div className="px-4 pt-3 pb-1">
-                    <h3 className="text-[10px] font-bold text-muted-foreground/80 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="px-3 pt-3 pb-1">
+                    <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                         <TextAlignLeft className="w-3.5 h-3.5" />
                         {t('notes:context.outline', 'Outline')}
                         {headings.length > 0 && (
@@ -456,7 +452,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         key={heading.id}
                                         variant="ghost" size="sm"
                                         className={cn(
-                                            "!w-full !text-left !py-1 !px-2 !h-auto !rounded-md truncate text-[11px]",
+                                            "!w-full !justify-start !text-left !py-1 !px-2 !h-auto !rounded truncate text-xs",
                                             "[@media(pointer:coarse)]:!py-2.5",
                                             heading.level === 1 && "font-medium",
                                             heading.level === 2 && "!pl-4",
@@ -465,7 +461,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             heading.level === 5 && "!pl-10 text-[10px]",
                                             heading.level === 6 && "!pl-12 text-[10px]",
                                             isActive
-                                                ? "bg-primary/10 text-primary font-medium hover:bg-primary/15"
+                                                ? "bg-[var(--interactive-hover)] text-foreground font-medium"
                                                 : cn(
                                                     "hover:bg-[var(--interactive-hover)]",
                                                     heading.level === 1 && "text-foreground",

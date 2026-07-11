@@ -50,6 +50,7 @@ import { WallpaperLayer, DEFAULT_WALLPAPER, type WallpaperConfig } from './Wallp
 import { DesktopContextMenu, useDesktopGestures } from './DesktopContextMenu';
 import { useWallpaperCoveragePause } from '../hooks/useWallpaperCoveragePause';
 import { EmptyDesktop } from './EmptyDesktop';
+import { DesktopAgendaWidget } from './DesktopAgendaWidget';
 import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
 import { installInteractionTraceBridge } from '../core/interactionTrace';
@@ -501,6 +502,7 @@ export const WorkbenchDesktop: React.FC = () => {
         <WallpaperLayer wallpaper={wallpaper} />
       </div>
 
+      {hydrated && <DesktopAgendaWidget />}
       {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}
 
       {/* 窗口层：自成 stacking context（COORDINATION 裁决），内部 zIndex 与 overlay 定值互不干扰。

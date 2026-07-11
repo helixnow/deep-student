@@ -1,19 +1,13 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft,
-  ArrowRight,
   ArrowsClockwise,
   CaretDown,
   FileText,
   Files,
   FolderSimple,
-  Gear,
-  Graph,
-  List,
   MagnifyingGlass,
   NotePencil,
-  Question,
   SidebarSimple,
   TreeStructure,
   X,
@@ -21,6 +15,8 @@ import {
 import { dstu, createEmpty, type DstuNode } from '@/dstu';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { MindMapContentView } from '@/features/mindmap/MindMapContentView';
+import { getMindMapStoreForInstance } from '@/features/mindmap/store';
+import { isContentDirty } from '../content/contentDirtyRegistry';
 import type { AppWindowProps } from '../../core/types';
 import {
   forgetWorkspaceResource,
@@ -35,6 +31,17 @@ type ResourceType = NotesWorkspaceResourceRef['type'];
 interface WorkspaceTab extends NotesWorkspaceResourceRef {
   key: string;
   title: string;
+}
+
+type SaveState = 'saved' | 'saving' | 'dirty';
+
+function getTabSaveState(tab: WorkspaceTab, windowId: string): SaveState {
+  if (tab.type === 'note') {
+    return isContentDirty('note', tab.id) ? 'dirty' : 'saved';
+  }
+  const state = getMindMapStoreForInstance(`${windowId}:${tab.key}`, tab.id)?.getState();
+  if (state?.isSaving) return 'saving';
+  return state?.isDirty ? 'dirty' : 'saved';
 }
 
 interface TreeFolder {
@@ -185,14 +192,6 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
       data-resource-id={active?.id}
       onPointerDown={() => active && onActivate(active.key)}
     >
-      <div className="notes-editor-actions">
-        <div>
-          <IconButton label="后退"><ArrowLeft size={16} /></IconButton>
-          <IconButton label="前进"><ArrowRight size={16} /></IconButton>
-        </div>
-        <span className="notes-editor-title">{active?.title ?? '未打开文件'}</span>
-        <div />
-      </div>
       <div className="notes-pane-content">
         {!active && (
           <div className="notes-empty-pane">
@@ -237,6 +236,7 @@ interface WorkspaceTabsProps {
   onActivate: (key: string) => void;
   onClose: (key: string) => void;
   leftOffset: number;
+  saveStates: Map<string, SaveState>;
 }
 
 const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
@@ -245,13 +245,46 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   onActivate,
   onClose,
   leftOffset,
-}) => (
+  saveStates,
+}) => {
+  const focusTab = (event: React.KeyboardEvent, index: number) => {
+    const buttons = event.currentTarget
+      .closest('[data-notes-tabstrip]')
+      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    if (!buttons?.length) return;
+    const button = buttons.item((index + buttons.length) % buttons.length);
+    button?.focus();
+    button?.click();
+  };
+  const handleKeyDown = (event: React.KeyboardEvent, index: number, key: string) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      focusTab(event, index + 1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      focusTab(event, index - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      focusTab(event, 0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      focusTab(event, tabs.length - 1);
+    } else if (event.key === 'Delete') {
+      event.preventDefault();
+      onClose(key);
+    }
+  };
+
+  return (
   <div className="notes-titlebar-tabs" style={{ paddingLeft: leftOffset }}>
     <div className="notes-tabstrip" data-notes-tabstrip role="tablist" aria-label="打开的文件">
-      {tabs.map((tab) => (
+      {tabs.map((tab, index) => {
+        const saveState = saveStates.get(tab.key) ?? 'saved';
+        return (
         <div
           className="notes-tab"
           data-active={tab.key === activeKey ? 'true' : 'false'}
+          data-save-state={saveState}
           key={tab.key}
           onPointerDown={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
@@ -260,19 +293,25 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
             type="button"
             role="tab"
             aria-selected={tab.key === activeKey}
+            tabIndex={tab.key === activeKey ? 0 : -1}
             onClick={() => onActivate(tab.key)}
+            onKeyDown={(event) => handleKeyDown(event, index, tab.key)}
           >
             <ResourceGlyph type={tab.type} size={14} />
             <span>{tab.title}</span>
+            {saveState !== 'saved' && (
+              <i className="notes-tab-state" aria-label={saveState === 'saving' ? '正在保存' : '未保存'} />
+            )}
           </button>
           <IconButton label={`关闭 ${tab.title}`} onClick={() => onClose(tab.key)}>
             <X size={12} />
           </IconButton>
         </div>
-      ))}
+      );})}
     </div>
   </div>
-);
+  );
+};
 
 export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   windowId,
@@ -292,6 +331,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [compact, setCompact] = useState(false);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const [status, setStatus] = useState('就绪');
+  const [, refreshSaveStates] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ node: DstuNode; x: number; y: number } | null>(null);
   const [resourceDialog, setResourceDialog] = useState<{ mode: 'rename' | 'delete'; node: DstuNode; value: string } | null>(null);
   const initialRef = useRef(parseInitialResource(instanceKey, launchPayload));
@@ -309,12 +349,25 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, [query, resources]);
   const tree = useMemo(() => buildTree(filteredResources), [filteredResources]);
   const titlebarTabsLeft = Math.max(76, 44 + (explorerOpen && !compact ? explorerWidth : 0));
+  const saveStates = new Map(tabs.map((tab) => [tab.key, getTabSaveState(tab, windowId)]));
 
   useLayoutEffect(() => {
-    const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
-      .find((element) => element.dataset.windowId === windowId) ?? null;
-    setTitlebarTarget(target);
+    const findTarget = () => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      setTitlebarTarget((current) => current === target ? current : target);
+    };
+    findTarget();
+    const observer = new MutationObserver(findTarget);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
   }, [windowId]);
+
+  useEffect(() => {
+    if (tabs.length === 0) return;
+    const timer = window.setInterval(() => refreshSaveStates((value) => value + 1), 250);
+    return () => window.clearInterval(timer);
+  }, [tabs.length]);
 
   const loadResources = useCallback(async () => {
     setLoading(true);
@@ -334,26 +387,34 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, []);
 
   const openResource = useCallback((ref: NotesWorkspaceResourceRef, title?: string) => {
-    const existing = tabs.find((tab) => tab.type === ref.type && tab.id === ref.id);
-    const key = existing?.key ?? `${ref.type}:${ref.id}`;
-    if (!existing) {
+    const key = `${ref.type}:${ref.id}`;
+    setTabs((current) => {
+      if (current.some((tab) => tab.type === ref.type && tab.id === ref.id)) return current;
       const node = resources.find((item) => item.id === ref.id);
-      setTabs((current) => [...current, { ...ref, key, title: title ?? node?.name ?? (ref.type === 'note' ? '未命名笔记' : '未命名导图') }]);
-    }
+      return [...current, { ...ref, key, title: title ?? node?.name ?? (ref.type === 'note' ? '未命名笔记' : '未命名导图') }];
+    });
     setActiveTabKey(key);
     return new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
-  }, [resources, tabs]);
+  }, [resources]);
 
   const closeTab = useCallback((key: string) => {
     const currentTab = tabsRef.current.find((tab) => tab.key === key);
+    if (currentTab && getTabSaveState(currentTab, windowId) !== 'saved') {
+      // Keep the close decision synchronous so ACR and keyboard close share one guard.
+      // eslint-disable-next-line no-alert
+      const confirmed = window.confirm('此标签页有未保存的更改，确定要关闭吗？');
+      if (!confirmed) return;
+    }
     if (currentTab) {
       forgetWorkspaceResource({ type: currentTab.type, id: currentTab.id }, windowId);
     }
     setTabs((current) => {
       const closing = current.find((tab) => tab.key === key);
       if (!closing) return current;
+      const closingIndex = current.findIndex((tab) => tab.key === key);
       const next = current.filter((tab) => tab.key !== key);
-      setActiveTabKey((active) => active === key ? next.at(-1)?.key ?? null : active);
+      const neighbor = next[Math.min(closingIndex, next.length - 1)] ?? null;
+      setActiveTabKey((active) => active === key ? neighbor?.key ?? null : active);
       return next;
     });
   }, [windowId]);
@@ -441,7 +502,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     const observer = new ResizeObserver(([entry]) => {
       const nextCompact = entry.contentRect.width < 720;
       setCompact(nextCompact);
-      if (!nextCompact) setExplorerOpen(true);
     });
     observer.observe(host);
     return () => observer.disconnect();
@@ -458,6 +518,19 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       window.removeEventListener('keydown', onKey);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'w') return;
+      const current = activeTabRef.current;
+      if (!current) return;
+      event.preventDefault();
+      closeTabRef.current(current.key);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isActive]);
 
   const startExplorerResize = useCallback((event: React.PointerEvent) => {
     event.preventDefault();
@@ -481,24 +554,27 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           onActivate={setActiveTabKey}
           onClose={closeTab}
           leftOffset={titlebarTabsLeft}
+          saveStates={saveStates}
         />,
         titlebarTarget,
       ) : null}
-      <div ref={hostRef} className="notes-workspace" data-wb-notes-workspace style={{ '--notes-explorer-width': `${explorerWidth}px` } as React.CSSProperties}>
+      <div
+        ref={hostRef}
+        className="notes-workspace"
+        data-wb-notes-workspace
+        data-compact={compact ? 'true' : 'false'}
+        data-explorer-open={explorerOpen ? 'true' : 'false'}
+        style={{ '--notes-explorer-width': `${explorerWidth}px` } as React.CSSProperties}
+      >
       <nav className="notes-ribbon" data-notes-ribbon aria-label="笔记应用导航">
         <div>
           <IconButton label="文件浏览器" data-active={explorerOpen ? 'true' : 'false'} onClick={() => setExplorerOpen((value) => !value)}><Files size={20} /></IconButton>
           <IconButton label="搜索" onClick={() => { setExplorerOpen(true); window.setTimeout(() => hostRef.current?.querySelector<HTMLInputElement>('.notes-search-input')?.focus(), 0); }}><MagnifyingGlass size={20} /></IconButton>
-          <IconButton label="大纲"><List size={20} /></IconButton>
-          <IconButton label="关系图谱"><Graph size={20} /></IconButton>
         </div>
-        <div>
-          <IconButton label="帮助"><Question size={20} /></IconButton>
-          <IconButton label="设置"><Gear size={20} /></IconButton>
-        </div>
+        <div />
       </nav>
 
-      <aside className="notes-explorer" data-notes-explorer data-open={explorerOpen ? 'true' : 'false'} style={{ width: explorerWidth }}>
+      <aside className="notes-explorer" data-notes-explorer data-open={explorerOpen ? 'true' : 'false'} aria-hidden={!explorerOpen}>
         <header>
           <span>文件</span>
           <div>
@@ -539,7 +615,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         </div>
         <footer className="notes-statusbar" data-notes-statusbar>
           <span>{status}</span>
-          <span>{activeTab ? `${activeTab.type === 'note' ? 'Markdown' : '思维导图'}  ·  已同步` : '本地知识库'}</span>
+          <span>{activeTab ? `${activeTab.type === 'note' ? 'Markdown' : '思维导图'} · ${saveStates.get(activeTab.key) === 'saving' ? '正在保存' : saveStates.get(activeTab.key) === 'dirty' ? '未保存' : '已保存'}` : '本地知识库'}</span>
         </footer>
       </main>
       {explorerOpen && <button className="notes-explorer-scrim" aria-label="关闭文件浏览器" onClick={() => setExplorerOpen(false)} />}

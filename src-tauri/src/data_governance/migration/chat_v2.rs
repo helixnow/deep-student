@@ -374,6 +374,14 @@ pub const V20260528_RESOURCES_TYPE_CHECK_REBUILD: MigrationDef = MigrationDef::n
 ])
 .idempotent();
 
+/// V20260711: 为会话标签补齐复合主键变更日志触发器
+pub const V20260711_SESSION_TAGS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260711,
+    "session_tags_sync_coverage",
+    include_str!("../../../migrations/chat_v2/V20260711__session_tags_sync_coverage.sql"),
+)
+.idempotent();
+
 /// Chat V2 数据库迁移定义列表
 pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -394,6 +402,7 @@ pub const CHAT_V2_MIGRATIONS: &[MigrationDef] = &[
     V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     V20260527_ADD_WORKSPACE_DELETION_QUEUE,
     V20260528_RESOURCES_TYPE_CHECK_REBUILD,
+    V20260711_SESSION_TAGS_SYNC_COVERAGE,
 ];
 
 /// Chat V2 数据库迁移集合
@@ -413,7 +422,7 @@ mod tests {
     #[test]
     fn test_migration_set_structure() {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 18); // V20260130 ~ V20260528
+        assert_eq!(CHAT_V2_MIGRATION_SET.count(), 19); // V20260130 ~ V20260711
     }
 
     #[test]
@@ -515,102 +524,199 @@ mod tests {
     }
 
     #[test]
-    fn test_pending_migrations() {
-        // 从版本 0 开始，应该有 18 个待执行
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(0).collect();
-        assert_eq!(pending.len(), 18);
+    fn test_v20260711_session_tags_emit_unambiguous_composite_keys() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE __change_log (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 table_name TEXT NOT NULL,
+                 record_id TEXT NOT NULL,
+                 operation TEXT NOT NULL CHECK(operation IN ('INSERT', 'UPDATE', 'DELETE'))
+             );
+             CREATE TABLE chat_v2_session_tags (
+                 session_id TEXT NOT NULL,
+                 tag TEXT NOT NULL,
+                 tag_type TEXT NOT NULL DEFAULT 'auto',
+                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                 PRIMARY KEY (session_id, tag)
+             );",
+        )
+        .unwrap();
 
-        // 从版本 20260130 开始，应该有 17 个待执行
+        conn.execute_batch(V20260711_SESSION_TAGS_SYNC_COVERAGE.sql)
+            .unwrap();
+        conn.execute_batch(V20260711_SESSION_TAGS_SYNC_COVERAGE.sql)
+            .expect("migration is idempotent and must not duplicate triggers");
+
+        conn.execute(
+            "INSERT INTO chat_v2_session_tags (session_id, tag) VALUES (?1, ?2)",
+            rusqlite::params!["session:one", "tag:\"quoted\""],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_v2_session_tags SET tag_type = 'manual'
+             WHERE session_id = ?1 AND tag = ?2",
+            rusqlite::params!["session:one", "tag:\"quoted\""],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_v2_session_tags SET tag = ?1
+             WHERE session_id = ?2 AND tag = ?3",
+            rusqlite::params!["renamed:tag", "session:one", "tag:\"quoted\""],
+        )
+        .unwrap();
+        conn.execute(
+            "DELETE FROM chat_v2_session_tags WHERE session_id = ?1 AND tag = ?2",
+            rusqlite::params!["session:one", "renamed:tag"],
+        )
+        .unwrap();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT operation, record_id FROM __change_log
+                 WHERE table_name = 'chat_v2_session_tags' ORDER BY id",
+            )
+            .unwrap();
+        let changes: Vec<(String, serde_json::Value)> = stmt
+            .query_map([], |row| {
+                let operation: String = row.get(0)?;
+                let record_id: String = row.get(1)?;
+                Ok((operation, record_id))
+            })
+            .unwrap()
+            .map(|row| {
+                let (operation, record_id) = row.unwrap();
+                (operation, serde_json::from_str(&record_id).unwrap())
+            })
+            .collect();
+
+        assert_eq!(changes.len(), 5);
+        assert_eq!(changes[0].0, "INSERT");
+        assert_eq!(changes[1].0, "UPDATE");
+        assert_eq!(changes[2].0, "DELETE");
+        assert_eq!(changes[3].0, "INSERT");
+        assert_eq!(changes[4].0, "DELETE");
+        assert_eq!(
+            changes[0].1,
+            serde_json::json!({"session_id": "session:one", "tag": "tag:\"quoted\""})
+        );
+        assert_eq!(changes[1].1, changes[0].1);
+        assert_eq!(changes[2].1, changes[0].1);
+        assert_eq!(
+            changes[3].1,
+            serde_json::json!({"session_id": "session:one", "tag": "renamed:tag"})
+        );
+        assert_eq!(changes[4].1, changes[3].1);
+    }
+
+    #[test]
+    fn test_pending_migrations() {
+        // 从版本 0 开始，应该有 19 个待执行
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(0).collect();
+        assert_eq!(pending.len(), 19);
+
+        // 从版本 20260130 开始，应该有 18 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260130).collect();
-        assert_eq!(pending.len(), 17);
+        assert_eq!(pending.len(), 18);
 
         // 从版本 20260131 开始，应该有 16 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260131).collect();
-        assert_eq!(pending.len(), 16);
+        assert_eq!(pending.len(), 17);
 
         // 从版本 20260201 开始，应该有 15 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260201).collect();
-        assert_eq!(pending.len(), 15);
+        assert_eq!(pending.len(), 16);
 
         // 从版本 20260202 开始，应该有 14 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260202).collect();
-        assert_eq!(pending.len(), 14);
+        assert_eq!(pending.len(), 15);
 
         // 从版本 20260203 开始，应该有 13 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260203).collect();
-        assert_eq!(pending.len(), 13);
+        assert_eq!(pending.len(), 14);
 
         // 从版本 20260204 开始，应该有 12 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260204).collect();
-        assert_eq!(pending.len(), 12);
+        assert_eq!(pending.len(), 13);
 
         // 从版本 20260207 开始，应该有 11 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260207).collect();
-        assert_eq!(pending.len(), 11);
+        assert_eq!(pending.len(), 12);
 
         // 从版本 20260221 开始，应该有 10 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260221).collect();
-        assert_eq!(pending.len(), 10);
+        assert_eq!(pending.len(), 11);
 
         // 从版本 20260301 开始，应该有 9 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260301).collect();
-        assert_eq!(pending.len(), 9);
+        assert_eq!(pending.len(), 10);
 
         // 从版本 20260302 开始，应该有 8 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260302).collect();
-        assert_eq!(pending.len(), 8);
+        assert_eq!(pending.len(), 9);
 
         // 从版本 20260306 开始，应该有 7 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260306).collect();
-        assert_eq!(pending.len(), 7);
+        assert_eq!(pending.len(), 8);
 
         // 从版本 20260502 开始，应该有 6 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260502).collect();
-        assert_eq!(pending.len(), 6);
+        assert_eq!(pending.len(), 7);
         assert_eq!(pending[0].refinery_version, 20260510);
         assert_eq!(pending[1].refinery_version, 20260516);
         assert_eq!(pending[2].refinery_version, 20260523);
         assert_eq!(pending[3].refinery_version, 20260524);
         assert_eq!(pending[4].refinery_version, 20260527);
         assert_eq!(pending[5].refinery_version, 20260528);
+        assert_eq!(pending[6].refinery_version, 20260711);
 
         // 从版本 20260510 开始，应该有 5 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260510).collect();
-        assert_eq!(pending.len(), 5);
+        assert_eq!(pending.len(), 6);
         assert_eq!(pending[0].refinery_version, 20260516);
         assert_eq!(pending[1].refinery_version, 20260523);
         assert_eq!(pending[2].refinery_version, 20260524);
         assert_eq!(pending[3].refinery_version, 20260527);
         assert_eq!(pending[4].refinery_version, 20260528);
+        assert_eq!(pending[5].refinery_version, 20260711);
 
         // 从版本 20260516 开始，应该有 4 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260516).collect();
-        assert_eq!(pending.len(), 4);
+        assert_eq!(pending.len(), 5);
         assert_eq!(pending[0].refinery_version, 20260523);
         assert_eq!(pending[1].refinery_version, 20260524);
         assert_eq!(pending[2].refinery_version, 20260527);
         assert_eq!(pending[3].refinery_version, 20260528);
+        assert_eq!(pending[4].refinery_version, 20260711);
 
         // 从版本 20260523 开始，应该有 3 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260523).collect();
-        assert_eq!(pending.len(), 3);
+        assert_eq!(pending.len(), 4);
         assert_eq!(pending[0].refinery_version, 20260524);
         assert_eq!(pending[1].refinery_version, 20260527);
         assert_eq!(pending[2].refinery_version, 20260528);
+        assert_eq!(pending[3].refinery_version, 20260711);
 
         // 从版本 20260524 开始，应该有 2 个待执行
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260524).collect();
-        assert_eq!(pending.len(), 2);
+        assert_eq!(pending.len(), 3);
         assert_eq!(pending[0].refinery_version, 20260527);
         assert_eq!(pending[1].refinery_version, 20260528);
+        assert_eq!(pending[2].refinery_version, 20260711);
 
-        // 从版本 20260527 开始，只剩当前版本迁移
+        // 从版本 20260527 开始，剩下两个迁移
         let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260527).collect();
-        assert_eq!(pending.len(), 1);
+        assert_eq!(pending.len(), 2);
         assert_eq!(pending[0].refinery_version, 20260528);
+        assert_eq!(pending[1].refinery_version, 20260711);
+
+        // 从上一版本开始，只剩当前版本迁移
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260528).collect();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].refinery_version, 20260711);
 
         // 从当前版本开始，不应再有待执行迁移
-        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260528).collect();
+        let pending: Vec<_> = CHAT_V2_MIGRATION_SET.pending(20260711).collect();
         assert_eq!(pending.len(), 0);
     }
 

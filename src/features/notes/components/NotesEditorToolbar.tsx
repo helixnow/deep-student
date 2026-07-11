@@ -3,7 +3,7 @@
  * 提供常用的 Markdown 格式化操作
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import type { CrepeEditorApi } from '@/components/crepe/types';
@@ -24,10 +24,12 @@ import {
   Image,
   Table,
   FileCode,
+  DotsThree,
 } from '@phosphor-icons/react';
 import { useNotesOptional } from '../NotesContext';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { isMacOS } from '@/utils/platform';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 
 interface ToolbarButtonProps {
   icon: React.ReactNode;
@@ -46,13 +48,9 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   disabled = false,
   active = false,
 }) => {
-  // 使用 onMouseDown + preventDefault 阻止焦点转移
+  // Pointer interaction keeps the editor selection; keyboard activation stays native.
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (!disabled) {
-      onClick();
-    }
   };
 
   const tooltipContent = shortcut ? `${label} (${shortcut})` : label;
@@ -62,10 +60,11 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
       <NotionButton
         variant="ghost" size="icon" iconOnly
         onMouseDown={handleMouseDown}
+        onClick={onClick}
         disabled={disabled}
         className={active ? 'active' : ''}
         aria-label={label}
-        tabIndex={-1}
+        aria-pressed={active || undefined}
       >
         {icon}
       </NotionButton>
@@ -73,7 +72,7 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   );
 };
 
-const Divider: React.FC = () => <div className="divider" />;
+const Divider: React.FC = () => <div className="divider" role="separator" />;
 
 interface NotesEditorToolbarProps {
   /** 可选：直接传入 editor，用于白板等非 NotesContext 场景 */
@@ -99,6 +98,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   const editor = externalEditor ?? contextEditor;
   const isDisabled = !editor || readOnly;
   const mod = isMacOS() ? '⌘' : 'Ctrl+';
+  const [overflowOpen, setOverflowOpen] = useState(false);
 
   // 使用 ProseMirror 命令直接操作编辑器
   const handleBold = useCallback(() => {
@@ -166,9 +166,20 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   }, [editor]);
 
 
+  const overflowActions = [
+    { icon: <TextStrikethrough />, label: t('notes:toolbar.strikethrough'), action: handleStrikethrough },
+    { icon: <TextHOne />, label: t('notes:toolbar.heading1'), action: handleHeading1 },
+    { icon: <TextHThree />, label: t('notes:toolbar.heading3'), action: handleHeading3 },
+    { icon: <ListNumbers />, label: t('notes:toolbar.orderedList'), action: handleOrderedList },
+    { icon: <Quotes />, label: t('notes:toolbar.quote'), action: handleQuote },
+    { icon: <Minus />, label: t('notes:toolbar.horizontalRule'), action: handleHorizontalRule },
+    { icon: <FileCode />, label: t('notes:toolbar.codeBlock'), action: handleCodeBlock },
+    { icon: <Image />, label: t('notes:toolbar.image'), action: handleImage },
+    { icon: <Table />, label: t('notes:toolbar.table'), action: handleTable },
+  ];
+
   return (
-    <div className="notes-editor-toolbar">
-      {/* 文本格式 */}
+    <div className="notes-editor-toolbar" role="toolbar" aria-label={t('notes:toolbar.label', '格式化')}>
       <ToolbarButton
         icon={<TextB className="w-4 h-4" />}
         label={t('notes:toolbar.bold')}
@@ -184,12 +195,6 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<TextStrikethrough className="w-4 h-4" />}
-        label={t('notes:toolbar.strikethrough')}
-        onClick={handleStrikethrough}
-        disabled={isDisabled}
-      />
-      <ToolbarButton
         icon={<Code className="w-4 h-4" />}
         label={t('notes:toolbar.code')}
         shortcut={`${mod}E`}
@@ -199,14 +204,6 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
 
       <Divider />
 
-      {/* 标题 */}
-      <ToolbarButton
-        icon={<TextHOne className="w-4 h-4" />}
-        label={t('notes:toolbar.heading1')}
-        shortcut={`${mod}1`}
-        onClick={handleHeading1}
-        disabled={isDisabled}
-      />
       <ToolbarButton
         icon={<TextHTwo className="w-4 h-4" />}
         label={t('notes:toolbar.heading2')}
@@ -214,14 +211,6 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         onClick={handleHeading2}
         disabled={isDisabled}
       />
-      <ToolbarButton
-        icon={<TextHThree className="w-4 h-4" />}
-        label={t('notes:toolbar.heading3')}
-        shortcut={`${mod}3`}
-        onClick={handleHeading3}
-        disabled={isDisabled}
-      />
-
       <Divider />
 
       {/* 列表 */}
@@ -232,37 +221,9 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<ListNumbers className="w-4 h-4" />}
-        label={t('notes:toolbar.orderedList')}
-        onClick={handleOrderedList}
-        disabled={isDisabled}
-      />
-      <ToolbarButton
         icon={<CheckSquare className="w-4 h-4" />}
         label={t('notes:toolbar.taskList')}
         onClick={handleTaskList}
-        disabled={isDisabled}
-      />
-
-      <Divider />
-
-      {/* 块元素 */}
-      <ToolbarButton
-        icon={<Quotes className="w-4 h-4" />}
-        label={t('notes:toolbar.quote')}
-        onClick={handleQuote}
-        disabled={isDisabled}
-      />
-      <ToolbarButton
-        icon={<Minus className="w-4 h-4" />}
-        label={t('notes:toolbar.horizontalRule')}
-        onClick={handleHorizontalRule}
-        disabled={isDisabled}
-      />
-      <ToolbarButton
-        icon={<FileCode className="w-4 h-4" />}
-        label={t('notes:toolbar.codeBlock')}
-        onClick={handleCodeBlock}
         disabled={isDisabled}
       />
 
@@ -276,18 +237,25 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         onClick={handleLink}
         disabled={isDisabled}
       />
-      <ToolbarButton
-        icon={<Image className="w-4 h-4" />}
-        label={t('notes:toolbar.image')}
-        onClick={handleImage}
-        disabled={isDisabled}
-      />
-      <ToolbarButton
-        icon={<Table className="w-4 h-4" />}
-        label={t('notes:toolbar.table')}
-        onClick={handleTable}
-        disabled={isDisabled}
-      />
+      {!compact && (
+        <Popover open={overflowOpen} onOpenChange={setOverflowOpen}>
+          <CommonTooltip content={t('common:more', '更多')}>
+            <PopoverTrigger asChild>
+              <NotionButton variant="ghost" size="icon" iconOnly disabled={isDisabled} aria-label={t('common:more', '更多')}>
+                <DotsThree className="h-4 w-4" weight="bold" />
+              </NotionButton>
+            </PopoverTrigger>
+          </CommonTooltip>
+          <PopoverContent align="end" sideOffset={4} className="notes-toolbar-overflow w-48 p-1" role="menu">
+            {overflowActions.map((item) => (
+              <NotionButton key={item.label} variant="ghost" size="sm" role="menuitem" className="notes-toolbar-overflow-item" onClick={() => { item.action(); setOverflowOpen(false); }}>
+                {React.cloneElement(item.icon, { className: 'h-4 w-4' })}
+                <span>{item.label}</span>
+              </NotionButton>
+            ))}
+          </PopoverContent>
+        </Popover>
+      )}
     </div>
   );
 };

@@ -54,12 +54,12 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
   }, [handleClickOutside, handleKeyDown]);
 
   const btnClass =
-    '!px-3 !py-1.5 !h-auto !rounded-full text-xs font-medium whitespace-nowrap';
+    '!px-2 !h-7 !rounded text-xs font-medium whitespace-nowrap text-[var(--mm-text-secondary)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)]';
 
   return createPortal(
     <div
       ref={ref}
-      className="fixed z-[9999] flex items-center gap-0.5 rounded-full shadow-lg ring-1 ring-border/40 ui-zoom-fade-in backdrop-blur-sm bg-zinc-800/90 p-0.5"
+      className="mindmap-container fixed z-[9999] flex items-center gap-0.5 rounded-md border border-[var(--mm-border)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in bg-[var(--mm-bg-elevated)] p-1"
       style={{
         left: `${x}px`,
         top: `${y - 36}px`,
@@ -72,7 +72,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
         <NotionButton
           variant="ghost"
           size="sm"
-          className={`${btnClass} ${isBold ? 'bg-zinc-600 text-white' : 'text-zinc-200 hover:bg-[var(--interactive-hover)]'}`}
+          className={`${btnClass} ${isBold ? 'bg-[var(--mm-bg-active)] text-[var(--mm-text)]' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggleBold();
@@ -86,7 +86,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
         <NotionButton
           variant="ghost"
           size="sm"
-          className={`${btnClass} bg-zinc-700/90 text-zinc-200 hover:bg-[var(--interactive-hover)]`}
+          className={btnClass}
           onClick={(e) => {
             e.stopPropagation();
             onUnblank();
@@ -99,7 +99,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
         <NotionButton
           variant="ghost"
           size="sm"
-          className={`${btnClass} bg-amber-500/90 text-white hover:bg-amber-500`}
+          className={`${btnClass} bg-[var(--mm-warning-soft)] text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]`}
           onClick={(e) => {
             e.stopPropagation();
             onBlank();

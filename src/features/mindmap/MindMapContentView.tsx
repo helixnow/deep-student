@@ -40,7 +40,6 @@ import {
   ArrowClockwise as RefreshIcon,
   Gear,
   BookOpen,
-  TreeStructure,
   ArrowsInLineVertical,
   ArrowsOutLineVertical,
 } from '@phosphor-icons/react';
@@ -141,7 +140,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   
   // 工具栏面板互斥状态：同一时间只允许打开一个面板
-  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'export' | 'more' | 'fold' | null>(null);
+  const [activePanel, setActivePanel] = useState<'structure' | 'style' | 'more' | null>(null);
 
   // 移动端悬浮面板状态
   const [showMobileStructure, setShowMobileStructure] = useState(false);
@@ -324,7 +323,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       }
       try {
         // ★ 修复：使用当前主题的背景色；传入容器 ref 避免多实例导出错误
-        const backgroundColor = currentTheme?.canvas?.background || '#ffffff';
+        const themeBackground = currentTheme?.canvas?.background;
+        const backgroundColor = themeBackground?.startsWith('var(')
+          ? getComputedStyle(containerRef.current ?? document.documentElement)
+              .getPropertyValue('--mm-bg')
+              .trim() || getComputedStyle(document.documentElement).backgroundColor
+          : themeBackground || getComputedStyle(document.documentElement).backgroundColor;
         const result = await exportToImage({
           format: format as 'png' | 'svg',
           filename,
@@ -547,26 +551,17 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
     <div ref={containerRef} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
-      {/* Notion-style Topbar */}
-      <div className="notion-topbar">
+      {/* Compact workbench toolbar: primary commands stay visible, secondary commands live in More. */}
+      <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}
         <div className="flex items-center gap-3">
-          {/* View Switcher - Segmented Control with sliding indicator */}
-          <div className="relative flex items-center bg-[var(--mm-bg-hover)] p-[3px] rounded-lg">
-            {/* Sliding background pill */}
-            <div
-              className="absolute top-[3px] bottom-[3px] rounded-md bg-[var(--mm-bg-elevated)] shadow-sm border border-[var(--mm-border)] transition-all duration-300 ease-[var(--resize-ease)]"
-              style={{
-                left: currentView === 'outline' ? '3px' : '50%',
-                right: currentView === 'mindmap' ? '3px' : '50%',
-              }}
-            />
+          <div className="mm-view-switcher" role="group" aria-label={t('mindmap:toolbar.view')}>
             <NotionButton variant="ghost"
               className={cn(
-                "relative z-[1] flex items-center justify-center px-3 py-1 text-xs font-medium rounded-md transition-colors duration-200 !bg-transparent hover:!bg-transparent active:!bg-transparent",
+                "mm-view-switcher-button",
                 currentView === 'outline'
-                  ? "text-[var(--mm-text)]"
-                  : "text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
+                  ? "is-active"
+                  : ""
               )}
               onClick={() => switchView('outline')}
             >
@@ -575,10 +570,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             </NotionButton>
             <NotionButton variant="ghost"
               className={cn(
-                "relative z-[1] flex items-center justify-center px-3 py-1 text-xs font-medium rounded-md transition-colors duration-200 !bg-transparent hover:!bg-transparent active:!bg-transparent",
+                "mm-view-switcher-button",
                 currentView === 'mindmap'
-                  ? "text-[var(--mm-text)]"
-                  : "text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
+                  ? "is-active"
+                  : ""
               )}
               onClick={() => switchView('mindmap')}
             >
@@ -613,16 +608,14 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1">
-          {/* Desktop: Structure Selector */}
+          {/* Structure and style are compact icon commands; their panels remain directly accessible. */}
           <StructureSelector 
             className="hidden sm:flex"
             open={activePanel === 'structure'}
             onOpenChange={(open) => setActivePanel(open ? 'structure' : null)}
             trigger={
-              <NotionButton variant="ghost" className="notion-btn" title={t('mindmap:toolbar.switchStructure')}>
+              <NotionButton variant="ghost" className="mm-toolbar-button" title={t('mindmap:toolbar.switchStructure')} aria-label={t('mindmap:toolbar.switchStructure')}>
                 <GitBranch size={16} />
-                <span className="text-xs">{t('mindmap:toolbar.structure')}</span>
-                <CaretDown size={12} className="opacity-50 ml-0.5" />
               </NotionButton>
             }
           />
@@ -633,114 +626,40 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
             open={activePanel === 'style'}
             onOpenChange={(open) => setActivePanel(open ? 'style' : null)}
             trigger={
-              <NotionButton variant="ghost" className="notion-btn" title={t('mindmap:toolbar.styleSettings')}>
+              <NotionButton variant="ghost" className="mm-toolbar-button" title={t('mindmap:toolbar.styleSettings')} aria-label={t('mindmap:toolbar.styleSettings')}>
                 <Gear size={16} />
-                <span className="text-xs">{t('mindmap:toolbar.style')}</span>
-                <CaretDown size={12} className="opacity-50 ml-0.5" />
               </NotionButton>
             }
           />
 
-          <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden sm:block" />
-
           {/* Desktop: Recite Mode Toggle */}
           <NotionButton variant="ghost"
-            className={cn("notion-btn hidden sm:flex", reciteMode && "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400")}
+            className={cn("mm-toolbar-button hidden sm:flex", reciteMode && "is-active")}
             onClick={() => setReciteMode(!reciteMode)}
             title={t('mindmap:recite.enter')}
+            aria-label={t('mindmap:recite.enter')}
+            aria-pressed={reciteMode}
           >
             <BookOpen size={16} />
-            <span className="text-xs">{t('mindmap:recite.title')}</span>
           </NotionButton>
 
           {/* Desktop: Search Toggle */}
           <NotionButton variant="ghost" 
-            className={cn("notion-btn hidden sm:flex", showSearch && "bg-[var(--mm-bg-active)]")}
+            className={cn("mm-toolbar-button hidden sm:flex", showSearch && "is-active")}
             onClick={() => setShowSearch(!showSearch)}
             title={t('mindmap:toolbar.searchShortcut')}
+            aria-label={t('mindmap:toolbar.search')}
+            aria-pressed={showSearch}
           >
             <MagnifyingGlass size={16} />
-            <span className="text-xs">{t('mindmap:toolbar.search')}</span>
           </NotionButton>
-
-          <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden sm:block" />
-
-          {/* Desktop: Fold / Expand controls */}
-          <AppMenu open={activePanel === 'fold'} onOpenChange={(open) => setActivePanel(open ? 'fold' : null)}>
-            <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" className="notion-btn hidden sm:flex" title={t('mindmap:toolbar.foldMenu')}>
-                <TreeStructure size={16} />
-                <span className="text-xs">{t('mindmap:toolbar.fold')}</span>
-                <CaretDown size={12} className="opacity-50 ml-0.5" />
-              </NotionButton>
-            </AppMenuTrigger>
-            <AppMenuContent align="end" width={200}>
-              <AppMenuItem
-                icon={<ArrowsOutLineVertical size={16} />}
-                shortcut="⌘⇧]"
-                onClick={() => expandAll()}
-              >
-                {t('mindmap:toolbar.expandAll')}
-              </AppMenuItem>
-              <AppMenuItem
-                icon={<ArrowsInLineVertical size={16} />}
-                shortcut="⌘⇧["
-                onClick={() => collapseAll()}
-              >
-                {t('mindmap:toolbar.collapseAll')}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem onClick={() => collapseToDepth(1)}>
-                {t('mindmap:toolbar.collapseToLevel', { level: 1 })}
-              </AppMenuItem>
-              <AppMenuItem onClick={() => collapseToDepth(2)}>
-                {t('mindmap:toolbar.collapseToLevel', { level: 2 })}
-              </AppMenuItem>
-              <AppMenuItem onClick={() => collapseToDepth(3)}>
-                {t('mindmap:toolbar.collapseToLevel', { level: 3 })}
-              </AppMenuItem>
-            </AppMenuContent>
-          </AppMenu>
-
-          {/* Desktop: Export Menu */}
-          <AppMenu open={activePanel === 'export'} onOpenChange={(open) => setActivePanel(open ? 'export' : null)}>
-            <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" className="notion-btn hidden sm:flex">
-                <Download className="w-4 h-4" />
-                <span className="text-xs">{t('mindmap:export.title')}</span>
-                <CaretDown size={12} className="opacity-50 ml-0.5" />
-              </NotionButton>
-            </AppMenuTrigger>
-            <AppMenuContent align="end" width={180}>
-              <AppMenuItem icon={<Upload className="w-4 h-4" />} onClick={handleImport}>
-                {t('mindmap:import.title')}
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<FileText className="w-4 h-4" />} onClick={() => handleExport('markdown')}>
-                Markdown
-              </AppMenuItem>
-              <AppMenuItem icon={<FileText className="w-4 h-4" />} onClick={() => handleExport('opml')}>
-                OPML
-              </AppMenuItem>
-              <AppMenuItem icon={<FileText className="w-4 h-4" />} onClick={() => handleExport('json')}>
-                JSON
-              </AppMenuItem>
-              <AppMenuSeparator />
-              <AppMenuItem icon={<Download className="w-4 h-4" />} onClick={() => handleExport('png')}>
-                {t('mindmap:export.pngImage')}
-              </AppMenuItem>
-              <AppMenuItem icon={<Download className="w-4 h-4" />} onClick={() => handleExport('svg')}>
-                {t('mindmap:export.svgVector')}
-              </AppMenuItem>
-            </AppMenuContent>
-          </AppMenu>
 
           <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden sm:block" />
 
           {/* Desktop: More Menu (simplified) */}
           <AppMenu open={activePanel === 'more'} onOpenChange={(open) => setActivePanel(open ? 'more' : null)}>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" className="notion-btn w-7 justify-center px-0 hidden sm:flex" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
+              <NotionButton variant="ghost" className="mm-toolbar-button hidden sm:flex" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
@@ -748,6 +667,22 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               <AppMenuItem icon={<FloppyDisk size={16} />} onClick={handleSave} disabled={!isDirty || isSaving}>
                 {isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
               </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem icon={<ArrowsOutLineVertical size={16} />} shortcut="⌘⇧]" onClick={() => expandAll()}>
+                {t('mindmap:toolbar.expandAll')}
+              </AppMenuItem>
+              <AppMenuItem icon={<ArrowsInLineVertical size={16} />} shortcut="⌘⇧[" onClick={() => collapseAll()}>
+                {t('mindmap:toolbar.collapseAll')}
+              </AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(1)}>{t('mindmap:toolbar.collapseToLevel', { level: 1 })}</AppMenuItem>
+              <AppMenuItem onClick={() => collapseToDepth(2)}>{t('mindmap:toolbar.collapseToLevel', { level: 2 })}</AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>{t('mindmap:import.title')}</AppMenuItem>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>Markdown</AppMenuItem>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>OPML</AppMenuItem>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('json')}>JSON</AppMenuItem>
+              <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('png')}>{t('mindmap:export.pngImage')}</AppMenuItem>
+              <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('svg')}>{t('mindmap:export.svgVector')}</AppMenuItem>
               <AppMenuSeparator />
               <AppMenuCheckboxItem
                 checked={hideCompleted}
@@ -765,7 +700,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           {/* Mobile: Unified More Menu */}
           <AppMenu>
             <AppMenuTrigger asChild>
-              <NotionButton variant="ghost" className="notion-btn w-7 justify-center px-0 sm:hidden" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
+              <NotionButton variant="ghost" className="notion-btn mm-mobile-more w-7 justify-center px-0 sm:hidden" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
                 <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
@@ -832,12 +767,12 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
 
       {/* A6-24: 保存冲突后，本地未保存编辑已暂存，提供"恢复我的修改"入口 */}
       {conflictSnapshot && conflictSnapshot.mindmapId === resourceId && (
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400 ui-drop-in">
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--mm-warning)] bg-[var(--mm-warning-soft)] text-[var(--mm-warning)] ui-drop-in">
           <WarningCircle size={16} className="shrink-0" />
           <span className="text-sm flex-1 min-w-0">{t('mindmap:store.conflictBannerTitle')}</span>
           <NotionButton
             variant="ghost"
-            className="notion-btn shrink-0 text-amber-700 dark:text-amber-400 hover:bg-amber-500/15"
+            className="notion-btn shrink-0 text-[var(--mm-warning)] hover:bg-[var(--mm-warning-soft)]"
             onClick={() => restoreConflictSnapshot()}
           >
             <ArrowCounterClockwise size={14} />
@@ -1006,7 +941,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           return (
           <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/35" onClick={() => setShowShortcutHelp(false)} />
-            <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-lg">
+            <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)]">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--mm-border)]">
                 <h3 className="text-sm font-medium">{t('mindmap:shortcuts.title')}</h3>
                 <NotionButton variant="ghost"
@@ -1101,8 +1036,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
 
         {/* Export Loading Overlay */}
         {isExporting && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
-            <div className="bg-[var(--mm-bg-elevated)] px-8 py-6 rounded-lg shadow-lg border border-[var(--mm-border)] flex flex-col items-center gap-4 ui-zoom-fade-in min-w-[240px]">
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/20">
+            <div className="bg-[var(--mm-bg-elevated)] px-5 py-4 rounded-md shadow-[var(--mm-popover-shadow)] border border-[var(--mm-border)] flex flex-col items-center gap-3 ui-zoom-fade-in min-w-[240px]">
               <div className="w-full space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium text-[var(--mm-text)]">{t('mindmap:export.processing')}</span>

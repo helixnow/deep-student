@@ -22,15 +22,15 @@ export const ReciteStatusBar: React.FC = () => {
   if (!reciteMode) return null;
 
   return (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 max-w-[calc(100%-16px)] rounded-xl bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] shadow-lg backdrop-blur">
-      <BookOpen className="w-4 h-4 text-amber-500 shrink-0" />
+    <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-2 py-1 max-w-[calc(100%-16px)] rounded border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)]">
+      <BookOpen className="w-4 h-4 text-[var(--mm-warning)] shrink-0" />
       <span className="text-sm font-medium whitespace-nowrap">{t('recite.title')}</span>
 
       {progress.total > 0 ? (
         <div className="flex items-center gap-2">
           <div className="w-24 h-1.5 rounded-full bg-[var(--mm-border)] overflow-hidden">
             <div
-              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+              className="h-full rounded-full bg-[var(--mm-warning)] transition-all duration-300"
               style={{ width: `${(progress.revealed / progress.total) * 100}%` }}
             />
           </div>

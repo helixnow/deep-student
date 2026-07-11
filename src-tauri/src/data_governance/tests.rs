@@ -1057,12 +1057,12 @@ mod integration_tests {
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
         assert_eq!(
             CHAT_V2_MIGRATION_SET.count(),
-            18,
+            19,
             "ChatV2 migration count mismatch"
         );
         assert_eq!(
             CHAT_V2_MIGRATION_SET.latest_version(),
-            20260528,
+            20260711,
             "ChatV2 latest version mismatch"
         );
 

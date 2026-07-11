@@ -393,7 +393,7 @@ export const PresetIcon: React.FC<{
   direction: LayoutDirection;
   className?: string;
 }> = ({ category, direction, className }) => {
-  const iconClass = className || 'text-gray-600 dark:text-gray-300';
+  const iconClass = className || 'text-[var(--mm-text-secondary)]';
 
   switch (category) {
     case 'mindmap':

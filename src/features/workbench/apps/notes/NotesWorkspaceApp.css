@@ -12,6 +12,10 @@
   letter-spacing: 0;
 }
 
+.notes-workspace[data-explorer-open='false']:not([data-compact='true']) {
+  grid-template-columns: 44px 0 minmax(0, 1fr);
+}
+
 .notes-ribbon {
   z-index: 5;
   display: flex;
@@ -61,6 +65,13 @@
   overflow: hidden;
   border-right: 1px solid hsl(var(--border));
   background: hsl(var(--muted) / 34%);
+}
+
+.notes-workspace[data-explorer-open='false']:not([data-compact='true']) .notes-explorer {
+  min-width: 0;
+  width: 0;
+  visibility: hidden;
+  border-right: 0;
 }
 
 .notes-explorer header {
@@ -193,7 +204,7 @@
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: 44px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   background: hsl(var(--background));
 }
 
@@ -209,8 +220,10 @@
 }
 
 .notes-titlebar-tabs {
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
+  padding-right: 132px;
   display: flex;
   align-items: stretch;
   pointer-events: none;
@@ -222,15 +235,16 @@
   border-bottom: 0;
   background: transparent;
   pointer-events: none;
+  align-items: stretch;
 }
 
 .notes-titlebar-tabs .notes-tab {
-  height: 34px;
+  height: 100%;
   pointer-events: auto;
 }
 
 .notes-titlebar-tabs .notes-tab[data-active='true'] {
-  height: 38px;
+  height: 100%;
 }
 
 .notes-tab {
@@ -241,6 +255,12 @@
   align-items: center;
   border-right: 1px solid hsl(var(--border));
   color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 22%);
+}
+
+.notes-tab:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent) / 60%);
 }
 
 .notes-tab[data-active='true'] {
@@ -263,10 +283,27 @@
   font: inherit;
 }
 
+.notes-tab > button:first-child:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
 .notes-tab > button span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.notes-tab-state {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.notes-tab[data-save-state='saving'] .notes-tab-state {
+  animation: notes-saving-pulse 900ms ease-in-out infinite alternate;
 }
 
 .notes-tab .notes-icon-button {
@@ -278,23 +315,6 @@
 
 .notes-tab:hover .notes-icon-button, .notes-tab[data-active='true'] .notes-icon-button {
   opacity: 1;
-}
-
-.notes-editor-actions {
-  height: 44px;
-  padding: 0 8px;
-  display: grid;
-  grid-template-columns: 68px minmax(0, 1fr) 32px;
-  align-items: center;
-  border-bottom: 1px solid hsl(var(--border));
-}
-
-.notes-editor-title {
-  overflow: hidden;
-  color: hsl(var(--muted-foreground));
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .notes-pane-content, .notes-document-host {
@@ -441,12 +461,16 @@
   background: hsl(var(--destructive));
 }
 
-@media (width <= 719px) {
-  .notes-workspace {
-    grid-template-columns: 44px minmax(0, 1fr);
-  }
+@keyframes notes-saving-pulse {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
 
-  .notes-explorer {
+.notes-workspace[data-compact='true'] {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.notes-workspace[data-compact='true'] .notes-explorer {
     position: absolute;
     z-index: 4;
     top: 0;
@@ -455,36 +479,43 @@
     transform: translateX(-105%);
     box-shadow: 8px 0 24px hsl(var(--foreground) / 12%);
     transition: transform 140ms ease;
-  }
+}
 
-  .notes-explorer[data-open='true'] {
+.notes-workspace[data-compact='true'] .notes-explorer[data-open='true'] {
     transform: translateX(0);
-  }
+}
 
-  .notes-workspace-main {
+.notes-workspace[data-compact='true'] .notes-workspace-main {
     grid-column: 2;
-  }
+}
 
-  .notes-explorer-scrim {
+.notes-workspace[data-compact='true'] .notes-explorer-scrim {
     position: absolute;
     z-index: 3;
     inset: 0 0 0 44px;
     display: block;
     border: 0;
     background: hsl(var(--foreground) / 12%);
-  }
+}
 
-  .notes-explorer-handle {
+.notes-workspace[data-compact='true'] .notes-explorer-handle {
     position: absolute;
     z-index: 2;
     left: 49px;
     top: 47px;
     display: grid;
-  }
+}
+
+.notes-workspace[data-compact='true'] .notes-explorer-resize {
+  display: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .notes-explorer {
     transition: none;
+  }
+
+  .notes-tab-state {
+    animation: none;
   }
 }

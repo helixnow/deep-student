@@ -183,6 +183,24 @@
     "tipSwitch": "在窗口间快速切换",
     "tipExpose": "俯瞰所有打开的窗口"
   },
+  "agenda": {
+    "label": "日历与学习日程",
+    "backToToday": "回到今天",
+    "previousMonth": "上个月",
+    "nextMonth": "下个月",
+    "quickAdd": "添加日程",
+    "pendingCount": "{{count}} 项待安排",
+    "overdueCount": "{{count}} 项逾期",
+    "openTodo": "待办",
+    "loading": "正在整理日程…",
+    "clear": "这一天没有待完成事项",
+    "completeItem": "完成 {{title}}",
+    "completeFailed": "完成任务失败",
+    "unknownList": "待办",
+    "allDay": "全天",
+    "more": "还有 {{count}} 项",
+    "loadFailed": "日程暂时不可用"
+  },
   "desktopMenu": {
     "label": "桌面菜单",
     "newChat": "新建对话",

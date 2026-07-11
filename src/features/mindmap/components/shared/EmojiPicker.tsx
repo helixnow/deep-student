@@ -56,7 +56,7 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
     <div
       ref={ref}
       className={cn(
-        "bg-popover border border-border rounded-lg shadow-lg p-2 w-[220px]",
+        "bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] rounded-md shadow-[var(--mm-popover-shadow)] p-2 w-[220px]",
         className
       )}
       onClick={(e) => e.stopPropagation()}

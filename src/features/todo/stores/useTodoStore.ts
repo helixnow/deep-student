@@ -58,6 +58,7 @@ interface TodoState {
   activeListId: string | null;
   items: TodoItem[];
   selectedItemId: string | null;
+  quickAddPreset: { dueDate?: string; requestId: number } | null;
 
   // 逾期未完成数（侧栏角标）
   overdueCount: number;
@@ -94,6 +95,8 @@ interface TodoState {
   deleteItem: (itemId: string) => Promise<void>;
   reorderItems: (orderedIds: string[]) => Promise<void>;
   selectItem: (itemId: string | null) => void;
+  requestQuickAdd: (dueDate?: string) => void;
+  clearQuickAddPreset: (requestId: number) => void;
 
   // 视图查询
   loadTodayItems: () => Promise<void>;
@@ -132,6 +135,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   activeListId: null,
   items: [],
   selectedItemId: null,
+  quickAddPreset: null,
 
   overdueCount: 0,
 
@@ -399,6 +403,17 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   selectItem: (itemId) => set({ selectedItemId: itemId }),
+
+  requestQuickAdd: (dueDate) => set((state) => ({
+    quickAddPreset: {
+      dueDate,
+      requestId: (state.quickAddPreset?.requestId ?? 0) + 1,
+    },
+  })),
+
+  clearQuickAddPreset: (requestId) => set((state) => (
+    state.quickAddPreset?.requestId === requestId ? { quickAddPreset: null } : state
+  )),
 
   // ========================================================================
   // 视图查询

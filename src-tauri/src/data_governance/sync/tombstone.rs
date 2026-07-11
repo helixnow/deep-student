@@ -22,8 +22,8 @@
 //! 3. 同步上传/下载文件之前：先按 tombstones 剔除云端清单里已被"删除标记"的条目，
 //!    同时把本地对应文件删除
 //!
-//! 保留期：tombstone 默认保留 90 天，期满由 `prune_tombstones()` 清理。
-//! 90 天窗口覆盖"设备长期离线→上线"仍能感知删除。
+//! 在权威 replace/delete-set 快照上线前，tombstone 不按时间清理，避免长期离线设备复活数据。
+//! 旧 90 天参数仅为调用兼容保留，不再构成实际删除窗口。
 
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -70,7 +70,7 @@ pub const BLOB_TOMBSTONE_PREFIX: &str = "data_governance/tombstones/blobs/";
 pub const ASSET_TOMBSTONE_PREFIX: &str = "data_governance/tombstones/assets/";
 pub const WS_TOMBSTONE_PREFIX: &str = "data_governance/tombstones/workspaces/";
 
-/// tombstone 保留天数（默认 90 天）
+/// 兼容旧调用方的 tombstone 保留期参数；当前安全策略不会按时间裁剪。
 pub const DEFAULT_TOMBSTONE_RETENTION_DAYS: u64 = 90;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

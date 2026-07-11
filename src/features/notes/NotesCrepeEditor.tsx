@@ -1158,31 +1158,31 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       {isDraggingOver && (
         <div 
           className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none ui-rise-in"
-          style={{ backgroundColor: 'hsl(var(--primary) / 0.08)', backdropFilter: 'blur(2px)' }}
+          style={{ backgroundColor: 'hsl(var(--background) / 0.72)' }}
         >
           <div 
-            className="flex flex-col items-center gap-4 px-10 py-8 rounded-2xl pointer-events-none"
+            className="flex flex-col items-center gap-3 px-7 py-5 rounded-md pointer-events-none"
             style={{ 
-              backgroundColor: 'hsl(var(--background) / 0.95)', 
-              border: '2.5px dashed hsl(var(--primary))',
-              boxShadow: '0 8px 32px hsl(var(--primary) / 0.15), 0 0 0 1px hsl(var(--primary) / 0.1)'
+              backgroundColor: 'hsl(var(--background))',
+              border: '1px dashed hsl(var(--border))',
+              boxShadow: '0 2px 8px hsl(var(--shadow-base) / 0.12)'
             }}
           >
             <div 
-              className="w-16 h-16 rounded-xl flex items-center justify-center"
-              style={{ backgroundColor: 'hsl(var(--primary) / 0.12)' }}
+              className="w-9 h-9 rounded-sm flex items-center justify-center"
+              style={{ backgroundColor: 'hsl(var(--muted))' }}
             >
-              <ImageSquare size={32} style={{ color: 'hsl(var(--primary))' }} />
+              <ImageSquare size={20} style={{ color: 'hsl(var(--muted-foreground))' }} />
             </div>
             <div className="flex flex-col items-center gap-1.5">
               <span 
-                className="text-lg font-semibold"
+                className="text-sm font-medium"
                 style={{ color: 'hsl(var(--foreground))' }}
               >
                 {t('notes:editor.image_upload.drop_overlay_title')}
               </span>
               <span 
-                className="text-sm"
+                className="text-xs"
                 style={{ color: 'hsl(var(--muted-foreground))' }}
               >
                 {t('notes:editor.image_upload.drop_overlay_hint')}
@@ -1204,7 +1204,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
       {/* ★ 2.1 AI 编辑检查点横幅：接受后仍可整轮回滚 */}
       {aiCheckpoint && !aiEditState.isActive && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-border bg-background/95 py-1.5 pl-3.5 pr-1.5 shadow-md backdrop-blur-sm ui-drop-in">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded border border-border bg-background py-1 pl-2.5 pr-1 shadow-sm ui-drop-in">
           <Robot size={14} className="text-primary shrink-0" />
           <span className="text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
           <NotionButton
@@ -1231,7 +1231,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       {/* 悬浮头部和工具栏 - 不随正文滚动，占满整宽 */}
       <div className="notes-editor-header-section flex-shrink-0 w-full bg-background sticky top-0 z-10">
         {/* 内部内容居中，保持与编辑器一致的最大宽度；移动端减小内边距 */}
-        <div className="max-w-[800px] mx-auto px-4 sm:px-8 sm:pl-24">
+        <div className="w-full max-w-[860px] mx-auto px-5 sm:px-12">
           <NotesEditorHeader 
             lastSaved={lastSaved} 
             saveStatus={saveStatus}
@@ -1256,6 +1256,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   isFindReplaceOpen ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 onClick={() => setIsFindReplaceOpen((prev) => !prev)}
+                aria-label={t('notes:toolbar.find_replace', '查找替换')}
+                aria-pressed={isFindReplaceOpen}
               >
                 <MagnifyingGlass size={16} />
               </NotionButton>
@@ -1285,6 +1287,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                     setReadingMode(next);
                     // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
                   }}
+                  aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+                  aria-pressed={readingMode}
                 >
                   {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
                 </NotionButton>
@@ -1313,7 +1317,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       >
         {/* 编辑器内容区域 */}
         <div
-          className="notes-editor-content max-w-[800px] mx-auto min-h-full px-4 sm:px-8 sm:pl-24 relative flex flex-col"
+          className="notes-editor-content w-full max-w-[860px] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
           style={{
             paddingBottom: '30vh',
           }}

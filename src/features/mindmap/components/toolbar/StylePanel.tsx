@@ -76,7 +76,7 @@ export const StyleSettings: React.FC<{
   const { t } = useTranslation('mindmap');
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
@@ -142,8 +142,7 @@ export const StyleSettings: React.FC<{
       if (
         panelRef.current &&
         !panelRef.current.contains(event.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(event.target as Node)
+        !triggerRef.current?.contains(event.target as Node)
       ) {
         setIsOpen(false);
       }
@@ -277,7 +276,7 @@ export const StyleSettings: React.FC<{
           />
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground text-center py-4 bg-muted/20 rounded-lg">
+        <div className="text-sm text-muted-foreground text-center py-4 bg-muted/20 rounded">
           {t('style.selectNodeHint')}
         </div>
       )}
@@ -294,21 +293,20 @@ export const StyleSettings: React.FC<{
   }
 
   return (
-    <div className={cn('relative', className)}>
+    <div ref={triggerRef} className={cn('relative', className)}>
       {trigger ? (
         <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       ) : (
         <NotionButton variant="ghost"
-          ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg',
-            'bg-background hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
-            'border border-input',
-            'transition-all duration-200',
-            'text-sm font-medium',
-            'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
-            isOpen && 'bg-accent text-accent-foreground'
+            'flex items-center gap-2 px-2 h-7 rounded',
+            'bg-transparent hover:bg-[var(--mm-bg-hover)]',
+            'border border-transparent',
+            'transition-colors duration-100',
+            'text-sm text-[var(--mm-text-secondary)]',
+            'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-primary)]',
+            isOpen && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text)]'
           )}
         >
           <Palette className="w-4 h-4 text-muted-foreground" />
@@ -325,8 +323,8 @@ export const StyleSettings: React.FC<{
             className={cn(
               'absolute z-50',
               getPlacementStyles(),
-              'w-[280px] p-4 rounded-xl shadow-lg',
-              'bg-popover border border-border text-popover-foreground',
+              'w-[280px] p-3 rounded-md shadow-[var(--mm-popover-shadow)]',
+              'bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] text-[var(--mm-text)]',
               'ui-zoom-fade-in',
               'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
             )}

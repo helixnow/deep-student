@@ -5,25 +5,25 @@ export const defaultTheme: IStyleTheme = {
   name: 'themes.default',
   node: {
     root: {
-      background: '#ffffff',
-      foreground: '#37352F',
-      border: '2px solid #37352F',
-      borderRadius: 6,
+      background: 'var(--mm-bg-elevated)',
+      foreground: 'var(--mm-text)',
+      border: '1px solid var(--mm-border-strong)',
+      borderRadius: 4,
       fontSize: 18,
       fontWeight: '600',
       padding: '10px 20px',
     },
     branch: {
-      background: '#ffffff',
-      foreground: '#37352F',
-      border: '1px solid rgba(55, 53, 47, 0.16)',
+      background: 'var(--mm-bg-elevated)',
+      foreground: 'var(--mm-text)',
+      border: '1px solid var(--mm-border)',
       borderRadius: 4,
       fontSize: 15,
       padding: '6px 12px',
     },
     leaf: {
       background: 'transparent',
-      foreground: '#37352F',
+      foreground: 'var(--mm-text)',
       border: 'transparent',
       borderRadius: 4,
       fontSize: 14,
@@ -32,7 +32,7 @@ export const defaultTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: 'rgba(55, 53, 47, 0.16)',
+    stroke: 'var(--mm-edge)',
     strokeWidth: 1.5,
   },
   palette: [
@@ -45,6 +45,6 @@ export const defaultTheme: IStyleTheme = {
     '#F2668B', // Pink
   ],
   canvas: {
-    background: '#ffffff',
+    background: 'var(--mm-bg)',
   },
 };

@@ -8674,6 +8674,7 @@ impl SyncManager {
             direction,
             progress,
             &HashSet::new(),
+            &HashMap::new(),
         )
         .await
     }
@@ -8685,6 +8686,7 @@ impl SyncManager {
         direction: SyncDirection,
         progress: Option<FileTransferProgressCallback>,
         excluded_hashes: &HashSet<String>,
+        resurrection_timestamps: &HashMap<String, String>,
     ) -> Result<BlobSyncOutcome, SyncError> {
         if !blobs_dir.exists() {
             return Ok(BlobSyncOutcome::default());
@@ -8714,7 +8716,13 @@ impl SyncManager {
                     .replace('\\', "/");
                 let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, relative);
                 let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-                let updated_at = Self::file_mtime_rfc3339(path);
+                // A referenced blob can explicitly defeat an older tombstone. Its file mtime
+                // may still predate that tombstone because content-addressed reuse does not
+                // rewrite the file, so publish the causal resurrection time in that case.
+                let updated_at = resurrection_timestamps
+                    .get(hash)
+                    .cloned()
+                    .unwrap_or_else(|| Self::file_mtime_rfc3339(path));
 
                 let mut last_err = String::new();
                 let mut ok = false;
@@ -9617,6 +9625,7 @@ impl SyncManager {
             })
             .await?;
         let mut excluded_tombstone_hashes = HashSet::new();
+        let mut resurrection_timestamps = HashMap::new();
         if !tombstones.entries.is_empty() {
             // [P1 防数据丢失] 第三道防线：本地 vfs.db 仍有 ref_count>0 引用的 blob，
             // 拒绝消费其 tombstone（本地引用胜过远端删除）。
@@ -9637,6 +9646,15 @@ impl SyncManager {
             let mut effective_tombstones = tombstones.clone();
             effective_tombstones.entries.retain(|hash, entry| {
                 if locally_referenced.contains(hash.as_str()) {
+                    let now = chrono::Utc::now();
+                    let causally_after_delete = parse_flexible_timestamp_public(&entry.deleted_at)
+                        .and_then(|deleted_at| {
+                            deleted_at.checked_add_signed(chrono::Duration::milliseconds(1))
+                        })
+                        .map(|after_delete| after_delete.max(now))
+                        .unwrap_or(now)
+                        .to_rfc3339();
+                    resurrection_timestamps.insert(hash.clone(), causally_after_delete);
                     tracing::warn!(
                         "[sync] 拒绝消费 blob tombstone（本地仍有引用，blob 将在上传阶段复活）: {} deleted_at={}",
                         hash,
@@ -9705,6 +9723,7 @@ impl SyncManager {
             direction,
             progress,
             &excluded_tombstone_hashes,
+            &resurrection_timestamps,
         )
         .await
     }

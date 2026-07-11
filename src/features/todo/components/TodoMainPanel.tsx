@@ -156,7 +156,12 @@ export const MobileDetailOverlay: React.FC<{
 
 const TodoQuickAdd: React.FC = () => {
   const { t, i18n } = useTranslation(['todo']);
-  const { createItem, activeListId } = useTodoStore();
+  const {
+    createItem,
+    activeListId,
+    quickAddPreset,
+    clearQuickAddPreset,
+  } = useTodoStore();
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<TodoPriority>('none');
   const [dueDate, setDueDate] = useState('');
@@ -164,6 +169,14 @@ const TodoQuickAdd: React.FC = () => {
 
   // 自然语言解析（如「明天交作业 !高」），结果以 chip 预览，提交时应用
   const parsed = useMemo(() => parseQuickAddInput(title), [title]);
+
+  useEffect(() => {
+    if (!quickAddPreset) return;
+    setDueDate(quickAddPreset.dueDate ?? '');
+    setIsExpanded(true);
+    document.querySelector<HTMLInputElement>('[data-todo-quick-add]')?.focus();
+    clearQuickAddPreset(quickAddPreset.requestId);
+  }, [clearQuickAddPreset, quickAddPreset]);
   const parsedDateLabel = useMemo(() => {
     if (!parsed.dueDate) return null;
     try {

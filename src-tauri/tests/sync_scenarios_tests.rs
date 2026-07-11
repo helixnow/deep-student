@@ -1185,7 +1185,7 @@ async fn scenario_35_apply_blob_tombstones_removes_local_file() {
 }
 
 #[tokio::test]
-async fn scenario_36_tombstone_prune_expired() {
+async fn scenario_36_tombstone_retained_without_authoritative_snapshot() {
     use tombstone::{prune_tombstones, BlobTombstoneEntry};
     let mut map = std::collections::HashMap::new();
     let old = (Utc::now() - chrono::Duration::days(120)).to_rfc3339();
@@ -1209,9 +1209,12 @@ async fn scenario_36_tombstone_prune_expired() {
         },
     );
     let removed = prune_tombstones(&mut map, 90, |e| &e.deleted_at);
-    assert_eq!(removed, 1);
+    assert_eq!(removed, 0);
     assert!(map.contains_key("fresh"));
-    assert!(!map.contains_key("old"));
+    assert!(
+        map.contains_key("old"),
+        "长期离线设备仍可能需要旧删除记录；权威 replace 快照上线前不得裁剪"
+    );
 }
 
 #[tokio::test]
@@ -2063,7 +2066,7 @@ fn scenario_60_conflict_guard_preserves_atomicity_on_failure() {
 }
 
 #[tokio::test]
-async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
+async fn scenario_61_legacy_snapshot_bootstrap_does_not_enable_prune() {
     let storage = MockCloudStorage::new();
     let suffix = Utc::now().timestamp_nanos_opt().unwrap_or_default();
     let manager = SyncManager::new(format!("dev_snapshot_target_{suffix}"));
@@ -2183,11 +2186,11 @@ async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
 
     let deleted = manager.prune_old_changes(&storage, 30).await.unwrap();
     assert_eq!(
-        deleted, 2,
-        "only own seqs covered by the snapshot may be pruned"
+        deleted, 0,
+        "v1 snapshots lack authoritative replace/delete-set semantics and cannot authorize prune"
     );
-    assert!(storage.get(&own_seq1).await.unwrap().is_none());
-    assert!(storage.get(&own_seq2).await.unwrap().is_none());
+    assert!(storage.get(&own_seq1).await.unwrap().is_some());
+    assert!(storage.get(&own_seq2).await.unwrap().is_some());
     assert!(storage.get(&own_seq3).await.unwrap().is_some());
     assert!(storage.get(&other_seq1).await.unwrap().is_some());
 }

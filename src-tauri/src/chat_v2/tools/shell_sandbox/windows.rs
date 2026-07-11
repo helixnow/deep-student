@@ -3,7 +3,7 @@ use std::ffi::{c_void, OsStr, OsString};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::mem::{size_of, zeroed};
-use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use std::thread;
@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use tokio::process::{Child, Command};
 use uuid::Uuid;
 use windows_sys::Win32::Foundation::{
-    CloseHandle, LocalFree, BOOL, ERROR_FILE_NOT_FOUND, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
+    CloseHandle, LocalFree, BOOL, ERROR_FILE_NOT_FOUND, HANDLE, INVALID_HANDLE_VALUE,
+    WAIT_ABANDONED_0, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
     GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, DENY_ACCESS, EXPLICIT_ACCESS_W,
@@ -40,11 +41,12 @@ use windows_sys::Win32::System::JobObjects::{
 };
 use windows_sys::Win32::System::SystemServices::{JOB_OBJECT_TERMINATE, SE_GROUP_ENABLED};
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcessId, GetExitCodeProcess,
-    InitializeProcThreadAttributeList, ResumeThread, UpdateProcThreadAttribute,
-    WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED, EXTENDED_STARTUPINFO_PRESENT,
-    INFINITE, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
-    STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    CreateEventW, CreateMutexW, CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcessId,
+    GetExitCodeProcess, InitializeProcThreadAttributeList, OpenEventW, ReleaseMutex, ResumeThread,
+    SetEvent, TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW,
+    CREATE_SUSPENDED, EVENT_MODIFY_STATE, EXTENDED_STARTUPINFO_PRESENT, INFINITE,
+    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES,
+    STARTUPINFOEXW,
 };
 
 use super::{
@@ -84,6 +86,16 @@ impl Drop for OwnedHandle {
             unsafe {
                 CloseHandle(self.0);
             }
+        }
+    }
+}
+
+struct AclMutexGuard(OwnedHandle);
+
+impl Drop for AclMutexGuard {
+    fn drop(&mut self) {
+        unsafe {
+            ReleaseMutex((self.0).0);
         }
     }
 }
@@ -191,6 +203,38 @@ fn hresult_error(context: &str, result: i32) -> String {
 
 fn job_name(pid: u32) -> String {
     format!("Local\\DeepStudentShellJob-{pid}")
+}
+
+fn cancellation_name(pid: u32) -> String {
+    format!("Local\\DeepStudentShellCancel-{pid}")
+}
+
+fn create_cancellation_event() -> Result<OwnedHandle, String> {
+    let name = wide(&cancellation_name(unsafe { GetCurrentProcessId() }));
+    OwnedHandle::new(
+        unsafe { CreateEventW(null(), 1, 0, name.as_ptr()) },
+        "Failed to create the Windows shell cancellation event",
+    )
+}
+
+fn is_cancelled(event: Option<HANDLE>) -> bool {
+    event.is_some_and(|handle| unsafe { WaitForSingleObject(handle, 0) } == WAIT_OBJECT_0)
+}
+
+fn acquire_acl_mutex(cancellation_event: Option<HANDLE>) -> Result<Option<AclMutexGuard>, String> {
+    let name = wide("Local\\DeepStudentShellAclMutex-v1");
+    let mutex = OwnedHandle::new(
+        unsafe { CreateMutexW(null(), 0, name.as_ptr()) },
+        "Failed to create the Windows shell ACL mutex",
+    )?;
+    loop {
+        match unsafe { WaitForSingleObject(mutex.0, 100) } {
+            WAIT_OBJECT_0 | WAIT_ABANDONED_0 => return Ok(Some(AclMutexGuard(mutex))),
+            WAIT_TIMEOUT if is_cancelled(cancellation_event) => return Ok(None),
+            WAIT_TIMEOUT => continue,
+            _ => return Err(last_error("Failed to acquire the Windows shell ACL mutex")),
+        }
+    }
 }
 
 fn canonical_policy_path(path: &Path) -> Result<PathBuf, String> {
@@ -437,12 +481,20 @@ fn grant_policy(policy: &SandboxPolicy, sid: PSID) -> Result<Vec<PathBuf>, Strin
     let mut seen = BTreeSet::new();
 
     let mut apply = |path: &Path, mode: i32, rights: u32| -> Result<(), String> {
-        if !path.exists() || !seen.insert((path.to_path_buf(), mode)) {
+        if !path.exists() || !seen.insert((path.to_path_buf(), mode, rights)) {
             return Ok(());
         }
         change_path_acl(path, sid, mode, rights)?;
         changed.push(path.to_path_buf());
         Ok(())
+    };
+
+    let is_exposed = |path: &Path| {
+        policy
+            .readable_roots
+            .iter()
+            .chain(&policy.writable_roots)
+            .any(|root| path.starts_with(root) || root.starts_with(path))
     };
 
     let result = (|| {
@@ -453,14 +505,18 @@ fn grant_policy(policy: &SandboxPolicy, sid: PSID) -> Result<Vec<PathBuf>, Strin
             apply(path, GRANT_ACCESS, write)?;
         }
         for path in &policy.protected_write_roots {
-            apply(
-                path,
-                DENY_ACCESS,
-                FILE_GENERIC_WRITE | FILE_DELETE_CHILD | DELETE,
-            )?;
+            if is_exposed(path) {
+                apply(
+                    path,
+                    DENY_ACCESS,
+                    FILE_GENERIC_WRITE | FILE_DELETE_CHILD | DELETE,
+                )?;
+            }
         }
         for path in &policy.protected_read_roots {
-            apply(path, DENY_ACCESS, write)?;
+            if is_exposed(path) {
+                apply(path, DENY_ACCESS, write)?;
+            }
         }
         Ok(())
     })();
@@ -546,8 +602,17 @@ fn command_line(command: &str) -> (Vec<u16>, Vec<u16>) {
     (application, line)
 }
 
-fn run_payload(mut payload: WindowsSandboxPayload) -> Result<i32, String> {
+fn run_payload(
+    mut payload: WindowsSandboxPayload,
+    cancellation_event: Option<HANDLE>,
+) -> Result<i32, String> {
     validate_payload(&mut payload)?;
+    let Some(_acl_guard) = acquire_acl_mutex(cancellation_event)? else {
+        return Ok(124);
+    };
+    if is_cancelled(cancellation_event) {
+        return Ok(124);
+    }
     let capability_allocation = payload
         .policy
         .allow_network
@@ -559,7 +624,11 @@ fn run_payload(mut payload: WindowsSandboxPayload) -> Result<i32, String> {
         .unwrap_or_default();
     let profile = create_profile(&payload.profile_name, &capabilities)?;
     let changed_paths = grant_policy(&payload.policy, profile.sid)?;
-    let result = run_appcontainer_process(&payload, profile.sid, &capabilities);
+    let result = if is_cancelled(cancellation_event) {
+        Ok(124)
+    } else {
+        run_appcontainer_process(&payload, profile.sid, &capabilities, cancellation_event)
+    };
     revoke_policy(&changed_paths, profile.sid);
     result
 }
@@ -568,8 +637,12 @@ fn run_appcontainer_process(
     payload: &WindowsSandboxPayload,
     appcontainer_sid: PSID,
     capabilities: &[SID_AND_ATTRIBUTES],
+    cancellation_event: Option<HANDLE>,
 ) -> Result<i32, String> {
     let job = create_job()?;
+    if is_cancelled(cancellation_event) {
+        return Ok(124);
+    }
     let mut security_capabilities = SECURITY_CAPABILITIES {
         AppContainerSid: appcontainer_sid,
         Capabilities: capabilities.as_ptr() as *mut SID_AND_ATTRIBUTES,
@@ -650,12 +723,26 @@ fn run_appcontainer_process(
     }
     let process = OwnedHandle::new(process_info.hProcess, "Invalid AppContainer process handle")?;
     let thread_handle =
-        OwnedHandle::new(process_info.hThread, "Invalid AppContainer thread handle")?;
+        match OwnedHandle::new(process_info.hThread, "Invalid AppContainer thread handle") {
+            Ok(handle) => handle,
+            Err(error) => {
+                unsafe {
+                    TerminateProcess(process.0, 126);
+                }
+                return Err(error);
+            }
+        };
 
     if unsafe { AssignProcessToJobObject(job.0, process.0) } == 0 {
+        unsafe {
+            TerminateProcess(process.0, 126);
+        }
         return Err(last_error(
             "Failed to assign the AppContainer process to its Job Object",
         ));
+    }
+    if is_cancelled(cancellation_event) {
+        return Ok(124);
     }
     if unsafe { ResumeThread(thread_handle.0) } == u32::MAX {
         return Err(last_error(
@@ -682,11 +769,12 @@ pub fn maybe_run_helper() -> Option<i32> {
     if args.next().as_deref() != Some(OsStr::new(HELPER_ARG)) {
         return None;
     }
-    let result = args
-        .next()
-        .ok_or_else(|| "Windows sandbox helper payload path is missing".to_string())
-        .and_then(|path| read_payload(Path::new(&path)))
-        .and_then(run_payload);
+    let result = create_cancellation_event().and_then(|cancellation_event| {
+        args.next()
+            .ok_or_else(|| "Windows sandbox helper payload path is missing".to_string())
+            .and_then(|path| read_payload(Path::new(&path)))
+            .and_then(|payload| run_payload(payload, Some(cancellation_event.0)))
+    });
     match result {
         Ok(exit_code) => Some(exit_code),
         Err(error) => {
@@ -700,6 +788,37 @@ pub fn terminate_job_for_child(child: &mut Child) -> Result<(), String> {
     let pid = child
         .id()
         .ok_or_else(|| "Sandboxed shell helper has no process id".to_string())?;
+    let cancellation = wide(&cancellation_name(pid));
+    for _ in 0..20 {
+        let handle = unsafe { OpenEventW(EVENT_MODIFY_STATE, 0, cancellation.as_ptr()) };
+        if !handle.is_null() {
+            let event = OwnedHandle(handle);
+            if unsafe { SetEvent(event.0) } == 0 {
+                return Err(last_error(
+                    "Failed to signal the Windows shell cancellation event",
+                ));
+            }
+            let job_name = wide(&job_name(pid));
+            let job_handle = unsafe { OpenJobObjectW(JOB_OBJECT_TERMINATE, 0, job_name.as_ptr()) };
+            if !job_handle.is_null() {
+                let job = OwnedHandle(job_handle);
+                if unsafe { TerminateJobObject(job.0, 124) } == 0 {
+                    return Err(last_error(
+                        "Failed to terminate the Windows shell Job Object",
+                    ));
+                }
+            }
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        if error.raw_os_error() != Some(ERROR_FILE_NOT_FOUND as i32) {
+            return Err(format!(
+                "Failed to open the Windows shell cancellation event: {error}"
+            ));
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
     let name = wide(&job_name(pid));
     for _ in 0..20 {
         let handle = unsafe { OpenJobObjectW(JOB_OBJECT_TERMINATE, 0, name.as_ptr()) };
@@ -728,6 +847,10 @@ pub fn terminate_job_for_child(child: &mut Child) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpListener;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Instant;
 
     fn policy(readable: &Path, writable: &Path) -> SandboxPolicy {
         SandboxPolicy {
@@ -771,7 +894,7 @@ mod tests {
             policy: policy(writable.path(), writable.path()),
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
         };
-        let _ = run_payload(payload).unwrap();
+        let _ = run_payload(payload, None).unwrap();
         assert!(inside_file.exists());
         assert!(!outside_file.exists());
     }
@@ -790,7 +913,57 @@ mod tests {
             policy: sandbox_policy,
             profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
         };
-        let _ = run_payload(payload).unwrap();
+        let _ = run_payload(payload, None).unwrap();
         assert!(!blocked_file.exists());
+    }
+
+    #[test]
+    fn appcontainer_denies_network_without_capability() {
+        let writable = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        listener.set_nonblocking(true).unwrap();
+        let connected = Arc::new(AtomicBool::new(false));
+        let connected_for_thread = connected.clone();
+        let accept_thread = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(4);
+            while Instant::now() < deadline {
+                match listener.accept() {
+                    Ok(_) => {
+                        connected_for_thread.store(true, Ordering::SeqCst);
+                        return;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                    Err(_) => return,
+                }
+            }
+        });
+        let payload = WindowsSandboxPayload {
+            command: format!("curl.exe --silent --max-time 2 http://127.0.0.1:{port}/ >nul 2>&1"),
+            cwd: writable.path().to_path_buf(),
+            policy: policy(writable.path(), writable.path()),
+            profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
+        };
+        let _ = run_payload(payload, None).unwrap();
+        accept_thread.join().unwrap();
+        assert!(!connected.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn cancellation_prevents_late_process_launch() {
+        let writable = tempfile::tempdir().unwrap();
+        let output = writable.path().join("late.txt");
+        let event = create_cancellation_event().unwrap();
+        assert_ne!(unsafe { SetEvent(event.0) }, 0);
+        let payload = WindowsSandboxPayload {
+            command: format!("echo late>\"{}\"", output.display()),
+            cwd: writable.path().to_path_buf(),
+            policy: policy(writable.path(), writable.path()),
+            profile_name: format!("{PROFILE_PREFIX}{}", Uuid::new_v4().simple()),
+        };
+        assert_eq!(run_payload(payload, Some(event.0)).unwrap(), 124);
+        assert!(!output.exists());
     }
 }

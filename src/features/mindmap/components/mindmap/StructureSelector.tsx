@@ -76,11 +76,11 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
   return (
     <NotionButton variant="ghost"
       className={cn(
-        'relative w-16 h-12 rounded-lg border-2 transition-all duration-200',
+        'relative w-16 h-11 rounded border transition-colors duration-100',
         'flex items-center justify-center',
         'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
         isActive
-          ? 'border-primary bg-primary/10 shadow-sm'
+          ? 'border-primary bg-primary/10'
           : 'border-border hover:border-primary/50',
         !isActive && 'hover:bg-[var(--interactive-hover)]',
         preset.locked && 'opacity-60 cursor-not-allowed'
@@ -105,14 +105,14 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
 
       {/* 选中标记 */}
       {isActive && (
-        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow-sm">
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
           <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
         </div>
       )}
 
       {/* 锁定标记 */}
       {preset.locked && (
-        <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-muted-foreground rounded-full flex items-center justify-center shadow-sm">
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-muted-foreground rounded-full flex items-center justify-center">
           <Lock className="w-2.5 h-2.5 text-muted" />
         </div>
       )}
@@ -172,7 +172,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   const { t } = useTranslation('mindmap');
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
@@ -247,8 +247,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       if (
         panelRef.current &&
         !panelRef.current.contains(event.target as Node) &&
-        triggerRef.current &&
-        !triggerRef.current.contains(event.target as Node)
+        !triggerRef.current?.contains(event.target as Node)
       ) {
         setIsOpen(false);
       }
@@ -265,13 +264,13 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isOpen) {
         setIsOpen(false);
-        triggerRef.current?.focus();
+        triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, setIsOpen]);
 
   // 计算面板位置样式
   const getPlacementStyles = () => {
@@ -295,12 +294,12 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     <>
       {/* 标题栏 - inline 模式下隐藏 */}
       {!isInline && (
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold text-foreground">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-medium text-foreground">
             {t('selectStructure')}
           </h3>
           {activePreset && (
-            <span className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+            <span className="text-xs text-primary">
               {t(activePreset.name)}
             </span>
           )}
@@ -346,33 +345,30 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   }
 
   return (
-    <div className={cn('relative', className)}>
+    <div ref={triggerRef} className={cn('relative', className)}>
       {/* 触发按钮 */}
       {trigger ? (
         <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
       ) : (
         <NotionButton variant="ghost"
-          ref={triggerRef}
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg',
-            'bg-white dark:bg-gray-800',
-            'border border-gray-200 dark:border-gray-700',
-            'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]',
-            'hover:border-gray-300 dark:hover:border-gray-600',
-            'transition-all duration-200',
-            'text-sm font-medium text-gray-700 dark:text-gray-200',
-            'focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-1',
-            isOpen && 'bg-gray-50 dark:bg-gray-750 border-gray-300 dark:border-gray-600'
+            'flex items-center gap-2 px-2 h-7 rounded',
+            'bg-transparent border border-transparent',
+            'hover:bg-[var(--mm-bg-hover)]',
+            'transition-colors duration-100',
+            'text-sm text-[var(--mm-text-secondary)]',
+            'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-primary)]',
+            isOpen && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text)]'
           )}
           aria-expanded={isOpen}
           aria-haspopup="true"
         >
-          <SquaresFour className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          <SquaresFour className="w-4 h-4 text-[var(--mm-text-muted)]" />
           <span>{t('toolbar.structure')}</span>
           <CaretDown
             className={cn(
-              'w-4 h-4 text-gray-400 transition-transform duration-200',
+              'w-4 h-4 text-[var(--mm-text-muted)] transition-transform duration-150',
               isOpen && 'rotate-180'
             )}
           />
@@ -394,8 +390,8 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
             className={cn(
               'absolute z-50',
               getPlacementStyles(),
-              'w-[320px] p-4 rounded-xl shadow-lg',
-              'bg-popover border border-border text-popover-foreground',
+              'w-[304px] p-3 rounded-md shadow-[var(--mm-popover-shadow)]',
+              'bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] text-[var(--mm-text)]',
               'ui-zoom-fade-in',
               // 移动端全宽
               'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'

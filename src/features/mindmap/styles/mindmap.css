@@ -28,6 +28,9 @@
   /* 主色调 */
   --mm-primary: hsl(var(--primary));
   --mm-primary-soft: hsl(var(--primary) / 0.1);
+  --mm-warning: hsl(var(--warning));
+  --mm-warning-soft: hsl(var(--warning) / 0.12);
+  --mm-popover-shadow: 0 4px 14px hsl(var(--shadow-base) / 0.16);
   
   /* 布局尺寸 */
   --mm-line-height: 28px; /* 每一行的高度 */
@@ -579,21 +582,23 @@
   stroke-width: 1.5px;
 }
 
-/* 顶部工具栏 */
-.notion-topbar {
-  height: 44px;
-  padding: 0 12px;
+/* compact editor compact toolbar */
+.mm-toolbar {
+  height: 36px;
+  padding: 0 8px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   background: var(--mm-bg);
+  border-bottom: 1px solid var(--mm-border);
   font-size: 14px;
   position: sticky;
   top: 0;
   z-index: 50;
 }
 
-.notion-btn {
+.notion-btn,
+.mm-toolbar-button {
   height: 28px;
   padding: 0 8px;
   border-radius: 4px;
@@ -608,8 +613,48 @@
   transition: background 0.1s ease;
 }
 
-.notion-btn:hover {
+.notion-btn:hover,
+.mm-toolbar-button:hover {
   background: var(--mm-bg-hover);
+}
+
+.mm-toolbar-button {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+}
+
+.mm-toolbar-button.is-active {
+  color: var(--mm-primary);
+  background: var(--mm-primary-soft);
+}
+
+.mm-view-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mm-view-switcher-button {
+  height: 28px;
+  padding: 0 8px;
+  gap: 5px;
+  border-radius: 4px;
+  color: var(--mm-text-muted);
+  font-size: 12px;
+  background: transparent;
+}
+
+.mm-view-switcher-button:hover,
+.mm-view-switcher-button.is-active {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
+}
+
+@media (min-width: 640px) {
+  .mm-toolbar .mm-mobile-more {
+    display: none;
+  }
 }
 
 /* ============================================
@@ -1144,10 +1189,10 @@
   }
 
   /* 顶部工具栏按钮（28px 高）扩大命中区到 ~40px，视觉尺寸不变 */
-  .notion-topbar .notion-btn {
+  .mm-toolbar .mm-toolbar-button {
     position: relative;
   }
-  .notion-topbar .notion-btn::after {
+  .mm-toolbar .mm-toolbar-button::after {
     content: '';
     position: absolute;
     inset: -6px;

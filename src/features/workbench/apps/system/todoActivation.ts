@@ -46,8 +46,38 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
     case 'focusItem': {
       const itemId = payloadString(ctx.payload, 'itemId');
       if (!itemId) return invalid('focusItem 需要 payload.itemId');
-      store.selectItem(itemId);
+      let item = useTodoStore.getState().items.find((candidate) => candidate.id === itemId);
+      if (!item) {
+        const { getTodoItem } = await import('@/features/todo/api');
+        item = await getTodoItem(itemId) ?? undefined;
+      }
+      if (!item) return invalid('focusItem 指向的待办不存在');
+      const current = useTodoStore.getState();
+      if (current.filter.view !== 'all') current.setViewFilter('all');
+      if (current.activeListId !== item.todoListId) current.setActiveList(item.todoListId);
+      await useTodoStore.getState().loadItems(item.todoListId, false);
+      useTodoStore.getState().selectItem(itemId);
       agentFlash('todo', itemId);
+      return { handled: true };
+    }
+    case 'quickAdd': {
+      const dueDate = payloadString(ctx.payload, 'dueDate');
+      if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+        return invalid('quickAdd 的 dueDate 必须是 YYYY-MM-DD');
+      }
+      if (useTodoStore.getState().lists.length === 0) {
+        await useTodoStore.getState().initialize();
+      }
+      const current = useTodoStore.getState();
+      const listId = payloadString(ctx.payload, 'listId')
+        ?? current.activeListId
+        ?? current.lists.find((list) => list.isDefault)?.id
+        ?? current.lists[0]?.id;
+      if (!listId) return invalid('quickAdd 找不到可用待办清单');
+      if (current.filter.view !== 'all') current.setViewFilter('all');
+      useTodoStore.getState().setActiveList(listId);
+      await useTodoStore.getState().loadItems(listId, false);
+      useTodoStore.getState().requestQuickAdd(dueDate ?? undefined);
       return { handled: true };
     }
     case 'showView': {

@@ -1340,12 +1340,6 @@ fn insert_chat_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     )
     .expect("insert chat todo list row");
     conn.execute(
-        "INSERT INTO chat_v2_session_tags (session_id, tag, tag_type, created_at)
-         VALUES ('sess_all', 'auto-tag', 'auto', ?1)",
-        params![ts],
-    )
-    .expect("insert chat session tag row");
-    conn.execute(
         "INSERT INTO sleep_block (
             id, workspace_id, coordinator_session_id, awaiting_agents, wake_condition,
             status, timeout_at, created_at, awakened_at, awakened_by,
@@ -1386,7 +1380,6 @@ fn insert_chat_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     BTreeSet::from([
         "chat_v2_session_state",
         "chat_v2_todo_lists",
-        "chat_v2_session_tags",
         "sleep_block",
         "subagent_task",
         "chat_v2_compactions",
@@ -2861,12 +2854,13 @@ async fn workspace_sync_unchanged_db_is_not_reuploaded() {
         .sync_workspace_databases(&storage, active.path(), SyncDirection::Bidirectional)
         .await
         .expect("first workspace sync");
-    let remote_key = format!("data_governance/workspaces/{ws_id}.db");
-    let first = storage
-        .stat(&remote_key)
+    let object_prefix = format!("data_governance/workspaces/{ws_id}/");
+    let first_objects = storage
+        .list(&object_prefix)
         .await
-        .expect("stat after first sync")
-        .expect("workspace uploaded on first sync");
+        .expect("list workspace objects after first sync");
+    assert_eq!(first_objects.len(), 1, "first sync must publish one object");
+    let first = first_objects[0].clone();
 
     // 第二次同步（本地零修改）：不得重传
     tokio::time::sleep(std::time::Duration::from_millis(30)).await;
@@ -2874,14 +2868,20 @@ async fn workspace_sync_unchanged_db_is_not_reuploaded() {
         .sync_workspace_databases(&storage, active.path(), SyncDirection::Bidirectional)
         .await
         .expect("second workspace sync");
-    let second = storage
-        .stat(&remote_key)
+    let second_objects = storage
+        .list(&object_prefix)
         .await
-        .expect("stat after second sync")
-        .expect("workspace still present");
+        .expect("list workspace objects after second sync");
+    assert_eq!(
+        second_objects.len(),
+        1,
+        "未变更的工作区数据库不得发布新内容对象"
+    );
+    let second = &second_objects[0];
 
     assert_eq!(
-        first.last_modified, second.last_modified,
+        (first.key.as_str(), first.last_modified),
+        (second.key.as_str(), second.last_modified),
         "未变更的工作区数据库不得在第二次同步时重传"
     );
 
@@ -2902,13 +2902,13 @@ async fn workspace_sync_unchanged_db_is_not_reuploaded() {
         .sync_workspace_databases(&storage, active.path(), SyncDirection::Bidirectional)
         .await
         .expect("third workspace sync");
-    let third = storage
-        .stat(&remote_key)
+    let third_objects = storage
+        .list(&object_prefix)
         .await
-        .expect("stat after third sync")
-        .expect("workspace re-uploaded");
+        .expect("list workspace objects after third sync");
+    assert_eq!(third_objects.len(), 2, "本地修改后必须发布新的内容寻址对象");
     assert!(
-        third.last_modified > second.last_modified,
-        "本地修改后的工作区数据库必须重传"
+        third_objects.iter().any(|object| object.key != first.key),
+        "本地修改后的工作区数据库必须使用新的摘要对象键"
     );
 }

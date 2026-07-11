@@ -6,8 +6,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock 工厂提升：fn 必须经 vi.hoisted 创建
-const { setActiveList, selectItem, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
-  const todoState = { activeListId: null as string | null, error: null as string | null };
+const { setActiveList, selectItem, setViewFilter, loadItems, requestQuickAdd, initialize, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
+  const todoState = {
+    activeListId: null as string | null,
+    error: null as string | null,
+    items: [] as Array<{ id: string; todoListId: string }>,
+    lists: [{ id: 'list-default', isDefault: true }],
+    filter: { view: 'all' },
+  };
   const finderState = {
     currentPath: { folderId: 'root-old' },
     inlineEdit: { editingId: null as string | null },
@@ -17,6 +23,10 @@ const { setActiveList, selectItem, enterFolder, navigateTo, setSelectedIds, agen
   finderState,
   setActiveList: vi.fn((id: string | null) => { todoState.activeListId = id; }),
   selectItem: vi.fn(),
+  setViewFilter: vi.fn((view: string) => { todoState.filter.view = view; }),
+  loadItems: vi.fn(async () => undefined),
+  requestQuickAdd: vi.fn(),
+  initialize: vi.fn(async () => undefined),
   enterFolder: vi.fn(async (id: string) => { finderState.currentPath = { folderId: id }; }),
   navigateTo: vi.fn((path: { folderId: string }) => { finderState.currentPath = path; }),
   setSelectedIds: vi.fn(),
@@ -29,6 +39,10 @@ vi.mock('@/features/todo/stores/useTodoStore', () => ({
     getState: () => ({
       setActiveList,
       selectItem,
+      setViewFilter,
+      loadItems,
+      requestQuickAdd,
+      initialize,
       reloadCurrentView: vi.fn(async () => undefined),
       ...todoState,
     }),
@@ -97,6 +111,8 @@ describe('todo / files onActivation', () => {
     agentFlash.mockClear();
     todoState.activeListId = null;
     todoState.error = null;
+    todoState.items = [{ id: 'item-9', todoListId: 'list-a' }];
+    todoState.filter.view = 'all';
     finderState.currentPath = { folderId: 'root-old' };
     finderState.inlineEdit.editingId = null;
   });
@@ -121,6 +137,18 @@ describe('todo / files onActivation', () => {
     });
     expect(selectItem).toHaveBeenCalledWith('item-9');
     expect(agentFlash).toHaveBeenCalledWith('todo', 'item-9');
+  });
+
+  it('todo quickAdd → 打开默认清单并预填日期', async () => {
+    await handleTodoActivation({
+      windowId: 'w1',
+      instanceKey: null,
+      action: 'quickAdd',
+      payload: { dueDate: '2026-07-12' },
+    });
+    expect(setActiveList).toHaveBeenCalledWith('list-default');
+    expect(loadItems).toHaveBeenCalledWith('list-default', false);
+    expect(requestQuickAdd).toHaveBeenCalledWith('2026-07-12');
   });
 
   it('files openFolder → enterFolder(folderId)', async () => {

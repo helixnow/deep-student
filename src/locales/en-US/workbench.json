@@ -183,6 +183,24 @@
     "tipSwitch": "Quickly switch between windows",
     "tipExpose": "Overview all open windows"
   },
+  "agenda": {
+    "label": "Calendar and study agenda",
+    "backToToday": "Back to today",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "quickAdd": "Add schedule item",
+    "pendingCount": "{{count}} to schedule",
+    "overdueCount": "{{count}} overdue",
+    "openTodo": "Todos",
+    "loading": "Organizing your schedule…",
+    "clear": "Nothing is due on this day",
+    "completeItem": "Complete {{title}}",
+    "completeFailed": "Could not complete task",
+    "unknownList": "Todo",
+    "allDay": "All day",
+    "more": "{{count}} more",
+    "loadFailed": "Schedule is temporarily unavailable"
+  },
   "desktopMenu": {
     "label": "Desktop menu",
     "newChat": "New chat",

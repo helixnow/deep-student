@@ -311,7 +311,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
             onClick={handleToggleCollapse}
             aria-label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
             className={cn(
-              "mm-collapse-btn w-5 h-5 shadow-sm border border-[var(--mm-border)]",
+              "mm-collapse-btn w-5 h-5 border border-[var(--mm-border)]",
               isCollapsed && "is-collapsed",
               isCollapsed 
                 ? "bg-[var(--mm-bg-elevated)] hover:bg-[var(--mm-bg-hover)]" 

@@ -4067,6 +4067,13 @@ mod tests {
         manager.set_app_data_dir(app_data_dir.path().to_path_buf());
         manager.set_app_version("1.0.0".to_string());
 
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        for database_id in DatabaseId::all_ordered() {
+            let path = BackupManager::resolve_database_path_in_dir(&active_dir, &database_id);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            Connection::open(path).unwrap();
+        }
+
         (manager, backup_dir, app_data_dir)
     }
 
@@ -4478,7 +4485,8 @@ mod tests {
 
         // 创建多个备份（增加间隔确保时间戳不同）
         for _ in 0..3 {
-            manager.backup_full().unwrap();
+            let manifest = manager.backup_with_assets(None).unwrap();
+            assert_eq!(manifest.snapshot_kind, SnapshotKind::Full);
             std::thread::sleep(std::time::Duration::from_millis(1100)); // 确保时间戳不同
         }
 
@@ -4522,14 +4530,18 @@ mod tests {
     }
 
     #[test]
-    fn test_backup_nonexistent_database() {
-        let (manager, _backup_dir, _app_data_dir) = setup_test_env();
+    fn test_backup_full_rejects_missing_core_database() {
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        let missing = BackupManager::resolve_database_path_in_dir(&active_dir, &DatabaseId::Vfs);
+        fs::remove_file(missing).unwrap();
 
-        // 不创建任何数据库，执行备份
-        let manifest = manager.backup_full().unwrap();
+        let error = manager
+            .backup_full()
+            .expect_err("完整备份缺少任一核心数据库时必须失败");
 
-        // 应该成功但文件列表为空
-        assert!(manifest.files.is_empty());
+        assert!(matches!(error, BackupError::FileNotFound(_)));
+        assert!(format!("{error}").contains("vfs"));
     }
 
     #[test]

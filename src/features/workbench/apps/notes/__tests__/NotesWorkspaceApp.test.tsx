@@ -41,7 +41,8 @@ vi.mock('@/features/mindmap/MindMapContentView', () => ({
   },
 }));
 
-import { resetWorkspaceRegistryForTests } from '../workspaceRegistry';
+import { __resetContentDirtyRegistry, registerContentDirtyChecker } from '../../content/contentDirtyRegistry';
+import { requestWorkspaceResource, resetWorkspaceRegistryForTests } from '../workspaceRegistry';
 import { NotesWorkspaceApp } from '../NotesWorkspaceApp';
 
 function props(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
@@ -62,6 +63,7 @@ describe('NotesWorkspaceApp', () => {
     panelProps.length = 0;
     mindmapProps.length = 0;
     resetWorkspaceRegistryForTests();
+    __resetContentDirtyRegistry();
     vi.stubGlobal('ResizeObserver', class {
       observe() {}
       disconnect() {}
@@ -115,5 +117,61 @@ describe('NotesWorkspaceApp', () => {
       (panelProps.at(-1)?.onTitleChange as (title: string) => void)('重命名后的笔记');
     });
     expect(screen.getByRole('tab', { name: /重命名后的笔记/ })).toBeInTheDocument();
+  });
+
+  it('deduplicates concurrent open requests for the same resource', async () => {
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('课堂笔记');
+
+    await act(async () => {
+      await Promise.all([
+        requestWorkspaceResource({ type: 'note', id: 'note_1' }, 'notes-window'),
+        requestWorkspaceResource({ type: 'note', id: 'note_1' }, 'notes-window'),
+      ]);
+    });
+
+    expect(screen.getAllByRole('tab', { name: /未命名笔记|课堂笔记/ })).toHaveLength(1);
+    expect(screen.getAllByTestId('note-editor-note_1')).toHaveLength(1);
+  });
+
+  it('really collapses the desktop explorer and keeps the shell state aligned', async () => {
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByText('课堂笔记');
+
+    fireEvent.click(screen.getByRole('button', { name: '文件浏览器' }));
+    const workspace = document.querySelector('[data-wb-notes-workspace]');
+    expect(workspace).toHaveAttribute('data-explorer-open', 'false');
+    expect(document.querySelector('[data-notes-explorer]')).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('selects the closing tab neighbor and supports automatic keyboard tab navigation', async () => {
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+    fireEvent.click(await screen.findByText('章节导图'));
+
+    const noteTab = screen.getByRole('tab', { name: /未命名笔记|课堂笔记/ });
+    const mindmapTab = screen.getByRole('tab', { name: /章节导图/ });
+    expect(mindmapTab).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(mindmapTab, { key: 'ArrowLeft' });
+    expect(noteTab).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('button', { name: /关闭 (未命名笔记|课堂笔记)/ }));
+    expect(screen.getByRole('tab', { name: /章节导图/ })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('guards dirty tabs and maps Cmd+W to the active internal tab', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+    const unregister = registerContentDirtyChecker('note', 'note_1', () => true);
+
+    fireEvent.keyDown(window, { key: 'w', metaKey: true });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('tab', { name: /未命名笔记|课堂笔记/ })).toBeInTheDocument();
+
+    confirm.mockReturnValue(true);
+    fireEvent.keyDown(window, { key: 'w', metaKey: true });
+    expect(screen.queryByRole('tab', { name: /未命名笔记|课堂笔记/ })).toBeNull();
+    unregister();
   });
 });

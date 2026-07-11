@@ -686,13 +686,9 @@ const SortableOutlineNode: React.FC<{
             {...(!reciteMode ? listeners : {})}
             onClick={(e) => {
               e.stopPropagation();
-              if (hasChildren) {
-                onZoomIn?.(node.id);
-              } else {
-                setFocusedNodeId(node.id);
-              }
+              onZoomIn?.(node.id);
             }}
-            title={t('outline.dragToMove')}
+            title={`${t('outline.dragToMove')} · ${t('outline.zoomIn')}`}
           >
             <div className={cn(
               "node-bullet",
@@ -791,11 +787,10 @@ const SortableOutlineNode: React.FC<{
               if (e.shiftKey || e.metaKey || e.ctrlKey) return;
               e.stopPropagation();
               onRowSelect?.(node.id, e);
-            }}
-            onDoubleClick={(e) => {
-              e.stopPropagation();
-              setIsEditing(true);
-              requestAnimationFrame(() => inputRef.current?.focus());
+              if (!isMultiSelectActive) {
+                setIsEditing(true);
+                requestAnimationFrame(() => inputRef.current?.focus());
+              }
             }}
           >
             <BlankedText

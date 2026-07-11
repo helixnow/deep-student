@@ -41,8 +41,8 @@
   --crepe-color-inline-area: hsl(var(--muted));
   
   /* 阴影 */
-  --crepe-shadow-1: 0 1px 3px 0 hsl(var(--shadow-base) / 0.1), 0 1px 2px -1px hsl(var(--shadow-base) / 0.1);
-  --crepe-shadow-2: 0 4px 6px -1px hsl(var(--shadow-base) / 0.1), 0 2px 4px -2px hsl(var(--shadow-base) / 0.1);
+  --crepe-shadow-1: 0 1px 2px hsl(var(--shadow-base) / 0.12);
+  --crepe-shadow-2: 0 2px 8px hsl(var(--shadow-base) / 0.14);
 }
 
 /* ===== 编辑器容器 ===== */
@@ -1170,8 +1170,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.25rem;
-  padding: 0.5rem 0;
+  gap: 0.125rem;
+  padding: 0.25rem 0 0.375rem;
   margin-bottom: 0;
   /* 边框已由 .notes-editor-header-section 提供，此处移除 */
 }
@@ -1180,10 +1180,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2rem;
-  height: 2rem;
+  width: 1.75rem;
+  height: 1.75rem;
   border: none;
-  border-radius: 0.375rem;
+  border-radius: 0.25rem;
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
@@ -1195,10 +1195,17 @@
   color: var(--accent-foreground);
 }
 
+.notes-editor-toolbar button:focus-visible,
+.notes-toolbar-overflow-item:focus-visible,
+.crepe-editor-wrapper button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
 .notes-editor-toolbar button.active,
 .notes-editor-toolbar button[data-active="true"] {
-  background: var(--primary);
-  color: var(--primary-foreground);
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
 }
 
 .notes-editor-toolbar button:disabled {
@@ -1208,9 +1215,47 @@
 
 .notes-editor-toolbar .divider {
   width: 1px;
-  height: 1.5rem;
-  background: var(--border);
-  margin: 0 0.25rem;
+  height: 1rem;
+  background: hsl(var(--border));
+  margin: 0 0.125rem;
+}
+
+.notes-toolbar-overflow {
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.25rem;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--crepe-shadow-2, 0 2px 8px hsl(var(--shadow-base) / 0.14));
+}
+
+.notes-toolbar-overflow-item {
+  display: flex;
+  width: 100%;
+  height: 1.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: 0.25rem;
+  padding: 0 0.5rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.notes-toolbar-overflow-item:hover {
+  background: hsl(var(--accent));
+}
+
+/* compact editor transient surfaces: compact geometry and restrained elevation. */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu,
+.crepe-editor-wrapper .milkdown .milkdown-toolbar,
+.crepe-editor-wrapper .milkdown .milkdown-link-preview,
+.crepe-editor-wrapper .milkdown .milkdown-link-edit,
+.crepe-editor-wrapper .milkdown .milkdown-code-block .language-list {
+  border-radius: 0.25rem !important;
+  border-color: hsl(var(--border)) !important;
+  box-shadow: var(--crepe-shadow-2) !important;
 }
 
 /* 移动端工具栏样式优化 - 两行布局

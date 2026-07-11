@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { WarningCircle } from '@phosphor-icons/react';
+import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
@@ -19,10 +19,8 @@ import { dstu } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ContentViewProps } from '../UnifiedAppPanel';
-import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/useBreakpoint';
-import { CaretLeft, DotsSixVertical, SidebarSimple } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
@@ -82,12 +80,12 @@ async function readOccSafeNoteSnapshot(path: string) {
 /**
  * 笔记编辑器骨架屏。
  * 模拟真实编辑器的标题 + 工具栏 + 正文行结构，并与 NotesCrepeEditor 的
- * max-w-[800px] 内容列完全对齐，加载完成时内容原位淡入、无布局跳动
+ * 与编辑器可读内容列完全对齐，加载完成时内容原位淡入、无布局跳动
  * （此前的居中 spinner 会在编辑器挂载时产生整屏布局突变）。
  */
 const NoteEditorSkeleton: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex-1 min-h-0 overflow-hidden" role="status" aria-label={label}>
-    <div className="max-w-[800px] mx-auto px-4 sm:px-8 sm:pl-24 pt-8 flex flex-col">
+    <div className="w-full max-w-[860px] mx-auto px-5 sm:px-12 pt-8 flex flex-col">
       {/* 标题行 */}
       <Skeleton className="h-9 w-1/2" />
       {/* 工具栏行 */}
@@ -128,11 +126,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
   const isSmallScreen = useIsMobile();
 
-  // ========== 右侧面板状态 ==========
-  const [rightPanelVisible, setRightPanelVisible] = useState(true);
+  // 上下文信息按需覆盖显示，不参与正文布局。
+  const [rightPanelVisible, setRightPanelVisible] = useState(false);
   // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
-  const rightPanelRef = useRef<ImperativePanelHandle>(null);
 
   // 移动端子屏打开时接管 Android 返回键：先关子屏，不退出笔记
   useEffect(() => {
@@ -143,16 +140,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, mobilePanelOpen]);
 
-  // 稳定回调：折叠状态直接读面板句柄，避免依赖 state 导致回调随切换重建，
-  // 也避免面板真实状态与 state 短暂不同步时切换失效
   const toggleRightPanel = useCallback(() => {
-    const panel = rightPanelRef.current;
-    if (!panel) return;
-    if (panel.isCollapsed()) {
-      panel.expand();
-    } else {
-      panel.collapse();
-    }
+    setRightPanelVisible((visible) => !visible);
   }, []);
 
   // ========== 状态 ==========
@@ -789,8 +778,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const isContentReady = content !== null && contentNoteId === node.id;
   const visibleContent = markdownWindow?.loadedMarkdown ?? (content ?? '');
 
-  // ★ R4：首次加载不再整屏 spinner 早退，而是渲染真实布局（侧栏开关行 +
-  // 面板分栏）+ 编辑器位骨架屏：加载完成时内容原位替换，避免整屏布局跳动。
+  // 首次加载直接渲染单内容区骨架，加载完成时内容原位替换，避免布局跳动。
 
   if (error) {
     const message = error.code === VfsErrorCode.NOT_FOUND
@@ -828,112 +816,59 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full w-2/5 bg-primary animate-[progress-indeterminate_1.5s_ease-in-out_infinite]" />
         </div>
       )}
-      {/* 桌面端：右侧栏开关；移动端：可见入口打开属性/大纲全屏子屏（不再依赖仅快捷键） */}
-      <div className="flex items-center justify-end px-2 py-0.5 flex-shrink-0">
-        {isSmallScreen ? (
+      <div className="absolute right-2 top-2 z-30">
+        <CommonTooltip content={t('notes:contextPanel.title', '属性')} position="bottom">
           <NotionButton
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors min-h-11 px-2 [@media(pointer:coarse)]:min-h-[44px]"
-            onClick={() => setMobilePanelOpen(true)}
+            variant="ghost" iconOnly size="sm"
+            className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground')}
+            onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
             aria-label={t('notes:contextPanel.title', '属性')}
-            aria-expanded={mobilePanelOpen}
+            aria-expanded={isSmallScreen ? mobilePanelOpen : rightPanelVisible}
           >
-            <SidebarSimple size={16} aria-hidden="true" />
-            {t('notes:contextPanel.title', '属性')}
+            <SidebarSimple size={15} aria-hidden="true" />
           </NotionButton>
-        ) : (
-          /* 🔧 修复：原 notes:context.collapse_panel/expand_panel 键不存在，
-              英文界面会显示中文兜底文案；复用既有的 sidebar.collapse/expand 键 */
-          <CommonTooltip
-            content={rightPanelVisible ? t('notes:sidebar.collapse', '收起侧边栏') : t('notes:sidebar.expand', '展开侧边栏')}
-            position="bottom"
-          >
-            <NotionButton
-              variant="ghost"
-              iconOnly
-              size="sm"
-              className={cn(
-                'h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors',
-                !rightPanelVisible && 'text-muted-foreground/70',
-              )}
-              onClick={toggleRightPanel}
-              aria-label={rightPanelVisible ? t('notes:sidebar.collapse', '收起侧边栏') : t('notes:sidebar.expand', '展开侧边栏')}
-              aria-expanded={rightPanelVisible}
-            >
-              <SidebarSimple size={14} aria-hidden="true" />
-            </NotionButton>
-          </CommonTooltip>
-        )}
+        </CommonTooltip>
       </div>
-      <PanelGroup direction="horizontal" autoSaveId="learning-hub-note-layout" className="flex-1 min-h-0">
-        <Panel
-          defaultSize={80}
-          minSize={50}
-          id="learning-hub-note-editor"
-          order={1}
-          className="flex flex-col min-h-0"
-        >
-          {isContentReady ? (
-            <NotesCrepeEditor
-              initialContent={visibleContent}
-              initialTitle={title}
-              onSave={readOnly ? undefined : handleSave}
-              onTitleChange={readOnly ? undefined : handleTitleChange}
-              noteId={noteId}
-              className="flex-1 min-h-0"
-              readOnly={readOnly}
-              onEditorReady={handleEditorReady}
-              onEditorApiReady={handleEditorApiReady}
-              dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
-              windowingState={editorWindowingState}
-              onRequestLoadMore={handleRequestLoadMore}
-              onRetryLoadMore={handleRetryLoadMore}
-            />
-          ) : (
-            <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note', 'Loading note...')} />
-          )}
-        </Panel>
 
-        {!isSmallScreen && (
-          <>
-            <PanelResizeHandle className={cn(
-              "w-1 bg-border/40 hover:bg-primary/20 transition-colors flex items-center justify-center group",
-              !rightPanelVisible && "pointer-events-none opacity-0 !w-0"
-            )}>
-              <DotsSixVertical size={12} className="text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
-            </PanelResizeHandle>
-            <Panel
-              ref={rightPanelRef}
-              defaultSize={20}
-              minSize={15}
-              maxSize={30}
-              collapsedSize={0}
-              id="learning-hub-note-outline"
-              order={2}
-              collapsible
-              onCollapse={() => setRightPanelVisible(false)}
-              onExpand={() => setRightPanelVisible(true)}
-              className={cn(
-                "flex flex-col min-h-0 bg-muted/5 transition-all",
-                rightPanelVisible ? "border-l border-border/40" : "border-l-0"
-              )}
-            >
-              {rightPanelVisible && (
-                <NotesContextPanel
-                  noteId={noteId}
-                  title={title}
-                  createdAt={node.createdAt}
-                  updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
-                  tags={tags}
-                  content={isContentReady ? (visibleContent) : ''}
-                  onTagsChange={readOnly ? undefined : handleTagsChange}
-                />
-              )}
-            </Panel>
-          </>
+      <main className="flex-1 min-h-0 flex flex-col" data-note-content-area>
+        {isContentReady ? (
+          <NotesCrepeEditor
+            initialContent={visibleContent}
+            initialTitle={title}
+            onSave={readOnly ? undefined : handleSave}
+            onTitleChange={readOnly ? undefined : handleTitleChange}
+            noteId={noteId}
+            className="flex-1 min-h-0"
+            readOnly={readOnly}
+            onEditorReady={handleEditorReady}
+            onEditorApiReady={handleEditorApiReady}
+            dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
+            windowingState={editorWindowingState}
+            onRequestLoadMore={handleRequestLoadMore}
+            onRetryLoadMore={handleRetryLoadMore}
+          />
+        ) : (
+          <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note', 'Loading note...')} />
         )}
-      </PanelGroup>
+      </main>
+
+      {!isSmallScreen && rightPanelVisible && (
+        <aside
+          className="absolute bottom-2 right-2 top-10 z-30 flex flex-col overflow-hidden border border-border bg-background shadow-sm"
+          style={{ width: 'min(300px, calc(100% - 16px))' }}
+          aria-label={t('notes:contextPanel.title', '属性')}
+        >
+          <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-border px-2">
+            <span className="text-xs font-medium text-muted-foreground">{t('notes:contextPanel.title', '属性')}</span>
+            <NotionButton variant="ghost" iconOnly size="sm" className="h-6 w-6" onClick={toggleRightPanel} aria-label={t('common:close', '关闭')}>
+              <X size={13} aria-hidden="true" />
+            </NotionButton>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={isContentReady ? visibleContent : ''} onTagsChange={readOnly ? undefined : handleTagsChange} />
+          </div>
+        </aside>
+      )}
 
       {/* 移动端：上下文 inline 子屏（大纲/标签/元信息）——全屏替换内容 + 顶部返回 + Android 返回键 */}
       {isSmallScreen && mobilePanelOpen && (

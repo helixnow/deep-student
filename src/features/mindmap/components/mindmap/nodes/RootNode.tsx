@@ -138,14 +138,14 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   // 合并主题样式和自定义样式，自定义样式优先级更高
   // ★ 修复：正确应用全局主题的所有属性
   const themeStyle: React.CSSProperties = {
-    background: rootTheme?.background || '#ffffff',
+    background: rootTheme?.background || 'var(--mm-bg-elevated)',
     color: rootTheme?.foreground || 'var(--mm-text)',
-    border: rootTheme?.border || '2px solid var(--mm-text)',
-    borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '6px',
+    border: rootTheme?.border || '1px solid var(--mm-border-strong)',
+    borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '4px',
     fontSize: rootTheme?.fontSize ? `${rootTheme.fontSize}px` : '18px',
     fontWeight: rootTheme?.fontWeight || 600,
-    padding: rootTheme?.padding || '12px 24px',
-    boxShadow: rootTheme?.shadow || '0 4px 12px -2px rgba(0, 0, 0, 0.12), 0 2px 6px -1px rgba(0, 0, 0, 0.08)',
+    padding: rootTheme?.padding || '10px 18px',
+    boxShadow: rootTheme?.shadow || 'none',
     // 自定义样式优先级更高
     ...customStyle,
   };
@@ -227,7 +227,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       >
         <NotionButton variant="ghost"
           onClick={handleAddChild}
-          className="mm-collapse-btn bg-[var(--mm-bg-elevated)] shadow-sm border border-[var(--mm-border)] w-6 h-6 hover:bg-[var(--mm-bg-hover)]"
+          className="mm-collapse-btn bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] w-6 h-6 hover:bg-[var(--mm-bg-hover)]"
           aria-label="Add Child"
         >
           <Plus className="w-3.5 h-3.5 text-[var(--mm-text-secondary)]" />

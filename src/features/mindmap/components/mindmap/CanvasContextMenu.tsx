@@ -189,7 +189,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed min-w-[180px] max-w-[240px] p-1 rounded-lg border border-border bg-popover shadow-lg ui-zoom-fade-in"
+      className="mindmap-container fixed min-w-[180px] max-w-[240px] p-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in"
       style={{ left: position.x, top: position.y, zIndex: Z_INDEX.contextMenu }}
     >
       <MenuItem
