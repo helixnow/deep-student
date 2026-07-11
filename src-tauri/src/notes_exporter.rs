@@ -3262,7 +3262,11 @@ mod zip_slip_tests {
             "math/note-uuid/img.png",
             b"pngdata"
         ));
-        let expected = base.join("notes_assets").join("math").join("note-uuid").join("img.png");
+        let expected = base
+            .join("notes_assets")
+            .join("math")
+            .join("note-uuid")
+            .join("img.png");
         assert!(expected.exists());
         assert_eq!(fs::read(&expected).unwrap(), b"pngdata");
     }

@@ -30,6 +30,7 @@ import { calculateEssayTextStats } from '@/essay-grading/textStats';
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 // GradingHistory 已移除 - 历史由 Learning Hub 管理
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -55,6 +56,21 @@ export interface UploadedImage {
   ocrVersion?: number;
   /** 已重试次数（默认 0） */
   ocrRetryCount?: number;
+}
+
+function essayDirtySnapshot(input: {
+  inputText: string;
+  topicText: string;
+  uploadedImages: UploadedImage[];
+  topicImages: UploadedImage[];
+}): string {
+  const imageKey = (image: UploadedImage) => `${image.id}:${image.fileName}:${image.base64.length}`;
+  return JSON.stringify([
+    input.inputText,
+    input.topicText,
+    input.uploadedImages.map(imageKey),
+    input.topicImages.map(imageKey),
+  ]);
 }
 
 interface EssayGradingWorkbenchProps {
@@ -97,6 +113,37 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
   // ★ 题目元数据状态（作文题目/要求/参考材料）
   const [topicText, setTopicText] = useState('');
   const [topicImages, setTopicImages] = useState<UploadedImage[]>([]);
+
+  const persistedDirtySnapshotRef = useRef(essayDirtySnapshot({
+    inputText: initialSession?.inputText ?? '',
+    topicText: '',
+    uploadedImages: [],
+    topicImages: [],
+  }));
+  const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
+  currentDirtySnapshotRef.current = essayDirtySnapshot({
+    inputText,
+    topicText,
+    uploadedImages,
+    topicImages,
+  });
+
+  useEffect(() => {
+    persistedDirtySnapshotRef.current = essayDirtySnapshot({
+      inputText: initialSession?.inputText ?? '',
+      topicText: '',
+      uploadedImages: [],
+      topicImages: [],
+    });
+  }, [initialSession]);
+
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId ?? initialSession?.id;
+    if (!resourceId) return;
+    return registerContentDirtyChecker('essay', resourceId, () =>
+      currentDirtySnapshotRef.current !== persistedDirtySnapshotRef.current
+    );
+  }, [dstuMode.resourceId, initialSession?.id]);
 
   // 监听全局顶栏的设置按钮点击事件（移动端）- 切换模式
   // TODO: Migrate 'essay:openSettings' to a centralised event hook/registry
@@ -690,6 +737,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({ on
             });
           }
         }
+        persistedDirtySnapshotRef.current = currentDirtySnapshotRef.current;
       } else if (outcome === 'cancelled') {
         showGlobalNotification('info', t('essay_grading:toast.grading_cancelled'));
       }

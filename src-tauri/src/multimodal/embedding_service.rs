@@ -902,7 +902,10 @@ impl MultimodalEmbeddingService {
                 .await
             {
                 if mode != MultimodalIndexingMode::VLEmbedding {
-                    log::warn!("⚠️ 请求的模式 {:?} 不可用（或已弃用），回退到 VLEmbedding", mode);
+                    log::warn!(
+                        "⚠️ 请求的模式 {:?} 不可用（或已弃用），回退到 VLEmbedding",
+                        mode
+                    );
                 }
                 MultimodalIndexingMode::VLEmbedding
             } else {

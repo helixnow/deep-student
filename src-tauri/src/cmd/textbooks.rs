@@ -489,7 +489,10 @@ pub async fn textbooks_add(
                 continue;
             }
             Err(e) => {
-                warn!("[Textbooks] Processing task panicked for {}: {}", file_name, e);
+                warn!(
+                    "[Textbooks] Processing task panicked for {}: {}",
+                    file_name, e
+                );
                 emit_progress(
                     &window,
                     &file_name,

@@ -2152,26 +2152,23 @@ pub async fn dstu_copy(
                 new_file_name
             };
 
-            let new_textbook = match VfsTextbookRepo::copy_textbook(
-                &vfs_db,
-                &textbook.id,
-                &new_file_name,
-            ) {
-                Ok(t) => {
-                    log::info!(
-                        "[DSTU::handlers] dstu_copy: SUCCESS - created textbook copy, id={}",
-                        t.id
-                    );
-                    t
-                }
-                Err(e) => {
-                    log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - copy_textbook error={}",
-                        e
-                    );
-                    return Err(e.to_string());
-                }
-            };
+            let new_textbook =
+                match VfsTextbookRepo::copy_textbook(&vfs_db, &textbook.id, &new_file_name) {
+                    Ok(t) => {
+                        log::info!(
+                            "[DSTU::handlers] dstu_copy: SUCCESS - created textbook copy, id={}",
+                            t.id
+                        );
+                        t
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[DSTU::handlers] dstu_copy: FAILED - copy_textbook error={}",
+                            e
+                        );
+                        return Err(e.to_string());
+                    }
+                };
 
             // 如果指定了目标文件夹，将新资源添加到文件夹
             if let Some(ref folder_id) = dest_folder_id {
@@ -2301,26 +2298,23 @@ pub async fn dstu_copy(
             // 旧实现仅复制 exam_sheets 行：页图 blob 引用计数不增（purge 任一份
             // 导致另一份页图被物理清扫），且不复制题目（副本是空卷）。
             let _ = exam; // 名称由 repo 统一加"(副本)"后缀（与文件复制语义一致）
-            let new_exam = match VfsExamRepo::copy_exam_sheet(
-                &vfs_db,
-                &src_id,
-                dest_folder_id.as_deref(),
-            ) {
-                Ok(e) => {
-                    log::info!(
-                        "[DSTU::handlers] dstu_copy: SUCCESS - created exam copy, id={}",
-                        e.id
-                    );
-                    e
-                }
-                Err(e) => {
-                    log::error!(
-                        "[DSTU::handlers] dstu_copy: FAILED - copy_exam_sheet error={}",
+            let new_exam =
+                match VfsExamRepo::copy_exam_sheet(&vfs_db, &src_id, dest_folder_id.as_deref()) {
+                    Ok(e) => {
+                        log::info!(
+                            "[DSTU::handlers] dstu_copy: SUCCESS - created exam copy, id={}",
+                            e.id
+                        );
                         e
-                    );
-                    return Err(e.to_string());
-                }
-            };
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "[DSTU::handlers] dstu_copy: FAILED - copy_exam_sheet error={}",
+                            e
+                        );
+                        return Err(e.to_string());
+                    }
+                };
 
             exam_to_dstu_node(&new_exam)
         }
@@ -2425,10 +2419,7 @@ pub async fn dstu_copy(
                         f
                     }
                     Err(e) => {
-                        log::error!(
-                            "[DSTU::handlers] dstu_copy: FAILED - copy_file error={}",
-                            e
-                        );
+                        log::error!("[DSTU::handlers] dstu_copy: FAILED - copy_file error={}", e);
                         return Err(e.to_string());
                     }
                 }
@@ -2892,14 +2883,11 @@ fn copy_resource_to_folder(
             // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_exam_sheet 复制，
             // 正确递增页图/题图 blob 引用计数并复制题目。
             // （repo 内部已写 folder_items，不再额外添加避免重复）
-            let new_exam = match VfsExamRepo::copy_exam_sheet(
-                vfs_db,
-                &item.item_id,
-                Some(dest_folder_id),
-            ) {
-                Ok(e) => e,
-                Err(e) => return Err(e.to_string()),
-            };
+            let new_exam =
+                match VfsExamRepo::copy_exam_sheet(vfs_db, &item.item_id, Some(dest_folder_id)) {
+                    Ok(e) => e,
+                    Err(e) => return Err(e.to_string()),
+                };
 
             log::debug!(
                 "[DSTU::handlers] copy_resource_to_folder: copied exam {} -> {}",
@@ -3293,29 +3281,30 @@ pub async fn dstu_set_metadata(
             // 同时修复：只传一个字段时不再把另一字段清空，而是保留现有内容。
             if metadata.get("sourceText").is_some() || metadata.get("translatedText").is_some() {
                 // 读取现有内容，用于填充未提供的字段
-                let (cur_source, cur_translated) =
-                    match VfsTranslationRepo::get_translation_content(&vfs_db, &id) {
-                        Ok(Some(content_str)) => {
-                            match serde_json::from_str::<serde_json::Value>(&content_str) {
-                                Ok(v) => (
-                                    v.get("source")
-                                        .and_then(|s| s.as_str())
-                                        .unwrap_or("")
-                                        .to_string(),
-                                    v.get("translated")
-                                        .and_then(|s| s.as_str())
-                                        .unwrap_or("")
-                                        .to_string(),
-                                ),
-                                Err(_) => (String::new(), String::new()),
-                            }
+                let (cur_source, cur_translated) = match VfsTranslationRepo::get_translation_content(
+                    &vfs_db, &id,
+                ) {
+                    Ok(Some(content_str)) => {
+                        match serde_json::from_str::<serde_json::Value>(&content_str) {
+                            Ok(v) => (
+                                v.get("source")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                                v.get("translated")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("")
+                                    .to_string(),
+                            ),
+                            Err(_) => (String::new(), String::new()),
                         }
-                        Ok(None) => (String::new(), String::new()),
-                        Err(e) => {
-                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_translation_content error, id={}, error={}", id, e);
-                            return Err(e.to_string());
-                        }
-                    };
+                    }
+                    Ok(None) => (String::new(), String::new()),
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_translation_content error, id={}, error={}", id, e);
+                        return Err(e.to_string());
+                    }
+                };
 
                 let source = metadata
                     .get("sourceText")

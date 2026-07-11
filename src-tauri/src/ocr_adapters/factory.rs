@@ -81,8 +81,7 @@ impl OcrAdapterFactory {
             OcrEngineInfo {
                 engine_type: OcrEngineType::PaddleOcrVlV1,
                 name: "PaddleOCR-VL",
-                description:
-                    "百度开源 OCR 视觉语言模型旧版，完全免费，作为 1.5 版的备用",
+                description: "百度开源 OCR 视觉语言模型旧版，完全免费，作为 1.5 版的备用",
                 recommended_model: "PaddlePaddle/PaddleOCR-VL",
                 supports_grounding: false,
                 is_free: true,

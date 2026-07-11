@@ -22,11 +22,32 @@ import { debugLog } from '../debug-panel/debugMasterSwitch';
 // 子组件
 import { TranslationMain } from './translation/TranslationMain';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
 /** Maximum characters allowed for source text input */
 const TRANSLATION_MAX_CHARS = 50000;
+
+function translationDirtySnapshot(session: {
+  sourceText?: string;
+  translatedText?: string;
+  srcLang?: string;
+  tgtLang?: string;
+  formality?: string;
+  domain?: string;
+  glossary?: Array<[string, string]>;
+}): string {
+  return JSON.stringify([
+    session.sourceText ?? '',
+    session.translatedText ?? '',
+    session.srcLang ?? 'auto',
+    session.tgtLang ?? 'zh-CN',
+    session.formality ?? 'auto',
+    session.domain ?? 'general',
+    session.glossary ?? [],
+  ]);
+}
 
 /** Clean up common OCR artifacts before filling source text */
 function cleanOcrText(text: string): string {
@@ -152,6 +173,37 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
   const isTranslating = translationStream.isTranslating;
   const setTranslatedText = translationStream.setTranslatedText;
   const streamError = translationStream.error;
+
+  const persistedDirtySnapshotRef = useRef(translationDirtySnapshot(initialSession ?? {}));
+  const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
+  const translatedTextForDirty = isEditingTranslation
+    ? editedTranslation
+    : translatedText || initialSession?.translatedText || '';
+  currentDirtySnapshotRef.current = translationDirtySnapshot({
+    sourceText,
+    translatedText: translatedTextForDirty,
+    srcLang,
+    tgtLang,
+    formality,
+    domain,
+    glossary,
+  });
+
+  useEffect(() => {
+    persistedDirtySnapshotRef.current = translationDirtySnapshot(initialSession ?? {});
+  }, [initialSession]);
+
+  useEffect(() => {
+    const resourceId = dstuMode.resourceId ?? initialSession?.id;
+    if (!resourceId) return;
+    return registerContentDirtyChecker('translation', resourceId, () =>
+      isTranslating || currentDirtySnapshotRef.current !== persistedDirtySnapshotRef.current
+    );
+  }, [dstuMode.resourceId, initialSession?.id, isTranslating]);
+
+  const markTranslationPersisted = useCallback((session: TranslationSession) => {
+    persistedDirtySnapshotRef.current = translationDirtySnapshot(session);
+  }, []);
 
   // 使用 ref 跟踪最新的翻译文本，避免 stale closure 问题
   const translatedTextRef = useRef(translatedText);
@@ -386,6 +438,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             // 保存后更新当前会话 ID
             currentSessionIdRef.current = sessionToSave.id;
             await dstuMode.onSessionSave(sessionToSave);
+            markTranslationPersisted(sessionToSave);
           } catch (saveError: unknown) {
             console.error('[Translation] Save failed:', saveError);
             showGlobalNotification('error', t('translation:toast.save_failed', '翻译结果保存失败，请重试'));
@@ -406,7 +459,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     } finally {
       setIsRetrying(false);
     }
-  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig]);
+  }, [sourceText, srcLang, tgtLang, customPrompt, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig, markTranslationPersisted]);
 
   // 重试翻译
   const handleRetryTranslation = useCallback(() => {
@@ -493,7 +546,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       // 通过回调保存到 DSTU
       if (dstuMode.onSessionSave && currentSessionIdRef.current) {
         const now = Date.now();
-        await dstuMode.onSessionSave({
+        const sessionToSave: TranslationSession = {
           id: currentSessionIdRef.current,
           sourceText,
           translatedText: editedTranslation,
@@ -506,13 +559,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           quality: translationQuality ?? undefined,
           createdAt: initialSession?.createdAt || now,
           updatedAt: now,
-        });
+        };
+        await dstuMode.onSessionSave(sessionToSave);
+        markTranslationPersisted(sessionToSave);
       }
       showGlobalNotification('success', t('translation:target_section.edit_saved'));
     } catch (error: unknown) {
       showGlobalNotification('error', t('translation:toast.update_failed', { error: getErrorMessage(error) }));
     }
-  }, [editedTranslation, t, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, domain, glossary, customPrompt, translationQuality, initialSession]);
+  }, [editedTranslation, t, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, domain, glossary, customPrompt, translationQuality, initialSession, markTranslationPersisted]);
 
   const handleCancelEdit = useCallback(() => {
     setIsEditingTranslation(false);
@@ -637,7 +692,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     if (dstuMode.onSessionSave && currentSessionIdRef.current) {
       try {
         const now = Date.now();
-        await dstuMode.onSessionSave({
+        const sessionToSave: TranslationSession = {
           id: currentSessionIdRef.current,
           sourceText,
           translatedText,
@@ -650,13 +705,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
           quality: rating,
           createdAt: initialSession?.createdAt || now,
           updatedAt: now,
-        });
+        };
+        await dstuMode.onSessionSave(sessionToSave);
+        markTranslationPersisted(sessionToSave);
         showGlobalNotification('success', t('translation:quality.rated'));
       } catch (error: unknown) {
         showGlobalNotification('error', getErrorMessage(error));
       }
     }
-  }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, initialSession]);
+  }, [t, dstuMode, sourceText, translatedText, srcLang, tgtLang, formality, domain, glossary, customPrompt, initialSession, markTranslationPersisted]);
 
   // 快捷键支持（注册在 document 上，处理后 stopPropagation 阻止冒泡到命令系统）
   // ★ A6-28 标签页保活：非活跃实例不注册，防止多个翻译标签页同时响应同一按键

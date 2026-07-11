@@ -1445,9 +1445,10 @@ mod note_asset_path_tests {
     #[test]
     fn accepts_plain_segments() {
         assert!(FileManager::validate_note_asset_path_segment("subject", "math").is_ok());
-        assert!(
-            FileManager::validate_note_asset_path_segment("note_id", "550e8400-e29b-41d4-a716-446655440000")
-                .is_ok()
-        );
+        assert!(FileManager::validate_note_asset_path_segment(
+            "note_id",
+            "550e8400-e29b-41d4-a716-446655440000"
+        )
+        .is_ok());
     }
 }

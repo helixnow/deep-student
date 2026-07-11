@@ -3,7 +3,7 @@ use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Data, Reader, She
 use html2text::from_read;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Cursor;
+use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::path::Path;
 
 // PPTX 解析
@@ -40,6 +40,75 @@ const MAX_FILES_IN_ARCHIVE: usize = 10000;
 /// ★ 嵌套 ZIP 检测：最大嵌套深度
 /// 防止通过多层嵌套的 ZIP 文件绕过检测
 const MAX_NESTED_ZIP_DEPTH: u32 = 3;
+
+const MAX_XLSX_CELL_EDITS: usize = 10_000;
+const MAX_XLSX_REPLACEMENTS: usize = 256;
+const MAX_XLSX_REPLACEMENT_TERM_BYTES: usize = 64 * 1024;
+const MAX_XLSX_CELL_TEXT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_XLSX_EDITED_TEXT_BYTES: usize = 64 * 1024 * 1024;
+const MAX_XLSX_POPULATED_CELLS: usize = 1_000_000;
+const MAX_XLSX_DENSE_CELLS: u64 = 1_000_000;
+const MAX_XLSX_SHEETS: usize = 256;
+const MAX_EXCEL_TEXT_BYTES: usize = 16 * 1024 * 1024;
+const MAX_DOCX_IMAGE_RELATIONSHIPS: usize = 512;
+const MAX_DOCX_IMAGE_REFERENCES: usize = 2_048;
+const MAX_DOCX_TOTAL_IMAGE_BYTES: usize = 200 * 1024 * 1024;
+const MAX_DOCX_RELS_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_DOCX_TEXT_BYTES: usize = 16 * 1024 * 1024;
+
+struct BoundedCursor {
+    inner: Cursor<Vec<u8>>,
+    max_len: u64,
+}
+
+impl BoundedCursor {
+    fn new(max_len: usize) -> Self {
+        Self {
+            inner: Cursor::new(Vec::new()),
+            max_len: max_len as u64,
+        }
+    }
+
+    fn into_inner(self) -> Vec<u8> {
+        self.inner.into_inner()
+    }
+}
+
+impl Write for BoundedCursor {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let end = self
+            .inner
+            .position()
+            .checked_add(buf.len() as u64)
+            .ok_or_else(|| std::io::Error::other("XLSX output position overflow"))?;
+        if end > self.max_len {
+            return Err(std::io::Error::other(format!(
+                "XLSX output exceeds {}MB limit",
+                self.max_len / (1024 * 1024)
+            )));
+        }
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+impl Seek for BoundedCursor {
+    fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+        let previous = self.inner.position();
+        let next = self.inner.seek(position)?;
+        if next > self.max_len {
+            self.inner.set_position(previous);
+            return Err(std::io::Error::other(format!(
+                "XLSX output seek exceeds {}MB limit",
+                self.max_len / (1024 * 1024)
+            )));
+        }
+        Ok(next)
+    }
+}
 
 /// 文档解析错误枚举
 #[derive(Debug, Serialize, Deserialize)]
@@ -150,6 +219,33 @@ impl DocumentParser {
                 "文件大小 {}MB 超过限制 {}MB",
                 size / (1024 * 1024),
                 MAX_DOCUMENT_SIZE / (1024 * 1024)
+            )));
+        }
+        Ok(())
+    }
+
+    fn check_base64_decoded_size(encoded: &str, max_bytes: usize) -> Result<(), ParsingError> {
+        let encoded_len = encoded.len();
+        let groups = encoded_len
+            .checked_add(3)
+            .ok_or_else(|| ParsingError::FileTooLarge("Base64 长度溢出".to_string()))?
+            / 4;
+        let padding = encoded
+            .as_bytes()
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'=')
+            .take(2)
+            .count();
+        let decoded_upper_bound = groups
+            .checked_mul(3)
+            .and_then(|bytes| bytes.checked_sub(padding))
+            .ok_or_else(|| ParsingError::FileTooLarge("Base64 解码长度溢出".to_string()))?;
+        if decoded_upper_bound > max_bytes {
+            return Err(ParsingError::FileTooLarge(format!(
+                "Base64 解码后可能达到 {}MB，超过限制 {}MB",
+                decoded_upper_bound / (1024 * 1024),
+                max_bytes / (1024 * 1024)
             )));
         }
         Ok(())
@@ -433,9 +529,9 @@ impl DocumentParser {
         use std::io::Read;
         let mut data = Vec::new();
         let mut limited = entry.take(cap + 1);
-        limited
-            .read_to_end(&mut data)
-            .map_err(|e| ParsingError::IoError(format!("读取 ZIP 条目 '{}' 失败: {}", entry_name, e)))?;
+        limited.read_to_end(&mut data).map_err(|e| {
+            ParsingError::IoError(format!("读取 ZIP 条目 '{}' 失败: {}", entry_name, e))
+        })?;
         if data.len() as u64 > cap {
             return Err(ParsingError::ZipBombDetected(format!(
                 "ZIP 条目 '{}' 实际解压大小超过 {:.0}MB 上限（声明大小可能被伪造）",
@@ -463,6 +559,16 @@ impl DocumentParser {
     /// 2. 缺少 `[Content_Types].xml` 文件（未加密文档必有此文件）
     fn check_office_encryption(&self, bytes: &[u8], file_name: &str) -> Result<(), ParsingError> {
         use std::io::Cursor;
+
+        // 真实的密码保护 OOXML 会被包装为 OLE Compound File，而不是 ZIP。
+        // 对 .docx/.xlsx/.pptx 入口而言，CFB 魔数可明确判定为加密/受保护容器。
+        const CFB_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        if bytes.starts_with(&CFB_MAGIC) {
+            return Err(ParsingError::EncryptedDocument(format!(
+                "文件 '{}' 是加密的 Office 文档，请先解除密码保护后再上传",
+                file_name
+            )));
+        }
 
         let cursor = Cursor::new(bytes);
         let mut archive = match zip::ZipArchive::new(cursor) {
@@ -684,6 +790,9 @@ impl DocumentParser {
             base64_content
         };
 
+        // 在解码分配前按编码长度计算上界，避免超限输入先触发巨型 Vec 分配。
+        Self::check_base64_decoded_size(base64_str, MAX_DOCUMENT_SIZE)?;
+
         // 解码Base64内容
         let bytes = general_purpose::STANDARD.decode(base64_str)?;
 
@@ -738,7 +847,7 @@ impl DocumentParser {
         self.check_zip_bomb(bytes, "document.docx")?;
 
         // Step 1: 从 ZIP 中构建 rId → 图片字节 映射
-        let rid_to_bytes = Self::build_docx_image_map(bytes)?;
+        let mut rid_to_bytes = Self::build_docx_image_map(bytes)?;
 
         // Step 2: 用 docx_rs 解析文档结构
         let docx =
@@ -746,13 +855,34 @@ impl DocumentParser {
 
         let mut text_content = String::with_capacity(8192);
         let mut images: Vec<Vec<u8>> = Vec::new();
+        let mut image_index_by_rid: std::collections::HashMap<String, usize> =
+            std::collections::HashMap::new();
+        let mut image_reference_count = 0usize;
+        let mut output_image_bytes = 0usize;
 
         for child in &docx.document.children {
             match child {
                 docx_rs::DocumentChild::Paragraph(para) => {
-                    let line =
-                        Self::extract_paragraph_text_with_images(para, &mut images, &rid_to_bytes);
+                    let line = Self::extract_paragraph_text_with_images(
+                        para,
+                        &mut images,
+                        &mut rid_to_bytes,
+                        &mut image_index_by_rid,
+                        &mut image_reference_count,
+                        &mut output_image_bytes,
+                    )?;
                     if !line.trim().is_empty() {
+                        if text_content
+                            .len()
+                            .saturating_add(line.len())
+                            .saturating_add(1)
+                            > MAX_DOCX_TEXT_BYTES
+                        {
+                            return Err(ParsingError::DocxParsingError(format!(
+                                "DOCX 提取文本超过 {}MB 上限",
+                                MAX_DOCX_TEXT_BYTES / (1024 * 1024)
+                            )));
+                        }
                         text_content.push_str(&line);
                         text_content.push('\n');
                     }
@@ -762,13 +892,33 @@ impl DocumentParser {
                         table,
                         &mut text_content,
                         &mut images,
-                        &rid_to_bytes,
-                    );
+                        &mut rid_to_bytes,
+                        &mut image_index_by_rid,
+                        &mut image_reference_count,
+                        &mut output_image_bytes,
+                    )?;
+                    if text_content.len() >= MAX_DOCX_TEXT_BYTES {
+                        return Err(ParsingError::DocxParsingError(format!(
+                            "DOCX 提取文本超过 {}MB 上限",
+                            MAX_DOCX_TEXT_BYTES / (1024 * 1024)
+                        )));
+                    }
                     text_content.push('\n');
                 }
                 docx_rs::DocumentChild::TableOfContents(toc) => {
                     for item in &toc.items {
                         if !item.text.is_empty() {
+                            if text_content
+                                .len()
+                                .saturating_add(item.text.len())
+                                .saturating_add(1)
+                                > MAX_DOCX_TEXT_BYTES
+                            {
+                                return Err(ParsingError::DocxParsingError(format!(
+                                    "DOCX 提取文本超过 {}MB 上限",
+                                    MAX_DOCX_TEXT_BYTES / (1024 * 1024)
+                                )));
+                            }
                             text_content.push_str(&format!("{}\n", item.text));
                         }
                     }
@@ -797,11 +947,15 @@ impl DocumentParser {
 
         // Step 1: 解析 word/_rels/document.xml.rels
         let mut rid_to_target: HashMap<String, String> = HashMap::new();
-        if let Ok(mut rels_file) = archive.by_name("word/_rels/document.xml.rels") {
-            let mut rels_xml = String::new();
-            rels_file
-                .read_to_string(&mut rels_xml)
-                .map_err(|e| ParsingError::DocxParsingError(format!("读取 rels 失败: {}", e)))?;
+        if let Ok(rels_file) = archive.by_name("word/_rels/document.xml.rels") {
+            let rels_bytes = Self::read_zip_entry_bounded(
+                rels_file,
+                "word/_rels/document.xml.rels",
+                MAX_DOCX_RELS_BYTES,
+            )?;
+            let rels_xml = String::from_utf8(rels_bytes).map_err(|e| {
+                ParsingError::DocxParsingError(format!("rels 不是有效 UTF-8: {}", e))
+            })?;
 
             let mut reader = XmlReader::from_str(&rels_xml);
             reader.config_mut().trim_text(true);
@@ -836,6 +990,12 @@ impl DocumentParser {
                                 .map(|t| t.contains("/image"))
                                 .unwrap_or(false);
                             if is_image {
+                                if rid_to_target.len() >= MAX_DOCX_IMAGE_RELATIONSHIPS {
+                                    return Err(ParsingError::DocxParsingError(format!(
+                                        "DOCX 图片 relationship 数量超过上限 {}",
+                                        MAX_DOCX_IMAGE_RELATIONSHIPS
+                                    )));
+                                }
                                 rid_to_target.insert(id, target);
                             }
                         }
@@ -850,6 +1010,7 @@ impl DocumentParser {
 
         // Step 2: 从 ZIP 中读取 image 字节
         let mut rid_to_bytes: HashMap<String, Vec<u8>> = HashMap::new();
+        let mut total_image_bytes = 0usize;
         for (rid, target) in &rid_to_target {
             let zip_path = if target.starts_with('/') {
                 target[1..].to_string()
@@ -860,6 +1021,16 @@ impl DocumentParser {
                 // ★ P1-3 修复：有界读取，防止声明大小被伪造导致无界解压
                 let buf = Self::read_zip_entry_bounded(file, &zip_path, MAX_SINGLE_ENTRY_SIZE)?;
                 if !buf.is_empty() {
+                    total_image_bytes =
+                        total_image_bytes.checked_add(buf.len()).ok_or_else(|| {
+                            ParsingError::DocxParsingError("DOCX 图片总字节数计算溢出".to_string())
+                        })?;
+                    if total_image_bytes > MAX_DOCX_TOTAL_IMAGE_BYTES {
+                        return Err(ParsingError::DocxParsingError(format!(
+                            "DOCX 图片总字节数超过 {}MB 上限",
+                            MAX_DOCX_TOTAL_IMAGE_BYTES / (1024 * 1024)
+                        )));
+                    }
                     rid_to_bytes.insert(rid.clone(), buf);
                 }
             }
@@ -872,39 +1043,149 @@ impl DocumentParser {
     fn extract_paragraph_text_with_images(
         para: &docx_rs::Paragraph,
         images: &mut Vec<Vec<u8>>,
-        rid_map: &std::collections::HashMap<String, Vec<u8>>,
-    ) -> String {
+        rid_map: &mut std::collections::HashMap<String, Vec<u8>>,
+        image_index_by_rid: &mut std::collections::HashMap<String, usize>,
+        image_reference_count: &mut usize,
+        output_image_bytes: &mut usize,
+    ) -> Result<String, ParsingError> {
         let mut line = String::new();
         for child in &para.children {
             match child {
                 docx_rs::ParagraphChild::Run(run) => {
-                    Self::extract_run_text_with_images(run, &mut line, images, rid_map);
+                    Self::extract_run_text_with_images(
+                        run,
+                        &mut line,
+                        images,
+                        rid_map,
+                        image_index_by_rid,
+                        image_reference_count,
+                        output_image_bytes,
+                    )?;
                 }
                 docx_rs::ParagraphChild::Hyperlink(hyperlink) => {
                     for run in &hyperlink.children {
                         if let docx_rs::ParagraphChild::Run(r) = run {
-                            Self::extract_run_text_with_images(r, &mut line, images, rid_map);
+                            Self::extract_run_text_with_images(
+                                r,
+                                &mut line,
+                                images,
+                                rid_map,
+                                image_index_by_rid,
+                                image_reference_count,
+                                output_image_bytes,
+                            )?;
                         }
                     }
                 }
                 docx_rs::ParagraphChild::Insert(ins) => {
                     for ic in &ins.children {
                         if let docx_rs::InsertChild::Run(r) = ic {
-                            Self::extract_run_text_with_images(r, &mut line, images, rid_map);
+                            Self::extract_run_text_with_images(
+                                r,
+                                &mut line,
+                                images,
+                                rid_map,
+                                image_index_by_rid,
+                                image_reference_count,
+                                output_image_bytes,
+                            )?;
                         }
                     }
                 }
                 docx_rs::ParagraphChild::Delete(del) => {
                     for dc in &del.children {
                         if let docx_rs::DeleteChild::Run(r) = dc {
-                            Self::extract_run_text_with_images(r, &mut line, images, rid_map);
+                            Self::extract_run_text_with_images(
+                                r,
+                                &mut line,
+                                images,
+                                rid_map,
+                                image_index_by_rid,
+                                image_reference_count,
+                                output_image_bytes,
+                            )?;
                         }
                     }
                 }
                 _ => {}
             }
         }
-        line
+        Ok(line)
+    }
+
+    fn push_docx_fragment(out: &mut String, value: &str) -> Result<(), ParsingError> {
+        let next_len = out
+            .len()
+            .checked_add(value.len())
+            .ok_or_else(|| ParsingError::DocxParsingError("DOCX 文本长度溢出".to_string()))?;
+        if next_len > MAX_DOCX_TEXT_BYTES {
+            return Err(ParsingError::DocxParsingError(format!(
+                "DOCX 单段提取文本超过 {}MB 上限",
+                MAX_DOCX_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        out.push_str(value);
+        Ok(())
+    }
+
+    fn record_docx_image(
+        pic: &docx_rs::Pic,
+        images: &mut Vec<Vec<u8>>,
+        rid_map: &mut std::collections::HashMap<String, Vec<u8>>,
+        image_index_by_rid: &mut std::collections::HashMap<String, usize>,
+        image_reference_count: &mut usize,
+        output_image_bytes: &mut usize,
+    ) -> Result<Option<usize>, ParsingError> {
+        *image_reference_count = image_reference_count
+            .checked_add(1)
+            .ok_or_else(|| ParsingError::DocxParsingError("DOCX 图片引用数量溢出".to_string()))?;
+        if *image_reference_count > MAX_DOCX_IMAGE_REFERENCES {
+            return Err(ParsingError::DocxParsingError(format!(
+                "DOCX 图片引用数量超过上限 {}",
+                MAX_DOCX_IMAGE_REFERENCES
+            )));
+        }
+
+        if !pic.id.is_empty() {
+            if let Some(index) = image_index_by_rid.get(&pic.id) {
+                return Ok(Some(*index));
+            }
+        }
+
+        let image_bytes = if !pic.image.is_empty() {
+            Some(pic.image.clone())
+        } else if !pic.id.is_empty() {
+            rid_map.remove(&pic.id)
+        } else {
+            None
+        };
+        let Some(image_bytes) = image_bytes else {
+            return Ok(None);
+        };
+        if images.len() >= MAX_DOCX_IMAGE_RELATIONSHIPS {
+            return Err(ParsingError::DocxParsingError(format!(
+                "DOCX 提取图片数量超过上限 {}",
+                MAX_DOCX_IMAGE_RELATIONSHIPS
+            )));
+        }
+        *output_image_bytes = output_image_bytes
+            .checked_add(image_bytes.len())
+            .ok_or_else(|| {
+                ParsingError::DocxParsingError("DOCX 输出图片总字节数溢出".to_string())
+            })?;
+        if *output_image_bytes > MAX_DOCX_TOTAL_IMAGE_BYTES {
+            return Err(ParsingError::DocxParsingError(format!(
+                "DOCX 输出图片总字节数超过 {}MB 上限",
+                MAX_DOCX_TOTAL_IMAGE_BYTES / (1024 * 1024)
+            )));
+        }
+
+        let index = images.len();
+        images.push(image_bytes);
+        if !pic.id.is_empty() {
+            image_index_by_rid.insert(pic.id.clone(), index);
+        }
+        Ok(Some(index))
     }
 
     /// 从 Run 中提取文本 + 图片标记
@@ -912,46 +1193,47 @@ impl DocumentParser {
         run: &docx_rs::Run,
         out: &mut String,
         images: &mut Vec<Vec<u8>>,
-        rid_map: &std::collections::HashMap<String, Vec<u8>>,
-    ) {
+        rid_map: &mut std::collections::HashMap<String, Vec<u8>>,
+        image_index_by_rid: &mut std::collections::HashMap<String, usize>,
+        image_reference_count: &mut usize,
+        output_image_bytes: &mut usize,
+    ) -> Result<(), ParsingError> {
         for rc in &run.children {
             match rc {
                 docx_rs::RunChild::Text(t) => {
-                    out.push_str(&t.text);
+                    Self::push_docx_fragment(out, &t.text)?;
                 }
                 docx_rs::RunChild::DeleteText(dt) => {
                     if let Ok(v) = serde_json::to_value(dt) {
                         if let Some(t) = v.get("text").and_then(|t| t.as_str()) {
-                            out.push_str(t);
+                            Self::push_docx_fragment(out, t)?;
                         }
                     }
                 }
                 docx_rs::RunChild::Tab(_) => {
-                    out.push('\t');
+                    Self::push_docx_fragment(out, "\t")?;
                 }
                 docx_rs::RunChild::Break(_) => {
-                    out.push('\n');
+                    Self::push_docx_fragment(out, "\n")?;
                 }
                 docx_rs::RunChild::Drawing(drawing) => {
                     if let Some(docx_rs::DrawingData::Pic(pic)) = &drawing.data {
-                        // 优先用 pic.image（写模式有值），否则通过 rId 从 ZIP 解析
-                        let image_bytes = if !pic.image.is_empty() {
-                            Some(pic.image.clone())
-                        } else if !pic.id.is_empty() {
-                            rid_map.get(&pic.id).cloned()
-                        } else {
-                            None
-                        };
-                        if let Some(bytes) = image_bytes {
-                            let idx = images.len();
-                            images.push(bytes);
-                            out.push_str(&format!("<<IMG:{}>>", idx));
+                        if let Some(index) = Self::record_docx_image(
+                            pic,
+                            images,
+                            rid_map,
+                            image_index_by_rid,
+                            image_reference_count,
+                            output_image_bytes,
+                        )? {
+                            Self::push_docx_fragment(out, &format!("<<IMG:{}>>", index))?;
                         }
                     }
                 }
                 _ => {}
             }
         }
+        Ok(())
     }
 
     /// 从表格中提取文本 + 图片标记
@@ -959,8 +1241,11 @@ impl DocumentParser {
         table: &docx_rs::Table,
         out: &mut String,
         images: &mut Vec<Vec<u8>>,
-        rid_map: &std::collections::HashMap<String, Vec<u8>>,
-    ) {
+        rid_map: &mut std::collections::HashMap<String, Vec<u8>>,
+        image_index_by_rid: &mut std::collections::HashMap<String, usize>,
+        image_reference_count: &mut usize,
+        output_image_bytes: &mut usize,
+    ) -> Result<(), ParsingError> {
         for tc in &table.rows {
             if let docx_rs::TableChild::TableRow(row) = tc {
                 let mut cells: Vec<String> = Vec::new();
@@ -969,13 +1254,19 @@ impl DocumentParser {
                         let mut cell_text = String::new();
                         for cc in &cell.children {
                             if let docx_rs::TableCellContent::Paragraph(para) = cc {
-                                let t =
-                                    Self::extract_paragraph_text_with_images(para, images, rid_map);
+                                let t = Self::extract_paragraph_text_with_images(
+                                    para,
+                                    images,
+                                    rid_map,
+                                    image_index_by_rid,
+                                    image_reference_count,
+                                    output_image_bytes,
+                                )?;
                                 if !t.trim().is_empty() {
                                     if !cell_text.is_empty() {
-                                        cell_text.push(' ');
+                                        Self::push_docx_fragment(&mut cell_text, " ")?;
                                     }
-                                    cell_text.push_str(t.trim());
+                                    Self::push_docx_fragment(&mut cell_text, t.trim())?;
                                 }
                             }
                         }
@@ -983,10 +1274,18 @@ impl DocumentParser {
                     }
                 }
                 if cells.iter().any(|c| !c.is_empty()) {
-                    out.push_str(&format!("| {} |\n", cells.join(" | ")));
+                    Self::push_docx_fragment(out, "| ")?;
+                    for (index, cell) in cells.iter().enumerate() {
+                        if index > 0 {
+                            Self::push_docx_fragment(out, " | ")?;
+                        }
+                        Self::push_docx_fragment(out, cell)?;
+                    }
+                    Self::push_docx_fragment(out, " |\n")?;
                 }
             }
         }
+        Ok(())
     }
 
     /// 从DOCX文档对象提取文本内容（增强版：支持表格/超链接/标题/列表）
@@ -1925,7 +2224,11 @@ impl DocumentParser {
         }
 
         // 3. 常见 CJK 编码按优先级探测（解码无错即采用）
-        for encoding in [encoding_rs::GB18030, encoding_rs::BIG5, encoding_rs::SHIFT_JIS] {
+        for encoding in [
+            encoding_rs::GB18030,
+            encoding_rs::BIG5,
+            encoding_rs::SHIFT_JIS,
+        ] {
             let (text, had_errors) = encoding.decode_without_bom_handling(bytes);
             if !had_errors {
                 return text.into_owned();
@@ -2046,31 +2349,79 @@ impl DocumentParser {
     {
         let mut text_content = String::with_capacity(8192);
         let sheet_names = workbook.sheet_names().to_vec();
+        if sheet_names.len() > MAX_XLSX_SHEETS {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "工作表数量 {} 超过上限 {}",
+                sheet_names.len(),
+                MAX_XLSX_SHEETS
+            )));
+        }
+        let mut total_cells = 0u64;
 
         for (idx, sheet_name) in sheet_names.iter().enumerate() {
             // 添加工作表名称作为标题
             if idx > 0 {
-                text_content.push_str("\n\n");
+                Self::push_excel_text_bounded(&mut text_content, "\n\n")?;
             }
-            text_content.push_str(&format!("=== {} ===\n", sheet_name));
+            Self::push_excel_text_bounded(&mut text_content, &format!("=== {} ===\n", sheet_name))?;
 
             // 获取工作表范围
             if let Ok(range) = workbook.worksheet_range(sheet_name) {
+                let (height, width) = range.get_size();
+                let sheet_cells = (height as u64).checked_mul(width as u64).ok_or_else(|| {
+                    ParsingError::ExcelParsingError("Excel 工作表单元格数量溢出".to_string())
+                })?;
+                total_cells = total_cells.checked_add(sheet_cells).ok_or_else(|| {
+                    ParsingError::ExcelParsingError("Excel 单元格总数溢出".to_string())
+                })?;
+                if total_cells > MAX_XLSX_DENSE_CELLS {
+                    return Err(ParsingError::ExcelParsingError(format!(
+                        "Excel 单元格总数超过上限 {}",
+                        MAX_XLSX_DENSE_CELLS
+                    )));
+                }
+
                 for row in range.rows() {
-                    let row_text: Vec<String> =
-                        row.iter().map(|cell| self.data_to_string(cell)).collect();
+                    let mut line = String::new();
+                    for (cell_index, cell) in row.iter().enumerate() {
+                        let cell_text = self.data_to_string(cell);
+                        if cell_text.len() > MAX_XLSX_CELL_TEXT_BYTES {
+                            return Err(ParsingError::ExcelParsingError(format!(
+                                "Excel 单元格文本超过 {}MB 上限",
+                                MAX_XLSX_CELL_TEXT_BYTES / (1024 * 1024)
+                            )));
+                        }
+                        if cell_index > 0 {
+                            Self::push_excel_text_bounded(&mut line, "\t")?;
+                        }
+                        Self::push_excel_text_bounded(&mut line, &cell_text)?;
+                    }
 
                     // 只添加非空行
-                    let line = row_text.join("\t");
                     if !line.trim().is_empty() {
-                        text_content.push_str(&line);
-                        text_content.push('\n');
+                        Self::push_excel_text_bounded(&mut text_content, &line)?;
+                        Self::push_excel_text_bounded(&mut text_content, "\n")?;
                     }
                 }
             }
         }
 
         Ok(text_content.trim().to_string())
+    }
+
+    fn push_excel_text_bounded(target: &mut String, value: &str) -> Result<(), ParsingError> {
+        let next_len = target
+            .len()
+            .checked_add(value.len())
+            .ok_or_else(|| ParsingError::ExcelParsingError("Excel 文本输出长度溢出".to_string()))?;
+        if next_len > MAX_EXCEL_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "Excel 文本输出超过 {}MB 上限",
+                MAX_EXCEL_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        target.push_str(value);
+        Ok(())
     }
 
     /// 将单元格数据转换为字符串
@@ -2621,27 +2972,78 @@ impl DocumentParser {
     ///   ]
     /// }
     /// ```
+    fn xlsx_spec_cell_text(
+        value: &serde_json::Value,
+        total_cells: &mut u64,
+        total_text_bytes: &mut usize,
+    ) -> Result<String, ParsingError> {
+        *total_cells = total_cells.checked_add(1).ok_or_else(|| {
+            ParsingError::ExcelParsingError("XLSX spec 单元格数量溢出".to_string())
+        })?;
+        if *total_cells > MAX_XLSX_DENSE_CELLS {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX spec 单元格数量超过上限 {}",
+                MAX_XLSX_DENSE_CELLS
+            )));
+        }
+
+        let text = match value {
+            serde_json::Value::String(text) => text.clone(),
+            serde_json::Value::Number(number) => number.to_string(),
+            serde_json::Value::Bool(value) => value.to_string(),
+            serde_json::Value::Null => String::new(),
+            _ => {
+                return Err(ParsingError::ExcelParsingError(
+                    "XLSX 单元格只支持字符串、数字、布尔值或 null".to_string(),
+                ))
+            }
+        };
+        if text.len() > MAX_XLSX_CELL_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX spec 单元格文本超过 {}MB 上限",
+                MAX_XLSX_CELL_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        *total_text_bytes = total_text_bytes
+            .checked_add(text.len())
+            .ok_or_else(|| ParsingError::ExcelParsingError("XLSX spec 文本总量溢出".to_string()))?;
+        if *total_text_bytes > MAX_XLSX_EDITED_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX spec 文本总量超过 {}MB 上限",
+                MAX_XLSX_EDITED_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        Ok(text)
+    }
+
     pub fn generate_xlsx_from_spec(spec: &serde_json::Value) -> Result<Vec<u8>, ParsingError> {
         let mut book = umya_spreadsheet::new_file();
 
-        let sheets_data = spec
-            .get("sheets")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-
-        // 如果没有 sheets，尝试顶层 headers/rows（单工作表简写）
-        let sheets_to_process = if sheets_data.is_empty() {
-            vec![spec.clone()]
-        } else {
-            sheets_data
+        let sheets_data = spec.get("sheets").and_then(|v| v.as_array());
+        let sheets_to_process: Vec<&serde_json::Value> = match sheets_data {
+            Some(sheets) if !sheets.is_empty() => sheets.iter().collect(),
+            _ => vec![spec],
         };
+        if sheets_to_process.len() > MAX_XLSX_SHEETS {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 工作表数量 {} 超过上限 {}",
+                sheets_to_process.len(),
+                MAX_XLSX_SHEETS
+            )));
+        }
+        let mut total_cells = 0u64;
+        let mut total_text_bytes = 0usize;
 
         for (sheet_idx, sheet_data) in sheets_to_process.iter().enumerate() {
             let sheet_name = sheet_data
                 .get("name")
                 .and_then(|v| v.as_str())
                 .unwrap_or(if sheet_idx == 0 { "Sheet1" } else { "" });
+            if sheet_name.chars().count() > 31 {
+                return Err(ParsingError::ExcelParsingError(
+                    "XLSX 工作表名称不能超过 31 个字符".to_string(),
+                ));
+            }
 
             // 获取或创建工作表
             let sheet = if sheet_idx == 0 {
@@ -2666,10 +3068,16 @@ impl DocumentParser {
 
             // 写入表头
             if let Some(headers) = sheet_data.get("headers").and_then(|v| v.as_array()) {
+                if headers.len() > 16_384 {
+                    return Err(ParsingError::ExcelParsingError(
+                        "XLSX 列数超过 16384 上限".to_string(),
+                    ));
+                }
                 for (col_idx, header) in headers.iter().enumerate() {
-                    let cell_text = header.as_str().unwrap_or("");
+                    let cell_text =
+                        Self::xlsx_spec_cell_text(header, &mut total_cells, &mut total_text_bytes)?;
                     let cell = sheet.get_cell_mut(((col_idx as u32) + 1, row_num));
-                    cell.set_value(cell_text);
+                    cell.set_value(cell_text.as_str());
                     // 表头加粗
                     cell.get_style_mut().get_font_mut().set_bold(true);
                 }
@@ -2678,18 +3086,34 @@ impl DocumentParser {
 
             // 写入数据行
             if let Some(rows) = sheet_data.get("rows").and_then(|v| v.as_array()) {
+                if rows.len() > 1_048_575usize.saturating_sub(row_num as usize - 1) {
+                    return Err(ParsingError::ExcelParsingError(
+                        "XLSX 行数超过 1048576 上限".to_string(),
+                    ));
+                }
                 for row_data in rows {
-                    if let Some(cells) = row_data.as_array() {
-                        for (col_idx, cell_val) in cells.iter().enumerate() {
-                            let fallback = cell_val.to_string().trim_matches('"').to_string();
-                            let cell_text = cell_val.as_str().unwrap_or(&fallback);
-                            let cell = sheet.get_cell_mut(((col_idx as u32) + 1, row_num));
-                            // 尝试作为数字写入
-                            if let Ok(num) = cell_text.parse::<f64>() {
-                                cell.set_value_number(num);
-                            } else {
-                                cell.set_value(cell_text);
-                            }
+                    let cells = row_data.as_array().ok_or_else(|| {
+                        ParsingError::ExcelParsingError(
+                            "XLSX rows 中的每一项都必须是数组".to_string(),
+                        )
+                    })?;
+                    if cells.len() > 16_384 {
+                        return Err(ParsingError::ExcelParsingError(
+                            "XLSX 列数超过 16384 上限".to_string(),
+                        ));
+                    }
+                    for (col_idx, cell_val) in cells.iter().enumerate() {
+                        let cell_text = Self::xlsx_spec_cell_text(
+                            cell_val,
+                            &mut total_cells,
+                            &mut total_text_bytes,
+                        )?;
+                        let cell = sheet.get_cell_mut(((col_idx as u32) + 1, row_num));
+                        // 尝试作为数字写入
+                        if let Ok(num) = cell_text.parse::<f64>() {
+                            cell.set_value_number(num);
+                        } else {
+                            cell.set_value(cell_text.as_str());
                         }
                     }
                     row_num += 1;
@@ -2698,11 +3122,51 @@ impl DocumentParser {
         }
 
         // 序列化为 XLSX 字节
-        let mut buf = Cursor::new(Vec::new());
+        let mut buf = BoundedCursor::new(MAX_DOCUMENT_SIZE);
         umya_spreadsheet::writer::xlsx::write_writer(&book, &mut buf)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 生成失败: {}", e)))?;
 
         Ok(buf.into_inner())
+    }
+
+    fn account_xlsx_dense_range(
+        sheet_name: &str,
+        max_col: u32,
+        max_row: u32,
+        total_cells: &mut u64,
+    ) -> Result<(), ParsingError> {
+        let cells = u64::from(max_col)
+            .checked_mul(u64::from(max_row))
+            .ok_or_else(|| ParsingError::ExcelParsingError("XLSX 稠密范围大小溢出".to_string()))?;
+        *total_cells = total_cells.checked_add(cells).ok_or_else(|| {
+            ParsingError::ExcelParsingError("XLSX 稠密单元格总数溢出".to_string())
+        })?;
+        if *total_cells > MAX_XLSX_DENSE_CELLS {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "工作表 '{}' 的 {}x{} 范围会展开超过 {} 个单元格",
+                sheet_name, max_row, max_col, MAX_XLSX_DENSE_CELLS
+            )));
+        }
+        Ok(())
+    }
+
+    fn account_xlsx_output_text(total: &mut usize, value: &str) -> Result<(), ParsingError> {
+        if value.len() > MAX_XLSX_CELL_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 单元格文本超过 {}MB 上限",
+                MAX_XLSX_CELL_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        *total = total
+            .checked_add(value.len())
+            .ok_or_else(|| ParsingError::ExcelParsingError("XLSX 输出文本总量溢出".to_string()))?;
+        if *total > MAX_XLSX_EDITED_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 输出文本总量超过 {}MB 上限",
+                MAX_XLSX_EDITED_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        Ok(())
     }
 
     /// 从 XLSX 字节提取结构化 JSON spec（用于 round-trip 编辑）
@@ -2717,6 +3181,8 @@ impl DocumentParser {
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut sheets_json = Vec::new();
+        let mut total_dense_cells = 0u64;
+        let mut total_text_bytes = 0usize;
 
         for sheet in book.get_sheet_collection() {
             let ws_name = sheet.get_name().to_string();
@@ -2730,6 +3196,7 @@ impl DocumentParser {
                 }));
                 continue;
             }
+            Self::account_xlsx_dense_range(&ws_name, max_col, max_row, &mut total_dense_cells)?;
 
             // 第一行作为表头
             let mut headers = Vec::new();
@@ -2738,6 +3205,7 @@ impl DocumentParser {
                     .get_cell((col, 1))
                     .map(|c| c.get_value().to_string())
                     .unwrap_or_default();
+                Self::account_xlsx_output_text(&mut total_text_bytes, &val)?;
                 headers.push(val);
             }
 
@@ -2750,6 +3218,7 @@ impl DocumentParser {
                         .get_cell((col, row))
                         .map(|c| c.get_value().to_string())
                         .unwrap_or_default();
+                    Self::account_xlsx_output_text(&mut total_text_bytes, &val)?;
                     row_data.push(val);
                 }
                 rows.push(row_data);
@@ -2770,11 +3239,123 @@ impl DocumentParser {
     /// 在 XLSX 中编辑指定单元格，保存为新文件
     ///
     /// edits 格式：[{sheet: "Sheet1", cell: "A1", value: "新值"}, ...]
+    fn validate_xlsx_edits(edits: &[(String, String, String)]) -> Result<(), ParsingError> {
+        if edits.len() > MAX_XLSX_CELL_EDITS {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 单元格编辑数量 {} 超过上限 {}",
+                edits.len(),
+                MAX_XLSX_CELL_EDITS
+            )));
+        }
+
+        let mut total_value_bytes = 0usize;
+        for (sheet, cell, value) in edits {
+            if sheet.is_empty() || sheet.len() > 255 || cell.is_empty() || cell.len() > 32 {
+                return Err(ParsingError::ExcelParsingError(
+                    "XLSX 工作表名或单元格引用无效".to_string(),
+                ));
+            }
+            if value.len() > MAX_XLSX_CELL_TEXT_BYTES {
+                return Err(ParsingError::ExcelParsingError(format!(
+                    "XLSX 单元格文本超过 {}MB 上限",
+                    MAX_XLSX_CELL_TEXT_BYTES / (1024 * 1024)
+                )));
+            }
+            total_value_bytes = total_value_bytes.checked_add(value.len()).ok_or_else(|| {
+                ParsingError::ExcelParsingError("XLSX 编辑文本总长度溢出".to_string())
+            })?;
+        }
+        if total_value_bytes > MAX_XLSX_EDITED_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 编辑文本总量超过 {}MB 上限",
+                MAX_XLSX_EDITED_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        Ok(())
+    }
+
+    fn validate_xlsx_replacements(replacements: &[(String, String)]) -> Result<(), ParsingError> {
+        if replacements.len() > MAX_XLSX_REPLACEMENTS {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 替换规则数量 {} 超过上限 {}",
+                replacements.len(),
+                MAX_XLSX_REPLACEMENTS
+            )));
+        }
+        let mut total_term_bytes = 0usize;
+        for (find, replacement) in replacements {
+            if find.is_empty() {
+                return Err(ParsingError::ExcelParsingError(
+                    "XLSX 替换查找文本不能为空".to_string(),
+                ));
+            }
+            if find.len() > MAX_XLSX_REPLACEMENT_TERM_BYTES
+                || replacement.len() > MAX_XLSX_REPLACEMENT_TERM_BYTES
+            {
+                return Err(ParsingError::ExcelParsingError(format!(
+                    "XLSX 单条替换文本超过 {}KB 上限",
+                    MAX_XLSX_REPLACEMENT_TERM_BYTES / 1024
+                )));
+            }
+            total_term_bytes = total_term_bytes
+                .checked_add(find.len())
+                .and_then(|total| total.checked_add(replacement.len()))
+                .ok_or_else(|| {
+                    ParsingError::ExcelParsingError("XLSX 替换规则总长度溢出".to_string())
+                })?;
+        }
+        if total_term_bytes > MAX_XLSX_CELL_TEXT_BYTES {
+            return Err(ParsingError::ExcelParsingError(format!(
+                "XLSX 替换规则总量超过 {}MB 上限",
+                MAX_XLSX_CELL_TEXT_BYTES / (1024 * 1024)
+            )));
+        }
+        Ok(())
+    }
+
+    fn replace_xlsx_text_bounded(
+        mut value: String,
+        replacements: &[(String, String)],
+    ) -> Result<String, ParsingError> {
+        for (find, replacement) in replacements {
+            if !value.contains(find.as_str()) {
+                continue;
+            }
+            let occurrences = value.match_indices(find.as_str()).count();
+            let removed = occurrences.checked_mul(find.len()).ok_or_else(|| {
+                ParsingError::ExcelParsingError("XLSX 替换长度计算溢出".to_string())
+            })?;
+            let added = occurrences.checked_mul(replacement.len()).ok_or_else(|| {
+                ParsingError::ExcelParsingError("XLSX 替换长度计算溢出".to_string())
+            })?;
+            let predicted = value
+                .len()
+                .checked_sub(removed)
+                .and_then(|len| len.checked_add(added))
+                .ok_or_else(|| {
+                    ParsingError::ExcelParsingError("XLSX 替换结果长度溢出".to_string())
+                })?;
+            if predicted > MAX_XLSX_CELL_TEXT_BYTES {
+                return Err(ParsingError::ExcelParsingError(format!(
+                    "XLSX 替换后单元格文本超过 {}MB 上限",
+                    MAX_XLSX_CELL_TEXT_BYTES / (1024 * 1024)
+                )));
+            }
+            value = value.replace(find.as_str(), replacement.as_str());
+        }
+        Ok(value)
+    }
+
     pub fn edit_xlsx_cells(
         &self,
         bytes: &[u8],
         edits: &[(String, String, String)], // (sheet_name, cell_ref, value)
     ) -> Result<(Vec<u8>, usize), ParsingError> {
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "spreadsheet.xlsx")?;
+        self.check_zip_bomb(bytes, "spreadsheet.xlsx")?;
+        Self::validate_xlsx_edits(edits)?;
+
         let cursor = Cursor::new(bytes.to_vec());
         let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
@@ -2800,7 +3381,7 @@ impl DocumentParser {
         }
 
         // 序列化为新 XLSX
-        let mut buf = Cursor::new(Vec::new());
+        let mut buf = BoundedCursor::new(MAX_DOCUMENT_SIZE);
         umya_spreadsheet::writer::xlsx::write_writer(&book, &mut buf)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 保存失败: {}", e)))?;
 
@@ -2813,11 +3394,17 @@ impl DocumentParser {
         bytes: &[u8],
         replacements: &[(String, String)],
     ) -> Result<(Vec<u8>, usize), ParsingError> {
+        self.check_file_size(bytes.len())?;
+        self.check_office_encryption(bytes, "spreadsheet.xlsx")?;
+        self.check_zip_bomb(bytes, "spreadsheet.xlsx")?;
+        Self::validate_xlsx_replacements(replacements)?;
+
         let cursor = Cursor::new(bytes.to_vec());
         let mut book = umya_spreadsheet::reader::xlsx::read_reader(cursor, true)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut total_count = 0usize;
+        let mut total_changed_text_bytes = 0usize;
 
         // 收集工作表名称
         let sheet_names: Vec<String> = book
@@ -2830,30 +3417,37 @@ impl DocumentParser {
             let Some(ws) = book.get_sheet_by_name_mut(sheet_name) else {
                 continue;
             };
-            let (max_col, max_row) = ws.get_highest_column_and_row();
+            let populated_cells = ws.get_collection_to_hashmap().len();
+            if populated_cells > MAX_XLSX_POPULATED_CELLS {
+                return Err(ParsingError::ExcelParsingError(format!(
+                    "工作表 '{}' 的实际单元格数量 {} 超过上限 {}",
+                    sheet_name, populated_cells, MAX_XLSX_POPULATED_CELLS
+                )));
+            }
 
-            for row in 1..=max_row {
-                for col in 1..=max_col {
-                    if let Some(cell) = ws.get_cell((col, row)) {
-                        let old_val = cell.get_value().to_string();
-                        let mut new_val = old_val.clone();
-                        for (find, replace) in replacements {
-                            if new_val.contains(find.as_str()) {
-                                new_val = new_val.replace(find.as_str(), replace.as_str());
-                            }
-                        }
-                        if new_val != old_val {
-                            let cell_mut = ws.get_cell_mut((col, row));
-                            cell_mut.set_value(new_val.as_str());
-                            total_count += 1;
-                        }
+            for cell in ws.get_cell_collection_mut() {
+                let old_val = cell.get_value().to_string();
+                let new_val = Self::replace_xlsx_text_bounded(old_val.clone(), replacements)?;
+                if new_val != old_val {
+                    total_changed_text_bytes = total_changed_text_bytes
+                        .checked_add(new_val.len())
+                        .ok_or_else(|| {
+                            ParsingError::ExcelParsingError("XLSX 替换文本总长度溢出".to_string())
+                        })?;
+                    if total_changed_text_bytes > MAX_XLSX_EDITED_TEXT_BYTES {
+                        return Err(ParsingError::ExcelParsingError(format!(
+                            "XLSX 替换后的文本总量超过 {}MB 上限",
+                            MAX_XLSX_EDITED_TEXT_BYTES / (1024 * 1024)
+                        )));
                     }
+                    cell.set_value(new_val.as_str());
+                    total_count += 1;
                 }
             }
         }
 
         // 序列化
-        let mut buf = Cursor::new(Vec::new());
+        let mut buf = BoundedCursor::new(MAX_DOCUMENT_SIZE);
         umya_spreadsheet::writer::xlsx::write_writer(&book, &mut buf)
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 保存失败: {}", e)))?;
 
@@ -2875,6 +3469,8 @@ impl DocumentParser {
             .map_err(|e| ParsingError::ExcelParsingError(format!("XLSX 读取失败: {}", e)))?;
 
         let mut tables = Vec::new();
+        let mut total_dense_cells = 0u64;
+        let mut total_text_bytes = 0usize;
 
         for sheet in book.get_sheet_collection() {
             let ws_name = sheet.get_name().to_string();
@@ -2882,6 +3478,7 @@ impl DocumentParser {
             if max_row == 0 || max_col == 0 {
                 continue;
             }
+            Self::account_xlsx_dense_range(&ws_name, max_col, max_row, &mut total_dense_cells)?;
 
             let mut rows_data = Vec::new();
             for row in 1..=max_row {
@@ -2891,6 +3488,7 @@ impl DocumentParser {
                         .get_cell((col, row))
                         .map(|c| c.get_value().to_string())
                         .unwrap_or_default();
+                    Self::account_xlsx_output_text(&mut total_text_bytes, &val)?;
                     row_data.push(val);
                 }
                 rows_data.push(row_data);
@@ -3172,7 +3770,10 @@ impl DocumentParser {
         })?;
         let bytes = Self::read_zip_entry_bounded(file, name, MAX_SINGLE_ENTRY_SIZE)?;
         String::from_utf8(bytes).map_err(|e| {
-            ParsingError::EpubParsingError(format!("读取 EPUB 条目 {} 失败: 非 UTF-8 内容 ({})", name, e))
+            ParsingError::EpubParsingError(format!(
+                "读取 EPUB 条目 {} 失败: 非 UTF-8 内容 ({})",
+                name, e
+            ))
         })
     }
 
@@ -3344,6 +3945,17 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    fn build_test_xlsx(cells: &[(&str, &str)]) -> Vec<u8> {
+        let mut book = umya_spreadsheet::new_file();
+        let sheet = book.get_sheet_by_name_mut("Sheet1").unwrap();
+        for (coordinate, value) in cells {
+            sheet.get_cell_mut(*coordinate).set_value(*value);
+        }
+        let mut output = Cursor::new(Vec::new());
+        umya_spreadsheet::writer::xlsx::write_writer(&book, &mut output).unwrap();
+        output.into_inner()
+    }
+
     #[test]
     fn test_document_parser_creation() {
         let parser = DocumentParser::new();
@@ -3381,6 +3993,13 @@ mod tests {
     fn test_file_too_large() {
         let parser = DocumentParser::new();
         let large_content = vec![0u8; MAX_DOCUMENT_SIZE + 1];
+
+        let edit_result = parser.edit_xlsx_cells(&large_content, &[]);
+        assert!(matches!(edit_result, Err(ParsingError::FileTooLarge(_))));
+
+        let replace_result = parser.replace_text_in_xlsx(&large_content, &[]);
+        assert!(matches!(replace_result, Err(ParsingError::FileTooLarge(_))));
+
         let result = parser.extract_text_from_bytes("test.txt", large_content);
         assert!(matches!(result, Err(ParsingError::FileTooLarge(_))));
     }
@@ -3424,6 +4043,22 @@ mod tests {
         let parser = DocumentParser::new();
         let result = parser.extract_text_from_base64("test.docx", "invalid_base64!");
         assert!(matches!(result, Err(ParsingError::Base64DecodingError(_))));
+    }
+
+    #[test]
+    fn test_base64_size_is_checked_before_decode() {
+        assert!(DocumentParser::check_base64_decoded_size("SGVsbG8=", 5).is_ok());
+        assert!(matches!(
+            DocumentParser::check_base64_decoded_size("SGVsbG8=", 4),
+            Err(ParsingError::FileTooLarge(_))
+        ));
+    }
+
+    #[test]
+    fn test_bounded_xlsx_writer_rejects_growth_past_limit() {
+        let mut writer = BoundedCursor::new(4);
+        assert!(writer.write_all(b"1234").is_ok());
+        assert!(writer.write_all(b"5").is_err());
     }
 
     // ========================================================================
@@ -3560,6 +4195,66 @@ mod tests {
             assert!(msg.contains("encrypted.docx"));
             assert!(msg.contains("加密"));
         }
+    }
+
+    #[test]
+    fn test_office_encryption_rejects_real_cfb_container_signature() {
+        let parser = DocumentParser::new();
+        let mut cfb = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+        cfb.resize(512, 0);
+
+        assert!(matches!(
+            parser.check_office_encryption(&cfb, "encrypted.xlsx"),
+            Err(ParsingError::EncryptedDocument(_))
+        ));
+        assert!(matches!(
+            parser.edit_xlsx_cells(&cfb, &[]),
+            Err(ParsingError::EncryptedDocument(_))
+        ));
+        assert!(matches!(
+            parser.replace_text_in_xlsx(&cfb, &[]),
+            Err(ParsingError::EncryptedDocument(_))
+        ));
+    }
+
+    #[test]
+    fn test_xlsx_replace_rejects_empty_find_term() {
+        let parser = DocumentParser::new();
+        let workbook = build_test_xlsx(&[("A1", "value")]);
+        let result = parser.replace_text_in_xlsx(
+            &workbook,
+            &[(String::new(), "unbounded insertion".to_string())],
+        );
+        assert!(matches!(result, Err(ParsingError::ExcelParsingError(_))));
+    }
+
+    #[test]
+    fn test_xlsx_replace_iterates_only_populated_sparse_cells() {
+        let parser = DocumentParser::new();
+        let workbook = build_test_xlsx(&[("XFD1048576", "needle")]);
+
+        assert!(matches!(
+            parser.extract_xlsx_as_spec(&workbook),
+            Err(ParsingError::ExcelParsingError(_))
+        ));
+        assert!(matches!(
+            parser.extract_xlsx_tables(&workbook),
+            Err(ParsingError::ExcelParsingError(_))
+        ));
+
+        let (output, count) = parser
+            .replace_text_in_xlsx(&workbook, &[("needle".to_string(), "replaced".to_string())])
+            .unwrap();
+        assert_eq!(count, 1);
+
+        let book = umya_spreadsheet::reader::xlsx::read_reader(Cursor::new(output), true).unwrap();
+        let value = book
+            .get_sheet_by_name("Sheet1")
+            .unwrap()
+            .get_cell("XFD1048576")
+            .unwrap()
+            .get_value();
+        assert_eq!(value, "replaced");
     }
 
     #[test]
@@ -3851,7 +4546,52 @@ mod tests {
             zip_writer.finish().unwrap();
         }
 
+        let edit_result = parser.edit_xlsx_cells(&zip_buffer, &[]);
+        assert!(matches!(
+            edit_result,
+            Err(ParsingError::EncryptedDocument(_))
+        ));
+
+        let replace_result = parser.replace_text_in_xlsx(&zip_buffer, &[]);
+        assert!(matches!(
+            replace_result,
+            Err(ParsingError::EncryptedDocument(_))
+        ));
+
         let result = parser.extract_text_from_bytes("encrypted.xlsx", zip_buffer);
         assert!(matches!(result, Err(ParsingError::EncryptedDocument(_))));
+    }
+
+    #[test]
+    fn test_xlsx_edit_paths_reject_zip_bombs_before_parsing() {
+        let parser = DocumentParser::new();
+        let mut zip_buffer = Vec::new();
+        {
+            let mut zip_writer = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_buffer));
+            let options = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
+
+            zip_writer
+                .start_file("[Content_Types].xml", options)
+                .unwrap();
+            zip_writer
+                .write_all(br#"<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>"#)
+                .unwrap();
+
+            zip_writer
+                .start_file("xl/worksheets/sheet1.xml", options)
+                .unwrap();
+            zip_writer.write_all(&vec![0u8; 2 * 1024 * 1024]).unwrap();
+            zip_writer.finish().unwrap();
+        }
+
+        let edit_result = parser.edit_xlsx_cells(&zip_buffer, &[]);
+        assert!(matches!(edit_result, Err(ParsingError::ZipBombDetected(_))));
+
+        let replace_result = parser.replace_text_in_xlsx(&zip_buffer, &[]);
+        assert!(matches!(
+            replace_result,
+            Err(ParsingError::ZipBombDetected(_))
+        ));
     }
 }

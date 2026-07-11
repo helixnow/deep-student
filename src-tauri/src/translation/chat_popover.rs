@@ -275,7 +275,10 @@ async fn run_chat_translation(
                     message: msg.clone(),
                 },
             );
-            warn!("[ChatTranslation] incomplete event={} msg={}", event_name, msg);
+            warn!(
+                "[ChatTranslation] incomplete event={} msg={}",
+                event_name, msg
+            );
             Err(AppError::llm(msg))
         }
         Err(e) => {
