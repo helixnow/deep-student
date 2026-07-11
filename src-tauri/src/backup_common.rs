@@ -126,6 +126,24 @@ pub fn calculate_bytes_hash(data: &[u8]) -> String {
 // 备份产物敏感材料剥离
 // ============================================================================
 
+const BACKUP_CRYPTO_SECRET_PATHS: [&str; 4] = ["crypto", ".secure", ".master_key", ".key_seed"];
+
+/// 判断备份根目录下的相对路径是否属于不应进入未加密 ZIP 的密钥材料。
+///
+/// 只匹配顶层条目及其后代，避免误伤资产目录中碰巧同名的普通文件。
+pub(crate) fn is_crypto_secret_backup_relative_path(relative_path: &Path) -> bool {
+    let Some(first_component) = relative_path.components().next() else {
+        return false;
+    };
+    let std::path::Component::Normal(first_component) = first_component else {
+        return false;
+    };
+    let first_component = first_component.to_string_lossy();
+    BACKUP_CRYPTO_SECRET_PATHS
+        .iter()
+        .any(|name| first_component.eq_ignore_ascii_case(name))
+}
+
 /// 从备份目录中剥离加密密钥材料（审阅 15-backup-dataspace P1-1）。
 ///
 /// `backup_crypto_keys` 会把明文主密钥 `.master_key` 与 `.secure/`
@@ -142,42 +160,91 @@ pub fn calculate_bytes_hash(data: &[u8]) -> String {
 /// 不会报错），用户需重新输入 API Key——相比密钥随明文 ZIP 泄露，
 /// 这是可接受的代价。
 ///
-/// 返回删除的条目数；删除失败仅告警不阻断（打包继续，宁可多打包也不
-/// 让备份流程失败），但调用方可依据返回值与日志判断是否完全剥离。
-pub fn strip_crypto_secrets_from_backup_dir(backup_dir: &Path) -> usize {
+/// 返回删除的条目数。任何删除或删除后验证失败都会中止导出，避免在
+/// 未加密 ZIP 中意外保留密钥材料。
+pub fn strip_crypto_secrets_from_backup_dir(backup_dir: &Path) -> Result<usize> {
+    strip_crypto_secrets_from_backup_dir_with(backup_dir, remove_sensitive_entry)
+}
+
+fn remove_sensitive_entry(path: &Path, metadata: &fs::Metadata) -> std::io::Result<()> {
+    if metadata.file_type().is_symlink() {
+        #[cfg(windows)]
+        {
+            if path.is_dir() {
+                return fs::remove_dir(path);
+            }
+        }
+        return fs::remove_file(path);
+    }
+
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+fn strip_crypto_secrets_from_backup_dir_with<F>(backup_dir: &Path, mut remover: F) -> Result<usize>
+where
+    F: FnMut(&Path, &fs::Metadata) -> std::io::Result<()>,
+{
+    let backup_metadata = fs::symlink_metadata(backup_dir)
+        .map_err(|e| AppError::file_system(format!("检查备份目录失败 {:?}: {}", backup_dir, e)))?;
+    if backup_metadata.file_type().is_symlink() || !backup_metadata.is_dir() {
+        return Err(AppError::file_system(format!(
+            "备份目录必须是普通目录，不能是文件或符号链接: {:?}",
+            backup_dir
+        )));
+    }
+
+    let mut sensitive_paths = Vec::new();
+    for entry in fs::read_dir(backup_dir).map_err(|e| {
+        AppError::file_system(format!("扫描备份敏感条目失败 {:?}: {}", backup_dir, e))
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::file_system(format!("读取备份敏感条目失败 {:?}: {}", backup_dir, e))
+        })?;
+        if is_crypto_secret_backup_relative_path(Path::new(&entry.file_name())) {
+            sensitive_paths.push(entry.path());
+        }
+    }
+    sensitive_paths.sort();
     let mut removed = 0usize;
 
-    let sensitive_dirs = [backup_dir.join("crypto"), backup_dir.join(".secure")];
-    for dir in &sensitive_dirs {
-        if dir.is_dir() {
-            match fs::remove_dir_all(dir) {
-                Ok(()) => {
-                    tracing::info!("[BackupCommon] 已从备份产物剥离敏感目录: {:?}", dir);
-                    removed += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("[BackupCommon] 剥离敏感目录失败 {:?}: {}", dir, e);
-                }
+    for path in &sensitive_paths {
+        let metadata = match fs::symlink_metadata(path) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(AppError::file_system(format!(
+                    "检查备份敏感条目失败 {:?}: {}",
+                    path, e
+                )))
             }
+        };
+
+        remover(path, &metadata).map_err(|e| {
+            AppError::file_system(format!("剥离备份敏感条目失败 {:?}: {}", path, e))
+        })?;
+        tracing::info!("[BackupCommon] 已从备份产物剥离敏感条目: {:?}", path);
+        removed += 1;
+    }
+
+    for entry in fs::read_dir(backup_dir).map_err(|e| {
+        AppError::file_system(format!("验证备份敏感条目失败 {:?}: {}", backup_dir, e))
+    })? {
+        let entry = entry.map_err(|e| {
+            AppError::file_system(format!("读取备份验证条目失败 {:?}: {}", backup_dir, e))
+        })?;
+        if is_crypto_secret_backup_relative_path(Path::new(&entry.file_name())) {
+            return Err(AppError::file_system(format!(
+                "备份敏感条目删除后仍然存在: {:?}",
+                entry.path()
+            )));
         }
     }
 
-    let sensitive_files = [backup_dir.join(".master_key"), backup_dir.join(".key_seed")];
-    for file in &sensitive_files {
-        if file.is_file() {
-            match fs::remove_file(file) {
-                Ok(()) => {
-                    tracing::info!("[BackupCommon] 已从备份产物剥离敏感文件: {:?}", file);
-                    removed += 1;
-                }
-                Err(e) => {
-                    tracing::warn!("[BackupCommon] 剥离敏感文件失败 {:?}: {}", file, e);
-                }
-            }
-        }
-    }
-
-    removed
+    Ok(removed)
 }
 
 // ============================================================================
@@ -763,6 +830,123 @@ mod tests {
             hash,
             "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         );
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_removes_all_sensitive_entries() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("crypto/.secure")).unwrap();
+        std::fs::create_dir_all(backup_dir.path().join(".secure")).unwrap();
+        std::fs::write(backup_dir.path().join("crypto/.master_key"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".secure/credential.enc"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".master_key"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join(".key_seed"), b"secret").unwrap();
+        std::fs::write(backup_dir.path().join("manifest.json"), b"{}").unwrap();
+
+        let removed = strip_crypto_secrets_from_backup_dir(backup_dir.path()).unwrap();
+
+        assert_eq!(removed, 4);
+        for name in ["crypto", ".secure", ".master_key", ".key_seed"] {
+            assert!(
+                std::fs::symlink_metadata(backup_dir.path().join(name)).is_err(),
+                "sensitive entry should be absent: {name}"
+            );
+        }
+        assert!(backup_dir.path().join("manifest.json").is_file());
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_fails_closed_on_removal_error() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("crypto")).unwrap();
+
+        let result =
+            strip_crypto_secrets_from_backup_dir_with(backup_dir.path(), |_path, _metadata| {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "forced removal failure",
+                ))
+            });
+
+        assert!(result.is_err());
+        assert!(backup_dir.path().join("crypto").is_dir());
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_fails_closed_when_entry_remains() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::write(backup_dir.path().join(".master_key"), b"secret").unwrap();
+
+        let result =
+            strip_crypto_secrets_from_backup_dir_with(backup_dir.path(), |_path, _metadata| Ok(()));
+
+        assert!(result.is_err());
+        assert!(backup_dir.path().join(".master_key").is_file());
+    }
+
+    #[test]
+    fn test_crypto_secret_relative_path_matching_is_component_scoped() {
+        for path in [
+            "crypto",
+            "crypto/.secure/.key_seed",
+            ".secure/credential.enc",
+            ".master_key",
+            ".key_seed",
+        ] {
+            assert!(is_crypto_secret_backup_relative_path(Path::new(path)));
+        }
+        for path in [
+            "crypto-not-secret/file.bin",
+            "assets/crypto/file.bin",
+            "assets/.master_key",
+        ] {
+            assert!(!is_crypto_secret_backup_relative_path(Path::new(path)));
+        }
+    }
+
+    #[test]
+    fn test_strip_crypto_secrets_matches_ascii_case_variants() {
+        let backup_dir = TempDir::new().unwrap();
+        std::fs::create_dir_all(backup_dir.path().join("CRYPTO")).unwrap();
+        std::fs::write(backup_dir.path().join("CRYPTO/key.bin"), b"secret").unwrap();
+
+        let removed = strip_crypto_secrets_from_backup_dir(backup_dir.path()).unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(std::fs::symlink_metadata(backup_dir.path().join("CRYPTO")).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_strip_crypto_secrets_removes_symlink_without_touching_target() {
+        let backup_dir = TempDir::new().unwrap();
+        let target_dir = TempDir::new().unwrap();
+        std::fs::write(target_dir.path().join("keep.txt"), b"keep").unwrap();
+        std::os::unix::fs::symlink(target_dir.path(), backup_dir.path().join(".secure")).unwrap();
+
+        let removed = strip_crypto_secrets_from_backup_dir(backup_dir.path()).unwrap();
+
+        assert_eq!(removed, 1);
+        assert!(
+            std::fs::symlink_metadata(backup_dir.path().join(".secure")).is_err(),
+            "the sensitive symlink itself must be removed"
+        );
+        assert!(target_dir.path().join("keep.txt").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_strip_crypto_secrets_rejects_symlinked_backup_root() {
+        let parent = TempDir::new().unwrap();
+        let target = TempDir::new().unwrap();
+        std::fs::create_dir_all(target.path().join("crypto")).unwrap();
+        let linked_root = parent.path().join("linked-backup");
+        std::os::unix::fs::symlink(target.path(), &linked_root).unwrap();
+
+        let result = strip_crypto_secrets_from_backup_dir(&linked_root);
+
+        assert!(result.is_err());
+        assert!(target.path().join("crypto").is_dir());
     }
 
     // ================================================================

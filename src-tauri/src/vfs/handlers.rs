@@ -822,8 +822,7 @@ pub async fn vfs_search_all(
     let search_limit = params.limit.min(50); // 每种类型最多搜索 50 条
 
     // 根据 types 过滤要搜索的类型（None = 不过滤，搜索全部类型）
-    let type_enabled =
-        |name: &str| types.is_none_or(|list| list.iter().any(|t| t == name));
+    let type_enabled = |name: &str| types.is_none_or(|list| list.iter().any(|t| t == name));
     let search_notes = type_enabled("note");
     let search_exams = type_enabled("exam");
     let search_translations = type_enabled("translation");

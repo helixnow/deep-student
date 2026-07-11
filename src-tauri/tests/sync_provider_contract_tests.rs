@@ -1697,8 +1697,7 @@ async fn ftp_storage() -> Box<dyn CloudStorage> {
     create_storage(&CloudStorageConfig {
         provider: StorageProvider::Ftp,
         ftp: Some(FtpConfig {
-            host: std::env::var("DS_SYNC_FTP_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            host: std::env::var("DS_SYNC_FTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             port: std::env::var("DS_SYNC_FTP_PORT")
                 .unwrap_or_else(|_| "2121".to_string())
                 .parse()
@@ -1720,8 +1719,7 @@ async fn ftp_storage_with_password(password: &str) -> Box<dyn CloudStorage> {
     create_storage(&CloudStorageConfig {
         provider: StorageProvider::Ftp,
         ftp: Some(FtpConfig {
-            host: std::env::var("DS_SYNC_FTP_HOST")
-                .unwrap_or_else(|_| "127.0.0.1".to_string()),
+            host: std::env::var("DS_SYNC_FTP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
             port: std::env::var("DS_SYNC_FTP_PORT")
                 .unwrap_or_else(|_| "2121".to_string())
                 .parse()

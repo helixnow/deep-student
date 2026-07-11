@@ -435,9 +435,11 @@ fn parse_breakdown_titles(raw: &str) -> Vec<String> {
     arr.iter()
         .filter_map(|v| {
             // 兼容 ["t1"] 与 [{"title":"t1"}] 两种形态
-            v.as_str()
-                .map(|s| s.to_string())
-                .or_else(|| v.get("title").and_then(|t| t.as_str()).map(|s| s.to_string()))
+            v.as_str().map(|s| s.to_string()).or_else(|| {
+                v.get("title")
+                    .and_then(|t| t.as_str())
+                    .map(|s| s.to_string())
+            })
         })
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())

@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use rustls::{ClientConfig, RootCertStore};
 use sha2::{Digest, Sha256};
 use std::io::Cursor;
 use std::path::Path;
@@ -14,7 +15,6 @@ use suppaftp::tokio::AsyncRustlsConnector;
 use suppaftp::tokio::{AsyncFtpStream, AsyncRustlsFtpStream};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt, ReadBuf};
 use tokio_rustls::TlsConnector;
-use rustls::{ClientConfig, RootCertStore};
 use uuid::Uuid;
 
 use super::config::FtpConfig;
@@ -117,7 +117,10 @@ impl FtpStorage {
         tokio::time::timeout(Duration::from_secs(45), self.create_client_inner())
             .await
             .map_err(|_| {
-                AppError::network(format!("FTP 连接超时（45 秒）: {}:{}", self.host, self.port))
+                AppError::network(format!(
+                    "FTP 连接超时（45 秒）: {}:{}",
+                    self.host, self.port
+                ))
             })?
     }
 
@@ -134,20 +137,14 @@ impl FtpStorage {
 
             tracing::debug!("[FtpStorage] 正在升级到 TLS...");
             let root_store = RootCertStore {
-                roots: webpki_roots::TLS_SERVER_ROOTS
-                    .iter()
-                    .cloned()
-                    .collect(),
+                roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),
             };
             let config = ClientConfig::builder()
                 .with_root_certificates(root_store)
                 .with_no_client_auth();
             let tls_connector = TlsConnector::from(Arc::new(config));
             let mut secure_stream = stream
-                .into_secure(
-                    AsyncRustlsConnector::from(tls_connector),
-                    &self.host,
-                )
+                .into_secure(AsyncRustlsConnector::from(tls_connector), &self.host)
                 .await
                 .map_err(|e| AppError::network(format!("FTP TLS 升级失败：{}", e)))?;
 
@@ -935,8 +932,14 @@ impl CloudStorage for FtpStorage {
             let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
-            self.upload_reader_atomic(&mut client, filename, &mut file, file_size, progress_ref.as_ref())
-                .await?;
+            self.upload_reader_atomic(
+                &mut client,
+                filename,
+                &mut file,
+                file_size,
+                progress_ref.as_ref(),
+            )
+            .await?;
 
             client.quit().await?;
 

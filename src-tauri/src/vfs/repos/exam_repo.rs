@@ -527,10 +527,7 @@ impl VfsExamRepo {
             Err(e) => {
                 let _ = conn.execute("ROLLBACK TO copy_exam", []);
                 let _ = conn.execute("RELEASE copy_exam", []);
-                log::error!(
-                    "[VFS::ExamRepo] Failed to copy exam {}: {}",
-                    src_exam_id, e
-                );
+                log::error!("[VFS::ExamRepo] Failed to copy exam {}: {}", src_exam_id, e);
                 Err(e)
             }
         }
@@ -860,10 +857,9 @@ impl VfsExamRepo {
         let conn = db.get_conn_safe()?;
         Self::purge_exam_sheet_with_conn(&conn, db.blobs_dir(), exam_id)?;
         // ★ 2026-06-12（审阅问题 S4）：事务提交后清扫 ref_count=0 的 blob
-        if let Err(e) = super::blob_repo::VfsBlobRepo::cleanup_unreferenced_with_conn(
-            &conn,
-            db.blobs_dir(),
-        ) {
+        if let Err(e) =
+            super::blob_repo::VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir())
+        {
             warn!(
                 "[VFS::ExamRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
                 e
@@ -2060,7 +2056,9 @@ mod tests {
 
         let copied_q: Vec<(String, Option<String>)> = {
             let mut stmt = conn
-                .prepare("SELECT content, answer FROM questions WHERE exam_id = ?1 ORDER BY content")
+                .prepare(
+                    "SELECT content, answer FROM questions WHERE exam_id = ?1 ORDER BY content",
+                )
                 .unwrap();
             stmt.query_map(params![copy.id], |row| Ok((row.get(0)?, row.get(1)?)))
                 .unwrap()
@@ -2085,7 +2083,11 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(rc, 1, "{} blob 在原卷 purge 后必须为 1（副本仍持有）", label);
+            assert_eq!(
+                rc, 1,
+                "{} blob 在原卷 purge 后必须为 1（副本仍持有）",
+                label
+            );
         }
         let copy_q_count: i64 = conn
             .query_row(

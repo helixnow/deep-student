@@ -1433,9 +1433,10 @@ pub async fn data_governance_run_sync(
     // P1-4: 全局互斥：避免与备份/恢复/ZIP 导入导出/另一次同步并发。
     // 同步命令用 try_acquire 立即失败：双入口重复触发时第二个请求应当即刻
     // 返回"正在进行中"，而不是排队 30 秒后再完整跑一遍同步。
-    let _permit = BACKUP_GLOBAL_LIMITER.clone().try_acquire_owned().map_err(|_| {
-        "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string()
-    })?;
+    let _permit = BACKUP_GLOBAL_LIMITER
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string())?;
 
     // 创建云存储实例
     let storage = create_storage(&config)
@@ -3936,11 +3937,7 @@ pub async fn data_governance_retry_all_quarantine(
                 }
             };
 
-            match SyncManager::apply_downloaded_changes(
-                &conn,
-                &[change],
-                Some(&id_column_map()),
-            ) {
+            match SyncManager::apply_downloaded_changes(&conn, &[change], Some(&id_column_map())) {
                 Ok(result) if result.failure_count == 0 => {
                     let _ = conn.execute(
                         "DELETE FROM __sync_quarantine WHERE id=?1",

@@ -189,7 +189,7 @@ pub async fn get_default_backup_directory(state: State<'_, AppState>) -> Result<
 
 use crate::file_manager::FileManager;
 use chrono::{DateTime, Utc};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::time::{sleep, Duration};
 
@@ -198,6 +198,15 @@ const LAST_AUTO_BACKUP_KEY: &str = "backup.last_auto_backup_time";
 
 /// 防止自动备份重入的标志
 static AUTO_BACKUP_RUNNING: AtomicBool = AtomicBool::new(false);
+
+fn create_auto_backup_staging_dir(app_data_root: &Path) -> Result<tempfile::TempDir> {
+    std::fs::create_dir_all(app_data_root)
+        .map_err(|e| AppError::file_system(format!("创建应用数据目录失败: {}", e)))?;
+    tempfile::Builder::new()
+        .prefix("auto-backup-staging-")
+        .tempdir_in(app_data_root)
+        .map_err(|e| AppError::file_system(format!("创建自动备份暂存目录失败: {}", e)))
+}
 
 /// 自动备份调度器 - 在应用启动时调用
 /// 定期检查是否需要执行自动备份
@@ -267,6 +276,8 @@ async fn check_and_perform_auto_backup(
 
     let root = file_manager.get_writable_app_data_dir();
     let backups_dir = get_effective_backup_dir(&config, &root)?;
+    std::fs::create_dir_all(&backups_dir)
+        .map_err(|e| AppError::file_system(format!("创建自动备份输出目录失败: {}", e)))?;
 
     let _permit = crate::backup_common::BACKUP_GLOBAL_LIMITER
         .clone()
@@ -274,8 +285,12 @@ async fn check_and_perform_auto_backup(
         .await
         .map_err(|_| AppError::internal("备份信号量已关闭".to_string()))?;
 
+    // 原始备份包含 crypto/，只能暂存在本机应用数据目录。自定义目录可能由
+    // WebDAV/网盘客户端同步，因此只允许最终、已剥离密钥的 ZIP 写入那里。
+    let staging_dir = create_auto_backup_staging_dir(&root)?;
+
     let manager = BackupManager::with_config(
-        backups_dir.clone(),
+        staging_dir.path().to_path_buf(),
         crate::data_governance::backup::BackupConfig {
             app_data_dir: root.clone(),
             app_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -308,12 +323,12 @@ async fn check_and_perform_auto_backup(
     };
 
     let backup_id = &manifest.backup_id;
-    let backup_subdir = backups_dir.join(backup_id);
+    let backup_subdir = staging_dir.path().join(backup_id);
 
     // 安全修复（审阅 15-backup-dataspace P1-1）：自动备份 ZIP 未加密且可能落在
     // 网盘同步目录，打包前剥离 crypto/（明文主密钥 + 密钥种子 + 加密凭据），
     // 避免"密文与解密密钥同渠道泄露"。恢复该 ZIP 后需重新输入 API Key。
-    let stripped = crate::backup_common::strip_crypto_secrets_from_backup_dir(&backup_subdir);
+    let stripped = crate::backup_common::strip_crypto_secrets_from_backup_dir(&backup_subdir)?;
     if stripped > 0 {
         tracing::info!(
             "[AutoBackup] 已从备份产物剥离 {} 个敏感密钥条目（ZIP 不包含 API 凭据解密材料）",
@@ -328,8 +343,6 @@ async fn check_and_perform_auto_backup(
     };
     export_backup_to_zip(&backup_subdir, &zip_options)
         .map_err(|e| AppError::internal(format!("ZIP 导出失败: {}", e)))?;
-
-    let _ = std::fs::remove_dir_all(&backup_subdir);
 
     tracing::info!("[AutoBackup] 自动备份完成: {}", zip_name);
     save_last_auto_backup_time(&database, now)?;
@@ -588,6 +601,30 @@ mod tests {
             root.join("backups"),
             "自定义目录不存在时应回退到默认路径"
         );
+    }
+
+    #[test]
+    fn test_auto_backup_staging_is_under_app_data_not_custom_destination() {
+        let app_data_parent = TempDir::new().unwrap();
+        let app_data_root = app_data_parent.path().join("app-data");
+        let custom_destination = TempDir::new().unwrap();
+        let config = BackupConfig {
+            backup_directory: Some(custom_destination.path().to_string_lossy().to_string()),
+            ..BackupConfig::default()
+        };
+
+        let effective_destination = get_effective_backup_dir(&config, &app_data_root).unwrap();
+        let staging = create_auto_backup_staging_dir(&app_data_root).unwrap();
+
+        assert_eq!(effective_destination, custom_destination.path());
+        assert!(staging.path().starts_with(&app_data_root));
+        assert!(!staging.path().starts_with(&effective_destination));
+        assert!(staging
+            .path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("auto-backup-staging-"));
     }
 
     // ================================================================

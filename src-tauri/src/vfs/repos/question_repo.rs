@@ -1578,28 +1578,6 @@ impl VfsQuestionRepo {
         question_id: &str,
         params: &UpdateQuestionParams,
     ) -> VfsResult<Question> {
-        // ACR R2-01：可选 OCC（照抄 todo_repo expected_updated_at 模板）
-        if let Some(ref expected) = params.expected_updated_at {
-            if !expected.is_empty() {
-                let current = Self::get_question_with_conn(conn, question_id)?.ok_or_else(|| {
-                    VfsError::NotFound {
-                        resource_type: "question".to_string(),
-                        id: question_id.to_string(),
-                    }
-                })?;
-                if *expected != current.updated_at {
-                    warn!(
-                        "[VFS::QuestionRepo] Optimistic lock conflict for question {}: expected updated_at='{}', actual='{}'",
-                        question_id, expected, current.updated_at
-                    );
-                    return Err(VfsError::Other(format!(
-                        "QBANK_CONFLICT: expected_updated_at={}, actual_updated_at={}",
-                        expected, current.updated_at
-                    )));
-                }
-            }
-        }
-
         let now = chrono::Utc::now().to_rfc3339();
         let mut set_clauses = vec![
             "updated_at = ?1".to_string(),
@@ -1690,18 +1668,50 @@ impl VfsQuestionRepo {
             param_idx += 1;
         }
 
-        let sql = format!(
-            "UPDATE questions SET {} WHERE id = ?{} AND deleted_at IS NULL",
-            set_clauses.join(", "),
-            param_idx
-        );
+        let question_id_param = param_idx;
         param_values.push(Box::new(question_id.to_string()));
+        param_idx += 1;
+
+        let expected_updated_at = params
+            .expected_updated_at
+            .as_deref()
+            .filter(|expected| !expected.is_empty());
+        let occ_predicate = if let Some(expected) = expected_updated_at {
+            let predicate = format!(" AND updated_at = ?{}", param_idx);
+            param_values.push(Box::new(expected.to_string()));
+            predicate
+        } else {
+            String::new()
+        };
+
+        // The optimistic-lock comparison is part of the write itself. A separate
+        // SELECT pre-check leaves a race window in which another writer can win
+        // between validation and UPDATE.
+        let sql = format!(
+            "UPDATE questions SET {} WHERE id = ?{} AND deleted_at IS NULL{}",
+            set_clauses.join(", "),
+            question_id_param,
+            occ_predicate
+        );
 
         let params_refs: Vec<&dyn rusqlite::ToSql> =
             param_values.iter().map(|p| p.as_ref()).collect();
         let affected = conn.execute(&sql, params_refs.as_slice())?;
 
         if affected == 0 {
+            if let (Some(expected), Some(current)) = (
+                expected_updated_at,
+                Self::get_question_with_conn(conn, question_id)?,
+            ) {
+                warn!(
+                    "[VFS::QuestionRepo] Optimistic lock conflict for question {}: expected updated_at='{}', actual='{}'",
+                    question_id, expected, current.updated_at
+                );
+                return Err(VfsError::Other(format!(
+                    "QBANK_CONFLICT: expected_updated_at={}, actual_updated_at={}",
+                    expected, current.updated_at
+                )));
+            }
             return Err(VfsError::NotFound {
                 resource_type: "question".to_string(),
                 id: question_id.to_string(),
@@ -2420,5 +2430,155 @@ impl VfsQuestionRepo {
             ai_score,
             ai_graded_at: row.get(28)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_question(db: &VfsDatabase, id: &str) -> Question {
+        let conn = db.get_conn_safe().expect("open migrated VFS test database");
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
+             ) VALUES (?1, 'OCC test', 'completed', ?2, '{}', '{}', ?3, ?3)",
+            params![
+                format!("exam-{id}"),
+                format!("temp-{id}"),
+                "2020-01-01T00:00:00Z"
+            ],
+        )
+        .expect("insert parent exam");
+        drop(conn);
+
+        let question = VfsQuestionRepo::create_question(
+            db,
+            &CreateQuestionParams {
+                exam_id: format!("exam-{id}"),
+                card_id: None,
+                question_label: None,
+                content: "original".to_string(),
+                options: None,
+                answer: None,
+                explanation: None,
+                question_type: None,
+                difficulty: None,
+                tags: None,
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+            },
+        )
+        .expect("create question");
+
+        let conn = db.get_conn_safe().expect("reopen VFS test database");
+        conn.execute(
+            "UPDATE questions SET updated_at = '2020-01-01T00:00:00Z' WHERE id = ?1",
+            params![question.id],
+        )
+        .expect("set deterministic OCC baseline");
+        VfsQuestionRepo::get_question_with_conn(&conn, &question.id)
+            .expect("load question")
+            .expect("question should exist")
+    }
+
+    #[test]
+    fn update_question_occ_is_atomic_and_rejects_stale_writes() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let question = create_test_question(&db, "atomic");
+        let baseline = question.updated_at.clone();
+
+        let first = VfsQuestionRepo::update_question(
+            &db,
+            &question.id,
+            &UpdateQuestionParams {
+                content: Some("newer content".to_string()),
+                expected_updated_at: Some(baseline.clone()),
+                ..Default::default()
+            },
+        )
+        .expect("matching OCC baseline should update");
+        assert_eq!(first.content, "newer content");
+        assert_ne!(first.updated_at, baseline);
+
+        let stale_error = VfsQuestionRepo::update_question(
+            &db,
+            &question.id,
+            &UpdateQuestionParams {
+                content: Some("stale overwrite".to_string()),
+                expected_updated_at: Some(baseline),
+                ..Default::default()
+            },
+        )
+        .expect_err("stale OCC baseline must conflict");
+        assert!(stale_error.to_string().contains("QBANK_CONFLICT"));
+        assert!(stale_error
+            .to_string()
+            .contains(&format!("actual_updated_at={}", first.updated_at)));
+
+        let persisted = VfsQuestionRepo::get_question(&db, &question.id)
+            .expect("reload question")
+            .expect("question should remain live");
+        assert_eq!(persisted.content, "newer content");
+        assert_eq!(persisted.updated_at, first.updated_at);
+    }
+
+    #[test]
+    fn concurrent_question_updates_allow_exactly_one_occ_winner() {
+        use std::sync::{Arc, Barrier};
+
+        let (temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let question = create_test_question(&db, "concurrent");
+        let db_path = temp_dir.path().join("databases").join("vfs.db");
+        let barrier = Arc::new(Barrier::new(2));
+
+        let handles: Vec<_> = ["writer-a", "writer-b"]
+            .into_iter()
+            .map(|content| {
+                let db_path = db_path.clone();
+                let question_id = question.id.clone();
+                let expected = question.updated_at.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let conn = Connection::open(db_path).expect("open concurrent VFS connection");
+                    conn.busy_timeout(std::time::Duration::from_secs(5))
+                        .expect("configure SQLite busy timeout");
+                    barrier.wait();
+                    VfsQuestionRepo::update_question_with_conn(
+                        &conn,
+                        &question_id,
+                        &UpdateQuestionParams {
+                            content: Some(content.to_string()),
+                            expected_updated_at: Some(expected),
+                            ..Default::default()
+                        },
+                    )
+                    .map(|updated| updated.content)
+                    .map_err(|error| error.to_string())
+                })
+            })
+            .collect();
+
+        let outcomes: Vec<_> = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("join concurrent writer"))
+            .collect();
+        assert_eq!(outcomes.iter().filter(|outcome| outcome.is_ok()).count(), 1);
+        assert_eq!(
+            outcomes
+                .iter()
+                .filter(|outcome| outcome
+                    .as_ref()
+                    .is_err_and(|error| error.contains("QBANK_CONFLICT")))
+                .count(),
+            1
+        );
+
+        let persisted = VfsQuestionRepo::get_question(&db, &question.id)
+            .expect("reload concurrent question")
+            .expect("concurrent question should exist");
+        assert!(persisted.content == "writer-a" || persisted.content == "writer-b");
     }
 }

@@ -491,7 +491,8 @@ impl CloudStorage for S3Storage {
                         // 不带 token 重发只会拿到同一页（死循环），静默 break 则
                         // 返回截断列表（上层可能据此误判删除/上传）。如实报错。
                         return Err(AppError::network(
-                            "S3 列表被截断但未返回 continuation token，无法安全继续分页".to_string(),
+                            "S3 列表被截断但未返回 continuation token，无法安全继续分页"
+                                .to_string(),
                         ));
                     }
                 }

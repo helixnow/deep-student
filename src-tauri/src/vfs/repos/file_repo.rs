@@ -313,12 +313,11 @@ impl VfsFileRepo {
         new_file_name: &str,
     ) -> VfsResult<VfsFile> {
         // 1. 读取源文件完整数据
-        let src = Self::get_file_with_conn(conn, src_file_id)?.ok_or_else(|| {
-            VfsError::NotFound {
+        let src =
+            Self::get_file_with_conn(conn, src_file_id)?.ok_or_else(|| VfsError::NotFound {
                 resource_type: "File".to_string(),
                 id: src_file_id.to_string(),
-            }
-        })?;
+            })?;
 
         let (processing_status, processing_progress): (Option<String>, Option<String>) = conn
             .query_row(
@@ -413,9 +412,8 @@ impl VfsFileRepo {
                 ],
             )?;
 
-            Self::get_file_with_conn(conn, &file_id)?.ok_or_else(|| {
-                VfsError::Database(format!("File {} not found after copy", file_id))
-            })
+            Self::get_file_with_conn(conn, &file_id)?
+                .ok_or_else(|| VfsError::Database(format!("File {} not found after copy", file_id)))
         })();
 
         match result {
@@ -432,10 +430,7 @@ impl VfsFileRepo {
             Err(e) => {
                 let _ = conn.execute("ROLLBACK TO copy_file", []);
                 let _ = conn.execute("RELEASE copy_file", []);
-                error!(
-                    "[VFS::FileRepo] Failed to copy file {}: {}",
-                    src_file_id, e
-                );
+                error!("[VFS::FileRepo] Failed to copy file {}: {}", src_file_id, e);
                 Err(e)
             }
         }
@@ -1930,9 +1925,13 @@ mod tests {
         let main_blob =
             VfsBlobRepo::store_blob(&db, b"copy-file-main", Some("application/pdf"), Some("pdf"))
                 .unwrap();
-        let compressed_blob =
-            VfsBlobRepo::store_blob(&db, b"copy-file-compressed", Some("image/webp"), Some("webp"))
-                .unwrap();
+        let compressed_blob = VfsBlobRepo::store_blob(
+            &db,
+            b"copy-file-compressed",
+            Some("image/webp"),
+            Some("webp"),
+        )
+        .unwrap();
         let page_blob =
             VfsBlobRepo::store_blob(&db, b"copy-file-page", Some("image/jpeg"), Some("jpg"))
                 .unwrap();
@@ -1990,7 +1989,10 @@ mod tests {
         );
         assert_eq!(copy.extracted_text.as_deref(), Some("hello text"));
         assert!(
-            copy.preview_json.as_deref().unwrap_or("").contains(&page_blob.hash),
+            copy.preview_json
+                .as_deref()
+                .unwrap_or("")
+                .contains(&page_blob.hash),
             "副本必须继承 preview_json"
         );
         for (label, hash) in [

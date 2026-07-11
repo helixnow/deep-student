@@ -381,7 +381,8 @@ pub async fn download_blob_tombstones(
             .await
             .map_err(|e| SyncError::Network(format!("获取 blob tombstone {} 失败: {}", key, e)))?
         {
-            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")? {
+            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")?
+            {
                 merge_blob_tombstones(&mut merged, manifest);
             }
         }
@@ -427,7 +428,8 @@ where
             .await
             .map_err(|e| SyncError::Network(format!("获取 blob tombstone {} 失败: {}", key, e)))?
         {
-            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")? {
+            if let Some(manifest) = decode_tombstone_file::<BlobTombstones>(codec, &bytes, "blob")?
+            {
                 let source = source_device_from_tombstone_key(BLOB_TOMBSTONE_PREFIX, &key);
                 let watermark = watermark_for(&source)?;
                 let (filtered, max_offset) = filter_blob_tombstones_after(manifest, watermark);
@@ -855,7 +857,11 @@ async fn find_cloud_blob_key_by_hash(
     if hash.len() < 2 {
         return None;
     }
-    let bucket = format!("{}/{}", blobs_cloud_prefix.trim_end_matches('/'), &hash[..2]);
+    let bucket = format!(
+        "{}/{}",
+        blobs_cloud_prefix.trim_end_matches('/'),
+        &hash[..2]
+    );
     let outcome = storage.list_outcome(&bucket).await.ok()?;
     if outcome.truncated {
         return None;

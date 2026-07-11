@@ -108,6 +108,8 @@ pub struct Database {
     conn: Mutex<Connection>,
     db_path: RwLock<PathBuf>,
     secure_store: Option<SecureStore>,
+    /// Serializes secure-file writes with legacy-row cleanup and compensation.
+    secret_operation_lock: Mutex<()>,
     /// 维护模式标志：当备份/恢复等数据治理操作进行时设为 true，
     /// 用于阻止同步命令等并发操作绕过维护模式直接访问数据库文件。
     maintenance_mode: std::sync::atomic::AtomicBool,
@@ -696,6 +698,7 @@ impl Database {
             conn: Mutex::new(conn),
             db_path: RwLock::new(db_path.to_path_buf()),
             secure_store,
+            secret_operation_lock: Mutex::new(()),
             maintenance_mode: std::sync::atomic::AtomicBool::new(false),
         };
         Ok(db)
@@ -3557,74 +3560,131 @@ impl Database {
         Ok(())
     }
 
-    /// 保存敏感设置（优先使用安全存储）
+    /// 保存设置；敏感值必须写入安全存储，禁止明文回退。
     pub fn save_secret(&self, key: &str, value: &str) -> Result<()> {
-        // 检查是否为敏感键
-        if SecureStore::is_sensitive_key(key) {
-            if let Some(ref secure_store) = self.secure_store {
-                match secure_store.save_secret(key, value) {
-                    Ok(_) => {
-                        // 成功保存到安全存储，从数据库删除明文（如果存在）
-                        let _ = self.delete_setting(key);
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        // 安全存储失败，记录警告并回退到数据库
-                        if secure_store.get_config().warn_on_fallback {
-                            log::warn!("安全存储失败，回退到明文存储: {} - {}", key, e);
-                        }
-                    }
-                }
-            }
+        if !SecureStore::is_sensitive_key(key) {
+            return self.save_setting(key, value);
         }
 
-        // 回退到普通数据库存储
-        self.save_setting(key, value)
+        let _secret_guard = self.lock_secret_operations();
+        self.save_sensitive_secret_locked(key, value)
     }
 
-    /// 获取敏感设置（优先从安全存储获取）
-    pub fn get_secret(&self, key: &str) -> Result<Option<String>> {
-        // 检查是否为敏感键且安全存储可用
-        if SecureStore::is_sensitive_key(key) {
-            if let Some(ref secure_store) = self.secure_store {
-                match secure_store.get_secret(key) {
-                    Ok(Some(value)) => {
-                        // 从安全存储成功获取
-                        return Ok(Some(value));
-                    }
-                    Ok(None) => {
-                        // 安全存储中没有，继续尝试数据库
-                    }
-                    Err(e) => {
-                        // 安全存储访问失败，记录警告并回退
-                        log::warn!("安全存储读取失败，回退到数据库: {} - {}", key, e);
-                    }
+    fn lock_secret_operations(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.secret_operation_lock
+            .lock()
+            .unwrap_or_else(|poisoned| {
+                log::error!("[Database] Secret operation mutex poisoned; recovering lock");
+                poisoned.into_inner()
+            })
+    }
+
+    /// Caller must hold `secret_operation_lock` for the whole state transition.
+    fn save_sensitive_secret_locked(&self, key: &str, value: &str) -> Result<()> {
+        let secure_store = self
+            .secure_store
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("安全存储不可用，拒绝以明文保存敏感设置: {}", key))?;
+
+        match secure_store.save_secret(key, value) {
+            Ok(()) => {
+                // Legacy versions may have left a plaintext row behind. Treat its removal as
+                // part of the write: reporting success while it remains would silently retain
+                // the secret in backups and database exports.
+                if let Err(db_error) = self.delete_setting(key) {
+                    // The file and SQLite database cannot share a transaction. Remove the newly
+                    // written secure copy on failure so callers do not unknowingly leave two
+                    // divergent values behind. A retry can then complete the migration cleanly.
+                    return match secure_store.delete_secret(key) {
+                        Ok(()) => Err(anyhow::anyhow!(
+                            "安全存储写入成功，但清理数据库中的旧明文失败（已回滚安全副本）: {} - {}",
+                            key,
+                            db_error
+                        )),
+                        Err(rollback_error) => Err(anyhow::anyhow!(
+                            "安全存储写入成功，但清理数据库中的旧明文失败，且回滚安全副本也失败: {} - {}; rollback: {}",
+                            key,
+                            db_error,
+                            rollback_error
+                        )),
+                    };
                 }
+                Ok(())
             }
+            Err(secure_error) => Err(anyhow::anyhow!(
+                "安全存储写入失败，已拒绝以明文保存敏感设置: {} - {}",
+                key,
+                secure_error
+            )),
+        }
+    }
+
+    /// 获取设置；敏感值从安全存储读取，并迁移遗留的数据库明文。
+    pub fn get_secret(&self, key: &str) -> Result<Option<String>> {
+        if !SecureStore::is_sensitive_key(key) {
+            return self.get_setting(key);
         }
 
-        // 回退到普通数据库存储
-        self.get_setting(key)
+        let _secret_guard = self.lock_secret_operations();
+
+        let secure_store = self.secure_store.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("安全存储不可用，拒绝读取数据库中的敏感设置: {}", key)
+        })?;
+
+        match secure_store.get_secret(key) {
+            Ok(Some(value)) => Ok(Some(value)),
+            Ok(None) => {
+                let legacy_value = self.get_setting(key)?;
+                if let Some(ref value) = legacy_value {
+                    self.save_sensitive_secret_locked(key, value)
+                        .with_context(|| format!("迁移数据库中的旧明文敏感设置失败: {}", key))?;
+                }
+                Ok(legacy_value)
+            }
+            Err(secure_error) => Err(anyhow::anyhow!(
+                "安全存储读取失败，已拒绝回退到数据库明文: {} - {}",
+                key,
+                secure_error
+            )),
+        }
     }
 
     /// 删除敏感设置（同时从安全存储和数据库删除）
     pub fn delete_secret(&self, key: &str) -> Result<bool> {
-        let mut deleted = false;
-
-        // 从安全存储删除
-        if SecureStore::is_sensitive_key(key) {
-            if let Some(ref secure_store) = self.secure_store {
-                secure_store
-                    .delete_secret(key)
-                    .map_err(|e| anyhow::anyhow!("从安全存储删除失败: {} - {}", key, e))?;
-                deleted = true;
-            }
+        if !SecureStore::is_sensitive_key(key) {
+            return self.delete_setting(key);
         }
 
-        // 从数据库删除
-        let db_deleted = self.delete_setting(key)?;
+        let _secret_guard = self.lock_secret_operations();
 
-        Ok(deleted || db_deleted)
+        // Always attempt both locations. In particular, a secure-store error must not leave an
+        // independently removable legacy plaintext row in SQLite.
+        let secure_result = self
+            .secure_store
+            .as_ref()
+            .map(|secure_store| secure_store.delete_secret(key));
+        let db_result = self.delete_setting(key);
+
+        match (secure_result, db_result) {
+            (Some(Err(secure_error)), Err(db_error)) => Err(anyhow::anyhow!(
+                "删除敏感设置失败（安全存储和数据库均未能清理）: {} - secure: {}; database: {}",
+                key,
+                secure_error,
+                db_error
+            )),
+            (Some(Err(secure_error)), Ok(_)) => Err(anyhow::anyhow!(
+                "从安全存储删除敏感设置失败（数据库明文已清理）: {} - {}",
+                key,
+                secure_error
+            )),
+            (Some(Ok(())), Err(db_error)) => Err(anyhow::anyhow!(
+                "从数据库删除旧明文敏感设置失败（安全副本已清理）: {} - {}",
+                key,
+                db_error
+            )),
+            (Some(Ok(())), Ok(_)) => Ok(true),
+            (None, result) => result,
+        }
     }
 
     // ================= Research reports =================
@@ -4296,27 +4356,80 @@ impl Database {
 
     /// 删除Anki卡片
     pub fn delete_anki_card(&self, card_id: &str) -> Result<()> {
-        let conn = self.get_conn_safe()?;
-        conn.execute("DELETE FROM anki_cards WHERE id = ?1", params![card_id])?;
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM fsrs_review_logs WHERE anki_card_id = ?1",
+            params![card_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states WHERE anki_card_id = ?1",
+            params![card_id],
+        )?;
+        tx.execute("DELETE FROM anki_cards WHERE id = ?1", params![card_id])?;
+        tx.commit()?;
         Ok(())
     }
 
     /// 删除文档任务及其所有卡片
     pub fn delete_document_task(&self, task_id: &str) -> Result<()> {
-        let conn = self.get_conn_safe()?;
-        // 由于设置了ON DELETE CASCADE，删除任务会自动删除关联的卡片
-        conn.execute("DELETE FROM document_tasks WHERE id = ?1", params![task_id])?;
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM fsrs_review_logs
+             WHERE anki_card_id IN (SELECT id FROM anki_cards WHERE task_id = ?1)",
+            params![task_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states
+             WHERE anki_card_id IN (SELECT id FROM anki_cards WHERE task_id = ?1)",
+            params![task_id],
+        )?;
+        // Explicitly delete cards so correctness does not depend on a connection's
+        // PRAGMA foreign_keys setting.
+        tx.execute(
+            "DELETE FROM anki_cards WHERE task_id = ?1",
+            params![task_id],
+        )?;
+        tx.execute("DELETE FROM document_tasks WHERE id = ?1", params![task_id])?;
+        tx.commit()?;
         Ok(())
     }
 
     /// 删除整个文档会话（所有任务和卡片）
     pub fn delete_document_session(&self, document_id: &str) -> Result<()> {
-        let conn = self.get_conn_safe()?;
-        // 由于设置了ON DELETE CASCADE，删除任务会自动删除关联的卡片
-        conn.execute(
+        let mut conn = self.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM fsrs_review_logs
+             WHERE anki_card_id IN (
+                 SELECT a.id
+                 FROM anki_cards a
+                 INNER JOIN document_tasks t ON t.id = a.task_id
+                 WHERE t.document_id = ?1
+             )",
+            params![document_id],
+        )?;
+        tx.execute(
+            "DELETE FROM fsrs_card_states
+             WHERE anki_card_id IN (
+                 SELECT a.id
+                 FROM anki_cards a
+                 INNER JOIN document_tasks t ON t.id = a.task_id
+                 WHERE t.document_id = ?1
+             )",
+            params![document_id],
+        )?;
+        tx.execute(
+            "DELETE FROM anki_cards
+             WHERE task_id IN (SELECT id FROM document_tasks WHERE document_id = ?1)",
+            params![document_id],
+        )?;
+        tx.execute(
             "DELETE FROM document_tasks WHERE document_id = ?1",
             params![document_id],
         )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -5727,10 +5840,7 @@ impl Database {
                 "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\')"
                     .to_string(),
             );
-            let pattern = format!(
-                "%{}%",
-                crate::vfs::repos::escape_like_pattern(search_value)
-            );
+            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(search_value));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern));
@@ -5854,6 +5964,169 @@ mod tests {
             .migrate_single(DatabaseId::Mistakes)
             .map_err(|e| anyhow::anyhow!("mistakes migrations failed: {}", e))?;
         Ok(Database::new(&app_data_dir.join("mistakes.db"))?)
+    }
+
+    fn setup_secret_db(app_data_dir: &std::path::Path) -> anyhow::Result<Database> {
+        let db = Database::new(&app_data_dir.join("secret-tests.db"))?;
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute_batch(
+                "CREATE TABLE settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );",
+            )?;
+        }
+        Ok(db)
+    }
+
+    #[test]
+    fn sensitive_secret_secure_write_failure_does_not_write_plaintext() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        std::fs::write(
+            dir.path().join(".secure"),
+            b"blocks secure directory creation",
+        )?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "write-failure.api_key";
+
+        assert!(
+            !db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_config()
+                .fallback_to_plaintext
+        );
+        let error = db
+            .save_secret(key, "must-not-reach-sqlite")
+            .expect_err("default configuration must fail closed");
+
+        assert!(
+            error.to_string().contains("拒绝以明文保存"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(db.get_setting(key)?, None);
+
+        db.save_setting(key, "pre-existing-legacy-value")?;
+        let read_error = db
+            .get_secret(key)
+            .expect_err("secure read failure must not expose a legacy plaintext fallback");
+        assert!(
+            read_error.to_string().contains("拒绝回退到数据库明文"),
+            "unexpected error: {read_error:#}"
+        );
+        assert_eq!(
+            db.get_setting(key)?.as_deref(),
+            Some("pre-existing-legacy-value")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_db_delete_failure_is_reported_and_secure_write_is_rolled_back(
+    ) -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "delete-failure.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute_batch(
+                "CREATE TRIGGER reject_legacy_secret_delete
+                 BEFORE DELETE ON settings
+                 WHEN OLD.key = 'delete-failure.api_key'
+                 BEGIN
+                     SELECT RAISE(FAIL, 'forced legacy delete failure');
+                 END;",
+            )?;
+        }
+
+        let error = db
+            .save_secret(key, "new-secure-value")
+            .expect_err("legacy plaintext cleanup failure must be visible");
+
+        assert!(
+            error.to_string().contains("清理数据库中的旧明文失败"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(db.get_setting(key)?.as_deref(), Some("legacy-plaintext"));
+        assert_eq!(
+            db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_secret(key)?,
+            None,
+            "compensation must remove the newly written secure copy"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_success_removes_legacy_plaintext_row() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "migration-success.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+
+        db.save_secret(key, "encrypted-value")?;
+
+        assert_eq!(db.get_setting(key)?, None);
+        assert_eq!(db.get_secret(key)?.as_deref(), Some("encrypted-value"));
+        assert_eq!(
+            db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_secret(key)?
+                .as_deref(),
+            Some("encrypted-value")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_read_migrates_legacy_plaintext_row() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "read-migration.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+
+        assert_eq!(db.get_secret(key)?.as_deref(), Some("legacy-plaintext"));
+
+        assert_eq!(db.get_setting(key)?, None);
+        assert_eq!(
+            db.secure_store
+                .as_ref()
+                .expect("secure store")
+                .get_secret(key)?
+                .as_deref(),
+            Some("legacy-plaintext")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sensitive_secret_delete_cleans_legacy_row_even_when_secure_store_fails() -> anyhow::Result<()>
+    {
+        let dir = tempdir()?;
+        std::fs::write(
+            dir.path().join(".secure"),
+            b"blocks secure directory creation",
+        )?;
+        let db = setup_secret_db(dir.path())?;
+        let key = "delete-cleanup.api_key";
+        db.save_setting(key, "legacy-plaintext")?;
+
+        let error = db
+            .delete_secret(key)
+            .expect_err("secure-store cleanup failure must be reported");
+
+        assert!(
+            error.to_string().contains("数据库明文已清理"),
+            "unexpected error: {error:#}"
+        );
+        assert_eq!(db.get_setting(key)?, None);
+        Ok(())
     }
 
     #[test]

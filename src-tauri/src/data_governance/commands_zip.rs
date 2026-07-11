@@ -10,7 +10,7 @@ use super::backup::{
     export_backup_to_zip, AssetBackupConfig, AssetType, BackupManager, BackupSelection,
     TieredAssetConfig, ZipExportOptions,
 };
-use crate::backup_common::log_and_skip_entry_err;
+use crate::backup_common::{is_crypto_secret_backup_relative_path, log_and_skip_entry_err};
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
     BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
@@ -665,6 +665,13 @@ async fn execute_zip_export_with_progress(
 
     for entry in WalkDir::new(&source_backup_dir)
         .into_iter()
+        .filter_entry(|entry| {
+            entry.depth() == 0
+                || entry
+                    .path()
+                    .strip_prefix(&source_backup_dir)
+                    .map_or(false, |path| !is_crypto_secret_backup_relative_path(path))
+        })
         .filter_map(log_and_skip_entry_err)
     {
         let path = entry.path();
@@ -675,6 +682,10 @@ async fn execute_zip_export_with_progress(
 
         // 跳过空路径（根目录）
         if relative_path.as_os_str().is_empty() {
+            continue;
+        }
+
+        if is_crypto_secret_backup_relative_path(relative_path) {
             continue;
         }
 
@@ -749,9 +760,20 @@ async fn execute_zip_export_with_progress(
         }
     }
 
-    // 创建 ZIP 文件
-    let zip_file = match File::create(&zip_path) {
-        Ok(f) => f,
+    if let Err(e) =
+        super::backup::zip_export::ensure_zip_output_outside_source(&source_backup_dir, &zip_path)
+    {
+        job_ctx.fail(format!("ZIP 输出路径不安全: {}", e));
+        return;
+    }
+
+    // 同目录临时文件完成后再持久化，失败或取消不会破坏已有目标 ZIP。
+    let output_parent = zip_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let temp_output = match tempfile::NamedTempFile::new_in(output_parent) {
+        Ok(file) => file,
         Err(e) => {
             let msg = format!("创建 ZIP 文件失败: {}", e);
             #[cfg(feature = "data_governance")]
@@ -779,6 +801,13 @@ async fn execute_zip_export_with_progress(
             return;
         }
     };
+    let zip_file = match temp_output.reopen() {
+        Ok(file) => file,
+        Err(e) => {
+            job_ctx.fail(format!("打开 ZIP 临时文件失败: {}", e));
+            return;
+        }
+    };
     let mut zip_writer = ZipWriter::new(zip_file);
 
     // 配置压缩选项
@@ -796,9 +825,7 @@ async fn execute_zip_export_with_progress(
     for (path, relative_path_str) in &files_to_compress {
         // 检查取消
         if job_ctx.is_cancelled() {
-            // 清理未完成的 ZIP 文件
             drop(zip_writer);
-            let _ = std::fs::remove_file(&zip_path);
             job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));
             return;
         }
@@ -875,8 +902,49 @@ async fn execute_zip_export_with_progress(
     }
 
     // 完成 ZIP 文件
-    if let Err(e) = zip_writer.finish() {
-        let msg = format!("完成 ZIP 文件失败: {}", e);
+    let finished_file = match zip_writer.finish() {
+        Ok(file) => file,
+        Err(e) => {
+            let msg = format!("完成 ZIP 文件失败: {}", e);
+            #[cfg(feature = "data_governance")]
+            {
+                try_save_audit_log(
+                    &app,
+                    AuditLog::new(
+                        AuditOperation::Backup {
+                            backup_type: super::audit::BackupType::Full,
+                            file_count: 0,
+                            total_size: 0,
+                        },
+                        format!("zip_export/{}", backup_id),
+                    )
+                    .fail(msg.clone())
+                    .with_details(serde_json::json!({
+                        "job_id": job_ctx.job_id.clone(),
+                        "backup_id": backup_id.clone(),
+                        "subtype": "zip_export",
+                        "zip_path": zip_path.to_string_lossy(),
+                    })),
+                );
+            }
+            job_ctx.fail(msg);
+            return;
+        }
+    };
+    if let Err(e) = finished_file.sync_all() {
+        let msg = format!("同步 ZIP 临时文件失败: {}", e);
+        job_ctx.fail(msg);
+        return;
+    }
+    drop(finished_file);
+
+    if job_ctx.is_cancelled() {
+        job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));
+        return;
+    }
+
+    if let Err(e) = temp_output.persist(&zip_path) {
+        let msg = format!("提交 ZIP 文件失败: {}", e.error);
         #[cfg(feature = "data_governance")]
         {
             try_save_audit_log(
@@ -899,12 +967,6 @@ async fn execute_zip_export_with_progress(
             );
         }
         job_ctx.fail(msg);
-        return;
-    }
-
-    if job_ctx.is_cancelled() {
-        let _ = std::fs::remove_file(&zip_path);
-        job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));
         return;
     }
 

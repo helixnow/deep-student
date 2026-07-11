@@ -23,6 +23,15 @@ use crate::vfs::types::{
     VfsUpdateNoteParams,
 };
 
+fn next_updated_at(current: &str) -> String {
+    let now = chrono::Utc::now();
+    let next = chrono::DateTime::parse_from_rfc3339(current)
+        .map(|value| value.with_timezone(&chrono::Utc) + chrono::Duration::milliseconds(1))
+        .map(|minimum| if now > minimum { now } else { minimum })
+        .unwrap_or(now);
+    next.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+}
+
 /// VFS 笔记表 Repo
 pub struct VfsNoteRepo;
 
@@ -210,9 +219,10 @@ impl VfsNoteRepo {
         })?;
 
         let result = (|| -> VfsResult<VfsNote> {
-            let now = chrono::Utc::now()
-                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
-                .to_string();
+            // CAS tokens must advance even when two writes land in the same
+            // millisecond; otherwise a stale expected_updated_at can still
+            // match after the first writer commits.
+            let now = next_updated_at(&current_note.updated_at);
 
             // 2. 处理内容更新（版本管理）
             let new_resource_id = if let Some(new_content) = &params.content {
@@ -1244,35 +1254,7 @@ impl VfsNoteRepo {
         // 开始事务
         conn.execute("BEGIN IMMEDIATE", [])?;
 
-        let result = (|| -> VfsResult<VfsNote> {
-            // 1. 检查文件夹存在性
-            if let Some(fid) = folder_id {
-                if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
-                    return Err(VfsError::NotFound {
-                        resource_type: "Folder".to_string(),
-                        id: fid.to_string(),
-                    });
-                }
-            }
-
-            // 2. 创建笔记
-            let note = Self::create_note_with_conn(conn, params)?;
-
-            // 3. 创建 folder_items 记录
-            let folder_item = VfsFolderItem::new(
-                folder_id.map(|s| s.to_string()),
-                "note".to_string(),
-                note.id.clone(),
-            );
-            VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item)?;
-
-            debug!(
-                "[VFS::NoteRepo] Created note {} in folder {:?}",
-                note.id, folder_id
-            );
-
-            Ok(note)
-        })();
+        let result = Self::create_note_in_folder_uncommitted(conn, params, folder_id);
 
         match result {
             Ok(note) => {
@@ -1285,6 +1267,37 @@ impl VfsNoteRepo {
                 Err(e)
             }
         }
+    }
+
+    /// Create a note and its folder membership inside a transaction owned by
+    /// the caller. This is used when another durable record (for example an
+    /// idempotency receipt) must commit atomically with the note mutation.
+    pub(crate) fn create_note_in_folder_uncommitted(
+        conn: &Connection,
+        params: VfsCreateNoteParams,
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsNote> {
+        if let Some(fid) = folder_id {
+            if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
+                return Err(VfsError::NotFound {
+                    resource_type: "Folder".to_string(),
+                    id: fid.to_string(),
+                });
+            }
+        }
+
+        let note = Self::create_note_with_conn(conn, params)?;
+        let folder_item = VfsFolderItem::new(
+            folder_id.map(|s| s.to_string()),
+            "note".to_string(),
+            note.id.clone(),
+        );
+        VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item)?;
+        debug!(
+            "[VFS::NoteRepo] Created note {} in folder {:?}",
+            note.id, folder_id
+        );
+        Ok(note)
     }
 
     /// 删除笔记（同时删除 folder_items 记录）

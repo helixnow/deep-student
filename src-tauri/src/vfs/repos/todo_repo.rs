@@ -142,9 +142,7 @@ fn step_due_date(from: chrono::NaiveDate, rule: &TodoRepeatRule) -> Option<chron
     match rule.freq.as_str() {
         "daily" => from.checked_add_days(Days::new(interval as u64)),
         "weekly" => match rule.by_weekday {
-            Some(ref days) if !days.is_empty() => {
-                step_weekly_by_weekday(from, days, interval)
-            }
+            Some(ref days) if !days.is_empty() => step_weekly_by_weekday(from, days, interval),
             _ => from.checked_add_days(Days::new(7 * interval as u64)),
         },
         "monthly" => from.checked_add_months(Months::new(interval)),
@@ -721,8 +719,10 @@ impl VfsTodoRepo {
             });
         }
         validate_todo_priority(&params.priority)?;
-        let normalized_due_date = validate_due_date(&normalize_optional_str(params.due_date.clone()))?;
-        let normalized_due_time = validate_due_time(&normalize_optional_str(params.due_time.clone()))?;
+        let normalized_due_date =
+            validate_due_date(&normalize_optional_str(params.due_date.clone()))?;
+        let normalized_due_time =
+            validate_due_time(&normalize_optional_str(params.due_time.clone()))?;
         let normalized_repeat_json = normalize_optional_str(params.repeat_json.clone());
         validate_repeat_json(&normalized_repeat_json)?;
 
@@ -2485,8 +2485,15 @@ mod tests {
         let items = VfsTodoRepo::list_today_items(&db, false).expect("list today");
         let ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
         assert!(ids.contains(&due_today.id.as_str()), "today item missing");
-        assert!(ids.contains(&overdue.id.as_str()), "overdue pending should appear in today view");
-        assert_eq!(items.len(), 2, "no-due and completed-overdue must be excluded");
+        assert!(
+            ids.contains(&overdue.id.as_str()),
+            "overdue pending should appear in today view"
+        );
+        assert_eq!(
+            items.len(),
+            2,
+            "no-due and completed-overdue must be excluded"
+        );
         // 逾期任务排在今天任务之前（due_date ASC）
         assert_eq!(items[0].id, overdue.id);
 
@@ -2682,7 +2689,11 @@ mod tests {
         let shifted = shift_reminder("2026-06-12T08:30", date("2026-06-12"), date("2026-06-19"));
         assert_eq!(shifted.as_deref(), Some("2026-06-19T08:30"));
         // 带秒格式也能解析（输出归一化到分钟）
-        let shifted = shift_reminder("2026-06-11T21:00:00", date("2026-06-12"), date("2026-06-13"));
+        let shifted = shift_reminder(
+            "2026-06-11T21:00:00",
+            date("2026-06-12"),
+            date("2026-06-13"),
+        );
         assert_eq!(shifted.as_deref(), Some("2026-06-12T21:00"));
         // 解析失败 → None（丢弃）
         assert!(shift_reminder("not-a-date", date("2026-06-12"), date("2026-06-13")).is_none());
@@ -2856,7 +2867,10 @@ mod tests {
         let titles: Vec<&str> = trash.iter().map(|i| i.title.as_str()).collect();
         assert!(titles.contains(&"Parent"));
         assert!(titles.contains(&"Solo"));
-        assert!(!titles.contains(&"Child"), "child should not be a root entry");
+        assert!(
+            !titles.contains(&"Child"),
+            "child should not be a root entry"
+        );
 
         // 恢复 Parent → Child 同批次恢复
         VfsTodoRepo::restore_todo_item(&db, &parent.id).expect("restore parent");

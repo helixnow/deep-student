@@ -212,7 +212,10 @@ pub async fn cloud_storage_exists(
 
 /// 获取同步状态
 #[tauri::command]
-pub async fn cloud_sync_get_status(app: AppHandle, mut config: CloudStorageConfig) -> Result<SyncStatus> {
+pub async fn cloud_sync_get_status(
+    app: AppHandle,
+    mut config: CloudStorageConfig,
+) -> Result<SyncStatus> {
     crate::secure_store::hydrate_cloud_config(&app, &mut config);
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());

@@ -326,7 +326,10 @@ mod tests {
             }),
             ..Default::default()
         };
-        assert!(config.validate().is_ok(), "HTTP WebDAV should now be allowed");
+        assert!(
+            config.validate().is_ok(),
+            "HTTP WebDAV should now be allowed"
+        );
 
         let config = CloudStorageConfig {
             provider: StorageProvider::WebDav,

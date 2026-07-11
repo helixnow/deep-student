@@ -81,6 +81,238 @@ const MANIFEST_FILENAME: &str = "manifest.json";
 /// 预恢复备份目录名
 const PRE_RESTORE_DIR: &str = ".pre_restore";
 
+/// 不可信备份清单的资源上限。
+const MAX_MANIFEST_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_MANIFEST_FILES: usize = 100_000;
+const MAX_MANIFEST_PATH_BYTES: usize = 4096;
+const MAX_MANIFEST_TOTAL_FILE_BYTES: u64 = 20 * 1024 * 1024 * 1024;
+const MAX_BACKUP_MASTER_KEY_BYTES: u64 = 4096;
+const MAX_BACKUP_SECURE_FILE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_BACKUP_SECURE_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_BACKUP_SECURE_FILES: usize = 4096;
+
+fn validate_safe_relative_path(path: &Path) -> Result<(), BackupError> {
+    use std::path::Component;
+
+    if path.as_os_str().is_empty() || path.as_os_str().len() > MAX_MANIFEST_PATH_BYTES {
+        return Err(BackupError::Manifest(
+            "备份清单包含空路径或超长路径".to_string(),
+        ));
+    }
+
+    for component in path.components() {
+        if !matches!(component, Component::Normal(_)) {
+            return Err(BackupError::Manifest(format!(
+                "备份清单包含不安全路径: {}",
+                path.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn resolve_existing_backup_file(
+    backup_dir: &Path,
+    relative: &Path,
+) -> Result<PathBuf, BackupError> {
+    validate_safe_relative_path(relative)?;
+
+    let root_metadata = fs::symlink_metadata(backup_dir).map_err(|e| {
+        BackupError::Manifest(format!(
+            "无法检查备份根目录 {}: {}",
+            backup_dir.display(),
+            e
+        ))
+    })?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(BackupError::Manifest(format!(
+            "备份根路径必须是普通目录: {}",
+            backup_dir.display()
+        )));
+    }
+
+    let mut resolved = backup_dir.to_path_buf();
+    let component_count = relative.components().count();
+    for (index, component) in relative.components().enumerate() {
+        resolved.push(component.as_os_str());
+        let metadata = fs::symlink_metadata(&resolved).map_err(|e| {
+            BackupError::Manifest(format!("无法检查备份路径 {}: {}", resolved.display(), e))
+        })?;
+        if metadata.file_type().is_symlink() {
+            return Err(BackupError::Manifest(format!(
+                "备份路径不允许包含符号链接: {}",
+                relative.display()
+            )));
+        }
+        let is_last = index + 1 == component_count;
+        if (!is_last && !metadata.is_dir()) || (is_last && !metadata.is_file()) {
+            return Err(BackupError::Manifest(format!(
+                "备份清单路径不是普通文件: {}",
+                relative.display()
+            )));
+        }
+    }
+
+    Ok(resolved)
+}
+
+fn prepare_backup_restore_destination(
+    target_dir: &Path,
+    relative: &Path,
+) -> Result<PathBuf, BackupError> {
+    validate_safe_relative_path(relative)?;
+    let root_metadata = fs::symlink_metadata(target_dir).map_err(|e| {
+        BackupError::RestoreFailed(format!(
+            "无法检查恢复目标目录 {}: {}",
+            target_dir.display(),
+            e
+        ))
+    })?;
+    if root_metadata.file_type().is_symlink() || !root_metadata.is_dir() {
+        return Err(BackupError::RestoreFailed(format!(
+            "恢复目标必须是普通目录: {}",
+            target_dir.display()
+        )));
+    }
+
+    let mut destination = target_dir.to_path_buf();
+    let component_count = relative.components().count();
+    for (index, component) in relative.components().enumerate() {
+        destination.push(component.as_os_str());
+        let is_last = index + 1 == component_count;
+        match fs::symlink_metadata(&destination) {
+            Ok(metadata) if metadata.file_type().is_symlink() => {
+                return Err(BackupError::RestoreFailed(format!(
+                    "恢复目标路径不允许包含符号链接: {}",
+                    relative.display()
+                )))
+            }
+            Ok(metadata) if !is_last && !metadata.is_dir() => {
+                return Err(BackupError::RestoreFailed(format!(
+                    "恢复目标父路径不是目录: {}",
+                    destination.display()
+                )))
+            }
+            Ok(metadata) if is_last && !metadata.is_file() => {
+                return Err(BackupError::RestoreFailed(format!(
+                    "恢复目标不是普通文件: {}",
+                    destination.display()
+                )))
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && !is_last => {
+                fs::create_dir(&destination)?;
+                let metadata = fs::symlink_metadata(&destination)?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(BackupError::RestoreFailed(format!(
+                        "创建恢复目标目录后校验失败: {}",
+                        destination.display()
+                    )));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound && is_last => {}
+            Err(e) => return Err(BackupError::Io(e)),
+        }
+    }
+    Ok(destination)
+}
+
+fn copy_crypto_file_to_staging(
+    source: &Path,
+    destination: &Path,
+    max_bytes: u64,
+) -> Result<u64, BackupError> {
+    let metadata = fs::symlink_metadata(source).map_err(|e| {
+        BackupError::RestoreFailed(format!("无法检查备份密钥文件 {}: {}", source.display(), e))
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(BackupError::RestoreFailed(format!(
+            "备份密钥条目必须是普通文件: {}",
+            source.display()
+        )));
+    }
+    if metadata.len() > max_bytes {
+        return Err(BackupError::RestoreFailed(format!(
+            "备份密钥文件过大: {} ({} bytes)",
+            source.display(),
+            metadata.len()
+        )));
+    }
+
+    let source_file = File::open(source)?;
+    let opened_metadata = source_file.metadata()?;
+    if !opened_metadata.is_file() || opened_metadata.len() > max_bytes {
+        return Err(BackupError::RestoreFailed(format!(
+            "备份密钥文件在暂存期间发生异常变化: {}",
+            source.display()
+        )));
+    }
+    let mut limited = source_file.take(max_bytes.saturating_add(1));
+    let mut destination_file = fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(destination)?;
+    let copied = std::io::copy(&mut limited, &mut destination_file)?;
+    if copied > max_bytes {
+        drop(destination_file);
+        let _ = fs::remove_file(destination);
+        return Err(BackupError::RestoreFailed(format!(
+            "备份密钥文件实际读取大小超限: {}",
+            source.display()
+        )));
+    }
+    destination_file.sync_all()?;
+    crate::secure_store::SecureStore::restrict_permissions(destination, false);
+    Ok(copied)
+}
+
+fn validate_staged_master_key(path: &Path) -> Result<(), BackupError> {
+    use base64::Engine;
+    use zeroize::Zeroizing;
+
+    let mut encoded = Zeroizing::new(String::new());
+    File::open(path)?
+        .take(MAX_BACKUP_MASTER_KEY_BYTES + 1)
+        .read_to_string(&mut encoded)?;
+    if encoded.len() as u64 > MAX_BACKUP_MASTER_KEY_BYTES {
+        return Err(BackupError::RestoreFailed(
+            "备份主密钥内容超过大小上限".to_string(),
+        ));
+    }
+    let decoded = Zeroizing::new(
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .map_err(|e| BackupError::RestoreFailed(format!("备份主密钥 Base64 无效: {}", e)))?,
+    );
+    if decoded.len() != 32 {
+        return Err(BackupError::RestoreFailed(format!(
+            "备份主密钥长度无效: expected=32, actual={}",
+            decoded.len()
+        )));
+    }
+    Ok(())
+}
+
+fn remove_crypto_path(path: &Path) -> std::io::Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(e),
+    };
+    if metadata.file_type().is_symlink() {
+        #[cfg(windows)]
+        if path.is_dir() {
+            return fs::remove_dir(path);
+        }
+        return fs::remove_file(path);
+    }
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
 /// 生成安全且高概率唯一的备份 ID（目录名）
 ///
 /// 约束：
@@ -158,6 +390,66 @@ impl BackupManifest {
         self.schema_versions.insert(db_name.to_string(), version);
     }
 
+    fn validate_untrusted(&self) -> Result<(), BackupError> {
+        if self.backup_id.is_empty()
+            || self.backup_id.len() > 128
+            || self.backup_id.starts_with('.')
+            || self.backup_id.contains("..")
+            || !self
+                .backup_id
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+        {
+            return Err(BackupError::Manifest(
+                "备份清单包含非法 backup_id".to_string(),
+            ));
+        }
+        if self.files.len() > MAX_MANIFEST_FILES {
+            return Err(BackupError::Manifest(format!(
+                "备份清单文件数超限: {} > {}",
+                self.files.len(),
+                MAX_MANIFEST_FILES
+            )));
+        }
+
+        let mut total_size = 0u64;
+        for file in &self.files {
+            validate_safe_relative_path(Path::new(&file.path))?;
+            total_size = total_size
+                .checked_add(file.size)
+                .ok_or_else(|| BackupError::Manifest("备份清单文件总大小溢出".to_string()))?;
+            if total_size > MAX_MANIFEST_TOTAL_FILE_BYTES {
+                return Err(BackupError::Manifest(format!(
+                    "备份清单文件总大小超限: {} bytes",
+                    total_size
+                )));
+            }
+        }
+        if let Some(assets) = &self.assets {
+            if assets.files.len() > MAX_MANIFEST_FILES {
+                return Err(BackupError::Manifest(format!(
+                    "备份清单资产数超限: {} > {}",
+                    assets.files.len(),
+                    MAX_MANIFEST_FILES
+                )));
+            }
+            for asset in &assets.files {
+                validate_safe_relative_path(Path::new(&asset.relative_path))?;
+                validate_safe_relative_path(Path::new(&asset.original_path))?;
+                total_size = total_size
+                    .checked_add(asset.size)
+                    .ok_or_else(|| BackupError::Manifest("备份清单资产总大小溢出".to_string()))?;
+                if total_size > MAX_MANIFEST_TOTAL_FILE_BYTES {
+                    return Err(BackupError::Manifest(format!(
+                        "备份清单文件与资产总大小超限: {} bytes",
+                        total_size
+                    )));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 保存清单到文件（原子写入）
     ///
     /// 使用"临时文件 + 原子重命名"模式，确保写入过程中断时不会丢失数据。
@@ -188,9 +480,31 @@ impl BackupManifest {
 
     /// 从文件加载清单
     pub fn load_from_file(path: &Path) -> Result<Self, BackupError> {
-        let content = fs::read_to_string(path)?;
-        serde_json::from_str(&content)
-            .map_err(|e| BackupError::Manifest(format!("解析清单失败: {}", e)))
+        let metadata = fs::symlink_metadata(path)?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(BackupError::Manifest(
+                "清单必须是普通文件，不能是目录或符号链接".to_string(),
+            ));
+        }
+        if metadata.len() > MAX_MANIFEST_BYTES {
+            return Err(BackupError::Manifest(format!(
+                "清单文件过大: {} > {} bytes",
+                metadata.len(),
+                MAX_MANIFEST_BYTES
+            )));
+        }
+
+        let mut content = String::new();
+        File::open(path)?
+            .take(MAX_MANIFEST_BYTES + 1)
+            .read_to_string(&mut content)?;
+        if content.len() as u64 > MAX_MANIFEST_BYTES {
+            return Err(BackupError::Manifest("清单文件读取超限".to_string()));
+        }
+        let manifest: Self = serde_json::from_str(&content)
+            .map_err(|e| BackupError::Manifest(format!("解析清单失败: {}", e)))?;
+        manifest.validate_untrusted()?;
+        Ok(manifest)
     }
 }
 
@@ -955,8 +1269,29 @@ impl BackupManager {
         let master_key_path = self.app_data_dir.join(".master_key");
         let secure_dir = self.app_data_dir.join(".secure");
 
+        let has_master_key = match fs::symlink_metadata(&master_key_path) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
+                return Err(BackupError::RestoreFailed(
+                    "应用主密钥路径不是普通文件，拒绝跟随符号链接备份".to_string(),
+                ))
+            }
+            Ok(_) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(BackupError::Io(e)),
+        };
+        let has_secure_dir = match fs::symlink_metadata(&secure_dir) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                return Err(BackupError::RestoreFailed(
+                    "应用安全存储路径不是普通目录，拒绝跟随符号链接备份".to_string(),
+                ))
+            }
+            Ok(_) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(BackupError::Io(e)),
+        };
+
         // 无加密文件时跳过，避免创建空目录
-        if !master_key_path.exists() && !(secure_dir.exists() && secure_dir.is_dir()) {
+        if !has_master_key && !has_secure_dir {
             return Ok(0);
         }
 
@@ -966,7 +1301,7 @@ impl BackupManager {
         let mut count = 0;
 
         // 1. 备份 .master_key
-        if master_key_path.exists() {
+        if has_master_key {
             let dest = crypto_dest.join(".master_key");
             fs::copy(&master_key_path, &dest)
                 .map_err(|e| BackupError::RestoreFailed(format!("备份 .master_key 失败: {}", e)))?;
@@ -975,7 +1310,7 @@ impl BackupManager {
         }
 
         // 2. 备份 .secure/ 目录（.key_seed + *.enc）
-        if secure_dir.exists() && secure_dir.is_dir() {
+        if has_secure_dir {
             let secure_dest = crypto_dest.join(".secure");
             fs::create_dir_all(&secure_dest)?;
 
@@ -983,7 +1318,14 @@ impl BackupManager {
             for entry in fs::read_dir(&secure_dir)? {
                 let entry = entry?;
                 let path = entry.path();
-                if path.is_file() {
+                let file_type = entry.file_type()?;
+                if file_type.is_symlink() {
+                    return Err(BackupError::RestoreFailed(format!(
+                        "安全存储包含符号链接，拒绝备份: {}",
+                        path.display()
+                    )));
+                }
+                if file_type.is_file() {
                     if let Some(file_name) = path.file_name() {
                         let dest = secure_dest.join(file_name);
                         fs::copy(&path, &dest).map_err(|e| {
@@ -1009,73 +1351,268 @@ impl BackupManager {
     /// 恢复 `.master_key` 和 `.secure/` 目录，使跨设备恢复后 API 密钥可正常解密。
     /// 仅在备份中包含 crypto/ 子目录时执行。
     pub fn restore_crypto_keys(&self, backup_subdir: &Path) -> Result<usize, BackupError> {
+        let backup_metadata = fs::symlink_metadata(backup_subdir).map_err(|e| {
+            BackupError::RestoreFailed(format!("无法检查备份目录，目标密钥保持不变: {}", e))
+        })?;
+        if backup_metadata.file_type().is_symlink() || !backup_metadata.is_dir() {
+            return Err(BackupError::RestoreFailed(
+                "备份目录必须是普通目录，目标密钥保持不变".to_string(),
+            ));
+        }
+
         let crypto_src = backup_subdir.join("crypto");
-        if !crypto_src.exists() || !crypto_src.is_dir() {
-            info!("[Restore] 备份中无加密密钥文件（旧版备份），跳过");
+        match fs::symlink_metadata(&crypto_src) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Ok(metadata) if !metadata.file_type().is_symlink() && metadata.is_dir() => {}
+            Ok(_) => {
+                return Err(BackupError::RestoreFailed(
+                    "备份加密密钥路径必须是普通目录，目标密钥保持不变".to_string(),
+                ))
+            }
+            Err(e) => {
+                return Err(BackupError::RestoreFailed(format!(
+                    "无法检查备份加密密钥目录，目标密钥保持不变: {}",
+                    e
+                )))
+            }
+        }
+
+        fs::create_dir_all(&self.app_data_dir)?;
+        let staging = tempfile::Builder::new()
+            .prefix("crypto-restore-staging-")
+            .tempdir_in(&self.app_data_dir)
+            .map_err(|e| BackupError::RestoreFailed(format!("创建密钥暂存目录失败: {}", e)))?;
+        let staged_crypto = staging.path().join("crypto");
+        fs::create_dir(&staged_crypto)?;
+        crate::secure_store::SecureStore::restrict_permissions(&staged_crypto, true);
+
+        let source_master = crypto_src.join(".master_key");
+        let staged_master = staged_crypto.join(".master_key");
+        let has_master = match fs::symlink_metadata(&source_master) {
+            Ok(_) => {
+                copy_crypto_file_to_staging(
+                    &source_master,
+                    &staged_master,
+                    MAX_BACKUP_MASTER_KEY_BYTES,
+                )?;
+                validate_staged_master_key(&staged_master).map_err(|e| {
+                    BackupError::RestoreFailed(format!("备份主密钥无效，目标密钥保持不变: {}", e))
+                })?;
+                true
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => {
+                return Err(BackupError::RestoreFailed(format!(
+                    "无法检查备份主密钥，目标密钥保持不变: {}",
+                    e
+                )))
+            }
+        };
+
+        let source_secure = crypto_src.join(".secure");
+        let staged_secure = staged_crypto.join(".secure");
+        let mut secure_file_count = 0usize;
+        let mut secure_total_bytes = 0u64;
+        let mut has_seed = false;
+        let mut encrypted_file_count = 0usize;
+        let has_secure = match fs::symlink_metadata(&source_secure) {
+            Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+                return Err(BackupError::RestoreFailed(
+                    "备份安全存储路径必须是普通目录，目标密钥保持不变".to_string(),
+                ))
+            }
+            Ok(_) => {
+                fs::create_dir(&staged_secure)?;
+                crate::secure_store::SecureStore::restrict_permissions(&staged_secure, true);
+                for entry in fs::read_dir(&source_secure).map_err(|e| {
+                    BackupError::RestoreFailed(format!(
+                        "无法读取备份安全存储目录，目标密钥保持不变: {}",
+                        e
+                    ))
+                })? {
+                    let entry = entry.map_err(|e| {
+                        BackupError::RestoreFailed(format!(
+                            "无法读取备份安全存储条目，目标密钥保持不变: {}",
+                            e
+                        ))
+                    })?;
+                    let file_type = entry.file_type()?;
+                    if file_type.is_symlink() || !file_type.is_file() {
+                        return Err(BackupError::RestoreFailed(format!(
+                            "备份安全存储条目必须是普通文件，目标密钥保持不变: {}",
+                            entry.path().display()
+                        )));
+                    }
+                    secure_file_count = secure_file_count.saturating_add(1);
+                    if secure_file_count > MAX_BACKUP_SECURE_FILES {
+                        return Err(BackupError::RestoreFailed(format!(
+                            "备份安全存储文件数超限，目标密钥保持不变: {}",
+                            secure_file_count
+                        )));
+                    }
+                    let file_name = entry.file_name();
+                    let staged_file = staged_secure.join(&file_name);
+                    let copied = copy_crypto_file_to_staging(
+                        &entry.path(),
+                        &staged_file,
+                        MAX_BACKUP_SECURE_FILE_BYTES,
+                    )?;
+                    secure_total_bytes =
+                        secure_total_bytes.checked_add(copied).ok_or_else(|| {
+                            BackupError::RestoreFailed(
+                                "备份安全存储总大小溢出，目标密钥保持不变".to_string(),
+                            )
+                        })?;
+                    if secure_total_bytes > MAX_BACKUP_SECURE_TOTAL_BYTES {
+                        return Err(BackupError::RestoreFailed(format!(
+                            "备份安全存储总大小超限，目标密钥保持不变: {} bytes",
+                            secure_total_bytes
+                        )));
+                    }
+                    if file_name == std::ffi::OsStr::new(".key_seed") {
+                        has_seed = true;
+                    } else if staged_file
+                        .extension()
+                        .map(|extension| extension.eq_ignore_ascii_case("enc"))
+                        .unwrap_or(false)
+                    {
+                        encrypted_file_count = encrypted_file_count.saturating_add(1);
+                        if copied < 28 {
+                            return Err(BackupError::RestoreFailed(format!(
+                                "备份加密凭据格式过短，目标密钥保持不变: {}",
+                                staged_file.display()
+                            )));
+                        }
+                    }
+                }
+                true
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => {
+                return Err(BackupError::RestoreFailed(format!(
+                    "无法检查备份安全存储目录，目标密钥保持不变: {}",
+                    e
+                )))
+            }
+        };
+
+        if encrypted_file_count > 0 && !has_seed {
+            return Err(BackupError::RestoreFailed(
+                "备份含加密凭据但缺少 .key_seed，拒绝与现有密钥混合，目标密钥保持不变".to_string(),
+            ));
+        }
+        if has_seed {
+            crate::secure_store::SecureStore::validate_backup_seed_file(
+                &staged_secure.join(".key_seed"),
+            )
+            .map_err(|e| {
+                BackupError::RestoreFailed(format!(
+                    "备份密钥种子与当前环境不兼容，目标密钥保持不变: {}",
+                    e
+                ))
+            })?;
+        }
+        if !has_master && !has_secure {
             return Ok(0);
         }
 
-        // 密钥是全局文件（不随插槽切换），覆盖即不可逆。
-        // 覆盖前把当前密钥快照到预恢复目录，失败/放弃恢复后可借助
-        // rollback_from_pre_restore 或手动复制找回。
-        // 注意：从预恢复目录本身回滚时（backup_subdir == .pre_restore）跳过快照，
-        // 否则会先用当前密钥覆盖快照、导致回滚失效。
         let pre_restore_root = self.backup_dir.join(PRE_RESTORE_DIR);
         if backup_subdir != pre_restore_root {
             let snapshot_crypto = pre_restore_root.join("crypto");
-            if snapshot_crypto.exists() {
-                let _ = fs::remove_dir_all(&snapshot_crypto);
+            remove_crypto_path(&snapshot_crypto).map_err(|e| {
+                BackupError::RestoreFailed(format!("清理旧密钥快照失败，目标密钥保持不变: {}", e))
+            })?;
+            if let Err(e) = self.backup_crypto_keys(&pre_restore_root) {
+                let _ = remove_crypto_path(&snapshot_crypto);
+                return Err(BackupError::RestoreFailed(format!(
+                    "当前密钥快照失败，已中止恢复且目标密钥保持不变: {}",
+                    e
+                )));
             }
-            match self.backup_crypto_keys(&pre_restore_root) {
-                Ok(n) if n > 0 => {
-                    info!("[Restore] 已快照当前加密密钥到预恢复目录: {} 个文件", n)
+        }
+
+        let rollback = tempfile::Builder::new()
+            .prefix("crypto-restore-rollback-")
+            .tempdir_in(&self.app_data_dir)
+            .map_err(|e| BackupError::RestoreFailed(format!("创建密钥回滚目录失败: {}", e)))?;
+        let target_master = self.app_data_dir.join(".master_key");
+        let target_secure = self.app_data_dir.join(".secure");
+        let rollback_master = rollback.path().join(".master_key");
+        let rollback_secure = rollback.path().join(".secure");
+        let mut moved_master = false;
+        let mut moved_secure = false;
+        let mut installed_master = false;
+        let mut installed_secure = false;
+
+        let commit_result: Result<(), BackupError> = (|| {
+            if has_master && fs::symlink_metadata(&target_master).is_ok() {
+                fs::rename(&target_master, &rollback_master)?;
+                moved_master = true;
+            }
+            if has_secure && fs::symlink_metadata(&target_secure).is_ok() {
+                fs::rename(&target_secure, &rollback_secure)?;
+                moved_secure = true;
+            }
+            if has_master {
+                fs::rename(&staged_master, &target_master)?;
+                installed_master = true;
+            }
+            if has_secure {
+                fs::rename(&staged_secure, &target_secure)?;
+                installed_secure = true;
+            }
+            Ok(())
+        })();
+
+        if let Err(commit_error) = commit_result {
+            let mut rollback_errors = Vec::new();
+            if installed_master {
+                if let Err(e) = remove_crypto_path(&target_master) {
+                    rollback_errors.push(format!("删除新主密钥失败: {}", e));
                 }
-                Ok(_) => {}
-                Err(e) => warn!("[Restore] 当前加密密钥快照失败（继续恢复）: {}", e),
             }
+            if installed_secure {
+                if let Err(e) = remove_crypto_path(&target_secure) {
+                    rollback_errors.push(format!("删除新安全目录失败: {}", e));
+                }
+            }
+            if moved_master {
+                if let Err(e) = fs::rename(&rollback_master, &target_master) {
+                    rollback_errors.push(format!("恢复旧主密钥失败: {}", e));
+                }
+            }
+            if moved_secure {
+                if let Err(e) = fs::rename(&rollback_secure, &target_secure) {
+                    rollback_errors.push(format!("恢复旧安全目录失败: {}", e));
+                }
+            }
+            return Err(BackupError::RestoreFailed(if rollback_errors.is_empty() {
+                format!("密钥原子提交失败，已恢复原目标: {}", commit_error)
+            } else {
+                format!(
+                    "密钥原子提交失败且回滚不完整: {}; {}",
+                    commit_error,
+                    rollback_errors.join("; ")
+                )
+            }));
         }
 
-        let mut count = 0;
-
-        // 1. 恢复 .master_key
-        let master_key_src = crypto_src.join(".master_key");
-        if master_key_src.exists() {
-            let dest = self.app_data_dir.join(".master_key");
-            fs::copy(&master_key_src, &dest)
-                .map_err(|e| BackupError::RestoreFailed(format!("恢复 .master_key 失败: {}", e)))?;
-            count += 1;
-            info!("[Restore] 已恢复 .master_key");
+        if has_master {
+            crate::secure_store::SecureStore::restrict_permissions(&target_master, false);
         }
-
-        // 2. 恢复 .secure/ 目录
-        let secure_src = crypto_src.join(".secure");
-        if secure_src.exists() && secure_src.is_dir() {
-            let secure_dest = self.app_data_dir.join(".secure");
-            fs::create_dir_all(&secure_dest)?;
-
-            let mut secure_count = 0usize;
-            for entry in fs::read_dir(&secure_src)? {
+        if has_secure {
+            crate::secure_store::SecureStore::restrict_permissions(&target_secure, true);
+            for entry in fs::read_dir(&target_secure)? {
                 let entry = entry?;
-                let path = entry.path();
-                if path.is_file() {
-                    if let Some(file_name) = path.file_name() {
-                        let dest = secure_dest.join(file_name);
-                        fs::copy(&path, &dest).map_err(|e| {
-                            BackupError::RestoreFailed(format!(
-                                "恢复 .secure/{} 失败: {}",
-                                file_name.to_string_lossy(),
-                                e
-                            ))
-                        })?;
-                        secure_count += 1;
-                    }
+                if entry.file_type()?.is_file() {
+                    crate::secure_store::SecureStore::restrict_permissions(&entry.path(), false);
                 }
             }
-            count += secure_count;
-            info!("[Restore] 已恢复 .secure/ 目录: {} 个文件", secure_count);
         }
 
-        Ok(count)
+        let restored = usize::from(has_master) + secure_file_count;
+        info!("[Restore] 加密密钥原子恢复完成: {} 个文件", restored);
+        Ok(restored)
     }
 
     /// 备份审计数据库到备份目录
@@ -1594,8 +2131,8 @@ impl BackupManager {
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
 
-        // 手动分批复制，每次 100 页，间隔 50ms
-        // 每批复制后通过回调报告页面级进度
+            // 手动分批复制，每次 100 页，间隔 50ms
+            // 每批复制后通过回调报告页面级进度
             use rusqlite::backup::StepResult;
 
             // 与恢复路径一致：Busy/Locked 设置重试上限，避免源库持续被锁时备份无限挂起
@@ -2299,19 +2836,37 @@ impl BackupManager {
     ) -> Result<(), BackupError> {
         info!("验证备份: {}", manifest.backup_id);
 
+        manifest.validate_untrusted()?;
+
         let mut errors: Vec<String> = Vec::new();
 
         for backup_file in &manifest.files {
-            let file_path = backup_dir.join(&backup_file.path);
+            let file_path =
+                match resolve_existing_backup_file(backup_dir, Path::new(&backup_file.path)) {
+                    Ok(path) => path,
+                    Err(e) => {
+                        errors.push(e.to_string());
+                        continue;
+                    }
+                };
 
-            // 1. 检查文件存在
-            if !file_path.exists() {
-                errors.push(format!("文件不存在: {}", backup_file.path));
+            let actual_size = match fs::metadata(&file_path) {
+                Ok(metadata) => metadata.len(),
+                Err(e) => {
+                    errors.push(format!("读取文件大小失败 {}: {}", backup_file.path, e));
+                    continue;
+                }
+            };
+            if actual_size != backup_file.size {
+                errors.push(format!(
+                    "文件大小不匹配 {}: expected={}, actual={}",
+                    backup_file.path, backup_file.size, actual_size
+                ));
                 continue;
             }
 
             // 2. 验证校验和
-            let actual_sha256 = match calculate_file_sha256(&file_path) {
+            let actual_sha256 = match calculate_file_sha256_exact(&file_path, backup_file.size) {
                 Ok(hash) => hash,
                 Err(e) => {
                     errors.push(format!("计算校验和失败 {}: {}", backup_file.path, e));
@@ -2572,20 +3127,8 @@ impl BackupManager {
             }
 
             let rel = Path::new(&backup_file.path);
-            if rel.is_absolute() || backup_file.path.contains("..") {
-                warn!("跳过可疑备份路径（非数据库文件恢复）: {}", backup_file.path);
-                continue;
-            }
-
-            let src = backup_dir.join(rel);
-            if !src.exists() {
-                continue;
-            }
-
-            let dest = target_dir.join(rel);
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)?;
-            }
+            let src = resolve_existing_backup_file(backup_dir, rel)?;
+            let dest = prepare_backup_restore_destination(target_dir, rel)?;
             fs::copy(&src, &dest)?;
             restored += 1;
         }
@@ -3033,6 +3576,37 @@ pub(crate) fn calculate_file_sha256(path: &Path) -> Result<String, BackupError> 
     Ok(hex::encode(result))
 }
 
+fn calculate_file_sha256_exact(path: &Path, expected_size: u64) -> Result<String, BackupError> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file).take(expected_size.saturating_add(1));
+    let mut hasher = Sha256::new();
+    let mut bytes_hashed = 0u64;
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        bytes_hashed = bytes_hashed.saturating_add(bytes_read as u64);
+        if bytes_hashed > expected_size {
+            return Err(BackupError::Manifest(format!(
+                "文件在校验期间增长: {}",
+                path.display()
+            )));
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+    if bytes_hashed != expected_size {
+        return Err(BackupError::Manifest(format!(
+            "文件在校验期间大小发生变化: expected={}, actual={}",
+            expected_size, bytes_hashed
+        )));
+    }
+
+    Ok(hex::encode(hasher.finalize()))
+}
+
 // ============================================================================
 // 测试
 // ============================================================================
@@ -3067,6 +3641,69 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let manager = BackupManager::new(dir.path().to_path_buf());
         assert_eq!(manager.backup_dir(), dir.path());
+    }
+
+    #[test]
+    fn test_verify_rejects_manifest_file_path_traversal_before_reading() {
+        let (manager, _backup_root, _app_data) = setup_test_env();
+        let parent = TempDir::new().unwrap();
+        let backup_dir = parent.path().join("backup");
+        fs::create_dir(&backup_dir).unwrap();
+        let outside = parent.path().join("outside-manifest-probe");
+        fs::write(&outside, b"outside").unwrap();
+        let mut manifest = BackupManifest::new("1.0.0");
+        manifest.files.push(BackupFile {
+            path: "../outside-manifest-probe".to_string(),
+            size: 7,
+            sha256: calculate_file_sha256(&outside).unwrap(),
+            database_id: None,
+        });
+
+        let error = manager
+            .verify_internal(&manifest, &backup_dir)
+            .expect_err("parent traversal must be rejected before hash/open");
+
+        assert!(matches!(error, BackupError::Manifest(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_verify_rejects_symlinked_manifest_file() {
+        let (manager, _backup_root, _app_data) = setup_test_env();
+        let backup_dir = TempDir::new().unwrap();
+        let external = TempDir::new().unwrap();
+        fs::write(external.path().join("outside.bin"), b"outside").unwrap();
+        std::os::unix::fs::symlink(
+            external.path().join("outside.bin"),
+            backup_dir.path().join("linked.bin"),
+        )
+        .unwrap();
+        let mut manifest = BackupManifest::new("1.0.0");
+        manifest.files.push(BackupFile {
+            path: "linked.bin".to_string(),
+            size: 7,
+            sha256: calculate_file_sha256(&external.path().join("outside.bin")).unwrap(),
+            database_id: None,
+        });
+
+        let error = manager
+            .verify_internal(&manifest, backup_dir.path())
+            .expect_err("symlinked manifest file must be rejected");
+
+        assert!(format!("{error}").contains("符号链接"));
+    }
+
+    #[test]
+    fn test_manifest_loader_rejects_oversized_file_before_allocation() {
+        let dir = TempDir::new().unwrap();
+        let manifest_path = dir.path().join("manifest.json");
+        let file = File::create(&manifest_path).unwrap();
+        file.set_len(MAX_MANIFEST_BYTES + 1).unwrap();
+
+        let error = BackupManifest::load_from_file(&manifest_path)
+            .expect_err("oversized manifest must fail before parsing");
+
+        assert!(matches!(error, BackupError::Manifest(_)));
     }
 
     #[test]
@@ -3145,6 +3782,220 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM test_table", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[cfg(feature = "data_governance")]
+    #[test]
+    fn test_current_chat_v2_schema_self_backup_and_restore() {
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let active_dir = app_data_dir.path().join("slots").join("slotA");
+        fs::create_dir_all(&active_dir).unwrap();
+
+        let chat_db_path = active_dir.join("chat_v2.db");
+        let conn = Connection::open(&chat_db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE refinery_schema_history (
+                 version INTEGER PRIMARY KEY,
+                 name TEXT,
+                 applied_on TEXT,
+                 checksum TEXT
+             );
+             CREATE TABLE current_schema_probe (
+                 id INTEGER PRIMARY KEY,
+                 value TEXT NOT NULL
+             );
+             INSERT INTO current_schema_probe (value) VALUES ('before-backup');",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO refinery_schema_history (version, name, applied_on, checksum)
+             VALUES (?1, 'resources_type_check_rebuild', '2026-05-28T00:00:00Z', 'test')",
+            [crate::chat_v2::database::CURRENT_SCHEMA_VERSION as i64],
+        )
+        .unwrap();
+        drop(conn);
+
+        let manifest = manager.backup_full().unwrap();
+        assert_eq!(
+            manifest.schema_versions.get("chat_v2"),
+            Some(&crate::chat_v2::database::CURRENT_SCHEMA_VERSION)
+        );
+        manager
+            .check_manifest_compatibility(&manifest)
+            .expect("the current app must accept its own ChatV2 backup");
+
+        let conn = Connection::open(&chat_db_path).unwrap();
+        conn.execute(
+            "UPDATE current_schema_probe SET value = 'after-backup' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        manager.restore(&manifest).unwrap();
+
+        let conn = Connection::open(&chat_db_path).unwrap();
+        let restored: String = conn
+            .query_row(
+                "SELECT value FROM current_schema_probe WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(restored, "before-backup");
+    }
+
+    #[test]
+    fn test_restore_crypto_keys_rejects_incompatible_dpapi_seed_before_overwrite() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let backup_subdir = backup_dir.path().join("foreign_dpapi_backup");
+        let backup_secure_dir = backup_subdir.join("crypto").join(".secure");
+        fs::create_dir_all(&backup_secure_dir).unwrap();
+        fs::write(
+            backup_secure_dir.join(".key_seed"),
+            "DPAPI1:Zm9yZWlnbi1kcGFwaS1ibG9i",
+        )
+        .unwrap();
+        fs::write(backup_secure_dir.join("credential.enc"), vec![7u8; 28]).unwrap();
+        fs::write(
+            backup_subdir.join("crypto").join(".master_key"),
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
+        .unwrap();
+
+        let target_secure_dir = app_data_dir.path().join(".secure");
+        fs::create_dir_all(&target_secure_dir).unwrap();
+        fs::write(target_secure_dir.join(".key_seed"), b"existing-seed").unwrap();
+        fs::write(app_data_dir.path().join(".master_key"), b"existing-master").unwrap();
+
+        let error = manager
+            .restore_crypto_keys(&backup_subdir)
+            .expect_err("foreign DPAPI seed must be rejected");
+        assert!(format!("{error}").contains("目标密钥保持不变"));
+        assert_eq!(
+            fs::read(target_secure_dir.join(".key_seed")).unwrap(),
+            b"existing-seed"
+        );
+        assert_eq!(
+            fs::read(app_data_dir.path().join(".master_key")).unwrap(),
+            b"existing-master"
+        );
+        assert!(!backup_dir.path().join(PRE_RESTORE_DIR).exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_restore_crypto_keys_rejects_symlinked_secure_dir_before_overwrite() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let backup_subdir = backup_dir.path().join("symlinked_crypto_backup");
+        fs::create_dir_all(backup_subdir.join("crypto")).unwrap();
+        fs::write(
+            backup_subdir.join("crypto").join(".master_key"),
+            b"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        )
+        .unwrap();
+
+        let external_secure = TempDir::new().unwrap();
+        fs::write(external_secure.path().join(".key_seed"), "aa".repeat(32)).unwrap();
+        std::os::unix::fs::symlink(
+            external_secure.path(),
+            backup_subdir.join("crypto").join(".secure"),
+        )
+        .unwrap();
+
+        let target_secure_dir = app_data_dir.path().join(".secure");
+        fs::create_dir_all(&target_secure_dir).unwrap();
+        fs::write(target_secure_dir.join(".key_seed"), b"existing-seed").unwrap();
+        fs::write(app_data_dir.path().join(".master_key"), b"existing-master").unwrap();
+
+        let error = manager
+            .restore_crypto_keys(&backup_subdir)
+            .expect_err("symlinked secure directory must be rejected");
+        assert!(format!("{error}").contains("目标密钥保持不变"));
+        assert_eq!(
+            fs::read(target_secure_dir.join(".key_seed")).unwrap(),
+            b"existing-seed"
+        );
+        assert_eq!(
+            fs::read(app_data_dir.path().join(".master_key")).unwrap(),
+            b"existing-master"
+        );
+        assert!(!backup_dir.path().join(PRE_RESTORE_DIR).exists());
+    }
+
+    #[test]
+    fn test_restore_crypto_keys_rejects_encrypted_files_without_seed_before_overwrite() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let backup_subdir = backup_dir.path().join("missing_seed_backup");
+        let backup_secure_dir = backup_subdir.join("crypto/.secure");
+        fs::create_dir_all(&backup_secure_dir).unwrap();
+        fs::write(backup_secure_dir.join("credential.enc"), vec![3u8; 28]).unwrap();
+
+        let target_secure = app_data_dir.path().join(".secure");
+        fs::create_dir_all(&target_secure).unwrap();
+        fs::write(target_secure.join(".key_seed"), b"existing-seed").unwrap();
+        fs::write(target_secure.join("existing.enc"), b"existing-credential").unwrap();
+
+        let error = manager
+            .restore_crypto_keys(&backup_subdir)
+            .expect_err("encrypted files without their seed must be rejected");
+        assert!(format!("{error}").contains("缺少 .key_seed"));
+        assert_eq!(
+            fs::read(target_secure.join(".key_seed")).unwrap(),
+            b"existing-seed"
+        );
+        assert_eq!(
+            fs::read(target_secure.join("existing.enc")).unwrap(),
+            b"existing-credential"
+        );
+        assert!(!backup_dir.path().join(PRE_RESTORE_DIR).exists());
+    }
+
+    #[test]
+    fn test_restore_crypto_keys_replaces_secure_directory_without_mixing_old_credentials() {
+        let (manager, _backup_dir, app_data_dir) = setup_test_env();
+        let backup_subdir = manager.backup_dir().join("seed_only_backup");
+        let backup_secure_dir = backup_subdir.join("crypto/.secure");
+        fs::create_dir_all(&backup_secure_dir).unwrap();
+        let new_seed = "aa".repeat(32);
+        fs::write(backup_secure_dir.join(".key_seed"), &new_seed).unwrap();
+
+        let target_secure = app_data_dir.path().join(".secure");
+        fs::create_dir_all(&target_secure).unwrap();
+        fs::write(target_secure.join(".key_seed"), b"old-seed").unwrap();
+        fs::write(target_secure.join("old.enc"), b"old-credential").unwrap();
+
+        let restored = manager.restore_crypto_keys(&backup_subdir).unwrap();
+
+        assert_eq!(restored, 1);
+        assert_eq!(
+            fs::read_to_string(target_secure.join(".key_seed")).unwrap(),
+            new_seed
+        );
+        assert!(!target_secure.join("old.enc").exists());
+    }
+
+    #[test]
+    fn test_restore_crypto_keys_aborts_when_snapshot_cannot_be_created() {
+        let (manager, backup_dir, app_data_dir) = setup_test_env();
+        let backup_subdir = backup_dir.path().join("snapshot_failure_backup");
+        let backup_secure_dir = backup_subdir.join("crypto/.secure");
+        fs::create_dir_all(&backup_secure_dir).unwrap();
+        fs::write(backup_secure_dir.join(".key_seed"), "aa".repeat(32)).unwrap();
+
+        let target_secure = app_data_dir.path().join(".secure");
+        fs::create_dir_all(&target_secure).unwrap();
+        fs::write(target_secure.join(".key_seed"), b"existing-seed").unwrap();
+        fs::write(backup_dir.path().join(PRE_RESTORE_DIR), b"not-a-directory").unwrap();
+
+        let error = manager
+            .restore_crypto_keys(&backup_subdir)
+            .expect_err("snapshot failure must abort before commit");
+        assert!(format!("{error}").contains("目标密钥保持不变"));
+        assert_eq!(
+            fs::read(target_secure.join(".key_seed")).unwrap(),
+            b"existing-seed"
+        );
     }
 
     #[test]

@@ -908,8 +908,11 @@ impl SyncManager {
                 }
                 MergeStrategy::KeepLatest => {
                     // 比较时间戳，保留最新的；平局由写入者 device_id / 内容 tiebreaker 决定。
-                    let (local_dev, cloud_dev) =
-                        Self::lww_device_pair(&conflict.local_data, Some(&conflict.cloud_data), None);
+                    let (local_dev, cloud_dev) = Self::lww_device_pair(
+                        &conflict.local_data,
+                        Some(&conflict.cloud_data),
+                        None,
+                    );
                     if Self::compare_lww_timestamps(
                         &conflict.local_updated_at,
                         local_dev,
@@ -3217,8 +3220,11 @@ impl SyncManager {
                         serde_json::to_string(&conflict.local_data).unwrap_or_default();
                     let cloud_content =
                         serde_json::to_string(&conflict.cloud_data).unwrap_or_default();
-                    let (local_dev, cloud_dev) =
-                        Self::lww_device_pair(&conflict.local_data, Some(&conflict.cloud_data), None);
+                    let (local_dev, cloud_dev) = Self::lww_device_pair(
+                        &conflict.local_data,
+                        Some(&conflict.cloud_data),
+                        None,
+                    );
                     match Self::compare_lww_timestamps(
                         &conflict.local_updated_at,
                         local_dev,
@@ -4127,9 +4133,7 @@ impl SyncManager {
                 .map_err(|e| SyncError::Database(format!("执行 foreign_key_check 失败: {}", e)))?;
             for row in rows {
                 violations.insert(
-                    row.map_err(|e| {
-                        SyncError::Database(format!("读取外键检查结果失败: {}", e))
-                    })?,
+                    row.map_err(|e| SyncError::Database(format!("读取外键检查结果失败: {}", e)))?,
                 );
             }
         }
@@ -4140,9 +4144,7 @@ impl SyncManager {
     ///
     /// 用于把「删除/改动某父表」可能波及的子表纳入外键检查作用域：删除父行后，
     /// 引用它的子表会出现悬挂外键，而 `PRAGMA foreign_key_check(child)` 才能查出。
-    fn build_fk_child_map(
-        conn: &Connection,
-    ) -> Result<HashMap<String, Vec<String>>, SyncError> {
+    fn build_fk_child_map(conn: &Connection) -> Result<HashMap<String, Vec<String>>, SyncError> {
         let table_names: Vec<String> = {
             let mut stmt = conn
                 .prepare(
@@ -4206,7 +4208,7 @@ impl SyncManager {
             .prepare(&sql)
             .map_err(|e| SyncError::Database(format!("查询外键失败: {}", e)))?;
 
-        let columns = stmt
+        let mut columns: Vec<ForeignKeyColumn> = stmt
             .query_map([], |row| {
                 Ok(ForeignKeyColumn {
                     parent_table: row.get(2)?,
@@ -4217,6 +4219,41 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("读取外键失败: {}", e)))?
             .filter_map(log_and_skip_err)
             .collect();
+
+        // V20260709 shipped the FSRS relations as plain TEXT columns. ID alias
+        // remapping is normally derived from PRAGMA foreign_key_list, so legacy
+        // databases would otherwise keep review logs pointed at a losing
+        // cross-device state UUID. Keep these logical relations explicit until
+        // every supported database has physical foreign keys.
+        let logical_relations: &[(&str, &str, &str)] = match table_name {
+            "fsrs_card_states" => &[
+                ("anki_card_id", "anki_cards", "id"),
+                ("deck_id", "anki_decks", "id"),
+            ],
+            "fsrs_review_logs" => &[
+                ("card_state_id", "fsrs_card_states", "id"),
+                ("anki_card_id", "anki_cards", "id"),
+            ],
+            _ => &[],
+        };
+        let child_columns = Self::table_column_names(conn, table_name)?;
+        for &(child_column, parent_table, parent_column) in logical_relations {
+            if !child_columns.iter().any(|column| column == child_column)
+                || Self::ensure_table_allowed_and_exists(conn, parent_table).is_err()
+                || columns.iter().any(|fk| {
+                    fk.child_column == child_column
+                        && fk.parent_table == parent_table
+                        && fk.parent_column == parent_column
+                })
+            {
+                continue;
+            }
+            columns.push(ForeignKeyColumn {
+                child_column: child_column.to_string(),
+                parent_table: parent_table.to_string(),
+                parent_column: parent_column.to_string(),
+            });
+        }
 
         Ok(columns)
     }
@@ -5612,8 +5649,11 @@ impl SyncManager {
 
         // [P2 churn] 同 recompute_resource_ref_counts：只更新值实际变化的行。
         if subqueries.is_empty() {
-            conn.execute("UPDATE blobs SET ref_count = 0 WHERE ref_count IS NOT 0", [])
-                .map_err(|e| SyncError::Database(format!("重算 blobs.ref_count 失败: {}", e)))?;
+            conn.execute(
+                "UPDATE blobs SET ref_count = 0 WHERE ref_count IS NOT 0",
+                [],
+            )
+            .map_err(|e| SyncError::Database(format!("重算 blobs.ref_count 失败: {}", e)))?;
             return Ok(());
         }
 
@@ -8939,10 +8979,7 @@ impl SyncManager {
         let conn = match Connection::open(&vfs_db) {
             Ok(c) => c,
             Err(e) => {
-                tracing::warn!(
-                    "[sync] 无法打开 vfs.db 检查 blob 引用（防线跳过）: {}",
-                    e
-                );
+                tracing::warn!("[sync] 无法打开 vfs.db 检查 blob 引用（防线跳过）: {}", e);
                 return referenced;
             }
         };
@@ -8961,9 +8998,8 @@ impl SyncManager {
         let all_hashes: Vec<&str> = hashes.collect();
         for chunk in all_hashes.chunks(999) {
             let placeholders = vec!["?"; chunk.len()].join(",");
-            let sql = format!(
-                "SELECT hash FROM blobs WHERE ref_count > 0 AND hash IN ({placeholders})"
-            );
+            let sql =
+                format!("SELECT hash FROM blobs WHERE ref_count > 0 AND hash IN ({placeholders})");
             let mut stmt = match conn.prepare(&sql) {
                 Ok(s) => s,
                 Err(e) => {
@@ -12061,6 +12097,146 @@ mod tests {
 
         assert_eq!(result.success_count, 2);
         assert_resource_alias_result(&conn);
+    }
+
+    #[test]
+    fn fsrs_child_first_log_remaps_duplicate_state_id_without_physical_fk() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                sync_version INTEGER DEFAULT 0
+            );
+            CREATE TABLE anki_cards (
+                id TEXT PRIMARY KEY,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+            CREATE TABLE anki_decks (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+            CREATE TABLE fsrs_card_states (
+                id TEXT PRIMARY KEY,
+                anki_card_id TEXT NOT NULL UNIQUE,
+                deck_id TEXT,
+                state INTEGER NOT NULL,
+                due_ms INTEGER NOT NULL,
+                fsrs_params_version TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+            CREATE TABLE fsrs_review_logs (
+                id TEXT PRIMARY KEY,
+                card_state_id TEXT NOT NULL,
+                anki_card_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                state_before INTEGER NOT NULL,
+                state_after INTEGER NOT NULL,
+                review_ms INTEGER NOT NULL,
+                fsrs_params_version TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                deleted_at TEXT
+            );
+
+            INSERT INTO anki_cards(id, updated_at)
+            VALUES ('card-shared', '2026-07-11T00:00:00Z');
+            INSERT INTO anki_decks(id, name, updated_at)
+            VALUES ('deck-local', 'Default', '2026-07-11T00:00:00Z');
+            INSERT INTO fsrs_card_states(
+                id, anki_card_id, deck_id, state, due_ms, fsrs_params_version,
+                created_at, updated_at
+            ) VALUES (
+                'state-local', 'card-shared', 'deck-local', 0, 0, 'rs-fsrs-test',
+                '2026-07-11T00:00:00Z', '2026-07-11T00:00:00Z'
+            );
+            "#,
+        )
+        .unwrap();
+
+        let child_first = SyncChangeWithData {
+            table_name: "fsrs_review_logs".to_string(),
+            record_id: "log-remote".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "log-remote",
+                "card_state_id": "state-remote",
+                "anki_card_id": "card-shared",
+                "rating": 3,
+                "state_before": 0,
+                "state_after": 1,
+                "review_ms": 1783728000000_i64,
+                "fsrs_params_version": "rs-fsrs-test",
+                "created_at": "2026-07-11T00:00:02Z",
+                "updated_at": "2026-07-11T00:00:02Z"
+            })),
+            changed_at: "2026-07-11T00:00:02Z".to_string(),
+            change_log_id: None,
+            database_name: Some("mistakes".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-device".to_string()),
+            source_seq: Some(2),
+        };
+        let duplicate_parent = SyncChangeWithData {
+            table_name: "fsrs_card_states".to_string(),
+            record_id: "state-remote".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "state-remote",
+                "anki_card_id": "card-shared",
+                "deck_id": "deck-local",
+                "state": 1,
+                "due_ms": 1783728600000_i64,
+                "fsrs_params_version": "rs-fsrs-test",
+                "created_at": "2026-07-11T00:00:01Z",
+                "updated_at": "2026-07-11T00:00:01Z"
+            })),
+            changed_at: "2026-07-11T00:00:01Z".to_string(),
+            change_log_id: None,
+            database_name: Some("mistakes".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-device".to_string()),
+            source_seq: Some(1),
+        };
+
+        let result =
+            SyncManager::apply_downloaded_changes(&conn, &[child_first, duplicate_parent], None)
+                .unwrap();
+
+        assert_eq!(result.success_count, 2);
+        assert_eq!(result.failure_count, 0);
+        let (state_id, joined): (String, i64) = conn
+            .query_row(
+                "SELECT l.card_state_id,
+                        COUNT(s.id)
+                 FROM fsrs_review_logs l
+                 LEFT JOIN fsrs_card_states s ON s.id = l.card_state_id
+                 WHERE l.id = 'log-remote'
+                 GROUP BY l.card_state_id",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(state_id, "state-local");
+        assert_eq!(joined, 1, "stats JOIN must retain the remapped review log");
+        let canonical: String = conn
+            .query_row(
+                "SELECT canonical_id FROM __sync_id_aliases
+                 WHERE table_name = 'fsrs_card_states' AND remote_id = 'state-remote'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(canonical, "state-local");
     }
 
     #[test]

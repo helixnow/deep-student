@@ -2400,8 +2400,11 @@ fn recompute_ref_counts_skips_unchanged_rows() {
     // 失真的 r2 被修正归零，新增引用使 r1 重算为 2，且未变化行不点火触发器
     conn.execute("UPDATE resources SET ref_count = 9 WHERE id = 'r2'", [])
         .unwrap();
-    conn.execute("DELETE FROM __change_log WHERE table_name = 'resources'", [])
-        .unwrap();
+    conn.execute(
+        "DELETE FROM __change_log WHERE table_name = 'resources'",
+        [],
+    )
+    .unwrap();
     let change2 = SyncChangeWithData {
         table_name: "files".into(),
         record_id: "f-2".into(),
@@ -2427,19 +2430,15 @@ fn recompute_ref_counts_skips_unchanged_rows() {
     );
 
     let rc2: i64 = conn
-        .query_row(
-            "SELECT ref_count FROM resources WHERE id = 'r2'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT ref_count FROM resources WHERE id = 'r2'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(rc2, 0, "失真的 ref_count 必须在相关变更批次中被重算修正");
     let rc1: i64 = conn
-        .query_row(
-            "SELECT ref_count FROM resources WHERE id = 'r1'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT ref_count FROM resources WHERE id = 'r1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(rc1, 2, "新增引用后 ref_count 必须重算为实际引用数");
 }
@@ -2453,14 +2452,18 @@ async fn manifest_decrypt_failure_fails_closed() {
     let storage = MockCloudStorage::new();
 
     // 设备 A 用密码 pw-a 上传加密清单
-    let mgr_a =
-        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_a = SyncManager::with_encryption(
+        format!("dev_a_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let manifest_a = mgr_a.create_manifest(HashMap::new());
     mgr_a.upload_manifest(&storage, &manifest_a).await.unwrap();
 
     // 设备 B 用错误密码：必须报错而非把云端当成空实例
-    let mgr_b =
-        SyncManager::with_encryption(format!("dev_b_{}", uuid::Uuid::new_v4()), Some("pw-wrong".into()));
+    let mgr_b = SyncManager::with_encryption(
+        format!("dev_b_{}", uuid::Uuid::new_v4()),
+        Some("pw-wrong".into()),
+    );
     let err = mgr_b.download_manifest(&storage).await;
     assert!(
         err.is_err(),
@@ -2470,14 +2473,13 @@ async fn manifest_decrypt_failure_fails_closed() {
     // 设备 B 未配密码：同样必须报错（云端是加密数据）
     let mgr_b_plain = SyncManager::new(format!("dev_b2_{}", uuid::Uuid::new_v4()));
     let err2 = mgr_b_plain.download_manifest(&storage).await;
-    assert!(
-        err2.is_err(),
-        "未配置密码遇到加密清单必须 fail-close"
-    );
+    assert!(err2.is_err(), "未配置密码遇到加密清单必须 fail-close");
 
     // 正确密码可正常读取
-    let mgr_c =
-        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_c = SyncManager::with_encryption(
+        format!("dev_c_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let ok = mgr_c.download_manifest(&storage).await;
     assert!(ok.is_ok(), "正确密码必须能读取清单: {:?}", ok.err());
 }
@@ -2490,10 +2492,17 @@ async fn tombstone_decrypt_failure_fails_closed() {
     let storage = MockCloudStorage::new();
 
     // 设备 A（密码 pw-a）发布一条 blob tombstone（加密）
-    let mgr_a =
-        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_a = SyncManager::with_encryption(
+        format!("dev_a_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     mgr_a
-        .mark_blob_deleted(&storage, "hash_enc_1", Some("ha/hash_enc_1.pdf".into()), None)
+        .mark_blob_deleted(
+            &storage,
+            "hash_enc_1",
+            Some("ha/hash_enc_1.pdf".into()),
+            None,
+        )
         .await
         .unwrap();
 
@@ -2513,12 +2522,15 @@ async fn tombstone_decrypt_failure_fails_closed() {
 
     // 设备 A 改了密码后再 mark：读自己旧清单失败必须报错，
     // 而非用空清单覆盖（丢失 hash_enc_1 这条历史 tombstone）
-    let mgr_a_newpw = SyncManager::with_encryption(
-        mgr_a.device_id().to_string(),
-        Some("pw-changed".into()),
-    );
+    let mgr_a_newpw =
+        SyncManager::with_encryption(mgr_a.device_id().to_string(), Some("pw-changed".into()));
     let r2 = mgr_a_newpw
-        .mark_blob_deleted(&storage, "hash_enc_2", Some("hb/hash_enc_2.pdf".into()), None)
+        .mark_blob_deleted(
+            &storage,
+            "hash_enc_2",
+            Some("hb/hash_enc_2.pdf".into()),
+            None,
+        )
         .await;
     assert!(
         r2.is_err(),
@@ -2548,8 +2560,10 @@ async fn assets_manifest_decrypt_failure_fails_closed() {
     std::fs::create_dir_all(&asset_dir).unwrap();
     std::fs::write(asset_dir.join("report.png"), b"asset-payload").unwrap();
 
-    let mgr_a =
-        SyncManager::with_encryption(format!("dev_a_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_a = SyncManager::with_encryption(
+        format!("dev_a_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let out_a = mgr_a
         .sync_asset_directories(
             &storage,
@@ -2584,8 +2598,10 @@ async fn assets_manifest_decrypt_failure_fails_closed() {
     // 正确密码端可继续同步下载
     let active_c = TempDir::new().unwrap();
     let app_data_c = TempDir::new().unwrap();
-    let mgr_c =
-        SyncManager::with_encryption(format!("dev_c_{}", uuid::Uuid::new_v4()), Some("pw-a".into()));
+    let mgr_c = SyncManager::with_encryption(
+        format!("dev_c_{}", uuid::Uuid::new_v4()),
+        Some("pw-a".into()),
+    );
     let out_c = mgr_c
         .sync_asset_directories(
             &storage,

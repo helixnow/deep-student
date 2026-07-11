@@ -1114,7 +1114,10 @@ mod tests {
         crate::vfs::database::setup_migrated_test_db()
     }
 
-    fn make_params(source: &str, translated: &str) -> crate::vfs::types::VfsCreateTranslationParams {
+    fn make_params(
+        source: &str,
+        translated: &str,
+    ) -> crate::vfs::types::VfsCreateTranslationParams {
         crate::vfs::types::VfsCreateTranslationParams {
             title: None,
             source: source.to_string(),
@@ -1180,7 +1183,10 @@ mod tests {
 
         let conn = db.get_conn_safe().unwrap();
         let (data, new_hash, index_state) = resource_row(&conn, &rid).unwrap();
-        assert!(data.contains("hello world"), "data should be updated in place");
+        assert!(
+            data.contains("hello world"),
+            "data should be updated in place"
+        );
         assert_ne!(old_hash, new_hash, "hash must be recomputed");
         assert_eq!(index_state, "pending", "index_state must reset to pending");
     }
@@ -1189,8 +1195,10 @@ mod tests {
     #[test]
     fn test_update_shared_resource_uses_copy_on_write() {
         let (_tmp, db) = setup_test_db();
-        let t1 = VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
-        let t2 = VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
+        let t1 =
+            VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
+        let t2 =
+            VfsTranslationRepo::create_translation(&db, make_params("shared", "共享")).unwrap();
         let r1 = t1.resource_id.clone();
         let r2 = t2.resource_id.clone();
 
@@ -1202,7 +1210,8 @@ mod tests {
                 params![r1, t2.id],
             )
             .unwrap();
-            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2]).unwrap();
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2])
+                .unwrap();
         }
 
         VfsTranslationRepo::update_translation_content(&db, &t2.id, "edited", "已编辑").unwrap();
@@ -1241,7 +1250,8 @@ mod tests {
                 params![r1, t2.id],
             )
             .unwrap();
-            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2]).unwrap();
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![r2])
+                .unwrap();
         }
 
         VfsTranslationRepo::purge_translation(&db, &t1.id).unwrap();

@@ -109,7 +109,9 @@ pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::ne
 pub const V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID: MigrationDef = MigrationDef::new(
     20260705,
     "add_document_tasks_source_session_id",
-    include_str!("../../../migrations/mistakes/V20260705__add_document_tasks_source_session_id.sql"),
+    include_str!(
+        "../../../migrations/mistakes/V20260705__add_document_tasks_source_session_id.sql"
+    ),
 )
 .with_expected_columns(&[("document_tasks", "source_session_id")])
 .idempotent();
@@ -142,6 +144,29 @@ pub const V20260710_ANKI_EXPORT_RECEIPT: MigrationDef = MigrationDef::new(
     ("anki_cards", "export_status"),
     ("anki_cards", "last_exported_at"),
     ("anki_cards", "content_hash"),
+])
+.idempotent();
+
+/// V20260711: FSRS RowSync coverage and orphan cleanup
+pub const V20260711_FSRS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260711,
+    "fsrs_sync_coverage",
+    include_str!("../../../migrations/mistakes/V20260711__fsrs_sync_coverage.sql"),
+)
+.with_expected_columns(&[
+    ("fsrs_card_states", "device_id"),
+    ("fsrs_card_states", "local_version"),
+    ("fsrs_card_states", "deleted_at"),
+    ("fsrs_review_logs", "created_at"),
+    ("fsrs_review_logs", "updated_at"),
+    ("fsrs_review_logs", "device_id"),
+    ("fsrs_review_logs", "local_version"),
+    ("fsrs_review_logs", "deleted_at"),
+])
+.with_expected_indexes(&[
+    "idx_anki_decks_device_version",
+    "idx_fsrs_card_states_device_version",
+    "idx_fsrs_review_logs_device_version",
 ])
 .idempotent();
 
@@ -274,6 +299,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID,
         V20260709_FLASHCARD_FSRS,
         V20260710_ANKI_EXPORT_RECEIPT,
+        V20260711_FSRS_SYNC_COVERAGE,
     ],
 };
 
@@ -426,9 +452,7 @@ mod tests {
             .expect("V20260709 should exist");
         assert_eq!(flashcard_fsrs.name, "flashcard_fsrs");
         assert!(flashcard_fsrs.idempotent);
-        assert!(flashcard_fsrs
-            .expected_tables
-            .contains(&"fsrs_card_states"));
+        assert!(flashcard_fsrs.expected_tables.contains(&"fsrs_card_states"));
 
         let export_receipt = MISTAKES_MIGRATIONS
             .get(20260710)
@@ -439,9 +463,21 @@ mod tests {
             .expected_columns
             .contains(&("anki_cards", "anki_note_id")));
 
+        let fsrs_sync = MISTAKES_MIGRATIONS
+            .get(20260711)
+            .expect("V20260711 should exist");
+        assert_eq!(fsrs_sync.name, "fsrs_sync_coverage");
+        assert!(fsrs_sync.idempotent);
+        assert!(fsrs_sync
+            .expected_columns
+            .contains(&("fsrs_review_logs", "deleted_at")));
+        assert!(fsrs_sync
+            .sql
+            .contains("trg_fsrs_cleanup_before_anki_card_delete"));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260710,
+            20260711,
             "Latest version should track the newest published mistakes migration"
         );
     }

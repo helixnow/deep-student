@@ -820,11 +820,16 @@ impl VfsReviewPlanRepo {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let now = chrono::Utc::now().to_rfc3339();
 
-        let (where_clause, exam_id_param): (String, Option<String>) = if let Some(eid) = exam_id {
-            ("WHERE exam_id = ?1".to_string(), Some(eid.to_string()))
-        } else {
-            (String::new(), None)
-        };
+        let (where_clause, today_param_index, param_values): (String, usize, Vec<String>) =
+            if let Some(eid) = exam_id {
+                (
+                    "WHERE exam_id = ?1".to_string(),
+                    2,
+                    vec![eid.to_string(), today.clone()],
+                )
+            } else {
+                (String::new(), 1, vec![today.clone()])
+            };
 
         let stats_sql = format!(
             r#"
@@ -835,60 +840,37 @@ impl VfsReviewPlanRepo {
                 SUM(CASE WHEN status = 'reviewing' THEN 1 ELSE 0 END) as reviewing_count,
                 SUM(CASE WHEN status = 'graduated' THEN 1 ELSE 0 END) as graduated_count,
                 SUM(CASE WHEN status = 'suspended' THEN 1 ELSE 0 END) as suspended_count,
-                SUM(CASE WHEN next_review_date <= ?2 AND status != 'suspended' THEN 1 ELSE 0 END) as due_today,
-                SUM(CASE WHEN next_review_date < ?2 AND status != 'suspended' THEN 1 ELSE 0 END) as overdue_count,
+                SUM(CASE WHEN next_review_date <= ?{today_param_index} AND status != 'suspended' THEN 1 ELSE 0 END) as due_today,
+                SUM(CASE WHEN next_review_date < ?{today_param_index} AND status != 'suspended' THEN 1 ELSE 0 END) as overdue_count,
                 SUM(CASE WHEN is_difficult = 1 THEN 1 ELSE 0 END) as difficult_count,
                 SUM(total_reviews) as total_reviews,
                 SUM(total_correct) as total_correct,
                 AVG(ease_factor) as avg_ease_factor
             FROM review_plans
-            {}
+            {where_clause}
             "#,
-            where_clause
         );
 
-        let stats: (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, f64) =
-            if let Some(eid) = &exam_id_param {
-                conn.query_row(&stats_sql, params![eid, today], |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get::<_, i64>(1).unwrap_or(0),
-                        row.get::<_, i64>(2).unwrap_or(0),
-                        row.get::<_, i64>(3).unwrap_or(0),
-                        row.get::<_, i64>(4).unwrap_or(0),
-                        row.get::<_, i64>(5).unwrap_or(0),
-                        row.get::<_, i64>(6).unwrap_or(0),
-                        row.get::<_, i64>(7).unwrap_or(0),
-                        row.get::<_, i64>(8).unwrap_or(0),
-                        row.get::<_, i64>(9).unwrap_or(0),
-                        row.get::<_, i64>(10).unwrap_or(0),
-                        row.get::<_, f64>(11).unwrap_or(2.5),
-                    ))
-                })?
-            } else {
-                conn.query_row(
-                    &stats_sql
-                        .replace("?1", "NULL")
-                        .replace("WHERE exam_id = NULL", ""),
-                    params![today],
-                    |row| {
-                        Ok((
-                            row.get(0)?,
-                            row.get::<_, i64>(1).unwrap_or(0),
-                            row.get::<_, i64>(2).unwrap_or(0),
-                            row.get::<_, i64>(3).unwrap_or(0),
-                            row.get::<_, i64>(4).unwrap_or(0),
-                            row.get::<_, i64>(5).unwrap_or(0),
-                            row.get::<_, i64>(6).unwrap_or(0),
-                            row.get::<_, i64>(7).unwrap_or(0),
-                            row.get::<_, i64>(8).unwrap_or(0),
-                            row.get::<_, i64>(9).unwrap_or(0),
-                            row.get::<_, i64>(10).unwrap_or(0),
-                            row.get::<_, f64>(11).unwrap_or(2.5),
-                        ))
-                    },
-                )?
-            };
+        let stats: (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, f64) = conn.query_row(
+            &stats_sql,
+            rusqlite::params_from_iter(param_values.iter()),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get::<_, i64>(1).unwrap_or(0),
+                    row.get::<_, i64>(2).unwrap_or(0),
+                    row.get::<_, i64>(3).unwrap_or(0),
+                    row.get::<_, i64>(4).unwrap_or(0),
+                    row.get::<_, i64>(5).unwrap_or(0),
+                    row.get::<_, i64>(6).unwrap_or(0),
+                    row.get::<_, i64>(7).unwrap_or(0),
+                    row.get::<_, i64>(8).unwrap_or(0),
+                    row.get::<_, i64>(9).unwrap_or(0),
+                    row.get::<_, i64>(10).unwrap_or(0),
+                    row.get::<_, f64>(11).unwrap_or(2.5),
+                ))
+            },
+        )?;
 
         let avg_correct_rate = if stats.9 > 0 {
             stats.10 as f64 / stats.9 as f64
@@ -1094,5 +1076,24 @@ impl VfsReviewPlanRepo {
             created_at: row.get(13)?,
             updated_at: row.get(14)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn global_stats_bind_today_without_exam_parameter() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn_safe().expect("open migrated VFS test database");
+
+        let stats = VfsReviewPlanRepo::get_stats_with_conn(&conn, None)
+            .expect("global review stats should use a valid parameter layout");
+
+        assert_eq!(stats.exam_id, None);
+        assert_eq!(stats.total_plans, 0);
+        assert_eq!(stats.due_today, 0);
+        assert_eq!(stats.total_reviews, 0);
     }
 }

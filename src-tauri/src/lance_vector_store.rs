@@ -192,6 +192,13 @@ const CATEGORY_KB_SQLITE: &str = "kb_sqlite_to_lance";
 #[cfg(feature = "lance")]
 const CATEGORY_CHAT_FALLBACK: &str = "chat_legacy_base";
 
+/// Coordinates KB writers with destructive clear operations across all store
+/// instances in this process. Multiple commands construct short-lived
+/// `LanceVectorStore` values for the same path, so an instance-local lock is
+/// insufficient.
+#[cfg(feature = "lance")]
+static KB_MUTATION_LOCK: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
 #[cfg(feature = "lance")]
 struct LanceChunkRow {
     chunk_id: String,
@@ -2709,6 +2716,7 @@ impl VectorStore for LanceVectorStore {
             if chunks.is_empty() {
                 return Ok(());
             }
+            let _mutation_guard = KB_MUTATION_LOCK.read().await;
             let dim = chunks[0].embedding.len();
             if dim == 0 {
                 return Err(AppError::validation("embedding 维度不可为 0"));
@@ -3117,6 +3125,48 @@ impl VectorStore for LanceVectorStore {
     }
 
     async fn clear_all(&self) -> Result<()> {
+        let _mutation_guard = KB_MUTATION_LOCK.write().await;
+        // Clear and verify every actual KB table before deleting SQLite
+        // metadata. The previous implementation swallowed connect/open/delete
+        // errors and could report success while searchable vectors remained.
+        let path = self.get_lance_path()?;
+        let db = lancedb::connect(&path)
+            .execute()
+            .await
+            .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
+        let mut table_names: Vec<String> = Self::existing_dim_tables(&db, KB_V2_TABLE_PREFIX)
+            .await?
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect();
+        table_names.extend(
+            Self::existing_dim_tables(&db, KB_LEGACY_TABLE_PREFIX)
+                .await?
+                .into_iter()
+                .map(|(_, name)| name),
+        );
+        table_names.sort();
+        table_names.dedup();
+
+        for name in table_names {
+            let table = db.open_table(&name).execute().await.map_err(|e| {
+                AppError::database(format!("打开待清空 Lance 表 {} 失败: {}", name, e))
+            })?;
+            table
+                .delete("true")
+                .await
+                .map_err(|e| AppError::database(format!("清空 Lance 表 {} 失败: {}", name, e)))?;
+            let remaining = table.count_rows(None::<String>).await.map_err(|e| {
+                AppError::database(format!("校验 Lance 表 {} 清空结果失败: {}", name, e))
+            })?;
+            if remaining != 0 {
+                return Err(AppError::database(format!(
+                    "Lance 表 {} 清空后仍残留 {} 行",
+                    name, remaining
+                )));
+            }
+        }
+
         {
             let conn = self
                 .database
@@ -3126,25 +3176,14 @@ impl VectorStore for LanceVectorStore {
                 let tx = conn
                     .unchecked_transaction()
                     .map_err(|e| AppError::database(format!("开始事务失败: {}", e)))?;
-                let _ = tx.execute("DELETE FROM rag_vectors", []);
+                tx.execute("DELETE FROM rag_vectors", [])
+                    .map_err(|e| AppError::database(e.to_string()))?;
                 tx.execute("DELETE FROM rag_document_chunks", [])
                     .map_err(|e| AppError::database(e.to_string()))?;
                 tx.execute("DELETE FROM rag_documents", [])
                     .map_err(|e| AppError::database(e.to_string()))?;
                 tx.commit()
                     .map_err(|e| AppError::database(format!("提交事务失败: {}", e)))?;
-            }
-        }
-
-        // 清空 Lance 表（P1 修复：枚举实际存在的维度表，覆盖非白名单维度）
-        let path = self.get_lance_path()?;
-        if let Ok(db) = lancedb::connect(&path).execute().await {
-            for name in Self::existing_kb_table_names(&db).await {
-                if let Ok(tbl) = db.open_table(&name).execute().await {
-                    if let Err(err) = tbl.delete("true").await {
-                        warn!("⚠️ [LanceClear] 清空表 {} 失败: {}", name, err);
-                    }
-                }
             }
         }
 
@@ -4539,5 +4578,65 @@ mod tests {
         assert_eq!(deduped.len(), 2);
         assert_eq!(deduped[0], ("c1".to_string(), 0.9));
         assert_eq!(deduped[1], ("c2".to_string(), 0.7));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn clear_all_success_means_sqlite_and_every_lance_table_are_empty() {
+        let temp_dir = tempfile::TempDir::new().expect("create temp dir");
+        let database = Arc::new(
+            Database::new(&temp_dir.path().join("clear-all.db")).expect("create test database"),
+        );
+        let store = LanceVectorStore::new(database.clone()).expect("create Lance store");
+        store
+            .add_document_record_with_library("doc-clear", "clear.txt", None, None, "default")
+            .expect("add document record");
+        store
+            .add_chunks(vec![DocumentChunkWithEmbedding {
+                chunk: DocumentChunk {
+                    id: "chunk-clear".to_string(),
+                    document_id: "doc-clear".to_string(),
+                    chunk_index: 0,
+                    text: "vector that must be removed".to_string(),
+                    metadata: HashMap::new(),
+                },
+                // Deliberately use a non-candidate dimension so clear_all must
+                // enumerate actual tables rather than a hard-coded list.
+                embedding: vec![0.1, 0.2, 0.3],
+            }])
+            .await
+            .expect("write Lance row");
+
+        let path = store.get_lance_path().expect("resolve Lance path");
+        let lance = lancedb::connect(&path)
+            .execute()
+            .await
+            .expect("connect Lance");
+        let table_name = format!("{}3", KB_V2_TABLE_PREFIX);
+        let table = lance
+            .open_table(&table_name)
+            .execute()
+            .await
+            .expect("open written table");
+        assert_eq!(table.count_rows(None::<String>).await.unwrap(), 1);
+
+        store.clear_all().await.expect("clear_all should succeed");
+
+        let cleared_table = lance
+            .open_table(&table_name)
+            .execute()
+            .await
+            .expect("reopen cleared table");
+        assert_eq!(cleared_table.count_rows(None::<String>).await.unwrap(), 0);
+        let conn = database.get_conn_safe().expect("open SQLite");
+        for sqlite_table in ["rag_vectors", "rag_document_chunks", "rag_documents"] {
+            let count: i64 = conn
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {}", sqlite_table),
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("count cleared SQLite table");
+            assert_eq!(count, 0, "{} must be empty after clear_all", sqlite_table);
+        }
     }
 }

@@ -631,6 +631,36 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             // content_hash 已加列，字段级 merge 策略待登记（本地 AnkiConnect receipt，暂不参与双向进度同步）
             merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling",
         },
+        TableClassification {
+            database: "mistakes",
+            table_name: "anki_decks",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::Lww,
+            business_unique_keys: "name",
+            has_json_blobs: true,
+            merge_notes: "Deck configuration JSON uses row-level LWW/conflict handling",
+        },
+        TableClassification {
+            database: "mistakes",
+            table_name: "fsrs_card_states",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::Lww,
+            business_unique_keys: "anki_card_id",
+            has_json_blobs: false,
+            merge_notes: "One scheduling state per Anki card; latest scheduler state wins",
+        },
+        TableClassification {
+            database: "mistakes",
+            table_name: "fsrs_review_logs",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::Lww,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Append-only review events; UUID primary keys avoid cross-device collisions",
+        },
         // --- LocalRuntime ---
         TableClassification {
             database: "mistakes",

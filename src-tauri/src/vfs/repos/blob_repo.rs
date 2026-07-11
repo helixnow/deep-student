@@ -516,10 +516,7 @@ impl VfsBlobRepo {
             };
             for file_entry in files.flatten() {
                 let path = file_entry.path();
-                let is_tmp = path
-                    .extension()
-                    .map(|ext| ext == "tmp")
-                    .unwrap_or(false);
+                let is_tmp = path.extension().map(|ext| ext == "tmp").unwrap_or(false);
                 if !is_tmp {
                     continue;
                 }
@@ -659,18 +656,11 @@ mod tests {
         assert_eq!(blob2.ref_count, 2);
 
         // 磁盘上只应有一个该 hash 的文件
-        let prefix_dir = temp_dir
-            .path()
-            .join("vfs_blobs")
-            .join(&blob1.hash[..2]);
+        let prefix_dir = temp_dir.path().join("vfs_blobs").join(&blob1.hash[..2]);
         let count = fs::read_dir(&prefix_dir)
             .expect("prefix dir should exist")
             .flatten()
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with(&blob1.hash)
-            })
+            .filter(|e| e.file_name().to_string_lossy().starts_with(&blob1.hash))
             .count();
         assert_eq!(count, 1, "Only one physical file should exist for the hash");
     }

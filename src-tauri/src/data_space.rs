@@ -576,10 +576,7 @@ impl DataSpaceManager {
         if !target.is_test_slot() && target == self.active_slot() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
-                format!(
-                    "拒绝清空活跃插槽 {}：恢复必须写入非活跃插槽",
-                    target.name()
-                ),
+                format!("拒绝清空活跃插槽 {}：恢复必须写入非活跃插槽", target.name()),
             ));
         }
 

@@ -261,11 +261,7 @@ impl VfsPomodoroRepo {
                     .format("%Y-%m-%dT%H:%M:%S%.3fZ")
                     .to_string()
             })
-            .unwrap_or_else(|| {
-                Utc::now()
-                    .format("%Y-%m-%dT00:00:00.000Z")
-                    .to_string()
-            });
+            .unwrap_or_else(|| Utc::now().format("%Y-%m-%dT00:00:00.000Z").to_string());
 
         let conn = db.get_conn_safe()?;
         let mut stmt = conn.prepare(

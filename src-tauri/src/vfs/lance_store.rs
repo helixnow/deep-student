@@ -49,6 +49,11 @@ const OPTIMIZE_MIN_INTERVAL_SECS: i64 = 600; // 10min
 const LANCE_RELEVANCE_COL: &str = "_relevance_score";
 const LANCE_FTS_SCORE_COL: &str = "_score";
 
+/// Prevents a concurrent indexing batch from repopulating a table between
+/// clear_all's delete and verification steps. The lock is process-wide because
+/// VfsLanceStore can be constructed more than once for the same VFS database.
+static VFS_MUTATION_LOCK: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
 // ============================================================================
 // 类型定义
 // ============================================================================
@@ -416,6 +421,7 @@ impl VfsLanceStore {
         if rows.is_empty() {
             return Ok(());
         }
+        let _mutation_guard = VFS_MUTATION_LOCK.read().await;
 
         let dim = rows[0].embedding.len();
 
@@ -1539,27 +1545,49 @@ impl VfsLanceStore {
     ///
     /// 删除所有维度表中的全部数据
     pub async fn clear_all(&self, modality: &str) -> VfsResult<usize> {
+        let _mutation_guard = VFS_MUTATION_LOCK.write().await;
         let conn = self.connect().await?;
-        let mut deleted_tables = 0usize;
+        let prefix = format!("{}{}_", VFS_LANCE_TABLE_PREFIX, modality);
+        let mut table_names: Vec<String> = conn
+            .table_names()
+            .execute()
+            .await
+            .map_err(|e| VfsError::Other(format!("枚举 Lance 表失败: {}", e)))?
+            .into_iter()
+            .filter(|name| {
+                name.strip_prefix(&prefix)
+                    .and_then(|suffix| suffix.parse::<usize>().ok())
+                    .is_some()
+            })
+            .collect();
+        table_names.sort();
 
-        let dims = self.get_registered_dimensions(modality)?;
-        for dim in dims {
-            let table_name = Self::table_name(modality, dim);
-            if let Ok(tbl) = conn.open_table(&table_name).execute().await {
-                // 删除表中所有数据
-                if tbl.delete("true").await.is_ok() {
-                    deleted_tables += 1;
-                    info!("[VfsLanceStore] Cleared all data from table {}", table_name);
-                }
+        for table_name in &table_names {
+            let table = conn.open_table(table_name).execute().await.map_err(|e| {
+                VfsError::Other(format!("打开待清空 Lance 表 {} 失败: {}", table_name, e))
+            })?;
+            table.delete("true").await.map_err(|e| {
+                VfsError::Other(format!("清空 Lance 表 {} 失败: {}", table_name, e))
+            })?;
+            let remaining = table.count_rows(None::<String>).await.map_err(|e| {
+                VfsError::Other(format!("校验 Lance 表 {} 清空结果失败: {}", table_name, e))
+            })?;
+            if remaining != 0 {
+                return Err(VfsError::Other(format!(
+                    "Lance 表 {} 清空后仍残留 {} 行",
+                    table_name, remaining
+                )));
             }
+            info!("[VfsLanceStore] Cleared all data from table {}", table_name);
         }
 
         info!(
             "[VfsLanceStore] Cleared {} tables for modality {}",
-            deleted_tables, modality
+            table_names.len(),
+            modality
         );
 
-        Ok(deleted_tables)
+        Ok(table_names.len())
     }
 }
 
@@ -1607,5 +1635,51 @@ mod tests {
             expr,
             Some("folder_id = 'folder1' AND resource_type IN ('note', 'textbook')".to_string())
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn clear_all_discovers_actual_tables_and_verifies_no_rows_remain() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let store = VfsLanceStore::new(Arc::new(db)).expect("create VFS Lance store");
+        store
+            .write_chunks(
+                "text",
+                &[VfsLanceRow {
+                    embedding_id: "emb-clear".to_string(),
+                    resource_id: "resource-clear".to_string(),
+                    resource_type: "note".to_string(),
+                    folder_id: None,
+                    chunk_index: 0,
+                    text: "vector that must be removed".to_string(),
+                    metadata_json: None,
+                    created_at: chrono::Utc::now().to_rfc3339(),
+                    // Non-standard dimension exercises actual table discovery
+                    // even if the SQLite dimension registry is stale.
+                    embedding: vec![0.1, 0.2, 0.3],
+                }],
+            )
+            .await
+            .expect("write VFS Lance row");
+
+        let table = store
+            .connect()
+            .await
+            .expect("connect Lance")
+            .open_table("vfs_emb_text_3")
+            .execute()
+            .await
+            .expect("open written table");
+        assert_eq!(table.count_rows(None::<String>).await.unwrap(), 1);
+
+        assert_eq!(store.clear_all("text").await.expect("clear text"), 1);
+        let cleared_table = store
+            .connect()
+            .await
+            .expect("connect Lance")
+            .open_table("vfs_emb_text_3")
+            .execute()
+            .await
+            .expect("reopen cleared table");
+        assert_eq!(cleared_table.count_rows(None::<String>).await.unwrap(), 0);
     }
 }

@@ -16,9 +16,10 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
 use tauri::Manager;
 use tracing::{debug, info, warn};
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 /// 服务名称常量
 const SERVICE_NAME: &str = "deep-student";
@@ -82,15 +83,20 @@ const SENSITIVE_KEY_PATTERNS: &[&str] = &[
     "token",    // 通用 token 模式
 ];
 
-/// `.key_seed` 文件的 DPAPI 封装前缀（Windows）
+/// `.key_seed` 文件的 DPAPI 封装前缀
 ///
 /// 安全修复（审阅 16-secrets-security-infra P1-1）：明文种子与密文同目录存放时，
 /// 加密强度完全依赖 best-effort 的文件 ACL。Windows 下改用 DPAPI（用户级
 /// `CryptProtectData`）封装种子后落盘：即使 `.secure` 目录整体泄露（备份、
 /// 网盘同步、取证镜像），缺少当前 Windows 用户上下文也无法解封种子。
 /// 文件格式：`DPAPI1:` + base64(DPAPI blob)。旧版明文种子在首次读取时平滑迁移。
-#[cfg(windows)]
 const DPAPI_SEED_PREFIX: &str = "DPAPI1:";
+
+/// 备份种子文件读取上限。正常明文种子为 64 字符，DPAPI 载荷通常也只有数百字节。
+const MAX_BACKUP_SEED_FILE_BYTES: u64 = 64 * 1024;
+const MAX_ENCRYPTED_SECRET_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+static MASTER_SEED_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// DPAPI 附加熵（应用绑定，防止其他同用户进程用空熵直接解封）
 ///
@@ -295,7 +301,7 @@ impl SecureStore {
     ///
     /// `.secure` 下存放加密凭据与密钥种子 `.key_seed`（种子等价于解密钥匙），
     /// 默认 umask 创建的 0644/0755 允许同机其他用户读取。
-    fn restrict_permissions(path: &std::path::Path, is_dir: bool) {
+    pub(crate) fn restrict_permissions(path: &std::path::Path, is_dir: bool) {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -400,12 +406,43 @@ impl SecureStore {
     /// 历史明文种子在首次读取时自动迁移为封装格式（迁移失败不影响读取）。
     /// 其余平台维持原有明文 + 权限收紧策略。
     fn get_or_create_master_seed(&self) -> Result<String, SecureStoreError> {
+        let _guard = MASTER_SEED_LOCK
+            .lock()
+            .map_err(|_| SecureStoreError::Other("密钥种子锁已损坏".to_string()))?;
         let secure_dir = self.get_secure_dir()?;
         let seed_file = secure_dir.join(".key_seed");
 
-        if let Ok(seed) = std::fs::read_to_string(&seed_file) {
-            let trimmed = seed.trim();
-            if !trimmed.is_empty() {
+        match std::fs::symlink_metadata(&seed_file) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(SecureStoreError::AccessDenied(
+                        "密钥种子必须是普通文件，不能是目录或符号链接".to_string(),
+                    ));
+                }
+                if metadata.len() > MAX_BACKUP_SEED_FILE_BYTES {
+                    return Err(SecureStoreError::EncryptionError(format!(
+                        "密钥种子文件异常过大: {} bytes",
+                        metadata.len()
+                    )));
+                }
+                let mut seed = Zeroizing::new(String::new());
+                use std::io::Read;
+                std::fs::File::open(&seed_file)
+                    .map_err(|e| SecureStoreError::Other(format!("打开密钥种子失败: {}", e)))?
+                    .take(MAX_BACKUP_SEED_FILE_BYTES + 1)
+                    .read_to_string(&mut seed)
+                    .map_err(|e| SecureStoreError::Other(format!("读取密钥种子失败: {}", e)))?;
+                if seed.len() as u64 > MAX_BACKUP_SEED_FILE_BYTES {
+                    return Err(SecureStoreError::EncryptionError(
+                        "密钥种子读取大小超限".to_string(),
+                    ));
+                }
+                let trimmed = seed.trim();
+                if trimmed.is_empty() {
+                    return Err(SecureStoreError::EncryptionError(
+                        "密钥种子为空，拒绝生成新种子覆盖".to_string(),
+                    ));
+                }
                 #[cfg(windows)]
                 {
                     if let Some(encoded) = trimmed.strip_prefix(DPAPI_SEED_PREFIX) {
@@ -425,6 +462,13 @@ impl SecureStore {
                     return Ok(trimmed.to_string());
                 }
             }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(SecureStoreError::Other(format!(
+                    "检查密钥种子失败，拒绝覆盖: {}",
+                    e
+                )))
+            }
         }
 
         use rand::{rngs::OsRng, RngCore};
@@ -436,32 +480,142 @@ impl SecureStore {
         Ok(seed)
     }
 
+    fn atomic_write_secure_file(
+        path: &std::path::Path,
+        data: &[u8],
+    ) -> Result<(), SecureStoreError> {
+        let parent = path
+            .parent()
+            .ok_or_else(|| SecureStoreError::Other("安全存储路径缺少父目录".to_string()))?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| SecureStoreError::Other(format!("创建安全存储目录失败: {}", e)))?;
+        let mut temp = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|e| SecureStoreError::Other(format!("创建安全存储临时文件失败: {}", e)))?;
+        use std::io::Write;
+        temp.write_all(data)
+            .map_err(|e| SecureStoreError::Other(format!("写入安全存储临时文件失败: {}", e)))?;
+        temp.as_file()
+            .sync_all()
+            .map_err(|e| SecureStoreError::Other(format!("同步安全存储临时文件失败: {}", e)))?;
+        Self::restrict_permissions(temp.path(), false);
+        temp.persist(path)
+            .map_err(|e| SecureStoreError::Other(format!("提交安全存储文件失败: {}", e.error)))?;
+        Self::restrict_permissions(path, false);
+        Ok(())
+    }
+
     /// 将种子写入 `.key_seed`：Windows 优先 DPAPI 封装，封装失败时回退明文
     /// （回退时保留权限收紧，并输出显著告警）；其余平台明文 + 权限收紧。
     fn write_seed_file(seed_file: &std::path::Path, seed: &str) -> Result<(), SecureStoreError> {
         #[cfg(windows)]
         {
-            if let Some(wrapped) = win_dpapi::protect(seed.as_bytes(), DPAPI_SEED_ENTROPY) {
-                use base64::Engine;
-                let encoded = format!(
-                    "{}{}",
-                    DPAPI_SEED_PREFIX,
-                    base64::engine::general_purpose::STANDARD.encode(wrapped)
-                );
-                std::fs::write(seed_file, encoded)
-                    .map_err(|e| SecureStoreError::Other(format!("写入密钥种子失败: {}", e)))?;
-                Self::restrict_permissions(seed_file, false);
+            use base64::Engine;
+            let wrapped = Zeroizing::new(
+                win_dpapi::protect(seed.as_bytes(), DPAPI_SEED_ENTROPY).ok_or_else(|| {
+                    SecureStoreError::EncryptionError(
+                        "DPAPI 封装密钥种子失败，拒绝明文降级".to_string(),
+                    )
+                })?,
+            );
+            let encoded = Zeroizing::new(format!(
+                "{}{}",
+                DPAPI_SEED_PREFIX,
+                base64::engine::general_purpose::STANDARD.encode(wrapped.as_slice())
+            ));
+            return Self::atomic_write_secure_file(seed_file, encoded.as_bytes());
+        }
+        #[cfg(not(windows))]
+        {
+            Self::atomic_write_secure_file(seed_file, seed.as_bytes())
+        }
+    }
+
+    /// 验证备份中的 `.key_seed` 能否在当前平台安全恢复。
+    ///
+    /// 明文种子可跨平台复制；DPAPI 种子只允许在 Windows 上、且必须能由当前
+    /// 用户/机器上下文成功解封。该检查不修改源文件或当前安全存储。
+    pub(crate) fn validate_backup_seed_file(
+        seed_file: &std::path::Path,
+    ) -> Result<(), SecureStoreError> {
+        let metadata = std::fs::symlink_metadata(seed_file)
+            .map_err(|e| SecureStoreError::Other(format!("读取备份密钥种子元数据失败: {}", e)))?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(SecureStoreError::AccessDenied(
+                "备份密钥种子必须是普通文件，不能是目录或符号链接".to_string(),
+            ));
+        }
+        if metadata.len() > MAX_BACKUP_SEED_FILE_BYTES {
+            return Err(SecureStoreError::EncryptionError(format!(
+                "备份密钥种子文件异常过大: {} bytes（上限 {} bytes）",
+                metadata.len(),
+                MAX_BACKUP_SEED_FILE_BYTES
+            )));
+        }
+
+        use std::io::Read;
+        let file = std::fs::File::open(seed_file)
+            .map_err(|e| SecureStoreError::Other(format!("打开备份密钥种子失败: {}", e)))?;
+        let opened_metadata = file
+            .metadata()
+            .map_err(|e| SecureStoreError::Other(format!("读取已打开种子元数据失败: {}", e)))?;
+        if !opened_metadata.is_file() || opened_metadata.len() > MAX_BACKUP_SEED_FILE_BYTES {
+            return Err(SecureStoreError::EncryptionError(
+                "备份密钥种子在验证期间发生异常变化".to_string(),
+            ));
+        }
+        let mut seed = String::new();
+        let bytes_read = match file
+            .take(MAX_BACKUP_SEED_FILE_BYTES + 1)
+            .read_to_string(&mut seed)
+        {
+            Ok(bytes_read) => bytes_read,
+            Err(e) => {
+                seed.zeroize();
+                return Err(SecureStoreError::Other(format!(
+                    "读取备份密钥种子失败: {}",
+                    e
+                )));
+            }
+        };
+        if bytes_read as u64 > MAX_BACKUP_SEED_FILE_BYTES {
+            seed.zeroize();
+            return Err(SecureStoreError::EncryptionError(
+                "备份密钥种子在读取期间超过大小上限".to_string(),
+            ));
+        }
+        if seed.trim().is_empty() {
+            seed.zeroize();
+            return Err(SecureStoreError::EncryptionError(
+                "备份密钥种子为空".to_string(),
+            ));
+        }
+
+        let encoded = seed
+            .trim()
+            .strip_prefix(DPAPI_SEED_PREFIX)
+            .map(|value| Zeroizing::new(value.to_owned()));
+        if let Some(encoded) = encoded {
+            seed.zeroize();
+            #[cfg(windows)]
+            {
+                let plain_seed = Zeroizing::new(Self::unwrap_dpapi_seed(&encoded)?);
+                if plain_seed.trim().is_empty() {
+                    return Err(SecureStoreError::EncryptionError(
+                        "DPAPI 解封后的备份密钥种子为空".to_string(),
+                    ));
+                }
                 return Ok(());
             }
-            warn!(
-                "⚠️ DPAPI 封装密钥种子失败，回退为明文落盘（凭据加密强度退化为仅依赖文件 ACL）: {:?}",
-                seed_file
-            );
+            #[cfg(not(windows))]
+            {
+                let _ = encoded;
+                return Err(SecureStoreError::PlatformUnsupported(
+                    "DPAPI 密钥种子只能在可解封它的 Windows 用户/机器上恢复".to_string(),
+                ));
+            }
         }
-        std::fs::write(seed_file, seed)
-            .map_err(|e| SecureStoreError::Other(format!("写入密钥种子失败: {}", e)))?;
-        // 种子是凭据加密的根密钥，必须限制为仅属主可读
-        Self::restrict_permissions(seed_file, false);
+
+        seed.zeroize();
         Ok(())
     }
 
@@ -469,20 +623,23 @@ impl SecureStore {
     #[cfg(windows)]
     fn unwrap_dpapi_seed(encoded: &str) -> Result<String, SecureStoreError> {
         use base64::Engine;
-        let wrapped = base64::engine::general_purpose::STANDARD
-            .decode(encoded.trim())
-            .map_err(|e| {
-                SecureStoreError::EncryptionError(format!("密钥种子 DPAPI 载荷解码失败: {}", e))
-            })?;
-        let mut plain = win_dpapi::unprotect(&wrapped, DPAPI_SEED_ENTROPY).ok_or_else(|| {
-            SecureStoreError::EncryptionError(
-                "DPAPI 解封密钥种子失败：种子与当前 Windows 用户/机器绑定，跨设备复制的种子无法解密"
-                    .to_string(),
-            )
-        })?;
-        let seed = String::from_utf8(plain.clone())
+        let wrapped = Zeroizing::new(
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded.trim())
+                .map_err(|e| {
+                    SecureStoreError::EncryptionError(format!("密钥种子 DPAPI 载荷解码失败: {}", e))
+                })?,
+        );
+        let plain = Zeroizing::new(
+            win_dpapi::unprotect(&wrapped, DPAPI_SEED_ENTROPY).ok_or_else(|| {
+                SecureStoreError::EncryptionError(
+                    "DPAPI 解封密钥种子失败：种子与当前 Windows 用户/机器绑定，跨设备复制的种子无法解密"
+                        .to_string(),
+                )
+            })?,
+        );
+        let seed = std::str::from_utf8(&plain)
             .map_err(|e| SecureStoreError::Other(format!("密钥种子 UTF-8 解码失败: {}", e)))?;
-        plain.zeroize();
         Ok(seed.trim().to_string())
     }
 
@@ -498,14 +655,11 @@ impl SecureStore {
     }
 
     /// 当前版本密钥：基于稳定随机种子派生，避免设备信息变化导致凭据不可解密
-    fn get_device_key(&self) -> [u8; 32] {
-        match self.get_or_create_master_seed() {
-            Ok(seed) => Self::derive_key(&seed, b"deep-student-secure-salt-v3"),
-            Err(e) => {
-                warn!("获取主密钥种子失败，降级到 legacy 密钥: {}", e);
-                self.get_legacy_device_key()
-            }
-        }
+    fn get_device_key(&self) -> Result<[u8; 32], SecureStoreError> {
+        let mut seed = self.get_or_create_master_seed()?;
+        let key = Self::derive_key(&seed, b"deep-student-secure-salt-v3");
+        seed.zeroize();
+        Ok(key)
     }
 
     /// 兼容旧版本（v2）密钥派生逻辑，用于无损迁移历史加密文件
@@ -539,6 +693,7 @@ impl SecureStore {
         let mut hasher = Sha256::new();
         hasher.update(device_info.as_bytes());
         hasher.update(b"deep-student-secure-salt-v2");
+        device_info.zeroize();
         let result = hasher.finalize();
         let mut key = [0u8; 32];
         key.copy_from_slice(&result);
@@ -592,16 +747,14 @@ impl SecureStore {
 
     fn save_encrypted_file(&self, key: &str, value: &str) -> Result<(), SecureStoreError> {
         let secure_dir = self.get_secure_dir()?;
-        let file_path = secure_dir.join(format!("{}.enc", key.replace("/", "_")));
+        let file_path = secure_dir.join(format!("{}.enc", key.replace(['/', '\\'], "_")));
 
-        let mut device_key = self.get_device_key();
+        let mut device_key = self.get_device_key()?;
         let result = Self::encrypt_with_key(&device_key, value);
         device_key.zeroize();
-        let data = result?;
+        let data = Zeroizing::new(result?);
 
-        std::fs::write(&file_path, &data)
-            .map_err(|e| SecureStoreError::Other(format!("写入文件失败: {}", e)))?;
-        Self::restrict_permissions(&file_path, false);
+        Self::atomic_write_secure_file(&file_path, &data)?;
 
         debug!("✅ 凭据已加密存储: {}", key);
         Ok(())
@@ -609,16 +762,43 @@ impl SecureStore {
 
     fn get_encrypted_file(&self, key: &str) -> Result<Option<String>, SecureStoreError> {
         let secure_dir = self.get_secure_dir()?;
-        let file_path = secure_dir.join(format!("{}.enc", key.replace("/", "_")));
+        let file_path = secure_dir.join(format!("{}.enc", key.replace(['/', '\\'], "_")));
 
-        if !file_path.exists() {
-            return Ok(None);
+        let metadata = match std::fs::symlink_metadata(&file_path) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Ok(metadata) => metadata,
+            Err(e) => {
+                return Err(SecureStoreError::Other(format!(
+                    "检查加密凭据文件失败: {}",
+                    e
+                )))
+            }
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(SecureStoreError::AccessDenied(
+                "加密凭据路径必须是普通文件，不能是目录或符号链接".to_string(),
+            ));
+        }
+        if metadata.len() > MAX_ENCRYPTED_SECRET_FILE_BYTES {
+            return Err(SecureStoreError::EncryptionError(format!(
+                "加密凭据文件过大: {} bytes",
+                metadata.len()
+            )));
+        }
+        use std::io::Read;
+        let mut data = Zeroizing::new(Vec::with_capacity(metadata.len() as usize));
+        std::fs::File::open(&file_path)
+            .map_err(|e| SecureStoreError::Other(format!("打开加密凭据文件失败: {}", e)))?
+            .take(MAX_ENCRYPTED_SECRET_FILE_BYTES + 1)
+            .read_to_end(&mut data)
+            .map_err(|e| SecureStoreError::Other(format!("读取加密凭据文件失败: {}", e)))?;
+        if data.len() as u64 > MAX_ENCRYPTED_SECRET_FILE_BYTES {
+            return Err(SecureStoreError::EncryptionError(
+                "加密凭据实际读取大小超限".to_string(),
+            ));
         }
 
-        let data = std::fs::read(&file_path)
-            .map_err(|e| SecureStoreError::Other(format!("读取文件失败: {}", e)))?;
-
-        let mut device_key = self.get_device_key();
+        let mut device_key = self.get_device_key()?;
         let result = Self::decrypt_with_key(&device_key, &data);
         device_key.zeroize();
         match result {
@@ -642,12 +822,24 @@ impl SecureStore {
     }
 
     fn delete_encrypted_file(&self, key: &str) -> Result<(), SecureStoreError> {
-        let secure_dir = self.get_secure_dir()?;
-        let file_path = secure_dir.join(format!("{}.enc", key.replace("/", "_")));
+        // Deletion must not create the directory or silently repair its permissions.
+        // Doing so can turn an externally read-only credential store writable and
+        // hide a failed clear operation from the caller.
+        let secure_dir = if let Some(dir) = self.secure_dir.as_ref() {
+            dir.clone()
+        } else {
+            dirs::data_local_dir()
+                .map(|dir| dir.join("deep-student").join(".secure"))
+                .unwrap_or_else(|| std::env::temp_dir().join("deep-student").join(".secure"))
+        };
+        let file_path = secure_dir.join(format!("{}.enc", key.replace(['/', '\\'], "_")));
 
-        if file_path.exists() {
-            std::fs::remove_file(&file_path)
-                .map_err(|e| SecureStoreError::Other(format!("删除文件失败: {}", e)))?;
+        match std::fs::remove_file(&file_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(SecureStoreError::Other(format!("删除文件失败: {}", error)));
+            }
         }
         debug!("✅ 凭据已删除: {}", key);
         Ok(())
@@ -701,10 +893,93 @@ mod tests {
         let store =
             SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
 
-        let first = store.get_device_key();
-        let second = store.get_device_key();
+        let first = store.get_device_key().expect("first device key");
+        let second = store.get_device_key().expect("second device key");
 
         assert_eq!(first, second);
+    }
+
+    #[test]
+    fn plaintext_backup_seed_is_portable() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        std::fs::write(&seed_file, "aa".repeat(32)).expect("write seed");
+
+        SecureStore::validate_backup_seed_file(&seed_file)
+            .expect("plaintext backup seed should be portable");
+    }
+
+    #[test]
+    fn oversized_backup_seed_is_rejected_before_reading() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        let file = std::fs::File::create(&seed_file).expect("create seed");
+        file.set_len(MAX_BACKUP_SEED_FILE_BYTES + 1)
+            .expect("extend seed");
+
+        let error = SecureStore::validate_backup_seed_file(&seed_file)
+            .expect_err("oversized backup seed must be rejected");
+        assert!(matches!(error, SecureStoreError::EncryptionError(_)));
+    }
+
+    #[test]
+    fn empty_existing_seed_fails_closed_without_replacement() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        let seed_file = dir.path().join(".secure/.key_seed");
+        std::fs::write(&seed_file, b"").expect("write empty seed");
+
+        let error = store
+            .save_secret("empty-seed-test", "must-not-be-written")
+            .expect_err("empty seed must not be silently replaced");
+
+        assert!(matches!(error, SecureStoreError::EncryptionError(_)));
+        assert_eq!(std::fs::read(&seed_file).unwrap(), b"");
+        assert!(!dir.path().join(".secure/empty-seed-test.enc").exists());
+    }
+
+    #[test]
+    fn oversized_encrypted_secret_is_rejected_before_allocation() {
+        let dir = TempDir::new().expect("create tempdir");
+        let store =
+            SecureStore::new_with_dir(SecureStoreConfig::default(), dir.path().to_path_buf());
+        let secret_file = dir.path().join(".secure/oversized.enc");
+        let file = std::fs::File::create(&secret_file).expect("create oversized secret");
+        file.set_len(MAX_ENCRYPTED_SECRET_FILE_BYTES + 1)
+            .expect("extend oversized secret");
+
+        let error = store
+            .get_secret("oversized")
+            .expect_err("oversized encrypted file must fail closed");
+        assert!(matches!(error, SecureStoreError::EncryptionError(_)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_backup_seed_is_rejected() {
+        let dir = TempDir::new().expect("create tempdir");
+        let external = TempDir::new().expect("create external tempdir");
+        let target = external.path().join("seed");
+        std::fs::write(&target, "aa".repeat(32)).expect("write external seed");
+        let seed_file = dir.path().join(".key_seed");
+        std::os::unix::fs::symlink(&target, &seed_file).expect("create seed symlink");
+
+        let error = SecureStore::validate_backup_seed_file(&seed_file)
+            .expect_err("symlinked seed must be rejected");
+        assert!(matches!(error, SecureStoreError::AccessDenied(_)));
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn dpapi_wrapped_backup_seed_is_rejected_off_windows() {
+        let dir = TempDir::new().expect("create tempdir");
+        let seed_file = dir.path().join(".key_seed");
+        std::fs::write(&seed_file, "DPAPI1:Zm9yZWlnbi1ibG9i").expect("write wrapped seed");
+
+        let error = SecureStore::validate_backup_seed_file(&seed_file)
+            .expect_err("DPAPI seed must not be treated as plaintext off Windows");
+        assert!(matches!(error, SecureStoreError::PlatformUnsupported(_)));
     }
 
     /// Windows：明文 `.key_seed` 首次读取应平滑迁移为 DPAPI 封装且种子不变
@@ -734,13 +1009,18 @@ mod tests {
             !on_disk.contains(&legacy_seed),
             "落盘内容不应再包含明文种子"
         );
+        SecureStore::validate_backup_seed_file(&seed_file)
+            .expect("当前 Windows 上生成的 DPAPI 种子应可用于恢复");
 
         // 再次读取：走 DPAPI 解封路径，种子一致
         let seed_again = store.get_or_create_master_seed().expect("read seed again");
         assert_eq!(seed_again, legacy_seed, "DPAPI 解封后种子应一致");
 
         // 派生密钥稳定
-        assert_eq!(store.get_device_key(), store.get_device_key());
+        assert_eq!(
+            store.get_device_key().expect("first device key"),
+            store.get_device_key().expect("second device key")
+        );
     }
 
     #[test]
@@ -938,9 +1218,10 @@ pub fn hydrate_cloud_config(
         }
     }
     if needs_s3 {
-        if let (Some(s3), Some(secret)) =
-            (config.s3.as_mut(), credentials.s3_secret_access_key.as_ref())
-        {
+        if let (Some(s3), Some(secret)) = (
+            config.s3.as_mut(),
+            credentials.s3_secret_access_key.as_ref(),
+        ) {
             if !secret.trim().is_empty() {
                 s3.secret_access_key = secret.clone();
             }

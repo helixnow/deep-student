@@ -3131,7 +3131,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(remaining_files, 0, "image file row must be purged with folder");
+        assert_eq!(
+            remaining_files, 0,
+            "image file row must be purged with folder"
+        );
 
         let blob_rc: Option<i32> = conn
             .query_row(

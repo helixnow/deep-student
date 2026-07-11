@@ -141,6 +141,14 @@ const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
+/// 附件原始内容的内部来源。调用方可直接处理磁盘文件，避免先读取并 base64 编码，
+/// 随后又解码回字节的高峰内存往返。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum VfsAttachmentContentSource {
+    Base64(String),
+    File(PathBuf),
+}
+
 /// 允许的扩展名（用于服务端类型校验）
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "heic", "heif", // images
@@ -304,19 +312,19 @@ impl VfsAttachmentRepo {
         }
         let path_obj = std::path::Path::new(trimmed);
 
-        // 尝试 canonicalize 完整路径（文件存在时）
+        // 文件存在时必须以真实 canonical target 作最终判定。若目标已解析到 slot 外，
+        // 立即拒绝，不能再按 symlink 自身的父目录回退判断。
         if let Ok(canonical_path) = path_obj.canonicalize() {
-            if let Ok(canonical_blobs_dir) = blobs_dir.canonicalize() {
-                if canonical_path.starts_with(&canonical_blobs_dir) {
-                    return true;
-                }
-                if let Some(slot_root) = canonical_blobs_dir.parent() {
-                    let textbooks_dir = slot_root.join("textbooks");
-                    if canonical_path.starts_with(&textbooks_dir) {
-                        return true;
-                    }
-                }
+            let Ok(canonical_blobs_dir) = blobs_dir.canonicalize() else {
+                return false;
+            };
+            if canonical_path.starts_with(&canonical_blobs_dir) {
+                return true;
             }
+            return canonical_blobs_dir
+                .parent()
+                .map(|slot_root| canonical_path.starts_with(slot_root))
+                .unwrap_or(false);
         }
 
         // 文件可能尚不存在（如恢复后资产还未就位），改用父目录判断
@@ -418,7 +426,7 @@ impl VfsAttachmentRepo {
         }
     }
 
-    fn try_read_original_path(blobs_dir: &Path, id: &str, raw_path: &str) -> Option<Vec<u8>> {
+    fn try_resolve_original_path(blobs_dir: &Path, id: &str, raw_path: &str) -> Option<PathBuf> {
         for candidate in Self::build_original_path_candidates(blobs_dir, raw_path) {
             let candidate_str = candidate.to_string_lossy().to_string();
             if !Self::is_safe_original_path(blobs_dir, &candidate_str) {
@@ -429,37 +437,67 @@ impl VfsAttachmentRepo {
                 continue;
             }
 
-            if !candidate.exists() {
+            if !candidate.is_file() {
                 debug!(
-                    "[VFS::AttachmentRepo] original_path not exists for {}: {}",
+                    "[VFS::AttachmentRepo] original_path is not a file for {}: {}",
                     id,
                     candidate.display()
                 );
                 continue;
             }
 
-            match std::fs::read(&candidate) {
-                Ok(data) => {
-                    info!(
-                        "[VFS::AttachmentRepo] Fallback to original_path for {}: {}, file_size={}",
-                        id,
-                        candidate.display(),
-                        data.len()
-                    );
-                    return Some(data);
-                }
-                Err(e) => {
-                    warn!(
-                        "[VFS::AttachmentRepo] Failed to read original_path for {}: {} - {}",
-                        id,
-                        candidate.display(),
-                        e
-                    );
-                }
-            }
+            let resolved = candidate.canonicalize().unwrap_or(candidate);
+            info!(
+                "[VFS::AttachmentRepo] Resolved original_path for {}: {}",
+                id,
+                resolved.display()
+            );
+            return Some(resolved);
         }
 
         None
+    }
+
+    fn read_file_bounded(path: &Path, max_bytes: u64) -> VfsResult<Vec<u8>> {
+        use std::io::Read;
+
+        let mut file = std::fs::File::open(path)
+            .map_err(|e| VfsError::Io(format!("Failed to open attachment file: {}", e)))?;
+        let declared_size = file
+            .metadata()
+            .map_err(|e| VfsError::Io(format!("Failed to stat attachment file: {}", e)))?
+            .len();
+        if declared_size > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "attachment".to_string(),
+                reason: format!(
+                    "Attachment file too large: {} bytes exceeds {} bytes",
+                    declared_size, max_bytes
+                ),
+            });
+        }
+
+        let capacity = usize::try_from(declared_size).map_err(|_| VfsError::InvalidArgument {
+            param: "attachment".to_string(),
+            reason: format!(
+                "Attachment size does not fit this platform: {}",
+                declared_size
+            ),
+        })?;
+        let mut data = Vec::with_capacity(capacity);
+        file.take(max_bytes.saturating_add(1))
+            .read_to_end(&mut data)
+            .map_err(|e| VfsError::Io(format!("Failed to read attachment file: {}", e)))?;
+        if data.len() as u64 > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "attachment".to_string(),
+                reason: format!(
+                    "Attachment grew beyond the {} byte limit while reading",
+                    max_bytes
+                ),
+            });
+        }
+        Ok(data)
     }
 
     // ========================================================================
@@ -503,18 +541,17 @@ impl VfsAttachmentRepo {
         blobs_dir: &Path,
         params: VfsUploadAttachmentParams,
     ) -> VfsResult<VfsUploadAttachmentResult> {
-        // 1. 解码 Base64
-        let data = Self::decode_base64(&params.base64_content)?;
-        let size = data.len() as i64;
-
-        // 1.5 基础校验：类型 + 大小 + attachment_type 一致性
+        // 1. 基础类型校验与解码前大小预算
         Self::validate_upload_type(&params.name, &params.mime_type)?;
-        Self::validate_upload_size(&params.mime_type, data.len())?;
         Self::validate_attachment_type(params.attachment_type.as_deref(), &params.mime_type)?;
+        let max_upload_bytes = Self::max_upload_size_bytes(&params.mime_type);
+        let data = Self::decode_base64_bounded(&params.base64_content, max_upload_bytes)?;
+        let size = data.len() as i64;
+        Self::validate_upload_size(&params.mime_type, data.len())?;
 
         // 1.6 PDF 专项校验：文件头 + 加密检测
-        let is_pdf_upload = params.mime_type == "application/pdf"
-            || params.name.to_lowercase().ends_with(".pdf");
+        let is_pdf_upload =
+            params.mime_type == "application/pdf" || params.name.to_lowercase().ends_with(".pdf");
         if is_pdf_upload {
             if data.len() < 5 || !data.starts_with(b"%PDF-") {
                 return Err(VfsError::InvalidArgument {
@@ -1451,15 +1488,12 @@ impl VfsAttachmentRepo {
         Self::get_content_with_conn(&conn, db.blobs_dir(), id)
     }
 
-    /// 获取附件内容（使用现有连接）
-    ///
-    /// ★ 2026-01-25 修复：支持从 original_path 读取文件内容
-    /// ★ 2026-02-08 收紧：仅允许读取 VFS blobs 目录内的安全路径
-    pub fn get_content_with_conn(
+    /// 获取附件原始内容来源（使用现有连接）。磁盘内容只返回安全路径，不做全量读取。
+    pub(crate) fn get_content_source_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
         id: &str,
-    ) -> VfsResult<Option<String>> {
+    ) -> VfsResult<Option<VfsAttachmentContentSource>> {
         let attachment = match Self::get_by_id_with_conn(conn, id)? {
             Some(a) => a,
             None => return Ok(None),
@@ -1533,8 +1567,8 @@ impl VfsAttachmentRepo {
                     .flatten();
 
                 if let Some(path) = original_path {
-                    if let Some(file_data) = Self::try_read_original_path(blobs_dir, id, &path) {
-                        return Ok(Some(STANDARD.encode(file_data)));
+                    if let Some(file_path) = Self::try_resolve_original_path(blobs_dir, id, &path) {
+                        return Ok(Some(VfsAttachmentContentSource::File(file_path)));
                     }
                 }
 
@@ -1558,10 +1592,9 @@ impl VfsAttachmentRepo {
                     if let Some(blob_path) =
                         VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, blob_hash)?
                     {
-                        let blob_data = std::fs::read(&blob_path).map_err(|e| {
-                            VfsError::Io(format!("Failed to read blob file: {}", e))
-                        })?;
-                        return Ok(Some(STANDARD.encode(blob_data)));
+                        if blob_path.is_file() {
+                            return Ok(Some(VfsAttachmentContentSource::File(blob_path)));
+                        }
                     } else {
                         warn!(
                             "[VFS::AttachmentRepo] Blob not found for attachment {}: {}",
@@ -1577,15 +1610,22 @@ impl VfsAttachmentRepo {
                 return Ok(None);
             }
 
-            Ok(data)
+            Ok(data.map(VfsAttachmentContentSource::Base64))
         } else if let Some(blob_hash) = &attachment.blob_hash {
-            // External 模式：从 blobs 读取文件
+            // External 模式：返回 blob 路径，由调用方决定流式读取或编码
             if let Some(blob_path) =
                 VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, blob_hash)?
             {
-                let data = std::fs::read(&blob_path)
-                    .map_err(|e| VfsError::Io(format!("Failed to read blob file: {}", e)))?;
-                Ok(Some(STANDARD.encode(data)))
+                if blob_path.is_file() {
+                    Ok(Some(VfsAttachmentContentSource::File(blob_path)))
+                } else {
+                    warn!(
+                        "[VFS::AttachmentRepo] Blob path is not a file for attachment {}: {}",
+                        id,
+                        blob_path.display()
+                    );
+                    Ok(None)
+                }
             } else {
                 warn!(
                     "[VFS::AttachmentRepo] Blob not found for attachment {}: {}",
@@ -1605,8 +1645,8 @@ impl VfsAttachmentRepo {
                 .flatten();
 
             if let Some(path) = original_path {
-                if let Some(data) = Self::try_read_original_path(blobs_dir, id, &path) {
-                    return Ok(Some(STANDARD.encode(data)));
+                if let Some(file_path) = Self::try_resolve_original_path(blobs_dir, id, &path) {
+                    return Ok(Some(VfsAttachmentContentSource::File(file_path)));
                 }
             }
 
@@ -1615,6 +1655,23 @@ impl VfsAttachmentRepo {
                 id
             );
             Ok(None)
+        }
+    }
+
+    /// 获取附件内容（使用现有连接）。保留历史 Base64 返回契约，磁盘读取受 200MB
+    /// 产品上限约束，并用 `take(limit + 1)` 防止读取期间文件增长造成无界分配。
+    pub fn get_content_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        id: &str,
+    ) -> VfsResult<Option<String>> {
+        match Self::get_content_source_with_conn(conn, blobs_dir, id)? {
+            Some(VfsAttachmentContentSource::Base64(data)) => Ok(Some(data)),
+            Some(VfsAttachmentContentSource::File(path)) => {
+                let data = Self::read_file_bounded(&path, MAX_FILE_BYTES as u64)?;
+                Ok(Some(STANDARD.encode(data)))
+            }
+            None => Ok(None),
         }
     }
 
@@ -1900,6 +1957,10 @@ impl VfsAttachmentRepo {
 
     /// 解码 Base64 内容
     fn decode_base64(input: &str) -> VfsResult<Vec<u8>> {
+        Self::decode_base64_bounded(input, MAX_FILE_BYTES)
+    }
+
+    fn decode_base64_bounded(input: &str, max_bytes: usize) -> VfsResult<Vec<u8>> {
         // 处理 Data URL 格式
         let base64_str = if input.starts_with("data:") {
             input
@@ -1913,12 +1974,55 @@ impl VfsAttachmentRepo {
             input
         };
 
-        STANDARD
+        let groups = base64_str
+            .len()
+            .checked_add(3)
+            .ok_or_else(|| VfsError::InvalidArgument {
+                param: "base64".to_string(),
+                reason: "Base64 length overflow".to_string(),
+            })?
+            / 4;
+        let padding = base64_str
+            .as_bytes()
+            .iter()
+            .rev()
+            .take_while(|byte| **byte == b'=')
+            .take(2)
+            .count();
+        let decoded_upper_bound = groups
+            .checked_mul(3)
+            .and_then(|bytes| bytes.checked_sub(padding))
+            .ok_or_else(|| VfsError::InvalidArgument {
+                param: "base64".to_string(),
+                reason: "Base64 decoded length overflow".to_string(),
+            })?;
+        if decoded_upper_bound > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "base64_content".to_string(),
+                reason: format!(
+                    "File too large: decoded base64 may exceed {}MB",
+                    max_bytes / (1024 * 1024)
+                ),
+            });
+        }
+
+        let data = STANDARD
             .decode(base64_str)
             .map_err(|e| VfsError::InvalidArgument {
                 param: "base64".to_string(),
                 reason: format!("Invalid base64: {}", e),
-            })
+            })?;
+        if data.len() > max_bytes {
+            return Err(VfsError::InvalidArgument {
+                param: "base64_content".to_string(),
+                reason: format!(
+                    "File too large: {} bytes exceeds {} bytes",
+                    data.len(),
+                    max_bytes
+                ),
+            });
+        }
+        Ok(data)
     }
 
     /// 计算 SHA-256 哈希
@@ -2580,6 +2684,27 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_base64_checks_limit_before_allocating_output() {
+        let result = VfsAttachmentRepo::decode_base64_bounded("SGVsbG8=", 4);
+        assert!(matches!(result, Err(VfsError::InvalidArgument { .. })));
+        assert_eq!(
+            VfsAttachmentRepo::decode_base64_bounded("SGVsbG8=", 5).unwrap(),
+            b"Hello"
+        );
+    }
+
+    #[test]
+    fn test_read_file_bounded_rejects_oversized_sparse_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("oversized.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_FILE_BYTES as u64 + 1).unwrap();
+
+        let result = VfsAttachmentRepo::read_file_bounded(&path, MAX_FILE_BYTES as u64);
+        assert!(matches!(result, Err(VfsError::InvalidArgument { .. })));
+    }
+
+    #[test]
     fn test_is_probably_base64_rejects_path_like_content() {
         assert!(!is_probably_base64("C:\\Users\\alice\\doc.docx"));
         assert!(!is_probably_base64("/Users/alice/doc.docx"));
@@ -2686,6 +2811,34 @@ mod tests {
 
         std::fs::remove_dir_all(slot_root).ok();
         std::fs::remove_dir_all(external_root).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_original_path_rejects_symlink_escaping_slot() {
+        use std::os::unix::fs::symlink;
+
+        let slot = tempfile::tempdir().unwrap();
+        let external = tempfile::tempdir().unwrap();
+        let blobs_dir = slot.path().join("vfs_blobs");
+        let textbooks_dir = slot.path().join("textbooks");
+        std::fs::create_dir_all(&blobs_dir).unwrap();
+        std::fs::create_dir_all(&textbooks_dir).unwrap();
+        let secret = external.path().join("secret.txt");
+        std::fs::write(&secret, b"outside-slot").unwrap();
+        let link = textbooks_dir.join("leak.txt");
+        symlink(&secret, &link).unwrap();
+
+        assert!(!VfsAttachmentRepo::is_safe_original_path(
+            &blobs_dir,
+            link.to_string_lossy().as_ref(),
+        ));
+        assert!(VfsAttachmentRepo::try_resolve_original_path(
+            &blobs_dir,
+            "att_symlink_escape",
+            link.to_string_lossy().as_ref(),
+        )
+        .is_none());
     }
 
     #[test]

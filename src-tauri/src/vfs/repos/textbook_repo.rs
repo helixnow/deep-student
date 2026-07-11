@@ -964,9 +964,14 @@ impl VfsTextbookRepo {
 
             // 2.5 ★ 递减文件级压缩 blob 引用（仅当与原始 blob 不同）
             if let Some(ref compressed_hash) = compressed_blob_hash {
-                let same_as_original = blob_hash.as_ref().map(|h| h == compressed_hash).unwrap_or(false);
+                let same_as_original = blob_hash
+                    .as_ref()
+                    .map(|h| h == compressed_hash)
+                    .unwrap_or(false);
                 if !same_as_original {
-                    if let Err(e) = VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash) {
+                    if let Err(e) =
+                        VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, compressed_hash)
+                    {
                         warn!(
                             "[VFS::TextbookRepo] Failed to decrement compressed blob ref {}: {}",
                             compressed_hash, e
@@ -1962,13 +1967,19 @@ mod tests {
 
     /// 构造一个带页图 + 压缩页图的教材，返回 (textbook, 主hash, 页hash, 压缩页hash)
     fn create_textbook_with_blobs(db: &VfsDatabase) -> (VfsTextbook, String, String, String) {
-        let main = VfsBlobRepo::store_blob(db, b"main-pdf-bytes", Some("application/pdf"), Some("pdf"))
-            .unwrap();
-        let page = VfsBlobRepo::store_blob(db, b"page-image-bytes", Some("image/jpeg"), Some("jpg"))
-            .unwrap();
-        let compressed =
-            VfsBlobRepo::store_blob(db, b"compressed-page-bytes", Some("image/jpeg"), Some("jpg"))
+        let main =
+            VfsBlobRepo::store_blob(db, b"main-pdf-bytes", Some("application/pdf"), Some("pdf"))
                 .unwrap();
+        let page =
+            VfsBlobRepo::store_blob(db, b"page-image-bytes", Some("image/jpeg"), Some("jpg"))
+                .unwrap();
+        let compressed = VfsBlobRepo::store_blob(
+            db,
+            b"compressed-page-bytes",
+            Some("image/jpeg"),
+            Some("jpg"),
+        )
+        .unwrap();
 
         let preview = serde_json::json!({
             "pages": [{
@@ -2014,7 +2025,11 @@ mod tests {
         // 复制后引用计数 = 2
         assert_eq!(blob_ref_count(&db, &main_hash), Some(2), "main blob ref");
         assert_eq!(blob_ref_count(&db, &page_hash), Some(2), "page blob ref");
-        assert_eq!(blob_ref_count(&db, &compressed_hash), Some(2), "compressed blob ref");
+        assert_eq!(
+            blob_ref_count(&db, &compressed_hash),
+            Some(2),
+            "compressed blob ref"
+        );
 
         // 副本拥有自己的 preview_json
         let conn = db.get_conn_safe().unwrap();
@@ -2054,9 +2069,13 @@ mod tests {
         let (textbook, main_hash, page_hash, compressed_hash) = create_textbook_with_blobs(&db);
 
         // 设置文件级压缩 blob（独立内容）
-        let file_compressed =
-            VfsBlobRepo::store_blob(&db, b"file-level-compressed", Some("image/jpeg"), Some("jpg"))
-                .unwrap();
+        let file_compressed = VfsBlobRepo::store_blob(
+            &db,
+            b"file-level-compressed",
+            Some("image/jpeg"),
+            Some("jpg"),
+        )
+        .unwrap();
         {
             let conn = db.get_conn_safe().unwrap();
             conn.execute(

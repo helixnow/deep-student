@@ -1265,13 +1265,15 @@ impl MigrationCoordinator {
             }
 
             if all_exist {
-                // 所有非幂等列都已存在 → 该迁移实际已执行，标记完成
+                // 所有 ALTER 列都已落盘，但 history 可能在迁移后半段执行前丢失。
+                // 跳过非幂等 ALTER，严格重放其余 DML/DDL 后才能标记完成。
                 tracing::info!(
                     version = version,
                     columns = ?alter_columns,
-                    "🔧 [make_alter_columns_safe] 检测到所有 ALTER 列已存在，标记 V{} 为已完成",
+                    "🔧 [make_alter_columns_safe] 检测到所有 ALTER 列已存在，重放剩余 SQL 后标记 V{}",
                     version
                 );
+                Self::replay_migration_without_alter_add_columns(conn, sql, version)?;
                 self.mark_migration_complete(conn, runner, version)?;
             } else if any_exist {
                 // 部分列存在 → 中间状态，补齐缺失的列
@@ -1286,9 +1288,9 @@ impl MigrationCoordinator {
                     let col_def = Self::extract_column_def(sql, table, column);
                     let _ = self.add_column_if_missing(conn, table, column, &col_def)?;
                 }
-                // 执行迁移中的 CREATE INDEX IF NOT EXISTS / CREATE TABLE IF NOT EXISTS
-                // 这些是幂等的，可以安全重跑
-                Self::replay_idempotent_statements(conn, sql);
+                // 列补齐后重放迁移其余部分。必须使用 execute_batch：多行索引/
+                // 触发器不能按行执行，且 backfill/cleanup DML 同样不能遗漏。
+                Self::replay_migration_without_alter_add_columns(conn, sql, version)?;
                 self.mark_migration_complete(conn, runner, version)?;
             }
             // 如果没有任何列存在，说明迁移从未执行过，正常让 Refinery 执行
@@ -1376,29 +1378,34 @@ impl MigrationCoordinator {
         "TEXT".to_string() // 兜底默认
     }
 
-    /// 重放迁移 SQL 中的幂等语句（CREATE TABLE/INDEX IF NOT EXISTS）
+    /// 重放未记录迁移中除 `ALTER TABLE ... ADD COLUMN` 外的全部 SQL。
     ///
-    /// 在中间状态修复时调用，确保迁移中的建表/建索引语句也被执行
+    /// ALTER 列已由 `make_alter_columns_safe` 检查/补齐；其余语句必须作为完整
+    /// batch 执行，才能正确恢复多行 trigger/index 以及 backfill/cleanup DML。
+    /// 只有 batch 全部成功后调用方才会写入 refinery history。
     #[cfg(feature = "data_governance")]
-    fn replay_idempotent_statements(conn: &rusqlite::Connection, sql: &str) {
+    fn replay_migration_without_alter_add_columns(
+        conn: &rusqlite::Connection,
+        sql: &str,
+        version: i32,
+    ) -> Result<(), MigrationError> {
+        let mut replay_sql = String::with_capacity(sql.len());
         for line in sql.lines() {
-            let trimmed = line.trim();
+            let trimmed = line.trim_start();
             let upper = trimmed.to_uppercase();
-            // 只重放幂等的 CREATE 语句
-            if upper.starts_with("CREATE TABLE IF NOT EXISTS")
-                || upper.starts_with("CREATE INDEX IF NOT EXISTS")
-                || upper.starts_with("CREATE UNIQUE INDEX IF NOT EXISTS")
-                || upper.starts_with("CREATE TRIGGER IF NOT EXISTS")
-            {
-                if let Err(e) = conn.execute(trimmed.trim_end_matches(';'), []) {
-                    tracing::warn!(
-                        sql = trimmed,
-                        error = %e,
-                        "replay_idempotent_statements: 执行失败（继续）"
-                    );
-                }
+            if upper.starts_with("ALTER TABLE ") && upper.contains(" ADD COLUMN ") {
+                continue;
             }
+            replay_sql.push_str(line);
+            replay_sql.push('\n');
         }
+
+        conn.execute_batch(&replay_sql).map_err(|e| {
+            MigrationError::Database(format!(
+                "恢复未记录迁移 V{} 的非 ALTER SQL 失败: {}",
+                version, e
+            ))
+        })
     }
 
     /// 修复因迁移脚本变更导致的 checksum 不一致

@@ -358,8 +358,8 @@ impl MigrationScriptChecker {
                 let name = cap.get(1)?.as_str().to_string();
                 // 定位表体起始的左括号（RE_SAFE_CREATES 不含括号，需向后找）
                 let open = normalized[m.start()..].find('(')? + m.start();
-                let body_end = Self::find_matching_paren(normalized, open)
-                    .unwrap_or(normalized.len());
+                let body_end =
+                    Self::find_matching_paren(normalized, open).unwrap_or(normalized.len());
                 Some((open, body_end, name))
             })
             .collect();
