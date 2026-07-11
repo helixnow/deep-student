@@ -49,7 +49,11 @@ function createDocument(): MindMapDocument {
 function seedStore(
   document: MindMapDocument,
   overrides?: { isDirty?: boolean; editingNodeId?: string | null; mindmapId?: string },
-): void {
+): ReturnType<typeof vi.fn> {
+  const save = vi.fn(async () => {
+    useMindMapStore.setState({ isDirty: false, isSaving: false });
+    return true;
+  });
   useMindMapStore.setState({
     mindmapId: overrides?.mindmapId ?? MM_ID,
     metadata: null,
@@ -68,7 +72,9 @@ function seedStore(
     viewports: {},
     agentEnteringIds: new Set(),
     agentFitViewNonce: 0,
+    save,
   });
+  return save;
 }
 
 /** 结构快照：忽略 expandToNode / agentAddNode 写入的 collapsed:false 噪声 */
@@ -168,7 +174,7 @@ describe('mindmapDriver probe', () => {
 describe('mindmapDriver apply + ledger round-trip', () => {
   it('add_node → revert 后树还原', async () => {
     const doc = createDocument();
-    seedStore(doc);
+    const save = seedStore(doc);
     const before = treeSnapshot(useMindMapStore.getState().document.root);
     const run = makeRun('add');
     const receipt = await mindmapDriver.apply(run, [opAdd('node_a', 'NewChild')]);
@@ -182,9 +188,11 @@ describe('mindmapDriver apply + ledger round-trip', () => {
     const added = findNodeById(useMindMapStore.getState().document.root, newId);
     expect(added?.text).toBe('NewChild');
     expect(useMindMapStore.getState().history.past).toHaveLength(0);
+    expect(save).toHaveBeenCalledTimes(1);
 
     const ok = await run.ledger.revertRun(run.runId);
     expect(ok).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
     expect(treeSnapshot(useMindMapStore.getState().document.root)).toBe(before);
   });
 
@@ -248,6 +256,101 @@ describe('mindmapDriver apply + ledger round-trip', () => {
     expect(receipt.suggestionPending).toBe(true);
     expect(receipt.applied).toBe(0);
     expect(treeSnapshot(useMindMapStore.getState().document.root)).toBe(before);
+  });
+
+  it('dirty 混合批次在首个 destructive op 形成屏障，保存前序操作且不越过后续', async () => {
+    const save = seedStore(createDocument(), { isDirty: true });
+    const run = makeRun('suggestion-barrier');
+
+    const receipt = await mindmapDriver.apply(run, [
+      opAdd('root_test', 'Prefix'),
+      opDelete('node_b'),
+      opAdd('root_test', 'AfterBarrier'),
+    ]);
+
+    expect(receipt.status).toBe('completed');
+    expect(receipt.mode).toBe('suggestion');
+    expect(receipt.suggestionPending).toBe(true);
+    expect(receipt.applied).toBe(1);
+    expect(receipt.done).toEqual(['添加节点「Prefix」']);
+    expect(receipt.undone).toEqual(['删除节点 node_b', '添加节点「AfterBarrier」']);
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')).not.toBeNull();
+    expect(
+      useMindMapStore.getState().document.root.children.some((node) => node.text === 'AfterBarrier'),
+    ).toBe(false);
+    expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it('建议屏障前的保存失败保持 partial，不被 suggestion completed 覆盖', async () => {
+    const save = seedStore(createDocument(), { isDirty: true });
+    save.mockResolvedValueOnce(false);
+    const run = makeRun('suggestion-barrier-save-failed');
+
+    const receipt = await mindmapDriver.apply(run, [
+      opAdd('root_test', 'UnsavedPrefix'),
+      opDelete('node_b'),
+    ]);
+
+    expect(receipt.status).toBe('partial');
+    expect(receipt.mode).toBe('suggestion');
+    expect(receipt.suggestionPending).toBe(true);
+    expect(receipt.applied).toBe(1);
+    expect(receipt.message).toMatch(/保存失败/);
+  });
+
+  it('apply 保存失败返回 partial，不宣称 completed', async () => {
+    const save = seedStore(createDocument());
+    save.mockResolvedValueOnce(false);
+    const run = makeRun('save-failed');
+
+    const receipt = await mindmapDriver.apply(run, [opAdd('root_test', 'Unsaved')]);
+
+    expect(receipt.status).toBe('partial');
+    expect(receipt.applied).toBe(1);
+    expect(receipt.message).toMatch(/保存失败/);
+    expect(useMindMapStore.getState().isDirty).toBe(true);
+  });
+
+  it('ledger inverse 保存失败时返回 false，并可幂等重试落盘', async () => {
+    const save = seedStore(createDocument());
+    const run = makeRun('inverse-save-failed');
+    const receipt = await mindmapDriver.apply(run, [opAdd('root_test', 'RollbackMe')]);
+    save.mockResolvedValueOnce(false);
+
+    expect(receipt.status).toBe('completed');
+    expect(await run.ledger.revertRun(run.runId)).toBe(false);
+    expect(run.ledger.hasRun(run.runId)).toBe(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(await run.ledger.revertRun(run.runId)).toBe(true);
+    expect(run.ledger.hasRun(run.runId)).toBe(false);
+    expect(
+      useMindMapStore.getState().document.root.children.some((node) => node.text === 'RollbackMe'),
+    ).toBe(false);
+  });
+
+  it('执行期间出现用户编辑时，在 destructive op 前停止', async () => {
+    seedStore(createDocument());
+    const run = makeRun('concurrent-edit');
+    let pauses = 0;
+    run.checkPaused = vi.fn(async () => {
+      pauses += 1;
+      if (pauses === 2) {
+        useMindMapStore.setState((state) => ({
+          isDirty: true,
+          _documentVersion: state._documentVersion + 1,
+        }));
+      }
+      return 'resume' as const;
+    });
+
+    const receipt = await mindmapDriver.apply(run, [
+      opAdd('root_test', 'AgentPrefix'),
+      opDelete('node_b'),
+    ]);
+
+    expect(receipt.mode).toBe('suggestion');
+    expect(receipt.applied).toBe(1);
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')).not.toBeNull();
   });
 
   it('abort 旗标使循环退出并返回 partial', async () => {

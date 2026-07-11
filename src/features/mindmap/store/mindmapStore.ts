@@ -386,7 +386,8 @@ export interface MindMapStoreState {
   pasteMarkdownChildren: (targetId: string, markdown: string) => void;
 
   // 保存
-  save: () => Promise<void>;
+  /** 将当前脏文档刷新到后端；返回本次保存是否成功。 */
+  save: () => Promise<boolean>;
   markDirty: () => void;
   /** M-069: 同步写入 localStorage 草稿，用于组件卸载/关闭时防止异步 save 未完成导致丢失 */
   saveDraftSync: () => void;
@@ -1788,7 +1789,9 @@ export function createMindMapStore(): MindMapStoreApi {
       // 保存（防竞态 + 冲突检测 + 自动重试）
       save: async () => {
         const { mindmapId, metadata, document, currentView, focusedNodeId, isDirty, isSaving, _documentVersion } = get();
-        if (!mindmapId || !isDirty || isSaving) return;
+        if (!mindmapId) return false;
+        if (!isDirty) return true;
+        if (isSaving) return false;
 
         // 捕获保存开始时的版本号，防止竞态（替代 JSON.stringify 全量比较，O(1) 性能）
         const savingMindmapId = mindmapId;
@@ -1864,6 +1867,7 @@ export function createMindMapStore(): MindMapStoreApi {
               debounceSave();
             }
           }
+          return true;
         } catch (error) {
           console.error('[MindMapStore] save failed:', error);
           set((state) => {
@@ -1915,7 +1919,7 @@ export function createMindMapStore(): MindMapStoreApi {
                 showGlobalNotification('error', i18next.t('store.conflictReloadFailed', { ns: 'mindmap' }));
               }
             }
-            return;
+            return false;
           }
 
           const isStructuralError =
@@ -1962,6 +1966,7 @@ export function createMindMapStore(): MindMapStoreApi {
               i18next.t('store.saveFailedTitle', { ns: 'mindmap' })
             );
           }
+          return false;
         }
       },
 

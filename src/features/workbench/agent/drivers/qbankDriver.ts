@@ -1,7 +1,7 @@
 /**
  * ACR qbank(exam) Driver — R1-15
  *
- * - probe：始终 clean（脏态由 contentDirty / 行内编辑守卫在刷新侧处理）
+ * - probe：题库编辑器真实获焦时 hot，其余 clean
  * - apply：仅导航类 op（qbank_focus_question / focus_question）
  * - 域事件 `qbank://changed` → refreshQuestions + 保持 currentQuestionId；行内编辑中延迟
  *
@@ -28,6 +28,16 @@ const TYPE_ID = 'exam';
 /** ExamContentView 监听：聚焦某题（本地 session 与 store 双写） */
 export const QBANK_FOCUS_EVENT = 'qbank:focus-question';
 
+export interface QbankFocusResult {
+  handled: boolean;
+  previousQuestionId: string | null;
+}
+
+export interface QbankFocusEventDetail {
+  questionId: string;
+  acknowledge?: (result: QbankFocusResult) => void;
+}
+
 /** ExamContentView 监听：域变更后刷新本地题目列表 */
 export const QBANK_REFRESH_EVENT = 'qbank:refresh';
 
@@ -52,18 +62,19 @@ function emptyReceipt(
 }
 
 /**
- * store 无独立「行内编辑」字段；以 document.activeElement 是否在可编辑控件内为准。
- * QuestionInlineEditor / 答题区均为 input/textarea/contenteditable。
+ * store 无独立「行内编辑」字段；以题库编辑区内的真实可编辑焦点为准。
+ * 不能把 Chat/搜索等其他模块的 input 误判为题库 hot。
  */
 export function isQbankInlineEditorActive(): boolean {
   if (typeof document === 'undefined') return false;
   const el = document.activeElement;
   if (!el || !(el instanceof HTMLElement)) return false;
-  if (el.closest('[data-question-inline-editor]')) return true;
-  if (el.closest('[data-agent-qbank-editor]')) return true;
+  const scope = el.closest(
+    '[data-question-inline-editor], [data-agent-qbank-editor]',
+  );
+  if (!scope) return false;
   const tag = el.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
-    // 排除纯搜索框：仍视为编辑中，宁可延迟刷新
     return true;
   }
   if (el.isContentEditable) return true;
@@ -87,11 +98,20 @@ function dispatchRefreshEvent(payload: DomainChangePayload): void {
   );
 }
 
-function dispatchFocusEvent(questionId: string): void {
-  if (typeof window === 'undefined') return;
+function dispatchFocusEvent(questionId: string): QbankFocusResult | null {
+  if (typeof window === 'undefined') return null;
+  let result: QbankFocusResult | null = null;
   window.dispatchEvent(
-    new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId } }),
+    new CustomEvent<QbankFocusEventDetail>(QBANK_FOCUS_EVENT, {
+      detail: {
+        questionId,
+        acknowledge: (nextResult) => {
+          result = nextResult;
+        },
+      },
+    }),
   );
+  return result;
 }
 
 /**
@@ -145,7 +165,7 @@ export const qbankDriver: CollabDriver = {
   typeId: TYPE_ID,
 
   probe(_target: AcrTarget): AcrProbeState {
-    return 'clean';
+    return isQbankAnsweringOrEditing() ? 'hot' : 'clean';
   },
 
   async apply(run: AcrRunContext, ops: AgentOp[]): Promise<AcrReceipt> {
@@ -177,21 +197,33 @@ export const qbankDriver: CollabDriver = {
         if (!questionId) {
           undone.push(op.label || op.kind);
         } else {
-          const previousQuestionId = useQuestionBankStore.getState().currentQuestionId;
-          useQuestionBankStore.getState().setCurrentQuestion(questionId);
-          dispatchFocusEvent(questionId);
+          const store = useQuestionBankStore.getState();
+          const focusResult = dispatchFocusEvent(questionId);
+          if (!focusResult?.handled) {
+            undone.push(`${op.label || op.kind}（可见题库未找到该题）`);
+            await run.pacing.tick(listTickCost(run.pacing.profile));
+            continue;
+          }
+          const previousQuestionId = focusResult.previousQuestionId;
+          store.setCurrentQuestion(questionId);
           agentFlash(TYPE_ID, questionId);
           entityIds.push(questionId);
           done.push(op.label || `聚焦题目 ${questionId}`);
           applied += 1;
-          run.ledger.record(
-            run.runId,
-            () => {
-              useQuestionBankStore.getState().setCurrentQuestion(previousQuestionId);
-              if (previousQuestionId) dispatchFocusEvent(previousQuestionId);
-            },
-            op.label || op.kind,
-          );
+          // 没有前选中项时，记录一个只恢复 store 却无法恢复视图的 inverse 会让撤销撒谎。
+          if (previousQuestionId && previousQuestionId !== questionId) {
+            run.ledger.record(
+              run.runId,
+              () => {
+                const reverted = dispatchFocusEvent(previousQuestionId);
+                if (!reverted?.handled) {
+                  throw new Error(`无法恢复已不存在的题目 ${previousQuestionId}`);
+                }
+                useQuestionBankStore.getState().setCurrentQuestion(previousQuestionId);
+              },
+              op.label || op.kind,
+            );
+          }
         }
       } else {
         undone.push(op.label || op.kind);

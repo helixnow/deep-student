@@ -6,6 +6,19 @@
  * z-index 用 --wb-z-dock-flyout；reduced-motion / minimal 归零。
  */
 
+/*
+ * AppMenuTrigger 的 asChild 类会合并到 DockItem 外层，而不是图标按钮本身。
+ * Dock 不使用通用菜单触发器的 hover/active 底色，运行状态仅由下方圆点表达。
+ */
+.wb-dock .wb-dock-item-wrap.app-menu-trigger,
+.wb-dock .wb-dock-item-wrap.app-menu-trigger:hover,
+.wb-dock .wb-dock-item-wrap.app-menu-trigger:focus-visible,
+.wb-dock .wb-dock-item-wrap.app-menu-trigger:active,
+.wb-dock .wb-dock-item-wrap.app-menu-trigger[aria-expanded='true'] {
+  background-color: transparent;
+  color: inherit;
+}
+
 .app-menu-content.wb-dockmenu {
   z-index: var(--wb-z-dock-flyout, 9200);
   padding: 5px;

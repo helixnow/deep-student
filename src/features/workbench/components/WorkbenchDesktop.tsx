@@ -42,15 +42,11 @@ import {
   MIN_TILING_RATIO,
 } from '../core/tiling';
 import { RESOURCE_APP_TYPE_IDS } from '../apps/content/typeMap';
+import { normalizeSingletonAppWindows } from '../core/snapshotWindowPolicy';
 import type { SnapZone, WorkbenchWindow } from '../core/types';
 import { setActiveSnapZone } from '../core/snapZoneStore';
 import { WallpaperLayer, DEFAULT_WALLPAPER, type WallpaperConfig } from './WallpaperLayer';
-import {
-  DesktopContextMenu,
-  useDesktopGestures,
-  useWallpaperParallax,
-  WORKBENCH_PARALLAX_SETTING_KEY,
-} from './DesktopContextMenu';
+import { DesktopContextMenu, useDesktopGestures } from './DesktopContextMenu';
 import { useWallpaperCoveragePause } from '../hooks/useWallpaperCoveragePause';
 import { EmptyDesktop } from './EmptyDesktop';
 import { WindowShell } from './WindowShell';
@@ -87,8 +83,6 @@ const SETTING_KEYS = {
   tileMargins: 'desktop.workbenchTileMargins',
   dockAutohide: 'desktop.workbenchDockAutohide',
   devPanel: 'desktop.workbenchDevPanel',
-  // O13：壁纸视差开关（key 常量由 DesktopContextMenu 导出，菜单可写）
-  parallax: WORKBENCH_PARALLAX_SETTING_KEY,
   dockMagnification: 'desktop.workbenchDockMagnification',
 } as const;
 
@@ -173,7 +167,9 @@ async function pruneSnapshotWindows(windows: WorkbenchWindow[]): Promise<Workben
       }
     }),
   );
-  return survivors.filter((win): win is WorkbenchWindow => win !== null);
+  return normalizeSingletonAppWindows(
+    survivors.filter((win): win is WorkbenchWindow => win !== null),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -240,8 +236,6 @@ export const WorkbenchDesktop: React.FC = () => {
   const [tileMargins, setTileMargins] = useState<TileMarginsSetting>(DEFAULT_TILE_MARGINS);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [devPanel, setDevPanel] = useState(false);
-  // O13：壁纸视差（未设置默认关；显式 'true' 才开；reduced-motion / minimal 档在效果层再关）
-  const [parallaxSetting, setParallaxSetting] = useState(false);
 
   const tileMargin = tileMargins.enabled ? tileMargins.px : 0;
 
@@ -254,7 +248,6 @@ export const WorkbenchDesktop: React.FC = () => {
         marginsVal,
         autohideVal,
         devPanelVal,
-        parallaxVal,
         dockMagVal,
       ] = await Promise.all([
         readSetting(SETTING_KEYS.materialTier),
@@ -262,7 +255,6 @@ export const WorkbenchDesktop: React.FC = () => {
         readSetting(SETTING_KEYS.tileMargins),
         readSetting(SETTING_KEYS.dockAutohide),
         readSetting(SETTING_KEYS.devPanel),
-        readSetting(SETTING_KEYS.parallax),
         readSetting(SETTING_KEYS.dockMagnification),
       ]);
       if (cancelled) return;
@@ -276,7 +268,6 @@ export const WorkbenchDesktop: React.FC = () => {
       setTileMargins(parseJson<TileMarginsSetting>(marginsVal, DEFAULT_TILE_MARGINS));
       setDockAutohide(String(autohideVal ?? '') === 'true');
       setDevPanel(String(devPanelVal ?? '') === 'true');
-      setParallaxSetting(String(parallaxVal ?? '') === 'true');
       // 未设置默认开放大；显式 'false' 关闭（写 dataset 供 Dock 门控）
       applyDockMagDataset(String(dockMagVal ?? '') !== 'false');
     })();
@@ -297,9 +288,6 @@ export const WorkbenchDesktop: React.FC = () => {
           break;
         case SETTING_KEYS.devPanel:
           setDevPanel(value === true);
-          break;
-        case SETTING_KEYS.parallax:
-          setParallaxSetting(value === true || value === 'true');
           break;
         case SETTING_KEYS.dockMagnification:
           applyDockMagDataset(value !== false && value !== 'false');
@@ -444,11 +432,9 @@ export const WorkbenchDesktop: React.FC = () => {
     },
   });
 
-  // ---- O13：桌面手势（空白区右键菜单 / 双击 show desktop）+ 壁纸视差 ----
+  // ---- O13：桌面手势（空白区右键菜单 / 双击 show desktop）----
   const gestures = useDesktopGestures(rootRef);
-  const parallaxLayerRef = useRef<HTMLDivElement | null>(null);
-  const materialTier = useMaterialTier();
-  useWallpaperParallax(rootRef, parallaxLayerRef, parallaxSetting && materialTier !== 'minimal');
+  useMaterialTier();
   useWallpaperCoveragePause();
 
   // ---- 窗口集合 ----
@@ -488,8 +474,7 @@ export const WorkbenchDesktop: React.FC = () => {
       onKeyDown={gestures.onDesktopKeyDown}
       onDoubleClick={gestures.onDesktopDoubleClick}
     >
-      {/* O13：视差包裹层（JS 直写 transform；关闭时透明包裹不影响层序 z:0） */}
-      <div ref={parallaxLayerRef} className="wb-desk-parallax" aria-hidden="true">
+      <div className="wb-wallpaper-frame" aria-hidden="true">
         <WallpaperLayer wallpaper={wallpaper} />
       </div>
 
@@ -539,7 +524,6 @@ export const WorkbenchDesktop: React.FC = () => {
       <DesktopContextMenu
         anchor={gestures.menuAnchor}
         wallpaper={wallpaper}
-        parallaxEnabled={parallaxSetting}
         onClose={gestures.closeMenu}
         onShowDesktop={gestures.toggleShowDesktop}
       />

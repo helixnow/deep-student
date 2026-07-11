@@ -19,6 +19,11 @@
   --wb-title-ripple-duration: 460ms;
 }
 
+/* 标题栏建立独立层级，保证向下展开的窗口菜单不会被内容区子层覆盖。 */
+.wb-titlebar.wb-title-bar {
+  z-index: var(--wb-z-window-titlebar, 10);
+}
+
 /* ==========================================================================
  * 拖拽区光标：grab / 拖动中 grabbing
  * （覆盖契约 .wb-titlebar 的 cursor:default —— O20 reconcile 事项 #1）

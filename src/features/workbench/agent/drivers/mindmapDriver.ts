@@ -400,13 +400,8 @@ function collectTargetNodeIds(ops: AgentOp[]): Set<string> {
   return ids;
 }
 
-function batchHasDestructive(ops: AgentOp[]): boolean {
-  return ops.some(
-    (op) =>
-      op.destructive === true ||
-      op.kind === 'delete_node' ||
-      op.kind === 'move_node',
-  );
+function isDestructiveOp(op: AgentOp): boolean {
+  return op.destructive === true || op.kind === 'delete_node' || op.kind === 'move_node';
 }
 
 /**
@@ -581,9 +576,14 @@ function applyOneOp(
 
       run.ledger.record(
         run.runId,
-        () => {
+        async () => {
           assertResource();
-          storeApi.getState().agentDeleteNode(newId);
+          if (findNodeById(storeApi.getState().document.root, newId)) {
+            storeApi.getState().agentDeleteNode(newId);
+          }
+          if (!(await storeApi.getState().save())) {
+            throw new Error('撤销添加失败：更改未能保存');
+          }
         },
         op.label,
       );
@@ -598,12 +598,15 @@ function applyOneOp(
       storeApi.getState().updateNode(nodeId, patch, skipOpts);
       run.ledger.record(
         run.runId,
-        () => {
+        async () => {
           assertResource();
           if (!findNodeById(storeApi.getState().document.root, nodeId)) {
             throw new Error(`撤销更新失败：节点 ${nodeId} 不存在`);
           }
           storeApi.getState().updateNode(nodeId, before, skipOpts);
+          if (!(await storeApi.getState().save())) {
+            throw new Error('撤销更新失败：更改未能保存');
+          }
         },
         op.label,
       );
@@ -624,12 +627,17 @@ function applyOneOp(
       storeApi.getState().agentDeleteNode(nodeId);
       run.ledger.record(
         run.runId,
-        () => {
+        async () => {
           assertResource();
           if (!findNodeById(storeApi.getState().document.root, parentId)) {
             throw new Error(`撤销删除失败：父节点 ${parentId} 不存在`);
           }
-          storeApi.getState().agentInsertSubtree(parentId, snapshot, index);
+          if (!findNodeById(storeApi.getState().document.root, nodeId)) {
+            storeApi.getState().agentInsertSubtree(parentId, snapshot, index);
+          }
+          if (!(await storeApi.getState().save())) {
+            throw new Error('撤销删除失败：更改未能保存');
+          }
         },
         op.label,
       );
@@ -657,10 +665,18 @@ function applyOneOp(
       }
       run.ledger.record(
         run.runId,
-        () => {
+        async () => {
           assertResource();
-          if (!storeApi.getState().agentMoveNode(nodeId, oldParentId, oldIndex)) {
-            throw new Error(`撤销移动失败：节点 ${nodeId} 无法返回原位置`);
+          const currentRoot = storeApi.getState().document.root;
+          const currentParent = findParentNode(currentRoot, nodeId);
+          const currentIndex = currentParent?.children.findIndex((child) => child.id === nodeId) ?? -1;
+          if (currentParent?.id !== oldParentId || currentIndex !== oldIndex) {
+            if (!storeApi.getState().agentMoveNode(nodeId, oldParentId, oldIndex)) {
+              throw new Error(`撤销移动失败：节点 ${nodeId} 无法返回原位置`);
+            }
+          }
+          if (!(await storeApi.getState().save())) {
+            throw new Error('撤销移动失败：更改未能保存');
           }
         },
         op.label,
@@ -692,24 +708,12 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     return receipt;
   }
 
-  // destructive + dirty/hot → v1 拒绝式 suggestion（DESIGN §5.1 / §4.1；R2-02 否决升级预览）
-  const probeState = initialState.isDirty
-    ? 'dirty'
-    : isHotForOps(storeApi, ops)
-      ? 'hot'
-      : 'clean';
-  if (batchHasDestructive(ops) && (probeState === 'dirty' || probeState === 'hot')) {
-    receipt.status = 'completed';
-    receipt.mode = 'suggestion';
-    receipt.suggestionPending = true;
-    receipt.undone = ops.map((op) => op.label);
-    receipt.message = SUGGESTION_MESSAGE;
-    activeRuns.delete(run.runId);
-    return receipt;
-  }
-
   const instant = run.pacing.profile.instant === true;
   let lastFollowedEntityId: string | null = null;
+  const startedDirty = initialState.isDirty;
+  let expectedDocumentVersion = initialState._documentVersion;
+  let stoppedAtSuggestion = false;
+  let savePending = false;
 
   for (let i = 0; i < ops.length; i++) {
     if (runState.aborted) {
@@ -742,6 +746,25 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
 
     const op = ops[i];
     const step = i + 1;
+
+    // 逐 op 决策屏障：允许建议前的非破坏操作完成，但不得越过首个需要确认的操作。
+    // expectedDocumentVersion 用于区分本 run 自己制造的 dirty 与执行期间插入的用户编辑。
+    const currentState = storeApi.getState();
+    const hasConcurrentUserEdit = currentState._documentVersion !== expectedDocumentVersion;
+    if (
+      isDestructiveOp(op) &&
+      (startedDirty || hasConcurrentUserEdit || isHotForOps(storeApi, [op]))
+    ) {
+      stoppedAtSuggestion = true;
+      receipt.mode = 'suggestion';
+      receipt.suggestionPending = true;
+      for (let j = i; j < ops.length; j++) {
+        receipt.undone.push(ops[j].label);
+      }
+      receipt.message = SUGGESTION_MESSAGE;
+      break;
+    }
+
     run.reportProgress(step, totalOps, op.label);
 
     const result = applyOneOp(run, storeApi, resourceId, op);
@@ -754,6 +777,7 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     }
 
     const entityId = result.entityId!;
+    expectedDocumentVersion = storeApi.getState()._documentVersion;
     receipt.applied += 1;
     receipt.done.push(op.label);
     if (!receipt.entityIds.includes(entityId)) {
@@ -782,10 +806,30 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     if (!instant) {
       storeApi.getState().requestAgentFitView();
     }
+
+    const saved = await storeApi.getState().save();
+    if (!saved) {
+      savePending = true;
+    } else {
+      // 后续成功保存已覆盖此前的当前文档版本，清除临时失败标记。
+      savePending = false;
+    }
   }
 
-  if (receipt.status === 'completed') {
-    if (receipt.applied === 0 && receipt.undone.length > 0) {
+  if (stoppedAtSuggestion) {
+    receipt.status = savePending ? 'partial' : 'completed';
+    receipt.mode = 'suggestion';
+    receipt.suggestionPending = true;
+    if (savePending) {
+      receipt.message = '前序操作已写入当前导图，但保存失败；建议仍等待用户确认，请先重试保存或撤销';
+    } else {
+      receipt.message = SUGGESTION_MESSAGE;
+    }
+  } else if (receipt.status === 'completed') {
+    if (savePending) {
+      receipt.status = 'partial';
+      receipt.message = '操作已写入当前导图，但保存失败；请重试保存或撤销';
+    } else if (receipt.applied === 0 && receipt.undone.length > 0) {
       receipt.status = 'failed';
       receipt.message = '全部操作未能应用（锚点缺失或限制）';
     } else if (receipt.undone.length > 0) {

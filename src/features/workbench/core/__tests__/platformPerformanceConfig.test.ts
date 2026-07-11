@@ -230,7 +230,7 @@ describe('OS mode drag performance anti-regression', () => {
   // 桌面整体垂直错位（顶部黑条、Dock 画出窗框）。以下断言锁定修复。
   it('OS 模式桌面级合成链禁止残留 containment（WebView2 脏区错位防回归）', () => {
     const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '');
-    // 壁纸根：禁止一切 contain（paint 也不行；裁切由 wb-desk-parallax overflow 承担）
+    // 壁纸根：禁止一切 contain（paint 也不行；裁切由 wb-wallpaper-frame overflow 承担）
     const wallpaper = readRepo(
       'src',
       'features',

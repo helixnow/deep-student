@@ -90,6 +90,8 @@ interface NavigationHistory {
 interface ModernSidebarProps {
   currentView: CurrentView;
   onViewChange: (view: CurrentView) => void;
+  /** Workbench Chat 窗口只保留会话管理，不显示全局应用入口。 */
+  navigationScope?: 'full' | 'chat';
   sidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   startDragging?: (e: React.MouseEvent) => void;
@@ -383,6 +385,7 @@ export function reorderSidebarSessionGroups(groups: SessionGroup[], sourceGroupI
 export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   currentView,
   onViewChange,
+  navigationScope = 'full',
   sidebarCollapsed = false,
   updater,
 }) => {
@@ -420,11 +423,13 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const uiLabEnabled = useIsUILabEnabled();
   const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
   const primaryItems = useMemo(
-    () =>
-      navItems.filter((item) =>
-        ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'template-management', 'ui-lab'].includes(item.view)
-      ),
-    [navItems]
+    () => navItems.filter((item) => {
+      if (navigationScope === 'chat') {
+        return item.view === 'chat-v2';
+      }
+      return ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'template-management', 'ui-lab'].includes(item.view);
+    }),
+    [navItems, navigationScope]
   );
   const chatNavLabel = t('sidebar:navigation.chat_v2', '新会话');
   const shouldShowMacDesktopNewSessionShortcut = useMemo(
@@ -1456,6 +1461,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         </CustomScrollArea>
       </div>
 
+      {navigationScope === 'full' ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
         <div className="relative flex justify-start">
           <SidebarRow
@@ -1489,6 +1495,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           ) : null}
         </div>
       </div>
+      ) : null}
     </aside>
 
     <NotionDialog

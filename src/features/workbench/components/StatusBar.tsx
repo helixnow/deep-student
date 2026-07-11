@@ -1,7 +1,7 @@
 /**
  * StatusBar — 学习状态菜单栏（docs/research/macos-2026/07）
  *
- * 透明顶栏字层：左侧弱品牌；右侧信号项 + 图标入口（无时钟）。
+ * 透明顶栏字层：右侧信号项 + 图标入口（无时钟）。
  * 入口打开紧凑学习中心（2×2 瓷砖）。Windows 右侧为窗控胶囊让位。
  */
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
@@ -192,10 +192,6 @@ const StatusBarComponent: React.FC = () => {
       role="banner"
       aria-label={t('menubar.label', { defaultValue: '学习状态栏' })}
     >
-      <span className="wb-menubar-brand" data-testid="wb-menubar-brand">
-        {t('menubar.appName', { defaultValue: t('appName', { defaultValue: '学习桌面' }) })}
-      </span>
-
       <div className="wb-menubar-trailing">
         <div className="wb-menubar-status-slot" data-testid="wb-menubar-status-slot">
           <StatusBarItems dueCount={dueCount} taskCount={taskCount} />

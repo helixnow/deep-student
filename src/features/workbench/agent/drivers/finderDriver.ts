@@ -20,6 +20,8 @@ import { collectDomainEntityIds, registerDomainListener } from '../domainEvents'
 import { listTickCost } from '../pacing';
 import { withUserPatch } from '../userPatch';
 import { agentFlashMany } from '../visuals/agentFlash';
+import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import type { FinderPath } from '@/features/learning-hub/stores/finderStore';
 
 const TYPE_ID = 'files';
 
@@ -27,12 +29,19 @@ const UNSUPPORTED_HINT =
   '请用资源/DSTU 领域工具修改文件数据；本驱动仅支持导航类 op（openFolder）';
 
 interface ActiveRun {
+  runId: string;
+  ops: AgentOp[];
   aborted: boolean;
   done: string[];
   undone: string[];
   entityIds: string[];
   applied: number;
   totalOps: number;
+  nextOpIndex: number;
+  inversesCommitted: boolean;
+  pendingInverses: Array<{ invert: () => Promise<void>; label: string }>;
+  ledger: AcrRunContext['ledger'];
+  errorMessage?: string;
 }
 
 const activeRuns = new Map<string, ActiveRun>();
@@ -85,38 +94,70 @@ async function applyOpenFolder(folderId: string): Promise<void> {
   await useFinderStore.getState().enterFolder(folderId);
 }
 
+async function restoreFolder(path: unknown): Promise<void> {
+  if (path && typeof path === 'object') {
+    useFinderStore.getState().navigateTo(path as FinderPath);
+  }
+}
+
+function isFinderHot(): boolean {
+  return Boolean(useFinderStore.getState().inlineEdit?.editingId);
+}
+
+function commitInverses(state: ActiveRun): void {
+  if (state.inversesCommitted) return;
+  for (const entry of state.pendingInverses) state.ledger.record(state.runId, entry.invert, entry.label);
+  state.inversesCommitted = true;
+}
+
+function markRemaining(state: ActiveRun): void {
+  for (let i = state.nextOpIndex; i < state.totalOps; i++) state.undone.push(state.ops[i].label || state.ops[i].kind);
+  state.nextOpIndex = state.totalOps;
+}
+
 export const finderDriver: CollabDriver = {
   typeId: TYPE_ID,
 
   probe(_target: AcrTarget): AcrProbeState {
-    return 'clean';
+    return isFinderHot() ? 'hot' : 'clean';
   },
 
   async apply(run: AcrRunContext, ops: AgentOp[]): Promise<AcrReceipt> {
     const state: ActiveRun = {
+      runId: run.runId,
+      ops,
       aborted: false,
       done: [],
       undone: [],
       entityIds: [],
       applied: 0,
       totalOps: ops.length,
+      nextOpIndex: 0,
+      inversesCommitted: false,
+      pendingInverses: [],
+      ledger: run.ledger,
     };
     activeRuns.set(run.runId, state);
 
     for (let i = 0; i < ops.length; i++) {
+      state.nextOpIndex = i;
       if (state.aborted) {
-        for (let j = i; j < ops.length; j++) {
-          state.undone.push(ops[j].label || ops[j].kind);
-        }
+        markRemaining(state);
         break;
       }
 
-      const pause = await run.checkPaused();
+      let pause: 'resume' | 'abort';
+      try {
+        pause = await run.checkPaused();
+      } catch (err) {
+        state.aborted = true;
+        state.errorMessage = `暂停检查失败：${err instanceof Error ? err.message : String(err)}`;
+        markRemaining(state);
+        break;
+      }
       if (pause === 'abort') {
         state.aborted = true;
-        for (let j = i; j < ops.length; j++) {
-          state.undone.push(ops[j].label || ops[j].kind);
-        }
+        markRemaining(state);
         break;
       }
 
@@ -129,11 +170,30 @@ export const finderDriver: CollabDriver = {
           state.undone.push(`${op.label || op.kind}（缺少 folderId）`);
         } else {
           try {
+            const { useFinderStore } = await import(
+              '@/features/learning-hub/stores/finderStore'
+            );
+            const previousPath = useFinderStore.getState().currentPath;
             await applyOpenFolder(folderId);
             state.done.push(op.label || `打开文件夹 ${folderId}`);
             state.entityIds.push(folderId);
             state.applied += 1;
-            await run.pacing.tick(listTickCost(run.pacing.profile));
+            if (previousPath?.folderId !== folderId) {
+              state.pendingInverses.push({
+                invert: () => restoreFolder(previousPath),
+                label: op.label || `打开文件夹 ${folderId}`,
+              });
+            }
+            // 当前导航已经完成；pacing 失败或此时 abort 不得把它重复计入 undone。
+            state.nextOpIndex = i + 1;
+            try {
+              await run.pacing.tick(listTickCost(run.pacing.profile));
+            } catch (err) {
+              state.aborted = true;
+              state.errorMessage = `节奏控制失败：${err instanceof Error ? err.message : String(err)}`;
+              markRemaining(state);
+              break;
+            }
           } catch (err) {
             state.undone.push(
               `${op.label || op.kind}（失败: ${err instanceof Error ? err.message : String(err)}）`,
@@ -143,9 +203,11 @@ export const finderDriver: CollabDriver = {
       } else {
         state.undone.push(`${op.label || op.kind} — ${UNSUPPORTED_HINT}`);
       }
+      state.nextOpIndex = i + 1;
     }
 
-    activeRuns.delete(run.runId);
+    if (activeRuns.get(run.runId) === state) activeRuns.delete(run.runId);
+    commitInverses(state);
 
     const status = state.aborted
       ? 'cancelled'
@@ -164,11 +226,11 @@ export const finderDriver: CollabDriver = {
         done: state.done,
         undone: state.undone,
         message:
-          state.undone.length > 0 && state.applied === 0
+          state.errorMessage ?? (state.undone.length > 0 && state.applied === 0
             ? UNSUPPORTED_HINT
             : state.undone.some((u) => u.includes('DSTU'))
               ? UNSUPPORTED_HINT
-              : undefined,
+              : undefined),
       }),
       TYPE_ID,
     );
@@ -178,6 +240,8 @@ export const finderDriver: CollabDriver = {
     const state = activeRuns.get(runId);
     if (state) {
       state.aborted = true;
+      markRemaining(state);
+      commitInverses(state);
       return withUserPatch(
         emptyReceipt({
           status: 'cancelled',
@@ -185,7 +249,7 @@ export const finderDriver: CollabDriver = {
           totalOps: state.totalOps,
           entityIds: state.entityIds,
           done: [...state.done],
-          undone: [...state.undone, '（已中止）'],
+          undone: [...state.undone],
           message: 'files 导航已中止',
         }),
         TYPE_ID,

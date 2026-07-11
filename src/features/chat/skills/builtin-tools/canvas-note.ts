@@ -11,7 +11,7 @@ import type { SkillDefinition } from '../types';
 export const canvasNoteSkill: SkillDefinition = {
   id: 'canvas-note',
   name: 'canvas-note',
-  description: '智能笔记能力组，包含笔记读取、追加、替换、创建、列表、搜索等工具。当用户需要查看、编辑、创建笔记或在笔记中添加内容时使用。',
+  description: '智能笔记能力组，包含笔记读取、追加、替换、创建、列表、搜索等工具。当用户需要查看、编辑、创建笔记或在笔记中添加内容时使用；若用户要求“展示/演示/让我看你操作”等可见操作，必须同时加载 workbench-tools，先打开并聚焦已有笔记，再按授权执行可见编辑。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 3,
@@ -45,6 +45,17 @@ export const canvasNoteSkill: SkillDefinition = {
 2. 增量修改优先使用 note_append 或 note_replace
 3. 只有需要完全重写时才使用 note_set
 4. 支持 Markdown 格式
+
+## 可见操作演示（必须遵守）
+
+当用户说“展示一下”“演示”“让我看你操作”“可视化操作”等，意图是看到学习桌面中的真实窗口操作，而不是看到一串后台 CRUD 工具卡：
+
+1. **同时加载 \`workbench-tools\`**，并按其“可见笔记演示”剧本执行。
+2. 先用 \`builtin-note_list\` 找到已有笔记（若用户已指定笔记则直接使用），再用 Workbench 工具检查窗口并打开/聚焦目标笔记。
+3. 用户只要求“展示能力”且未授权改内容时，默认做无损演示：打开、聚焦、读取或滚动已有笔记，然后说明如需观看 AI 光标与逐步编辑，请指定目标笔记和要改的内容。
+4. 用户已明确授权具体修改时，在目标笔记窗口打开并聚焦后，优先调用 \`builtin-note_append\` 或 \`builtin-note_replace\`。它们会经 ACR 前端委托呈现窗口光环、AgentStrip、AI 光标/高亮、节奏化编辑与进度。
+5. **不得为了演示而自行创建笔记、编造笔记主题、覆盖整篇内容或修改未获授权的笔记。** \`builtin-note_create\` / \`builtin-note_set\` 只能在用户明确要求创建或完整重写时使用。
+6. 写入后用 \`builtin-note_read\` 或 \`builtin-workbench_query_state\` 确认结果，不要仅根据工具调用已发出就宣称成功。
 `,
   allowedTools: [
     'builtin-note_read',

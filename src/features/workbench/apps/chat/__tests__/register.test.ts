@@ -67,7 +67,7 @@ describe('workbench chat register', () => {
     const def = appRegistry.get(CHAT_APP_TYPE_ID);
     expect(def).toBe(chatAppDefinition);
     expect(def?.typeId).toBe('chat');
-    expect(def?.instanceMode).toBe('multi');
+    expect(def?.instanceMode).toBe('single');
     expect(def?.memoryWeight).toBe(2);
     expect(def?.nameKey).toBe('apps.chat.name');
     expect(def?.onActivation).toBeTypeOf('function');
@@ -88,7 +88,7 @@ describe('workbench chat register', () => {
     warnSpy.mockRestore();
   });
 
-  it('setInput writes only to the target session store (dual-instance isolation)', async () => {
+  it('setInput writes only to the active session store', async () => {
     const storeA = makeFakeStore('sess_a');
     const storeB = makeFakeStore('sess_b');
 

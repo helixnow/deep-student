@@ -34,12 +34,48 @@ export interface WallpaperPreset {
   id: string;
   /** i18n key（namespace: workbench），设置页 / 桌面右键菜单展示用 */
   nameKey: string;
+  /** 随应用分发的静态图片资源；缺省时沿用 CSS 渐变预设 */
+  imageUrl?: string;
+  /** 图片主体的 cover 对齐位置 */
+  imagePosition?: string;
+  /** 图片预设额外压暗 0–0.6 */
+  imageDim?: number;
+  /** 图片预设是否绘制暗角（默认开） */
+  imageVignette?: boolean;
   /** 动态流动壁纸（reduced-motion / minimal 档自动静止为首帧） */
   animated?: boolean;
 }
 
 /** 渐变预设清单（kind='theme' 时 value 取这里的 id） */
 export const WALLPAPER_PRESETS: readonly WallpaperPreset[] = [
+  {
+    id: 'mountain-mist',
+    nameKey: 'workbench:wallpaper.mountainMist',
+    imageUrl: '/wallpapers/study-os/mountain-mist.webp',
+    imagePosition: 'center 52%',
+    imageDim: 0.06,
+  },
+  {
+    id: 'forest-mist',
+    nameKey: 'workbench:wallpaper.forestMist',
+    imageUrl: '/wallpapers/study-os/forest-mist.webp',
+    imagePosition: 'center 54%',
+    imageDim: 0.08,
+  },
+  {
+    id: 'alpine-lake',
+    nameKey: 'workbench:wallpaper.alpineLake',
+    imageUrl: '/wallpapers/study-os/alpine-lake.webp',
+    imagePosition: 'center 55%',
+    imageDim: 0.12,
+  },
+  {
+    id: 'winter-ridge',
+    nameKey: 'workbench:wallpaper.winterRidge',
+    imageUrl: '/wallpapers/study-os/winter-ridge.webp',
+    imagePosition: 'center 48%',
+    imageDim: 0.05,
+  },
   { id: 'aurora', nameKey: 'workbench:wallpaper.aurora' },
   { id: 'horizon', nameKey: 'workbench:wallpaper.horizon' },
   { id: 'graphite', nameKey: 'workbench:wallpaper.graphite' },
@@ -53,7 +89,7 @@ export const WALLPAPER_PRESETS: readonly WallpaperPreset[] = [
   { id: 'dusk-flow', nameKey: 'workbench:wallpaper.duskFlow', animated: true },
 ] as const;
 
-export const DEFAULT_WALLPAPER: WallpaperConfig = { kind: 'theme', value: 'aurora' };
+export const DEFAULT_WALLPAPER: WallpaperConfig = { kind: 'theme', value: 'mountain-mist' };
 
 const PRESET_MAP = new Map(WALLPAPER_PRESETS.map((p) => [p.id, p]));
 
@@ -134,7 +170,25 @@ const PaneContent: React.FC<{ config: WallpaperConfig }> = ({ config }) => {
     );
   }
   const id = resolvePresetId(config.value);
-  if (PRESET_MAP.get(id)?.animated) {
+  const preset = PRESET_MAP.get(id);
+  if (preset?.imageUrl) {
+    const dim = clamp(Number(preset.imageDim) || 0, 0, 0.6);
+    return (
+      <>
+        <div
+          className="wb-wallpaper-image"
+          style={{
+            backgroundImage: toCssUrl(preset.imageUrl),
+            backgroundPosition: preset.imagePosition,
+          }}
+        />
+        <div className="wb-wallpaper-scrim" />
+        {dim > 0 && <div className="wb-wallpaper-dimmer" style={{ opacity: dim }} />}
+        {preset.imageVignette !== false && <div className="wb-wallpaper-vignette" />}
+      </>
+    );
+  }
+  if (preset?.animated) {
     return (
       <>
         <div className="wb-wallpaper-flow wb-wallpaper-flow-a" />

@@ -130,7 +130,7 @@ describe('WorkbenchSettingsSection', () => {
     }
   });
 
-  it('applies performance profile levers (balanced → reduced / no parallax / dock mag on)', async () => {
+  it('applies performance profile levers (balanced → reduced / dock mag on)', async () => {
     render(<WorkbenchSettingsSection />);
     await screen.findByRole('switch', { name: '启用学习桌面' });
 
@@ -148,10 +148,8 @@ describe('WorkbenchSettingsSection', () => {
         value: 'reduced',
       });
     });
-    expect(settingsStore.get('desktop.workbenchWallpaperParallax')).toBe('false');
     expect(settingsStore.get('desktop.workbenchDockMagnification')).toBe('true');
     expect(document.documentElement.getAttribute('data-wb-material')).toBe('reduced');
-    expect(screen.getByRole('switch', { name: '壁纸视差' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: 'Dock 邻近放大' })).toHaveAttribute('aria-checked', 'true');
   });
 

@@ -29,16 +29,6 @@
   padding-right: var(--wb-menubar-chrome-inset, 148px);
 }
 
-.wb-menubar-brand {
-  pointer-events: none;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-  color: var(--wb-menubar-fg);
-  opacity: 0.78;
-  white-space: nowrap;
-}
-
 .wb-menubar-trailing {
   position: relative;
   display: flex;

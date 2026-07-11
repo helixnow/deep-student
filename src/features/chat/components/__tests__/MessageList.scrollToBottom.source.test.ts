@@ -53,4 +53,11 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).toContain('className="t-panel-slide ml-auto w-fit"');
     expect(source).toContain('aria-hidden={!showScrollToBottom}');
   });
+
+  it('confines sent-message positioning to the message viewport', () => {
+    expect(source).toContain('const viewportRect = viewportElement.getBoundingClientRect();');
+    expect(source).toContain('const messageRect = userMessageEl.getBoundingClientRect();');
+    expect(source).toContain('viewportElement.scrollTop = Math.max(');
+    expect(source).not.toContain('userMessageEl.scrollIntoView(');
+  });
 });

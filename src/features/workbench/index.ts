@@ -87,6 +87,7 @@ export {
 } from './apps/chat/register';
 export {
   launchNewChatSession,
+  openChatSession,
   type LaunchNewChatSessionOptions,
   type LaunchNewChatSessionResult,
 } from './apps/chat/newSession';

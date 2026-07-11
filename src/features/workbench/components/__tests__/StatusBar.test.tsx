@@ -74,6 +74,8 @@ describe('formatStatusBarTime', () => {
 describe('StatusBar 信号项可见性', () => {
   it('无信号时不渲染番茄 / 闪卡 / 制卡项，仍显示学习中心图标入口', () => {
     render(<StatusBar />);
+    expect(screen.queryByTestId('wb-menubar-brand')).toBeNull();
+    expect(screen.queryByText('学习桌面')).toBeNull();
     expect(screen.queryByTestId('wb-menubar-pomodoro')).toBeNull();
     expect(screen.queryByTestId('wb-menubar-flashcards')).toBeNull();
     expect(screen.queryByTestId('wb-menubar-anki-tasks')).toBeNull();

@@ -1,0 +1,12 @@
+.wb-chat-app-host .wb-sys-aside {
+  width: 272px;
+}
+
+.wb-chat-app-host[data-wb-sys-size='medium'] .wb-sys-aside {
+  width: 240px;
+}
+
+.wb-chat-app-host .chat-v2 {
+  position: absolute;
+  inset: 0;
+}

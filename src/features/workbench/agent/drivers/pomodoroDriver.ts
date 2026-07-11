@@ -22,6 +22,10 @@ const TYPE_ID = 'pomodoro';
 
 const STRICT_MODE_HINT = '严格模式下专注中不可暂停';
 
+async function flushRecords(): Promise<void> {
+  await usePomodoroStore.getState().flushPendingRecords();
+}
+
 function strictModeBlocksPause(): boolean {
   const { settings, mode, status } = usePomodoroStore.getState();
   return Boolean(settings.strictMode && mode === 'work' && status === 'running');
@@ -34,6 +38,21 @@ function payloadTask(payload: unknown): { taskId?: string; taskTitle?: string } 
     taskId: typeof p.taskId === 'string' ? p.taskId : undefined,
     taskTitle: typeof p.taskTitle === 'string' ? p.taskTitle : undefined,
   };
+}
+
+function controlStateChanged(
+  before: ReturnType<typeof usePomodoroStore.getState>,
+  after: ReturnType<typeof usePomodoroStore.getState>,
+): boolean {
+  return (
+    before.mode !== after.mode ||
+    before.status !== after.status ||
+    before.currentTaskId !== after.currentTaskId ||
+    before.currentTaskTitle !== after.currentTaskTitle ||
+    before.sessionStartTime !== after.sessionStartTime ||
+    before.phaseEndsAt !== after.phaseEndsAt ||
+    before.phaseStartedAt !== after.phaseStartedAt
+  );
 }
 
 function emptyReceipt(totalOps: number, status: AcrReceipt['status'] = 'completed'): AcrReceipt {
@@ -118,6 +137,7 @@ export const pomodoroDriver: CollabDriver = {
     const done: string[] = [];
     const undone: string[] = [];
     const messages: string[] = [];
+    let persistenceFailed = false;
     const totalOps = ops.length;
     const state: ActiveRunSnapshot = {
       runId: run.runId,
@@ -139,7 +159,14 @@ export const pomodoroDriver: CollabDriver = {
 
     for (let i = 0; i < ops.length; i++) {
       state.nextOpIndex = i;
-      const pauseDecision = state.aborted ? 'abort' : await run.checkPaused();
+      let pauseDecision: 'resume' | 'abort';
+      try {
+        pauseDecision = state.aborted ? 'abort' : await run.checkPaused();
+      } catch (err) {
+        state.aborted = true;
+        state.undone.push(`暂停检查失败（${err instanceof Error ? err.message : String(err)}）`);
+        return cancelledReceipt(state);
+      }
       if (pauseDecision === 'abort') {
         state.aborted = true;
         return cancelledReceipt(state);
@@ -149,21 +176,29 @@ export const pomodoroDriver: CollabDriver = {
       const label = op.label || op.kind;
       run.reportProgress(i + 1, totalOps, label);
 
-      switch (op.kind) {
+      try {
+        switch (op.kind) {
         case 'pomodoro_start': {
           const before = usePomodoroStore.getState();
           const { taskId, taskTitle } = payloadTask(op.payload);
           usePomodoroStore.getState().start(taskId, taskTitle);
+          const after = usePomodoroStore.getState();
+          if (!controlStateChanged(before, after)) {
+            undone.push(`${label}（当前状态无需启动或恢复）`);
+            break;
+          }
           done.push(label);
           state.applied += 1;
           if (before.mode === 'idle') {
             state.pendingInverses.push({
-              invert: () => usePomodoroStore.getState().stop(true),
+              // ACR undo 不是一次真实“中断”，不能写入中断番茄记录。
+              invert: () => usePomodoroStore.getState().stop(false),
               label,
             });
           } else {
             state.fullyReversible = false;
           }
+          await flushRecords();
           break;
         }
         case 'pomodoro_pause': {
@@ -179,6 +214,10 @@ export const pomodoroDriver: CollabDriver = {
           }
           const beforeStatus = usePomodoroStore.getState().status;
           usePomodoroStore.getState().pause();
+          if (usePomodoroStore.getState().status === beforeStatus) {
+            undone.push(`${label}（当前状态不可暂停）`);
+            break;
+          }
           done.push(label);
           state.applied += 1;
           if (
@@ -195,6 +234,10 @@ export const pomodoroDriver: CollabDriver = {
         case 'pomodoro_resume': {
           const beforeStatus = usePomodoroStore.getState().status;
           usePomodoroStore.getState().resume();
+          if (usePomodoroStore.getState().status === beforeStatus) {
+            undone.push(`${label}（当前状态无需恢复）`);
+            break;
+          }
           done.push(label);
           state.applied += 1;
           if (
@@ -211,12 +254,17 @@ export const pomodoroDriver: CollabDriver = {
         case 'pomodoro_stop': {
           const beforeMode = usePomodoroStore.getState().mode;
           usePomodoroStore.getState().stop(true);
+          if (usePomodoroStore.getState().mode === beforeMode) {
+            undone.push(`${label}（当前未运行番茄钟）`);
+            break;
+          }
           done.push(label);
           state.applied += 1;
           if (beforeMode !== 'idle') {
             state.fullyReversible = false;
             state.pendingInverses.length = 0;
           }
+          await flushRecords();
           break;
         }
         default: {
@@ -224,10 +272,23 @@ export const pomodoroDriver: CollabDriver = {
           messages.push(`不支持的 pomodoro op: ${op.kind}`);
           break;
         }
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        persistenceFailed = true;
+        messages.push(`后端记录保存失败: ${detail}`);
       }
 
       state.nextOpIndex = i + 1;
-      await run.pacing.tick();
+      try {
+        await run.pacing.tick();
+      } catch (err) {
+        state.aborted = true;
+        messages.push(
+          `节奏控制失败: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return cancelledReceipt(state);
+      }
     }
 
     if (state.aborted) return cancelledReceipt(state);
@@ -235,8 +296,8 @@ export const pomodoroDriver: CollabDriver = {
     abortSnapshots.delete(run.runId);
     commitPendingInverses(state);
 
-    let status: AcrReceipt['status'] = 'completed';
-    if (undone.length > 0 && state.applied === 0) {
+    let status: AcrReceipt['status'] = persistenceFailed ? 'partial' : 'completed';
+    if ((undone.length > 0 || persistenceFailed) && state.applied === 0) {
       status = 'failed';
     } else if (undone.length > 0) {
       status = 'partial';

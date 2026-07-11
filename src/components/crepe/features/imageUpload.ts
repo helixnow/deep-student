@@ -149,6 +149,9 @@ export const createImageUploader = (
           'error',
           i18next.t('notes:editor.image_upload.save_failed', { error: message })
         );
+        // A blob URL would look valid for this session but becomes a broken
+        // image after restart. Keep persistent notes free of transient URLs.
+        return '';
       }
     } else {
       emitImageUploadDebug('upload_start', 'warning', '缺少笔记上下文，将使用 blob URL', {

@@ -35,8 +35,6 @@ export const WORKBENCH_SETTING_KEYS = {
   wallpaper: 'desktop.workbenchWallpaper',
   tileMargins: 'desktop.workbenchTileMargins',
   dockAutohide: 'desktop.workbenchDockAutohide',
-  /** 与 DesktopContextMenu / WorkbenchDesktop 共用同一 key */
-  parallax: 'desktop.workbenchWallpaperParallax',
   dockMagnification: 'desktop.workbenchDockMagnification',
   devPanel: 'desktop.workbenchDevPanel',
   /** 内置浏览器子闸（受 workbenchMode 父闸约束） */
@@ -58,14 +56,14 @@ export type WorkbenchAgentControl = 'off' | 'background' | 'follow';
 /** ACR 演出节奏档（DESIGN §4.3） */
 export type WorkbenchAgentPacing = 'fast' | 'normal' | 'demo';
 
-/** 性能预设 → 材质 / 视差 / Dock 放大 */
+/** 性能预设 → 材质 / Dock 放大 */
 export const PERFORMANCE_PROFILE_PRESETS: Record<
   Exclude<PerformanceProfile, 'custom'>,
-  { materialTier: MaterialTierSetting; parallax: boolean; dockMagnification: boolean }
+  { materialTier: MaterialTierSetting; dockMagnification: boolean }
 > = {
-  quality: { materialTier: 'full', parallax: true, dockMagnification: true },
-  balanced: { materialTier: 'reduced', parallax: false, dockMagnification: true },
-  performance: { materialTier: 'minimal', parallax: false, dockMagnification: false },
+  quality: { materialTier: 'full', dockMagnification: true },
+  balanced: { materialTier: 'reduced', dockMagnification: true },
+  performance: { materialTier: 'minimal', dockMagnification: false },
 };
 
 export type WallpaperSetting = WallpaperConfig;
@@ -147,7 +145,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [mode, setMode] = useState(false);
   const [performanceProfile, setPerformanceProfile] = useState<PerformanceProfile>('custom');
   const [materialTier, setMaterialTierState] = useState<MaterialTierSetting>('auto');
-  const [parallax, setParallax] = useState(false);
   const [dockMagnification, setDockMagnification] = useState(true);
   const [wallpaper, setWallpaper] = useState<WallpaperSetting>(DEFAULT_WALLPAPER);
   const [imagePathDraft, setImagePathDraft] = useState('');
@@ -175,7 +172,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         wallpaperVal,
         marginsVal,
         autohideVal,
-        parallaxVal,
         dockMagVal,
         devPanelVal,
         browserEnabledVal,
@@ -191,7 +187,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.wallpaper),
         read(WORKBENCH_SETTING_KEYS.tileMargins),
         read(WORKBENCH_SETTING_KEYS.dockAutohide),
-        read(WORKBENCH_SETTING_KEYS.parallax),
         read(WORKBENCH_SETTING_KEYS.dockMagnification),
         read(WORKBENCH_SETTING_KEYS.devPanel),
         read(WORKBENCH_SETTING_KEYS.browserEnabled),
@@ -205,8 +200,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setMode(String(modeVal ?? '') === 'true');
       setPerformanceProfile(parseProfile(profileVal));
       setMaterialTierState(parseMaterialTier(tierVal));
-      // 未设置 → 关闭视差（冷启动更省）；显式 'true' 才开
-      setParallax(String(parallaxVal ?? '') === 'true');
       // 未设置 → 保留 Dock 放大（与 quality 默认手感一致）；显式 'false' 才关
       setDockMagnification(String(dockMagVal ?? '') !== 'false');
       const wp = parseJsonSetting<WallpaperSetting>(wallpaperVal, DEFAULT_WALLPAPER);
@@ -278,14 +271,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
     [persist],
   );
 
-  const applyParallax = useCallback(
-    (next: boolean) => {
-      setParallax(next);
-      void persist(WORKBENCH_SETTING_KEYS.parallax, String(next), next);
-    },
-    [persist],
-  );
-
   const applyDockMagnification = useCallback(
     (next: boolean) => {
       setDockMagnification(next);
@@ -301,10 +286,9 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       if (next === 'custom') return;
       const preset = PERFORMANCE_PROFILE_PRESETS[next];
       applyMaterialTier(preset.materialTier);
-      applyParallax(preset.parallax);
       applyDockMagnification(preset.dockMagnification);
     },
-    [applyDockMagnification, applyMaterialTier, applyParallax, persist],
+    [applyDockMagnification, applyMaterialTier, persist],
   );
 
   const handleTierChange = useCallback(
@@ -313,14 +297,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       applyMaterialTier(next);
     },
     [applyMaterialTier, markCustomIfNeeded],
-  );
-
-  const handleParallaxChange = useCallback(
-    (next: boolean) => {
-      markCustomIfNeeded();
-      applyParallax(next);
-    },
-    [applyParallax, markCustomIfNeeded],
   );
 
   const handleDockMagChange = useCallback(
@@ -410,7 +386,7 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         title={t('workbench:settings.performanceProfile.title', '性能档位')}
         description={t(
           'workbench:settings.performanceProfile.desc',
-          '一键平衡画质与流畅度。选择预设会同步材质、壁纸视差与 Dock 放大；单独改下面选项会变为「自定义」。',
+          '一键平衡画质与流畅度。选择预设会同步材质与 Dock 放大；单独改下面选项会变为「自定义」。',
         )}
         className="items-center"
       >
@@ -467,20 +443,6 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           ]}
         />
       </SettingRow>
-
-      <SwitchRow
-        title={t('workbench:settings.parallax.title', '壁纸视差')}
-        description={t(
-          'workbench:settings.parallax.desc',
-          '指针移动时轻微平移壁纸。关闭可降低桌面合成开销（默认关闭）。',
-        )}
-        checked={parallax}
-        loading={!loaded}
-        onCheckedChange={(next) => {
-          if (!loaded) return;
-          handleParallaxChange(next);
-        }}
-      />
 
       <SwitchRow
         title={t('workbench:settings.dockMagnification.title', 'Dock 邻近放大')}

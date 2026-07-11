@@ -192,7 +192,6 @@
     "expose": "窗口俯瞰",
     "wallpaper": "桌面壁纸",
     "materialTier": "视觉材质",
-    "parallax": "壁纸视差",
     "showDesktop": "显示桌面",
     "restoreWindows": "恢复窗口",
     "settings": "桌面设置…"
@@ -210,6 +209,10 @@
     }
   },
   "wallpaper": {
+    "mountainMist": "薄雾雪山",
+    "forestMist": "山间雾林",
+    "alpineLake": "雪山静水",
+    "winterRidge": "冬日山脊",
     "aurora": "极光",
     "horizon": "破晓",
     "graphite": "石墨",
@@ -307,7 +310,7 @@
     },
     "performanceProfile": {
       "title": "性能档位",
-      "desc": "一键平衡画质与流畅度。选择预设会同步材质、壁纸视差与 Dock 放大；单独改下面选项会变为「自定义」。",
+      "desc": "一键平衡画质与流畅度。选择预设会同步材质与 Dock 放大；单独改下面选项会变为「自定义」。",
       "quality": "画质",
       "balanced": "均衡",
       "performance": "性能",
@@ -321,10 +324,6 @@
       "reduced": "降透明",
       "minimal": "极简"
     },
-    "parallax": {
-      "title": "壁纸视差",
-      "desc": "指针移动时轻微平移壁纸。关闭可降低桌面合成开销（默认关闭）。"
-    },
     "dockMagnification": {
       "title": "Dock 邻近放大",
       "desc": "指针划过 Dock 时图标放大。关闭可减少悬停时的布局测量与合成成本。"
@@ -332,8 +331,8 @@
 
     "wallpaper": {
       "title": "桌面壁纸",
-      "desc": "选择主题渐变预设，或使用自定义图片。",
-      "kindTheme": "主题渐变",
+      "desc": "选择内置自然风景或主题渐变，也可以使用自定义图片。",
+      "kindTheme": "内置壁纸",
       "kindImage": "自定义图片",
       "imagePath": "图片路径",
       "imagePlaceholder": "输入本地图片路径…"

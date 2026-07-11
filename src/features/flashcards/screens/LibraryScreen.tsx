@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { listAnkiLibraryCards } from '@/utils/chatApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { AnkiLibraryCard } from '@/types';
-import { FSRS_LIBRARY_REFRESH_EVENT } from '@/features/workbench/agent/drivers/fsrsDriver';
+import { FSRS_LIBRARY_REFRESH_EVENT } from '../events';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 
 const PAGE_SIZE = 40;

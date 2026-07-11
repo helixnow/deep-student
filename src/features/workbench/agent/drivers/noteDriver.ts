@@ -114,6 +114,26 @@ export function splitTextIntoBatches(
 }
 
 /**
+ * 多行或含 Markdown 标记的内容必须走结构化解析插入。
+ * ProseMirror insertText 只适用于单行纯文本，否则会把 Markdown 语法当字面量。
+ */
+export function requiresStructuredMarkdownInsertion(text: string): boolean {
+  if (text.includes('\n')) return true;
+
+  // 单行 Markdown 同样可能表示完整块结构，不能因没有换行就退化成 insertText。
+  if (/^\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+|```|~~~)/.test(text)) {
+    return true;
+  }
+
+  return (
+    /(?:\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|`[^`]+`)/.test(text)
+    || /(?:\*[^*]+\*|_[^_]+_)/.test(text)
+    || /!?\[[^\]]+\]\([^\s)]+(?:\s+"[^"]*")?\)/.test(text)
+    || /\$[^$\n]+\$/.test(text)
+  );
+}
+
+/**
  * 解析锚点 → 文档插入位置。
  * end → getDocEndPos；afterHeading → resolveHeadingPos；失败返回 null。
  */
@@ -262,7 +282,14 @@ export function computeDestructiveMarkdown(
     if (payload.isRegex) {
       try {
         const regex = new RegExp(searchPattern, 'g');
-        return { content: original.replace(regex, replaceWith) };
+        let replaceCount = 0;
+        const content = original.replace(regex, () => {
+          replaceCount += 1;
+          return replaceWith;
+        });
+        return replaceCount > 0
+          ? { content }
+          : { content: original, error: '未找到要替换的内容' };
       } catch (err) {
         return {
           content: original,
@@ -270,17 +297,19 @@ export function computeDestructiveMarkdown(
         };
       }
     }
+    if (!original.includes(searchPattern)) {
+      return { content: original, error: '未找到要替换的内容' };
+    }
     return { content: original.split(searchPattern).join(replaceWith) };
   }
 
   return { content: original, error: `不支持的破坏类 op：${op.kind}` };
 }
 
-/** 编辑器有选区/光标快照 → 视为用户正在目标文档内编辑（hot） */
-export function isNoteEditorHot(api: Pick<CrepeEditorApi, 'captureSelection'>): boolean {
+/** 仅编辑器 DOM 真实持焦时视为 hot；失焦后保留的 selection 快照不算。 */
+export function isNoteEditorHot(api: Pick<CrepeEditorApi, 'hasFocus'>): boolean {
   try {
-    const sel = api.captureSelection?.();
-    return sel != null && typeof sel.from === 'number';
+    return api.hasFocus?.() === true;
   } catch {
     return false;
   }
@@ -307,7 +336,7 @@ export function bindNoteHotPauseHooks(hooks: NoteHotPauseHooks | null): void {
 }
 
 /**
- * S-SUG-04：追加类 op 遇 hot → 显式暂停，轮询至光标离开后 resume。
+ * S-SUG-04：追加类 op 遇 hot → 显式暂停，轮询至编辑器失焦后 resume。
  */
 async function waitWhileNoteHot(
   run: AcrRunContext,
@@ -336,7 +365,7 @@ async function waitWhileNoteHot(
   run.reportProgress(
     step,
     totalOps,
-    '已暂停：光标在编辑区，移开后继续',
+    '已暂停：正在编辑此笔记，切换焦点后继续',
     resourceId,
   );
 
@@ -445,6 +474,33 @@ async function applyNoteInsert(
   /** 账本用：首批实际插入起点（可能因用户编辑被 remap） */
   let ledgerFrom: number | null = null;
   let inserted = 0;
+
+  if (requiresStructuredMarkdownInsertion(text) && api.agentInsertMarkdown) {
+    const cost =
+      profile.opIntervalMs > 0
+        ? profile.typeIntervalMs / profile.opIntervalMs
+        : 1;
+    await run.pacing.tick(profile.instant ? 0 : Math.max(0.05, cost));
+    if (abortFlags.get(run.runId)) {
+      return { ok: false, reason: 'aborted', startPos, endPos: startPos };
+    }
+
+    const mappedPos = remapInsertPos(api, startPos);
+    const structured = api.agentInsertMarkdown(text, mappedPos);
+    if (structured) {
+      run.reportProgress(
+        stepIndex,
+        totalOps,
+        `${op.label}（Markdown 结构已应用）`,
+        run.target.resourceId,
+      );
+      return {
+        ok: true,
+        startPos: structured.from,
+        endPos: structured.to,
+      };
+    }
+  }
 
   for (let bi = 0; bi < batches.length; bi++) {
     if (abortFlags.get(run.runId)) {
@@ -592,9 +648,10 @@ function applyDestructiveDirect(
   const snapshot = previous;
   run.ledger.record(
     run.runId,
-    () => {
+    async () => {
       try {
         api.setMarkdown(snapshot);
+        await api.flushPendingSave?.();
       } catch (e) {
         console.warn('[ACR noteDriver] revert setMarkdown failed:', e);
       }
@@ -614,7 +671,7 @@ export const noteDriver: CollabDriver = {
       return 'closed';
     }
     const api = editors.get(id);
-    // S-SUG-04 / DESIGN §1.1：光标在编辑区 → hot（dirty 仍由 probe.ts / contentDirtyRegistry 优先）
+    // S-SUG-04 / DESIGN §1.1：编辑器真实持焦 → hot（dirty 仍由 probe.ts 优先）
     if (api && isNoteEditorHot(api)) {
       return 'hot';
     }
@@ -654,6 +711,8 @@ export const noteDriver: CollabDriver = {
     let applied = 0;
     let aborted = false;
     let lastInsertEnd: number | null = null;
+    let persistenceError: string | null = null;
+    let pendingSuggestion: AcrReceipt | null = null;
 
     for (let i = 0; i < ops.length; i++) {
       if (abortFlags.get(run.runId)) {
@@ -680,14 +739,14 @@ export const noteDriver: CollabDriver = {
       if (op.kind === 'note_replace' || op.kind === 'note_set') {
         // R2-03 / DESIGN §1.1：dirty → 建议模式；clean → 直写 setMarkdown
         if (shouldUseSuggestionMode(resourceId, api)) {
-          const suggestion = handleDestructiveSuggestion(run, op);
-          done.push(...suggestion.done);
+          pendingSuggestion = handleDestructiveSuggestion(run, op);
+          done.push(...pendingSuggestion.done);
           // suggestion 未改文档：applied 保持 0（与 mindmapDriver 一致）
-          if (ops.length === 1) {
-            abortFlags.delete(run.runId);
-            return { ...suggestion, totalOps: ops.length, applied: 0, entityIds };
+          // 建议需要用户作出决定，后续 op 不能越过这个决策点继续执行。
+          for (let j = i + 1; j < ops.length; j++) {
+            undone.push(ops[j]!.label);
           }
-          continue;
+          break;
         }
 
         const direct = applyDestructiveDirect(run, op, api);
@@ -733,8 +792,9 @@ export const noteDriver: CollabDriver = {
 
         run.ledger.record(
           run.runId,
-          () => {
+          async () => {
             deleteRangeViaEditor(api, from, to);
+            await api.flushPendingSave?.();
           },
           `撤销：${op.label}`,
         );
@@ -747,8 +807,9 @@ export const noteDriver: CollabDriver = {
           done.push(`${op.label}（部分）`);
           run.ledger.record(
             run.runId,
-            () => {
+            async () => {
               deleteRangeViaEditor(api, from, to);
+              await api.flushPendingSave?.();
             },
             `撤销：${op.label}（部分）`,
           );
@@ -769,9 +830,23 @@ export const noteDriver: CollabDriver = {
       }
     }
 
+    if (applied > 0 && api.flushPendingSave) {
+      try {
+        await api.flushPendingSave();
+      } catch (error) {
+        persistenceError = error instanceof Error ? error.message : String(error);
+        run.reportProgress(
+          Math.max(1, done.length),
+          ops.length,
+          `内容已应用，但自动保存失败：${persistenceError}`,
+          resourceId,
+        );
+      }
+    }
+
     // 结束演出：fadeRun → 3s 后 clearAll
     try {
-      if (lastInsertEnd != null || done.length > 0) {
+      if (lastInsertEnd != null || applied > 0) {
         api.agentSignal({ type: 'fadeRun' });
         scheduleFadeClear(run.runId, api);
       } else {
@@ -785,29 +860,42 @@ export const noteDriver: CollabDriver = {
 
     const status = aborted
       ? 'partial'
-      : undone.length > 0 && applied === 0
-        ? 'failed'
-        : undone.length > 0
+      : persistenceError
+        ? 'partial'
+        : pendingSuggestion && undone.length > 0
           ? 'partial'
-          : 'completed';
+        : undone.length > 0 && applied === 0
+          ? 'failed'
+          : undone.length > 0
+            ? 'partial'
+            : 'completed';
 
     const receipt = emptyReceipt({
       status,
-      mode: 'frontend',
+      mode: pendingSuggestion ? 'suggestion' : 'frontend',
       applied,
       totalOps: ops.length,
       entityIds,
       done,
       undone,
+      suggestionPending: pendingSuggestion ? true : undefined,
       message: aborted
         ? '操作已中断，已返回部分结果'
-        : status === 'completed'
-          ? '已在前端实时应用（自动保存）'
-          : undone.length > 0
-            ? `部分步骤未完成：${undone.join('；')}`
-            : undefined,
+        : persistenceError
+          ? `内容已在窗口中应用，但自动保存失败：${persistenceError}`
+          : pendingSuggestion
+            ? undone.length > 0
+              ? `已提交编辑建议；建议后的步骤尚未执行：${undone.join('；')}`
+              : applied > 0
+                ? '前序内容已保存，编辑建议等待用户在 diff 面板确认（accept/reject）'
+                : pendingSuggestion.message
+          : status === 'completed'
+            ? '已在前端实时应用并保存'
+            : undone.length > 0
+              ? `部分步骤未完成：${undone.join('；')}`
+              : undefined,
     });
-    return withUserPatch(receipt, 'note');
+    return aborted ? withUserPatch(receipt, 'note') : receipt;
   },
 
   abort(runId: string): AcrReceipt {

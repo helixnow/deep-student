@@ -2,8 +2,7 @@
  * O13 — 桌面右键菜单 / 桌面手势冒烟测试
  *
  * 覆盖：空白区右键开菜单（非空白不开）、Esc 关闭、平铺全部、整理窗口、
- * 双击空白 show desktop 往返、壁纸预设切换（settings-changed 热更新 + localStorage 兜底持久化）、
- * 壁纸视差开关持久化。
+ * 双击空白 show desktop 往返、壁纸预设切换（settings-changed 热更新 + localStorage 兜底持久化）。
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -26,7 +25,6 @@ import { setDockPinned } from '@/features/workbench/components/Dock';
 import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { useWindowStore, resetWindowStoreForTests } from '@/features/workbench/core/windowStore';
-import { WORKBENCH_PARALLAX_SETTING_KEY } from '@/features/workbench/components/DesktopContextMenu';
 
 const TEST_TYPE_ID = 'o13-desk-smoke';
 
@@ -116,7 +114,6 @@ describe('O13 桌面右键菜单 / 手势', () => {
     expect(m.getByText('窗口俯瞰')).toBeTruthy();
     expect(m.getByText('桌面壁纸')).toBeTruthy();
     expect(m.getByText('视觉材质')).toBeTruthy();
-    expect(m.getByText('壁纸视差')).toBeTruthy();
 
     // 无窗口时批量操作禁用
     expect((m.getByText('整理窗口').closest('button') as HTMLButtonElement).disabled).toBe(true);
@@ -205,27 +202,16 @@ describe('O13 桌面右键菜单 / 手势', () => {
     );
   });
 
-  it('壁纸视差开关：默认关闭，切换后持久化为 true', async () => {
+  it('二级菜单脱离一级 backdrop root，并复用同款玻璃材质', async () => {
     const root = await mountDesktop();
 
-    openDesktopMenu(root);
-    const item = screen.getByText('壁纸视差').closest('button') as HTMLButtonElement;
-    // WorkbenchDesktop：未设置默认关；显式 'true' 才开
-    expect(item.getAttribute('aria-checked')).toBe('false');
-    fireEvent.click(item);
+    const mainMenu = openDesktopMenu(root);
+    fireEvent.click(screen.getByText('桌面壁纸'));
 
-    await waitFor(() => {
-      expect(localStorage.getItem(WORKBENCH_PARALLAX_SETTING_KEY)).toBe('true');
-    });
-
-    // 重开菜单 → 反映开启态
-    openDesktopMenu(root);
-    await waitFor(() => {
-      expect(
-        (screen.getByText('壁纸视差').closest('button') as HTMLButtonElement).getAttribute(
-          'aria-checked',
-        ),
-      ).toBe('true');
-    });
+    const submenu = await screen.findByRole('menu', { name: '桌面壁纸' });
+    expect(submenu).toHaveClass('wb-desk-menu', 'wb-glass-lens', 'wb-desk-menu-sub');
+    expect(mainMenu.contains(submenu)).toBe(false);
+    expect(submenu.parentElement).toBe(document.body);
   });
+
 });

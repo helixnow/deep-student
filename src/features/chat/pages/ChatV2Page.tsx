@@ -1071,6 +1071,7 @@ export const ChatV2Page: React.FC = () => {
         "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
         isSmallScreen && "flex-col"
       )}
+        data-wb-chat-session={currentSessionId ?? undefined}
         data-sandbox-owner-key={sandboxOwnerKey}
         onPointerDownCapture={handleSandboxOwnerActivation}
         onFocusCapture={handleSandboxOwnerActivation}

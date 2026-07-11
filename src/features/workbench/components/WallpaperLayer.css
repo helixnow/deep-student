@@ -17,7 +17,7 @@
    * WebView2 GPU 合成下，「containment 边界 + 视差 transform 祖先 + 子树大量
    * transform/backdrop-filter」会算错 DirectComposition 脏区——表现为整个桌面
    * 垂直错位：顶部整条黑、Dock 连同底栏画到窗框以下（2026-07-10 事故）。
-   * 裁切由 .wb-desk-parallax 的 overflow:hidden 承担，这里不需要 paint 隔离。
+   * 裁切由 .wb-wallpaper-frame 的 overflow:hidden 承担，这里不需要 paint 隔离。
    * CI：platformPerformanceConfig.test.ts */
 
   --wb-wallpaper-fade-duration: 420ms;

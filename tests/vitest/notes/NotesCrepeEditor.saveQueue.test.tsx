@@ -7,6 +7,7 @@ import type { CrepeEditorApi } from '@/components/crepe';
 
 let latestOnChange: ((markdown: string) => void) | null = null;
 let latestOnRetrySave: (() => Promise<void>) | undefined;
+let currentMarkdown = '';
 
 vi.mock('@/features/notes/NotesContext', () => ({
   useNotesOptional: () => undefined,
@@ -59,9 +60,12 @@ vi.mock('@/components/crepe', () => ({
   CrepeEditor: ({ defaultValue, onChange, onReady }: any) => {
     latestOnChange = onChange;
     React.useEffect(() => {
+      currentMarkdown = defaultValue;
       const api = {
-        getMarkdown: () => defaultValue,
-        setMarkdown: vi.fn(),
+        getMarkdown: () => currentMarkdown,
+        setMarkdown: vi.fn((markdown: string) => {
+          currentMarkdown = markdown;
+        }),
         focus: vi.fn(),
         isReadonly: () => false,
         setReadonly: vi.fn(),
@@ -112,6 +116,7 @@ describe('NotesCrepeEditor save queue', () => {
   beforeEach(() => {
     latestOnChange = null;
     latestOnRetrySave = undefined;
+    currentMarkdown = '';
     vi.clearAllMocks();
   });
 
@@ -147,6 +152,45 @@ describe('NotesCrepeEditor save queue', () => {
 
     await act(async () => {
       v2.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it('saves a queued draft through its original note callback after switching notes', async () => {
+    const note1FirstSave = deferred();
+    const note1SecondSave = deferred();
+    const saveNote1 = vi.fn((content: string) =>
+      content === 'N1-V1' ? note1FirstSave.promise : note1SecondSave.promise,
+    );
+    const saveNote2 = vi.fn(async () => undefined);
+    const { rerender } = render(
+      <NotesCrepeEditor initialContent="N1-V0" noteId="note-1" onSave={saveNote1} />,
+    );
+
+    await waitFor(() => expect(latestOnChange).not.toBeNull());
+    act(() => {
+      latestOnChange?.('N1-V1');
+      window.dispatchEvent(new CustomEvent('notes:request-save', {
+        detail: { noteId: 'note-1', content: 'N1-V1' },
+      }));
+    });
+    expect(saveNote1).toHaveBeenLastCalledWith('N1-V1');
+
+    act(() => latestOnChange?.('N1-V2'));
+    rerender(
+      <NotesCrepeEditor initialContent="N2-V0" noteId="note-2" onSave={saveNote2} />,
+    );
+
+    await act(async () => {
+      note1FirstSave.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(saveNote1).toHaveBeenCalledTimes(2));
+    expect(saveNote1).toHaveBeenLastCalledWith('N1-V2');
+    expect(saveNote2).not.toHaveBeenCalled();
+
+    await act(async () => {
+      note1SecondSave.resolve();
       await Promise.resolve();
     });
   });
@@ -230,5 +274,30 @@ describe('NotesCrepeEditor save queue', () => {
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith('V1'));
     unmount();
+  });
+
+  it('ACR flushPendingSave persists the current editor snapshot before resolving', async () => {
+    const onSave = vi.fn(async () => undefined);
+    let acrApi: CrepeEditorApi | null = null;
+    render(
+      <NotesCrepeEditor
+        initialContent="V0"
+        noteId="note-1"
+        onSave={onSave}
+        onEditorApiReady={(api) => {
+          acrApi = api;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(acrApi?.flushPendingSave).toBeTypeOf('function'));
+    currentMarkdown = 'AI-applied content';
+
+    await act(async () => {
+      await acrApi!.flushPendingSave!();
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave).toHaveBeenCalledWith('AI-applied content');
   });
 });

@@ -2,6 +2,7 @@
  * flashcardsDueSource — fsrs_get_due 轮询与 badge 行为
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { requestFlashcardsDueRefresh } from '@/features/flashcards/events';
 
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn(async () => null as unknown) }));
 
@@ -98,5 +99,18 @@ describe('flashcardsDueSource', () => {
     invokeMock.mockResolvedValue([{ id: 'y' }, { id: 'z' }]);
     await refreshFlashcardsDueCount();
     expect(getFlashcardsDueCount()).toBe(2);
+  });
+
+  it('闪卡领域刷新事件会更新 Workbench 到期数', async () => {
+    const unsub = subscribeFlashcardsDueCount(() => {});
+    await refreshFlashcardsDueCount();
+    invokeMock.mockClear();
+    invokeMock.mockResolvedValue([{ id: 'event-card' }]);
+
+    requestFlashcardsDueRefresh();
+
+    await vi.waitFor(() => expect(invokeMock).toHaveBeenCalledWith('fsrs_get_due', { limit: 50 }));
+    expect(getFlashcardsDueCount()).toBe(1);
+    unsub();
   });
 });

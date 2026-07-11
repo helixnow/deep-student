@@ -16,6 +16,7 @@ import {
   isNoteEditorHot,
   noteDriver,
   registerNoteEditor,
+  requiresStructuredMarkdownInsertion,
   remapInsertPos,
   resolveNoteAnchorPos,
   splitTextIntoBatches,
@@ -63,6 +64,33 @@ describe('splitTextIntoBatches', () => {
     const batches = splitTextIntoBatches(text, 4, 5);
     expect(batches.join('')).toBe(text);
     expect(batches.every((b) => b.length <= 5)).toBe(true);
+  });
+});
+
+describe('requiresStructuredMarkdownInsertion', () => {
+  it('单行纯文本保持打字机路径', () => {
+    expect(requiresStructuredMarkdownInsertion('plain text')).toBe(false);
+  });
+
+  it('多行、粗体和公式使用 Markdown 解析路径', () => {
+    expect(requiresStructuredMarkdownInsertion('line 1\nline 2')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('**bold**')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('$F=ma$')).toBe(true);
+  });
+
+  it('单行标题、列表、引用、链接和行内代码也使用 Markdown 解析路径', () => {
+    expect(requiresStructuredMarkdownInsertion('# 标题')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('- 列表项')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('1. 有序项')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('> 引用')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('[链接](https://example.com)')).toBe(true);
+    expect(requiresStructuredMarkdownInsertion('使用 `code`')).toBe(true);
+  });
+
+  it('普通标点和算术星号不误判为 Markdown', () => {
+    expect(requiresStructuredMarkdownInsertion('数组下标 [0]')).toBe(false);
+    expect(requiresStructuredMarkdownInsertion('2 * 3 = 6')).toBe(false);
+    expect(requiresStructuredMarkdownInsertion('价格是 $5')).toBe(false);
   });
 });
 
@@ -151,6 +179,20 @@ describe('computeDestructiveMarkdown', () => {
     });
     expect(r.error).toBeTruthy();
   });
+
+  it('note_replace 零命中 → error，不伪造 applied', () => {
+    const literal = computeDestructiveMarkdown('hello', {
+      kind: 'note_replace',
+      payload: { search: 'missing', replace: 'new' },
+    });
+    expect(literal).toEqual({ content: 'hello', error: '未找到要替换的内容' });
+
+    const regex = computeDestructiveMarkdown('hello', {
+      kind: 'note_replace',
+      payload: { search: 'z+', replace: 'new', isRegex: true },
+    });
+    expect(regex).toEqual({ content: 'hello', error: '未找到要替换的内容' });
+  });
 });
 
 describe('remapInsertPos', () => {
@@ -171,6 +213,7 @@ describe('并发 insert 交错（position mapping）', () => {
     expect(batches.length).toBeGreaterThan(1);
 
     const insertCalls: Array<{ text: string; pos: number }> = [];
+    const markdownInsertCalls: Array<{ markdown: string; pos: number }> = [];
     let pos = 10;
 
     // 第一批 agent 插入
@@ -213,14 +256,28 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     };
   }
 
-  function makeEditorApi(opts?: { markdown?: string }) {
+  function makeEditorApi(opts?: {
+    markdown?: string;
+    focused?: boolean;
+    saveError?: Error;
+  }) {
     let markdown = opts?.markdown ?? 'base content';
+    let focused = opts?.focused ?? false;
     const insertCalls: Array<{ text: string; pos: number }> = [];
+    const markdownInsertCalls: Array<{ markdown: string; pos: number }> = [];
     const signals: Array<{ type: string; pos?: number }> = [];
+    const flushPendingSave = vi.fn(async () => {
+      if (opts?.saveError) throw opts.saveError;
+    });
 
     const api = {
       insertCalls,
+      markdownInsertCalls,
       signals,
+      flushPendingSave,
+      setFocused: (next: boolean) => {
+        focused = next;
+      },
       getMarkdown: () => markdown,
       setMarkdown: (md: string) => {
         markdown = md;
@@ -234,7 +291,12 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
         insertCalls.push({ text, pos });
         return pos + text.length;
       },
+      agentInsertMarkdown: (source: string, pos: number) => {
+        markdownInsertCalls.push({ markdown: source, pos });
+        return { from: pos, to: pos + source.length, cursor: pos + source.length };
+      },
       getCrepe: () => null,
+      hasFocus: () => focused,
     };
     return api;
   }
@@ -283,6 +345,62 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.getMarkdown()).toBe('base content');
   });
 
+  it('混合批次先保存已应用内容，再保留 suggestionPending', async () => {
+    registerContentDirtyChecker('note', NOTE_ID, () => true);
+    const api = makeEditorApi();
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+
+    const receipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_append',
+        destructive: false,
+        label: '先追加',
+        payload: { content: 'plain addition' },
+      },
+      {
+        kind: 'note_replace',
+        destructive: true,
+        label: '再建议替换',
+        payload: { search: 'base', replace: 'new' },
+      },
+    ]);
+
+    expect(receipt.status).toBe('completed');
+    expect(receipt.mode).toBe('suggestion');
+    expect(receipt.suggestionPending).toBe(true);
+    expect(receipt.applied).toBe(1);
+    expect(receipt.done).toEqual(['先追加', '已提交建议：再建议替换']);
+    expect(api.flushPendingSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('建议后的步骤不会越过用户确认点执行', async () => {
+    registerContentDirtyChecker('note', NOTE_ID, () => true);
+    const api = makeEditorApi();
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+
+    const receipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_set',
+        destructive: true,
+        label: '等待整篇确认',
+        payload: { content: 'replacement' },
+      },
+      {
+        kind: 'note_append',
+        destructive: false,
+        label: '不应提前追加',
+        payload: { content: 'later' },
+      },
+    ]);
+
+    expect(receipt.status).toBe('partial');
+    expect(receipt.mode).toBe('suggestion');
+    expect(receipt.suggestionPending).toBe(true);
+    expect(receipt.undone).toEqual(['不应提前追加']);
+    expect(api.insertCalls).toHaveLength(0);
+    expect(api.flushPendingSave).not.toHaveBeenCalled();
+  });
+
   it('clean + note_set → 直写 setMarkdown + frontend 回执 + 账本可还原', async () => {
     const api = makeEditorApi({ markdown: 'old' });
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
@@ -309,10 +427,12 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(receipt.status).toBe('completed');
     expect(receipt.suggestionPending).toBeFalsy();
     expect(api.getMarkdown()).toBe('brand new');
+    expect(api.flushPendingSave).toHaveBeenCalledTimes(1);
     expect(record).toHaveBeenCalledTimes(1);
-    const invert = record.mock.calls[0]![1] as () => void;
-    invert();
+    const invert = record.mock.calls[0]![1] as () => Promise<void>;
+    await invert();
     expect(api.getMarkdown()).toBe('old');
+    expect(api.flushPendingSave).toHaveBeenCalledTimes(2);
   });
 
   it('note_insert 分批调用 agentInsert，结束后 fadeRun', async () => {
@@ -343,7 +463,53 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(receipt.mode).toBe('frontend');
     expect(api.insertCalls.length).toBeGreaterThan(1);
     expect(api.insertCalls.map((c) => c.text).join('')).toBe(text);
+    expect(api.flushPendingSave).toHaveBeenCalledTimes(1);
     expect(api.signals.some((s) => s.type === 'fadeRun')).toBe(true);
+  });
+
+  it('多行 Markdown 走结构化解析插入，不作为纯文本写入', async () => {
+    const api = makeEditorApi();
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const markdown = '## 小结\n\n- **要点一**\n- $F=ma$';
+
+    const receipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_insert',
+        destructive: false,
+        label: '追加 Markdown',
+        anchor: { position: 'end' },
+        payload: { content: markdown },
+      },
+    ]);
+
+    expect(receipt.status).toBe('completed');
+    expect(api.markdownInsertCalls).toEqual([
+      { markdown, pos: api.getDocEndPos() },
+    ]);
+    expect(api.insertCalls).toHaveLength(0);
+    expect(api.flushPendingSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('内容已应用但持久化失败 → partial 且不伪造用户手动编辑', async () => {
+    const api = makeEditorApi({ saveError: new Error('disk unavailable') });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+
+    const receipt = await noteDriver.apply(makeRun(), [
+      {
+        kind: 'note_insert',
+        destructive: false,
+        label: '追加',
+        anchor: { position: 'end' },
+        payload: { content: 'hello' },
+      },
+    ]);
+
+    expect(receipt.status).toBe('partial');
+    expect(receipt.applied).toBe(1);
+    expect(receipt.done).toEqual(['追加']);
+    expect(receipt.undone).toEqual([]);
+    expect(receipt.message).toContain('自动保存失败');
+    expect(receipt.userPatch).toBeUndefined();
   });
 
   it('probe：未注册 editor → closed；已注册 → clean', () => {
@@ -356,12 +522,19 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     );
   });
 
-  it('S-SUG-04：captureSelection 有选区 → probe hot', () => {
-    const api = makeEditorApi() as unknown as CrepeEditorApi & {
+  it('S-SUG-04：失焦后保留 selection 也不是 hot', () => {
+    const api = makeEditorApi({ focused: false }) as unknown as CrepeEditorApi & {
       captureSelection: () => { from: number; to: number } | null;
     };
     api.captureSelection = () => ({ from: 3, to: 3 });
     registerNoteEditor(NOTE_ID, api);
+    expect(noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID })).toBe('clean');
+    expect(isNoteEditorHot(api)).toBe(false);
+  });
+
+  it('S-SUG-04：编辑器真实聚焦 → probe hot', () => {
+    const api = makeEditorApi({ focused: true });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
     expect(noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID })).toBe('hot');
     expect(isNoteEditorHot(api)).toBe(true);
   });
@@ -371,10 +544,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     const resumeRun = vi.fn();
     bindNoteHotPauseHooks({ pauseRun, resumeRun });
 
-    let selection: { from: number; to: number } | null = { from: 1, to: 1 };
-    const api = makeEditorApi();
-    (api as { captureSelection: () => typeof selection }).captureSelection = () =>
-      selection;
+    const api = makeEditorApi({ focused: true });
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
 
     // op 入口 checkPaused 必须立即 resume；hot 等待靠 waitWhileNoteHot 内部 poll
@@ -394,7 +564,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     await vi.waitFor(() => {
       expect(pauseRun).toHaveBeenCalled();
     });
-    selection = null;
+    api.setFocused(false);
     const receipt = await applyPromise;
 
     expect(resumeRun).toHaveBeenCalled();

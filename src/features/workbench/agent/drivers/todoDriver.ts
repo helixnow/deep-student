@@ -27,12 +27,19 @@ const UNSUPPORTED_HINT =
   '请用 user_todo 领域工具修改待办数据；本驱动仅支持导航类 op（todo_show_list）';
 
 interface ActiveRun {
+  runId: string;
+  ops: AgentOp[];
   aborted: boolean;
   done: string[];
   undone: string[];
   entityIds: string[];
   applied: number;
   totalOps: number;
+  nextOpIndex: number;
+  inversesCommitted: boolean;
+  pendingInverses: Array<{ invert: () => Promise<void>; label: string }>;
+  ledger: AcrRunContext['ledger'];
+  errorMessage?: string;
 }
 
 const activeRuns = new Map<string, ActiveRun>();
@@ -72,42 +79,98 @@ function isAgentSource(payload: DomainChangePayload): boolean {
 
 async function applyShowList(listId: string): Promise<void> {
   const { useTodoStore } = await import('@/features/todo/stores/useTodoStore');
-  useTodoStore.getState().setActiveList(listId);
+  const store = useTodoStore.getState();
+  store.setActiveList(listId);
+  if (typeof store.reloadCurrentView === 'function') {
+    await store.reloadCurrentView();
+  }
+  const after = useTodoStore.getState();
+  if ('activeListId' in after && after.activeListId !== listId) {
+    throw new Error('目标清单未激活');
+  }
+  if ('error' in after && after.error) {
+    throw new Error(after.error);
+  }
+}
+
+async function restoreList(listId: string | null): Promise<void> {
+  const { useTodoStore } = await import('@/features/todo/stores/useTodoStore');
+  const store = useTodoStore.getState();
+  store.setActiveList(listId);
+  if (typeof store.reloadCurrentView === 'function') await store.reloadCurrentView();
+  const after = useTodoStore.getState();
+  if ('activeListId' in after && after.activeListId !== listId) {
+    throw new Error('撤销失败：原清单未恢复');
+  }
+  if ('error' in after && after.error) {
+    throw new Error(`撤销失败：${after.error}`);
+  }
+}
+
+function isTodoDetailFocused(): boolean {
+  if (typeof document === 'undefined' || typeof Element === 'undefined') return false;
+  const el = document.activeElement;
+  return Boolean(el instanceof Element && el.closest('[data-todo-detail-panel]'));
+}
+
+function commitInverses(state: ActiveRun): void {
+  if (state.inversesCommitted) return;
+  for (const entry of state.pendingInverses) {
+    state.ledger.record(state.runId, entry.invert, entry.label);
+  }
+  state.inversesCommitted = true;
+}
+
+function markRemaining(state: ActiveRun): void {
+  for (let i = state.nextOpIndex; i < state.totalOps; i++) {
+    state.undone.push(state.ops[i].label || state.ops[i].kind);
+  }
+  state.nextOpIndex = state.totalOps;
 }
 
 export const todoDriver: CollabDriver = {
   typeId: TYPE_ID,
 
   probe(_target: AcrTarget): AcrProbeState {
-    // 数据面在后端；开窗脏态不由本驱动判定
-    return 'clean';
+    return isTodoDetailFocused() ? 'hot' : 'clean';
   },
 
   async apply(run: AcrRunContext, ops: AgentOp[]): Promise<AcrReceipt> {
     const state: ActiveRun = {
+      runId: run.runId,
+      ops,
       aborted: false,
       done: [],
       undone: [],
       entityIds: [],
       applied: 0,
       totalOps: ops.length,
+      nextOpIndex: 0,
+      inversesCommitted: false,
+      pendingInverses: [],
+      ledger: run.ledger,
     };
     activeRuns.set(run.runId, state);
 
     for (let i = 0; i < ops.length; i++) {
+      state.nextOpIndex = i;
       if (state.aborted) {
-        for (let j = i; j < ops.length; j++) {
-          state.undone.push(ops[j].label || ops[j].kind);
-        }
+        markRemaining(state);
         break;
       }
 
-      const pause = await run.checkPaused();
+      let pause: 'resume' | 'abort';
+      try {
+        pause = await run.checkPaused();
+      } catch (err) {
+        state.aborted = true;
+        state.errorMessage = `暂停检查失败：${err instanceof Error ? err.message : String(err)}`;
+        markRemaining(state);
+        break;
+      }
       if (pause === 'abort') {
         state.aborted = true;
-        for (let j = i; j < ops.length; j++) {
-          state.undone.push(ops[j].label || ops[j].kind);
-        }
+        markRemaining(state);
         break;
       }
 
@@ -120,11 +183,30 @@ export const todoDriver: CollabDriver = {
           state.undone.push(`${op.label || op.kind}（缺少 listId）`);
         } else {
           try {
+            const { useTodoStore } = await import(
+              '@/features/todo/stores/useTodoStore'
+            );
+            const previousListId = useTodoStore.getState().activeListId;
             await applyShowList(listId);
             state.done.push(op.label || `切换清单 ${listId}`);
             state.entityIds.push(listId);
             state.applied += 1;
-            await run.pacing.tick(listTickCost(run.pacing.profile));
+            if (previousListId !== listId) {
+              state.pendingInverses.push({
+                invert: () => restoreList(previousListId),
+                label: op.label || `切换清单 ${listId}`,
+              });
+            }
+            // 当前副作用已经完成；此后中止只能把后续 op 标为 undone。
+            state.nextOpIndex = i + 1;
+            try {
+              await run.pacing.tick(listTickCost(run.pacing.profile));
+            } catch (err) {
+              state.aborted = true;
+              state.errorMessage = `节奏控制失败：${err instanceof Error ? err.message : String(err)}`;
+              markRemaining(state);
+              break;
+            }
           } catch (err) {
             state.undone.push(
               `${op.label || op.kind}（失败: ${err instanceof Error ? err.message : String(err)}）`,
@@ -134,9 +216,11 @@ export const todoDriver: CollabDriver = {
       } else {
         state.undone.push(`${op.label || op.kind} — ${UNSUPPORTED_HINT}`);
       }
+      state.nextOpIndex = i + 1;
     }
 
-    activeRuns.delete(run.runId);
+    if (activeRuns.get(run.runId) === state) activeRuns.delete(run.runId);
+    commitInverses(state);
 
     const status = state.aborted
       ? 'cancelled'
@@ -155,11 +239,11 @@ export const todoDriver: CollabDriver = {
         done: state.done,
         undone: state.undone,
         message:
-          state.undone.length > 0 && state.applied === 0
+          state.errorMessage ?? (state.undone.length > 0 && state.applied === 0
             ? UNSUPPORTED_HINT
             : state.undone.some((u) => u.includes('user_todo'))
               ? UNSUPPORTED_HINT
-              : undefined,
+              : undefined),
       }),
       TYPE_ID,
     );
@@ -169,6 +253,8 @@ export const todoDriver: CollabDriver = {
     const state = activeRuns.get(runId);
     if (state) {
       state.aborted = true;
+      markRemaining(state);
+      commitInverses(state);
       return withUserPatch(
         emptyReceipt({
           status: 'cancelled',
@@ -176,7 +262,7 @@ export const todoDriver: CollabDriver = {
           totalOps: state.totalOps,
           entityIds: state.entityIds,
           done: [...state.done],
-          undone: [...state.undone, '（已中止）'],
+          undone: [...state.undone],
           message: 'todo 导航已中止',
         }),
         TYPE_ID,

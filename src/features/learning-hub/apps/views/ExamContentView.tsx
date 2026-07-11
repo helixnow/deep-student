@@ -25,6 +25,7 @@ import { formatTime } from '@/utils/formatUtils';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 import {
   QBANK_FOCUS_EVENT,
+  type QbankFocusEventDetail,
   QBANK_REFRESH_EVENT,
   isQbankInlineEditorActive,
 } from '@/features/workbench/agent/drivers/qbankDriver';
@@ -986,11 +987,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
 
     const onFocus = (ev: Event) => {
-      const detail = (ev as CustomEvent<{ questionId?: string }>).detail;
+      const detail = (ev as CustomEvent<QbankFocusEventDetail>).detail;
       const questionId = detail?.questionId;
       if (!questionId) return;
-      handleOpenQuestion(questionId);
-      agentFlash('exam', questionId);
+      const index = questions.findIndex((question) => question.id === questionId);
+      const handled = index >= 0;
+      const previousQuestionId = questions[currentIndex]?.id ?? null;
+      if (handled) {
+        handleOpenQuestion(questionId);
+        agentFlash('exam', questionId);
+      }
+      detail.acknowledge?.({ handled, previousQuestionId });
     };
 
     window.addEventListener(QBANK_REFRESH_EVENT, onRefresh);
@@ -1000,7 +1007,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
       if (deferredTimer) clearTimeout(deferredTimer);
     };
-  }, [refreshQuestionsAndStats, handleOpenQuestion]);
+  }, [refreshQuestionsAndStats, handleOpenQuestion, questions, currentIndex]);
 
   // ========== 条件返回（早期退出） ==========
   

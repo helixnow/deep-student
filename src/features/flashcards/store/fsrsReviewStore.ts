@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listAnkiLibraryCards } from '@/utils/chatApi';
 import type { AnkiLibraryCard } from '@/types';
-import { refreshFlashcardsDueCount } from '@/features/workbench/apps/system/flashcardsDueSource';
+import { requestFlashcardsDueRefresh } from '../events';
 
 export type FlashcardsScreen = 'today' | 'library' | 'settings' | 'session';
 
@@ -347,7 +347,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         flipped: false,
         queueIndex: nextIndex,
       });
-      void refreshFlashcardsDueCount();
+      requestFlashcardsDueRefresh();
     };
 
     // 演示队列：本地前进，不伪装后端成功
@@ -383,7 +383,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       lastRated: null,
       ratingBusy: false,
     });
-    void refreshFlashcardsDueCount();
+    requestFlashcardsDueRefresh();
   },
 
   resetFlip: () => set({ flipped: false }),

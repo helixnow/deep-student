@@ -13,12 +13,12 @@
 
 import React, { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
-import { editorViewCtx, commandsCtx } from '@milkdown/kit/core';
+import { editorViewCtx, commandsCtx, parserCtx } from '@milkdown/kit/core';
 import { TextSelection } from '@milkdown/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
 import { NodeSelection } from '@milkdown/kit/prose/state';
 import { toggleMark, setBlockType, wrapIn } from '@milkdown/prose/commands';
-import { MarkType, NodeType } from '@milkdown/prose/model';
+import { MarkType, NodeType, Slice } from '@milkdown/prose/model';
 import { listItemSchema, wrapInBlockTypeCommand } from '@milkdown/kit/preset/commonmark';
 import i18next from 'i18next';
 
@@ -156,6 +156,17 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           };
         } catch {
           return null;
+        }
+      },
+
+      hasFocus: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return false;
+        try {
+          const view = crepe.editor.ctx.get(editorViewCtx);
+          return Boolean(view?.hasFocus?.());
+        } catch {
+          return false;
         }
       },
 
@@ -595,6 +606,46 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           debugLog.error('[CrepeEditor] agentInsert failed:', e);
         }
         return nextPos;
+      },
+
+      agentInsertMarkdown: (markdown: string, pos: number) => {
+        const crepe = crepeRef.current;
+        if (!crepe || !markdown) return null;
+        try {
+          let result: { from: number; to: number; cursor: number } | null = null;
+          crepe.editor.action((ctx) => {
+            let view: any = null;
+            try {
+              view = ctx.get('editorView' as any);
+            } catch {
+              view = ctx.get(editorViewCtx);
+            }
+            if (!view) return;
+
+            const parsed = ctx.get(parserCtx)(markdown);
+            if (!parsed) return;
+            const insertPos = Math.max(0, Math.min(pos, view.state.doc.content.size));
+            const tr = view.state.tr.replace(
+              insertPos,
+              insertPos,
+              new Slice(parsed.content, 0, 0),
+            );
+            const from = tr.mapping.map(insertPos, -1);
+            const to = tr.mapping.map(insertPos, 1);
+            tr.setMeta('addToHistory', false);
+            tr.setMeta(agentHighlightKey, {
+              type: 'insert',
+              from,
+              to,
+            } satisfies AgentHighlightMeta);
+            view.dispatch(tr);
+            result = { from, to, cursor: to };
+          });
+          return result;
+        } catch (e) {
+          debugLog.error('[CrepeEditor] agentInsertMarkdown failed:', e);
+          return null;
+        }
       },
 
       agentSignal: (meta: AgentHighlightMeta) => {

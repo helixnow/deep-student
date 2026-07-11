@@ -387,9 +387,6 @@ fn build_note_agent_op(
                 .get("content")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| "缺少必需参数: content".to_string())?;
-            if content.is_empty() {
-                return Err("缺少必需参数: content（内容不能为空）".to_string());
-            }
             let label = "设置笔记完整内容".to_string();
             let mut anchor = json!({ "position": "end" });
             if let Some(h) = &section {
@@ -837,6 +834,10 @@ impl CanvasToolExecutor {
                     let (new_content, replace_count) =
                         replace_content(&current_content, search, replace, is_regex)?;
 
+                    if replace_count == 0 {
+                        return Err("未找到要替换的内容".to_string());
+                    }
+
                     // 写入新内容
                     notes_manager
                         .canvas_set_content(&note_id_owned, &new_content)
@@ -1061,10 +1062,15 @@ impl CanvasToolExecutor {
             obj.insert("probeState".into(), json!(probe_state));
         }
 
+        let receipt_status = receipt
+            .get("status")
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
         log::info!(
-            "[CanvasToolExecutor] ACR frontend apply_ops succeeded: note_id={}, probe={}",
+            "[CanvasToolExecutor] ACR frontend apply_ops returned: note_id={}, probe={}, status={}",
             note_id,
-            probe_state
+            probe_state,
+            receipt_status
         );
         Ok(Some(receipt))
     }
@@ -1436,7 +1442,9 @@ impl ToolExecutor for CanvasToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_canvas_builtin_prefix(tool_name);
         match stripped {
-            canvas_tool_names::NOTE_SET | canvas_tool_names::NOTE_REPLACE => {
+            canvas_tool_names::NOTE_CREATE
+            | canvas_tool_names::NOTE_SET
+            | canvas_tool_names::NOTE_REPLACE => {
                 ToolSensitivity::Medium
             }
             _ => ToolSensitivity::Low,
@@ -1504,7 +1512,7 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("note_create"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
         );
         assert_eq!(
             executor.sensitivity_level("note_replace"),
@@ -1599,5 +1607,11 @@ mod tests {
         assert!(set_destructive);
         assert_eq!(set_op["kind"], "note_set");
         assert_eq!(set_op["payload"]["content"], "full");
+
+        set_args.insert("content".into(), json!(""));
+        let (empty_set_op, empty_set_destructive) =
+            build_note_agent_op(canvas_tool_names::NOTE_SET, &set_args).unwrap();
+        assert!(empty_set_destructive);
+        assert_eq!(empty_set_op["payload"]["content"], "");
     }
 }

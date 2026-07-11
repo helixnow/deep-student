@@ -8,6 +8,7 @@ vi.mock('@/features/pomodoro/api', () => ({
 }));
 
 import { DEFAULT_POMODORO_SETTINGS } from '@/features/pomodoro/types';
+import { createPomodoroRecord } from '@/features/pomodoro/api';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { pomodoroDriver } from '../drivers/pomodoroDriver';
 import type { AcrRunContext, AgentOp, Pacer, RunLedger } from '../types';
@@ -47,6 +48,8 @@ function makeRun(overrides: Partial<AcrRunContext> = {}): AcrRunContext {
 
 describe('pomodoroDriver R1-16', () => {
   beforeEach(() => {
+    vi.mocked(createPomodoroRecord).mockReset();
+    vi.mocked(createPomodoroRecord).mockResolvedValue(undefined as never);
     usePomodoroStore.setState({
       mode: 'idle',
       status: 'paused',
@@ -116,6 +119,117 @@ describe('pomodoroDriver R1-16', () => {
     expect(receipt.applied).toBe(1);
     expect(receipt.undone).toEqual([]);
     expect(usePomodoroStore.getState().status).toBe('paused');
+  });
+
+  it('重复 pause/stop 等 no-op 不计入 applied', async () => {
+    const pause = await pomodoroDriver.apply(makeRun(), [
+      { kind: 'pomodoro_pause', destructive: false, label: '暂停', payload: {} },
+    ]);
+    expect(pause.status).toBe('failed');
+    expect(pause.applied).toBe(0);
+    expect(pause.done).toEqual([]);
+
+    const stop = await pomodoroDriver.apply(makeRun({ runId: 'run-pomo-stop' }), [
+      { kind: 'pomodoro_stop', destructive: false, label: '停止', payload: {} },
+    ]);
+    expect(stop.status).toBe('failed');
+    expect(stop.applied).toBe(0);
+  });
+
+  it('撤销 start 不写入中断记录', async () => {
+    const run = makeRun({ runId: 'run-pomo-start-undo' });
+    await pomodoroDriver.apply(run, [
+      { kind: 'pomodoro_start', destructive: false, label: '开始', payload: {} },
+    ]);
+    const invert = vi.mocked(run.ledger.record).mock.calls[0]![1];
+    await invert();
+    expect(createPomodoroRecord).not.toHaveBeenCalled();
+  });
+
+  it('stop 等待后端记录，保存失败时返回 partial', async () => {
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'paused',
+      timeLeft: DEFAULT_POMODORO_SETTINGS.workDuration - 10,
+      phaseEndsAt: null,
+      phaseStartedAt: null,
+      currentTaskId: 'todo-1',
+      currentTaskTitle: '任务',
+      sessionStartTime: new Date().toISOString(),
+    });
+    vi.mocked(createPomodoroRecord).mockRejectedValueOnce(new Error('db unavailable'));
+
+    const receipt = await pomodoroDriver.apply(makeRun({ runId: 'run-stop-fail' }), [
+      { kind: 'pomodoro_stop', destructive: false, label: '停止', payload: {} },
+    ]);
+
+    expect(createPomodoroRecord).toHaveBeenCalledTimes(1);
+    expect(receipt.status).toBe('partial');
+    expect(receipt.applied).toBe(1);
+    expect(receipt.done).toEqual(['停止']);
+    expect(receipt.undone).toEqual([]);
+    expect(receipt.message).toContain('后端记录保存失败');
+    expect(usePomodoroStore.getState().mode).toBe('idle');
+  });
+
+  it('stop 的 completed 回执等待记录实际落盘', async () => {
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'paused',
+      timeLeft: DEFAULT_POMODORO_SETTINGS.workDuration - 10,
+      currentTaskId: 'todo-2',
+      sessionStartTime: new Date().toISOString(),
+    });
+    let resolveRecord!: (value: unknown) => void;
+    vi.mocked(createPomodoroRecord).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRecord = resolve;
+        }) as never,
+    );
+
+    let settled = false;
+    const receiptPromise = pomodoroDriver
+      .apply(makeRun({ runId: 'run-stop-wait' }), [
+        { kind: 'pomodoro_stop', destructive: false, label: '停止', payload: {} },
+      ])
+      .then((receipt) => {
+        settled = true;
+        return receipt;
+      });
+    await vi.waitFor(() => expect(createPomodoroRecord).toHaveBeenCalledTimes(1));
+    expect(settled).toBe(false);
+
+    resolveRecord({ id: 'record-2' });
+    const receipt = await receiptPromise;
+    expect(receipt.status).toBe('completed');
+  });
+
+  it('切换任务记录失败时保留新计时状态并返回 partial', async () => {
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'paused',
+      timeLeft: DEFAULT_POMODORO_SETTINGS.workDuration - 20,
+      currentTaskId: 'todo-old',
+      currentTaskTitle: '旧任务',
+      sessionStartTime: new Date().toISOString(),
+    });
+    vi.mocked(createPomodoroRecord).mockRejectedValueOnce(new Error('switch write failed'));
+
+    const receipt = await pomodoroDriver.apply(makeRun({ runId: 'run-switch-fail' }), [
+      {
+        kind: 'pomodoro_start',
+        destructive: false,
+        label: '切换任务',
+        payload: { taskId: 'todo-new', taskTitle: '新任务' },
+      },
+    ]);
+
+    expect(receipt.status).toBe('partial');
+    expect(receipt.done).toEqual(['切换任务']);
+    expect(receipt.undone).toEqual([]);
+    expect(usePomodoroStore.getState().currentTaskId).toBe('todo-new');
+    expect(usePomodoroStore.getState().status).toBe('running');
   });
 
   it('records a real inverse only after a reversible pause run completes', async () => {

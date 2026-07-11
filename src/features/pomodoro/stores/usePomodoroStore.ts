@@ -38,7 +38,10 @@ const playNotificationSound = (volume = 1) => {
 // 结束前提醒：每个倒计时阶段只触发一次（以 phaseEndsAt 为阶段标识，非持久化）
 let endReminderFiredPhase: number | null = null;
 
-/** Record a pomodoro session to the backend (fire-and-forget) */
+type RecordOutcome = { error?: unknown };
+const pendingRecordRequests = new Set<Promise<RecordOutcome>>();
+
+/** Record a pomodoro session. UI calls remain fire-and-forget; ACR can flush the boundary. */
 const recordSession = (
   todoItemId: string | null,
   startTime: string,
@@ -48,7 +51,7 @@ const recordSession = (
   status: 'completed' | 'interrupted',
 ) => {
   const endTime = new Date().toISOString();
-  createPomodoroRecord({
+  const request = createPomodoroRecord({
     todoItemId: todoItemId ?? undefined,
     startTime,
     endTime,
@@ -56,8 +59,17 @@ const recordSession = (
     actualDuration: Math.max(0, actualDuration),
     type,
     status,
-  })
-    .then(() => {
+  });
+  const outcome = request
+    .then(() => ({}) as RecordOutcome)
+    .catch((error) => {
+      console.error('[Pomodoro] Failed to record session:', error);
+      return { error };
+    });
+  pendingRecordRequests.add(outcome);
+  void outcome.finally(() => pendingRecordRequests.delete(outcome));
+  outcome.then((result) => {
+    if (!result.error) {
       // ★ I11 修复：完成的工作番茄会在后端递增 todo_items.completed_pomodoros，
       // 记录成功后刷新 todo 视图，让计数立即反映到 UI
       if (todoItemId && type === 'work' && status === 'completed') {
@@ -65,11 +77,24 @@ const recordSession = (
           .then(({ useTodoStore }) => useTodoStore.getState().reloadCurrentView())
           .catch(() => {});
       }
-    })
-    .catch((err) => {
-      console.error('[Pomodoro] Failed to record session:', err);
-    });
+    }
+  });
 };
+
+async function flushPendingRecords(): Promise<void> {
+  const requests = [...pendingRecordRequests];
+  const outcomes = await Promise.all(requests);
+  const errors = outcomes.flatMap((outcome) =>
+    outcome.error === undefined ? [] : [outcome.error],
+  );
+  if (errors.length > 0) {
+    const first = errors[0];
+    const detail = first instanceof Error ? first.message : String(first);
+    throw new Error(
+      errors.length > 1 ? `${detail}（另有 ${errors.length - 1} 条失败）` : detail,
+    );
+  }
+}
 
 const localToday = () => new Date().toDateString();
 
@@ -270,6 +295,8 @@ export const usePomodoroStore = create<PomodoroState>()(
           sessionStartTime: null,
         });
       },
+
+      flushPendingRecords,
 
       tick: () => {
         const { status, phaseEndsAt, phaseStartedAt, timeLeft, settings, mode } = get();

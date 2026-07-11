@@ -10,6 +10,7 @@ interface AIDiffPanelProps {
   state: AIEditState;
   onAccept: () => void;
   onReject: () => void;
+  isApplying?: boolean;
   className?: string;
 }
 
@@ -47,7 +48,7 @@ function DiffLineView({ line }: { line: DiffLine }) {
   );
 }
 
-export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPanelProps) {
+export function AIDiffPanel({ state, onAccept, onReject, isApplying = false, className }: AIDiffPanelProps) {
   const { t } = useTranslation('notes');
   const { request, diffLines } = state;
 
@@ -58,6 +59,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
   };
   
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (isApplying) return;
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       onAccept();
@@ -65,7 +67,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
       e.preventDefault();
       onReject();
     }
-  }, [onAccept, onReject]);
+  }, [isApplying, onAccept, onReject]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -108,6 +110,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
           size="icon"
           className="h-8 w-8"
           onClick={onReject}
+          disabled={isApplying}
         >
           <X size={16} />
         </NotionButton>
@@ -141,6 +144,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
             variant="outline"
             size="sm"
             onClick={onReject}
+            disabled={isApplying}
             className="h-8"
           >
             <X size={14} className="mr-1.5" />
@@ -149,6 +153,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
           <NotionButton
             size="sm"
             onClick={onAccept}
+            disabled={isApplying}
             className="h-8"
           >
             <Check size={14} className="mr-1.5" />

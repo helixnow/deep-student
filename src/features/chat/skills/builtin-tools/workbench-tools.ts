@@ -36,7 +36,7 @@ export const workbenchToolsSkill: SkillDefinition = {
   id: 'workbench-tools',
   name: 'workbench-tools',
   description:
-    '学习桌面窗口操控：列出窗口、打开/聚焦应用、发送窗口指令、关闭窗口、查询焦点/指定窗状态。受 tools.workbench_agent 与 desktop.workbenchAgentControl 双闸约束。数据修改请用领域工具；本组只管看见与导航。',
+    '学习桌面窗口操控：列出窗口、打开/聚焦应用、发送窗口指令、关闭窗口、查询焦点/指定窗状态。用户要求“展示/演示/让我看你操作”等可见操作时必须使用本组，并与 canvas-note 等领域工具配合完成真实窗口演出。受 tools.workbench_agent 与 desktop.workbenchAgentControl 双闸约束。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 8,
@@ -55,7 +55,7 @@ export const workbenchToolsSkill: SkillDefinition = {
 - \`follow\`：允许操控，**自动聚焦**目标窗
 - flag \`tools.workbench_agent\` 关：全部工具拒绝（含 list/query）
 
-**分工铁律**：修改笔记、导图、待办、题库、闪卡等内容请用对应领域工具（canvas-note / mindmap-tools / user-todo-tools 等）。本组工具只负责**看见、打开、聚焦、发窗口指令、关窗**。
+**分工铁律**：修改笔记、导图、待办、题库、闪卡等内容请用对应领域工具（canvas-note / mindmap-tools / user-todo-tools 等）。本组工具负责**看见、打开、聚焦、发窗口指令、关窗**。当用户要求可见操作时，两类工具必须配合：不要只调用后台领域工具，也不要只开窗后就宣称内容修改完成。
 
 ## 推荐剧本
 
@@ -66,6 +66,19 @@ export const workbenchToolsSkill: SkillDefinition = {
    - 需要应用内部状态摘要 → \`builtin-workbench_query_state\`
    - 关窗（High 审批）→ \`builtin-workbench_close_window\`
 3. **确认**：用工具回执中的 windowId / handled / status 确认结果；不要假设开窗成功。
+
+## 可见笔记演示
+
+用户说“展示一下操作笔记的能力”“演示笔记操作”“让我看你改笔记”等时，按以下顺序执行：
+
+1. 调用 \`builtin-workbench_list_windows\` 侦察当前桌面，避免重复开窗或打断 dirty 窗口。
+2. 若用户未指定目标，配合 canvas-note 的 \`builtin-note_list\` 选择已有笔记；不得自行创建演示笔记，也不得编造笔记 id。
+3. 调用 \`builtin-workbench_open_app\`，传入 \`typeId: "note"\`、目标笔记 id 作为 \`instanceKey\`、\`focus: true\`，打开或聚焦笔记窗口。
+4. 仅展示导航且未获写入授权时，可调用 \`builtin-workbench_app_command\` 滚动到已有标题，再用 \`builtin-workbench_query_state\` 确认；不要修改数据。
+5. 用户明确指定修改内容后，调用 canvas-note 的 \`builtin-note_append\` / \`builtin-note_replace\`。窗口已打开时，领域工具会通过 ACR \`probe -> apply_ops\` 在前端真实演出 AgentStrip、AI 光标/高亮、节奏与进度；不要用 Workbench 指令伪造内容编辑。
+6. 最后读取笔记或查询窗口状态确认结果。若 ACR 降级到后台数据面，要如实告诉用户这次没有发生可见演出。
+
+**安全边界**：单纯“展示能力”不等于授权创建、覆盖或改写用户内容。只有用户明确要求创建新笔记时才调用 \`builtin-note_create\`；只有用户明确要求完整重写时才调用 \`builtin-note_set\`。
 
 ## open_app payload 字典
 
@@ -87,7 +100,7 @@ export const workbenchToolsSkill: SkillDefinition = {
 
 ## 何时不用
 
-- 只需改笔记正文 → canvas-note
+- 只需后台改笔记正文、用户不要求看见操作 → canvas-note
 - 只需改导图节点 → mindmap-tools
 - 只需改用户待办 → user-todo-tools
 - 静态网页只读 → web-fetch（交互浏览再用 browser 领域工具）

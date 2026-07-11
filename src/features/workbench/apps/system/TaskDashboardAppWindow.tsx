@@ -17,6 +17,7 @@
 import React, { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { workbenchBus } from '../../core/workbenchBus';
+import { openChatSession } from '../chat/newSession';
 import type { AppWindowProps } from '../../core/types';
 import { getActiveAnkiTaskCount, subscribeAnkiTaskCount } from './ankiTaskSource';
 import { WbSysActivityStrip, WbSysFade, WbSysSkeleton } from './SystemWindowShared';
@@ -58,9 +59,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange, isVis
         <WbSysFade>
           <TaskDashboardPage
             isVisible={isVisible}
-            onNavigateToChat={(sessionId) =>
-              workbenchBus.launch({ typeId: 'chat', instanceKey: sessionId, reason: 'api' })
-            }
+            onNavigateToChat={(sessionId) => openChatSession(sessionId, 'api')}
             onOpenTemplateManagement={() =>
               workbenchBus.launch({ typeId: 'templates', reason: 'api' })
             }

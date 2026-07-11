@@ -8,18 +8,17 @@
  * - reduced-motion 与 minimal 材质档（--wb-anim-open-duration 归零）下动画自动失效。
  */
 
-/* ==== 壁纸视差包裹层（JS 直写 transform，rAF 阻尼跟随） ================== */
+/* ==== 静态壁纸裁切层 =================================================== */
 
-.wb-desk-parallax {
+.wb-wallpaper-frame {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  /* 视差 scale/translate 时裁掉出血，避免露出壳层灰底形成「半屏裂缝」 */
+  /* 裁掉壁纸出血，避免露出壳层灰底形成「半屏裂缝」 */
   overflow: hidden;
   /* 独立合成层，降低与 Dock/玻璃窗 backdrop-filter 抢脏区的概率 */
   isolation: isolate;
-  transform: translateZ(0);
 }
 
 /* ==== 桌面右键菜单 ======================================================= */
@@ -147,14 +146,11 @@
 }
 
 .wb-desk-menu-sub {
-  position: absolute;
-  top: -6px;
-  left: calc(100% + 2px);
+  position: fixed;
+  z-index: calc(var(--wb-z-desktop-menu, 9650) + 1);
   min-width: 176px;
 }
 
 .wb-desk-menu-sub--left {
-  left: auto;
-  right: calc(100% + 2px);
   transform-origin: top right;
 }

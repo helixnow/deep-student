@@ -190,7 +190,9 @@
   /* 收尾轮补录（O20 2026-07-09）：组件级命名层级正式入表 */
   --wb-z-desktop-menu: 9650; /* 桌面右键菜单：switcher 之上、modal 之下 */
   --wb-z-cheatsheet: var(--wb-z-modal); /* 快捷键速查表 = 模态层 */
+  --wb-z-window-content: 0; /* 窗口内局部层级：内容区，约束编辑器内部高 z-index */
   --wb-z-window-resize: 5; /* 窗口内局部层级：缩放把手（窗口自身 stacking context 内） */
+  --wb-z-window-titlebar: 10; /* 窗口内局部层级：标题栏及其菜单，高于内容与缩放把手 */
 
   /* ==== 学习状态菜单栏（SB1；透明字层，无实心顶条） ================== */
   --wb-menubar-height: 28px;

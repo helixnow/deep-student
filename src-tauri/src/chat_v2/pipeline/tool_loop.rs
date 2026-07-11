@@ -106,13 +106,13 @@ impl Drop for StreamHooksGuard {
 }
 
 impl ChatV2Pipeline {
-    /// 执行 LLM 调用（支持工具递归）
+    /// 执行 LLM 调用（支持多轮工具调用）
     ///
-    /// ## 工具递归流程
+    /// ## 多轮工具流程
     /// 1. 调用 LLM 获取响应
     /// 2. 如果响应包含工具调用，执行工具
     /// 3. 将工具结果添加到聊天历史
-    /// 4. 递归调用直到无工具调用或达到最大深度
+    /// 4. 迭代执行直到无工具调用或达到最大轮次
     ///
     /// ## 参数
     /// - `ctx`: 流水线上下文（可变，用于存储工具结果）
@@ -130,6 +130,10 @@ impl ChatV2Pipeline {
         system_prompt: &str,
         recursion_depth: u32,
     ) -> ChatV2Result<()> {
+        // 工具轮次必须在同一个 future 内迭代。这里曾通过 Box::pin 自递归，
+        // 每轮都会嵌套 poll 一个体积很大的 future，多轮工具调用可耗尽 Tokio worker 栈。
+        let mut recursion_depth = recursion_depth;
+        loop {
         // ============================================================
         // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
         // 连续第 5 次出现，不再调用 LLM，生成 tool_limit 块提示用户。
@@ -1494,19 +1498,14 @@ impl ChatV2Pipeline {
                 return Ok(());
             }
 
-            // 递归调用 LLM 处理工具结果
+            // 进入下一轮 LLM 调用处理工具结果。保持同一 future，避免递归 poll 栈增长。
             log::debug!(
-                "[ChatV2::pipeline] Recursively calling LLM to process tool results, depth={}->{}",
+                "[ChatV2::pipeline] Continuing tool loop, depth={}->{}",
                 recursion_depth,
                 recursion_depth + 1
             );
-            return Box::pin(self.execute_with_tools(
-                ctx,
-                emitter,
-                system_prompt,
-                recursion_depth + 1,
-            ))
-            .await;
+            recursion_depth += 1;
+            continue;
         }
 
         // ============================================================
@@ -1531,7 +1530,8 @@ impl ChatV2Pipeline {
             ctx.interleaved_block_ids.len()
         );
 
-        Ok(())
+        return Ok(());
+        }
     }
 
     /// 并行执行多个工具调用

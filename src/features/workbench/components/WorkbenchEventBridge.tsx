@@ -2,12 +2,11 @@
  * WorkbenchEventBridge（P11）— 桌面层一次性事件宿主
  *
  * legacy 下这些全局事件由 ChatV2Page / App.tsx 视图切换链路消费；
- * workbench 模式下该页不挂载，由本组件在桌面层统一接管并翻译为
- * workbenchBus 语义（launch / activate）。每个事件只挂一份监听，
- * 多 chat 窗口不重复处理（P7 进度文件「页面级事件宿主」交接项）。
+ * workbench 模式下本桥负责确保目标应用窗口已打开。Chat 自身的会话切换与
+ * 新建逻辑继续由单例窗口内的 ChatV2Page 消费。
  *
  * 覆盖事件：
- * - navigate-to-session      → launch chat 窗（命令面板会话直达 / 制卡任务跳转）
+ * - navigate-to-session      → 打开/聚焦 Chat 单例（ChatV2Page 同时完成会话切换）
  * - CHAT_V2_SET_INPUT        → activate 最近聚焦 chat 窗 setInput（无窗则先建会话）
  * - CHAT_NEW_SESSION         → launchNewChatSession（标题栏新建按钮 / 命令面板）
  * - CHAT_OPEN_ATTACHMENT_PREVIEW → launch 对应资源窗
@@ -25,6 +24,7 @@ import { useWindowStore } from '../core/windowStore';
 import { resourceTypeToAppTypeId } from '../apps/content/typeMap';
 import { launchNewChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
+import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 
@@ -37,8 +37,10 @@ function announceBridgeFailure(message: string): void {
 // helpers
 // ---------------------------------------------------------------------------
 
-/** 最近聚焦的 chat 窗口（有业务会话的） */
+/** Chat 单例当前选中的业务会话。 */
 function findRecentChatSessionId(): string | null {
+  const currentSessionId = sessionManager.getCurrentSessionId();
+  if (currentSessionId) return currentSessionId;
   const s = useWindowStore.getState();
   for (let i = s.focusStack.length - 1; i >= 0; i--) {
     const win = s.windows[s.focusStack[i]];
@@ -105,7 +107,7 @@ export const WorkbenchEventBridge: React.FC = () => {
           typeId: CHAT_APP_TYPE_ID,
           instanceKey: sessionId,
           action: 'setInput',
-          payload: { content, focus: true },
+          payload: { content, focus: true, sessionId },
         });
         return;
       }
@@ -114,7 +116,7 @@ export const WorkbenchEventBridge: React.FC = () => {
           typeId: CHAT_APP_TYPE_ID,
           instanceKey: result.sessionId,
           action: 'setInput',
-          payload: { content, focus: true },
+          payload: { content, focus: true, sessionId: result.sessionId },
         });
       });
     };
@@ -122,6 +124,12 @@ export const WorkbenchEventBridge: React.FC = () => {
     const onNewSession = (e: Event) => {
       const action = (e as CustomEvent<{ action?: string }>).detail?.action;
       if (action && action !== 'create-session' && action !== 'create-group') return;
+      const existing = Object.values(useWindowStore.getState().windows)
+        .find((win) => win.typeId === CHAT_APP_TYPE_ID);
+      if (existing) {
+        useWindowStore.getState().focusWindow(existing.id);
+        return;
+      }
       void launchNewChatSession({ reason: 'command' });
     };
 

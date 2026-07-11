@@ -10,6 +10,7 @@ export {
 } from './register';
 export {
   launchNewChatSession,
+  openChatSession,
   type LaunchNewChatSessionOptions,
   type LaunchNewChatSessionResult,
 } from './newSession';

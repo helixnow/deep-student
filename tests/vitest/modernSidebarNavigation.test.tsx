@@ -123,6 +123,24 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
   });
 
+  it('keeps only conversation navigation in the Workbench Chat scope', async () => {
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+        navigationScope="chat"
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '学习资源' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '待办' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '技能管理' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '制卡任务' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '模板管理' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '设置' })).not.toBeInTheDocument();
+  });
+
   it('shows a quiet empty hint inside expanded groups with no conversations', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {

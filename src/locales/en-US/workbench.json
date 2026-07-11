@@ -192,7 +192,6 @@
     "expose": "Window overview",
     "wallpaper": "Desktop wallpaper",
     "materialTier": "Visual material",
-    "parallax": "Wallpaper parallax",
     "showDesktop": "Show desktop",
     "restoreWindows": "Restore windows",
     "settings": "Desktop settings…"
@@ -210,6 +209,10 @@
     }
   },
   "wallpaper": {
+    "mountainMist": "Mountain Mist",
+    "forestMist": "Misty Forest",
+    "alpineLake": "Alpine Lake",
+    "winterRidge": "Winter Ridge",
     "aurora": "Aurora",
     "horizon": "Horizon",
     "graphite": "Graphite",
@@ -307,7 +310,7 @@
     },
     "performanceProfile": {
       "title": "Performance Profile",
-      "desc": "Balance visuals and smoothness in one step. Presets sync material, wallpaper parallax, and Dock magnification; changing any lever switches to Custom.",
+      "desc": "Balance visuals and smoothness in one step. Presets sync material and Dock magnification; changing either lever switches to Custom.",
       "quality": "Quality",
       "balanced": "Balanced",
       "performance": "Performance",
@@ -321,10 +324,6 @@
       "reduced": "Reduced",
       "minimal": "Minimal"
     },
-    "parallax": {
-      "title": "Wallpaper Parallax",
-      "desc": "Slightly shifts the wallpaper with the pointer. Turn off to reduce desktop compositing cost (off by default)."
-    },
     "dockMagnification": {
       "title": "Dock Magnification",
       "desc": "Enlarges Dock icons under the pointer. Turn off to reduce hover layout measurement and compositing cost."
@@ -332,8 +331,8 @@
 
     "wallpaper": {
       "title": "Desktop Wallpaper",
-      "desc": "Pick a theme gradient preset, or use a custom image.",
-      "kindTheme": "Theme Gradient",
+      "desc": "Pick a built-in nature scene or theme gradient, or use a custom image.",
+      "kindTheme": "Built-in",
       "kindImage": "Custom Image",
       "imagePath": "Image path",
       "imagePlaceholder": "Enter a local image path…"

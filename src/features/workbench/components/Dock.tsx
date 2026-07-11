@@ -6,15 +6,7 @@
  * - autohide：prop 驱动 — 隐藏至底缘 4px 热区；reveal ~180ms / conceal ~150ms 防误触延迟
  *
  * O5 动效层（样式见 Dock.css）：
- * - 邻近放大 magnification：指针在 Dock 内移动时按「距指针水平距离」高斯衰减放大，
- *   以指针为连续不动点向两侧推开邻居（macOS 锚定；非离散最近邻，避免跨图标跳变）；
- *   进出场有强度渐变（不会硬切）。
- *   全程 rAF 合帧直写各 DockItem 的 .wb-dock-mag transform，**零 React state / 零重渲染**；
- *   总扩张量写入 --wb-dock-mag-extra，玻璃药丸随 padding 加宽；strength 到位且指针静止时暂停 rAF。
- *   激活期间给 .wb-dock 挂 data-wb-dock-magging（中和基线整键 hover 缩放 + will-change）。
- *   几何：enter / items 变化全量 measure；step 内每帧只重测 dockLeft，
- *   magExtra 变化超阈值或每 N 帧才重测 item 中心（避免每帧 N 次 getBoundingClientRect）。
- *   reduced-motion / minimal / dataset.wbDockMag=off 禁用（JS 不挂监听 + CSS token 归一）。
+ * - Dock 悬停保持静止，只显示名称气泡；邻近放大已关闭。
  * - autohide 滑入用 O1 overshoot 曲线（wb-dock-slide，复合 translate(-50%, y)）。
  * - dockGeometry：每次布局来源变化（items / 显隐 / resize / 滑动结束）rAF 防抖发布
  *   各 typeId 图标 wrap 的视口坐标，供 O9 genie 最小化收敛点消费。
@@ -27,7 +19,6 @@ import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
-import { useMaterialTier } from '../core/materialTier';
 import { SquaresFour } from '@phosphor-icons/react';
 import { DockItem } from './DockItem';
 import { DockContextMenu } from './DockContextMenu';
@@ -408,40 +399,6 @@ function useDockMagnification(
   }, [itemsKey, measure]);
 }
 
-/** html dataset.wbDockMag === 'off' 时关闭邻近放大（设置面板由另一 agent 接线） */
-function useDockMagPrefOff(): boolean {
-  const [off, setOff] = React.useState(
-    () =>
-      typeof document !== 'undefined' && document.documentElement.dataset.wbDockMag === 'off',
-  );
-  React.useEffect(() => {
-    const root = document.documentElement;
-    const sync = () => setOff(root.dataset.wbDockMag === 'off');
-    sync();
-    const observer = new MutationObserver(sync);
-    observer.observe(root, { attributes: true, attributeFilter: ['data-wb-dock-mag'] });
-    return () => observer.disconnect();
-  }, []);
-  return off;
-}
-
-/** prefers-reduced-motion 实时订阅（关放大 + CSS 兜底之外的 JS 层禁用） */
-function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = React.useState(
-    () =>
-      typeof window !== 'undefined' &&
-      Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches),
-  );
-  React.useEffect(() => {
-    const query = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-    if (!query) return undefined;
-    const onChange = () => setReduced(query.matches);
-    query.addEventListener?.('change', onChange);
-    return () => query.removeEventListener?.('change', onChange);
-  }, []);
-  return reduced;
-}
-
 // ---------------------------------------------------------------------------
 // Dock
 // ---------------------------------------------------------------------------
@@ -570,14 +527,8 @@ function DockImpl({ autohide = false, className }: DockProps) {
     scheduleConceal();
   };
 
-  // ---- 邻近放大（off 旗 / reduced-motion / minimal 档禁用；JS + CSS 双保险）----
-  const tier = useMaterialTier();
-  const reducedMotion = usePrefersReducedMotion();
-  const dockMagOff = useDockMagPrefOff();
-  // reduced 材质档保留 mag（blur 已关）；仅 off + minimal + reduced-motion 关
-  const magEnabled = !dockMagOff && tier !== 'minimal' && !reducedMotion;
-  // mag 指纹含 Apps 入口，列表变化时重测几何
-  useDockMagnification(dockRef, magEnabled, orderedKey);
+  // Dock 悬停不做放大或位移，只保留 DockItem 的名称 tooltip。
+  useDockMagnification(dockRef, false, orderedKey);
 
   // ---- dockGeometry 发布（O9 genie 收敛点；§4 协作接口）----
   const geometryRafRef = React.useRef(0);

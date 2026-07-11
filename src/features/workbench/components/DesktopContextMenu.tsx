@@ -1,23 +1,20 @@
 /**
- * DesktopContextMenu（O13）— 桌面空白区右键菜单 + 桌面手势 + 壁纸视差
+ * DesktopContextMenu（O13）— 桌面空白区右键菜单 + 桌面手势
  * ---------------------------------------------------------------------------
  * 本文件集中承载 O13 的全部新增逻辑，WorkbenchDesktop（总装文件）只做薄接线：
  *
  * - `DesktopContextMenu`：桌面右键菜单（新建对话 / 资源库 / 整理窗口 / 平铺全部 /
- *   显示桌面 / 窗口俯瞰 / 壁纸预设 / 视觉材质 / 壁纸视差 / 桌面设置），
+ *   显示桌面 / 窗口俯瞰 / 壁纸预设 / 视觉材质 / 桌面设置），
  *   自绘玻璃面板（不用 Radix，避免把总装根节点包进 Trigger），
  *   键盘可达（↑↓ 移动、→ 进子菜单、← 退出、Enter 触发、Esc 关闭）；
  * - `useDesktopGestures`：桌面空白区 contextmenu / 双击 show desktop 手势
  *   （target === currentTarget 判空白；show desktop 走 hooks/showDesktop 共享 stash）；
- * - `useWallpaperParallax`：鼠标移动驱动壁纸包裹层轻微位移（rAF 阻尼跟随，
- *   直写 DOM 不进 React state；rect 经 ResizeObserver/resize 缓存，pointermove
- *   只暂存坐标合帧消费；尊重 prefers-reduced-motion，minimal 档由调用方关停）。
- *
  * 全部窗口操作走 windowStore / workbenchBus / useWorkbenchOverlay 现有 API，
  * 不新增 store 字段；设置持久化复用 P10 的 save_setting + 'workbench:settings-changed'
  * 事件契约（非 Tauri 环境回退 localStorage，与 WorkbenchDesktop.readSetting 对称）。
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
@@ -31,7 +28,6 @@ import {
   GearSix,
   GridFour,
   Image,
-  Sparkle,
   SquaresFour,
   Stack,
 } from '@phosphor-icons/react';
@@ -53,8 +49,6 @@ import './DesktopContextMenu.css';
 
 const WALLPAPER_SETTING_KEY = 'desktop.workbenchWallpaper';
 const MATERIAL_TIER_SETTING_KEY = 'desktop.workbenchMaterialTier';
-/** O13 新增设置 key：壁纸视差开关（默认开启；'false' 显式关闭） */
-export const WORKBENCH_PARALLAX_SETTING_KEY = 'desktop.workbenchWallpaperParallax';
 
 function isTauriRuntime(): boolean {
   return (
@@ -248,167 +242,6 @@ export function useDesktopGestures(
 }
 
 // ---------------------------------------------------------------------------
-// 壁纸视差：rAF 阻尼跟随（直写 DOM，0 React 重渲染）
-// ---------------------------------------------------------------------------
-
-/** 最大位移半径（px）；包裹层放大 1.035 保证位移时不露边 */
-const PARALLAX_MAX_SHIFT = 12;
-const PARALLAX_SCALE = 1.035;
-const PARALLAX_DAMPING = 0.14;
-const PARALLAX_EPSILON = 0.05;
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
-
-export function useWallpaperParallax(
-  rootRef: React.RefObject<HTMLElement | null>,
-  layerRef: React.RefObject<HTMLElement | null>,
-  enabled: boolean,
-): void {
-  useEffect(() => {
-    const root = rootRef.current;
-    const layer = layerRef.current;
-    if (!root || !layer) return undefined;
-
-    const resetStyles = () => {
-      layer.style.transform = '';
-      layer.style.willChange = '';
-    };
-    if (!enabled) {
-      resetStyles();
-      return undefined;
-    }
-
-    const reduceQuery =
-      typeof window.matchMedia === 'function' ? window.matchMedia(REDUCED_MOTION_QUERY) : null;
-
-    let raf = 0;
-    let curX = 0;
-    let curY = 0;
-    let targetX = 0;
-    let targetY = 0;
-    // 缓存桌面 rect：pointermove 热路径禁止 getBoundingClientRect（强制同步布局）
-    let rectLeft = 0;
-    let rectTop = 0;
-    let rectW = 0;
-    let rectH = 0;
-    let pendingClientX = 0;
-    let pendingClientY = 0;
-    let pointerDirty = false;
-
-    const measureRect = () => {
-      const rect = root.getBoundingClientRect();
-      rectLeft = rect.left;
-      rectTop = rect.top;
-      rectW = rect.width;
-      rectH = rect.height;
-    };
-
-    const write = () => {
-      layer.style.transform = `translate3d(${curX.toFixed(2)}px, ${curY.toFixed(2)}px, 0) scale(${PARALLAX_SCALE})`;
-    };
-
-    const applyPointerTarget = () => {
-      if (rectW <= 0 || rectH <= 0) return;
-      const nx = (pendingClientX - rectLeft) / rectW - 0.5;
-      const ny = (pendingClientY - rectTop) / rectH - 0.5;
-      // 反向轻微位移（背景比前景「更远」的景深感）
-      targetX = -nx * 2 * PARALLAX_MAX_SHIFT;
-      targetY = -ny * 2 * PARALLAX_MAX_SHIFT;
-    };
-
-    const frame = () => {
-      raf = 0;
-      // 拖窗期间冻结视差（保持当前位移，不继续插值）
-      if (document.documentElement.hasAttribute('data-wb-dragging')) {
-        pointerDirty = false;
-        return;
-      }
-      if (pointerDirty) {
-        pointerDirty = false;
-        applyPointerTarget();
-      }
-      const dx = targetX - curX;
-      const dy = targetY - curY;
-      if (Math.abs(dx) < PARALLAX_EPSILON && Math.abs(dy) < PARALLAX_EPSILON) {
-        curX = targetX;
-        curY = targetY;
-        write();
-        return; // 收敛即停帧，无常驻 rAF
-      }
-      curX += dx * PARALLAX_DAMPING;
-      curY += dy * PARALLAX_DAMPING;
-      write();
-      raf = requestAnimationFrame(frame);
-    };
-
-    const schedule = () => {
-      if (raf || typeof requestAnimationFrame !== 'function') return;
-      raf = requestAnimationFrame(frame);
-    };
-
-    const applyMotionPreference = () => {
-      if (reduceQuery?.matches) {
-        if (raf) {
-          cancelAnimationFrame(raf);
-          raf = 0;
-        }
-        pointerDirty = false;
-        curX = curY = targetX = targetY = 0;
-        resetStyles();
-      } else {
-        layer.style.willChange = 'transform';
-        write();
-      }
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      if (reduceQuery?.matches) return;
-      // 窗口拖/缩进行中：把帧预算让给跟手路径，不跑壁纸视差 rAF
-      if (document.documentElement.hasAttribute('data-wb-dragging')) return;
-      // 只暂存坐标，合帧后再读缓存 rect——避免每事件强制布局
-      pendingClientX = e.clientX;
-      pendingClientY = e.clientY;
-      pointerDirty = true;
-      schedule();
-    };
-
-    const onPointerLeave = () => {
-      pointerDirty = false;
-      targetX = 0;
-      targetY = 0;
-      schedule();
-    };
-
-    const onResize = () => {
-      measureRect();
-    };
-
-    measureRect();
-    applyMotionPreference();
-    root.addEventListener('pointermove', onPointerMove, { passive: true });
-    root.addEventListener('pointerleave', onPointerLeave, { passive: true });
-    window.addEventListener('resize', onResize, { passive: true });
-    const resizeObserver =
-      typeof ResizeObserver === 'function' ? new ResizeObserver(measureRect) : null;
-    resizeObserver?.observe(root);
-    if (typeof reduceQuery?.addEventListener === 'function') {
-      reduceQuery.addEventListener('change', applyMotionPreference);
-    }
-
-    return () => {
-      root.removeEventListener('pointermove', onPointerMove);
-      root.removeEventListener('pointerleave', onPointerLeave);
-      window.removeEventListener('resize', onResize);
-      resizeObserver?.disconnect();
-      if (typeof reduceQuery?.removeEventListener === 'function') {
-        reduceQuery.removeEventListener('change', applyMotionPreference);
-      }
-      if (raf) cancelAnimationFrame(raf);
-      resetStyles();
-    };
-  }, [rootRef, layerRef, enabled]);
-}
-
-// ---------------------------------------------------------------------------
 // 菜单渲染
 // ---------------------------------------------------------------------------
 
@@ -420,6 +253,11 @@ const MENU_EDGE_PAD = 8;
 /** 子菜单展开侧判定用的近似宽度 */
 const SUBMENU_APPROX_W = 190;
 
+interface SubmenuPosition {
+  left: number;
+  top: number;
+}
+
 interface ActionItemProps {
   icon: React.ReactNode;
   label: string;
@@ -427,7 +265,7 @@ interface ActionItemProps {
   /** 有值 = 子菜单父项（渲染 caret + aria-haspopup） */
   subId?: SubMenuId;
   subOpen?: boolean;
-  /** checkbox 语义（壁纸视差开关） */
+  /** checkbox 菜单项语义 */
   checked?: boolean;
   onClick?: () => void;
   onPointerEnter?: () => void;
@@ -503,7 +341,6 @@ export interface DesktopContextMenuProps {
   /** null = 关闭；坐标相对桌面根节点 */
   anchor: DesktopMenuAnchor | null;
   wallpaper: WallpaperConfig;
-  parallaxEnabled: boolean;
   onClose: () => void;
   onShowDesktop: () => void;
 }
@@ -511,7 +348,6 @@ export interface DesktopContextMenuProps {
 const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   anchor,
   wallpaper,
-  parallaxEnabled,
   onClose,
   onShowDesktop,
 }) => {
@@ -525,13 +361,17 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   const panelRef = useRef<HTMLDivElement | null>(null);
   const subPanelRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
-  useLiquidGlassLens(panelRef);
-
   const [pos, setPos] = useState({ left: 0, top: 0 });
   const [openSub, setOpenSub] = useState<SubMenuId | null>(null);
+  const [submenuPosition, setSubmenuPosition] = useState<SubmenuPosition | null>(null);
   const [tierSetting, setTierSetting] = useState<MaterialTierSetting>('auto');
-
   const open = anchor !== null;
+  useLiquidGlassLens(panelRef, open);
+  useLiquidGlassLens(subPanelRef, open && openSub !== null);
+
+  const subOpensLeft = pos.left + (panelRef.current?.offsetWidth || MENU_FALLBACK_W) + SUBMENU_APPROX_W >
+    desktopSize.w - MENU_EDGE_PAD;
+  const subClassName = `wb-desk-menu wb-glass-lens wb-desk-menu-sub${subOpensLeft ? ' wb-desk-menu-sub--left' : ''}`;
 
   // ---- 开合副作用：定位钳制 / 焦点管理 / 全局兜底监听 ----
 
@@ -598,6 +438,31 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
       ?.focus({ preventScroll: true });
   }, [open, openSub]);
 
+  useLayoutEffect(() => {
+    if (!openSub) {
+      setSubmenuPosition(null);
+      return;
+    }
+
+    const parentItem = panelRef.current?.querySelector<HTMLElement>(
+      `[data-wb-desk-sub="${openSub}"]`,
+    );
+    const submenu = subPanelRef.current;
+    if (!parentItem || !submenu) return;
+
+    const parentRect = parentItem.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const left = subOpensLeft
+      ? parentRect.left - submenuRect.width - 2
+      : parentRect.right + 2;
+    const maxTop = Math.max(MENU_EDGE_PAD, window.innerHeight - submenuRect.height - MENU_EDGE_PAD);
+
+    setSubmenuPosition({
+      left: Math.max(MENU_EDGE_PAD, Math.min(left, window.innerWidth - submenuRect.width - MENU_EDGE_PAD)),
+      top: Math.max(MENU_EDGE_PAD, Math.min(parentRect.top - 6, maxTop)),
+    });
+  }, [desktopSize, openSub, pos, subOpensLeft]);
+
   // ---- 动作 ----
 
   const runAndClose = useCallback(
@@ -629,12 +494,6 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     [onClose],
   );
 
-  const toggleParallax = useCallback(() => {
-    const next = !parallaxEnabled;
-    void persistWorkbenchSetting(WORKBENCH_PARALLAX_SETTING_KEY, String(next), next);
-    void persistWorkbenchSetting('desktop.workbenchPerformanceProfile', 'custom', 'custom');
-    onClose();
-  }, [parallaxEnabled, onClose]);
 
   // ---- 键盘导航 ----
 
@@ -714,10 +573,6 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
   };
 
   if (!anchor) return null;
-
-  const subOpensLeft = pos.left + (panelRef.current?.offsetWidth || MENU_FALLBACK_W) + SUBMENU_APPROX_W >
-    desktopSize.w - MENU_EDGE_PAD;
-  const subClassName = `wb-desk-menu wb-desk-menu-sub${subOpensLeft ? ' wb-desk-menu-sub--left' : ''}`;
 
   const showDesktopLabel = hasVisibleWindows
     ? t('workbench:desktopMenu.showDesktop', '显示桌面')
@@ -806,24 +661,6 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
             onClick={() => setOpenSub(openSub === 'wallpaper' ? null : 'wallpaper')}
             onPointerEnter={() => setOpenSub('wallpaper')}
           />
-          {openSub === 'wallpaper' && (
-            <div
-              ref={subPanelRef}
-              className={subClassName}
-              role="menu"
-              aria-label={t('workbench:desktopMenu.wallpaper', '桌面壁纸')}
-            >
-              {WALLPAPER_PRESETS.map((preset) => (
-                <RadioItem
-                  key={preset.id}
-                  value={preset.id}
-                  label={t(preset.nameKey, preset.id)}
-                  checked={wallpaper.kind === 'theme' && wallpaper.value === preset.id}
-                  onSelect={() => selectWallpaper(preset.id)}
-                />
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="wb-desk-menu-subwrap">
@@ -835,40 +672,7 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
             onClick={() => setOpenSub(openSub === 'tier' ? null : 'tier')}
             onPointerEnter={() => setOpenSub('tier')}
           />
-          {openSub === 'tier' && (
-            <div
-              ref={subPanelRef}
-              className={subClassName}
-              role="menu"
-              aria-label={t('workbench:desktopMenu.materialTier', '视觉材质')}
-            >
-              {(
-                [
-                  ['auto', t('workbench:settings.materialTier.auto', '跟随平台')],
-                  ['full', t('workbench:settings.materialTier.full', '全效果')],
-                  ['reduced', t('workbench:settings.materialTier.reduced', '降透明')],
-                  ['minimal', t('workbench:settings.materialTier.minimal', '极简')],
-                ] as Array<[MaterialTierSetting, string]>
-              ).map(([value, label]) => (
-                <RadioItem
-                  key={value}
-                  value={value}
-                  label={label}
-                  checked={tierSetting === value}
-                  onSelect={() => selectTier(value)}
-                />
-              ))}
-            </div>
-          )}
         </div>
-
-        <ActionItem
-          icon={<Sparkle size={15} weight="duotone" />}
-          label={t('workbench:desktopMenu.parallax', '壁纸视差')}
-          checked={parallaxEnabled}
-          onClick={toggleParallax}
-          onPointerEnter={() => setOpenSub(null)}
-        />
 
         <div className="wb-desk-menu-sep" role="separator" />
 
@@ -879,6 +683,54 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
           onPointerEnter={() => setOpenSub(null)}
         />
       </div>
+      {openSub && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              ref={subPanelRef}
+              className={subClassName}
+              role="menu"
+              aria-label={
+                openSub === 'wallpaper'
+                  ? t('workbench:desktopMenu.wallpaper', '桌面壁纸')
+                  : t('workbench:desktopMenu.materialTier', '视觉材质')
+              }
+              style={{
+                left: submenuPosition?.left ?? 0,
+                top: submenuPosition?.top ?? 0,
+                visibility: submenuPosition ? 'visible' : 'hidden',
+              }}
+              onKeyDown={onPanelKeyDown}
+            >
+              {openSub === 'wallpaper'
+                ? WALLPAPER_PRESETS.map((preset) => (
+                    <RadioItem
+                      key={preset.id}
+                      value={preset.id}
+                      label={t(preset.nameKey, preset.id)}
+                      checked={wallpaper.kind === 'theme' && wallpaper.value === preset.id}
+                      onSelect={() => selectWallpaper(preset.id)}
+                    />
+                  ))
+                : (
+                    [
+                      ['auto', t('workbench:settings.materialTier.auto', '跟随平台')],
+                      ['full', t('workbench:settings.materialTier.full', '全效果')],
+                      ['reduced', t('workbench:settings.materialTier.reduced', '降透明')],
+                      ['minimal', t('workbench:settings.materialTier.minimal', '极简')],
+                    ] as Array<[MaterialTierSetting, string]>
+                  ).map(([value, label]) => (
+                    <RadioItem
+                      key={value}
+                      value={value}
+                      label={label}
+                      checked={tierSetting === value}
+                      onSelect={() => selectTier(value)}
+                    />
+                  ))}
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 };

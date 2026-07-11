@@ -279,7 +279,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // 重新加载时同步最新的 tags（node 可能已更新）
     setTags(((freshNode?.metadata?.tags ?? node.metadata?.tags) as string[]) || []);
     setIsLoading(false);
-  }, [node.id, node.path, node.name, node.updatedAt, setMarkdownWindow, updateKnownBaseline]);
+  }, [node.id, node.path, node.name, node.updatedAt, node.metadata?.tags, setMarkdownWindow, updateKnownBaseline]);
 
   const loadNoteContentRef = useRef(loadNoteContent);
   loadNoteContentRef.current = loadNoteContent;

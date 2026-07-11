@@ -646,7 +646,15 @@ const MessageListInner: React.FC<MessageListProps> = ({
           const messageItems = logDiv?.children;
           if (messageItems && messageItems.length >= 2) {
             const userMessageEl = messageItems[messageItems.length - 2] as HTMLElement;
-            userMessageEl.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior });
+            // Do not use scrollIntoView here: it may scroll every ancestor, including
+            // the OS/workbench window host. Keep the scroll confined to the message viewport.
+            const viewportRect = viewportElement.getBoundingClientRect();
+            const messageRect = userMessageEl.getBoundingClientRect();
+            const target = viewportElement.scrollTop + messageRect.top - viewportRect.top;
+            viewportElement.scrollTop = Math.max(
+              0,
+              Math.min(target, viewportElement.scrollHeight - viewportElement.clientHeight),
+            );
             resetScrollBaselineRef.current();
             return;
           }

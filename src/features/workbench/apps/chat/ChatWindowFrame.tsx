@@ -2,7 +2,7 @@
  * ChatWindowFrame — chat 窗口的先导轻壳（O16）
  *
  * register.ts 的 render 懒加载指向本模块（小 chunk：仅 React + 骨架屏），
- * 真正的重代码（ChatAppWindow → ChatSessionSurface → ChatContainer 全家桶）
+ * 真正的重代码（ChatAppWindow → ModernSidebar + ChatV2Page 全家桶）
  * 由本壳内层的 React.lazy 二段加载，加载期间用消息气泡骨架屏占位——
  * 替代 WindowBody 通用 Suspense 转圈，消灭开 chat 窗时的空白/转圈观感。
  *

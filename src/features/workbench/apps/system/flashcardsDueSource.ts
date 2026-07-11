@@ -7,6 +7,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { ProjectionInstance, ProjectionSource } from '../../core/projection';
 import type { AppBadge } from '../../core/types';
+import { subscribeFlashcardsDueRefresh } from '@/features/flashcards/events';
 
 /** 有到期卡时的对账间隔 */
 const POLL_INTERVAL_ACTIVE_MS = 30_000;
@@ -23,6 +24,7 @@ let visibilityHandler: (() => void) | null = null;
 let inflight: Promise<void> | null = null;
 let refreshAgain = false;
 let watcherRunning = false;
+let unsubscribeDueRefresh: (() => void) | null = null;
 const listeners = new Set<(count: number) => void>();
 
 function setCount(count: number): void {
@@ -89,6 +91,11 @@ export function refreshFlashcardsDueCount(): Promise<void> {
 export function startFlashcardsDueWatcher(): void {
   if (watcherRunning) return;
   watcherRunning = true;
+  if (unsubscribeDueRefresh == null) {
+    unsubscribeDueRefresh = subscribeFlashcardsDueRefresh(
+      () => void refreshFlashcardsDueCount(),
+    );
+  }
   // SSR / 测试环境无 document：不装监听器，仅保留轮询
   if (typeof document !== 'undefined' && visibilityHandler == null) {
     visibilityHandler = () => {
@@ -108,6 +115,8 @@ export function stopFlashcardsDueWatcher(): void {
     document.removeEventListener('visibilitychange', visibilityHandler);
   }
   visibilityHandler = null;
+  unsubscribeDueRefresh?.();
+  unsubscribeDueRefresh = null;
 }
 
 export function getFlashcardsDueCount(): number {

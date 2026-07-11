@@ -26,6 +26,7 @@ interface UseCanvasAIEditHandlerReturn {
   handleAccept: () => Promise<void>;
   handleReject: () => Promise<void>;
   isLocked: boolean;
+  isApplying: boolean;
   /** ★ 2.1 最近一次已接受 AI 编辑的检查点（可回滚） */
   checkpoint: AIEditCheckpoint | null;
   /** ★ 2.1 回滚到检查点（恢复 AI 编辑前内容并落盘） */
@@ -45,6 +46,9 @@ export function useCanvasAIEditHandler({
   const onSaveRef = useRef(onSave);
 
   const { state: aiEditState, startEdit, accept, reject, clear } = useAIEditState();
+  const [isApplying, setIsApplying] = useState(false);
+  const isApplyingRef = useRef(false);
+  const pendingRequestRef = useRef<CanvasAIEditRequest | null>(null);
 
   // ★ 2.1 AI 编辑检查点
   const [checkpoint, setCheckpoint] = useState<AIEditCheckpoint | null>(null);
@@ -79,53 +83,81 @@ export function useCanvasAIEditHandler({
   }, []);
 
   const handleAccept = useCallback(async () => {
-    const acceptResult = accept();
+    if (isApplyingRef.current) return;
+
+    // 保留 diff，直到编辑器应用和持久化都成功；任一步失败都允许原地重试。
+    const acceptResult = accept({ clear: false });
     if (!acceptResult) return;
 
     const { proposedContent, result } = acceptResult;
     const editor = editorApiRef.current;
+    isApplyingRef.current = true;
+    setIsApplying(true);
 
-    if (!editor || editor.isReadonly()) {
-      await sendResult({
-        requestId: result.requestId,
-        success: false,
-        error: '编辑器不可写，修改未应用',
-      });
-      return;
-    }
-
-    // ★ 2.1 接受前记录检查点（编辑前全文），接受后仍可整轮回滚
-    const contentBeforeApply = editor.getMarkdown();
-
-    editor.setMarkdown(proposedContent);
-
-    if (onSaveRef.current) {
-      try {
-        await onSaveRef.current(proposedContent);
-      } catch (err) {
-        console.warn('[useCanvasAIEditHandler] Auto-save failed:', err);
+    try {
+      if (!editor || editor.isReadonly()) {
         await sendResult({
           requestId: result.requestId,
           success: false,
-          error: err instanceof Error ? err.message : '保存失败，修改未落盘',
+          error: '编辑器不可写，修改未应用',
+        });
+        return;
+      }
+
+      // ★ 2.1 接受前记录检查点（编辑前全文），接受后仍可整轮回滚
+      const contentBeforeApply = editor.getMarkdown();
+
+      try {
+        editor.setMarkdown(proposedContent);
+      } catch (err) {
+        await sendResult({
+          requestId: result.requestId,
+          success: false,
+          error: err instanceof Error ? err.message : '应用编辑建议失败',
           beforePreview: result.beforePreview,
           afterPreview: result.afterPreview,
           addedContent: result.addedContent,
         });
         return;
       }
-    }
 
-    if (noteIdRef.current) {
-      setCheckpoint({
-        originalContent: contentBeforeApply,
-        appliedAt: Date.now(),
-        noteId: noteIdRef.current,
-      });
-    }
+      if (onSaveRef.current) {
+        try {
+          await onSaveRef.current(proposedContent);
+        } catch (err) {
+          console.warn('[useCanvasAIEditHandler] Auto-save failed:', err);
+          try {
+            editor.setMarkdown(contentBeforeApply);
+          } catch (restoreErr) {
+            console.warn('[useCanvasAIEditHandler] Failed to restore after save error:', restoreErr);
+          }
+          await sendResult({
+            requestId: result.requestId,
+            success: false,
+            error: err instanceof Error ? err.message : '保存失败，修改未落盘',
+            beforePreview: result.beforePreview,
+            afterPreview: result.afterPreview,
+            addedContent: result.addedContent,
+          });
+          return;
+        }
+      }
 
-    await sendResult(result);
-  }, [accept, sendResult]);
+      clear();
+      pendingRequestRef.current = null;
+      if (noteIdRef.current) {
+        setCheckpoint({
+          originalContent: contentBeforeApply,
+          appliedAt: Date.now(),
+          noteId: noteIdRef.current,
+        });
+      }
+      await sendResult(result);
+    } finally {
+      isApplyingRef.current = false;
+      setIsApplying(false);
+    }
+  }, [accept, clear, sendResult]);
 
   // ★ 2.1 回滚到检查点
   const rollbackCheckpoint = useCallback(async () => {
@@ -136,12 +168,19 @@ export function useCanvasAIEditHandler({
       return;
     }
 
-    editor.setMarkdown(checkpoint.originalContent);
+    try {
+      editor.setMarkdown(checkpoint.originalContent);
+    } catch (err) {
+      console.warn('[useCanvasAIEditHandler] Rollback apply failed:', err);
+      return;
+    }
     if (onSaveRef.current) {
       try {
         await onSaveRef.current(checkpoint.originalContent);
       } catch (err) {
         console.warn('[useCanvasAIEditHandler] Rollback save failed:', err);
+        // 保留 checkpoint，允许用户稍后再次触发回滚保存；不要把未落盘状态伪装成完成。
+        return;
       }
     }
     setCheckpoint(null);
@@ -150,9 +189,11 @@ export function useCanvasAIEditHandler({
   const dismissCheckpoint = useCallback(() => setCheckpoint(null), []);
 
   const handleReject = useCallback(async () => {
+    if (isApplyingRef.current) return;
     const result = reject();
     if (!result) return;
 
+    pendingRequestRef.current = null;
     await sendResult(result);
   }, [reject, sendResult]);
 
@@ -169,6 +210,26 @@ export function useCanvasAIEditHandler({
         return;
       }
 
+      // 先同步占位再等待 ACK，防止两条事件在同一事件循环内越过异步间隙，
+      // 后到的建议必须保留当前 diff，而不是静默覆盖它。
+      const pendingRequest = pendingRequestRef.current;
+      if (pendingRequest) {
+        try {
+          await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId });
+        } catch (err) {
+          console.error('[useCanvasAIEditHandler] Failed to ack duplicate edit request:', err);
+        }
+        if (pendingRequest.requestId !== request.requestId) {
+          await sendResult({
+            requestId: request.requestId,
+            success: false,
+            error: '已有一条笔记编辑建议等待确认，请先接受或拒绝当前建议',
+          });
+        }
+        return;
+      }
+      pendingRequestRef.current = request;
+
       // 认领请求：告知后端目标编辑器存在（失败不阻断后续流程，
       // 后端会在 ACK 超时后以"笔记未打开"失败，结果回调仍可兜底）
       try {
@@ -179,6 +240,7 @@ export function useCanvasAIEditHandler({
 
       const editor = editorApiRef.current;
       if (!editor) {
+        pendingRequestRef.current = null;
         const result: CanvasAIEditResult = {
           requestId: request.requestId,
           success: false,
@@ -188,13 +250,14 @@ export function useCanvasAIEditHandler({
         return;
       }
 
-      // ★ 2.1 新一轮编辑开始 → 旧检查点失效（只支持回滚最近一轮）
-      setCheckpoint(null);
-
       const originalContent = editor.getMarkdown();
       const immediateFailure = startEdit(request, originalContent);
       if (immediateFailure) {
+        pendingRequestRef.current = null;
         await sendResult(immediateFailure);
+      } else {
+        // 只有新建议确实建立后才使旧检查点失效；无效请求不能夺走回滚能力。
+        setCheckpoint(null);
       }
     },
     [startEdit, sendResult]
@@ -250,6 +313,7 @@ export function useCanvasAIEditHandler({
     if (aiEditState.isActive && aiEditState.request?.noteId !== noteIdRef.current) {
       const result = reject();
       if (result) {
+        pendingRequestRef.current = null;
         sendResult(result);
       }
     }
@@ -275,6 +339,7 @@ export function useCanvasAIEditHandler({
         });
       }
       clear();
+      pendingRequestRef.current = null;
     };
   }, [clear]);
 
@@ -283,6 +348,7 @@ export function useCanvasAIEditHandler({
     handleAccept,
     handleReject,
     isLocked: aiEditState.isActive,
+    isApplying,
     checkpoint,
     rollbackCheckpoint,
     dismissCheckpoint,

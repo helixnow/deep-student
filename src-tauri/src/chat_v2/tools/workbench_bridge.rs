@@ -102,21 +102,40 @@ pub fn is_valid_apply_receipt(value: &Value) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
     };
-    let status_valid = matches!(
-        obj.get("status").and_then(Value::as_str),
-        Some("completed" | "partial" | "cancelled" | "failed")
-    );
-    let mode_valid = matches!(
-        obj.get("mode").and_then(Value::as_str),
-        Some("frontend" | "backend" | "suggestion")
-    );
-    status_valid
-        && mode_valid
-        && obj.get("applied").is_some_and(Value::is_u64)
-        && obj.get("totalOps").is_some_and(Value::is_u64)
-        && obj.get("entityIds").is_some_and(Value::is_array)
-        && obj.get("done").is_some_and(Value::is_array)
-        && obj.get("undone").is_some_and(Value::is_array)
+    let Some(status) = obj.get("status").and_then(Value::as_str) else {
+        return false;
+    };
+    if !matches!(status, "completed" | "partial" | "cancelled" | "failed") {
+        return false;
+    }
+
+    let Some(mode) = obj.get("mode").and_then(Value::as_str) else {
+        return false;
+    };
+    if !matches!(mode, "frontend" | "backend" | "suggestion") {
+        return false;
+    }
+    if mode == "suggestion"
+        && obj.get("suggestionPending").and_then(Value::as_bool) != Some(true)
+    {
+        return false;
+    }
+
+    let (Some(applied), Some(total_ops)) = (
+        obj.get("applied").and_then(Value::as_u64),
+        obj.get("totalOps").and_then(Value::as_u64),
+    ) else {
+        return false;
+    };
+    if applied > total_ops {
+        return false;
+    }
+
+    ["entityIds", "done", "undone"].into_iter().all(|key| {
+        obj.get(key)
+            .and_then(Value::as_array)
+            .is_some_and(|items| items.iter().all(Value::is_string))
+    })
 }
 
 /// 桥请求载荷（Rust → 前端）
@@ -571,6 +590,47 @@ mod tests {
             "mode": "frontend"
         })));
         assert!(!is_valid_apply_receipt(&Value::Null));
+    }
+
+    #[test]
+    fn apply_receipt_validation_enforces_semantic_invariants() {
+        assert!(is_valid_apply_receipt(&json!({
+            "status": "completed",
+            "mode": "suggestion",
+            "applied": 0,
+            "totalOps": 1,
+            "entityIds": ["note-1"],
+            "done": ["已提交建议"],
+            "undone": [],
+            "suggestionPending": true
+        })));
+        assert!(!is_valid_apply_receipt(&json!({
+            "status": "completed",
+            "mode": "suggestion",
+            "applied": 0,
+            "totalOps": 1,
+            "entityIds": ["note-1"],
+            "done": [],
+            "undone": []
+        })));
+        assert!(!is_valid_apply_receipt(&json!({
+            "status": "completed",
+            "mode": "frontend",
+            "applied": 2,
+            "totalOps": 1,
+            "entityIds": ["note-1"],
+            "done": ["one", "two"],
+            "undone": []
+        })));
+        assert!(!is_valid_apply_receipt(&json!({
+            "status": "partial",
+            "mode": "frontend",
+            "applied": 0,
+            "totalOps": 1,
+            "entityIds": [42],
+            "done": [],
+            "undone": ["待执行"]
+        })));
     }
 
     #[test]

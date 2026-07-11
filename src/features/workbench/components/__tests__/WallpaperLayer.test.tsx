@@ -38,6 +38,14 @@ describe('壁纸预设清单', () => {
   it('至少一套动态流动预设', () => {
     expect(WALLPAPER_PRESETS.some((p) => p.animated)).toBe(true);
   });
+
+  it('内置自然壁纸使用项目内静态资源，且默认选择薄雾雪山', () => {
+    const naturalPresets = WALLPAPER_PRESETS.filter((preset) => preset.imageUrl);
+    expect(naturalPresets).toHaveLength(4);
+    expect(naturalPresets.every((preset) => preset.imageUrl?.startsWith('/wallpapers/study-os/')))
+      .toBe(true);
+    expect(DEFAULT_WALLPAPER).toEqual({ kind: 'theme', value: 'mountain-mist' });
+  });
 });
 
 describe('主题渐变渲染', () => {
@@ -70,6 +78,16 @@ describe('主题渐变渲染', () => {
     );
     expect(panesOf(container)[0].getAttribute('data-wb-wallpaper-preset')).toBe('aurora-flow');
     expect(container.querySelectorAll('.wb-wallpaper-flow')).toHaveLength(3);
+  });
+
+  it('图片预设渲染内置资源、scrim 与暗角', () => {
+    const { container } = render(
+      <WallpaperLayer wallpaper={{ kind: 'theme', value: 'forest-mist' }} />,
+    );
+    const image = container.querySelector<HTMLElement>('.wb-wallpaper-image');
+    expect(image?.style.backgroundImage).toContain('/wallpapers/study-os/forest-mist.webp');
+    expect(container.querySelector('.wb-wallpaper-scrim')).not.toBeNull();
+    expect(container.querySelector('.wb-wallpaper-vignette')).not.toBeNull();
   });
 });
 
@@ -160,10 +178,10 @@ describe('切换交叉淡入', () => {
 
   it('视觉等价的配置变化不触发过渡', () => {
     const { container, rerender } = render(
-      <WallpaperLayer wallpaper={{ kind: 'theme', value: 'aurora' }} />,
+      <WallpaperLayer wallpaper={DEFAULT_WALLPAPER} />,
     );
     // 新对象但同一预设 → 不追加 pane
-    rerender(<WallpaperLayer wallpaper={{ kind: 'theme', value: 'aurora' }} />);
+    rerender(<WallpaperLayer wallpaper={{ ...DEFAULT_WALLPAPER }} />);
     expect(panesOf(container)).toHaveLength(1);
     // 未知 id 解析结果与当前相同 → 也不追加
     rerender(<WallpaperLayer wallpaper={{ kind: 'theme', value: 'bogus' }} />);

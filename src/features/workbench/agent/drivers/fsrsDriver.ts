@@ -29,7 +29,9 @@ import type {
 } from '../types';
 
 /** LibraryScreen 监听此事件重查库表（本地 state，非 zustand） */
-export const FSRS_LIBRARY_REFRESH_EVENT = 'fsrs:library-refresh';
+import { FSRS_LIBRARY_REFRESH_EVENT } from '@/features/flashcards/events';
+
+export { FSRS_LIBRARY_REFRESH_EVENT };
 
 const TYPE_ID = 'flashcards';
 
@@ -124,9 +126,9 @@ export const fsrsDriver: CollabDriver = {
   typeId: TYPE_ID,
 
   probe(_target: AcrTarget): AcrProbeState {
-    const { screen } = useFsrsReviewStore.getState();
-    // session 进行中：提示走克制路径（append-only / 暂停），勿重置会话
-    if (screen === 'session') return 'hot';
+    const { screen, queue, queueIndex, ratingBusy } = useFsrsReviewStore.getState();
+    // 只有真正处于答题/评分的 session 才 hot；队列耗尽的完成页可安全追加。
+    if (screen === 'session' && (ratingBusy || queueIndex < queue.length)) return 'hot';
     return 'clean';
   },
 
@@ -159,24 +161,30 @@ export const fsrsDriver: CollabDriver = {
         const { screen } = useFsrsReviewStore.getState();
         if (screen !== 'session') {
           undone.push(op.label || op.kind);
-          continue;
-        }
-        const cards = cardsFromEnqueuePayload(op.payload);
-        if (cards.length === 0) {
-          undone.push(op.label || op.kind);
-          continue;
-        }
-        const added = useFsrsReviewStore.getState().appendToQueue(cards);
-        if (added > 0) {
-          applied += 1;
-          done.push(op.label || `入队 ${added} 张卡片`);
-          for (const c of cards) {
-            if (!entityIds.includes(c.id)) entityIds.push(c.id);
-          }
-          notifyAppended(added);
-          flashEntityIds(cards.map((c) => c.id));
         } else {
-          undone.push(op.label || `${op.kind}（全部已在队列）`);
+          const cards = cardsFromEnqueuePayload(op.payload);
+          if (cards.length === 0) {
+            undone.push(op.label || op.kind);
+          } else {
+            const beforeIds = new Set(
+              useFsrsReviewStore.getState().queue.map((card) => card.id),
+            );
+            const added = useFsrsReviewStore.getState().appendToQueue(cards);
+            const addedCards = useFsrsReviewStore
+              .getState()
+              .queue.filter((card) => !beforeIds.has(card.id));
+            if (added > 0 && addedCards.length === added) {
+              applied += 1;
+              done.push(op.label || `入队 ${added} 张卡片`);
+              for (const card of addedCards) {
+                if (!entityIds.includes(card.id)) entityIds.push(card.id);
+              }
+              notifyAppended(added);
+              flashEntityIds(addedCards.map((card) => card.id));
+            } else {
+              undone.push(op.label || `${op.kind}（全部已在队列）`);
+            }
+          }
         }
       } else {
         undone.push(op.label || op.kind);

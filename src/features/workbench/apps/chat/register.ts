@@ -1,7 +1,7 @@
 /**
  * Chat 应用注册（P7）
  *
- * typeId='chat'，multi（按 sessionId 去重），memoryWeight=2。
+ * typeId='chat'，single；会话切换由窗口内的 ChatV2Page + ModernSidebar 管理。
  * onActivation 支持三个一次性指令（映射现有 CHAT_V2_* 事件逻辑）：
  * - setInput   ：直接写目标会话 store 的 setInputValue（legacy 的 CHAT_V2_SET_INPUT
  *                经 ChatV2Page 的 currentSessionId 中转；workbench 模式下该页不挂载，
@@ -29,6 +29,7 @@ export const CHAT_APP_TYPE_ID = 'chat';
 
 type SessionManagerLike = {
   get: (sessionId: string) => StoreApi<ChatStore> | undefined;
+  getCurrentSessionId: () => string | null;
 };
 
 async function getSessionManager(): Promise<SessionManagerLike> {
@@ -187,7 +188,22 @@ async function scrollToMessage(sessionId: string, payload: unknown): Promise<boo
       if (store && targetIndex >= 0 && log && log.children.length === order.length) {
         const el = log.children[targetIndex] as HTMLElement | undefined;
         if (el) {
-          el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          // Keep message navigation inside this window's message viewport. A plain
+          // scrollIntoView can also scroll the OS/workbench window host itself.
+          const viewport = log.closest<HTMLElement>(
+            '[data-overlayscrollbars-viewport], .scroll-area--native',
+          );
+          if (viewport) {
+            const viewportRect = viewport.getBoundingClientRect();
+            const messageRect = el.getBoundingClientRect();
+            const target = viewport.scrollTop + messageRect.top - viewportRect.top;
+            viewport.scrollTo({
+              top: Math.max(0, Math.min(target, viewport.scrollHeight - viewport.clientHeight)),
+              behavior: 'smooth',
+            });
+          } else {
+            el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          }
           resolve(true);
           return;
         }
@@ -207,10 +223,16 @@ async function scrollToMessage(sessionId: string, payload: unknown): Promise<boo
 }
 
 export async function handleChatActivation(ctx: ActivationContext): Promise<ActivationResult> {
-  const sessionId = ctx.instanceKey;
+  const payloadSessionId = ctx.payload && typeof ctx.payload === 'object'
+    ? (ctx.payload as { sessionId?: unknown }).sessionId
+    : undefined;
+  const manager = await getSessionManager();
+  const sessionId = typeof payloadSessionId === 'string' && payloadSessionId
+    ? payloadSessionId
+    : manager.getCurrentSessionId() ?? ctx.instanceKey;
   if (!sessionId) {
-    console.warn('[workbench:chat] activation ignored: window has no sessionId (instanceKey=null)');
-    return { handled: false, code: 'SESSION_ID_REQUIRED', hint: '目标 Chat 窗口缺少 sessionId' };
+    console.warn('[workbench:chat] activation ignored: no active session');
+    return { handled: false, code: 'SESSION_ID_REQUIRED', hint: 'Chat 当前没有活动会话' };
   }
   let delivered = false;
   switch (ctx.action) {
@@ -240,10 +262,10 @@ export const chatAppDefinition: AppDefinition = {
   typeId: CHAT_APP_TYPE_ID,
   nameKey: 'apps.chat.name',
   icon: React.createElement(ChatCircleDots, { size: 22, weight: 'duotone' }),
-  instanceMode: 'multi',
+  instanceMode: 'single',
   memoryWeight: 2,
-  defaultFrame: { w: 920, h: 680 },
-  minSize: { w: 480, h: 420 },
+  defaultFrame: { w: 1080, h: 720 },
+  minSize: { w: 640, h: 460 },
   // O16：先导轻壳（骨架屏 + 二段 lazy）——重 chunk 加载期显示消息气泡骨架
   // 而非 WindowBody 的通用转圈；chat 核心代码仍不进 workbench 首包。
   render: React.lazy(() => import('./ChatWindowFrame')),

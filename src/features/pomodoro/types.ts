@@ -61,6 +61,8 @@ export interface PomodoroState {
   pause: () => void;
   resume: () => void;
   stop: (interrupted?: boolean) => void;
+  /** 等待由 stop/switch/complete 触发的后端记录落盘；普通 UI 无需调用。 */
+  flushPendingRecords: () => Promise<void>;
   tick: () => void;
   /** 墙钟矫正：rehydrate / visibilitychange / focus 时调用 */
   syncWallClock: () => void;

@@ -138,6 +138,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [saveError, setSaveError] = useState<'failed' | 'conflict' | null>(null);
   const draftByNoteRef = useRef<Map<string, string>>(new Map());
   const lastSavedMapRef = useRef<Map<string, string>>(new Map());
+  const dstuSaveByNoteRef = useRef<Map<string, (content: string) => Promise<void>>>(new Map());
   const noteIdRef = useRef<string | null>(null);
   const prevNoteIdRef = useRef<string | null>(null);
   const isUnmountedRef = useRef(false);
@@ -183,6 +184,14 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
 
+  // Keep each note bound to the save callback that owns its original path.
+  // A queued draft may finish after the component has switched to another note.
+  useLayoutEffect(() => {
+    if (isDstuMode && noteId && dstuOnSave) {
+      dstuSaveByNoteRef.current.set(noteId, dstuOnSave);
+    }
+  }, [isDstuMode, noteId, dstuOnSave]);
+
   useEffect(() => {
     noteIdRef.current = noteId ?? null;
   }, [noteId]);
@@ -211,22 +220,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       throw error;
     }
     if (isDstuMode) {
-      // ★ P1 修复：DSTU 模式下 dstuOnSave 闭包绑定的是"当前 noteId"的保存路径。
-      // 切换笔记时排队的旧笔记草稿若在这里执行，会把旧笔记内容写入新笔记路径。
-      // payload.noteId 与当前 noteId 不一致时直接丢弃（不可重试），避免跨笔记覆盖。
-      if (targetNoteId !== noteIdRef.current) {
-        console.warn('[NotesCrepeEditor] ⚠️ DSTU 保存丢弃：payload 属于已切换走的笔记', {
-          payloadNoteId: targetNoteId,
-          currentNoteId: noteIdRef.current,
+      const saveTarget = dstuSaveByNoteRef.current.get(targetNoteId);
+      if (!saveTarget) {
+        console.warn('[NotesCrepeEditor] DSTU save target is no longer available', {
+          targetNoteId,
         });
         const error = new Error('stale_note_payload');
         (error as Error & { isNonRetryable?: boolean }).isNonRetryable = true;
         throw error;
       }
-      // DSTU 模式：调用 props 的 onSave
-      if (dstuOnSave) {
-        await dstuOnSave(content);
-      }
+      await saveTarget(content);
     } else {
       // Context 模式：调用 NotesContext.saveNoteContent
       if (saveNoteContent) {
@@ -248,7 +251,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       const draft = draftByNoteRef.current.get(targetNoteId);
       setIsDirty(typeof draft === 'string' && draft !== content);
     }
-  }, [isDstuMode, dstuOnSave, saveNoteContent, readOnly, t]);
+  }, [isDstuMode, saveNoteContent, readOnly, t]);
 
   const dequeuePending = () => {
     if (!pendingSaveQueueRef.current.length) {
@@ -390,7 +393,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (prevId && prevId !== noteId) {
       const prevDraft = draftByNoteRef.current.get(prevId);
       if (typeof prevDraft === 'string') {
-        queueSave(prevDraft, prevId).catch(() => {});
+        queueSave(prevDraft, prevId)
+          .catch(() => {})
+          .finally(() => {
+            if (noteIdRef.current !== prevId) {
+              dstuSaveByNoteRef.current.delete(prevId);
+            }
+          });
+      } else {
+        dstuSaveByNoteRef.current.delete(prevId);
       }
       // 保存已入队，清理旧笔记的草稿/快照条目，避免 Map 无限增长
       draftByNoteRef.current.delete(prevId);
@@ -476,7 +487,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     // 之前的实现会导致：initialValue 变化时 setEditorApi(null)，但如果 contentVersionKey 不变
     // （比如 DSTU 模式下 noteId 相同），CrepeEditor 不会重新挂载，onReady 不会被调用，
     // editorApi 保持为 null，工具栏永久禁用
-  }, [initialValue, noteId, active?.updated_at]);
+  }, [initialValue, noteId, active?.updated_at, isDstuMode]);
 
   // 🔧 新增：只在 noteId 变化时重置 editorApi（这会触发 CrepeEditor 重新挂载）
   useLayoutEffect(() => {
@@ -828,12 +839,29 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 编辑器就绪回调
   const handleEditorReady = useCallback((api: CrepeEditorApi) => {
-    setEditorApi(api);
-    onEditorReady?.(api);
-    onEditorApiReady?.(api);
+    const lifecycleApi: CrepeEditorApi = {
+      ...api,
+      flushPendingSave: async () => {
+        const targetNoteId = noteIdRef.current;
+        if (!targetNoteId) return;
+
+        // Crepe 的 onChange 有 250ms 合并窗口。ACR 不能在它尚未回调时
+        // 就把视觉插入误报为“已自动保存”，因此直接以编辑器当前全文刷新草稿。
+        const currentMarkdown = api.getMarkdown();
+        contentRef.current = currentMarkdown;
+        draftByNoteRef.current.set(targetNoteId, currentMarkdown);
+        const saved = lastSavedMapRef.current.get(targetNoteId) ?? '';
+        setIsDirty(currentMarkdown !== saved);
+        await flushNoteDraftRef.current(targetNoteId);
+      },
+    };
+
+    setEditorApi(lifecycleApi);
+    onEditorReady?.(lifecycleApi);
+    onEditorApiReady?.(lifecycleApi);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
     if (!isDstuMode && setEditor) {
-      setEditor(api);
+      setEditor(lifecycleApi);
     }
   }, [isDstuMode, onEditorReady, onEditorApiReady, setEditor]);
 
@@ -864,6 +892,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     handleAccept,
     handleReject,
     isLocked: isAIEditLocked,
+    isApplying: isAIEditApplying,
     checkpoint: aiCheckpoint,
     rollbackCheckpoint,
     dismissCheckpoint,
@@ -1169,6 +1198,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           state={aiEditState}
           onAccept={handleAccept}
           onReject={handleReject}
+          isApplying={isAIEditApplying}
         />
       )}
 

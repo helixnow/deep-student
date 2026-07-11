@@ -1,239 +1,119 @@
 /**
- * ChatAppWindow — Chat 应用的 AppWindowProps 适配层（P7）
+ * Workbench Chat 单例窗口。
  *
- * - instanceKey = sessionId（multi 实例）；
- * - 兜底：Dock 直接 launch 无 instanceKey 时自动创建新会话（按 windowId 记忆，
- *   frozen→唤醒重建时不会重复建会话）；
- * - onTitleChange = 会话标题（订阅 store.title，后端自动生成标题后同步窗口标题）；
- * - isVisible=false 时经 ChatSessionSurface 切换流式降频档；
- * - 关闭窗口 ≠ 删除会话：壳销毁只是卸载视图，会话数据由 autoSave / 后端持久化，
- *   adapter 仅减引用计数（AdapterManager），重开窗口即恢复。
- * - 多窗隔离适配：窗口聚焦时把 sessionManager 的全局“当前会话”指针指向本窗会话
- *   （上下文注入 / pdf-ref 解析等全局消费方以最近聚焦的 chat 窗口为目标，
- *   与 legacy 页面“当前显示会话”语义对齐）；卸载时若指针仍指向本窗则清空。
+ * OS 模式仍复用完整 ChatV2Page，会话管理由裁剪后的原 ModernSidebar 承担；
+ * Dock 只负责打开或聚焦这个应用窗口。
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Warning } from '@phosphor-icons/react';
 import type { AppWindowProps } from '../../core/types';
-import { ChatSessionSurface } from './ChatSessionSurface';
-import { ChatWindowSkeleton } from './ChatWindowSkeleton';
+import { ModernSidebar } from '@/components/ModernSidebar';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
-import { createSessionWithDefaults } from '@/features/chat/core/session/createSessionWithDefaults';
-import { getErrorMessage } from '@/utils/errorUtils';
-import {
-  createChatSandboxOwnerKey,
-  useSandboxWorkbenchStore,
-} from '@/features/sandbox/store/useSandboxWorkbenchStore';
-import { useWindowStore } from '../../core/windowStore';
+import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
+import { WbSysSidebarLayout, WbSysSkeleton } from '../system/SystemWindowShared';
+import { useWbSysSize } from '../system/useWbSysSize';
+import './ChatAppWindow.css';
 
-/**
- * 无 instanceKey 启动时自动创建的会话，按 windowId 记忆。
- * frozen 档会卸载整棵子树，唤醒重建时靠这张表找回原会话，避免每次唤醒都建新会话。
- * 注意：应用重启后该表为空，快照恢复出的 instanceKey=null 窗口会再建新会话（记录在 P7 进度文件遗留）。
- */
-const autoCreatedSessionByWindow = new Map<string, string>();
-const sandboxOwnerByChatWindow = new Map<string, string>();
-let sandboxWindowWatcherInstalled = false;
+const ChatV2Page = React.lazy(() =>
+  import('@/features/chat/pages').then((module) => ({ default: module.ChatV2Page })),
+);
 
-function releaseSandboxOwner(windowId: string, ownerKey: string): void {
-  if (sandboxOwnerByChatWindow.get(windowId) !== ownerKey) return;
-  sandboxOwnerByChatWindow.delete(windowId);
+const SHELL_VAR_RESET = {
+  '--shell-titlebar-height': '0px',
+  '--shell-layout-gap': '0px',
+} as React.CSSProperties;
 
-  // The same chat session can be projected into more than one window. Its
-  // preview state remains live until the final window releases the owner.
-  if ([...sandboxOwnerByChatWindow.values()].some((candidate) => candidate === ownerKey)) return;
-  useSandboxWorkbenchStore.getState().disposeOwner(ownerKey);
-}
-
-function ensureSandboxWindowWatcher(): void {
-  if (sandboxWindowWatcherInstalled) return;
-  sandboxWindowWatcherInstalled = true;
-  useWindowStore.subscribe((state, previousState) => {
-    if (state.windows === previousState.windows) return;
-    for (const [windowId, ownerKey] of sandboxOwnerByChatWindow) {
-      if (state.windows[windowId]) continue;
-      releaseSandboxOwner(windowId, ownerKey);
-    }
-  });
-}
-
-interface ChatLaunchPayload {
-  sessionId?: string;
-}
-
-function readPayloadSessionId(payload: unknown): string | null {
-  if (payload && typeof payload === 'object') {
-    const sid = (payload as ChatLaunchPayload).sessionId;
-    if (typeof sid === 'string' && sid.trim()) return sid;
-  }
-  return null;
+function dispatchSessionNavigation(sessionId: string): () => void {
+  const timers = [0, 400, 1200].map((delay) => window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
+  }, delay));
+  return () => timers.forEach((timer) => window.clearTimeout(timer));
 }
 
 export const ChatAppWindow: React.FC<AppWindowProps> = ({
-  windowId,
   instanceKey,
-  launchPayload,
-  isActive,
-  isVisible,
-  renderThrottleMs = 0,
   onTitleChange,
 }) => {
   const { t } = useTranslation('workbench');
-
-  const payloadSessionId = useMemo(() => readPayloadSessionId(launchPayload), [launchPayload]);
-  const [createdSessionId, setCreatedSessionId] = useState<string | null>(
-    () => autoCreatedSessionByWindow.get(windowId) ?? null,
+  const { ref, sizeClass } = useWbSysSize();
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(
+    () => sessionManager.getCurrentSessionId() ?? instanceKey,
   );
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createAttempt, setCreateAttempt] = useState(0);
-  const creationInFlightRef = useRef(false);
+  const storeUnsubscribeRef = useRef<(() => void) | null>(null);
 
-  const sessionId = instanceKey ?? payloadSessionId ?? createdSessionId;
-  const renderedSessionIdRef = useRef(sessionId);
-  renderedSessionIdRef.current = sessionId;
+  const syncWindowTitle = useCallback((sessionId: string | null) => {
+    storeUnsubscribeRef.current?.();
+    storeUnsubscribeRef.current = null;
 
-  // WindowBody 在 frozen 档会卸载应用子树；那不是关窗，Sandbox 预览应在
-  // 唤醒后恢复。只有会话真的变化，或 windowStore 已移除窗口时才释放 owner。
-  useEffect(() => {
-    if (!sessionId) return;
-    const ownerKey = createChatSandboxOwnerKey(sessionId);
-    ensureSandboxWindowWatcher();
-    const previousOwnerKey = sandboxOwnerByChatWindow.get(windowId);
-    if (previousOwnerKey && previousOwnerKey !== ownerKey) {
-      releaseSandboxOwner(windowId, previousOwnerKey);
-    }
-    sandboxOwnerByChatWindow.set(windowId, ownerKey);
-    return () => {
-      const sessionChanged = renderedSessionIdRef.current !== sessionId;
-      const windowStillExists = Boolean(useWindowStore.getState().windows[windowId]);
-      if (sessionChanged || !windowStillExists) {
-        releaseSandboxOwner(windowId, ownerKey);
-      }
-    };
-  }, [sessionId, windowId]);
-
-  // 兜底自动建会话（Dock 无 instanceKey 直接 launch 的场景）
-  // 注意：不用 effect-cleanup 的 disposed 标记 gate setState——StrictMode 双跑 effect 时
-  // 首轮 promise 的 setState 会被误吞导致永久 loading；React 18 对已卸载组件的
-  // setState 本身是安全 no-op，靠 creationInFlightRef 防重复创建即可。
-  useEffect(() => {
-    if (sessionId) return;
-    const remembered = autoCreatedSessionByWindow.get(windowId);
-    if (remembered) {
-      setCreatedSessionId(remembered);
+    const fallback = t('workbench:apps.chat.untitledSession', '新对话');
+    if (!sessionId) {
+      onTitleChange(fallback);
       return;
     }
-    if (creationInFlightRef.current) return;
-    creationInFlightRef.current = true;
-    setCreateError(null);
 
-    createSessionWithDefaults({ mode: 'chat', title: null })
-      .then((session) => {
-        autoCreatedSessionByWindow.set(windowId, session.id);
-        window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
-        setCreatedSessionId(session.id);
-      })
-      .catch((error: unknown) => {
-        setCreateError(getErrorMessage(error));
-      })
-      .finally(() => {
-        creationInFlightRef.current = false;
-      });
-  }, [sessionId, windowId, createAttempt]);
-
-  // 标题同步：订阅会话 store 的 title（后端自动生成标题后更新窗口标题）
-  useEffect(() => {
-    if (!sessionId) return;
     const store = sessionManager.get(sessionId);
-    const fallbackTitle = t('apps.chat.untitledSession', '新对话');
-
-    const applyTitle = (title: string | null | undefined) => {
-      const trimmed = typeof title === 'string' ? title.trim() : '';
-      onTitleChange(trimmed || fallbackTitle);
-    };
-
-    const subscribeToTitle = (target: NonNullable<typeof store>) => {
-      applyTitle(target.getState().title);
-      return target.subscribe((state, prevState) => {
-        if (state.title !== prevState.title) {
-          applyTitle(state.title);
-        }
-      });
-    };
-
     if (!store) {
-      // store 尚未创建（surface 挂载中会创建）；先给兜底标题，下一帧再取。
-      // 注意：迟到的 store 也必须订阅，否则后端自动生成标题后窗口标题不再更新
-      applyTitle(null);
-      let unsubscribeLate: (() => void) | undefined;
-      const timer = window.setTimeout(() => {
-        const late = sessionManager.get(sessionId);
-        if (late) {
-          unsubscribeLate = subscribeToTitle(late);
-        }
-      }, 0);
-      return () => {
-        window.clearTimeout(timer);
-        unsubscribeLate?.();
-      };
+      onTitleChange(fallback);
+      return;
     }
 
-    return subscribeToTitle(store);
-  }, [sessionId, onTitleChange, t]);
-
-  // 多窗隔离适配：聚焦窗口拥有全局“当前会话”指针
-  useEffect(() => {
-    if (!isActive || !sessionId) return;
-    sessionManager.setCurrentSessionId(sessionId);
-  }, [isActive, sessionId]);
-
-  // 卸载（关窗或冻结）时，若全局指针仍指向本窗会话则清空，避免悬挂指针
-  useEffect(() => {
-    if (!sessionId) return;
-    return () => {
-      if (sessionManager.getCurrentSessionId() === sessionId) {
-        sessionManager.setCurrentSessionId(null);
-      }
+    const applyTitle = () => {
+      onTitleChange(getSessionTitleText(store.getState().title, fallback));
     };
-  }, [sessionId]);
+    applyTitle();
+    storeUnsubscribeRef.current = store.subscribe((state, previousState) => {
+      if (state.title !== previousState.title) applyTitle();
+    });
+  }, [onTitleChange, t]);
 
-  if (createError) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <Warning size={28} className="text-destructive" aria-hidden="true" />
-        <div className="text-sm font-medium text-foreground">
-          {t('apps.chat.createFailed', '创建会话失败')}
-        </div>
-        <div className="max-w-[320px] text-xs text-muted-foreground break-words">{createError}</div>
-        <button
-          type="button"
-          className="rounded-md border border-border px-3 py-1.5 text-sm text-foreground hover:bg-muted"
-          onClick={() => {
-            setCreateError(null);
-            setCreateAttempt((n) => n + 1);
-          }}
-        >
-          {t('apps.chat.retry', '重试')}
-        </button>
-      </div>
-    );
-  }
+  useEffect(() => {
+    syncWindowTitle(activeSessionId);
+    return () => {
+      storeUnsubscribeRef.current?.();
+      storeUnsubscribeRef.current = null;
+    };
+  }, [activeSessionId, syncWindowTitle]);
 
-  if (!sessionId) {
-    // O16：自动建会话等待态用消息气泡骨架屏占位（替代转圈），
-    // 与 ChatWindowFrame 的 chunk 加载骨架 / legacy 冷启动骨架视觉连续
-    return <ChatWindowSkeleton statusText={t('apps.chat.preparing', '正在准备会话…')} />;
-  }
+  useEffect(() => sessionManager.subscribe((event) => {
+    if (event.type === 'current-session-changed') {
+      setActiveSessionId(event.sessionId || null);
+    } else if (event.type === 'session-created' && event.sessionId === activeSessionId) {
+      syncWindowTitle(activeSessionId);
+    }
+  }), [activeSessionId, syncWindowTitle]);
+
+  // 首次由历史会话入口打开窗口时，在 ChatV2Page 完成冷启动后切到目标会话。
+  useEffect(() => {
+    if (!instanceKey || sessionManager.getCurrentSessionId()) return;
+    return dispatchSessionNavigation(instanceKey);
+  }, [instanceKey]);
 
   return (
-    <ChatSessionSurface
-      sessionId={sessionId}
-      isActive={isActive}
-      isVisible={isVisible}
-      renderThrottleMs={renderThrottleMs}
-      className="h-full"
-    />
+    <div
+      ref={ref}
+      className="wb-chat-app-host h-full w-full min-w-0 overflow-hidden bg-background"
+      style={SHELL_VAR_RESET}
+      data-wb-chat-app
+    >
+      <WbSysSidebarLayout
+        sizeClass={sizeClass}
+        navLabel={t('workbench:apps.chat.sessionNav', '会话导航')}
+        sidebar={(
+          <ModernSidebar
+            currentView="chat-v2"
+            onViewChange={() => {}}
+            navigationScope="chat"
+            sidebarCollapsed={false}
+          />
+        )}
+      >
+        <div className="relative h-full min-h-0 min-w-0 overflow-hidden">
+          <Suspense fallback={<WbSysSkeleton variant="surface" />}>
+            <ChatV2Page />
+          </Suspense>
+        </div>
+      </WbSysSidebarLayout>
+    </div>
   );
 };
 

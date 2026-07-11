@@ -11,6 +11,12 @@ export type CrepeSelectionSnapshot = {
   to: number;
 };
 
+export type CrepeAgentInsertResult = {
+  from: number;
+  to: number;
+  cursor: number;
+};
+
 export type { AgentHighlightMeta };
 
 /**
@@ -26,6 +32,15 @@ export interface CrepeEditorApi {
   captureSelection?: () => CrepeSelectionSnapshot | null;
 
   restoreSelection?: (snapshot: CrepeSelectionSnapshot | null) => void;
+
+  /** 编辑器 DOM 当前是否真实持有焦点；selection 快照本身不代表用户仍在编辑。 */
+  hasFocus?: () => boolean;
+
+  /**
+   * 等待当前编辑内容持久化。Workbench ACR 会在返回 completed 前调用；
+   * 基础 Crepe 可不实现，由承载笔记保存队列的上层注入。
+   */
+  flushPendingSave?: () => Promise<void>;
   
   /** 聚焦编辑器 */
   focus: () => void;
@@ -56,6 +71,12 @@ export interface CrepeEditorApi {
    * @returns 插入后的新光标位置；失败返回原 pos
    */
   agentInsert: (text: string, pos: number) => number;
+
+  /**
+   * 在块边界插入并解析 Markdown，保留列表、标题、公式等文档结构。
+   * 失败时返回 null，调用方可降级为纯文本插入。
+   */
+  agentInsertMarkdown?: (markdown: string, pos: number) => CrepeAgentInsertResult | null;
 
   /**
    * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）

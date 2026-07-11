@@ -222,20 +222,38 @@ pub(crate) fn prepare_external_tool_schema(
     {
         return None;
     }
+    // `load_skills` is a trusted local control tool when it has no MCP source.
+    // Giving it the generic `mcp_` prefix makes the executor registry route it
+    // to the external bridge instead of SkillsExecutor. An external server that
+    // advertises the same name must remain isolated behind the MCP namespace.
+    let trusted_load_skills = tool.server_id.is_none()
+        && matches!(
+            tool.name.as_str(),
+            "load_skills" | "builtin-load_skills" | "builtin:load_skills" | "mcp_load_skills"
+        );
+    let bridge_name = if trusted_load_skills {
+        "load_skills"
+    } else {
+        tool.name.as_str()
+    };
     let prepared = prepare_external_tool(
-        &tool.name,
+        bridge_name,
         tool.server_id.as_deref(),
         tool.description.as_deref(),
         tool.input_schema.as_ref(),
         CanonicalExternalToolConfig {
-            internal_prefix: Some(EXTERNAL_MCP_TOOL_PREFIX),
+            internal_prefix: Some(if trusted_load_skills {
+                BUILTIN_NAMESPACE
+            } else {
+                EXTERNAL_MCP_TOOL_PREFIX
+            }),
             // `server_id` is the source marker for selected external MCP
             // schemas. Only trusted builtin/skill schemas (no server_id) may
             // retain `builtin-`; otherwise an external server could claim a
             // builtin executor name and cross the execution boundary.
             preserve_prefix: tool.server_id.is_none().then_some(BUILTIN_NAMESPACE),
             api_name_prefix: None,
-            include_server_suffix,
+            include_server_suffix: include_server_suffix && tool.server_id.is_some(),
             api_name_source: ApiNameSource::InternalToolName,
         },
     )?;
@@ -982,5 +1000,50 @@ mod tests {
         };
 
         assert!(prepare_external_tool_schema(&tool, true).is_none());
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_routes_trusted_load_skills_to_builtin() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "load_skills".to_string(),
+            server_id: None,
+            description: Some("Load skills".to_string()),
+            input_schema: Some(json!({ "type": "object" })),
+        };
+
+        let prepared =
+            prepare_external_tool_schema(&tool, true).expect("schema should be prepared");
+
+        assert_eq!(prepared.raw_tool_name, "builtin-load_skills");
+        assert_eq!(prepared.api_name, "builtin-load_skills");
+        assert_eq!(prepared.preferred_server_id, None);
+        assert!(crate::chat_v2::tools::SkillsExecutor::is_load_skills_tool(
+            &prepared.raw_tool_name
+        ));
+        assert!(!crate::chat_v2::tools::types::is_external_mcp_tool_name(
+            &prepared.raw_tool_name
+        ));
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_keeps_external_load_skills_isolated() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "load_skills".to_string(),
+            server_id: Some("external-server".to_string()),
+            description: Some("External tool".to_string()),
+            input_schema: Some(json!({ "type": "object" })),
+        };
+
+        let prepared =
+            prepare_external_tool_schema(&tool, true).expect("schema should be prepared");
+
+        assert_eq!(prepared.raw_tool_name, "mcp_load_skills");
+        assert!(crate::chat_v2::tools::types::is_external_mcp_tool_name(
+            &prepared.raw_tool_name
+        ));
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
+            Some("[\"mcp-route-v1\",\"mcp_load_skills\",\"external-server\"]".to_string())
+        );
     }
 }

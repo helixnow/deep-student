@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/utils/cn';
-import { isEditableTarget } from '@/features/workbench';
+import { isEditableTarget } from '../isEditableTarget';
 import { useFsrsReviewStore, type FsrsRating } from '../store/fsrsReviewStore';
 
 const RATINGS: Array<{ value: FsrsRating; labelKey: string; fallback: string; tone: string }> = [

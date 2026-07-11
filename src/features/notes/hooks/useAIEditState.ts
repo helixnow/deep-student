@@ -49,7 +49,7 @@ export interface AIEditState {
 export interface UseAIEditStateReturn {
   state: AIEditState;
   startEdit: (request: CanvasAIEditRequest, originalContent: string) => CanvasAIEditResult | null;
-  accept: () => { proposedContent: string; result: CanvasAIEditResult } | null;
+  accept: (options?: { clear?: boolean }) => { proposedContent: string; result: CanvasAIEditResult } | null;
   reject: () => CanvasAIEditResult | null;
   clear: () => void;
 }
@@ -108,6 +108,10 @@ function computeProposedContent(
         const parts = originalContent.split(searchPattern);
         replaceCount = parts.length - 1;
         newContent = parts.join(replaceWith);
+      }
+
+      if (replaceCount === 0) {
+        return { content: originalContent, error: '未找到要替换的内容' };
       }
       
       return { content: newContent, replaceCount };
@@ -244,7 +248,7 @@ export function useAIEditState(): UseAIEditStateReturn {
     return null;
   }, []);
 
-  const accept = useCallback((): { proposedContent: string; result: CanvasAIEditResult } | null => {
+  const accept = useCallback((options?: { clear?: boolean }): { proposedContent: string; result: CanvasAIEditResult } | null => {
     const current = stateRef.current;
     if (!current.isActive || !current.request) {
       return null;
@@ -277,7 +281,9 @@ export function useAIEditState(): UseAIEditStateReturn {
     
     const proposedContent = current.proposedContent;
     
-    setState(initialState);
+    if (options?.clear !== false) {
+      setState(initialState);
+    }
     
     console.log('[useAIEditState] Accepted edit:', result.requestId);
     
