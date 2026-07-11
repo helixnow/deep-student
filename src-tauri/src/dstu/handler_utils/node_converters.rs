@@ -526,9 +526,9 @@ mod tests {
     #[test]
     fn test_get_textbook_preview_type_text_ebook() {
         // 电子书和富文本
-        assert_eq!(get_textbook_preview_type("book.epub"), PreviewType::Text);
+        assert_eq!(get_textbook_preview_type("book.epub"), PreviewType::Epub);
         assert_eq!(get_textbook_preview_type("document.rtf"), PreviewType::Text);
-        assert_eq!(get_textbook_preview_type("BOOK.EPUB"), PreviewType::Text);
+        assert_eq!(get_textbook_preview_type("BOOK.EPUB"), PreviewType::Epub);
     }
 
     #[test]

@@ -998,7 +998,7 @@ impl WorkspaceCoordinator {
     /// 进入维护模式：暂停所有活跃工作区的数据库连接池
     ///
     /// 在备份/恢复操作期间调用，确保 ws_*.db 文件不被锁定。
-    /// 单个工作区失败不阻断其他工作区。
+    /// 所有工作区都必须成功暂停，否则调用方不能宣称获得一致快照。
     pub fn enter_maintenance_mode(&self) -> Result<(), String> {
         let instances = self.instances.read().unwrap_or_else(|poisoned| {
             log::error!("[WorkspaceCoordinator] RwLock poisoned (read)! Attempting recovery");
@@ -1028,6 +1028,11 @@ impl WorkspaceCoordinator {
                 failures.len(),
                 failures
             );
+            return Err(format!(
+                "{} 个工作区无法进入维护模式: {}",
+                failures.len(),
+                failures.join("; ")
+            ));
         }
 
         Ok(())

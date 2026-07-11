@@ -205,7 +205,7 @@ export interface AuditLogPagedResponse {
 // ==================== 备份相关类型 ====================
 
 /** 备份类型 */
-export type BackupType = 'full' | 'incremental';
+export type BackupType = 'full' | 'partial_overlay' | 'legacy_unknown' | 'incremental';
 
 /** 备份结果响应 */
 export interface BackupResultResponse {

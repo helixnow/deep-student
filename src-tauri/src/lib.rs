@@ -509,6 +509,31 @@ pub fn run() {
                                 audit_health.record_failure("审计数据库初始化失败，默认实例创建失败");
                             }
                         }
+
+                        match crate::data_governance::commands_restore::finalize_restore_activation(
+                            &active_app_data_dir,
+                        ) {
+                            Ok(true) => info!("✅ [DataGovernance] 恢复槽激活事务已提交"),
+                            Ok(false) => {}
+                            Err(error) => {
+                                data_governance_init_failed = true;
+                                crate::data_governance::commands::persist_migration_error(
+                                    &active_app_data_dir,
+                                    &error,
+                                );
+                                let _ = app_handle.emit(
+                                    "data-governance-migration-status",
+                                    serde_json::json!({
+                                        "success": false,
+                                        "error": error,
+                                        "degraded_mode": true,
+                                        "maintenance_mode_forced": true,
+                                        "restore_activation_failed": true
+                                    }),
+                                );
+                                warn!("恢复槽激活事务提交失败，强制进入维护模式");
+                            }
+                        }
                     }
                     Err(e) => {
                         let error_msg = e.to_string();
@@ -1344,6 +1369,7 @@ pub fn run() {
             ,crate::chat_v2::runtime_roots::chat_v2_reset_workspace_root
             ,crate::chat_v2::runtime_roots::chat_v2_authorize_runtime_root
             ,crate::chat_v2::runtime_roots::chat_v2_revoke_runtime_root
+            ,crate::chat_v2::runtime_roots::chat_v2_set_skill_trust
             ,crate::chat_v2::runtime_roots::chat_v2_resolve_runtime_path
             ,crate::chat_v2::runtime_roots::chat_v2_delete_artifact
             ,crate::chat_v2::runtime_roots::chat_v2_revert_artifact_write

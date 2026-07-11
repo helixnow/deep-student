@@ -1488,6 +1488,36 @@ impl VfsAttachmentRepo {
         Self::get_content_with_conn(&conn, db.blobs_dir(), id)
     }
 
+    /// 获取有明确大小上限的 Base64 内容。文件源在读取前检查并使用有界读取；
+    /// 内联 Base64 按解码后的保守上界检查，避免超大内容跨 IPC。
+    pub fn get_content_bounded(
+        db: &VfsDatabase,
+        id: &str,
+        max_bytes: u64,
+    ) -> VfsResult<Option<String>> {
+        let conn = db.get_conn_safe()?;
+        match Self::get_content_source_with_conn(&conn, db.blobs_dir(), id)? {
+            Some(VfsAttachmentContentSource::Base64(data)) => {
+                let decoded_upper_bound = (data.trim().len() as u64).saturating_mul(3) / 4;
+                if decoded_upper_bound > max_bytes {
+                    return Err(VfsError::InvalidArgument {
+                        param: "max_bytes".to_string(),
+                        reason: format!(
+                            "attachment content exceeds preview limit: {} > {} bytes",
+                            decoded_upper_bound, max_bytes
+                        ),
+                    });
+                }
+                Ok(Some(data))
+            }
+            Some(VfsAttachmentContentSource::File(path)) => {
+                let data = Self::read_file_bounded(&path, max_bytes)?;
+                Ok(Some(STANDARD.encode(data)))
+            }
+            None => Ok(None),
+        }
+    }
+
     /// 获取附件原始内容来源（使用现有连接）。磁盘内容只返回安全路径，不做全量读取。
     pub(crate) fn get_content_source_with_conn(
         conn: &Connection,

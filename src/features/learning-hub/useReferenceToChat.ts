@@ -37,6 +37,8 @@ import { TEXTBOOK_TYPE_ID } from '@/features/chat/context/definitions/textbook';
 import { EXAM_TYPE_ID } from '@/features/chat/context/definitions/exam';
 import { ESSAY_TYPE_ID } from '@/features/chat/context/definitions/essay';
 import { TRANSLATION_TYPE_ID } from '@/features/chat/context/definitions/translation';
+import { FILE_TYPE_ID } from '@/features/chat/context/definitions/file';
+import { IMAGE_TYPE_ID } from '@/features/chat/context/definitions/image';
 
 // ============================================================================
 // 类型定义
@@ -60,7 +62,7 @@ export interface PageRange {
  * - essay: 作文
  * - translation: 翻译
  */
-export type SourceType = 'note' | 'exam' | 'textbook' | 'essay' | 'translation';
+export type SourceType = 'note' | 'exam' | 'textbook' | 'essay' | 'translation' | 'file' | 'image';
 
 /**
  * 引用到对话的参数
@@ -155,6 +157,10 @@ function getResourceType(sourceType: SourceType): StoreResourceType {
       return 'essay';
     case 'translation':
       return 'translation';
+    case 'file':
+      return 'file';
+    case 'image':
+      return 'image';
     default:
       return 'file';
   }
@@ -175,6 +181,10 @@ function getTypeId(sourceType: SourceType): string {
       return ESSAY_TYPE_ID;
     case 'translation':
       return TRANSLATION_TYPE_ID;
+    case 'file':
+      return FILE_TYPE_ID;
+    case 'image':
+      return IMAGE_TYPE_ID;
     default:
       return 'file';
   }

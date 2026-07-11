@@ -37,6 +37,7 @@ export type SourceDatabase = 'textbooks' | 'chat_v2' | 'exam_sessions';
  * | docx      | Word 文档预览     | DOCX 文件           |
  * | xlsx      | Excel 表格预览    | XLSX/XLS/ODS 文件   |
  * | pptx      | PPT 演示预览      | PPTX 文件           |
+ * | epub      | EPUB 阅读器        | EPUB 电子书          |
  * | text      | 纯文本预览        | TXT/MD/HTML 等      |
  * | audio     | 音频预览          | MP3/WAV/OGG 等      |
  * | video     | 视频预览          | MP4/WEBM/MOV 等     |
@@ -47,7 +48,7 @@ export type SourceDatabase = 'textbooks' | 'chat_v2' | 'exam_sessions';
  * ★ 2026-01 添加：docx/xlsx/pptx/text 类型，与后端 DstuPreviewType 对齐
  * ★ 2026-01 添加：audio/video 类型，支持音视频预览
  */
-export type PreviewType = 'markdown' | 'pdf' | 'image' | 'exam' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'audio' | 'video' | 'mindmap' | 'none';
+export type PreviewType = 'markdown' | 'pdf' | 'image' | 'exam' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'mindmap' | 'none';
 
 /**
  * 引用节点

@@ -2613,3 +2613,180 @@ async fn assets_manifest_decrypt_failure_fails_closed() {
         .unwrap();
     assert_eq!(out_c.downloaded, 1, "正确密码端必须能正常下载资产");
 }
+
+#[tokio::test]
+async fn append_only_asset_manifests_merge_without_lost_entries() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let active_b = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    std::fs::create_dir_all(active_b.path().join("images")).unwrap();
+    std::fs::write(active_a.path().join("images/a.txt"), b"device-a").unwrap();
+    std::fs::write(active_b.path().join("images/b.txt"), b"device-b").unwrap();
+
+    let manager_a = SyncManager::new("append-device-a".into());
+    let manager_b = SyncManager::new("append-device-b".into());
+    manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+    manager_b
+        .sync_asset_directories(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Bidirectional,
+        )
+        .await
+        .unwrap();
+
+    let keys = storage.keys();
+    let manifest_keys = keys
+        .iter()
+        .filter(|key| key.starts_with("data_governance/file_manifests/assets/"))
+        .collect::<Vec<_>>();
+    assert_eq!(manifest_keys.len(), 2, "每个设备应发布独立的不可变清单");
+    assert!(
+        !keys
+            .iter()
+            .any(|key| key == "data_governance/assets_manifest.json"),
+        "新客户端不得再覆盖写旧共享清单"
+    );
+    assert_eq!(
+        keys.iter()
+            .filter(|key| key.starts_with("data_governance/asset_objects/"))
+            .count(),
+        2,
+        "资产对象必须按内容摘要寻址"
+    );
+
+    let active_c = TempDir::new().unwrap();
+    let app_c = TempDir::new().unwrap();
+    let manager_c = SyncManager::new("append-device-c".into());
+    let outcome = manager_c
+        .sync_asset_directories(
+            &storage,
+            active_c.path(),
+            app_c.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome.downloaded, 2);
+    assert_eq!(
+        std::fs::read(active_c.path().join("images/a.txt")).unwrap(),
+        b"device-a"
+    );
+    assert_eq!(
+        std::fs::read(active_c.path().join("images/b.txt")).unwrap(),
+        b"device-b"
+    );
+}
+
+#[tokio::test]
+async fn corrupt_append_only_file_manifests_fail_closed() {
+    let storage = MockCloudStorage::new();
+    let manager = SyncManager::new("manifest-corruption-device".into());
+
+    storage
+        .put(
+            "data_governance/file_manifests/assets/device/bad.json",
+            b"{not-json",
+        )
+        .await
+        .unwrap();
+    let active = TempDir::new().unwrap();
+    let app_data = TempDir::new().unwrap();
+    assert!(manager
+        .sync_asset_directories(
+            &storage,
+            active.path(),
+            app_data.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .is_err());
+
+    storage
+        .delete("data_governance/file_manifests/assets/device/bad.json")
+        .await
+        .unwrap();
+    storage
+        .put(
+            "data_governance/file_manifests/workspaces/device/bad.json",
+            b"[]",
+        )
+        .await
+        .unwrap();
+    assert!(manager
+        .sync_workspace_databases(&storage, active.path(), SyncDirection::Download)
+        .await
+        .is_err());
+
+    storage
+        .delete("data_governance/file_manifests/workspaces/device/bad.json")
+        .await
+        .unwrap();
+    storage
+        .put(
+            "data_governance/file_manifests/blobs/device/bad.json",
+            b"null",
+        )
+        .await
+        .unwrap();
+    let blobs = TempDir::new().unwrap();
+    assert!(manager
+        .sync_vfs_blobs(&storage, blobs.path(), SyncDirection::Download)
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn download_only_asset_tombstone_does_not_rehydrate_in_same_round() {
+    let storage = MockCloudStorage::new();
+    let active_a = TempDir::new().unwrap();
+    let app_a = TempDir::new().unwrap();
+    std::fs::create_dir_all(active_a.path().join("images")).unwrap();
+    std::fs::write(active_a.path().join("images/deleted.txt"), b"stale").unwrap();
+
+    let manager_a = SyncManager::new("tombstone-device-a".into());
+    manager_a
+        .sync_asset_directories(
+            &storage,
+            active_a.path(),
+            app_a.path(),
+            SyncDirection::Upload,
+        )
+        .await
+        .unwrap();
+    manager_a
+        .mark_asset_deleted(&storage, "active/images/deleted.txt", Some(5))
+        .await
+        .unwrap();
+
+    let active_b = TempDir::new().unwrap();
+    let app_b = TempDir::new().unwrap();
+    let manager_b = SyncManager::new("tombstone-device-b".into());
+    let outcome = manager_b
+        .sync_asset_directories_with_tombstones(
+            &storage,
+            active_b.path(),
+            app_b.path(),
+            SyncDirection::Download,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.downloaded, 0);
+    assert!(
+        !active_b.path().join("images/deleted.txt").exists(),
+        "download-only 同一轮不得从陈旧清单复活刚消费的删除"
+    );
+}

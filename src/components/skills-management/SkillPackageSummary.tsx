@@ -116,15 +116,19 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
   const requiresEnv = skill.requires?.env ?? [];
   const hasRequires = requiresBins.length > 0 || requiresEnv.length > 0;
 
-  const handleTrustToggle = useCallback(() => {
-    if (trust === 'untrusted') {
-      setSkillTrustOverride(skill.id, 'trusted');
-    } else {
-      setSkillTrustOverride(skill.id, 'untrusted');
+  const handleTrustToggle = useCallback(async () => {
+    try {
+      await setSkillTrustOverride(
+        skill.id,
+        trust === 'untrusted' ? 'trusted' : 'untrusted',
+        skill,
+      );
+      setTrustTick((v) => v + 1);
+      onTrustChanged?.();
+    } catch (error) {
+      console.error('[SkillTrust] Failed to update trust:', error);
     }
-    setTrustTick((v) => v + 1);
-    onTrustChanged?.();
-  }, [skill.id, trust, onTrustChanged]);
+  }, [skill, trust, onTrustChanged]);
 
   if (variant === 'card') {
     return (

@@ -1,10 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::process::{Child, Command};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SandboxPolicy {
     pub readable_roots: Vec<PathBuf>,
     pub writable_roots: Vec<PathBuf>,
@@ -12,6 +12,12 @@ pub struct SandboxPolicy {
     pub protected_write_roots: Vec<PathBuf>,
     pub allow_network: bool,
 }
+
+#[cfg(windows)]
+mod windows;
+
+#[cfg(windows)]
+pub use windows::maybe_run_helper;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -210,7 +216,7 @@ mod macos {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", windows)))]
 impl SandboxBackend for PlatformSandboxBackend {
     fn capability(&self) -> SandboxCapability {
         SandboxCapability::Unavailable {
@@ -260,7 +266,12 @@ pub fn terminate_process_group(child: &mut Child) -> Result<(), String> {
         Ok(())
     }
 
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    {
+        windows::terminate_job_for_child(child)
+    }
+
+    #[cfg(not(any(unix, windows)))]
     {
         let _ = child;
         Err("Process-group termination is unavailable on this platform".to_string())

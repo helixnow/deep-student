@@ -610,14 +610,26 @@ pub fn get_device_id() -> String {
 /// restore 会把本机数据回退到过去时间点；继续沿用旧 device_id 会触发
 /// data_governance 的回声过滤，使旧身份在备份点之后上传过的变更永远不被本机重新消费。
 /// 轮换后本机以“新设备”身份重新追赶旧设备目录。
-pub fn rotate_device_id_after_restore() -> std::io::Result<(String, String)> {
-    let old_id = get_device_id();
+pub fn generate_device_id_after_restore() -> String {
     let hostname = std::env::var("COMPUTERNAME")
         .or_else(|_| std::env::var("HOSTNAME"))
         .or_else(|_| std::env::var("HOST"))
         .unwrap_or_else(|_| "device".to_string());
     let short_uuid = &Uuid::new_v4().to_string()[..8];
-    let new_id = format!("{}-{}", hostname, short_uuid);
+    format!("{}-{}", hostname, short_uuid)
+}
+
+/// Persist a pre-generated restore identity. Supplying the identity from the
+/// restore journal makes retries idempotent after a crash or partial I/O error.
+pub fn persist_device_id_after_restore(new_id: &str) -> std::io::Result<()> {
+    use std::io::Write;
+
+    if new_id.trim().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "new device id must not be empty",
+        ));
+    }
 
     let possible_paths: Vec<std::path::PathBuf> =
         [dirs::data_local_dir(), dirs::config_dir(), dirs::home_dir()]
@@ -632,11 +644,33 @@ pub fn rotate_device_id_after_restore() -> std::io::Result<(String, String)> {
             std::fs::create_dir_all(parent)?;
         }
         if path.exists() || !wrote_any {
-            std::fs::write(path, &new_id)?;
+            let parent = path.parent().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "device id path has no parent",
+                )
+            })?;
+            let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+            temporary.write_all(new_id.as_bytes())?;
+            temporary.as_file().sync_all()?;
+            temporary.persist(path).map_err(|error| error.error)?;
             wrote_any = true;
         }
     }
-    std::env::set_var("DEVICE_ID", &new_id);
+    if !wrote_any {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no writable device id location",
+        ));
+    }
+    std::env::set_var("DEVICE_ID", new_id);
+    Ok(())
+}
+
+pub fn rotate_device_id_after_restore() -> std::io::Result<(String, String)> {
+    let old_id = get_device_id();
+    let new_id = generate_device_id_after_restore();
+    persist_device_id_after_restore(&new_id)?;
     tracing::info!("设备 ID 已在恢复后轮换: old={}, new={}", old_id, new_id);
     Ok((old_id, new_id))
 }

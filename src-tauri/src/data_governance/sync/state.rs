@@ -396,21 +396,27 @@ impl SyncStateStore {
         reason: &str,
     ) -> Result<(), SyncError> {
         self.with_conn(|conn| {
-            conn.execute(
+            let transaction = conn.unchecked_transaction().map_err(|e| {
+                SyncError::Database(format!("开始设备轮换事务失败: {}", e))
+            })?;
+            transaction.execute(
                 "INSERT OR REPLACE INTO device_history(old_device_id, new_device_id, rotated_at, reason)
                  VALUES(?1, ?2, ?3, ?4)",
                 params![old_device_id, new_device_id, Utc::now().to_rfc3339(), reason],
             )
             .map_err(|e| SyncError::Database(format!("记录设备轮换失败: {}", e)))?;
-            conn.execute(
+            transaction.execute(
                 "UPDATE consume_cursor SET last_seq=0, updated_at=?1",
                 params![Utc::now().to_rfc3339()],
             )
             .map_err(|e| SyncError::Database(format!("重置消费游标失败: {}", e)))?;
-            conn.execute("DELETE FROM legacy_processed_key", [])
+            transaction.execute("DELETE FROM legacy_processed_key", [])
                 .map_err(|e| SyncError::Database(format!("清理 legacy processed key 失败: {}", e)))?;
-            conn.execute("DELETE FROM tombstone_watermark", [])
+            transaction.execute("DELETE FROM tombstone_watermark", [])
                 .map_err(|e| SyncError::Database(format!("重置 tombstone 水位失败: {}", e)))?;
+            transaction.commit().map_err(|e| {
+                SyncError::Database(format!("提交设备轮换事务失败: {}", e))
+            })?;
             Ok(())
         })
     }

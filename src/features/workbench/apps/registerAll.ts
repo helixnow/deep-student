@@ -14,6 +14,7 @@ import './chat/register';
 import './content/register';
 import './notes/register';
 import './files/register';
+import './preview/register';
 import { registerSystemApps } from './system/register';
 import { registerSandboxApp } from './sandbox/register';
 import { registerBrowserApp } from './browser/register';

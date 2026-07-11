@@ -93,6 +93,7 @@ pub(super) fn resolve_database_path(db_id: &DatabaseId, active_dir: &Path) -> Pa
 }
 
 /// 多库应用结果
+#[derive(Debug)]
 pub(super) struct ApplyToDbsResult {
     pub(super) total_success: usize,
     pub(super) total_skipped: usize,
@@ -367,11 +368,13 @@ pub(super) fn apply_downloaded_changes_to_databases(
             None => match infer_database_from_table(&change.table_name) {
                 Some(name) => name.to_string(),
                 None => {
-                    warn!(
-                        "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
+                    let message = format!(
+                        "Legacy 变更表名 '{}' 无法推断目标数据库 (record_id={})",
                         change.table_name, change.record_id
                     );
-                    agg.total_skipped += 1;
+                    error!("[data_governance] {}，拒绝确认同步包", message);
+                    agg.total_failed += 1;
+                    agg.db_errors.push(("unknown".to_string(), message));
                     continue;
                 }
             },
@@ -387,23 +390,27 @@ pub(super) fn apply_downloaded_changes_to_databases(
         let db_path = match db_id {
             Some(id) => resolve_database_path(&id, active_dir),
             None => {
-                warn!(
-                    "[data_governance] 未知数据库名称 '{}', 跳过 {} 条变更",
+                let message = format!(
+                    "未知数据库名称 '{}'，{} 条变更没有可持久化的目标或隔离区",
                     db_name,
                     db_changes.len()
                 );
-                agg.total_skipped += db_changes.len();
+                error!("[data_governance] {}，拒绝确认同步包", message);
+                agg.total_failed += db_changes.len();
+                agg.db_errors.push((db_name.clone(), message));
                 continue;
             }
         };
 
         if !db_path.exists() {
-            warn!(
-                "[data_governance] 数据库文件不存在: {}, 跳过 {} 条变更",
+            let message = format!(
+                "目标数据库文件不存在: {}，{} 条变更无法应用或持久隔离",
                 db_path.display(),
                 db_changes.len()
             );
-            agg.total_skipped += db_changes.len();
+            error!("[data_governance] {}，拒绝确认同步包", message);
+            agg.total_failed += db_changes.len();
+            agg.db_errors.push((db_name.clone(), message));
             continue;
         }
 
@@ -628,6 +635,51 @@ mod tests {
             .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
             .unwrap();
         assert_eq!(timeout_ms, 5000);
+    }
+
+    fn routing_test_change(database_name: &str) -> SyncChangeWithData {
+        SyncChangeWithData {
+            change_log_id: None,
+            table_name: "notes".to_string(),
+            record_id: "note-routing".to_string(),
+            operation: ChangeOperation::Insert,
+            changed_at: "2026-07-10T12:00:00Z".to_string(),
+            data: Some(json!({
+                "id": "note-routing",
+                "title": "routing",
+                "updated_at": "2026-07-10T12:00:00Z"
+            })),
+            database_name: Some(database_name.to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("remote-device".to_string()),
+            source_seq: Some(1),
+        }
+    }
+
+    #[test]
+    fn missing_target_database_rejects_package_before_cursor_ack() {
+        let active_dir = tempfile::TempDir::new().unwrap();
+        let error = apply_downloaded_changes_to_databases(
+            &[routing_test_change("vfs")],
+            active_dir.path(),
+            MergeStrategy::KeepLatest,
+        )
+        .expect_err("缺失目标库必须让应用阶段失败，调用方因此不能提交游标");
+
+        assert!(error.contains("目标数据库文件不存在"));
+    }
+
+    #[test]
+    fn unknown_target_database_rejects_package_before_cursor_ack() {
+        let active_dir = tempfile::TempDir::new().unwrap();
+        let error = apply_downloaded_changes_to_databases(
+            &[routing_test_change("unknown_database")],
+            active_dir.path(),
+            MergeStrategy::KeepLatest,
+        )
+        .expect_err("未知目标库必须让应用阶段失败，调用方因此不能提交游标");
+
+        assert!(error.contains("未知数据库名称"));
     }
 
     #[test]
@@ -882,6 +934,87 @@ pub(super) async fn acquire_backup_global_permit(
     }
 }
 
+fn exit_backup_snapshot_barrier(app: &tauri::AppHandle) {
+    let Some(state) = app.try_state::<crate::commands::AppState>() else {
+        return;
+    };
+    let _ = state.database.exit_maintenance_mode();
+    let _ = state.database_manager.exit_maintenance_mode();
+    if let Some(vfs) = &state.vfs_db {
+        let _ = vfs.exit_maintenance_mode();
+    }
+    if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
+        let _ = chat.exit_maintenance_mode();
+    }
+    if let Some(usage) = app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>() {
+        let _ = usage.exit_maintenance_mode();
+    }
+    if let Some(workspaces) =
+        app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+    {
+        let _ = workspaces.exit_maintenance_mode();
+    }
+}
+
+/// Freeze every persisted database before assigning one snapshot epoch.
+/// Once the pools have checkpointed and detached, the sequential SQLite
+/// Backup API calls and asset scan observe a stable application-wide cut.
+struct BackupSnapshotBarrier {
+    app: tauri::AppHandle,
+}
+
+impl BackupSnapshotBarrier {
+    fn enter(app: &tauri::AppHandle) -> Result<Self, String> {
+        let state = app
+            .try_state::<crate::commands::AppState>()
+            .ok_or_else(|| "应用数据库状态尚未初始化".to_string())?;
+        let entered = (|| -> Result<(), String> {
+            state
+                .database
+                .enter_maintenance_mode()
+                .map_err(|e| format!("主数据库进入备份快照屏障失败: {}", e))?;
+            state
+                .database_manager
+                .enter_maintenance_mode()
+                .map_err(|e| format!("数据库连接池进入备份快照屏障失败: {}", e))?;
+            if let Some(vfs) = &state.vfs_db {
+                vfs.enter_maintenance_mode()
+                    .map_err(|e| format!("VFS 进入备份快照屏障失败: {}", e))?;
+            }
+            if let Some(chat) = app.try_state::<std::sync::Arc<crate::chat_v2::ChatV2Database>>() {
+                chat.enter_maintenance_mode()
+                    .map_err(|e| format!("Chat V2 进入备份快照屏障失败: {}", e))?;
+            }
+            if let Some(usage) =
+                app.try_state::<std::sync::Arc<crate::llm_usage::LlmUsageDatabase>>()
+            {
+                usage
+                    .enter_maintenance_mode()
+                    .map_err(|e| format!("LLM Usage 进入备份快照屏障失败: {}", e))?;
+            }
+            if let Some(workspaces) =
+                app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+            {
+                workspaces
+                    .enter_maintenance_mode()
+                    .map_err(|e| format!("工作区进入备份快照屏障失败: {}", e))?;
+            }
+            Ok(())
+        })();
+        if let Err(error) = entered {
+            exit_backup_snapshot_barrier(app);
+            return Err(error);
+        }
+        Ok(Self { app: app.clone() })
+    }
+}
+
+impl Drop for BackupSnapshotBarrier {
+    fn drop(&mut self) {
+        exit_backup_snapshot_barrier(&self.app);
+    }
+}
+
 /// 获取备份列表
 ///
 /// 返回所有可用的备份文件列表。
@@ -935,7 +1068,13 @@ pub async fn data_governance_get_backup_list(
                 backup_type: if m.is_incremental {
                     "incremental".to_string()
                 } else {
-                    "full".to_string()
+                    match m.snapshot_kind {
+                        super::backup::SnapshotKind::Full => "full".to_string(),
+                        super::backup::SnapshotKind::PartialOverlay => {
+                            "partial_overlay".to_string()
+                        }
+                        super::backup::SnapshotKind::LegacyUnknown => "legacy_unknown".to_string(),
+                    }
                 },
                 databases,
             }
@@ -1575,7 +1714,14 @@ async fn execute_backup_with_progress(
 
     // 创建备份管理器
     let mut manager = BackupManager::new(backup_dir);
-    manager.set_app_data_dir(app_data_dir.clone());
+    let active_data_dir = match get_active_data_dir(&app) {
+        Ok(dir) => dir,
+        Err(e) => {
+            job_ctx.fail(format!("获取活动数据目录失败: {}", e));
+            return;
+        }
+    };
+    manager.set_app_data_dir(active_data_dir);
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
     // 设置逐数据库进度回调（页面级细粒度）
@@ -1637,6 +1783,14 @@ async fn execute_backup_with_progress(
         job_ctx.cancelled(Some("用户取消备份".to_string()));
         return;
     }
+
+    let snapshot_barrier = match BackupSnapshotBarrier::enter(&app) {
+        Ok(barrier) => barrier,
+        Err(error) => {
+            job_ctx.fail(format!("无法建立一致备份快照: {}", error));
+            return;
+        }
+    };
 
     // 根据备份类型执行备份
     let result = match backup_type.as_str() {
@@ -1704,6 +1858,7 @@ async fn execute_backup_with_progress(
             }
         }
     };
+    drop(snapshot_barrier);
 
     if job_ctx.is_cancelled() {
         job_ctx.cancelled(Some("用户取消备份".to_string()));
@@ -2339,7 +2494,14 @@ async fn execute_tiered_backup_with_progress(
 
     // 创建备份管理器
     let mut manager = BackupManager::new(backup_dir.clone());
-    manager.set_app_data_dir(app_data_dir.clone());
+    let active_data_dir = match get_active_data_dir(&app) {
+        Ok(dir) => dir,
+        Err(e) => {
+            job_ctx.fail(format!("获取活动数据目录失败: {}", e));
+            return;
+        }
+    };
+    manager.set_app_data_dir(active_data_dir);
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
     // 阶段 3: 压缩/备份数据库 (15-80%)
@@ -2397,6 +2559,14 @@ async fn execute_tiered_backup_with_progress(
         );
     }
 
+    let snapshot_barrier = match BackupSnapshotBarrier::enter(&app) {
+        Ok(barrier) => barrier,
+        Err(error) => {
+            job_ctx.fail(format!("无法建立一致备份快照: {}", error));
+            return;
+        }
+    };
+
     // 执行实际的分层备份
     let result = match manager.backup_tiered(&selection) {
         Ok(r) => r,
@@ -2426,6 +2596,7 @@ async fn execute_tiered_backup_with_progress(
             return;
         }
     };
+    drop(snapshot_barrier);
 
     // 阶段 4: 资产备份 (80-95%) - 仅在包含资产时
     if include_assets {

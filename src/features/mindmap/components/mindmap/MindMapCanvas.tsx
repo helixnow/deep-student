@@ -980,31 +980,6 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
         onSelect={handleResourcePickerSelect}
         onClose={handleResourcePickerClose}
       />
-      {document.root.children.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
-          <div className="mt-24 flex flex-col items-center gap-4 max-w-[280px] text-center ui-rise-in">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--mm-primary-soft)] flex items-center justify-center">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--mm-primary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <line x1="12" y1="5" x2="12" y2="3" />
-                <line x1="17" y1="7" x2="19" y2="5" />
-                <line x1="19" y1="12" x2="21" y2="12" />
-                <line x1="17" y1="17" x2="19" y2="19" />
-                <line x1="12" y1="19" x2="12" y2="21" />
-                <line x1="7" y1="17" x2="5" y2="19" />
-                <line x1="5" y1="12" x2="3" y2="12" />
-                <line x1="7" y1="7" x2="5" y2="5" />
-              </svg>
-            </div>
-            <div className="space-y-1.5">
-              <p className="text-sm font-medium text-[var(--mm-text-secondary)]">{t('canvas.emptyTitle')}</p>
-              <p className="text-xs text-[var(--mm-text-muted)] leading-relaxed">
-                {t('canvas.emptyHintBefore')} <kbd className="px-1.5 py-0.5 mx-0.5 rounded bg-[var(--mm-bg-hover)] border border-[var(--mm-border)] text-[11px] font-mono">Enter</kbd> {t('canvas.emptyHintAfter')}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 });

@@ -13,6 +13,7 @@ use crate::commands::AppState;
 
 const AUTHORIZED_ROOTS_KEY: &str = "chat_v2.runtime.authorized_roots";
 const WORKSPACE_ROOT_KEY: &str = "chat_v2.runtime.workspace_root";
+const SKILL_TRUST_KEY_PREFIX: &str = "chat_v2.skill_trust.";
 
 /// Provenance ledger key prefix: `runtime_root.provenance.<root_id>`.
 pub(crate) const RUNTIME_ROOT_PROVENANCE_PREFIX: &str = "runtime_root.provenance.";
@@ -86,6 +87,22 @@ pub struct RuntimeRoot {
     pub description: String,
     pub session_scoped: bool,
     pub configured: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SkillTrustRecord {
+    skill_id: String,
+    canonical_path: PathBuf,
+    identity: RuntimeRootIdentity,
+    package_sha256: String,
+    trusted_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillTrustState {
+    pub skill_id: String,
+    pub trusted: bool,
+    pub package_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -941,7 +958,56 @@ pub fn skill_package_runtime_root(skill_id: &str, raw_path: &str) -> Result<Runt
     })
 }
 
+fn skill_trust_key(skill_id: &str) -> String {
+    format!("{}{}", SKILL_TRUST_KEY_PREFIX, skill_id)
+}
+
+fn current_skill_package_sha256(root: &Path) -> Result<String, String> {
+    let files = crate::chat_v2::tools::skill_workshop_executor::SkillWorkshopExecutor::read_package_directory(root)?;
+    Ok(
+        crate::chat_v2::tools::skill_workshop_executor::SkillWorkshopExecutor::package_sha256(
+            &files,
+        ),
+    )
+}
+
+fn validate_skill_trust(
+    database: &crate::database::Database,
+    skill_id: &str,
+    root: &RuntimeRoot,
+) -> Result<(), String> {
+    let raw = database
+        .get_setting(&skill_trust_key(skill_id))
+        .map_err(|error| format!("Failed to read skill trust record: {error}"))?
+        .ok_or_else(|| format!("Skill '{}' is not trusted by the backend", skill_id))?;
+    let record: SkillTrustRecord = serde_json::from_str(&raw)
+        .map_err(|error| format!("Skill trust record is invalid: {error}"))?;
+    let canonical = root
+        .path
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve trusted skill package: {error}"))?;
+    let identity = runtime_root_identity(&canonical)?;
+    if record.skill_id != skill_id
+        || record.canonical_path != canonical
+        || record.identity != identity
+    {
+        return Err(format!(
+            "Skill '{}' trust binding no longer matches the installed package",
+            skill_id
+        ));
+    }
+    let package_sha256 = current_skill_package_sha256(&canonical)?;
+    if package_sha256 != record.package_sha256 {
+        return Err(format!(
+            "Skill '{}' changed after trust was granted; trust it again before using package files or scripts",
+            skill_id
+        ));
+    }
+    Ok(())
+}
+
 pub fn skill_package_root_by_id(
+    database: &crate::database::Database,
     skill_package_roots: &HashMap<String, String>,
     root_id: &str,
 ) -> Result<Option<RuntimeRoot>, String> {
@@ -951,7 +1017,9 @@ pub fn skill_package_root_by_id(
     let Some(path) = skill_package_roots.get(skill_id) else {
         return Ok(None);
     };
-    skill_package_runtime_root(skill_id, path).map(Some)
+    let root = skill_package_runtime_root(skill_id, path)?;
+    validate_skill_trust(database, skill_id, &root)?;
+    Ok(Some(root))
 }
 
 pub fn authorized_roots(database: &crate::database::Database) -> Result<Vec<RuntimeRoot>, String> {
@@ -1021,7 +1089,7 @@ pub fn runtime_root_by_id(
             let roots = skill_package_roots.ok_or_else(|| {
                 "No skill package roots are available in the current runtime context.".to_string()
             })?;
-            skill_package_root_by_id(roots, other)?.ok_or_else(|| {
+            skill_package_root_by_id(database, roots, other)?.ok_or_else(|| {
                 format!(
                     "Unsupported runtime root '{}'. It is not available for the current loaded skills.",
                     other
@@ -1033,6 +1101,65 @@ pub fn runtime_root_by_id(
             other
         )),
     }
+}
+
+#[tauri::command]
+pub async fn chat_v2_set_skill_trust(
+    state: State<'_, AppState>,
+    skill_id: String,
+    package_root: Option<String>,
+    trusted: bool,
+) -> Result<SkillTrustState, String> {
+    let skill_id = skill_id.trim();
+    if skill_id.is_empty()
+        || !skill_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return Err("Invalid skill id for trust record".to_string());
+    }
+    let key = skill_trust_key(skill_id);
+    if !trusted {
+        state
+            .database
+            .delete_setting(&key)
+            .map_err(|error| format!("Failed to revoke skill trust: {error}"))?;
+        return Ok(SkillTrustState {
+            skill_id: skill_id.to_string(),
+            trusted: false,
+            package_sha256: None,
+        });
+    }
+
+    let package_root = package_root
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or("package_root is required when trusting a skill")?;
+    let root = skill_package_runtime_root(skill_id, package_root)?;
+    let canonical = root
+        .path
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve skill package: {error}"))?;
+    let package_sha256 = current_skill_package_sha256(&canonical)?;
+    let record = SkillTrustRecord {
+        skill_id: skill_id.to_string(),
+        canonical_path: canonical.clone(),
+        identity: runtime_root_identity(&canonical)?,
+        package_sha256: package_sha256.clone(),
+        trusted_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let encoded = serde_json::to_string(&record)
+        .map_err(|error| format!("Failed to serialize skill trust record: {error}"))?;
+    state
+        .database
+        .save_setting(&key, &encoded)
+        .map_err(|error| format!("Failed to persist skill trust: {error}"))?;
+    Ok(SkillTrustState {
+        skill_id: skill_id.to_string(),
+        trusted: true,
+        package_sha256: Some(package_sha256),
+    })
 }
 
 pub fn runtime_roots_for_session(
@@ -1783,6 +1910,53 @@ mod tests {
             )
             .expect("settings schema");
         database
+    }
+
+    #[test]
+    fn backend_skill_trust_rejects_same_size_script_replacement() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let database = settings_database(&temp.path().join("trust.db"));
+        let package = temp.path().join("external-tools");
+        fs::create_dir_all(package.join("scripts")).expect("package dirs");
+        fs::write(
+            package.join("SKILL.md"),
+            "---\nname: external-tools\n---\nBody",
+        )
+        .expect("skill body");
+        fs::write(package.join("scripts/run.sh"), "echo safe\n").expect("safe script");
+        let canonical = package.canonicalize().expect("canonical package");
+        let package_sha256 = current_skill_package_sha256(&canonical).expect("package hash");
+        let record = SkillTrustRecord {
+            skill_id: "external-tools".to_string(),
+            canonical_path: canonical.clone(),
+            identity: runtime_root_identity(&canonical).expect("identity"),
+            package_sha256,
+            trusted_at: chrono::Utc::now().to_rfc3339(),
+        };
+        database
+            .save_setting(
+                &skill_trust_key("external-tools"),
+                &serde_json::to_string(&record).expect("record json"),
+            )
+            .expect("save trust");
+        let root = RuntimeRoot {
+            id: "skill:external-tools".to_string(),
+            kind: RuntimeRootKind::SkillPackage,
+            path: canonical,
+            access: RuntimeRootAccess::ReadOnly,
+            label: "External tools".to_string(),
+            description: String::new(),
+            session_scoped: false,
+            configured: false,
+        };
+        validate_skill_trust(&database, "external-tools", &root).expect("trusted package");
+
+        fs::write(package.join("scripts/run.sh"), "echo evil\n").expect("replace script");
+        assert_eq!(
+            fs::metadata(package.join("scripts/run.sh")).unwrap().len(),
+            10
+        );
+        assert!(validate_skill_trust(&database, "external-tools", &root).is_err());
     }
 
     #[test]

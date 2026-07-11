@@ -61,6 +61,10 @@ export interface UnifiedAppPanelProps {
   className?: string;
   /** Workbench resource windows must not render a different app behind their shell. */
   strictType?: boolean;
+  /** Unified preview windows route by the loaded DSTU node instead of the launcher hint. */
+  preferNodeType?: boolean;
+  /** Receives the resolved node without forcing an additional DSTU request in an app shell. */
+  onNodeLoaded?: (node: DstuNode) => void;
 }
 
 export interface ContentViewProps {
@@ -131,6 +135,8 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   reloadNonce = 0,
   className,
   strictType = false,
+  preferNodeType = false,
+  onNodeLoaded,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
 
@@ -148,6 +154,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   // ★ onClose 同理走 ref，保证传给子视图的 commonProps 引用稳定（避免父级重建闭包导致子视图无谓重渲染）
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  const onNodeLoadedRef = useRef(onNodeLoaded);
+  onNodeLoadedRef.current = onNodeLoaded;
 
   // ★ 资源标识变化时在 render 阶段同步进入加载态（React 官方「根据 props 调整 state」模式），
   //   消除 effect 生效前旧资源内容在新标识下多渲染一帧的问题
@@ -189,6 +198,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       }
 
       setNode(result.value);
+      onNodeLoadedRef.current?.(result.value);
       onTitleChangeRef.current?.(result.value.name || t('common:untitled', '未命名'));
       setIsLoading(false);
     };
@@ -212,7 +222,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     onCloseRef.current?.();
   }, []);
 
-  const shouldPreferExplicitType = type === 'image' || type === 'file';
+  const shouldPreferExplicitType = !preferNodeType && (type === 'image' || type === 'file');
   const rawNodeType = node?.type;
   const nodeType = node && SUPPORTED_TYPES.includes(node.type as ResourceType)
     ? (node.type as ResourceType)

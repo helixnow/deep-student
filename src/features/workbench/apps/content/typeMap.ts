@@ -26,6 +26,9 @@ export const MINDMAP_APP_TYPE_ID = 'mindmap' as const;
 /** note / mindmap 共用的单例知识工作区应用。 */
 export const NOTES_APP_TYPE_ID = 'notes' as const;
 
+/** OS mode uses one application identity for every previewable file resource. */
+export const FILE_PREVIEW_APP_TYPE_ID = 'file-preview' as const;
+
 export type NotesWorkspaceResourceType = 'note' | 'mindmap';
 
 export function isNotesWorkspaceResourceType(
@@ -40,17 +43,18 @@ export function isNotesWorkspaceResourceType(
  */
 export const RESOURCE_APP_TYPE_IDS: ReadonlySet<string> = new Set([
   ...CONTENT_APP_TYPE_IDS,
+  FILE_PREVIEW_APP_TYPE_ID,
 ]);
 
 const RESOURCE_TYPE_TO_APP_TYPE_ID = Object.freeze(
   Object.assign(Object.create(null) as Record<string, string>, {
     note: NOTES_APP_TYPE_ID,
-    textbook: 'textbook',
+    textbook: FILE_PREVIEW_APP_TYPE_ID,
     exam: 'exam',
     translation: 'translation',
     essay: 'essay',
-    image: 'image',
-    file: 'file',
+    image: FILE_PREVIEW_APP_TYPE_ID,
+    file: FILE_PREVIEW_APP_TYPE_ID,
     mindmap: NOTES_APP_TYPE_ID,
   } satisfies Partial<Record<ResourceType, string>>),
 );

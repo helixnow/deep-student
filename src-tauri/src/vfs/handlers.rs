@@ -1603,6 +1603,7 @@ pub struct VfsAttachmentContentResult {
 #[tauri::command]
 pub async fn vfs_get_attachment_content(
     attachment_id: String,
+    max_bytes: Option<u64>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<VfsAttachmentContentResult, String> {
     log::info!(
@@ -1668,6 +1669,17 @@ pub async fn vfs_get_attachment_content(
                             };
 
                             if blob_path.exists() {
+                                if let Some(limit) = max_bytes {
+                                    let size = std::fs::metadata(&blob_path)
+                                        .map_err(|e| e.to_string())?
+                                        .len();
+                                    if size > limit {
+                                        return Err(format!(
+                                            "attachment content exceeds preview limit: {} > {} bytes",
+                                            size, limit
+                                        ));
+                                    }
+                                }
                                 match std::fs::read(&blob_path) {
                                     Ok(data) => {
                                         use base64::{engine::general_purpose::STANDARD, Engine};
@@ -1730,7 +1742,11 @@ pub async fn vfs_get_attachment_content(
         );
     }
 
-    match VfsAttachmentRepo::get_content(&vfs_db, &attachment_id) {
+    let content_result = match max_bytes {
+        Some(limit) => VfsAttachmentRepo::get_content_bounded(&vfs_db, &attachment_id, limit),
+        None => VfsAttachmentRepo::get_content(&vfs_db, &attachment_id),
+    };
+    match content_result {
         Ok(Some(content)) => {
             log::info!(
                 "[VFS::handlers] vfs_get_attachment_content: SUCCESS id={}, content_len={}",

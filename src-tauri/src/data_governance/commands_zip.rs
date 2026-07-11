@@ -10,7 +10,6 @@ use super::backup::{
     export_backup_to_zip, AssetBackupConfig, AssetType, BackupManager, BackupSelection,
     TieredAssetConfig, ZipExportOptions,
 };
-use crate::backup_common::{is_crypto_secret_backup_relative_path, log_and_skip_entry_err};
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
     BackupJobResultPayload, BackupJobStatus, BackupJobSummary,
@@ -21,9 +20,9 @@ use std::time::Instant;
 #[cfg(feature = "data_governance")]
 use super::commands::try_save_audit_log;
 use super::commands_backup::{
-    acquire_backup_global_permit, ensure_existing_path_within_backup_dir, get_app_data_dir,
-    get_backup_dir, sanitize_path_for_user, validate_backup_id, validate_user_path,
-    BackupJobStartResponse,
+    acquire_backup_global_permit, ensure_existing_path_within_backup_dir, get_active_data_dir,
+    get_app_data_dir, get_backup_dir, sanitize_path_for_user, validate_backup_id,
+    validate_user_path, BackupJobStartResponse,
 };
 
 /// 将本地临时 ZIP 文件复制到虚拟 URI 目标（Android content:// 等），完成后清理临时文件。
@@ -199,7 +198,14 @@ async fn execute_backup_and_export_zip_with_progress(
     }
 
     let mut manager = BackupManager::new(backup_dir.clone());
-    manager.set_app_data_dir(app_data_dir);
+    let active_data_dir = match get_active_data_dir(&app) {
+        Ok(dir) => dir,
+        Err(e) => {
+            job_ctx.fail(format!("获取活动数据目录失败: {}", e));
+            return;
+        }
+    };
+    manager.set_app_data_dir(active_data_dir);
     manager.set_app_version(env!("CARGO_PKG_VERSION").to_string());
 
     job_ctx.mark_running(
@@ -562,7 +568,6 @@ async fn execute_zip_export_with_progress(
     compression_level: u32,
     include_checksums: bool,
 ) {
-    use sha2::Digest;
     use std::fs::File;
     use std::io::Write;
     use std::time::Instant;
@@ -670,10 +675,18 @@ async fn execute_zip_export_with_progress(
                 || entry
                     .path()
                     .strip_prefix(&source_backup_dir)
-                    .map_or(false, |path| !is_crypto_secret_backup_relative_path(path))
+                    .map_or(false, |path| {
+                        !super::backup::zip_export::is_portable_excluded_relative_path(path)
+                    })
         })
-        .filter_map(log_and_skip_entry_err)
     {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) => {
+                job_ctx.fail(format!("扫描备份目录失败: {}", error));
+                return;
+            }
+        };
         let path = entry.path();
         let relative_path = match path.strip_prefix(&source_backup_dir) {
             Ok(p) => p,
@@ -685,7 +698,7 @@ async fn execute_zip_export_with_progress(
             continue;
         }
 
-        if is_crypto_secret_backup_relative_path(relative_path) {
+        if super::backup::zip_export::is_portable_excluded_relative_path(relative_path) {
             continue;
         }
 
@@ -706,6 +719,15 @@ async fn execute_zip_export_with_progress(
         .iter()
         .filter(|(p, _)| p.is_file())
         .count();
+
+    let portable_manifest =
+        match super::backup::zip_export::portable_manifest_bytes(&source_backup_dir) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                job_ctx.fail(format!("生成便携备份清单失败: {}", error));
+                return;
+            }
+        };
 
     job_ctx.mark_running(
         BackupJobPhase::Scan,
@@ -834,22 +856,26 @@ async fn execute_zip_export_with_progress(
             // 添加目录
             if let Err(e) = zip_writer.add_directory(relative_path_str, file_options) {
                 warn!("[zip_export] 添加目录失败: {} - {}", relative_path_str, e);
+                skipped_files.push(format!("{}: {}", relative_path_str, e));
             }
         } else if path.is_file() {
-            // 添加文件
-            let mut file = match File::open(path) {
-                Ok(f) => f,
-                Err(e) => {
-                    warn!("[zip_export] 打开文件失败: {:?} - {}", path, e);
-                    skipped_files.push(format!("{}: {}", relative_path_str, e));
-                    continue;
-                }
-            };
+            let is_manifest = relative_path_str == "manifest.json";
 
             // 计算校验和（如果需要）
             if include_checksums {
-                if let Ok(checksum) = crate::backup_common::calculate_file_hash(path) {
-                    checksums.push((relative_path_str.clone(), checksum));
+                let checksum = if is_manifest {
+                    Ok(crate::backup_common::calculate_bytes_hash(
+                        &portable_manifest,
+                    ))
+                } else {
+                    crate::backup_common::calculate_file_hash(path)
+                };
+                match checksum {
+                    Ok(checksum) => checksums.push((relative_path_str.clone(), checksum)),
+                    Err(error) => {
+                        skipped_files.push(format!("{}: {}", relative_path_str, error));
+                        continue;
+                    }
                 }
             }
 
@@ -863,7 +889,17 @@ async fn execute_zip_export_with_progress(
                 continue;
             }
 
-            if let Err(e) = std::io::copy(&mut file, &mut zip_writer) {
+            let write_result = if is_manifest {
+                zip_writer
+                    .write_all(&portable_manifest)
+                    .map(|_| portable_manifest.len() as u64)
+            } else {
+                match File::open(path) {
+                    Ok(mut file) => std::io::copy(&mut file, &mut zip_writer),
+                    Err(error) => Err(error),
+                }
+            };
+            if let Err(e) = write_result {
                 warn!("[zip_export] 写入 ZIP 失败: {} - {}", relative_path_str, e);
                 skipped_files.push(format!("{}: {}", relative_path_str, e));
                 continue;
@@ -896,8 +932,10 @@ async fn execute_zip_export_with_progress(
 
         if let Err(e) = zip_writer.start_file("checksums.sha256", file_options) {
             warn!("[zip_export] 添加校验和文件失败: {}", e);
+            skipped_files.push(format!("checksums.sha256: {}", e));
         } else if let Err(e) = zip_writer.write_all(checksums_content.as_bytes()) {
             warn!("[zip_export] 写入校验和文件失败: {}", e);
+            skipped_files.push(format!("checksums.sha256: {}", e));
         }
     }
 
@@ -937,6 +975,15 @@ async fn execute_zip_export_with_progress(
         return;
     }
     drop(finished_file);
+
+    if !skipped_files.is_empty() {
+        job_ctx.fail(format!(
+            "ZIP 导出失败，{} 个文件未完整写入: {}",
+            skipped_files.len(),
+            skipped_files.join("; ")
+        ));
+        return;
+    }
 
     if job_ctx.is_cancelled() {
         job_ctx.cancelled(Some("用户取消 ZIP 导出".to_string()));

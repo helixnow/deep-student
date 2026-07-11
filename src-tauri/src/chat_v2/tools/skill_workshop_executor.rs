@@ -223,7 +223,7 @@ impl SkillWorkshopExecutor {
         }
     }
 
-    fn package_sha256(files: &[(String, Vec<u8>)]) -> String {
+    pub(crate) fn package_sha256(files: &[(String, Vec<u8>)]) -> String {
         let mut ordered: Vec<_> = files.iter().collect();
         ordered.sort_by(|left, right| left.0.cmp(&right.0));
         let mut hasher = Sha256::new();
@@ -337,7 +337,7 @@ impl SkillWorkshopExecutor {
         ))
     }
 
-    fn read_package_directory(root: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+    pub(crate) fn read_package_directory(root: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
         let mut files = Vec::new();
         if !root.exists() {
             return Err(format!("Skill directory does not exist: {:?}", root));

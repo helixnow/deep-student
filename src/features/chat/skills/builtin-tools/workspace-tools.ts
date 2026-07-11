@@ -350,9 +350,10 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-workspace_change_revert',
       description:
-        '回滚一次 workspace_file_write/move/delete 变更。receipt 必须原样使用变更工具返回的 mutation_receipt；如果目标在变更后又被修改，回滚会拒绝执行。',
+        '回滚 workspace 文件工具或 local_shell_execute 产生的变更。单文件使用原样 mutation_receipt，多文件使用原样 change_set；如果目标在变更后又被修改，回滚会拒绝执行。',
       inputSchema: {
         type: 'object',
+        oneOf: [{ required: ['receipt'] }, { required: ['change_set'] }],
         properties: {
           receipt: {
             type: 'object',
@@ -370,8 +371,33 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             },
             required: ['change_id', 'root_id', 'op', 'relative_path', 'bytes'],
           },
+          change_set: {
+            type: 'object',
+            description: 'local_shell_execute 或 workspace 变更流程返回的完整 change_set',
+            properties: {
+              id: { type: 'string' },
+              changes: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    change_id: { type: 'string' },
+                    root_id: { type: 'string', enum: ['workspace'] },
+                    op: { type: 'string', enum: ['created', 'modified', 'moved', 'deleted'] },
+                    relative_path: { type: 'string' },
+                    destination_path: { type: 'string' },
+                    before_hash: { type: 'string' },
+                    after_hash: { type: 'string' },
+                    backup_ref: { type: 'string' },
+                    bytes: { type: 'integer', minimum: 0 },
+                  },
+                  required: ['change_id', 'root_id', 'op', 'relative_path', 'bytes'],
+                },
+              },
+            },
+            required: ['id', 'changes'],
+          },
         },
-        required: ['receipt'],
       },
     },
     {
@@ -483,7 +509,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
             type: 'boolean',
             default: true,
             description:
-              'Whether to collect a bounded before/after metadata snapshot of cwd and return file_change_summary for audit. Large/generated directories are skipped.',
+              'Whether to collect a bounded before/after metadata snapshot of cwd and return file_change_summary for audit. Required for workspace-mutating commands. Large/generated directories are skipped.',
           },
           env_allowlist: {
             type: 'array',

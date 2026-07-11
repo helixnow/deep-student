@@ -6,6 +6,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tauri::Manager;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
@@ -19,10 +20,11 @@ use crate::chat_v2::approval_scope::{
 };
 use crate::chat_v2::runtime_roots::{
     normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id,
-    runtime_roots_for_session, skill_package_runtime_root, RuntimeRoot, RuntimeRootAccess,
-    RuntimeRootKind,
+    runtime_roots_for_session, skill_package_runtime_root, temp_root, RuntimeRoot,
+    RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalFileState};
 use crate::commands::AppState;
 
 use super::shell_sandbox::{
@@ -64,6 +66,8 @@ struct SkillDirInjection {
 struct FileSnapshotEntry {
     bytes: u64,
     modified_ms: Option<u128>,
+    sha256: Option<String>,
+    content: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +80,7 @@ struct FileSnapshot {
 impl LocalShellExecuteExecutor {
     const MAX_FILE_SNAPSHOT_ENTRIES: usize = 1_000;
     const MAX_FILE_CHANGE_ENTRIES: usize = 200;
+    const MAX_REVERSIBLE_SNAPSHOT_BYTES: usize = 64 * 1024 * 1024;
 
     pub fn new() -> Self {
         Self
@@ -242,6 +247,7 @@ impl LocalShellExecuteExecutor {
     fn build_sandbox_policy(
         ctx: &ExecutionContext,
         selected_root: &RuntimeRoot,
+        writable_cwd: &Path,
         skill_dir: Option<&SkillDirInjection>,
         allow_network: bool,
     ) -> Result<SandboxPolicy, String> {
@@ -272,9 +278,6 @@ impl LocalShellExecuteExecutor {
 
         for root in roots {
             Self::push_canonical_unique(&mut readable_roots, &root.path)?;
-            if root.access == RuntimeRootAccess::ReadWrite {
-                Self::push_canonical_unique(&mut writable_roots, &root.path)?;
-            }
             let git_dir = root.path.join(".git");
             if git_dir.exists() {
                 Self::push_canonical_unique(&mut protected_write_roots, &git_dir)?;
@@ -286,6 +289,9 @@ impl LocalShellExecuteExecutor {
         if let Some(skill_dir) = skill_dir {
             Self::push_canonical_unique(&mut readable_roots, &skill_dir.path)?;
             Self::push_canonical_unique(&mut protected_write_roots, &skill_dir.path)?;
+        }
+        if selected_root.access == RuntimeRootAccess::ReadWrite {
+            Self::push_canonical_unique(&mut writable_roots, writable_cwd)?;
         }
 
         if let Some(home) = dirs::home_dir() {
@@ -494,10 +500,15 @@ impl LocalShellExecuteExecutor {
             .replace('\\', "/")
     }
 
-    fn collect_file_snapshot(root: &Path, cwd: &Path) -> Result<FileSnapshot, String> {
+    fn collect_file_snapshot(
+        root: &Path,
+        cwd: &Path,
+        capture_content: bool,
+    ) -> Result<FileSnapshot, String> {
         let mut files = BTreeMap::new();
         let mut skipped = 0usize;
         let mut truncated = false;
+        let mut captured_bytes = 0usize;
         let mut stack = vec![cwd.to_path_buf()];
 
         while let Some(dir) = stack.pop() {
@@ -547,11 +558,31 @@ impl LocalShellExecuteExecutor {
                     .ok()
                     .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
                     .map(|duration| duration.as_millis());
+                let (sha256, content) = if capture_content {
+                    let length = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+                    if captured_bytes.saturating_add(length) > Self::MAX_REVERSIBLE_SNAPSHOT_BYTES {
+                        truncated = true;
+                        break;
+                    }
+                    let bytes = match fs::read(&path) {
+                        Ok(bytes) => bytes,
+                        Err(_) => {
+                            skipped += 1;
+                            continue;
+                        }
+                    };
+                    captured_bytes = captured_bytes.saturating_add(bytes.len());
+                    (Some(hex::encode(Sha256::digest(&bytes))), Some(bytes))
+                } else {
+                    (None, None)
+                };
                 files.insert(
                     Self::normalized_relative_path(&path, root),
                     FileSnapshotEntry {
                         bytes: metadata.len(),
                         modified_ms,
+                        sha256,
+                        content,
                     },
                 );
             }
@@ -562,6 +593,22 @@ impl LocalShellExecuteExecutor {
             skipped,
             truncated,
         })
+    }
+
+    fn external_snapshot(snapshot: &FileSnapshot) -> ExternalFileSnapshot {
+        snapshot
+            .files
+            .iter()
+            .filter_map(|(path, entry)| {
+                Some((
+                    path.clone(),
+                    ExternalFileState {
+                        bytes: entry.content.clone()?,
+                        sha256: entry.sha256.clone()?,
+                    },
+                ))
+            })
+            .collect()
     }
 
     fn file_change_summary_json(
@@ -766,6 +813,15 @@ impl LocalShellExecuteExecutor {
         root.path = validated_root_path;
         let cwd_abs = Self::resolve_cwd(&root, &cwd_relative)?;
         Self::ensure_root_writable_for_command(&root, &cwd_abs, &command)?;
+        if root.kind == RuntimeRootKind::Workspace
+            && root.access == RuntimeRootAccess::ReadWrite
+            && Self::command_appears_write_capable(&command)
+            && !track_file_changes
+        {
+            return Err(
+                "Workspace-mutating shell commands require track_file_changes=true".to_string(),
+            );
+        }
         let skill_dir_injection = skill_root_id_input
             .map(|skill_root_id| Self::resolve_skill_dir(skill_root_id, ctx))
             .transpose()?;
@@ -776,12 +832,26 @@ impl LocalShellExecuteExecutor {
         let analysis = analyze_shell_command(&command);
         let env_plan = Self::build_env_plan(args)?;
         let env_policy = Self::env_policy_json(&env_plan, skill_dir_injection.as_ref());
-        let sandbox_policy =
-            Self::build_sandbox_policy(ctx, &root, skill_dir_injection.as_ref(), allow_network)?;
+        let sandbox_policy = Self::build_sandbox_policy(
+            ctx,
+            &root,
+            &cwd_abs,
+            skill_dir_injection.as_ref(),
+            allow_network,
+        )?;
         let sandbox_backend = PlatformSandboxBackend::new();
         let sandbox_effect_report = sandbox_backend.effect_report(&sandbox_policy);
+        let capture_workspace_change_set = track_file_changes
+            && root.kind == RuntimeRootKind::Workspace
+            && root.access == RuntimeRootAccess::ReadWrite
+            && Self::command_appears_write_capable(&command);
         let before_snapshot = if track_file_changes {
-            Self::collect_file_snapshot(&root_abs_for_snapshot, &cwd_abs).ok()
+            Self::collect_file_snapshot(
+                &root_abs_for_snapshot,
+                &cwd_abs,
+                capture_workspace_change_set,
+            )
+            .ok()
         } else {
             None
         };
@@ -823,21 +893,28 @@ impl LocalShellExecuteExecutor {
             match tokio::time::timeout(Duration::from_millis(timeout_ms), child.wait()).await {
                 Ok(Ok(status)) => (Some(status), false),
                 Ok(Err(error)) => {
-                    let _ = terminate_process_group(&mut child);
-                    let _ = child.kill().await;
+                    if terminate_process_group(&mut child).is_err() {
+                        let _ = child.kill().await;
+                    }
                     let _ = child.wait().await;
                     stdout_task.abort();
                     stderr_task.abort();
                     return Err(format!("Failed to wait for local shell command: {error}"));
                 }
                 Err(_) => {
-                    let group_kill_error = terminate_process_group(&mut child).err();
-                    let _ = child.kill().await;
-                    let _ = child.wait().await;
-                    if let Some(error) = group_kill_error {
+                    if let Err(error) = terminate_process_group(&mut child) {
+                        let _ = child.kill().await;
+                        let _ = child.wait().await;
                         stdout_task.abort();
                         stderr_task.abort();
                         return Err(error);
+                    }
+                    if tokio::time::timeout(Duration::from_secs(5), child.wait())
+                        .await
+                        .is_err()
+                    {
+                        let _ = child.kill().await;
+                        let _ = child.wait().await;
                     }
                     (None, true)
                 }
@@ -869,7 +946,12 @@ impl LocalShellExecuteExecutor {
             .map(|status| status.success())
             .unwrap_or(false);
         let after_snapshot = if track_file_changes {
-            Self::collect_file_snapshot(&root_abs_for_snapshot, &cwd_abs).ok()
+            Self::collect_file_snapshot(
+                &root_abs_for_snapshot,
+                &cwd_abs,
+                capture_workspace_change_set,
+            )
+            .ok()
         } else {
             None
         };
@@ -886,6 +968,39 @@ impl LocalShellExecuteExecutor {
             after_snapshot.as_ref(),
             snapshot_error,
         );
+        let change_set_complete = capture_workspace_change_set
+            && before_snapshot
+                .as_ref()
+                .zip(after_snapshot.as_ref())
+                .map(|(before, after)| {
+                    !before.truncated
+                        && !after.truncated
+                        && before.skipped == 0
+                        && after.skipped == 0
+                })
+                .unwrap_or(false);
+        let (change_set, change_set_error) = if capture_workspace_change_set {
+            match before_snapshot.as_ref().zip(after_snapshot.as_ref()) {
+                Some((before, after)) => {
+                    let checkpoints = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+                    match workspace_change_set::record_external_changes(
+                        &checkpoints.path,
+                        &root.id,
+                        &Self::external_snapshot(before),
+                        &Self::external_snapshot(after),
+                    ) {
+                        Ok(change_set) => (serde_json::to_value(change_set).ok(), None),
+                        Err(error) => (None, Some(error)),
+                    }
+                }
+                None => (
+                    None,
+                    Some("workspace snapshots were unavailable".to_string()),
+                ),
+            }
+        } else {
+            (None, None)
+        };
 
         Ok(json!({
             "command": command,
@@ -910,6 +1025,9 @@ impl LocalShellExecuteExecutor {
             "network_policy": network_policy,
             "sandbox": sandbox_effect_report,
             "file_change_summary": file_change_summary,
+            "change_set": change_set,
+            "change_set_complete": change_set_complete,
+            "change_set_error": change_set_error,
             "has_shell_operators": analysis.has_shell_operators,
             "uses_script_runner": analysis.uses_script_runner,
         }))
@@ -1392,13 +1510,14 @@ mod tests {
         fs::write(&kept, "before").expect("write kept");
         fs::write(&deleted, "delete me").expect("write deleted");
         let before =
-            LocalShellExecuteExecutor::collect_file_snapshot(&root_path, &root_path).unwrap();
+            LocalShellExecuteExecutor::collect_file_snapshot(&root_path, &root_path, false)
+                .unwrap();
 
         fs::write(&kept, "after").expect("modify kept");
         fs::remove_file(&deleted).expect("remove deleted");
         fs::write(root_path.join("created.txt"), "new secret content").expect("create file");
-        let after =
-            LocalShellExecuteExecutor::collect_file_snapshot(&root_path, &root_path).unwrap();
+        let after = LocalShellExecuteExecutor::collect_file_snapshot(&root_path, &root_path, false)
+            .unwrap();
 
         let root = RuntimeRoot {
             id: "workspace".to_string(),

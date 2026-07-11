@@ -1169,31 +1169,20 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       }
       setCloudSyncConfigured(true);
 
-      // 同步断层预检：云端 prune 掉了本地 since_version 需要的变更区间时，
-      // 普通双向/下载同步会导致"静默数据丢失"——云端已有变更但本地拿不到。
-      // 此时必须提示用户改走"从版本历史恢复"流程。
+      // 同步断层预检必须 fail-close。检测本身失败也不能继续，因为此时无法
+      // 证明本地游标仍被云端历史覆盖。
       if (direction !== 'upload') {
-        try {
-          const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
-          if (gap.has_gap) {
-            const since = gap.since_version;
-            const minAvail = gap.min_available_version ?? 0;
-            const warnMsg = t('data:governance.sync_prune_gap_warning', {
-              since,
-              minAvail,
-              defaultValue:
-                `检测到云端同步历史已被清理（本地需要 >=${since} 的变更，但云端最早仅 ${minAvail}）。` +
-                `继续同步将遗漏中间变更。建议改用"版本历史 → 恢复"进行全量恢复。是否仍要继续？`,
-            });
-            // 用 window.confirm 作为最简阻塞式确认；项目里没有通用 confirm hook
-            // eslint-disable-next-line no-alert -- 同步流程中途需要阻塞式确认，待统一 confirm 组件落地后替换
-            if (typeof window !== 'undefined' && !window.confirm(warnMsg)) {
-              setSyncProgress(null);
-              return;
-            }
-          }
-        } catch (gapErr: unknown) {
-          console.warn('[sync] detectPruneGap 检查失败（继续同步）:', gapErr);
+        const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
+        if (gap.has_gap) {
+          const since = gap.since_version;
+          const minAvail = gap.min_available_version ?? 0;
+          throw new Error(t('data:governance.sync_prune_gap_warning', {
+            since,
+            minAvail,
+            defaultValue:
+              `检测到云端同步历史已被清理（本地需要 >=${since} 的变更，但云端最早仅 ${minAvail}）。` +
+              '为避免遗漏数据，本次同步已停止，请先执行完整恢复。',
+          }));
         }
       }
 
@@ -1614,7 +1603,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
               showGlobalNotification('error', getErrorMessage(error));
             }
           }}
-          onRestartLater={() => setShowRestartDialog(false)}
           showRestorePromptDialog={showRestorePromptDialog}
           onRestoreNow={() => {
             setShowRestorePromptDialog(false);

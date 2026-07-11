@@ -767,21 +767,32 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
             let destination = extract_str_field(args, &["destination_path", "destinationPath"])?;
             Some(format!("workspace:{}->{}", source, destination))
         }
-        "workspace_change_revert" => {
-            args.get("receipt")
-                .and_then(Value::as_object)
-                .and_then(|receipt| {
-                    let change_id = receipt.get("change_id")?.as_str()?;
-                    let root_id = receipt.get("root_id")?.as_str()?;
-                    let serialized = serde_json::to_string(receipt).ok()?;
-                    Some(format!(
-                        "{}:{}:{}",
-                        root_id,
-                        change_id,
-                        raw_hash(&serialized)
-                    ))
-                })
-        }
+        "workspace_change_revert" => args
+            .get("receipt")
+            .and_then(Value::as_object)
+            .map(|receipt| {
+                let change_id = receipt.get("change_id")?.as_str()?;
+                let root_id = receipt.get("root_id")?.as_str()?;
+                Some((root_id, change_id, Value::Object(receipt.clone())))
+            })
+            .or_else(|| {
+                args.get("change_set")
+                    .and_then(Value::as_object)
+                    .map(|change_set| {
+                        let change_id = change_set.get("id")?.as_str()?;
+                        Some(("workspace", change_id, Value::Object(change_set.clone())))
+                    })
+            })
+            .flatten()
+            .and_then(|(root_id, change_id, payload)| {
+                let serialized = serde_json::to_string(&payload).ok()?;
+                Some(format!(
+                    "{}:{}:{}",
+                    root_id,
+                    change_id,
+                    raw_hash(&serialized)
+                ))
+            }),
 
         // --- 办公文档：create / read / edit / replace 等 ---
         "docx_create" | "docx_edit" | "docx_replace_text" | "docx_replace" | "docx_patch" => {

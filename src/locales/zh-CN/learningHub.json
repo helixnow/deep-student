@@ -219,6 +219,23 @@
   "filePreview": {
     "textTruncated": "文件过大，仅显示开头部分内容，可下载文件查看完整内容"
   },
+  "epubPreview": {
+    "loadFailed": "无法打开 EPUB",
+    "loading": "正在打开电子书...",
+    "readerToolbar": "电子书工具栏",
+    "toggleSidebar": "切换目录",
+    "theme": "阅读主题",
+    "themeLight": "明亮",
+    "themeSepia": "护眼",
+    "themeDark": "深色",
+    "navigation": "电子书导航",
+    "contents": "目录",
+    "searchPlaceholder": "搜索书中内容",
+    "searchCount": "{{count}} 个结果",
+    "previousChapter": "上一章",
+    "nextChapter": "下一章",
+    "progress": "阅读进度 {{progress}}%"
+  },
   "officePreview": {
     "toolbarLabel": "预览工具栏",
     "prevSheet": "上一个工作表",

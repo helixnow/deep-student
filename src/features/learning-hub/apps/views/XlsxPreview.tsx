@@ -29,7 +29,7 @@ function sanitizeXlsxHtml(rawHtml: string): string {
       'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
       'colgroup', 'col', 'caption', 'span', 'br', 'b', 'i', 'em', 'strong', 'sub', 'sup',
     ],
-    ALLOWED_ATTR: ['class', 'style', 'colspan', 'rowspan', 'id'],
+    ALLOWED_ATTR: ['class', 'style', 'colspan', 'rowspan', 'id', 'data-xlsx-cell', 'data-xlsx-sheet'],
     ALLOW_DATA_ATTR: false,
   }) as string;
 }
@@ -92,10 +92,19 @@ interface CachedWorkbook {
 /**
  * 模块级解析结果缓存（LRU，容量 2）：
  * 用户在同一会话中切走再切回同一文件（组件被卸载重建）时避免整本重新解析。
- * 以 base64 字符串为键——键与父组件持有的内容字符串共享引用，不额外复制内存。
+ * 使用紧凑内容指纹作为键，避免组件卸载后缓存继续持有几十 MB 的 Base64 字符串。
  */
 const workbookCache = new Map<string, CachedWorkbook>();
 const WORKBOOK_CACHE_MAX = 2;
+
+function workbookCacheKey(content: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${content.length}:${(hash >>> 0).toString(16)}:${content.slice(0, 16)}:${content.slice(-16)}`;
+}
 
 function getCachedWorkbook(key: string): CachedWorkbook | null {
   const hit = workbookCache.get(key);
@@ -126,6 +135,17 @@ function parseCellAddress(addr: string): { row: number; col: number } | null {
     col = col * 26 + (letters.charCodeAt(i) - 64);
   }
   return { row: parseInt(match[2], 10), col };
+}
+
+function columnLabel(col: number): string {
+  let value = col;
+  let label = '';
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
 }
 
 interface MergeMaps {
@@ -193,13 +213,17 @@ function worksheetToHtml(
   const rows: string[] = [];
   // id 仅允许安全字符，避免工作表名中的空格/引号产生非法 HTML id
   const safeSheetId = sheetName.replace(/[^\w-]/g, '_');
-  rows.push(`<table id="xlsx-sheet-${safeSheetId}">`);
+  rows.push(`<table id="xlsx-sheet-${safeSheetId}" data-xlsx-sheet="${escapeHtml(sheetName)}">`);
+  rows.push('<thead><tr><th class="xlsx-corner"></th>');
+  for (let c = 1; c <= renderCols; c++) {
+    rows.push(`<th class="xlsx-column-header">${columnLabel(c)}</th>`);
+  }
+  rows.push('</tr></thead><tbody>');
 
   // 按固定网格遍历（行/列均含空白），保证合并跨度与列对齐正确
   for (let r = 1; r <= renderRows; r++) {
     const row = worksheet.getRow(r);
-    const tag = r === 1 ? 'th' : 'td';
-    const cells: string[] = [];
+    const cells: string[] = [`<th class="xlsx-row-header">${r}</th>`];
 
     for (let c = 1; c <= renderCols; c++) {
       const key = `${r}:${c}`;
@@ -212,12 +236,12 @@ function worksheetToHtml(
       const spanAttr = span
         ? `${span.colspan > 1 ? ` colspan="${span.colspan}"` : ''}${span.rowspan > 1 ? ` rowspan="${span.rowspan}"` : ''}`
         : '';
-      cells.push(`<${tag}${spanAttr}>${escaped}</${tag}>`);
+      cells.push(`<td data-xlsx-cell="${columnLabel(c)}${r}"${spanAttr}>${escaped}</td>`);
     }
     rows.push(`<tr>${cells.join('')}</tr>`);
   }
 
-  rows.push('</table>');
+  rows.push('</tbody></table>');
   return {
     html: rows.join(''),
     truncatedRows: Math.max(0, totalRows - renderRows),
@@ -279,7 +303,8 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
     let isMounted = true;
 
     // 模块级缓存命中：同一文件在会话内被重新挂载（切走再切回）时跳过解析
-    const cacheHit = getCachedWorkbook(base64Content);
+    const cacheKey = workbookCacheKey(base64Content);
+    const cacheHit = getCachedWorkbook(cacheKey);
     if (cacheHit) {
       setCachedEntry(cacheHit);
       setCurrentSheetIndex(0);
@@ -330,7 +355,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
         await wb.xlsx.load(arrayBuffer);
 
         const entry: CachedWorkbook = { workbook: wb, sheets: new Map() };
-        setCachedWorkbook(base64Content, entry);
+        setCachedWorkbook(cacheKey, entry);
 
         if (isMounted) {
           setCachedEntry(entry);
@@ -573,14 +598,32 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
           background-color: hsl(var(--muted));
           font-weight: 600;
         }
+        .xlsx-container .xlsx-column-header {
+          position: sticky;
+          top: 0;
+          z-index: 2;
+          min-width: 5rem;
+          text-align: center;
+        }
+        .xlsx-container .xlsx-row-header {
+          position: sticky;
+          left: 0;
+          z-index: 1;
+          min-width: 2.75rem;
+          text-align: center;
+          color: hsl(var(--muted-foreground));
+        }
+        .xlsx-container .xlsx-corner {
+          position: sticky;
+          top: 0;
+          left: 0;
+          z-index: 3;
+          min-width: 2.75rem;
+        }
         .xlsx-container tr:nth-child(even) {
           background-color: hsl(var(--muted) / 0.3);
         }
         .xlsx-container tr:hover {
-          background-color: hsl(var(--muted) / 0.5);
-        }
-        .xlsx-container td:first-child {
-          font-weight: 500;
           background-color: hsl(var(--muted) / 0.5);
         }
       `}</style>

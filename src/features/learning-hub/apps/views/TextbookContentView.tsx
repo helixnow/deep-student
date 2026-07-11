@@ -38,6 +38,7 @@ import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { resolveTextbookPreviewType } from './textbookPreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
 import { TextFilePreview } from './TextFilePreview';
+import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
 
@@ -196,9 +197,10 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   const isDocx = resolvedPreviewType === 'docx';
   const isXlsx = resolvedPreviewType === 'xlsx';
   const isPptx = resolvedPreviewType === 'pptx';
+  const isEpub = resolvedPreviewType === 'epub';
   const isText = resolvedPreviewType === 'text';
   const isUnsupported = resolvedPreviewType === 'none';
-  const needsFileContent = isDocx || isXlsx || isPptx || isText;
+  const needsFileContent = isDocx || isXlsx || isPptx || isEpub || isText;
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
@@ -345,6 +347,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           if (!rawBase64) {
             const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
               attachmentId: node.id,
+              maxBytes: LARGE_FILE_THRESHOLD,
             });
             if (!isMounted) return;
             if (result?.found && result?.content) {
@@ -388,6 +391,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         const loadFromVfs = async () => {
           const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
             attachmentId: node.id,
+            maxBytes: LARGE_FILE_THRESHOLD,
           });
           if (!isMounted) return null;
 
@@ -850,6 +854,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       return contentLoadingView;
     }
     return renderRichDocumentPreview('pptx', fileContent);
+  }
+
+  if (isEpub) {
+    if (!fileContent) {
+      return contentLoadingView;
+    }
+    return <EpubPreview base64Content={fileContent} fileName={node.name} resourceId={node.id} />;
   }
 
   // 纯文本预览

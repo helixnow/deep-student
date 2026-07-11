@@ -9,14 +9,13 @@
  * 授予后被替换：skill_workshop 更新、zip 覆盖、外部手动替换等 TOCTOU 场景），
  * trusted 覆盖自动失效并回退到路径推导默认（通常为 untrusted），需用户重新信任。
  *
- * ⚠️ 边界说明（跨组依赖）：本模块运行在渲染进程，localStorage 无完整性保护，
- * 指纹也仅覆盖前端可见的 SKILL.md 解析结果与包文件索引（非 scripts 内容的
- * 密码学哈希）。真正的安全边界需要后端将信任记录落 settings 表并在解析
- * skillPackageRoots 时按包内容 sha256 二次校验（fail-closed）——已记录为
- * S6 → 后端组的跨组依赖，见 docs/reviews/fable5-audit-2026-07-08/fixes/S6-chat-frontend.md。
+ * localStorage 只驱动 UI 可见状态，不再是安全边界。授予/撤销信任必须先由
+ * 后端持久化目录身份与完整 SkillPackage SHA-256；运行时解析 skillPackageRoots
+ * 时会重新计算并 fail-closed 校验。这里的同步指纹仅用于让 UI 及时失效。
  */
 
 import type { SkillDefinition, SkillTrustStatus } from './types';
+import { invoke } from '@tauri-apps/api/core';
 import { getSkillTrustStatus } from './packageMetadata';
 import { skillRegistry } from './registry';
 
@@ -84,8 +83,8 @@ function fnv1a32(input: string, seed: number): number {
  * 覆盖面：SKILL.md 正文、来源路径、embeddedTools/依赖/allowedTools 声明、
  * 包文件索引（路径+类型+大小，可粗粒度感知 scripts/references 的增删改）。
  * 选用同步 FNV-1a 而非 crypto.subtle（异步）是因为 resolveEffectiveTrustStatus
- * 在渲染路径同步调用；这是篡改感知（tamper-evident）而非防篡改，密码学级
- * sha256 校验属后端职责（见文件头跨组依赖说明）。
+ * 在渲染路径同步调用；这只是 UI 侧的快速失效提示，后端整包 SHA-256 才是
+ * 执行时信任边界。
  */
 export function computeSkillTrustFingerprint(skill: SkillDefinition): string {
   const material = JSON.stringify([
@@ -113,16 +112,34 @@ export function getSkillTrustOverride(skillId: string): SkillTrustOverride | nul
  * 授予 trusted 时记录当前包内容指纹（优先使用调用方传入的 skill，
  * 否则从 registry 按 id 查找），后续内容变化将使该信任自动失效。
  */
-export function setSkillTrustOverride(
+export async function setSkillTrustOverride(
   skillId: string,
   trust: SkillTrustOverride | null,
   skill?: SkillDefinition,
-): void {
+): Promise<void> {
+  const target = skill ?? skillRegistry.get(skillId);
+  if (trust === 'trusted') {
+    const packageRoot = target?.packageRoot;
+    if (!packageRoot || packageRoot.startsWith('builtin://')) {
+      throw new Error(`Skill "${skillId}" has no local package root to trust`);
+    }
+    await invoke('chat_v2_set_skill_trust', {
+      skillId,
+      packageRoot,
+      trusted: true,
+    });
+  } else {
+    await invoke('chat_v2_set_skill_trust', {
+      skillId,
+      packageRoot: target?.packageRoot ?? null,
+      trusted: false,
+    });
+  }
+
   const map = readMap();
   if (trust === null) {
     delete map[skillId];
   } else if (trust === 'trusted') {
-    const target = skill ?? skillRegistry.get(skillId);
     map[skillId] = {
       trust: 'trusted',
       contentHash: target ? computeSkillTrustFingerprint(target) : undefined,

@@ -23,17 +23,23 @@ describe('workspace mutation tool contracts', () => {
     }
   });
 
-  it('requires the complete mutation receipt for rollback', () => {
+  it('accepts either a complete mutation receipt or a shell change set for rollback', () => {
     const tool = workspaceToolsSkill.embeddedTools.find(
       (item) => item.name === 'builtin-workspace_change_revert',
     );
     const schema = tool?.inputSchema as {
       required?: string[];
       properties?: { receipt?: { required?: string[] } };
+      oneOf?: Array<{ required?: string[] }>;
     };
-    expect(schema.required).toContain('receipt');
     expect(schema.properties?.receipt?.required).toEqual(
       expect.arrayContaining(['change_id', 'root_id', 'op', 'relative_path', 'bytes']),
+    );
+    expect(schema.oneOf).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ required: ['receipt'] }),
+        expect.objectContaining({ required: ['change_set'] }),
+      ]),
     );
   });
 });

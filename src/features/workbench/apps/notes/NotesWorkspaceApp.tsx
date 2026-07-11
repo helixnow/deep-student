@@ -308,7 +308,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     return term ? resources.filter((node) => node.name.toLocaleLowerCase().includes(term)) : resources;
   }, [query, resources]);
   const tree = useMemo(() => buildTree(filteredResources), [filteredResources]);
-  const titlebarTabsLeft = 44 + (explorerOpen && !compact ? explorerWidth : 0);
+  const titlebarTabsLeft = Math.max(76, 44 + (explorerOpen && !compact ? explorerWidth : 0));
 
   useLayoutEffect(() => {
     const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))

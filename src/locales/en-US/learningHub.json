@@ -219,6 +219,23 @@
   "filePreview": {
     "textTruncated": "File is too large; only the beginning is shown. Download the file to view the full content."
   },
+  "epubPreview": {
+    "loadFailed": "Unable to open EPUB",
+    "loading": "Opening ebook...",
+    "readerToolbar": "Ebook toolbar",
+    "toggleSidebar": "Toggle contents",
+    "theme": "Reading theme",
+    "themeLight": "Light",
+    "themeSepia": "Sepia",
+    "themeDark": "Dark",
+    "navigation": "Ebook navigation",
+    "contents": "Contents",
+    "searchPlaceholder": "Search this book",
+    "searchCount": "{{count}} results",
+    "previousChapter": "Previous chapter",
+    "nextChapter": "Next chapter",
+    "progress": "Reading progress {{progress}}%"
+  },
   "officePreview": {
     "toolbarLabel": "Preview toolbar",
     "prevSheet": "Previous sheet",

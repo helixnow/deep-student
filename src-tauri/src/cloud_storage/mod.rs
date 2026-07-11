@@ -31,8 +31,9 @@ mod webdav;
 
 pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
 pub use sync_manager::{
-    get_device_id, rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager,
-    DownloadResult, SyncStatus, UploadResult,
+    generate_device_id_after_restore, get_device_id, persist_device_id_after_restore,
+    rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
+    SyncStatus, UploadResult,
 };
 pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
 

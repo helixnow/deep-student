@@ -48,6 +48,7 @@ import {
 import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
 import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import {
+  DataGovernanceApi,
   listenSyncProgress,
   runSyncWithProgress,
 } from '@/api/dataGovernance';
@@ -219,23 +220,34 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         return;
       }
 
-      setSyncProgress({
-        phase: 'preparing',
-        percent: 0,
-        current: 0,
-        total: 0,
-        current_item: null,
-        speed_bytes_per_sec: null,
-        eta_seconds: null,
-        error: null,
-      });
-
-      // 设置进度监听
-      const unlisten = await listenSyncProgress({
-        onProgress: (progress) => setSyncProgress(progress),
-      });
-
+      let unlisten: (() => void) | null = null;
       try {
+        setSyncProgress({
+          phase: 'preparing',
+          percent: 0,
+          current: 0,
+          total: 0,
+          current_item: null,
+          speed_bytes_per_sec: null,
+          eta_seconds: null,
+          error: null,
+        });
+
+        if (direction !== 'upload') {
+          const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
+          if (gap.has_gap) {
+            throw new Error(t('data:governance.sync_prune_gap_warning', {
+              since: gap.since_version,
+              minAvail: gap.min_available_version ?? 0,
+              defaultValue: '云端同步历史存在断层。为避免遗漏数据，本次同步已停止，请先执行完整恢复。',
+            }));
+          }
+        }
+
+        unlisten = await listenSyncProgress({
+          onProgress: (progress) => setSyncProgress(progress),
+        });
+
         const result = await runSyncWithProgress(direction, cloudConfig, syncStrategy);
         setSyncProgress(null);
 
@@ -271,7 +283,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         );
       } finally {
         useGlobalSyncStore.getState().endSync();
-        unlisten();
+        unlisten?.();
       }
     },
     [getSyncStatus, syncStrategy, t]

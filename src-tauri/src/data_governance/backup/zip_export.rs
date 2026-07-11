@@ -25,22 +25,122 @@ use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 use walkdir::WalkDir;
-
-/// 记录并跳过迭代中的错误，避免静默丢弃
-fn log_and_skip_err_walkdir(
-    result: Result<walkdir::DirEntry, walkdir::Error>,
-) -> Option<walkdir::DirEntry> {
-    match result {
-        Ok(v) => Some(v),
-        Err(e) => {
-            warn!("[ZipExport] Directory walk error (skipped): {}", e);
-            None
-        }
-    }
-}
 use zip::write::FileOptions;
 use zip::CompressionMethod;
 use zip::ZipWriter;
+
+use super::{assets, BackupKeyPolicy, BackupManager, BackupManifest};
+
+pub(crate) fn is_portable_excluded_relative_path(relative_path: &Path) -> bool {
+    crate::backup_common::is_crypto_secret_backup_relative_path(relative_path)
+        || relative_path
+            .to_string_lossy()
+            .replace('\\', "/")
+            .eq_ignore_ascii_case("databases/audit.db")
+}
+
+/// Produce a manifest for an unencrypted portable archive without mutating the
+/// local backup. Local encryption material and the auxiliary audit database are
+/// intentionally excluded from portable ZIP files.
+pub(crate) fn portable_manifest_bytes(backup_dir: &Path) -> Result<Vec<u8>, ZipExportError> {
+    let manifest_path = backup_dir.join("manifest.json");
+    let mut manifest = BackupManifest::load_from_file(&manifest_path)
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    manifest.key_policy = BackupKeyPolicy::ExcludedPortable;
+    manifest
+        .files
+        .retain(|file| !is_portable_excluded_relative_path(Path::new(&file.path)));
+    if let Some(asset_result) = &mut manifest.assets {
+        asset_result.files.retain(|asset| {
+            !is_portable_excluded_relative_path(Path::new(&asset.relative_path))
+                && !is_portable_excluded_relative_path(Path::new(&asset.original_path))
+        });
+        asset_result.total_files = asset_result.files.len();
+        asset_result.total_size = asset_result.files.iter().map(|asset| asset.size).sum();
+    }
+    serde_json::to_vec_pretty(&manifest)
+        .map_err(|error| ZipExportError::ExportFailed(format!("序列化便携清单失败: {}", error)))
+}
+
+fn validate_imported_backup_dir(target_dir: &Path) -> Result<(), ZipExportError> {
+    let manifest_path = target_dir.join("manifest.json");
+    let manifest = BackupManifest::load_from_file(&manifest_path)
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    if manifest.key_policy != BackupKeyPolicy::ExcludedPortable {
+        return Err(ZipExportError::ExportFailed(
+            "未加密 ZIP 必须声明 key_policy=excluded_portable".to_string(),
+        ));
+    }
+    manifest
+        .validate_for_slot_restore()
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+
+    let manager = BackupManager::new(
+        target_dir
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
+    );
+    manager
+        .verify_internal(&manifest, target_dir)
+        .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+    if let Some(asset_result) = &manifest.assets {
+        let errors = assets::verify_assets(target_dir, &asset_result.files)
+            .map_err(|error| ZipExportError::ExportFailed(error.to_string()))?;
+        if !errors.is_empty() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 资产校验失败: {}",
+                errors
+                    .iter()
+                    .map(|error| format!("{}: {}", error.path, error.message))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )));
+        }
+    }
+
+    let mut allowed_files = std::collections::HashSet::from([
+        "manifest.json".to_string(),
+        "checksums.sha256".to_string(),
+    ]);
+    allowed_files.extend(manifest.files.iter().map(|file| file.path.clone()));
+    if let Some(asset_result) = &manifest.assets {
+        allowed_files.extend(
+            asset_result
+                .files
+                .iter()
+                .filter(|asset| !asset.is_directory)
+                .map(|asset| asset.relative_path.clone()),
+        );
+    }
+    for entry in WalkDir::new(target_dir) {
+        let entry = entry.map_err(|error| {
+            ZipExportError::ExportFailed(format!("遍历导入目录失败: {}", error))
+        })?;
+        if entry.depth() == 0 || entry.file_type().is_dir() {
+            continue;
+        }
+        if entry.file_type().is_symlink() || !entry.file_type().is_file() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 解压结果包含非常规文件: {}",
+                entry.path().display()
+            )));
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(target_dir)
+            .map_err(|_| ZipExportError::ExportFailed("无法计算导入文件相对路径".to_string()))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        if !allowed_files.contains(&relative) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含清单未声明的文件: {}",
+                relative
+            )));
+        }
+    }
+    Ok(())
+}
 
 /// ZIP 导出选项
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,6 +450,8 @@ pub fn export_backup_to_zip(
         ));
     }
 
+    let portable_manifest = portable_manifest_bytes(backup_dir)?;
+
     let backup_metadata = std::fs::symlink_metadata(backup_dir)?;
     if backup_metadata.file_type().is_symlink() || !backup_metadata.is_dir() {
         return Err(ZipExportError::ExportFailed(
@@ -400,16 +502,16 @@ pub fn export_backup_to_zip(
     let mut checksums: Vec<(String, String)> = Vec::new();
 
     // 遍历备份目录
-    for entry in WalkDir::new(backup_dir)
-        .into_iter()
-        .filter_entry(|entry| {
-            entry.depth() == 0
-                || entry.path().strip_prefix(backup_dir).map_or(false, |path| {
-                    !crate::backup_common::is_crypto_secret_backup_relative_path(path)
-                })
-        })
-        .filter_map(log_and_skip_err_walkdir)
-    {
+    for entry in WalkDir::new(backup_dir).into_iter().filter_entry(|entry| {
+        entry.depth() == 0
+            || entry
+                .path()
+                .strip_prefix(backup_dir)
+                .map_or(false, |path| !is_portable_excluded_relative_path(path))
+    }) {
+        let entry = entry.map_err(|error| {
+            ZipExportError::ExportFailed(format!("遍历备份目录失败: {}", error))
+        })?;
         let path = entry.path();
         let relative_path = path
             .strip_prefix(backup_dir)
@@ -420,7 +522,7 @@ pub fn export_backup_to_zip(
             continue;
         }
 
-        if crate::backup_common::is_crypto_secret_backup_relative_path(relative_path) {
+        if is_portable_excluded_relative_path(relative_path) {
             continue;
         }
 
@@ -434,21 +536,33 @@ pub fn export_backup_to_zip(
             // 添加文件
             debug!("添加文件: {}", relative_path_str);
 
-            let mut file = File::open(path)?;
-            let metadata = file.metadata()?;
-            let file_size = metadata.len();
+            let is_manifest = relative_path_str == "manifest.json";
+            let file_size = if is_manifest {
+                portable_manifest.len() as u64
+            } else {
+                std::fs::metadata(path)?.len()
+            };
             total_size += file_size;
             file_count += 1;
 
             // 计算校验和（如果需要）
             if options.include_checksums {
-                let checksum = calculate_file_sha256(path)?;
+                let checksum = if is_manifest {
+                    crate::backup_common::calculate_bytes_hash(&portable_manifest)
+                } else {
+                    calculate_file_sha256(path)?
+                };
                 checksums.push((relative_path_str.clone(), checksum));
             }
 
             // 写入 ZIP（流式，避免大文件 read_to_end 导致内存峰值）
             zip_writer.start_file(&relative_path_str, file_options)?;
-            std::io::copy(&mut file, &mut zip_writer)?;
+            if is_manifest {
+                zip_writer.write_all(&portable_manifest)?;
+            } else {
+                let mut file = File::open(path)?;
+                std::io::copy(&mut file, &mut zip_writer)?;
+            }
         }
     }
 
@@ -537,16 +651,32 @@ fn validate_import_archive(archive: &mut zip::ZipArchive<File>) -> Result<(), Zi
     }
 
     let mut total_uncompressed: u64 = 0;
+    let mut paths = std::collections::HashSet::new();
     for i in 0..archive.len() {
         let file = archive.by_index(i)?;
-        if file
-            .enclosed_name()
-            .map(|path| path.as_os_str().is_empty())
-            .unwrap_or(true)
-        {
+        let Some(enclosed_name) = file.enclosed_name() else {
             return Err(ZipExportError::ExportFailed(format!(
                 "ZIP 包含越界或空路径: {}",
                 file.name()
+            )));
+        };
+        if enclosed_name.as_os_str().is_empty() {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含越界或空路径: {}",
+                file.name()
+            )));
+        }
+        if is_portable_excluded_relative_path(enclosed_name) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "未加密 ZIP 禁止包含密钥或本地审计材料: {}",
+                file.name()
+            )));
+        }
+        let normalized = enclosed_name.to_string_lossy().replace('\\', "/");
+        if !paths.insert(normalized.clone()) {
+            return Err(ZipExportError::ExportFailed(format!(
+                "ZIP 包含重复路径: {}",
+                normalized
             )));
         }
         let file_size = file.size();
@@ -613,13 +743,7 @@ pub fn import_backup_from_zip(zip_path: &Path, target_dir: &Path) -> Result<usiz
         }
     }
 
-    // 验证 manifest.json 存在（缺失则视为无效备份）
-    let manifest_path = target_dir.join("manifest.json");
-    if !manifest_path.exists() {
-        return Err(ZipExportError::ExportFailed(
-            "备份目录中缺少 manifest.json 文件".to_string(),
-        ));
-    }
+    validate_imported_backup_dir(target_dir)?;
 
     info!("ZIP 导入完成: {} 个文件", file_count);
 
@@ -864,13 +988,7 @@ where
         )));
     }
 
-    // 验证 manifest.json 存在
-    let manifest_path = target_dir.join("manifest.json");
-    if !manifest_path.exists() {
-        return Err(ZipExportError::ExportFailed(
-            "备份目录中缺少 manifest.json 文件".to_string(),
-        ));
-    }
+    validate_imported_backup_dir(target_dir)?;
 
     progress_callback(ZipImportProgress {
         phase: ZipImportPhase::Verify,
@@ -903,36 +1021,47 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::data_governance::backup::{AssetType, BackupFile};
+    use rusqlite::Connection;
     use tempfile::TempDir;
 
     fn create_test_backup_dir() -> TempDir {
         let dir = TempDir::new().unwrap();
-
-        // 创建测试文件
         let backup_dir = dir.path();
 
-        // 创建子目录
-        std::fs::create_dir_all(backup_dir.join("databases")).unwrap();
+        let mut manifest = BackupManifest::new("1.0.0-test");
+        for database_id in ["vfs", "chat_v2", "mistakes", "llm_usage"] {
+            let path = backup_dir.join(format!("{}.db", database_id));
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE test_data (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+                     INSERT INTO test_data(value) VALUES ('portable-backup-test');",
+                )
+                .unwrap();
+            drop(connection);
 
-        // 创建测试数据库文件
-        std::fs::write(
-            backup_dir.join("databases/vfs.db"),
-            "test database content for vfs",
-        )
-        .unwrap();
+            manifest.add_file(BackupFile {
+                path: format!("{}.db", database_id),
+                size: std::fs::metadata(&path).unwrap().len(),
+                sha256: crate::backup_common::calculate_file_hash(&path).unwrap(),
+                database_id: Some(database_id.to_string()),
+            });
+        }
 
-        std::fs::write(
-            backup_dir.join("databases/chat_v2.db"),
-            "test database content for chat_v2",
-        )
-        .unwrap();
-
-        // 创建清单文件
-        std::fs::write(
-            backup_dir.join("manifest.json"),
-            r#"{"version": "1.0.0", "files": []}"#,
-        )
-        .unwrap();
+        // Empty roots are still an explicit part of a full snapshot's coverage.
+        manifest
+            .included_components
+            .push("workspaces-root".to_string());
+        manifest.included_components.extend(
+            AssetType::all()
+                .into_iter()
+                .map(|asset_type| format!("asset-root:{}", asset_type.relative_path())),
+        );
+        manifest.mark_full();
+        manifest
+            .save_to_file(&backup_dir.join("manifest.json"))
+            .unwrap();
 
         dir
     }
@@ -1145,7 +1274,7 @@ mod tests {
 
         assert!(file_count > 0);
         assert!(import_dir.path().join("manifest.json").exists());
-        assert!(import_dir.path().join("databases/vfs.db").exists());
+        assert!(import_dir.path().join("vfs.db").exists());
 
         // 清理
         std::fs::remove_file(&export_result.zip_path).ok();

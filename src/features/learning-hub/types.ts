@@ -72,7 +72,7 @@ export interface ResourceListItem {
   /** 资源类型 */
   type: ResourceType;
   /** 预览类型 */
-  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'audio' | 'video' | 'mindmap';
+  previewType: 'markdown' | 'pdf' | 'image' | 'exam' | 'none' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'mindmap';
   /** 缩略图 URL（可选，用于 Grid 视图） */
   thumbnail?: string;
   /** 内容预览（用于笔记的 Markdown 预览，仅前 200 字符） */
@@ -377,8 +377,9 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (ext === 'docx') return 'docx';
   if (ext === 'xlsx') return 'xlsx';
   if (ext === 'pptx') return 'pptx';
+  if (ext === 'epub') return 'epub';
 
-  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'epub', 'xls', 'xlsb', 'ods'].includes(ext)) {
+  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'xls', 'xlsb', 'ods'].includes(ext)) {
     return 'text';
   }
 
@@ -421,6 +422,7 @@ const VALID_PREVIEW_TYPES: Set<ResourceListItem['previewType']> = new Set([
   'docx',
   'xlsx',
   'pptx',
+  'epub',
   'text',
   'audio',
   'video',

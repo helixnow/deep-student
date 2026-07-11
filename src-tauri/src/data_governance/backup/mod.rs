@@ -69,11 +69,11 @@ pub use assets::{
 };
 
 /// 备份清单版本
-const MANIFEST_VERSION: &str = "1.0.0";
+const MANIFEST_VERSION: &str = "2.0.0";
 
 /// 当前应用支持的最大 manifest 主版本号
 /// 用于 restore() 版本兼容性检查：拒绝来自未来主版本的备份
-const MANIFEST_MAX_SUPPORTED_MAJOR: u64 = 1;
+const MANIFEST_MAX_SUPPORTED_MAJOR: u64 = 2;
 
 /// 清单文件名
 const MANIFEST_FILENAME: &str = "manifest.json";
@@ -335,6 +335,36 @@ fn generate_backup_id(suffix: Option<&str>) -> String {
     generate_backup_id_at(chrono::Utc::now(), suffix)
 }
 
+/// Whether a package can replace an entire data slot.
+///
+/// Missing values deserialize as `LegacyUnknown` so historical manifests can
+/// never silently acquire full-snapshot semantics after an application update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SnapshotKind {
+    Full,
+    PartialOverlay,
+    LegacyUnknown,
+}
+
+fn legacy_snapshot_kind() -> SnapshotKind {
+    SnapshotKind::LegacyUnknown
+}
+
+/// How encryption material is represented by this package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackupKeyPolicy {
+    IncludedLocal,
+    ExcludedPortable,
+    NotPresent,
+    LegacyUnknown,
+}
+
+fn legacy_key_policy() -> BackupKeyPolicy {
+    BackupKeyPolicy::LegacyUnknown
+}
+
 /// 备份清单
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupManifest {
@@ -360,6 +390,21 @@ pub struct BackupManifest {
     /// 资产备份结果（可选）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets: Option<assets::AssetBackupResult>,
+    /// Slot replacement semantics. Legacy manifests default to fail-closed.
+    #[serde(default = "legacy_snapshot_kind")]
+    pub snapshot_kind: SnapshotKind,
+    /// One immutable generation shared by every component in this package.
+    #[serde(default)]
+    pub snapshot_epoch: String,
+    /// Components whose coverage is required before slot replacement.
+    #[serde(default)]
+    pub required_components: Vec<String>,
+    /// Components actually scanned/captured, including empty asset roots.
+    #[serde(default)]
+    pub included_components: Vec<String>,
+    /// Explicit encryption-material portability contract.
+    #[serde(default = "legacy_key_policy")]
+    pub key_policy: BackupKeyPolicy,
 }
 
 impl BackupManifest {
@@ -377,6 +422,11 @@ impl BackupManifest {
             incremental_base: None,
             backup_id: generate_backup_id_at(now, None),
             assets: None,
+            snapshot_kind: SnapshotKind::PartialOverlay,
+            snapshot_epoch: Uuid::new_v4().to_string(),
+            required_components: Vec::new(),
+            included_components: Vec::new(),
+            key_policy: BackupKeyPolicy::NotPresent,
         }
     }
 
@@ -388,6 +438,258 @@ impl BackupManifest {
     /// 设置 schema 版本
     pub fn set_schema_version(&mut self, db_name: &str, version: u32) {
         self.schema_versions.insert(db_name.to_string(), version);
+    }
+
+    fn component_for_file(file: &BackupFile) -> Option<String> {
+        if let Some(database_id) = &file.database_id {
+            return Some(format!("database:{}", database_id));
+        }
+        if let Some(name) = file.path.strip_prefix("workspaces/") {
+            return Some(format!("workspace:{}", name));
+        }
+        if let Some(rest) = file.path.strip_prefix("assets/") {
+            return rest
+                .split('/')
+                .next()
+                .filter(|root| !root.is_empty())
+                .map(|root| format!("asset-root:{}", root));
+        }
+        if let Some(root) = file.path.split('/').next() {
+            if AssetType::all()
+                .into_iter()
+                .any(|asset_type| asset_type.relative_path() == root)
+            {
+                return Some(format!("asset-root:{}", root));
+            }
+        }
+        None
+    }
+
+    fn refresh_included_components(&mut self) {
+        let mut components = self
+            .files
+            .iter()
+            .filter_map(Self::component_for_file)
+            .collect::<HashSet<_>>();
+        if let Some(asset_result) = &self.assets {
+            for asset in &asset_result.files {
+                components.insert(format!("asset-root:{}", asset.asset_type.relative_path()));
+            }
+        }
+        let mut components = components.into_iter().collect::<Vec<_>>();
+        components.sort();
+        self.included_components = components;
+    }
+
+    fn full_required_components() -> Vec<String> {
+        let mut required = DatabaseId::all_ordered()
+            .into_iter()
+            .map(|id| format!("database:{}", id.as_str()))
+            .collect::<Vec<_>>();
+        required.push("workspaces-root".to_string());
+        required.extend(
+            AssetType::all()
+                .into_iter()
+                .map(|asset_type| format!("asset-root:{}", asset_type.relative_path())),
+        );
+        required.sort();
+        required
+    }
+
+    fn mark_full(&mut self) {
+        let declared = self.included_components.clone();
+        self.snapshot_kind = SnapshotKind::Full;
+        self.required_components = Self::full_required_components();
+        self.refresh_included_components();
+        self.included_components.extend(declared);
+        if !self
+            .included_components
+            .iter()
+            .any(|component| component == "workspaces-root")
+        {
+            self.included_components.push("workspaces-root".to_string());
+        }
+        self.included_components.sort();
+        self.included_components.dedup();
+    }
+
+    fn mark_partial(&mut self) {
+        let declared = self.included_components.clone();
+        self.snapshot_kind = SnapshotKind::PartialOverlay;
+        self.required_components.clear();
+        self.refresh_included_components();
+        self.included_components.extend(declared);
+        self.included_components.sort();
+        self.included_components.dedup();
+    }
+
+    /// Validate the stronger contract required before replacing an inactive
+    /// slot. General inspection/export may still use partial or legacy packages.
+    pub fn validate_for_slot_restore(&self) -> Result<(), BackupError> {
+        self.validate_untrusted()?;
+        if self.is_incremental {
+            return Err(BackupError::IncrementalRestoreNotSupported(
+                "增量备份不能直接替换完整数据槽".to_string(),
+            ));
+        }
+        if self.snapshot_kind != SnapshotKind::Full {
+            return Err(BackupError::RestoreFailed(format!(
+                "备份不是可替换数据槽的完整快照: {:?}",
+                self.snapshot_kind
+            )));
+        }
+        if self.snapshot_epoch.trim().is_empty() {
+            return Err(BackupError::Manifest(
+                "完整快照缺少 snapshot_epoch".to_string(),
+            ));
+        }
+        if self.key_policy == BackupKeyPolicy::LegacyUnknown {
+            return Err(BackupError::Manifest(
+                "完整快照缺少明确的 key_policy".to_string(),
+            ));
+        }
+
+        let required = self
+            .required_components
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        let included = self
+            .included_components
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        for component in Self::full_required_components() {
+            if !required.contains(&component) || !included.contains(&component) {
+                return Err(BackupError::Manifest(format!(
+                    "完整快照组件闭包不完整: {}",
+                    component
+                )));
+            }
+        }
+
+        let mut paths = HashSet::new();
+        let mut database_ids = HashSet::new();
+        for file in &self.files {
+            if !paths.insert(file.path.clone()) {
+                return Err(BackupError::Manifest(format!(
+                    "备份清单包含重复路径: {}",
+                    file.path
+                )));
+            }
+            if file.sha256.len() != 64 || !file.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return Err(BackupError::Manifest(format!(
+                    "备份文件 SHA-256 格式无效: {}",
+                    file.path
+                )));
+            }
+            if let Some(database_id) = &file.database_id {
+                let known = DatabaseId::all_ordered()
+                    .into_iter()
+                    .any(|id| id.as_str() == database_id);
+                if !known {
+                    return Err(BackupError::Manifest(format!(
+                        "备份包含未知数据库 ID: {}",
+                        database_id
+                    )));
+                }
+                let canonical = format!("{}.db", database_id);
+                if file.path != canonical {
+                    return Err(BackupError::Manifest(format!(
+                        "数据库 {} 必须绑定规范路径 {}，实际为 {}",
+                        database_id, canonical, file.path
+                    )));
+                }
+                if !database_ids.insert(database_id.clone()) {
+                    return Err(BackupError::Manifest(format!(
+                        "数据库 ID 重复: {}",
+                        database_id
+                    )));
+                }
+            } else if file.path.ends_with(".db") {
+                let Some(name) = file.path.strip_prefix("workspaces/") else {
+                    return Err(BackupError::Manifest(format!(
+                        "未分类数据库文件禁止恢复: {}",
+                        file.path
+                    )));
+                };
+                if name.contains('/') || !name.starts_with("ws_") || !name.ends_with(".db") {
+                    return Err(BackupError::Manifest(format!(
+                        "工作区数据库路径无效: {}",
+                        file.path
+                    )));
+                }
+            } else {
+                let root = file.path.split('/').next().unwrap_or_default();
+                let known_asset_root = AssetType::all()
+                    .into_iter()
+                    .any(|asset_type| asset_type.relative_path() == root)
+                    || matches!(root, "lance" | "assets");
+                if !known_asset_root {
+                    return Err(BackupError::Manifest(format!(
+                        "完整快照包含未分类文件: {}",
+                        file.path
+                    )));
+                }
+            }
+        }
+        for id in DatabaseId::all_ordered() {
+            if !database_ids.contains(id.as_str()) {
+                return Err(BackupError::Manifest(format!(
+                    "完整快照缺少核心数据库: {}",
+                    id.as_str()
+                )));
+            }
+        }
+
+        if let Some(asset_result) = &self.assets {
+            let mut sources = HashSet::new();
+            let mut destinations = HashSet::new();
+            for asset in &asset_result.files {
+                let root = asset.asset_type.relative_path();
+                let expected_source_prefix = format!("assets/{}/", root);
+                let expected_destination_prefix = format!("{}/", root);
+                if !asset.relative_path.starts_with(&expected_source_prefix)
+                    || !asset
+                        .original_path
+                        .starts_with(&expected_destination_prefix)
+                {
+                    return Err(BackupError::Manifest(format!(
+                        "资产路径未绑定到声明类型 {:?}: source={}, destination={}",
+                        asset.asset_type, asset.relative_path, asset.original_path
+                    )));
+                }
+                if asset.asset_type == AssetType::Workspaces
+                    && (asset.original_path.ends_with(".db")
+                        || asset.original_path.ends_with("-wal")
+                        || asset.original_path.ends_with("-shm"))
+                {
+                    return Err(BackupError::Manifest(format!(
+                        "工作区 SQLite 文件只能通过一致性快照恢复: {}",
+                        asset.original_path
+                    )));
+                }
+                if !sources.insert(asset.relative_path.clone())
+                    || !destinations.insert(asset.original_path.clone())
+                {
+                    return Err(BackupError::Manifest(format!(
+                        "资产清单包含重复源或目标路径: {}",
+                        asset.original_path
+                    )));
+                }
+                if !asset.is_directory
+                    && (asset.checksum.as_ref().is_none_or(|checksum| {
+                        checksum.len() != 64 || !checksum.bytes().all(|b| b.is_ascii_hexdigit())
+                    }))
+                {
+                    return Err(BackupError::Manifest(format!(
+                        "完整快照资产缺少有效 SHA-256: {}",
+                        asset.relative_path
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn validate_untrusted(&self) -> Result<(), BackupError> {
@@ -725,9 +1027,17 @@ impl BackupTier {
     pub fn asset_directories(&self) -> Vec<&'static str> {
         match self {
             BackupTier::Core => vec![],
-            BackupTier::Important => vec!["notes_assets", "vfs_blobs"],
+            BackupTier::Important => vec![
+                "notes_assets",
+                "vfs_blobs",
+                "subjects",
+                "textbooks",
+                "workspaces",
+            ],
             BackupTier::Rebuildable => vec!["lance"],
-            BackupTier::LargeAssets => vec!["images", "documents", "videos", "assets"],
+            BackupTier::LargeAssets => {
+                vec!["images", "documents", "audio", "videos", "assets"]
+            }
         }
     }
 
@@ -1166,6 +1476,37 @@ impl BackupManager {
             }
         }
 
+        for asset_type in &config.asset_types {
+            manifest
+                .included_components
+                .push(format!("asset-root:{}", asset_type.relative_path()));
+        }
+        let selected_asset_roots = config
+            .asset_types
+            .iter()
+            .map(AssetType::relative_path)
+            .collect::<HashSet<_>>();
+        let all_asset_roots = AssetType::all()
+            .iter()
+            .map(AssetType::relative_path)
+            .collect::<HashSet<_>>();
+        let assets_complete = config.compute_checksum
+            && selected_asset_roots == all_asset_roots
+            && manifest.assets.as_ref().is_some_and(|result| {
+                result.skipped_files == 0
+                    && result.files.iter().all(|asset| {
+                        asset.is_directory
+                            || asset.checksum.as_ref().is_some_and(|sum| {
+                                sum.len() == 64 && sum.bytes().all(|byte| byte.is_ascii_hexdigit())
+                            })
+                    })
+            });
+        if assets_complete {
+            manifest.mark_full();
+        } else {
+            manifest.mark_partial();
+        }
+
         // 5. 保存清单
         let manifest_path = backup_subdir.join(MANIFEST_FILENAME);
         manifest.save_to_file(&manifest_path)?;
@@ -1203,8 +1544,11 @@ impl BackupManager {
 
             // 检查数据库是否存在
             if !db_path.exists() {
-                warn!("数据库不存在，跳过: {:?}", db_path);
-                continue;
+                return Err(BackupError::FileNotFound(format!(
+                    "完整备份缺少核心数据库 {}: {}",
+                    db_id.as_str(),
+                    db_path.display()
+                )));
             }
 
             // 发送进度回调
@@ -1225,16 +1569,13 @@ impl BackupManager {
         }
 
         // 3.5 备份加密密钥（跨设备恢复支持）
-        match self.backup_crypto_keys(&backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("加密密钥备份完成: {} 个文件", count);
-                }
-            }
-            Err(e) => {
-                warn!("加密密钥备份失败（API 密钥可能无法跨设备恢复）: {}", e);
-            }
-        }
+        let crypto_count = self.backup_crypto_keys(&backup_subdir)?;
+        manifest.key_policy = if crypto_count > 0 {
+            info!("加密密钥备份完成: {} 个文件", crypto_count);
+            BackupKeyPolicy::IncludedLocal
+        } else {
+            BackupKeyPolicy::NotPresent
+        };
 
         // 3.5b 备份审计数据库（操作追溯支持，失败不阻断）
         match self.backup_audit_db(&backup_subdir) {
@@ -1247,16 +1588,17 @@ impl BackupManager {
         let active_dir_for_ws = crate::data_space::get_data_space_manager()
             .map(|mgr| mgr.active_dir())
             .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
-        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("工作区数据库备份完成: {} 个", count);
-                }
-            }
-            Err(e) => {
-                warn!("工作区数据库备份失败（非致命）: {}", e);
-            }
+        let workspace_files =
+            self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir)?;
+        if !workspace_files.is_empty() {
+            info!("工作区数据库备份完成: {} 个", workspace_files.len());
         }
+        manifest.files.extend(workspace_files);
+
+        manifest
+            .included_components
+            .push("workspaces-root".to_string());
+        manifest.mark_partial();
 
         Ok((manifest, backup_subdir))
     }
@@ -3039,15 +3381,15 @@ impl BackupManager {
         &self,
         active_dir: &Path,
         backup_dir: &Path,
-    ) -> Result<usize, BackupError> {
+    ) -> Result<Vec<BackupFile>, BackupError> {
         let src_dir = active_dir.join("workspaces");
         if !src_dir.exists() {
-            return Ok(0);
+            return Ok(Vec::new());
         }
         let dest_dir = backup_dir.join("workspaces");
         fs::create_dir_all(&dest_dir)?;
 
-        let mut count = 0usize;
+        let mut files = Vec::new();
         for entry in fs::read_dir(&src_dir)? {
             let entry = entry?;
             let src = entry.path();
@@ -3055,21 +3397,32 @@ impl BackupManager {
             if !name.starts_with("ws_") || !name.ends_with(".db") {
                 continue;
             }
-            let dest = dest_dir.join(&*name);
-            match Self::backup_db_at_path(&src, &dest) {
-                Ok(()) => {
-                    count += 1;
-                    debug!("备份工作区数据库: {:?} -> {:?}", src, dest);
-                }
-                Err(e) => {
-                    warn!("备份工作区数据库失败（跳过）: {:?}: {}", src, e);
-                }
+            let metadata = fs::symlink_metadata(&src)?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(BackupError::Manifest(format!(
+                    "工作区数据库必须是普通文件: {}",
+                    src.display()
+                )));
             }
+            let dest = dest_dir.join(&*name);
+            Self::backup_db_at_path(&src, &dest).map_err(|e| {
+                BackupError::RestoreFailed(format!("工作区数据库备份失败 {}: {}", src.display(), e))
+            })?;
+            let size = fs::metadata(&dest)?.len();
+            let sha256 = calculate_file_sha256(&dest)?;
+            files.push(BackupFile {
+                path: format!("workspaces/{}", name),
+                size,
+                sha256,
+                database_id: None,
+            });
+            debug!("备份工作区数据库: {:?} -> {:?}", src, dest);
         }
-        if count > 0 {
-            info!("工作区数据库备份完成: {} 个", count);
+        files.sort_by(|a, b| a.path.cmp(&b.path));
+        if !files.is_empty() {
+            info!("工作区数据库备份完成: {} 个", files.len());
         }
-        Ok(count)
+        Ok(files)
     }
 
     /// 恢复工作区数据库（backup_dir/workspaces/ws_*.db → target_dir/workspaces/ws_*.db）
@@ -3112,8 +3465,43 @@ impl BackupManager {
         Ok(count)
     }
 
+    /// Restore exactly the workspace snapshots declared by the manifest.
+    /// Unlisted files in the package are never made visible in the candidate slot.
+    pub(crate) fn restore_workspace_manifest_files_to_dir(
+        &self,
+        manifest: &BackupManifest,
+        backup_dir: &Path,
+        target_dir: &Path,
+    ) -> Result<usize, BackupError> {
+        let workspace_target = target_dir.join("workspaces");
+        fs::create_dir_all(&workspace_target)?;
+        let mut restored = 0usize;
+        for file in &manifest.files {
+            if file.database_id.is_some() || !file.path.starts_with("workspaces/") {
+                continue;
+            }
+            let relative = Path::new(&file.path);
+            let source = resolve_existing_backup_file(backup_dir, relative)?;
+            let name = relative.file_name().ok_or_else(|| {
+                BackupError::Manifest(format!("工作区数据库路径无文件名: {}", file.path))
+            })?;
+            let destination =
+                prepare_backup_restore_destination(&workspace_target, Path::new(name))?;
+            Self::restore_db_at_path(&source, &destination)?;
+            let restored_size = fs::metadata(&destination)?.len();
+            if restored_size != file.size {
+                return Err(BackupError::RestoreFailed(format!(
+                    "工作区数据库恢复后大小不匹配 {}: expected={}, actual={}",
+                    file.path, file.size, restored_size
+                )));
+            }
+            restored += 1;
+        }
+        Ok(restored)
+    }
+
     /// 恢复 manifest.files 中的非数据库文件（如 lance/ 可重建索引文件）
-    fn restore_non_database_manifest_files(
+    pub(crate) fn restore_non_database_manifest_files(
         &self,
         manifest: &BackupManifest,
         backup_dir: &Path,
@@ -3130,6 +3518,13 @@ impl BackupManager {
             let src = resolve_existing_backup_file(backup_dir, rel)?;
             let dest = prepare_backup_restore_destination(target_dir, rel)?;
             fs::copy(&src, &dest)?;
+            let restored_size = fs::metadata(&dest)?.len();
+            if restored_size != backup_file.size {
+                return Err(BackupError::RestoreFailed(format!(
+                    "文件恢复后大小不匹配 {}: expected={}, actual={}",
+                    backup_file.path, backup_file.size, restored_size
+                )));
+            }
             restored += 1;
         }
 
@@ -3204,8 +3599,9 @@ impl BackupManager {
         let mut backups = self.list_backups()?;
         let mut deleted = Vec::new();
 
-        // 只保留完整备份用于计数
-        backups.retain(|b| !b.is_incremental);
+        // Partial/legacy exports use separate retention semantics and must not
+        // evict verified full recovery points.
+        backups.retain(|b| !b.is_incremental && b.snapshot_kind == SnapshotKind::Full);
 
         if backups.len() <= keep_count {
             return Ok(deleted);
@@ -3279,8 +3675,11 @@ impl BackupManager {
 
             // 检查数据库是否存在
             if !db_path.exists() {
-                warn!("数据库不存在，跳过: {:?}", db_path);
-                continue;
+                return Err(BackupError::FileNotFound(format!(
+                    "已选择的数据库不存在 {}: {}",
+                    db_id.as_str(),
+                    db_path.display()
+                )));
             }
 
             // 发送进度回调
@@ -3308,20 +3707,27 @@ impl BackupManager {
             manifest.set_schema_version(db_id.as_str(), version);
         }
 
+        let crypto_count = self.backup_crypto_keys(&backup_subdir)?;
+        manifest.key_policy = if crypto_count > 0 {
+            BackupKeyPolicy::IncludedLocal
+        } else {
+            BackupKeyPolicy::NotPresent
+        };
+        self.backup_audit_db(&backup_subdir)?;
+
         // 4.5 备份工作区数据库（ws_*.db）
         let active_dir_for_ws = crate::data_space::get_data_space_manager()
             .map(|mgr| mgr.active_dir())
             .unwrap_or_else(|| self.app_data_dir.join("slots").join("slotA"));
-        match self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir) {
-            Ok(count) => {
-                if count > 0 {
-                    info!("工作区数据库备份完成: {} 个", count);
-                }
-            }
-            Err(e) => {
-                warn!("工作区数据库备份失败（非致命）: {}", e);
-            }
+        let workspace_files =
+            self.backup_workspace_databases(&active_dir_for_ws, &backup_subdir)?;
+        if !workspace_files.is_empty() {
+            info!("工作区数据库备份完成: {} 个", workspace_files.len());
         }
+        manifest.files.extend(workspace_files);
+        manifest
+            .included_components
+            .push("workspaces-root".to_string());
 
         // 5. 备份资产文件（如果启用）
         if selection.include_assets {
@@ -3350,6 +3756,15 @@ impl BackupManager {
                 if !allowed_dirs.contains(dir_name) {
                     debug!("资产目录 {} 不在 asset_types 筛选列表中，跳过", dir_name);
                     continue;
+                }
+
+                if AssetType::all()
+                    .into_iter()
+                    .any(|asset_type| asset_type.relative_path() == dir_name)
+                {
+                    manifest
+                        .included_components
+                        .push(format!("asset-root:{}", dir_name));
                 }
 
                 let asset_dir = active_asset_base.join(dir_name);
@@ -3384,6 +3799,27 @@ impl BackupManager {
             if tier_file_counts.contains_key(&tier_name) {
                 backed_up_tiers.push(tier);
             }
+        }
+
+        let selected_tiers = selection.tiers.iter().copied().collect::<HashSet<_>>();
+        let all_tiers = BackupTier::all_ordered()
+            .into_iter()
+            .collect::<HashSet<_>>();
+        let asset_filter_is_complete = selection
+            .asset_config
+            .as_ref()
+            .map(|config| config.asset_types.is_empty())
+            .unwrap_or(true);
+        let full_snapshot = selected_tiers == all_tiers
+            && selection.include_databases.is_empty()
+            && selection.exclude_databases.is_empty()
+            && selection.include_assets
+            && asset_filter_is_complete
+            && skipped_files.is_empty();
+        if full_snapshot {
+            manifest.mark_full();
+        } else {
+            manifest.mark_partial();
         }
 
         // 7. 保存清单
@@ -3453,13 +3889,8 @@ impl BackupManager {
             });
 
         for entry in walker {
-            let entry = match entry {
-                Ok(e) => e,
-                Err(e) => {
-                    warn!("遍历目录错误: {}", e);
-                    continue;
-                }
-            };
+            let entry = entry
+                .map_err(|e| BackupError::BackupDirectory(format!("遍历资产目录失败: {}", e)))?;
 
             // 只处理文件
             if !entry.file_type().is_file() {
@@ -3470,6 +3901,18 @@ impl BackupManager {
             let relative_path = path
                 .strip_prefix(source_dir)
                 .map_err(|_| BackupError::BackupDirectory("无法计算相对路径".to_string()))?;
+
+            // Workspace SQLite databases are captured above with SQLite's
+            // Backup API. Raw db/WAL/SHM copies would create a torn second copy.
+            if dir_name == "workspaces" {
+                let name = path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("");
+                if name.ends_with(".db") || name.ends_with("-wal") || name.ends_with("-shm") {
+                    continue;
+                }
+            }
 
             // 检查文件扩展名
             if let Some(ext) = path.extension().and_then(|e| e.to_str()) {

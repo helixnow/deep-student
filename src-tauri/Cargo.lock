@@ -3159,6 +3159,7 @@ dependencies = [
  "webpki-roots 0.26.11",
  "webview2-com",
  "windows 0.58.0",
+ "windows-sys 0.59.0",
  "zerocopy 0.7.35",
  "zeroize",
  "zip 0.6.6",

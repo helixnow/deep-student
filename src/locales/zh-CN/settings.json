@@ -1949,7 +1949,7 @@
     },
     "runtime_root_set_workspace": "设为工作区",
     "runtime_root_workspace_access": "工作区访问权限",
-    "runtime_root_workspace_write_warning": "读写授权允许 AI 在此工作区创建、修改、移动和删除文件。每次变更仍需按具体路径审批，并会生成可审计、可回滚的变更记录。",
+    "runtime_root_workspace_write_warning": "读写授权允许 AI 在此工作区创建、修改、移动和删除文件。文件变更工具会生成可审计、可回滚的变更记录；终端命令被限制在选定工作目录并强制记录文件变化。",
     "runtime_root_workspace_set": "已更新工作区根目录",
     "runtime_root_workspace_set_failed": "更新工作区根目录失败",
     "runtime_root_workspace_reset": "重置工作区根目录",

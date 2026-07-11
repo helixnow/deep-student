@@ -2022,6 +2022,8 @@ pub enum PreviewType {
     Xlsx,
     /// PowerPoint 演示文稿预览（pptx）
     Pptx,
+    /// EPUB 电子书阅读器
+    Epub,
     /// 纯文本预览（txt/md/html/csv/json 等）
     Text,
     /// 音频预览（mp3/wav/ogg/m4a/flac/aac）
@@ -2048,6 +2050,7 @@ impl std::fmt::Display for PreviewType {
             PreviewType::Docx => write!(f, "docx"),
             PreviewType::Xlsx => write!(f, "xlsx"),
             PreviewType::Pptx => write!(f, "pptx"),
+            PreviewType::Epub => write!(f, "epub"),
             PreviewType::Text => write!(f, "text"),
             PreviewType::Audio => write!(f, "audio"),
             PreviewType::Video => write!(f, "video"),
@@ -2073,6 +2076,7 @@ impl PreviewType {
             "xls" | "ods" | "xlsb" => PreviewType::Text,
             // PowerPoint 演示文稿（仅 OOXML）
             "pptx" => PreviewType::Pptx,
+            "epub" => PreviewType::Epub,
             // 图片
             "jpg" | "jpeg" | "png" | "gif" | "webp" | "svg" | "bmp" => PreviewType::Image,
             // 音频
@@ -2080,8 +2084,9 @@ impl PreviewType {
             // 视频
             "mp4" | "webm" | "mov" | "avi" | "mkv" | "m4v" | "wmv" | "flv" => PreviewType::Video,
             // 文本类型
-            "txt" | "md" | "markdown" | "html" | "htm" | "csv" | "json" | "xml" | "rtf"
-            | "epub" => PreviewType::Text,
+            "txt" | "md" | "markdown" | "html" | "htm" | "csv" | "json" | "xml" | "rtf" => {
+                PreviewType::Text
+            }
             // 默认无预览
             _ => PreviewType::None,
         }
@@ -3006,6 +3011,10 @@ mod tests {
             "\"pptx\""
         );
         assert_eq!(
+            serde_json::to_string(&PreviewType::Epub).unwrap(),
+            "\"epub\""
+        );
+        assert_eq!(
             serde_json::to_string(&PreviewType::Text).unwrap(),
             "\"text\""
         );
@@ -3035,6 +3044,8 @@ mod tests {
         assert_eq!(PreviewType::from_extension("xlsb"), PreviewType::Text);
         // PowerPoint
         assert_eq!(PreviewType::from_extension("pptx"), PreviewType::Pptx);
+        // EPUB
+        assert_eq!(PreviewType::from_extension("epub"), PreviewType::Epub);
         // 图片
         assert_eq!(PreviewType::from_extension("png"), PreviewType::Image);
         assert_eq!(PreviewType::from_extension("jpg"), PreviewType::Image);
@@ -3065,6 +3076,7 @@ mod tests {
         assert_eq!(PreviewType::from_filename("report.docx"), PreviewType::Docx);
         assert_eq!(PreviewType::from_filename("data.xlsx"), PreviewType::Xlsx);
         assert_eq!(PreviewType::from_filename("slides.pptx"), PreviewType::Pptx);
+        assert_eq!(PreviewType::from_filename("book.epub"), PreviewType::Epub);
         assert_eq!(PreviewType::from_filename("image.png"), PreviewType::Image);
         assert_eq!(PreviewType::from_filename("readme.txt"), PreviewType::Text);
         assert_eq!(PreviewType::from_filename("config.json"), PreviewType::Text);

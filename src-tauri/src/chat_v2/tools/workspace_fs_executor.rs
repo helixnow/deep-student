@@ -709,16 +709,35 @@ impl WorkspaceFsExecutor {
     ) -> Result<Value, String> {
         let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
         Self::ensure_writable_workspace(&root)?;
+        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        if let Some(value) = args.get("change_set") {
+            let change_set: ChangeSet = serde_json::from_value(value.clone())
+                .map_err(|error| format!("Invalid workspace change set: {}", error))?;
+            if change_set
+                .changes
+                .iter()
+                .any(|receipt| receipt.root_id != root.id)
+            {
+                return Err("Change set contains a different runtime root".to_string());
+            }
+            workspace_change_set::rollback_change_set(&root_canon, &temp.path, &change_set)?;
+            return Ok(json!({
+                "reverted": true,
+                "root": Self::root_json(&root),
+                "change_id": change_set.id,
+                "change_set": change_set,
+            }));
+        }
+
         let receipt: MutationReceipt = serde_json::from_value(
             args.get("receipt")
                 .cloned()
-                .ok_or_else(|| "receipt is required".to_string())?,
+                .ok_or_else(|| "receipt or change_set is required".to_string())?,
         )
         .map_err(|error| format!("Invalid workspace mutation receipt: {}", error))?;
         if receipt.root_id != root.id {
             return Err("Mutation receipt belongs to a different runtime root".to_string());
         }
-        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
         workspace_change_set::rollback(&root_canon, &temp.path, &receipt)?;
         Ok(json!({
             "reverted": true,

@@ -1065,7 +1065,9 @@ pub async fn run_workspace_agent_backend(
         McpToolSchema {
             name: "builtin-workspace_send".to_string(),
             server_id: None,
-            description: Some("向工作区发送进度、问题或中间协作消息。最终结果由运行时自动交付。".to_string()),
+            description: Some(
+                "向工作区发送进度、问题或中间协作消息。最终结果由运行时自动交付。".to_string(),
+            ),
             input_schema: Some(serde_json::json!({
                 "type": "object",
                 "properties": {

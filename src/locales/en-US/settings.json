@@ -1949,7 +1949,7 @@
     },
     "runtime_root_set_workspace": "Set Workspace",
     "runtime_root_workspace_access": "Workspace access",
-    "runtime_root_workspace_write_warning": "Read/write access lets the AI create, modify, move, and delete files in this workspace. Each mutation still requires path-specific approval and produces an auditable, reversible change record.",
+    "runtime_root_workspace_write_warning": "Read/write access lets the AI create, modify, move, and delete files in this workspace. File mutation tools produce auditable, reversible records; shell commands are confined to the selected working directory and must track file changes.",
     "runtime_root_workspace_set": "Workspace root updated",
     "runtime_root_workspace_set_failed": "Failed to update workspace root",
     "runtime_root_workspace_reset": "Reset workspace root",

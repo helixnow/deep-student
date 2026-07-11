@@ -246,24 +246,37 @@ fn archive_synced_change_logs(active_dir: &std::path::Path, keep_days: i64) {
             continue;
         }
         match open_sync_connection(&db_path) {
-            Ok(conn) => match SyncManager::cleanup_synced_changes(&conn, &cutoff) {
-                Ok(n) if n > 0 => {
-                    tracing::info!(
-                        "[data_governance] 已归档 {} 条 {} 日前的已同步变更日志（{}）",
-                        n,
-                        keep_days,
-                        db_id.as_str()
-                    );
-                }
-                Ok(_) => {}
-                Err(e) => {
+            Ok(conn) => {
+                let local_device_id = crate::cloud_storage::get_device_id();
+                if let Err(error) =
+                    SyncManager::prepare_delete_versions_for_cleanup(&conn, &local_device_id)
+                {
                     tracing::warn!(
-                        "[data_governance] 归档 __change_log 失败（{}，非致命）: {}",
+                        "[data_governance] DELETE 版本固化失败，跳过变更日志归档（{}）: {}",
                         db_id.as_str(),
-                        e
+                        error
                     );
+                    continue;
                 }
-            },
+                match SyncManager::cleanup_synced_changes(&conn, &cutoff) {
+                    Ok(n) if n > 0 => {
+                        tracing::info!(
+                            "[data_governance] 已归档 {} 条 {} 日前的已同步变更日志（{}）",
+                            n,
+                            keep_days,
+                            db_id.as_str()
+                        );
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(
+                            "[data_governance] 归档 __change_log 失败（{}，非致命）: {}",
+                            db_id.as_str(),
+                            e
+                        );
+                    }
+                }
+            }
             Err(e) => {
                 tracing::warn!(
                     "[data_governance] 归档时无法打开数据库 {}: {}（跳过）",
@@ -1204,6 +1217,12 @@ pub async fn data_governance_resolve_conflicts(
     strategy: String,
     cloud_manifest_json: String,
 ) -> Result<SyncResultResponse, String> {
+    if !strategy.is_empty() || !cloud_manifest_json.is_empty() {
+        return Err(
+            "批量清单级冲突接口已停用，因为它只生成记录 ID、不会提交数据库或云端变更。请使用 data_governance_list_record_conflicts 和 data_governance_resolve_record_conflict 逐条裁决。"
+                .to_string(),
+        );
+    }
     info!("[data_governance] 开始解决冲突，策略: {}", strategy);
 
     // P0-6: 维护模式检查——禁止在备份/恢复/迁移期间访问数据库文件
@@ -2348,25 +2367,11 @@ pub async fn data_governance_import_sync_data(
         }
     };
 
-    // 如果有冲突且是手动模式
-    if detection.has_conflicts && merge_strategy == MergeStrategy::Manual {
-        let response = SyncImportResponse {
-            success: false,
-            imported_changes: 0,
-            conflicts_detected: detection.total_conflicts(),
-            needs_manual_resolution: true,
-            error_message: Some(
-                "存在冲突，需要手动解决。请前往「同步」面板选择合适的解决策略".to_string(),
-            ),
-        };
-        cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
-        return Ok(response);
-    }
-
     // 应用变更到本地数据库（v2 格式已含完整数据，按数据库路由）
     let mut total_applied = 0usize;
     let mut total_incomplete_skipped = 0usize;
     let mut total_failed = 0usize;
+    let mut record_conflicts = 0usize;
 
     if !import_data.pending_changes.is_empty() {
         // 导入的变更已含完整记录数据，直接按数据库路由并应用
@@ -2380,6 +2385,7 @@ pub async fn data_governance_import_sync_data(
                 let total_skipped = apply_agg.total_skipped;
                 total_incomplete_skipped = apply_agg.total_incomplete_skipped;
                 total_failed = apply_agg.total_failed;
+                record_conflicts = apply_agg.total_conflicts;
                 info!(
                     "[data_governance] 导入变更应用完成: applied={}, failed={}, skipped={}",
                     total_applied, total_failed, total_skipped
@@ -2403,7 +2409,12 @@ pub async fn data_governance_import_sync_data(
         detection.total_conflicts()
     );
 
-    let error_message = if total_failed > 0 {
+    let error_message = if record_conflicts > 0 && merge_strategy == MergeStrategy::Manual {
+        Some(format!(
+            "已保留本地数据并记录 {} 个冲突快照，请在冲突面板逐条裁决。",
+            record_conflicts
+        ))
+    } else if total_failed > 0 {
         Some(format!("{}条变更应用失败", total_failed))
     } else if total_incomplete_skipped > 0 {
         Some(format!(
@@ -2417,8 +2428,8 @@ pub async fn data_governance_import_sync_data(
     let response = SyncImportResponse {
         success: total_failed == 0,
         imported_changes: total_applied,
-        conflicts_detected: detection.total_conflicts(),
-        needs_manual_resolution: false,
+        conflicts_detected: record_conflicts.max(detection.total_conflicts()),
+        needs_manual_resolution: merge_strategy == MergeStrategy::Manual && record_conflicts > 0,
         error_message,
     };
     cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
@@ -3118,12 +3129,9 @@ async fn enforce_prune_gap_check(
     let needs_bootstrap = SyncManager::has_prune_gap(since_version, min_available)
         || (since_version == 0 && min_available.is_some_and(|v| v > 1));
     if needs_bootstrap {
-        if storage_has_snapshot(storage).await? {
-            return Ok(());
-        }
         return Err(format!(
             "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}。\
-             部分变更可能已被清理，且云端没有可用快照；请先通过 ZIP 完整恢复后重新同步。",
+             当前 v1 快照不具备权威删除集合，不能安全覆盖本地；请先通过 ZIP 完整恢复后重新同步。",
             since_version,
             min_available.map_or("无".to_string(), |v| v.to_string())
         ));
@@ -3189,11 +3197,11 @@ async fn commit_download_progress_if_needed(
 }
 
 async fn apply_snapshot_bootstrap_if_needed(
-    manager: &SyncManager,
+    _manager: &SyncManager,
     storage: &dyn CloudStorage,
     local_manifest: &SyncManifest,
-    active_dir: &std::path::Path,
-    merge_strategy: MergeStrategy,
+    _active_dir: &std::path::Path,
+    _merge_strategy: MergeStrategy,
 ) -> Result<(usize, usize), String> {
     let min_available = SyncManager::get_min_available_change_version(storage)
         .await
@@ -3206,62 +3214,17 @@ async fn apply_snapshot_bootstrap_if_needed(
         .unwrap_or(0);
     let has_gap = SyncManager::has_prune_gap(since_version, min_available)
         || (since_version == 0 && min_available.is_some_and(|v| v > 1));
-    let looks_unbootstrapped = !local_manifest.databases.is_empty()
-        && local_manifest
-            .databases
-            .values()
-            .all(|s| s.data_version == 0);
-
-    if !has_gap && !looks_unbootstrapped {
-        return Ok((0, 0));
+    if has_gap {
+        return Err(
+            "检测到云端变更断层；UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标。请使用完整 ZIP 恢复。"
+                .to_string(),
+        );
     }
 
-    let snapshot = manager
-        .download_snapshot_bootstrap_changes(storage)
-        .await
-        .map_err(|e| format!("下载快照失败: {}", e))?;
-
-    if snapshot.changes.is_empty() && snapshot.cursor_advancements.is_empty() {
-        if has_gap {
-            return Err(format!(
-                "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}，但云端没有可用快照。",
-                since_version,
-                min_available.map_or("无".to_string(), |v| v.to_string())
-            ));
-        }
-        return Ok((0, 0));
-    }
-
-    let mut skipped = 0usize;
-    if !snapshot.changes.is_empty() {
-        let apply_agg =
-            apply_downloaded_changes_to_databases(&snapshot.changes, active_dir, merge_strategy)?;
-        skipped = apply_agg.total_incomplete_skipped;
-        if apply_agg.total_failed > 0 {
-            let detail = if apply_agg.db_errors.is_empty() {
-                "部分快照变更已移入同步隔离区".to_string()
-            } else {
-                apply_agg
-                    .db_errors
-                    .iter()
-                    .map(|(db, err)| format!("{}: {}", db, err))
-                    .collect::<Vec<_>>()
-                    .join("；")
-            };
-            return Err(format!(
-                "应用快照失败：{} 条变更未能应用（{}）",
-                apply_agg.total_failed, detail
-            ));
-        }
-    }
-
-    manager
-        .commit_download_progress(storage, &snapshot)
-        .await
-        .map_err(|e| format!("提交快照游标失败: {}", e))?;
-    publish_current_sync_manifest(manager, storage, active_dir).await?;
-
-    Ok((snapshot.changes.len(), skipped))
+    // With automatic prune disabled, a fresh device can safely replay the
+    // immutable change log from sequence 1. Avoid v1 snapshot bootstrap because
+    // it cannot delete stale rows or represent an authoritative table set.
+    Ok((0, 0))
 }
 
 async fn execute_download_with_progress_v2(
@@ -4398,36 +4361,21 @@ mod tests {
         );
     }
 
-    /// [P1 回归] v2 download 的快照引导必须尊重用户选择的合并策略，
-    /// 不得硬编码 KeepLatest（否则 keep_local 用户的本地数据会被快照覆盖）。
+    /// v1 快照不具备权威删除集合，不能再用于 bootstrap 或推进游标。
     #[test]
-    fn progress_v2_snapshot_bootstrap_respects_user_merge_strategy() {
+    fn unsafe_snapshot_bootstrap_is_disabled() {
         let source = include_str!("commands_sync.rs");
-
-        let download_start = source
-            .find("async fn execute_download_with_progress_v2")
-            .expect("download v2 function exists");
-        let bidirectional_start = source
-            .find("async fn execute_bidirectional_with_progress_v2")
-            .expect("bidirectional v2 function exists");
-        let download_body = &source[download_start..bidirectional_start];
-
-        let snapshot_call_start = download_body
-            .find("apply_snapshot_bootstrap_if_needed(")
-            .expect("download v2 invokes snapshot bootstrap");
-        let snapshot_tail = &download_body[snapshot_call_start..];
-        let snapshot_call_end = snapshot_tail
-            .find(".await")
-            .expect("snapshot bootstrap call is awaited");
-        let snapshot_call = &snapshot_tail[..snapshot_call_end];
-
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
         assert!(
-            snapshot_call.contains("merge_strategy"),
-            "快照引导必须传入用户选择的 merge_strategy"
+            production_source.contains("UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标"),
+            "断层必须 fail-close"
         );
         assert!(
-            !snapshot_call.contains("MergeStrategy::KeepLatest"),
-            "快照引导不得硬编码 MergeStrategy::KeepLatest"
+            !production_source.contains("download_snapshot_bootstrap_changes(storage)"),
+            "生产命令路径不得保留可误启用的 v1 快照 bootstrap"
         );
     }
 

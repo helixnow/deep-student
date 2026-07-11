@@ -3,7 +3,7 @@ import { inferFilePreviewTypeFromName, normalizePreviewType } from '../../types'
 
 export type FilePreviewMode = Extract<
   ResourceListItem['previewType'],
-  'pdf' | 'docx' | 'xlsx' | 'pptx' | 'text' | 'audio' | 'video' | 'none'
+  'pdf' | 'docx' | 'xlsx' | 'pptx' | 'epub' | 'text' | 'audio' | 'video' | 'none'
 >;
 
 const FILE_PREVIEW_MODES: Set<FilePreviewMode> = new Set([
@@ -11,6 +11,7 @@ const FILE_PREVIEW_MODES: Set<FilePreviewMode> = new Set([
   'docx',
   'xlsx',
   'pptx',
+  'epub',
   'text',
   'audio',
   'video',
@@ -34,12 +35,17 @@ export function resolveFilePreviewMode(
   fileName: string,
   previewType?: string
 ): FilePreviewMode {
+  const normalizedMime = (mimeType || '').toLowerCase();
+  const isEpubFile = fileName.split('.').pop()?.toLowerCase() === 'epub';
+
+  // Older imports labelled EPUB as text. The file signature wins so they are
+  // upgraded to the structured reader without a data migration.
+  if (isEpubFile || normalizedMime.includes('epub')) return 'epub';
+
   const normalizedPreviewType = asFilePreviewMode(normalizePreviewType(previewType));
   if (normalizedPreviewType && normalizedPreviewType !== 'none') {
     return normalizedPreviewType;
   }
-
-  const normalizedMime = (mimeType || '').toLowerCase();
 
   if (normalizedMime.startsWith('audio/')) return 'audio';
   if (normalizedMime.startsWith('video/')) return 'video';

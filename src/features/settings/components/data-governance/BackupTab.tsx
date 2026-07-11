@@ -90,7 +90,6 @@ export interface BackupTabProps {
   // 恢复完成后重启对话框
   showRestartDialog?: boolean;
   onRestartNow?: () => void;
-  onRestartLater?: () => void;
   // 导入完成后提示恢复对话框
   showRestorePromptDialog?: boolean;
   onRestoreNow?: () => void;
@@ -182,7 +181,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   onResumeJob,
   showRestartDialog,
   onRestartNow,
-  onRestartLater,
   showRestorePromptDialog,
   onRestoreNow,
   onRestoreLater,
@@ -312,6 +310,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     { value: 'workspaces' as AssetType, label: t('settings:data_governance.asset_types.workspaces'), icon: <Folder className="h-4 w-4" /> },
     { value: 'audio' as AssetType, label: t('settings:data_governance.asset_types.audio'), icon: <FileAudio className="h-4 w-4" /> },
     { value: 'videos' as AssetType, label: t('settings:data_governance.asset_types.videos'), icon: <FileVideo className="h-4 w-4" /> },
+    { value: 'textbooks' as AssetType, label: t('settings:data_governance.asset_types.textbooks'), icon: <Folder className="h-4 w-4" /> },
   ], [t]);
   const [actionType, setActionType] = useState<'delete' | 'restore' | 'export' | null>(null);
   // 分层备份状态
@@ -791,7 +790,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     <Badge variant={backup.backup_type === 'full' ? 'default' : 'secondary'} className="rounded-sm font-normal whitespace-nowrap">
                       {backup.backup_type === 'full'
                         ? t('data:governance.full')
-                        : t('data:governance.incremental')}
+                        : backup.backup_type === 'incremental'
+                        ? t('data:governance.incremental')
+                        : backup.backup_type === 'partial_overlay'
+                        ? t('data:governance.partial_overlay')
+                        : t('data:governance.legacy_unknown')}
                     </Badge>
                   </TableCell>
                   <TableCell className="py-3 font-mono text-xs whitespace-nowrap">{formatBytes(backup.size)}</TableCell>
@@ -868,10 +871,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         size="sm"
                         className="h-7 w-7 p-0"
                         onClick={() => {
-                          if (backup.backup_type === 'incremental') {
+                          if (backup.backup_type !== 'full') {
                             showGlobalNotification(
                               'warning',
-                              t('data:governance.restore_incremental_not_supported')
+                              t('data:governance.restore_non_full_not_supported')
                             );
                             return;
                           }
@@ -957,7 +960,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       />
 
       {/* Task 3: 恢复完成后重启提示对话框 */}
-      <NotionDialog open={showRestartDialog} onOpenChange={(open) => { if (!open) onRestartLater?.(); }}>
+      <NotionDialog open={showRestartDialog} onOpenChange={() => undefined}>
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
             <CheckCircle size={20} className="text-green-500" />
@@ -969,9 +972,6 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           </NotionDialogDescription>
         </NotionDialogHeader>
         <NotionDialogFooter>
-          <NotionButton variant="ghost" size="sm" onClick={onRestartLater}>
-            {t('data:governance.restart_later')}
-          </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={onRestartNow}>
             <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restart_now')}

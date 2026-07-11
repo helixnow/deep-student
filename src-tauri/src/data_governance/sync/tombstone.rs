@@ -881,15 +881,11 @@ pub fn prune_tombstones<T>(
     retention_days: u64,
     extract_deleted_at: impl Fn(&T) -> &str,
 ) -> usize {
-    let cutoff = Utc::now() - chrono::Duration::days(retention_days as i64);
-    let before = entries.len();
-    entries.retain(|_, v| {
-        let ts = extract_deleted_at(v);
-        parse_flexible_timestamp_public(ts)
-            .map(|dt| dt > cutoff)
-            .unwrap_or(true) // 时间戳无法解析就保留，避免误删
-    });
-    before.saturating_sub(entries.len())
+    let _ = (entries, retention_days, extract_deleted_at);
+    // No finite retention window can be correct for an arbitrarily long-offline
+    // device unless an authoritative replace snapshot exists. Keep tombstones
+    // until that protocol is implemented and verified.
+    0
 }
 
 #[cfg(test)]
@@ -897,7 +893,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_prune_tombstones_removes_expired() {
+    fn test_prune_tombstones_retains_expired_without_authoritative_snapshot() {
         let mut map: HashMap<String, BlobTombstoneEntry> = HashMap::new();
         let old_ts = (Utc::now() - chrono::Duration::days(120)).to_rfc3339();
         let fresh_ts = Utc::now().to_rfc3339();
@@ -920,9 +916,12 @@ mod tests {
             },
         );
         let removed = prune_tombstones(&mut map, 90, |e| &e.deleted_at);
-        assert_eq!(removed, 1);
+        assert_eq!(removed, 0);
         assert!(map.contains_key("fresh"));
-        assert!(!map.contains_key("old"));
+        assert!(
+            map.contains_key("old"),
+            "离线设备可能仍需该删除记录；权威 replace snapshot 上线前不得裁剪"
+        );
     }
 
     #[test]

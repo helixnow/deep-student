@@ -407,6 +407,13 @@ enum UpsertFreshness {
     SuspectDrift { drift_ms: i64 },
 }
 
+#[derive(Debug, Clone)]
+struct DeleteVersion {
+    changed_at: String,
+    source_device_id: String,
+    source_seq: u64,
+}
+
 /// 同步字段 SQL（用于需要同步的表）
 pub const SYNC_FIELDS_SQL: &str = r#"
     -- 添加同步字段
@@ -450,6 +457,9 @@ pub struct WorkspaceEntry {
     /// 上传者设备 ID（审计/调试）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
+    /// Immutable content object. Legacy manifests fall back to `<ws_id>.db`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_key: Option<String>,
 }
 
 /// VFS blob 云同步清单（内容寻址）
@@ -512,6 +522,9 @@ pub struct AssetFileEntry {
     pub size: u64,
     #[serde(default)]
     pub updated_at: String,
+    /// Immutable content-addressed object key. Absent on legacy manifests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -1006,6 +1019,9 @@ impl SyncManager {
     const SNAPSHOT_FORMAT_VERSION: u32 = 1;
     const SNAPSHOT_INTERVAL_DAYS: i64 = 7;
     const SNAPSHOT_RETAIN_PER_DB: usize = 2;
+    /// Current v1 snapshots are UPSERT-only and cannot prove set equality.
+    /// They must not advance cursors across a prune gap or authorize pruning.
+    const AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED: bool = false;
 
     /// 构建按设备隔离的清单路径
     fn device_manifest_key(device_id: &str) -> String {
@@ -2246,6 +2262,12 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         active_dir: &std::path::Path,
     ) -> Result<usize, SyncError> {
+        if !Self::AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED {
+            tracing::info!(
+                "[sync] 跳过 v1 UPSERT-only 快照发布：权威 replace/delete-set 协议尚未启用"
+            );
+            return Ok(0);
+        }
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let store = SyncStateStore::open_default()?;
         let mut covered_cursors = store.cursors(&instance_id)?;
@@ -2574,6 +2596,10 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         retention_days: u64,
     ) -> Result<usize, SyncError> {
+        if !Self::AUTHORITATIVE_SNAPSHOT_REPLACE_ENABLED {
+            tracing::info!("[sync] 自动 prune 已禁用：当前快照不具备权威 replace/delete-set 语义");
+            return Ok(0);
+        }
         let list = storage
             .list_outcome(Self::CHANGES_PREFIX)
             .await
@@ -5904,6 +5930,23 @@ impl SyncManager {
                     let change_to_apply =
                         Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
 
+                    if matches!(
+                        change_to_apply.operation,
+                        ChangeOperation::Insert | ChangeOperation::Update
+                    ) && Self::upsert_blocked_by_delete_version(
+                        conn,
+                        &change_to_apply,
+                        id_column,
+                    )? {
+                        apply_result.skipped_count += 1;
+                        tracing::debug!(
+                            "[sync] 冲突判定前拒绝迟到 UPSERT: {}.{}",
+                            change_to_apply.table_name,
+                            change_to_apply.record_id
+                        );
+                        return Ok(());
+                    }
+
                     match resolver.resolve_one(conn, &change_to_apply, id_column)? {
                         None => {
                             // 非冲突，正常 UPSERT
@@ -6234,6 +6277,260 @@ impl SyncManager {
         None
     }
 
+    fn ensure_delete_versions_table(conn: &Connection) -> Result<(), SyncError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS __sync_delete_versions (
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                changed_at TEXT NOT NULL,
+                source_device_id TEXT NOT NULL,
+                source_seq INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (table_name, record_id)
+            );
+            "#,
+        )
+        .map_err(|error| {
+            SyncError::Database(format!("创建 __sync_delete_versions 失败: {}", error))
+        })
+    }
+
+    fn compare_operation_versions(
+        left: &DeleteVersion,
+        right: &DeleteVersion,
+    ) -> std::cmp::Ordering {
+        let base = Self::compare_lww_timestamps(
+            &left.changed_at,
+            &left.source_device_id,
+            "",
+            &right.changed_at,
+            &right.source_device_id,
+            "",
+        );
+        if base == std::cmp::Ordering::Equal {
+            left.source_seq.cmp(&right.source_seq)
+        } else {
+            base
+        }
+    }
+
+    fn stored_delete_version(
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+    ) -> Result<Option<DeleteVersion>, SyncError> {
+        Self::ensure_delete_versions_table(conn)?;
+        conn.query_row(
+            "SELECT changed_at, source_device_id, source_seq
+             FROM __sync_delete_versions WHERE table_name=?1 AND record_id=?2",
+            params![table_name, record_id],
+            |row| {
+                let seq: i64 = row.get(2)?;
+                Ok(DeleteVersion {
+                    changed_at: row.get(0)?,
+                    source_device_id: row.get(1)?,
+                    source_seq: seq.max(0) as u64,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| SyncError::Database(format!("读取 DELETE 版本失败: {}", error)))
+    }
+
+    fn current_delete_version(
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+        id_column: &str,
+    ) -> Result<Option<DeleteVersion>, SyncError> {
+        if let Some(version) = Self::stored_delete_version(conn, table_name, record_id)? {
+            return Ok(Some(version));
+        }
+
+        if Self::table_has_column(conn, table_name, "deleted_at") {
+            if let Some(local) = Self::get_record_data(conn, table_name, record_id, id_column)? {
+                if let Some(changed_at) = local
+                    .get("deleted_at")
+                    .and_then(Self::timestamp_value_to_lww_string)
+                {
+                    let source_device_id = local
+                        .get("device_id")
+                        .and_then(|value| value.as_str())
+                        .filter(|value| !value.trim().is_empty())
+                        .map(str::to_string)
+                        .unwrap_or_else(crate::cloud_storage::get_device_id);
+                    return Ok(Some(DeleteVersion {
+                        changed_at,
+                        source_device_id,
+                        source_seq: 0,
+                    }));
+                }
+            }
+        }
+
+        let has_change_log: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_change_log {
+            return Ok(None);
+        }
+        conn.query_row(
+            "SELECT changed_at FROM __change_log
+             WHERE table_name=?1 AND record_id=?2 AND upper(operation)='DELETE'
+             ORDER BY id DESC LIMIT 1",
+            params![table_name, record_id],
+            |row| {
+                Ok(DeleteVersion {
+                    changed_at: row.get(0)?,
+                    source_device_id: crate::cloud_storage::get_device_id(),
+                    source_seq: 0,
+                })
+            },
+        )
+        .optional()
+        .map_err(|error| SyncError::Database(format!("读取本地 DELETE 日志失败: {}", error)))
+    }
+
+    fn change_version(change: &SyncChangeWithData) -> DeleteVersion {
+        let changed_at = change
+            .data
+            .as_ref()
+            .and_then(|data| data.get("updated_at"))
+            .and_then(Self::timestamp_value_to_lww_string)
+            .unwrap_or_else(|| change.changed_at.clone());
+        DeleteVersion {
+            changed_at,
+            source_device_id: change
+                .source_device_id
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(crate::cloud_storage::get_device_id),
+            source_seq: change.source_seq.unwrap_or(0),
+        }
+    }
+
+    fn upsert_blocked_by_delete_version(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+        id_column: &str,
+    ) -> Result<bool, SyncError> {
+        let Some(delete_version) =
+            Self::current_delete_version(conn, &change.table_name, &change.record_id, id_column)?
+        else {
+            return Ok(false);
+        };
+        let upsert_version = Self::change_version(change);
+        Ok(
+            Self::compare_operation_versions(&delete_version, &upsert_version)
+                != std::cmp::Ordering::Less,
+        )
+    }
+
+    fn record_delete_version(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+    ) -> Result<(), SyncError> {
+        Self::ensure_delete_versions_table(conn)?;
+        let incoming = Self::change_version(change);
+        if let Some(existing) =
+            Self::stored_delete_version(conn, &change.table_name, &change.record_id)?
+        {
+            if Self::compare_operation_versions(&existing, &incoming) != std::cmp::Ordering::Less {
+                return Ok(());
+            }
+        }
+        conn.execute(
+            "INSERT INTO __sync_delete_versions
+             (table_name, record_id, changed_at, source_device_id, source_seq)
+             VALUES(?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(table_name, record_id) DO UPDATE SET
+               changed_at=excluded.changed_at,
+               source_device_id=excluded.source_device_id,
+               source_seq=excluded.source_seq",
+            params![
+                &change.table_name,
+                &change.record_id,
+                incoming.changed_at,
+                incoming.source_device_id,
+                i64::try_from(incoming.source_seq).unwrap_or(i64::MAX),
+            ],
+        )
+        .map_err(|error| SyncError::Database(format!("写入 DELETE 版本失败: {}", error)))?;
+        Ok(())
+    }
+
+    fn clear_delete_version(
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+    ) -> Result<(), SyncError> {
+        Self::ensure_delete_versions_table(conn)?;
+        conn.execute(
+            "DELETE FROM __sync_delete_versions WHERE table_name=?1 AND record_id=?2",
+            params![table_name, record_id],
+        )
+        .map_err(|error| SyncError::Database(format!("清理 DELETE 版本失败: {}", error)))?;
+        Ok(())
+    }
+
+    /// Persist local DELETE operations before old change-log rows are archived.
+    pub fn prepare_delete_versions_for_cleanup(
+        conn: &Connection,
+        local_device_id: &str,
+    ) -> Result<(), SyncError> {
+        Self::ensure_delete_versions_table(conn)?;
+        let has_change_log: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !has_change_log {
+            return Ok(());
+        }
+        let mut stmt = conn
+            .prepare(
+                "SELECT table_name, record_id, changed_at
+                 FROM __change_log WHERE upper(operation)='DELETE' ORDER BY id",
+            )
+            .map_err(|error| SyncError::Database(format!("准备 DELETE 版本回填失败: {}", error)))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|error| SyncError::Database(format!("查询 DELETE 版本回填失败: {}", error)))?;
+        for row in rows {
+            let (table_name, record_id, changed_at) = row.map_err(|error| {
+                SyncError::Database(format!("读取 DELETE 版本回填失败: {}", error))
+            })?;
+            Self::record_delete_version(
+                conn,
+                &SyncChangeWithData {
+                    table_name,
+                    record_id,
+                    operation: ChangeOperation::Delete,
+                    data: None,
+                    changed_at,
+                    change_log_id: None,
+                    database_name: None,
+                    suppress_change_log: Some(true),
+                    source_device_id: Some(local_device_id.to_string()),
+                    source_seq: None,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
     /// 应用单条变更
     ///
     /// # 返回
@@ -6266,6 +6563,7 @@ impl SyncManager {
         skip_lww: bool,
         allow_field_merge: bool,
     ) -> Result<bool, SyncError> {
+        Self::ensure_delete_versions_table(conn)?;
         match change.operation {
             ChangeOperation::Delete => {
                 Self::ensure_table_allowed_and_exists(conn, &change.table_name)?;
@@ -6404,6 +6702,7 @@ impl SyncManager {
                     change.record_id,
                     affected
                 );
+                Self::record_delete_version(conn, change)?;
                 Ok(true)
             }
             ChangeOperation::Insert | ChangeOperation::Update => {
@@ -6429,6 +6728,16 @@ impl SyncManager {
                         )));
                     }
                 };
+
+                if Self::upsert_blocked_by_delete_version(conn, change, id_column)? {
+                    tracing::debug!(
+                        "[sync] 独立 DELETE 版本阻止迟到 UPSERT: {}.{} = {}",
+                        change.table_name,
+                        id_column,
+                        change.record_id
+                    );
+                    return Ok(false);
+                }
 
                 // [LWW 保护] 比较云端 payload 的 updated_at 和本地记录的 updated_at。
                 // 若本地更新，跳过应用 —— 避免旧云端变更覆盖较新的本地值（这是 chaos test 暴露的
@@ -6488,6 +6797,7 @@ impl SyncManager {
                     change.database_name.as_deref(),
                     allow_field_merge,
                 )?;
+                Self::clear_delete_version(conn, &change.table_name, &change.record_id)?;
                 Ok(true)
             }
         }
@@ -7722,11 +8032,15 @@ impl SyncManager {
     // ========================================================================
 
     const WORKSPACES_MANIFEST_KEY: &'static str = "data_governance/workspaces_manifest.json";
+    const WORKSPACES_MANIFESTS_PREFIX: &'static str = "data_governance/file_manifests/workspaces";
     const WORKSPACES_CLOUD_PREFIX: &'static str = "data_governance/workspaces";
     const BLOBS_MANIFEST_KEY: &'static str = "data_governance/blobs_manifest.json";
+    const BLOBS_MANIFESTS_PREFIX: &'static str = "data_governance/file_manifests/blobs";
     const BLOBS_CLOUD_PREFIX: &'static str = "data_governance/blobs";
     const ASSETS_MANIFEST_KEY: &'static str = "data_governance/assets_manifest.json";
+    const ASSETS_MANIFESTS_PREFIX: &'static str = "data_governance/file_manifests/assets";
     const ASSETS_CLOUD_PREFIX: &'static str = "data_governance/assets";
+    const ASSET_OBJECTS_PREFIX: &'static str = "data_governance/asset_objects";
     const DIVERGED_CHECKSUM_SENTINEL: &'static str = "__cloud_diverged_same_version__";
     const ACTIVE_ASSET_DIRS: [&'static str; 7] = [
         "images",
@@ -7745,6 +8059,32 @@ impl SyncManager {
             .map(chrono::DateTime::<chrono::Utc>::from)
             .map(|dt| dt.to_rfc3339())
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+    }
+
+    fn append_only_file_manifest_key(prefix: &str, device_id: &str) -> String {
+        format!(
+            "{}/{}/{}-{}.json",
+            prefix,
+            device_id,
+            chrono::Utc::now().timestamp_millis(),
+            uuid::Uuid::new_v4()
+        )
+    }
+
+    async fn publish_file_manifest<T: Serialize>(
+        &self,
+        storage: &dyn CloudStorage,
+        prefix: &str,
+        manifest: &T,
+        label: &str,
+    ) -> Result<(), SyncError> {
+        let json = serde_json::to_vec(manifest)
+            .map_err(|error| SyncError::Database(format!("序列化{}清单失败: {}", label, error)))?;
+        let payload = self.encode_payload(&json)?;
+        let key = Self::append_only_file_manifest_key(prefix, &self.device_id);
+        storage.put(&key, &payload).await.map_err(|error| {
+            SyncError::Network(format!("发布{}清单失败 {}: {}", label, key, error))
+        })
     }
 
     fn file_transfer_progress(
@@ -7913,7 +8253,13 @@ impl SyncManager {
                     continue;
                 }
                 if direction != SyncDirection::Download {
-                    let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                    let key = cloud_manifest
+                        .entries
+                        .get(ws_id)
+                        .and_then(|manifest| manifest.object_key.clone())
+                        .unwrap_or_else(|| {
+                            format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id)
+                        });
                     if let Err(e) = storage.delete(&key).await {
                         tracing::warn!("[sync] 删除云端工作区数据库失败（忽略）: {}: {}", key, e);
                     }
@@ -7938,21 +8284,22 @@ impl SyncManager {
                 if local_shm.exists() {
                     let _ = std::fs::remove_file(&local_shm);
                 }
-                if direction != SyncDirection::Download
-                    && cloud_manifest.entries.remove(ws_id).is_some()
-                {
+                // Always remove from this round's in-memory view. Download-only
+                // must not rehydrate the just-deleted workspace from a stale
+                // remote manifest later in the same call.
+                if cloud_manifest.entries.remove(ws_id).is_some() {
                     manifest_changed = true;
                 }
             }
             if direction != SyncDirection::Download && manifest_changed {
                 cloud_manifest.updated_at = chrono::Utc::now().to_rfc3339();
-                let json = serde_json::to_vec(&cloud_manifest)
-                    .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
-                let payload = self.encode_payload(&json)?;
-                storage
-                    .put(Self::WORKSPACES_MANIFEST_KEY, &payload)
-                    .await
-                    .map_err(|e| SyncError::Network(format!("上传工作区清单失败: {}", e)))?;
+                self.publish_file_manifest(
+                    storage,
+                    Self::WORKSPACES_MANIFESTS_PREFIX,
+                    &cloud_manifest,
+                    "工作区",
+                )
+                .await?;
             }
         }
         for advance in workspace_tombstone_advances {
@@ -8023,7 +8370,6 @@ impl SyncManager {
                     }
                 };
                 if should_upload {
-                    let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
                     let snapshot = match Self::create_workspace_upload_snapshot(path, ws_id) {
                         Ok(snapshot) => snapshot,
                         Err(e) => {
@@ -8043,6 +8389,12 @@ impl SyncManager {
                     let snapshot_size = std::fs::metadata(&snapshot)
                         .map(|m| m.len())
                         .unwrap_or(*size);
+                    let key = format!(
+                        "{}/{}/{}.db",
+                        Self::WORKSPACES_CLOUD_PREFIX,
+                        ws_id,
+                        snapshot_hash
+                    );
                     let transfer_progress = Self::file_transfer_progress(
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
@@ -8057,6 +8409,7 @@ impl SyncManager {
                                     updated_at: local_updated_at.clone(),
                                     source_sha256: Some(sha256.clone()),
                                     device_id: Some(self.device_id.clone()),
+                                    object_key: Some(key.clone()),
                                 },
                             );
                             tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
@@ -8104,7 +8457,9 @@ impl SyncManager {
                             tracing::warn!("[sync] 保存工作区数据库冲突副本失败: {}: {}", ws_id, e);
                         }
                     }
-                    let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                    let key = cloud_entry.object_key.clone().unwrap_or_else(|| {
+                        format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id)
+                    });
                     let transfer_progress = Self::file_transfer_progress(
                         progress.as_ref(),
                         format!("工作区数据库 {}", ws_id),
@@ -8180,14 +8535,13 @@ impl SyncManager {
                 }
             }
             merged.updated_at = chrono::Utc::now().to_rfc3339();
-            let json = serde_json::to_vec(&merged)
-                .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
-            // [P0-2] 可选加密
-            let payload = self.encode_payload(&json)?;
-            storage
-                .put(Self::WORKSPACES_MANIFEST_KEY, &payload)
-                .await
-                .map_err(|e| SyncError::Network(format!("上传工作区清单失败: {}", e)))?;
+            self.publish_file_manifest(
+                storage,
+                Self::WORKSPACES_MANIFESTS_PREFIX,
+                &merged,
+                "工作区",
+            )
+            .await?;
         }
 
         if !failures.is_empty() {
@@ -8204,18 +8558,86 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<WorkspacesManifest, SyncError> {
-        match storage
+        let mut manifests = Vec::new();
+        if let Some(bytes) = storage
             .get(Self::WORKSPACES_MANIFEST_KEY)
             .await
-            .map_err(|e| SyncError::Network(format!("获取工作区清单失败: {}", e)))?
+            .map_err(|error| SyncError::Network(format!("获取旧工作区清单失败: {}", error)))?
         {
-            Some(bytes) => {
-                let decoded = self.decode_payload(&bytes)?;
-                serde_json::from_slice::<WorkspacesManifest>(&decoded)
-                    .map_err(|e| SyncError::Database(format!("解析工作区清单失败: {}", e)))
-            }
-            None => Ok(WorkspacesManifest::default()),
+            let decoded = self.decode_payload(&bytes)?;
+            manifests.push(
+                serde_json::from_slice::<WorkspacesManifest>(&decoded).map_err(|error| {
+                    SyncError::Database(format!("解析旧工作区清单失败: {}", error))
+                })?,
+            );
         }
+
+        let listed = storage
+            .list_outcome(Self::WORKSPACES_MANIFESTS_PREFIX)
+            .await
+            .map_err(|error| SyncError::Network(format!("列举工作区清单失败: {}", error)))?;
+        if listed.truncated {
+            return Err(SyncError::Network(
+                "工作区清单列表被截断，无法安全合并".to_string(),
+            ));
+        }
+        for file in listed.files {
+            if !file.key.ends_with(".json") {
+                continue;
+            }
+            let bytes = storage
+                .get(&file.key)
+                .await
+                .map_err(|error| {
+                    SyncError::Network(format!("读取工作区清单 {} 失败: {}", file.key, error))
+                })?
+                .ok_or_else(|| {
+                    SyncError::Network(format!("已列举的工作区清单消失: {}", file.key))
+                })?;
+            let decoded = self.decode_payload(&bytes)?;
+            manifests.push(
+                serde_json::from_slice::<WorkspacesManifest>(&decoded).map_err(|error| {
+                    SyncError::Database(format!("解析工作区清单 {} 失败: {}", file.key, error))
+                })?,
+            );
+        }
+
+        let mut merged = WorkspacesManifest::default();
+        for manifest in manifests {
+            if manifest.updated_at > merged.updated_at {
+                merged.updated_at = manifest.updated_at;
+            }
+            for (workspace_id, entry) in manifest.entries {
+                let replace = merged
+                    .entries
+                    .get(&workspace_id)
+                    .map(|current| {
+                        Self::local_file_wins(
+                            &entry.updated_at,
+                            &current.updated_at,
+                            &entry.sha256,
+                            &current.sha256,
+                        )
+                    })
+                    .unwrap_or(true);
+                if replace {
+                    merged.entries.insert(workspace_id, entry);
+                }
+            }
+        }
+
+        let tombstones = tombstone::download_workspace_tombstones(storage, self).await?;
+        for (workspace_id, tombstone) in tombstones.entries {
+            let should_remove = merged
+                .entries
+                .get(&workspace_id)
+                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                .unwrap_or(false);
+            if should_remove {
+                merged.entries.remove(&workspace_id);
+            }
+        }
+        Ok(merged)
     }
 
     /// 同步 VFS blobs（内容寻址，纯增量，无冲突）
@@ -8246,11 +8668,32 @@ impl SyncManager {
         direction: SyncDirection,
         progress: Option<FileTransferProgressCallback>,
     ) -> Result<BlobSyncOutcome, SyncError> {
+        self.sync_vfs_blobs_with_progress_excluding(
+            storage,
+            blobs_dir,
+            direction,
+            progress,
+            &HashSet::new(),
+        )
+        .await
+    }
+
+    async fn sync_vfs_blobs_with_progress_excluding(
+        &self,
+        storage: &dyn CloudStorage,
+        blobs_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+        excluded_hashes: &HashSet<String>,
+    ) -> Result<BlobSyncOutcome, SyncError> {
         if !blobs_dir.exists() {
             return Ok(BlobSyncOutcome::default());
         }
 
-        let cloud_manifest = self.download_blobs_manifest(storage).await?;
+        let mut cloud_manifest = self.download_blobs_manifest(storage).await?;
+        cloud_manifest
+            .entries
+            .retain(|hash, _| !excluded_hashes.contains(hash));
 
         let mut local_blobs: HashMap<String, std::path::PathBuf> = HashMap::new();
         Self::scan_blobs_dir(blobs_dir, &mut local_blobs)?;
@@ -8421,14 +8864,8 @@ impl SyncManager {
                     .or_insert_with(|| entry.clone());
             }
             merged.updated_at = chrono::Utc::now().to_rfc3339();
-            let json = serde_json::to_vec(&merged)
-                .map_err(|e| SyncError::Database(format!("序列化 blob 清单失败: {}", e)))?;
-            // [P0-2] 可选加密（注意：这里加密的是 **清单** 文件，blob 原文件本身不加密）
-            let payload = self.encode_payload(&json)?;
-            storage
-                .put(Self::BLOBS_MANIFEST_KEY, &payload)
-                .await
-                .map_err(|e| SyncError::Network(format!("上传 blob 清单失败: {}", e)))?;
+            self.publish_file_manifest(storage, Self::BLOBS_MANIFESTS_PREFIX, &merged, "blob")
+                .await?;
         }
 
         Ok(BlobSyncOutcome {
@@ -8443,18 +8880,78 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<BlobsManifest, SyncError> {
-        match storage
+        let mut manifests = Vec::new();
+        if let Some(bytes) = storage
             .get(Self::BLOBS_MANIFEST_KEY)
             .await
-            .map_err(|e| SyncError::Network(format!("获取 blob 清单失败: {}", e)))?
+            .map_err(|error| SyncError::Network(format!("获取旧 blob 清单失败: {}", error)))?
         {
-            Some(bytes) => {
-                let decoded = self.decode_payload(&bytes)?;
-                serde_json::from_slice::<BlobsManifest>(&decoded)
-                    .map_err(|e| SyncError::Database(format!("解析 blob 清单失败: {}", e)))
-            }
-            None => Ok(BlobsManifest::default()),
+            let decoded = self.decode_payload(&bytes)?;
+            manifests.push(
+                serde_json::from_slice::<BlobsManifest>(&decoded).map_err(|error| {
+                    SyncError::Database(format!("解析旧 blob 清单失败: {}", error))
+                })?,
+            );
         }
+
+        let listed = storage
+            .list_outcome(Self::BLOBS_MANIFESTS_PREFIX)
+            .await
+            .map_err(|error| SyncError::Network(format!("列举 blob 清单失败: {}", error)))?;
+        if listed.truncated {
+            return Err(SyncError::Network(
+                "blob 清单列表被截断，无法安全合并".to_string(),
+            ));
+        }
+        for file in listed.files {
+            if !file.key.ends_with(".json") {
+                continue;
+            }
+            let bytes = storage
+                .get(&file.key)
+                .await
+                .map_err(|error| {
+                    SyncError::Network(format!("读取 blob 清单 {} 失败: {}", file.key, error))
+                })?
+                .ok_or_else(|| {
+                    SyncError::Network(format!("已列举的 blob 清单消失: {}", file.key))
+                })?;
+            let decoded = self.decode_payload(&bytes)?;
+            manifests.push(
+                serde_json::from_slice::<BlobsManifest>(&decoded).map_err(|error| {
+                    SyncError::Database(format!("解析 blob 清单 {} 失败: {}", file.key, error))
+                })?,
+            );
+        }
+
+        let mut merged = BlobsManifest::default();
+        for manifest in manifests {
+            if manifest.updated_at > merged.updated_at {
+                merged.updated_at = manifest.updated_at;
+            }
+            for (hash, entry) in manifest.entries {
+                let replace = merged
+                    .entries
+                    .get(&hash)
+                    .map(|current| Self::timestamp_after(&entry.updated_at, &current.updated_at))
+                    .unwrap_or(true);
+                if replace {
+                    merged.entries.insert(hash, entry);
+                }
+            }
+        }
+        let tombstones = tombstone::download_blob_tombstones(storage, self).await?;
+        for (hash, tombstone) in tombstones.entries {
+            let should_remove = merged
+                .entries
+                .get(&hash)
+                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                .unwrap_or(false);
+            if should_remove {
+                merged.entries.remove(&hash);
+            }
+        }
+        Ok(merged)
     }
 
     /// 同步关键资产目录（除 vfs_blobs/workspaces 外）
@@ -8483,7 +8980,30 @@ impl SyncManager {
         direction: SyncDirection,
         progress: Option<FileTransferProgressCallback>,
     ) -> Result<AssetSyncOutcome, SyncError> {
-        let cloud_manifest = self.download_assets_manifest(storage).await?;
+        self.sync_asset_directories_with_progress_excluding(
+            storage,
+            active_dir,
+            app_data_dir,
+            direction,
+            progress,
+            &HashSet::new(),
+        )
+        .await
+    }
+
+    async fn sync_asset_directories_with_progress_excluding(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+        app_data_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+        excluded_keys: &HashSet<String>,
+    ) -> Result<AssetSyncOutcome, SyncError> {
+        let mut cloud_manifest = self.download_assets_manifest(storage).await?;
+        cloud_manifest
+            .entries
+            .retain(|key, _| !excluded_keys.contains(key));
 
         let mut local_files: HashMap<String, (std::path::PathBuf, String, u64, String)> =
             HashMap::new();
@@ -8527,7 +9047,7 @@ impl SyncManager {
                 if !should_upload {
                     continue;
                 }
-                let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                let remote_key = format!("{}/{}", Self::ASSET_OBJECTS_PREFIX, sha256);
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
                 match storage.put_file(&remote_key, path, transfer_progress).await {
@@ -8538,6 +9058,7 @@ impl SyncManager {
                                 sha256: sha256.clone(),
                                 size: *size,
                                 updated_at: local_updated_at.clone(),
+                                object_key: Some(remote_key.clone()),
                             },
                         );
                         uploaded += 1;
@@ -8582,7 +9103,10 @@ impl SyncManager {
                         tracing::warn!("[sync] 保存资产冲突副本失败: {}: {}", key, e);
                     }
                 }
-                let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                let remote_key = entry
+                    .object_key
+                    .clone()
+                    .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
                 let transfer_progress =
                     Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
                 match storage
@@ -8632,14 +9156,8 @@ impl SyncManager {
                 }
             }
             merged.updated_at = chrono::Utc::now().to_rfc3339();
-            let json = serde_json::to_vec(&merged)
-                .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
-            // [P0-2] 可选加密
-            let payload = self.encode_payload(&json)?;
-            storage
-                .put(Self::ASSETS_MANIFEST_KEY, &payload)
-                .await
-                .map_err(|e| SyncError::Network(format!("上传资产清单失败: {}", e)))?;
+            self.publish_file_manifest(storage, Self::ASSETS_MANIFESTS_PREFIX, &merged, "资产")
+                .await?;
         }
 
         Ok(AssetSyncOutcome {
@@ -8654,32 +9172,89 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<AssetDirsManifest, SyncError> {
-        match storage
+        let mut manifests = Vec::new();
+        if let Some(bytes) = storage
             .get(Self::ASSETS_MANIFEST_KEY)
             .await
-            .map_err(|e| SyncError::Network(format!("获取资产清单失败: {}", e)))?
+            .map_err(|error| SyncError::Network(format!("获取旧资产清单失败: {}", error)))?
         {
-            Some(bytes) => {
-                // [P2 fail-close] 解密失败必须硬错误，与设备清单/变更文件口径一致。
-                // 此前返回空清单会让密码配错的设备把云端当成空：全部资产文件
-                // 与资产清单被错误密码重新加密覆盖，其他设备从此无法解密。
-                // JSON 损坏（非密码问题）仍保留跳过——清单可由下一轮上传重建。
-                let decoded = self.decode_payload(&bytes).map_err(|e| {
-                    SyncError::Database(format!(
-                        "资产清单无法解密，已停止同步（请检查加密密码）: {}",
-                        e
-                    ))
-                })?;
-                match serde_json::from_slice::<AssetDirsManifest>(&decoded) {
-                    Ok(v) => Ok(v),
-                    Err(e) => {
-                        tracing::warn!("[sync] 资产清单损坏，忽略并继续: {}", e);
-                        Ok(AssetDirsManifest::default())
-                    }
+            let decoded = self.decode_payload(&bytes).map_err(|error| {
+                SyncError::Database(format!(
+                    "旧资产清单无法解密，已停止同步（请检查加密密码）: {}",
+                    error
+                ))
+            })?;
+            manifests.push(
+                serde_json::from_slice::<AssetDirsManifest>(&decoded)
+                    .map_err(|error| SyncError::Database(format!("旧资产清单损坏: {}", error)))?,
+            );
+        }
+
+        let listed = storage
+            .list_outcome(Self::ASSETS_MANIFESTS_PREFIX)
+            .await
+            .map_err(|error| SyncError::Network(format!("列举资产清单失败: {}", error)))?;
+        if listed.truncated {
+            return Err(SyncError::Network(
+                "资产清单列表被截断，无法安全合并".to_string(),
+            ));
+        }
+        for file in listed.files {
+            if !file.key.ends_with(".json") {
+                continue;
+            }
+            let bytes = storage
+                .get(&file.key)
+                .await
+                .map_err(|error| {
+                    SyncError::Network(format!("读取资产清单 {} 失败: {}", file.key, error))
+                })?
+                .ok_or_else(|| SyncError::Network(format!("已列举的资产清单消失: {}", file.key)))?;
+            let decoded = self.decode_payload(&bytes).map_err(|error| {
+                SyncError::Database(format!("资产清单 {} 无法解密: {}", file.key, error))
+            })?;
+            manifests.push(
+                serde_json::from_slice::<AssetDirsManifest>(&decoded).map_err(|error| {
+                    SyncError::Database(format!("资产清单 {} 损坏: {}", file.key, error))
+                })?,
+            );
+        }
+
+        let mut merged = AssetDirsManifest::default();
+        for manifest in manifests {
+            if manifest.updated_at > merged.updated_at {
+                merged.updated_at = manifest.updated_at;
+            }
+            for (key, entry) in manifest.entries {
+                let replace = merged
+                    .entries
+                    .get(&key)
+                    .map(|current| {
+                        Self::local_file_wins(
+                            &entry.updated_at,
+                            &current.updated_at,
+                            &entry.sha256,
+                            &current.sha256,
+                        )
+                    })
+                    .unwrap_or(true);
+                if replace {
+                    merged.entries.insert(key, entry);
                 }
             }
-            None => Ok(AssetDirsManifest::default()),
         }
+        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
+        for (key, tombstone) in tombstones.entries {
+            let should_remove = merged
+                .entries
+                .get(&key)
+                .map(|entry| !Self::timestamp_after(&entry.updated_at, &tombstone.deleted_at))
+                .unwrap_or(false);
+            if should_remove {
+                merged.entries.remove(&key);
+            }
+        }
+        Ok(merged)
     }
 
     fn scan_asset_tree(
@@ -9041,6 +9616,7 @@ impl SyncManager {
                 state_store.get_tombstone_watermark(&instance_id, source, "blobs")
             })
             .await?;
+        let mut excluded_tombstone_hashes = HashSet::new();
         if !tombstones.entries.is_empty() {
             // [P1 防数据丢失] 第三道防线：本地 vfs.db 仍有 ref_count>0 引用的 blob，
             // 拒绝消费其 tombstone（本地引用胜过远端删除）。
@@ -9096,6 +9672,7 @@ impl SyncManager {
                 direction != SyncDirection::Download,
             )
             .await?;
+            excluded_tombstone_hashes.extend(applied_tombstone_hashes.iter().cloned());
 
             // 同时从 blob manifest 里摘掉 tombstoned 条目
             // [P0-2] 读写都需要透明 encode/decode
@@ -9107,13 +9684,8 @@ impl SyncManager {
                 }
                 if mf.entries.len() != before {
                     mf.updated_at = chrono::Utc::now().to_rfc3339();
-                    let json = serde_json::to_vec(&mf)
-                        .map_err(|e| SyncError::Database(format!("序列化 blob 清单失败: {}", e)))?;
-                    let payload = self.encode_payload(&json)?;
-                    storage
-                        .put(Self::BLOBS_MANIFEST_KEY, &payload)
-                        .await
-                        .map_err(|e| SyncError::Network(format!("上传 blob 清单失败: {}", e)))?;
+                    self.publish_file_manifest(storage, Self::BLOBS_MANIFESTS_PREFIX, &mf, "blob")
+                        .await?;
                 }
             }
         }
@@ -9127,8 +9699,14 @@ impl SyncManager {
         }
 
         // 2. 走标准上传/下载流程（现在云端/本地里已无 tombstoned 条目）
-        self.sync_vfs_blobs_with_progress(storage, blobs_dir, direction, progress)
-            .await
+        self.sync_vfs_blobs_with_progress_excluding(
+            storage,
+            blobs_dir,
+            direction,
+            progress,
+            &excluded_tombstone_hashes,
+        )
+        .await
     }
 
     /// 同步资产目录 + 消费 asset tombstone
@@ -9169,6 +9747,7 @@ impl SyncManager {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")
             })
             .await?;
+        let mut excluded_tombstone_keys = HashSet::new();
         if !tombstones.entries.is_empty() {
             let mut applied_tombstone_keys = Vec::new();
             for (key, entry) in &tombstones.entries {
@@ -9196,7 +9775,11 @@ impl SyncManager {
                 }
                 // 云端删除
                 if direction != SyncDirection::Download {
-                    let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                    let remote_key = cloud_manifest
+                        .entries
+                        .get(key)
+                        .and_then(|manifest| manifest.object_key.clone())
+                        .unwrap_or_else(|| format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key));
                     if let Err(e) = storage.delete(&remote_key).await {
                         tracing::warn!("[sync] 删除云端资产失败（忽略）: {}: {}", remote_key, e);
                     }
@@ -9209,6 +9792,7 @@ impl SyncManager {
                 }
                 applied_tombstone_keys.push(key.clone());
             }
+            excluded_tombstone_keys.extend(applied_tombstone_keys.iter().cloned());
 
             // 从云端资产清单摘掉 tombstoned 条目
             // [P0-2] 同样需要透明 encode/decode
@@ -9220,13 +9804,8 @@ impl SyncManager {
                 }
                 if mf.entries.len() != before {
                     mf.updated_at = chrono::Utc::now().to_rfc3339();
-                    let json = serde_json::to_vec(&mf)
-                        .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
-                    let payload = self.encode_payload(&json)?;
-                    storage
-                        .put(Self::ASSETS_MANIFEST_KEY, &payload)
-                        .await
-                        .map_err(|e| SyncError::Network(format!("上传资产清单失败: {}", e)))?;
+                    self.publish_file_manifest(storage, Self::ASSETS_MANIFESTS_PREFIX, &mf, "资产")
+                        .await?;
                 }
             }
         }
@@ -9240,12 +9819,13 @@ impl SyncManager {
         }
 
         // 2. 走标准同步流程
-        self.sync_asset_directories_with_progress(
+        self.sync_asset_directories_with_progress_excluding(
             storage,
             active_dir,
             app_data_dir,
             direction,
             progress,
+            &excluded_tombstone_keys,
         )
         .await
     }
@@ -10352,6 +10932,118 @@ mod tests {
         )
         .unwrap();
         conn
+    }
+
+    fn operation_change(
+        operation: ChangeOperation,
+        changed_at: &str,
+        data: Option<serde_json::Value>,
+        source_device_id: &str,
+        source_seq: u64,
+    ) -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "delete-version-record".to_string(),
+            operation,
+            data,
+            changed_at: changed_at.to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some(source_device_id.to_string()),
+            source_seq: Some(source_seq),
+        }
+    }
+
+    #[test]
+    fn delete_version_blocks_delayed_older_upsert() {
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            params![
+                "delete-version-record",
+                "before-delete",
+                "2026-07-10T10:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let delete = operation_change(
+            ChangeOperation::Delete,
+            "2026-07-10T12:00:00Z",
+            None,
+            "device-delete",
+            7,
+        );
+        let stale_upsert = operation_change(
+            ChangeOperation::Update,
+            "2026-07-10T11:00:00Z",
+            Some(json!({
+                "id": "delete-version-record",
+                "content": "stale-resurrection",
+                "updated_at": "2026-07-10T11:00:00Z"
+            })),
+            "device-offline",
+            99,
+        );
+
+        let deleted = SyncManager::apply_downloaded_changes(&conn, &[delete], None).unwrap();
+        assert_eq!(deleted.success_count, 1);
+        let delayed = SyncManager::apply_downloaded_changes(&conn, &[stale_upsert], None).unwrap();
+        assert_eq!(delayed.success_count, 0);
+        assert_eq!(delayed.skipped_count, 1);
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "迟到的旧 UPSERT 不得复活已删除记录");
+    }
+
+    #[test]
+    fn strictly_newer_upsert_can_resurrect_and_clears_delete_version() {
+        let conn = create_test_db_with_business_table();
+        let delete = operation_change(
+            ChangeOperation::Delete,
+            "2026-07-10T12:00:00Z",
+            None,
+            "device-delete",
+            7,
+        );
+        let newer_upsert = operation_change(
+            ChangeOperation::Insert,
+            "2026-07-10T13:00:00Z",
+            Some(json!({
+                "id": "delete-version-record",
+                "content": "intentional-resurrection",
+                "updated_at": "2026-07-10T13:00:00Z"
+            })),
+            "device-newer",
+            1,
+        );
+
+        SyncManager::apply_downloaded_changes(&conn, &[delete], None).unwrap();
+        let applied = SyncManager::apply_downloaded_changes(&conn, &[newer_upsert], None).unwrap();
+        assert_eq!(applied.success_count, 1);
+        let content: String = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(content, "intentional-resurrection");
+        let ledger_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_delete_versions
+                 WHERE table_name='test_records' AND record_id='delete-version-record'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ledger_count, 0, "成功的新写入应清理旧 DELETE 版本");
     }
 
     #[test]

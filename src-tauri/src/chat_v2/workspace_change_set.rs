@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -53,6 +54,93 @@ impl ChangeSet {
             changes: vec![receipt],
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExternalFileState {
+    pub bytes: Vec<u8>,
+    pub sha256: String,
+}
+
+pub type ExternalFileSnapshot = BTreeMap<String, ExternalFileState>;
+
+pub fn record_external_changes(
+    checkpoint_root: &Path,
+    root_id: &str,
+    before: &ExternalFileSnapshot,
+    after: &ExternalFileSnapshot,
+) -> Result<ChangeSet, String> {
+    let _guard = workspace_mutation_guard();
+    let change_set_id = next_change_id();
+    let mut changes = Vec::new();
+
+    for (path, current) in after {
+        match before.get(path) {
+            None => changes.push(MutationReceipt {
+                change_id: next_change_id(),
+                root_id: root_id.to_string(),
+                op: MutationKind::Created,
+                relative_path: path.clone(),
+                destination_path: None,
+                before_hash: None,
+                after_hash: Some(current.sha256.clone()),
+                backup_ref: None,
+                bytes: current.bytes.len() as u64,
+            }),
+            Some(previous) if previous.sha256 != current.sha256 => {
+                let change_id = next_change_id();
+                let backup_ref = create_checkpoint(checkpoint_root, &change_id, &previous.bytes)?;
+                changes.push(MutationReceipt {
+                    change_id,
+                    root_id: root_id.to_string(),
+                    op: MutationKind::Modified,
+                    relative_path: path.clone(),
+                    destination_path: None,
+                    before_hash: Some(previous.sha256.clone()),
+                    after_hash: Some(current.sha256.clone()),
+                    backup_ref: Some(backup_ref),
+                    bytes: current.bytes.len() as u64,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    for (path, previous) in before {
+        if after.contains_key(path) {
+            continue;
+        }
+        let change_id = next_change_id();
+        let backup_ref = create_checkpoint(checkpoint_root, &change_id, &previous.bytes)?;
+        changes.push(MutationReceipt {
+            change_id,
+            root_id: root_id.to_string(),
+            op: MutationKind::Deleted,
+            relative_path: path.clone(),
+            destination_path: None,
+            before_hash: Some(previous.sha256.clone()),
+            after_hash: None,
+            backup_ref: Some(backup_ref),
+            bytes: previous.bytes.len() as u64,
+        });
+    }
+
+    changes.sort_by(|left, right| left.relative_path.cmp(&right.relative_path));
+    Ok(ChangeSet {
+        id: change_set_id,
+        changes,
+    })
+}
+
+pub fn rollback_change_set(
+    root: &Path,
+    checkpoint_root: &Path,
+    change_set: &ChangeSet,
+) -> Result<(), String> {
+    for receipt in change_set.changes.iter().rev() {
+        rollback(root, checkpoint_root, receipt)?;
+    }
+    Ok(())
 }
 
 pub fn workspace_mutation_guard() -> MutexGuard<'static, ()> {
@@ -497,6 +585,13 @@ mod tests {
         hex::encode(Sha256::digest(text.as_bytes()))
     }
 
+    fn external(text: &str) -> ExternalFileState {
+        ExternalFileState {
+            bytes: text.as_bytes().to_vec(),
+            sha256: hash(text),
+        }
+    }
+
     #[test]
     fn create_modify_and_rollback_restore_exact_contents() {
         let root = tempfile::tempdir().unwrap();
@@ -562,6 +657,37 @@ mod tests {
             fs::read_to_string(root.path().join("docs/a.txt")).unwrap(),
             "alpha"
         );
+    }
+
+    #[test]
+    fn external_shell_change_set_rolls_back_created_modified_and_deleted_files() {
+        let root = tempfile::tempdir().unwrap();
+        let checkpoints = tempfile::tempdir().unwrap();
+        fs::write(root.path().join("a.txt"), "new").unwrap();
+        fs::write(root.path().join("c.txt"), "created").unwrap();
+
+        let before = ExternalFileSnapshot::from([
+            ("a.txt".to_string(), external("old")),
+            ("b.txt".to_string(), external("deleted")),
+        ]);
+        let after = ExternalFileSnapshot::from([
+            ("a.txt".to_string(), external("new")),
+            ("c.txt".to_string(), external("created")),
+        ]);
+        let change_set =
+            record_external_changes(checkpoints.path(), "workspace", &before, &after).unwrap();
+        assert_eq!(change_set.changes.len(), 3);
+
+        rollback_change_set(root.path(), checkpoints.path(), &change_set).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.path().join("a.txt")).unwrap(),
+            "old"
+        );
+        assert_eq!(
+            fs::read_to_string(root.path().join("b.txt")).unwrap(),
+            "deleted"
+        );
+        assert!(!root.path().join("c.txt").exists());
     }
 
     #[test]

@@ -166,9 +166,13 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     }
   }, [onRefresh, isRefreshing]);
 
-  const handleTrustOverride = useCallback((skillId: string, trust: 'trusted' | 'untrusted') => {
-    setSkillTrustOverride(skillId, trust);
-    setTrustTick((v) => v + 1);
+  const handleTrustOverride = useCallback(async (skillId: string, trust: 'trusted' | 'untrusted') => {
+    try {
+      await setSkillTrustOverride(skillId, trust);
+      setTrustTick((v) => v + 1);
+    } catch (error) {
+      console.error('[SkillTrust] Failed to update trust:', error);
+    }
   }, []);
 
   const handleEnableSkill = useCallback((skillId: string) => {

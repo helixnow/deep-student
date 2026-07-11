@@ -25,7 +25,13 @@ import { PreviewProvider, usePreviewContext, type PreviewType } from './PreviewC
 import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { usePdfLoader } from '@/hooks/usePdfLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
-import { base64ToBlob, base64ToUint8Array, estimateBase64Size, LARGE_FILE_THRESHOLD } from '@/utils/base64FileUtils';
+import {
+  base64ToBlob,
+  base64ToUint8Array,
+  estimateBase64Size,
+  LARGE_FILE_THRESHOLD,
+  uint8ArrayToBase64,
+} from '@/utils/base64FileUtils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -36,6 +42,7 @@ import { resolveFilePreviewMode } from './filePreviewResolver';
 import { formatFileSize } from './previewUtils';
 import { RichDocumentPreview } from './RichDocumentPreview';
 import { TextFilePreview } from './TextFilePreview';
+import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import {
   isLikelyUnsupportedMedia,
@@ -118,11 +125,12 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const isDocx = previewMode === 'docx';
   const isExcel = previewMode === 'xlsx';
   const isPptx = previewMode === 'pptx';
+  const isEpub = previewMode === 'epub';
   const isPdf = previewMode === 'pdf';
   const isAudio = previewMode === 'audio';
   const isVideo = previewMode === 'video';
   const needsRichPreview = isDocx || isExcel || isPptx;
-  const needsBinaryPreview = needsRichPreview || isAudio || isVideo;
+  const needsBinaryPreview = needsRichPreview || isEpub || isAudio || isVideo;
   const canPreviewText = previewMode === 'text';
 
   // 使用统一的 PDF 加载 Hook（支持缓存、去重、大文件检测）
@@ -233,6 +241,27 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const handleSaveFile = useCallback(async () => {
     setIsSaving(true);
     try {
+      const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
+      const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
+      if (blobPath) {
+        const saveResult = await fileManager.saveFromSource({
+          sourcePath: blobPath,
+          defaultFileName: node.name,
+          filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
+        });
+        if (!saveResult.canceled && saveResult.path) {
+          showGlobalNotification('success', t('learningHub:file.savedSuccessfully', '文件已保存'));
+          try {
+            const { openPath } = await import('@tauri-apps/plugin-opener');
+            await openPath(saveResult.path);
+          } catch {
+            // The file was saved successfully; opening it is best-effort.
+          }
+        }
+        return;
+      }
+
+      // Compatibility path for legacy inline resources without a blob file.
       const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
         attachmentId: node.id,
       });
@@ -249,7 +278,6 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       }
 
       // 从文件名推断扩展名
-      const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
       const saveResult = await fileManager.saveBinaryFile({
         data: bytes,
         defaultFileName: node.name,
@@ -300,8 +328,37 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     };
 
     const loadBinaryContent = async () => {
+      const blobPath = await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
+      if (!isMounted) return;
+
+      if (blobPath) {
+        const fileSize = await invoke<number>('get_file_size', { path: blobPath });
+        if (!isMounted) return;
+        if (fileSize > LARGE_FILE_THRESHOLD) {
+          setError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+          setIsPreviewTooLarge(true);
+          return;
+        }
+
+        const buffer = await invoke<ArrayBuffer>('read_file_bytes', { path: blobPath });
+        if (!isMounted) return;
+        const content = uint8ArrayToBase64(new Uint8Array(buffer));
+        setBase64Content(content);
+
+        if (isAudio || isVideo) {
+          const mediaMimeType = isAudio
+            ? resolveAudioMimeType(mimeType, node.name)
+            : resolveVideoMimeType(mimeType, node.name);
+          setMediaObjectUrl(URL.createObjectURL(new Blob([buffer], { type: mediaMimeType })));
+        }
+        return;
+      }
+
+      // Legacy inline resources have no blob path. Keep the compatibility
+      // fallback, guarded by the database metadata size check above.
       const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
         attachmentId: node.id,
+        maxBytes: LARGE_FILE_THRESHOLD,
       });
 
       if (!isMounted) return;
@@ -512,6 +569,9 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     }
     if (isPptx && base64Content) {
       return renderRichDocumentPreview('pptx', base64Content);
+    }
+    if (isEpub && base64Content) {
+      return <EpubPreview base64Content={base64Content} fileName={node.name} resourceId={node.id} />;
     }
 
     // 音频预览

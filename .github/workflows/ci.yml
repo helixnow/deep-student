@@ -143,6 +143,30 @@ jobs:
         working-directory: src-tauri
         run: cargo check
 
+  windows-shell-sandbox:
+    name: Windows Shell Sandbox
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CARGO_INCREMENTAL: 0
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Compile Windows backend
+        working-directory: src-tauri
+        run: cargo check --lib
+
+      - name: Enforce AppContainer filesystem boundary
+        working-directory: src-tauri
+        run: cargo test --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
+
   # ============================================
   # 同步模块回归测试
   #

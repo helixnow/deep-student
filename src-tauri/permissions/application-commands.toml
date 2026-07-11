@@ -86,6 +86,7 @@ commands.allow = [
   "chat_v2_search_content",
   "chat_v2_send_message",
   "chat_v2_session_message_count",
+  "chat_v2_set_skill_trust",
   "chat_v2_set_workspace_root",
   "chat_v2_soft_delete_session",
   "chat_v2_switch_variant",
@@ -750,4 +751,3 @@ commands.allow = [
   "write_debug_logs",
   "write_test_report",
 ]
-

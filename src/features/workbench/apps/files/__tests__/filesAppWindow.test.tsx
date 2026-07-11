@@ -94,8 +94,8 @@ describe('FilesAppWindow', () => {
     const windows = Object.values(useWindowStore.getState().windows);
     expect(windows).toHaveLength(2);
     expect(windows.map((w) => `${w.typeId}:${w.instanceKey}`).sort()).toEqual([
+      'file-preview:tb_1',
       'notes:null',
-      'textbook:tb_1',
     ]);
     expect(requestWorkspaceResource).toHaveBeenCalledWith({ type: 'mindmap', id: 'mm_1' });
   });

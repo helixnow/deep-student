@@ -16,6 +16,7 @@ import {
   waitForNextFrame,
 } from './previewUtils';
 import { sanitizeRenderedDom } from './sanitizeRenderedDom';
+import { sanitizeDocxGeneratedStyles } from './sanitizeGeneratedStyles';
 
 /**
  * 检查解码后的二进制是否为合法的 OOXML（ZIP）容器。
@@ -126,8 +127,10 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
         container.innerHTML = '';
         if (styleContainer) styleContainer.innerHTML = '';
 
-        // 渲染 DOCX（样式写入独立容器，内容容器随后消毒）
-        await renderAsync(arrayBuffer, container, styleContainer ?? container, {
+        // Render styles off-DOM first. They are scoped and sanitized before
+        // entering the application document.
+        const detachedStyleContainer = document.createElement('div');
+        await renderAsync(arrayBuffer, container, detachedStyleContainer, {
           className: 'docx-preview',
           inWrapper: true,
           ignoreWidth: false,
@@ -142,13 +145,16 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
           renderFooters: true,
           renderFootnotes: true,
           renderEndnotes: true,
-          renderComments: false,
+          renderComments: true,
           debug: false,
         });
 
         if (isMounted && renderToken === renderTokenRef.current) {
           // ★ 渲染后使用 DOMPurify 进行完整安全消毒（移除危险标签+属性+协议）
           sanitizeRenderedDom(container);
+          if (styleContainer) {
+            styleContainer.replaceChildren(...sanitizeDocxGeneratedStyles(detachedStyleContainer));
+          }
           setIsLoading(false);
         }
       } catch (err: unknown) {

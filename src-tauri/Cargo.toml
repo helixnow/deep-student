@@ -211,6 +211,17 @@ windows = { version = "0.58", features = [
     # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
     "Foundation_Collections",
 ] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
 
 [profile.release]
 opt-level = "s"        # 优化大小

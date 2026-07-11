@@ -593,10 +593,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // [P3 Fix] 使用 AbortController 保护轮询循环，组件卸载时自动取消，
   // 防止对已卸载组件的 state 更新和不必要的 API 请求。
   const abortCtrlRef = useRef<AbortController | null>(null);
+  const activeGovernanceJobRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       abortCtrlRef.current?.abort();
+      const jobId = activeGovernanceJobRef.current;
+      if (jobId) {
+        void DataGovernanceApi.cancelBackup(jobId).catch((error: unknown) => {
+          console.warn('[cloud-backup] failed to cancel job during unmount:', error);
+        });
+      }
     };
   }, []);
 
@@ -608,35 +615,52 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     abortCtrlRef.current?.abort();
     const ctrl = new AbortController();
     abortCtrlRef.current = ctrl;
+    activeGovernanceJobRef.current = jobId;
 
     const startedAt = Date.now();
-
-    while (Date.now() - startedAt < timeoutMs) {
-      if (ctrl.signal.aborted) {
-        throw new Error(`${kind} job polling cancelled (component unmounted)`);
-      }
-
-      const job = await DataGovernanceApi.getBackupJob(jobId);
-      if (job) {
-        if (job.status === 'completed') {
-          return job;
+    try {
+      while (Date.now() - startedAt < timeoutMs) {
+        if (ctrl.signal.aborted) {
+          throw new Error(`${kind} job polling cancelled (component unmounted)`);
         }
 
-        if (job.status === 'failed' || job.status === 'cancelled') {
-          throw new Error(job.result?.error || job.message || `${kind} task failed`);
+        const job = await DataGovernanceApi.getBackupJob(jobId);
+        if (job) {
+          if (job.status === 'completed') {
+            if (job.result?.success !== true) {
+              throw new Error(
+                job.result?.error ||
+                job.result?.message ||
+                job.message ||
+                `${kind} task completed without a successful result`
+              );
+            }
+            return job;
+          }
+
+          if (job.status === 'failed' || job.status === 'cancelled') {
+            throw new Error(job.result?.error || job.message || `${kind} task failed`);
+          }
         }
+
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, 1000);
+          ctrl.signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new Error('aborted'));
+          }, { once: true });
+        });
       }
 
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, 1000);
-        ctrl.signal.addEventListener('abort', () => {
-          clearTimeout(timer);
-          reject(new Error('aborted'));
-        }, { once: true });
+      await DataGovernanceApi.cancelBackup(jobId).catch((error: unknown) => {
+        console.warn('[cloud-backup] failed to cancel timed out job:', error);
       });
+      throw new Error(`backup job timeout: ${kind} (${Math.floor(timeoutMs / 1000)}s)`);
+    } finally {
+      if (activeGovernanceJobRef.current === jobId) {
+        activeGovernanceJobRef.current = null;
+      }
     }
-
-    throw new Error(`backup job timeout: ${kind} (${Math.floor(timeoutMs / 1000)}s)`);
   }, []);
 
   // 进度辅助：设置当前阶段
@@ -670,7 +694,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // 阶段 1/4：创建备份
       let backupId: string;
       try {
-        const backupJob = await DataGovernanceApi.backupTiered(['core']);
+        const backupJob = await DataGovernanceApi.backupTiered(
+          ['core', 'important', 'rebuildable', 'large_assets'],
+          undefined,
+          undefined,
+          true,
+          Number.MAX_SAFE_INTEGER,
+        );
         const backupSummary = await waitForGovernanceJob(backupJob.job_id, 'export');
         backupId = resolveBackupId(backupSummary) ?? '';
         if (!backupId) throw new Error('backup_id missing from backup result');
@@ -781,7 +811,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
       setOpProgress(null);
       showGlobalNotification('success', t('cloudStorage:download.successRestart'));
-      showGlobalNotification('info', t('cloudStorage:download.restartWhenReady'));
+      // The restored slot is pending activation. Continuing to edit the old
+      // slot can create writes that disappear at the next launch, so cut over
+      // immediately after a verified restore.
+      await TauriAPI.restartApp();
+      if (import.meta.env.DEV) {
+        window.location.reload();
+      }
     } catch (e: unknown) {
       const msg = getErrorMessage(e);
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);

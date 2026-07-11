@@ -25,6 +25,24 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     resolve(process.cwd(), "src/api/dataGovernance.ts"),
     "utf-8",
   );
+  const dashboard = readFileSync(
+    resolve(
+      process.cwd(),
+      "src/features/settings/components/DataGovernanceDashboard.tsx",
+    ),
+    "utf-8",
+  );
+  const backupTab = readFileSync(
+    resolve(
+      process.cwd(),
+      "src/features/settings/components/data-governance/BackupTab.tsx",
+    ),
+    "utf-8",
+  );
+  const backupJobListener = readFileSync(
+    resolve(process.cwd(), "src/hooks/useBackupJobListener.ts"),
+    "utf-8",
+  );
   const syncTab = readFileSync(
     resolve(
       process.cwd(),
@@ -98,6 +116,25 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     );
     expect(syncSettingsSection).toContain("result.skipped_changes");
     expect(syncSettingsSection).not.toContain("onComplete: () =>");
+  });
+
+  it("fails closed for job business failures, polling timeouts, and prune gaps", () => {
+    expect(cloudStorageSection).toContain("job.result?.success !== true");
+    expect(cloudStorageSection).toContain("DataGovernanceApi.cancelBackup(jobId)");
+    expect(backupJobListener).toContain("event.result?.success === true");
+    expect(syncSettingsSection).toContain("DataGovernanceApi.detectPruneGap(cloudConfig)");
+    expect(syncSettingsSection).toContain("let unlisten: (() => void) | null = null");
+    expect(dashboard).not.toContain("detectPruneGap 检查失败（继续同步）");
+    expect(dashboard).not.toContain("window.confirm(warnMsg)");
+  });
+
+  it("creates a full cloud snapshot and requires immediate restart after restore", () => {
+    expect(cloudStorageSection).toContain("['core', 'important', 'rebuildable', 'large_assets']");
+    expect(cloudStorageSection).toContain('Number.MAX_SAFE_INTEGER');
+    expect(cloudStorageSection).toContain("await TauriAPI.restartApp()");
+    expect(cloudStorageSection).not.toContain("cloudStorage:download.restartWhenReady");
+    expect(backupTab).not.toContain("onRestartLater");
+    expect(backupTab).not.toContain("data:governance.restart_later");
   });
 
   it("passes the user-selected merge strategy instead of hardcoding keep_latest", () => {
