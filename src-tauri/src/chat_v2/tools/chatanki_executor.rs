@@ -5355,7 +5355,9 @@ fn patch_anki_cards_block_sync_status(
             )
             .ok()?;
         let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .ok()?;
         for row in rows.flatten() {
             let (block_id, tool_output_json) = row;

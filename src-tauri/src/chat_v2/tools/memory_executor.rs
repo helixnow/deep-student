@@ -993,65 +993,66 @@ impl MemoryToolExecutor {
         }
 
         let session_id = ctx.session_id.clone();
+        let cancel_token = ctx.cancellation_token().cloned();
         let update_task = {
             let service = service.clone();
             tokio::task::spawn_blocking(move || -> Result<Value, String> {
-                let mut profile = learner_profile::load_profile(&service)
-                    .map_err(|e| e.to_string())?
-                    .unwrap_or_default();
-
-                if !profile.merge_update(&update) {
-                    return Ok(json!({
-                        "success": true,
-                        "changed": false,
-                        "version": profile.version,
-                        "reason": "更新与当前画像一致，无变更"
-                    }));
-                }
-
-                // 工具路径：超限即拒绝并要求精炼（不做自动裁剪，把决策权还给模型）
-                let rendered_chars = profile.rendered_char_count();
-                if rendered_chars > LEARNER_PROFILE_MAX_CHARS {
-                    return Ok(json!({
-                        "success": false,
-                        "error": format!(
-                            "合并后画像 {} 字符，超过 {} 字符硬上限。画像是策展层而非日志：请精炼本次更新（减少条目、缩短描述），或先用 weak_points_remove/goals_remove 清理过时内容。",
-                            rendered_chars, LEARNER_PROFILE_MAX_CHARS
-                        ),
-                        "rendered_chars": rendered_chars,
-                        "max_chars": LEARNER_PROFILE_MAX_CHARS,
-                    }));
-                }
-
-                learner_profile::save_profile(
+                let outcome = match learner_profile::apply_profile_update(
                     &service,
-                    &mut profile,
+                    &update,
                     MemoryOpSource::ToolCall,
                     Some(&session_id),
                     "learner_profile_update 工具更新",
-                )
-                .map_err(|e| e.to_string())?;
+                    learner_profile::ProfileLimitPolicy::Reject,
+                    || {
+                        cancel_token
+                            .as_ref()
+                            .map(|token| token.is_cancelled())
+                            .unwrap_or(false)
+                    },
+                ) {
+                    Ok(outcome) => outcome,
+                    Err(crate::vfs::error::VfsError::InvalidArgument { param, reason })
+                        if param == "profile" =>
+                    {
+                        let rendered_chars = reason
+                            .strip_prefix("合并后画像 ")
+                            .and_then(|rest| rest.split_once(" 字符"))
+                            .and_then(|(count, _)| count.parse::<usize>().ok())
+                            .unwrap_or(LEARNER_PROFILE_MAX_CHARS.saturating_add(1));
+                        return Ok(json!({
+                            "success": false,
+                            "error": format!(
+                                "{} 画像是策展层而非日志：请精炼本次更新（减少条目、缩短描述），或先用 weak_points_remove/goals_remove 清理过时内容。",
+                                reason
+                            ),
+                            "rendered_chars": rendered_chars,
+                            "max_chars": LEARNER_PROFILE_MAX_CHARS,
+                        }));
+                    }
+                    Err(error) => return Err(error.to_string()),
+                };
 
                 Ok(json!({
                     "success": true,
-                    "changed": true,
-                    "version": profile.version,
-                    "rendered_chars": profile.rendered_char_count(),
+                    "changed": outcome.changed,
+                    "version": outcome.profile.version,
+                    "rendered_chars": outcome.profile.rendered_char_count(),
+                    "reason": if outcome.changed {
+                        "画像已更新"
+                    } else {
+                        "更新与当前画像一致，无变更"
+                    },
                 }))
             })
         };
 
-        if let Some(cancel_token) = ctx.cancellation_token() {
-            tokio::select! {
-                res = update_task => res.map_err(|e| e.to_string())?,
-                _ = cancel_token.cancelled() => {
-                    log::info!("[MemoryToolExecutor] Learner profile update cancelled");
-                    Err("Learner profile update cancelled during execution".to_string())
-                }
-            }
-        } else {
-            update_task.await.map_err(|e| e.to_string())?
-        }
+        // Do not drop a running spawn_blocking JoinHandle on cancellation: a
+        // detached task could otherwise commit after the tool already
+        // reported "cancelled". The blocking CAS loop checks cancellation
+        // immediately before its commit point, and a completed commit is
+        // always returned as success.
+        update_task.await.map_err(|e| e.to_string())?
     }
 }
 

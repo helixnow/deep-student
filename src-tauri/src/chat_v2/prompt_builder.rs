@@ -719,9 +719,7 @@ pub fn build_system_prompt_with_profile(
 /// - 经 injection_budget 以 High 优先级分配预算（类型上限 4000 字符，
 ///   与 LEARNER_PROFILE_MAX_CHARS 对齐），超限时智能截断
 fn load_learner_profile_block(options: &SendOptions) -> Option<String> {
-    use crate::injection_budget::{
-        InjectionBudgetManager, InjectionItem, InjectionType, Priority,
-    };
+    use crate::injection_budget::{InjectionBudgetManager, InjectionItem, InjectionType, Priority};
     use tauri::Manager;
 
     if options.memory_enabled == Some(false) {

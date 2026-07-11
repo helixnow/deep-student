@@ -33,6 +33,10 @@ import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { ChatContainer } from '../../components/ChatContainer';
 import { cn } from '@/utils/cn';
+import {
+  preheatSubagentSession,
+  shouldPreheatSubagentSession,
+} from './sessionPreheat';
 // 🆕 P25: 导入子代理事件日志函数
 import { addSubagentEventLog } from '../../debug/exportSessionDebug';
 // 🆕 状态单一真相：从工作区 Store 订阅子代理状态
@@ -134,43 +138,25 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   // 🔧 P25 修复：子代理嵌入视图首次渲染时主动预热 Store 和 Adapter
   // 这确保 ChatContainer 渲染时 isDataLoaded=true，避免显示空白
   useEffect(() => {
-    if (!sessionId) return;
+    if (!shouldPreheatSubagentSession(sessionId, isCollapsed)) return;
 
-    const preheatSubagentSession = async () => {
-      try {
-        console.log(`[SubagentEmbed] [PREHEAT] Starting preheat for session: ${sessionId}`);
-        addSubagentEventLog('preheat_start', sessionId, 'SubagentEmbed preheat starting');
-        
-        // 动态导入避免循环依赖
-        const { sessionManager } = await import('../../core/session/sessionManager');
-        const { adapterManager } = await import('../../adapters/AdapterManager');
-        
-        // 1. 获取或创建 Store
-        const subagentStore = sessionManager.getOrCreate(sessionId);
-        console.log(`[SubagentEmbed] [PREHEAT] Store created for session: ${sessionId}`);
-        
-        // 2. 获取或创建 Adapter 并等待 setup 完成
-        const adapterEntry = await adapterManager.getOrCreate(sessionId, subagentStore);
-        console.log(`[SubagentEmbed] [PREHEAT] Adapter ready for session: ${sessionId}, isReady: ${adapterEntry.isReady}`);
-        
-        // 3. 如果数据未加载，主动触发 loadSession
-        const state = subagentStore.getState();
-        if (!state.isDataLoaded) {
-          console.log(`[SubagentEmbed] [PREHEAT] Triggering loadSession for session: ${sessionId}`);
-          await state.loadSession(sessionId);
-          console.log(`[SubagentEmbed] [PREHEAT] loadSession completed for session: ${sessionId}`);
-        } else {
-          console.log(`[SubagentEmbed] [PREHEAT] Data already loaded for session: ${sessionId}`);
+    let cancelled = false;
+    console.log(`[SubagentEmbed] [PREHEAT] Starting preheat for session: ${sessionId}`);
+    addSubagentEventLog('preheat_start', sessionId, 'SubagentEmbed preheat starting');
+    void preheatSubagentSession(sessionId, () => cancelled)
+      .then(() => {
+        if (!cancelled) {
+          addSubagentEventLog('preheat_done', sessionId, 'SubagentEmbed preheat completed');
         }
-        addSubagentEventLog('preheat_done', sessionId, 'SubagentEmbed preheat completed');
-      } catch (error: unknown) {
+      })
+      .catch((error: unknown) => {
         console.error(`[SubagentEmbed] [PREHEAT] Failed to preheat session: ${sessionId}`, error);
         addSubagentEventLog('error', sessionId, 'SubagentEmbed preheat failed', error instanceof Error ? error.message : String(error));
-      }
+      });
+    return () => {
+      cancelled = true;
     };
-
-    preheatSubagentSession();
-  }, [sessionId]);
+  }, [sessionId, isCollapsed]);
 
   // 监听子代理会话事件（仅作为流式细粒度提示，终态以 workspaceStore 为准）
   useEffect(() => {

@@ -280,6 +280,9 @@ export interface SessionEventPayload {
   /** 关联的消息 ID */
   messageId?: string;
 
+  /** 后端为每次会话流注册分配的单调递增代次。 */
+  streamGeneration?: number;
+
   /** 模型标识符（stream_start 事件携带，用于前端显示） */
   modelId?: string;
 

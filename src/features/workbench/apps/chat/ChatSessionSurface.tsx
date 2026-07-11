@@ -19,10 +19,18 @@
  * - 窄窗紧凑布局 + 焦点/输入隔离视觉：wb-chat-surface 容器查询与
  *   data-wb-chat-active 状态见 ChatSessionSurface.css。
  */
-import React, { useRef } from 'react';
+import React, { useCallback, useRef } from 'react';
+import { SidebarSimple } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { ChatContainer } from '@/features/chat/components/ChatContainer';
 import { StreamPreferencesProvider } from '@/features/chat/components/renderers/StreamPreferencesContext';
+import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
+import {
+  createChatSandboxOwnerKey,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import { useDeferredStreamPreset } from './useDeferredStreamPreset';
 import { useResizeScrollAnchor } from './useResizeScrollAnchor';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
@@ -52,6 +60,18 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
   className,
 }) => {
   const rootRef = useRef<HTMLDivElement>(null);
+  const sandboxOwnerKey = createChatSandboxOwnerKey(sessionId);
+  const sandboxActiveSession = useSandboxWorkbenchStore(
+    (state) => selectSandboxWorkbenchOwnerState(state, sandboxOwnerKey).activeSession,
+  );
+  const sandboxWorkbenchOpen = useSandboxWorkbenchStore(
+    (state) => selectSandboxWorkbenchOwnerState(state, sandboxOwnerKey).isOpen,
+  );
+  const activateSandboxOwner = useSandboxWorkbenchStore((state) => state.activateOwner);
+  const openSandboxWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
+  const handleSandboxOwnerActivation = useCallback(() => {
+    activateSandboxOwner(sandboxOwnerKey);
+  }, [activateSandboxOwner, sandboxOwnerKey]);
 
   // 与 ChatV2Page 的 StreamPreferencesProvider preset="balanced" mode="blocked"
   // 保持一致；不可见窗口延迟降档为 silky（commitIntervalMs 48ms），
@@ -71,9 +91,37 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
         ref={rootRef}
         data-wb-chat-session={sessionId}
         data-wb-chat-active={isActive ? 'true' : 'false'}
-        className={cn('wb-chat-surface h-full min-h-0 w-full overflow-hidden', className)}
+        data-sandbox-owner-key={sandboxOwnerKey}
+        onPointerDownCapture={handleSandboxOwnerActivation}
+        onFocusCapture={handleSandboxOwnerActivation}
+        className={cn('wb-chat-surface relative h-full min-h-0 w-full overflow-hidden', className)}
       >
         <ChatContainer sessionId={sessionId} className="h-full" />
+        {/* Keep the preview inside this window's DOM and owner scope. */}
+        {sandboxWorkbenchOpen && sandboxActiveSession ? (
+          <div
+            data-wb-chat-sandbox-owner={sandboxOwnerKey}
+            className="absolute inset-y-0 right-0 z-20 w-[min(100%,720px)] overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_rgba(15,23,42,0.12)]"
+          >
+            <SandboxWorkbenchSurface
+              embedded
+              ownerKey={sandboxOwnerKey}
+              className="h-full"
+            />
+          </div>
+        ) : sandboxActiveSession ? (
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="absolute right-2 top-2 z-10 !h-8 !w-8 border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)]"
+            onClick={() => openSandboxWorkbench(sandboxOwnerKey)}
+            aria-label="展开沙箱工作台"
+            title="展开沙箱工作台"
+          >
+            <SidebarSimple size={18} />
+          </NotionButton>
+        ) : null}
       </div>
     </StreamPreferencesProvider>
   );

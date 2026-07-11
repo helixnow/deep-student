@@ -393,9 +393,9 @@ pub struct ProviderStrategy {
 pub struct SpecialHandling {
     pub handle_429_retry_after: bool, // 是否处理429状态码的Retry-After头
     pub exponential_backoff_on_5xx: bool, // 5xx错误时是否使用指数退避
-    // ★ A1-F18：移除 circuit_breaker_enabled / failure_threshold / recovery_timeout_ms 三个
-    // 死配置字段——全仓无任何读取方，熔断能力从未实现（SerpAPI 默认 enabled=true 也是空话）。
-    // web_search 已有多引擎聚合 + 可恢复错误才重试（O16）兜底；如需真熔断应作为独立功能立项。
+                                      // ★ A1-F18：移除 circuit_breaker_enabled / failure_threshold / recovery_timeout_ms 三个
+                                      // 死配置字段——全仓无任何读取方，熔断能力从未实现（SerpAPI 默认 enabled=true 也是空话）。
+                                      // web_search 已有多引擎聚合 + 可恢复错误才重试（O16）兜底；如需真熔断应作为独立功能立项。
 }
 
 impl Default for ProviderStrategy {

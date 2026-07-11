@@ -13,19 +13,50 @@ pub(crate) struct ExternalToolRoute {
 /// 外层 `tokio::select!` 命中取消分支时会直接 drop 整个 `execute_with_tools`
 /// future，导致函数体内的显式 `unregister_stream_hooks` 永远不会执行，
 /// `hooks_registry` 中残留 `Arc<ChatV2LLMAdapter>`（内含 emitter/Window 引用）。
-/// 本守卫在 Drop 时向运行时补一次异步注销；重复 remove 是幂等操作，
-/// 因此与正常路径的显式注销并存不会产生副作用。
+/// 本守卫在 Drop 时向运行时补一次异步注销。每次 pipeline 执行使用独立 run key，
+/// 因而旧任务的延迟注销不可能命中取消后立即启动、且复用 assistant message ID 的新任务。
 pub(crate) struct StreamHooksGuard {
     llm_manager: Arc<LLMManager>,
     stream_event: String,
+    owner: Arc<dyn LLMStreamHooks>,
     armed: bool,
 }
 
+/// Build a hook/cancel-channel key scoped to one concrete pipeline execution.
+///
+/// The `_var_` delimiter remains before the run-scoped suffix so model2 reconnect routing can
+/// recover the original session ID with `rsplit_once("_var_")`.
+pub(crate) fn build_run_scoped_stream_event(
+    session_id: &str,
+    stream_scope_id: &str,
+    run_id: &str,
+    stream_generation: Option<u64>,
+) -> String {
+    let base = format!(
+        "chat_v2_event_{}_var_{}_run_{}",
+        session_id, stream_scope_id, run_id
+    );
+    match stream_generation {
+        Some(generation) => format!(
+            "{}{}{}",
+            base,
+            crate::llm_manager::CHAT_V2_STREAM_GENERATION_MARKER,
+            generation
+        ),
+        None => base,
+    }
+}
+
 impl StreamHooksGuard {
-    pub(crate) fn new(llm_manager: Arc<LLMManager>, stream_event: String) -> Self {
+    pub(crate) fn new(
+        llm_manager: Arc<LLMManager>,
+        stream_event: String,
+        owner: Arc<dyn LLMStreamHooks>,
+    ) -> Self {
         Self {
             llm_manager,
             stream_event,
+            owner,
             armed: true,
         }
     }
@@ -35,6 +66,19 @@ impl StreamHooksGuard {
     pub(crate) fn disarm(&mut self) {
         self.armed = false;
     }
+
+    pub(crate) async fn cleanup(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.llm_manager
+            .unregister_stream_hooks_if_owner(&self.stream_event, &self.owner)
+            .await;
+        self.llm_manager
+            .clear_cancel_artifacts(&self.stream_event)
+            .await;
+        self.disarm();
+    }
 }
 
 impl Drop for StreamHooksGuard {
@@ -43,6 +87,7 @@ impl Drop for StreamHooksGuard {
             return;
         }
         let llm_manager = self.llm_manager.clone();
+        let owner = self.owner.clone();
         let stream_event = std::mem::take(&mut self.stream_event);
         if stream_event.is_empty() {
             return;
@@ -51,7 +96,10 @@ impl Drop for StreamHooksGuard {
         // 注册表随进程销毁，跳过即可。
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             handle.spawn(async move {
-                llm_manager.unregister_stream_hooks(&stream_event).await;
+                llm_manager
+                    .unregister_stream_hooks_if_owner(&stream_event, &owner)
+                    .await;
+                llm_manager.clear_cancel_artifacts(&stream_event).await;
             });
         }
     }
@@ -621,24 +669,31 @@ impl ChatV2Pipeline {
             }
         }
 
-        // 生成流事件标识符
-        // 🔧 P1-3 修复（键冲突）：键加入请求维度（assistant_message_id），避免同一会话
-        // 两条并发单变体流互相覆盖 hooks 注册表条目导致内容静默丢失。
+        // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
+        // run-scoped UUID；否则旧 StreamHooksGuard 的异步 cleanup 可能删除新注册的 hook。
         // 使用 `_var_` 分隔符与多变体键（chat_v2_event_{session}_{variant}）约定一致，
         // 使 model2_pipeline 的 reconnect 事件能通过 rsplit("_var_") 正确还原 session_id，
         // 前端 llm_request_body 过滤（prefix 或 prefix_ 开头）也保持兼容。
-        let stream_event = format!(
-            "chat_v2_event_{}_var_{}",
-            ctx.session_id, ctx.assistant_message_id
+        let stream_run_id = uuid::Uuid::new_v4().simple().to_string();
+        let stream_event = build_run_scoped_stream_event(
+            &ctx.session_id,
+            &ctx.assistant_message_id,
+            &stream_run_id,
+            ctx.options.stream_generation,
         );
 
         // 注册 LLM 流式回调 hooks
         // 🔧 P1-3 修复（取消泄漏）：外层 tokio::select! 命中取消分支时整个 future 被 drop，
         // 下方的显式 unregister_stream_hooks 永远不会执行。RAII guard 在 Drop 时
-        // 补一次异步注销（重复 remove 幂等无副作用），保证取消路径也能清理注册表。
-        let mut hooks_guard = StreamHooksGuard::new(self.llm_manager.clone(), stream_event.clone());
+        // 补一次异步注销；run-scoped key 保证延迟 cleanup 不会伤及后续重试。
+        let registered_hooks: Arc<dyn LLMStreamHooks> = adapter.clone();
+        let mut hooks_guard = StreamHooksGuard::new(
+            self.llm_manager.clone(),
+            stream_event.clone(),
+            registered_hooks.clone(),
+        );
         self.llm_manager
-            .register_stream_hooks(&stream_event, adapter.clone())
+            .register_stream_hooks(&stream_event, registered_hooks.clone())
             .await;
 
         // 获取调用选项
@@ -727,9 +782,12 @@ impl ChatV2Pipeline {
 
         let mut call_result = {
             let adapter_for_idle = adapter.clone();
-            match wait_llm_stream_with_idle_timeout(llm_future, idle_limit, total_limit, move || {
-                adapter_for_idle.idle_elapsed()
-            })
+            match wait_llm_stream_with_idle_timeout(
+                llm_future,
+                idle_limit,
+                total_limit,
+                move || adapter_for_idle.idle_elapsed(),
+            )
             .await
             {
                 LlmStreamWaitOutcome::Completed(result) => result,
@@ -800,11 +858,11 @@ impl ChatV2Pipeline {
                 // 若失败尝试已流出部分内容，必须显式重置，否则重试响应会被
                 // 追加到旧的部分内容之后，导致内容重复落库/重复执行工具调用
                 self.llm_manager
-                    .unregister_stream_hooks(&stream_event)
+                    .unregister_stream_hooks_if_owner(&stream_event, &registered_hooks)
                     .await;
                 adapter.reset_stream_state();
                 self.llm_manager
-                    .register_stream_hooks(&stream_event, adapter.clone())
+                    .register_stream_hooks(&stream_event, registered_hooks.clone())
                     .await;
 
                 let retry_future = self.llm_manager.call_unified_model_2_stream(
@@ -879,10 +937,7 @@ impl ChatV2Pipeline {
         }
 
         // 注销 hooks（正常路径显式注销；guard 仅兜底 select! drop 取消路径）
-        self.llm_manager
-            .unregister_stream_hooks(&stream_event)
-            .await;
-        hooks_guard.disarm();
+        hooks_guard.cleanup().await;
 
         // 处理 LLM 调用结果
         // 🔧 P1-1 修复：llm_manager 存在与 pipeline CancellationToken 平行的第二条取消通道
@@ -1914,7 +1969,9 @@ impl ChatV2Pipeline {
                     let fixed_tc = self.fixup_document_tool_resource_id(&tc, &created_file_ids);
                     let tool_to_execute = fixed_tc.unwrap_or(tc);
                     // 仅 ReadOnly 工具允许瞬时失败自动重试；SafeParallel 不重试
-                    let allow_retry = self.executor_registry.get_concurrency_class(&tool_to_execute.name)
+                    let allow_retry = self
+                        .executor_registry
+                        .get_concurrency_class(&tool_to_execute.name)
                         == crate::chat_v2::tools::executor::ToolConcurrency::ReadOnly;
                     async move {
                         self.execute_single_tool_with_transient_retry(
@@ -1955,64 +2012,64 @@ impl ChatV2Pipeline {
             // 保留截断检测、file_id 修正与 _create 捕获逻辑
             // ============================================================
             for tc in ordered_tool_calls[range.clone()].iter() {
-            // 检测截断标记：LLM 输出被 max_tokens 截断导致工具调用 JSON 不完整
-            // 此时不执行工具，直接返回错误 tool_result 让 LLM 缩小输出重试
-            if tc
-                .arguments
-                .get("_truncation_error")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
-            {
-                let error_msg = tc
+                // 检测截断标记：LLM 输出被 max_tokens 截断导致工具调用 JSON 不完整
+                // 此时不执行工具，直接返回错误 tool_result 让 LLM 缩小输出重试
+                if tc
                     .arguments
-                    .get("_error_message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("工具调用参数被截断");
-                let args_len = tc
-                    .arguments
-                    .get("_args_len")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0);
+                    .get("_truncation_error")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                {
+                    let error_msg = tc
+                        .arguments
+                        .get("_error_message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("工具调用参数被截断");
+                    let args_len = tc
+                        .arguments
+                        .get("_args_len")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0);
 
-                log::warn!(
+                    log::warn!(
                     "[ChatV2::pipeline] 工具调用 JSON 被截断，跳过执行并反馈 LLM 重试: tool={}, args_len={}",
                     tc.name,
                     args_len
                 );
 
-                // 🆕 P1 修复：生成 block_id 并发射前端事件，让用户看到截断错误
-                let block_id = MessageBlock::generate_id();
-                let truncation_display_msg = format!(
+                    // 🆕 P1 修复：生成 block_id 并发射前端事件，让用户看到截断错误
+                    let block_id = MessageBlock::generate_id();
+                    let truncation_display_msg = format!(
                     "工具调用 {} 的参数因输出长度超限被截断（已生成 {} 字符），工具未执行，正在自动重试。",
                     tc.name, args_len
                 );
 
-                // 发射 tool_call start 事件（创建前端块）
-                emitter.emit_start_with_meta(
-                    event_types::TOOL_CALL,
-                    message_id,
-                    Some(&block_id),
-                    Some(json!({
-                        "toolName": tc.name,
-                        "toolInput": { "_truncated": true, "_args_len": args_len },
-                        "toolCallId": tc.id,
-                    })),
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                );
+                    // 发射 tool_call start 事件（创建前端块）
+                    emitter.emit_start_with_meta(
+                        event_types::TOOL_CALL,
+                        message_id,
+                        Some(&block_id),
+                        Some(json!({
+                            "toolName": tc.name,
+                            "toolInput": { "_truncated": true, "_args_len": args_len },
+                            "toolCallId": tc.id,
+                        })),
+                        variant_id,
+                        skill_state_version,
+                        round_id,
+                    );
 
-                // 发射 tool_call error 事件（标记块为错误状态）
-                emitter.emit_error_with_meta(
-                    event_types::TOOL_CALL,
-                    &block_id,
-                    &truncation_display_msg,
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                );
+                    // 发射 tool_call error 事件（标记块为错误状态）
+                    emitter.emit_error_with_meta(
+                        event_types::TOOL_CALL,
+                        &block_id,
+                        &truncation_display_msg,
+                        variant_id,
+                        skill_state_version,
+                        round_id,
+                    );
 
-                let retry_hint = format!(
+                    let retry_hint = format!(
                     "CRITICAL ERROR: Tool call '{}' FAILED — your output was truncated at {} characters because it exceeded the max_tokens limit. The JSON arguments were incomplete and the tool was NOT executed.\n\n\
                     YOU MUST retry with significantly smaller arguments. Mandatory rules:\n\
                     1. Reduce the total argument size to under 50% of the previous attempt.\n\
@@ -2023,59 +2080,59 @@ impl ChatV2Pipeline {
                     tc.name, args_len
                 );
 
-                tool_results.push(ToolResultInfo {
-                    tool_call_id: Some(tc.id.clone()),
-                    block_id: Some(block_id),
-                    tool_name: tc.name.clone(),
-                    input: tc.arguments.clone(),
-                    output: json!({ "error": error_msg }),
-                    success: false,
-                    error: Some(retry_hint),
-                    duration_ms: None,
-                    reasoning_content: None,
-                    thought_signature: None,
-                });
-                continue;
-            }
+                    tool_results.push(ToolResultInfo {
+                        tool_call_id: Some(tc.id.clone()),
+                        block_id: Some(block_id),
+                        tool_name: tc.name.clone(),
+                        input: tc.arguments.clone(),
+                        output: json!({ "error": error_msg }),
+                        success: false,
+                        error: Some(retry_hint),
+                        duration_ms: None,
+                        reasoning_content: None,
+                        thought_signature: None,
+                    });
+                    continue;
+                }
 
-            // 🔧 2026-02-16: 修正依赖工具的 resource_id
-            // 当 LLM 在同一批次生成 create + 依赖工具时，依赖工具的 resource_id
-            // 是 LLM 捏造的（因为 create 还没返回真实 ID）。
-            // 这里检测并替换为本批次 create 返回的实际 file_id。
-            let tc_to_execute = self.fixup_document_tool_resource_id(tc, &created_file_ids);
-            let tc_ref = tc_to_execute.as_ref().unwrap_or(tc);
+                // 🔧 2026-02-16: 修正依赖工具的 resource_id
+                // 当 LLM 在同一批次生成 create + 依赖工具时，依赖工具的 resource_id
+                // 是 LLM 捏造的（因为 create 还没返回真实 ID）。
+                // 这里检测并替换为本批次 create 返回的实际 file_id。
+                let tc_to_execute = self.fixup_document_tool_resource_id(tc, &created_file_ids);
+                let tc_ref = tc_to_execute.as_ref().unwrap_or(tc);
 
-            // 串行段绝不自动重试（写类工具重复执行有副作用；需审批工具重试会绕过审批语义）
-            let info = self
-                .execute_single_tool_with_transient_retry(
-                    tc_ref,
-                    false,
-                    emitter,
-                    session_id,
-                    message_id,
-                    variant_id,
-                    skill_state_version,
-                    round_id,
-                    canvas_note_id,
-                    skill_contents,
-                    skill_embedded_tools,
-                    skill_package_roots,
-                    _active_skill_ids,
-                    skill_allowed_tools,
-                    cancellation_token,
-                    rag_top_k,
-                    rag_enable_reranking,
-                    memory_enabled,
-                    rag_enabled,
-                    web_search_enabled,
-                )
-                .await;
+                // 串行段绝不自动重试（写类工具重复执行有副作用；需审批工具重试会绕过审批语义）
+                let info = self
+                    .execute_single_tool_with_transient_retry(
+                        tc_ref,
+                        false,
+                        emitter,
+                        session_id,
+                        message_id,
+                        variant_id,
+                        skill_state_version,
+                        round_id,
+                        canvas_note_id,
+                        skill_contents,
+                        skill_embedded_tools,
+                        skill_package_roots,
+                        _active_skill_ids,
+                        skill_allowed_tools,
+                        cancellation_token,
+                        rag_top_k,
+                        rag_enable_reranking,
+                        memory_enabled,
+                        rag_enabled,
+                        web_search_enabled,
+                    )
+                    .await;
 
-            // 🔧 捕获 _create 工具返回的 file_id，供后续依赖工具使用
-            if info.success {
-                self.capture_created_file_id(&tc_ref.name, &info.output, &mut created_file_ids);
-            }
-            tool_results.push(info);
+                // 🔧 捕获 _create 工具返回的 file_id，供后续依赖工具使用
+                if info.success {
+                    self.capture_created_file_id(&tc_ref.name, &info.output, &mut created_file_ids);
+                }
+                tool_results.push(info);
             }
         }
 
@@ -2134,9 +2191,9 @@ impl ChatV2Pipeline {
     ///   特征（timeout/connection/429/5xx 等启发式，见 `is_transient_tool_error`）
     ///   时自动重试，最多 2 次，指数退避 500ms → 2s。
     /// - 写类/串行/需审批工具必须传 `false`，绝不自动重试。
-    /// - 每次尝试都走完整的 `execute_single_tool`（独立 block id + start/end/error
-    ///   事件），因此重试过程对前端可见；最终结果通过 `_auto_retry_attempts`
-    ///   字段与错误信息后缀注明重试情况。
+    /// - 每次尝试都走完整的 `execute_single_tool`，但整个逻辑调用固定复用一个 block id；
+    ///   start/end/error 事件和防闪退 UPSERT 都更新同一块，刷新后不会出现失败尝试 ghost。
+    ///   最终结果通过 `_auto_retry_attempts` 字段与错误信息后缀注明重试情况。
     /// - 退避等待期间监听 CancellationToken，取消时立即返回当前失败结果。
     /// - `Err`（执行器内部异常）与 `Ok(success=false)` 统一归一化为失败的
     ///   `ToolResultInfo`，与旧顺序路径行为一致。
@@ -2166,11 +2223,13 @@ impl ChatV2Pipeline {
         web_search_enabled: bool,
     ) -> ToolResultInfo {
         let mut retries_done: usize = 0;
+        let retry_block_id = MessageBlock::generate_id();
 
         loop {
             let outcome = self
                 .execute_single_tool(
                     tool_call,
+                    &retry_block_id,
                     emitter,
                     session_id,
                     message_id,
@@ -2194,7 +2253,7 @@ impl ChatV2Pipeline {
 
             // 归一化：Err（执行器内部异常）→ 失败 ToolResultInfo
             let info = match outcome {
-                Ok(info) => info,
+                Ok(info) => pin_tool_result_to_block(info, &retry_block_id),
                 Err(e) => {
                     log::error!(
                         "[ChatV2::pipeline] Unexpected tool call error for {}: {}",
@@ -2203,7 +2262,7 @@ impl ChatV2Pipeline {
                     );
                     ToolResultInfo {
                         tool_call_id: Some(tool_call.id.clone()),
-                        block_id: None,
+                        block_id: Some(retry_block_id.clone()),
                         tool_name: tool_call.name.clone(),
                         input: tool_call.arguments.clone(),
                         output: json!(null),
@@ -2412,6 +2471,7 @@ impl ChatV2Pipeline {
     async fn execute_single_tool(
         &self,
         tool_call: &ToolCall,
+        block_id: &str,
         emitter: &Arc<ChatV2EventEmitter>,
         session_id: &str,
         message_id: &str,
@@ -2433,8 +2493,6 @@ impl ChatV2Pipeline {
         rag_enabled: bool,
         web_search_enabled: bool,
     ) -> ChatV2Result<ToolResultInfo> {
-        let block_id = MessageBlock::generate_id();
-
         log::debug!(
             "[ChatV2::pipeline] Executing tool via ExecutorRegistry: name={}, id={}",
             tool_call.name,
@@ -2450,7 +2508,7 @@ impl ChatV2Pipeline {
             emitter.emit_start_with_meta(
                 event_types::TOOL_CALL,
                 message_id,
-                Some(&block_id),
+                Some(block_id),
                 Some(payload),
                 variant_id,
                 skill_state_version,
@@ -2458,7 +2516,7 @@ impl ChatV2Pipeline {
             );
             emitter.emit_error_with_meta(
                 event_types::TOOL_CALL,
-                &block_id,
+                block_id,
                 &error_message,
                 variant_id,
                 skill_state_version,
@@ -2466,7 +2524,7 @@ impl ChatV2Pipeline {
             );
             ToolResultInfo {
                 tool_call_id: Some(tool_call.id.clone()),
-                block_id: Some(block_id.clone()),
+                block_id: Some(block_id.to_string()),
                 tool_name: tool_call.name.clone(),
                 input: tool_call.arguments.clone(),
                 output: json!(null),
@@ -2583,21 +2641,24 @@ impl ChatV2Pipeline {
                     None
                 } else {
                     self.main_db.as_ref().and_then(|db| {
-                    use crate::chat_v2::approval_scope;
+                        use crate::chat_v2::approval_scope;
 
-                    // v2 查询（若为已知工具）
-                    if let Some(v2_key) =
-                        approval_scope::make_setting_key_v2(&tool_call.name, &tool_call.arguments)
-                    {
-                        if let Ok(Some(v)) = db.get_setting(&v2_key) {
-                            return Some(v == "allow");
+                        // v2 查询（若为已知工具）
+                        if let Some(v2_key) = approval_scope::make_setting_key_v2(
+                            &tool_call.name,
+                            &tool_call.arguments,
+                        ) {
+                            if let Ok(Some(v)) = db.get_setting(&v2_key) {
+                                return Some(v == "allow");
+                            }
                         }
-                    }
-                    // v1 回退查询（保证旧"记住选择"仍生效）
-                    let v1_key =
-                        approval_scope::make_setting_key_v1(&tool_call.name, &tool_call.arguments);
-                    db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
-                })
+                        // v1 回退查询（保证旧"记住选择"仍生效）
+                        let v1_key = approval_scope::make_setting_key_v1(
+                            &tool_call.name,
+                            &tool_call.arguments,
+                        );
+                        db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
+                    })
                 };
 
                 // 使用持久化设置、会话级记住（🆕 三档分级中间档）或内存缓存
@@ -2605,16 +2666,16 @@ impl ChatV2Pipeline {
                     None
                 } else {
                     persisted_approval
-                    .or_else(|| {
-                        approval_manager.check_session_remembered(
-                            session_id,
-                            &tool_call.name,
-                            &tool_call.arguments,
-                        )
-                    })
-                    .or_else(|| {
-                        approval_manager.check_remembered(&tool_call.name, &tool_call.arguments)
-                    })
+                        .or_else(|| {
+                            approval_manager.check_session_remembered(
+                                session_id,
+                                &tool_call.name,
+                                &tool_call.arguments,
+                            )
+                        })
+                        .or_else(|| {
+                            approval_manager.check_remembered(&tool_call.name, &tool_call.arguments)
+                        })
                 };
 
                 if let Some(is_allowed) = remembered {
@@ -2640,7 +2701,7 @@ impl ChatV2Pipeline {
                             emitter,
                             session_id,
                             message_id,
-                            &block_id,
+                            block_id,
                             &actual_sensitivity,
                             approval_manager,
                             cancellation_token.as_ref(),
@@ -2653,10 +2714,9 @@ impl ChatV2Pipeline {
                         }
                         ApprovalOutcome::Rejected { reason } => {
                             let message = match reason {
-                                Some(user_reason) => format!(
-                                    "用户拒绝执行此工具。用户说明：{}",
-                                    user_reason
-                                ),
+                                Some(user_reason) => {
+                                    format!("用户拒绝执行此工具。用户说明：{}", user_reason)
+                                }
                                 None => "用户拒绝执行此工具".to_string(),
                             };
                             return Ok(build_preflight_blocked_result(message));
@@ -2686,7 +2746,7 @@ impl ChatV2Pipeline {
         let mut ctx = ExecutionContext::new(
             session_id.to_string(),
             message_id.to_string(),
-            block_id.clone(),
+            block_id.to_string(),
             emitter.clone(),
             self.tool_registry.clone(),
             window,
@@ -2744,7 +2804,7 @@ impl ChatV2Pipeline {
                 );
                 Ok(ToolResultInfo {
                     tool_call_id: Some(tool_call.id.clone()),
-                    block_id: Some(block_id),
+                    block_id: Some(block_id.to_string()),
                     tool_name: tool_call.name.clone(),
                     input: tool_call.arguments.clone(),
                     output: json!(null),
@@ -2796,7 +2856,10 @@ impl ChatV2Pipeline {
             session_id: session_id.to_string(),
             tool_call_id: tool_call.id.clone(),
             tool_name: tool_call.name.clone(),
-            arguments: tool_call.arguments.clone(),
+            arguments: crate::chat_v2::approval_scope::redact_tool_arguments_for_display(
+                &tool_call.name,
+                &tool_call.arguments,
+            ),
             sensitivity: sensitivity_label.to_string(),
             description: ApprovalManager::generate_description(
                 &tool_call.name,
@@ -3026,6 +3089,18 @@ pub(crate) fn annotate_auto_retry(mut info: ToolResultInfo, retries: usize) -> T
             base, retries
         ));
     }
+    info
+}
+
+/// Force every physical retry attempt to represent the same logical UI/persistence block.
+///
+/// Executors receive the same block ID through `ExecutionContext`; this normalization is a final
+/// defense for executors that return a missing or inconsistent ID.
+pub(crate) fn pin_tool_result_to_block(
+    mut info: ToolResultInfo,
+    logical_block_id: &str,
+) -> ToolResultInfo {
+    info.block_id = Some(logical_block_id.to_string());
     info
 }
 

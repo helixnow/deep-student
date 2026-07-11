@@ -438,6 +438,11 @@ pub struct SessionEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message_id: Option<String>,
 
+    /// Backend stream registration generation. Clients use this to reject terminal events from a
+    /// cancelled run after an immediate retry has reused the same message ID.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_generation: Option<u64>,
+
     /// Skill 状态版本
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_state_version: Option<u64>,
@@ -483,6 +488,11 @@ pub struct SessionEvent {
 }
 
 impl SessionEvent {
+    pub fn with_stream_generation(mut self, stream_generation: Option<u64>) -> Self {
+        self.stream_generation = stream_generation;
+        self
+    }
+
     /// 创建流式开始事件
     /// `model_id` 是模型标识符（如 "Qwen/Qwen3-8B"），用于前端显示
     pub fn stream_start(session_id: &str, message_id: &str, model_id: Option<&str>) -> Self {
@@ -490,6 +500,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_START.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: model_id.map(|s| s.to_string()),
@@ -515,6 +526,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_RECONNECT.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -535,6 +547,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -566,6 +579,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_COMPLETE.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -586,6 +600,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_ERROR.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -606,6 +621,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::STREAM_CANCELLED.to_string(),
             message_id: Some(message_id.to_string()),
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -626,6 +642,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_COMPLETE.to_string(),
             message_id: None,
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -646,6 +663,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::SAVE_ERROR.to_string(),
             message_id: None,
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -666,6 +684,7 @@ impl SessionEvent {
             session_id: session_id.to_string(),
             event_type: session_event_type::SUMMARY_UPDATED.to_string(),
             message_id: None,
+            stream_generation: None,
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
@@ -732,6 +751,8 @@ pub fn clear_session_sequence_counter(session_id: &str) {
 pub struct ChatV2EventEmitter {
     window: Window,
     session_id: String,
+    /// One backend registration generation shared by every lifecycle event from this emitter.
+    stream_generation: Option<u64>,
     /// 递增序列号生成器（从 0 开始，按会话共享）
     sequence_counter: Arc<AtomicU64>,
     /// 工具块事件元数据注册表（用于补齐 skill_state_version / round_id）
@@ -751,9 +772,15 @@ impl ChatV2EventEmitter {
         Self {
             window,
             session_id: session_id.clone(),
+            stream_generation: None,
             sequence_counter: get_or_create_session_counter(&session_id),
             block_event_meta: Arc::new(DashMap::new()),
         }
+    }
+
+    pub fn with_stream_generation(mut self, stream_generation: Option<u64>) -> Self {
+        self.stream_generation = stream_generation;
+        self
     }
 
     /// 获取会话 ID
@@ -850,8 +877,11 @@ impl ChatV2EventEmitter {
     }
 
     /// 发射会话级事件（内部方法）
-    fn emit_session(&self, event: SessionEvent) {
+    fn emit_session(&self, mut event: SessionEvent) {
         let event_name = self.session_event_channel();
+        if event.stream_generation.is_none() {
+            event.stream_generation = self.stream_generation;
+        }
         if let Err(e) = self.window.emit(&event_name, &event) {
             log::error!(
                 "[ChatV2::events] Failed to emit session event: {} - {:?}",
@@ -1541,6 +1571,7 @@ mod tests {
             session_id: "sess_123".to_string(),
             event_type: "stream_complete".to_string(),
             message_id: Some("msg_456".to_string()),
+            stream_generation: Some(42),
             skill_state_version: None,
             replay_mode: None,
             model_id: None, // stream_complete 事件不需要 model_id
@@ -1558,6 +1589,7 @@ mod tests {
 
         // 验证使用 camelCase
         assert!(json.contains("\"sessionId\""));
+        assert!(json.contains("\"streamGeneration\":42"));
         assert!(json.contains("\"eventType\""));
         assert!(json.contains("\"messageId\""));
         assert!(json.contains("\"durationMs\""));
@@ -1565,6 +1597,26 @@ mod tests {
         // 验证 None 字段不被序列化
         assert!(!json.contains("\"error\""));
         assert!(!json.contains("\"usage\""));
+    }
+
+    #[test]
+    fn lifecycle_events_keep_one_stream_generation_contract() {
+        let generation = Some(73);
+        let events = vec![
+            SessionEvent::stream_start("sess", "msg", None).with_stream_generation(generation),
+            SessionEvent::stream_reconnect("sess", "msg", 1, 2).with_stream_generation(generation),
+            SessionEvent::stream_complete("sess", "msg", 10).with_stream_generation(generation),
+            SessionEvent::stream_error("sess", "msg", "failed").with_stream_generation(generation),
+            SessionEvent::stream_cancelled("sess", "msg").with_stream_generation(generation),
+        ];
+
+        for event in events {
+            assert_eq!(event.stream_generation, generation);
+            assert_eq!(
+                serde_json::to_value(event).unwrap()["streamGeneration"],
+                serde_json::json!(73)
+            );
+        }
     }
 
     #[test]

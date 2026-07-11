@@ -61,9 +61,30 @@ impl ReviewToolExecutor {
 
     /// 校验 YYYY-MM-DD 日期格式
     fn validate_date(value: &str, field: &str) -> Result<(), String> {
+        let bytes = value.as_bytes();
+        let has_exact_shape = bytes.len() == 10
+            && bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes
+                .iter()
+                .enumerate()
+                .all(|(index, byte)| matches!(index, 4 | 7) || byte.is_ascii_digit());
+
+        if !has_exact_shape {
+            return Err(format!(
+                "参数 '{}' 日期格式无效: {}（应为 YYYY-MM-DD）",
+                field, value
+            ));
+        }
+
         NaiveDate::parse_from_str(value, "%Y-%m-%d")
             .map(|_| ())
-            .map_err(|_| format!("参数 '{}' 日期格式无效: {}（应为 YYYY-MM-DD）", field, value))
+            .map_err(|_| {
+                format!(
+                    "参数 '{}' 日期格式无效: {}（应为 YYYY-MM-DD）",
+                    field, value
+                )
+            })
     }
 
     /// 复习计划 → JSON（附题目内容预览，便于 agent 直接组织复习）
@@ -102,11 +123,8 @@ impl ReviewToolExecutor {
 
     /// 解析 status 参数（字符串数组 → ReviewPlanStatus 数组）
     fn parse_status_filter(args: &Value) -> Option<Vec<ReviewPlanStatus>> {
-        get_string_array_arg(args, "status").map(|list| {
-            list.iter()
-                .map(|s| ReviewPlanStatus::from_str(s))
-                .collect()
-        })
+        get_string_array_arg(args, "status")
+            .map(|list| list.iter().map(|s| ReviewPlanStatus::from_str(s)).collect())
     }
 
     // ========================================================================
@@ -625,6 +643,9 @@ mod tests {
         // 部分模型会把数组序列化为 JSON 字符串
         let args = serde_json::json!({ "status": "[\"graduated\", \"suspended\"]" });
         let parsed = ReviewToolExecutor::parse_status_filter(&args).expect("should parse");
-        assert_eq!(parsed, vec![ReviewPlanStatus::Graduated, ReviewPlanStatus::Suspended]);
+        assert_eq!(
+            parsed,
+            vec![ReviewPlanStatus::Graduated, ReviewPlanStatus::Suspended]
+        );
     }
 }

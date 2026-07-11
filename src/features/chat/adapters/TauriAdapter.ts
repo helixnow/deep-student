@@ -17,7 +17,12 @@ import i18n from 'i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { StoreApi } from 'zustand';
-import type { ChatStore, AttachmentMeta, LoadSessionResponseType } from '../core/types';
+import type {
+  ChatStore,
+  AttachmentMeta,
+  LoadSessionResponseType,
+  SessionRestoreBaseline,
+} from '../core/types';
 import { streamingBlockSaver } from '../core/middleware/autoSave';
 import type { BackendEvent } from '../core/middleware/eventBridge';
 import {
@@ -104,6 +109,9 @@ const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'in
  * 与 MessageList 直渲阈值（80）同量级，保证补齐前的可视内容已充足。
  */
 const LOAD_SESSION_TAIL_LIMIT = 80;
+const FULL_HISTORY_IDLE_TIMEOUT_MS = 1_000;
+const FULL_HISTORY_MAX_RETRIES = 2;
+const FULL_HISTORY_RETRY_BASE_MS = 500;
 
 function getCanvasNoteIdFromModeState(modeState: Record<string, unknown> | null): string | undefined {
   if (!modeState || typeof modeState !== 'object') {
@@ -159,6 +167,7 @@ interface NormalizedChatModelSelection {
 export class ChatV2TauriAdapter {
   private static nextAdapterInstanceId = 1;
   private static ankiEventOwnerAdapterId: number | null = null;
+  private static sessionRuntimeOwners = new Map<string, ChatV2TauriAdapter>();
 
   private sessionId: string;
   private storeApi: StoreApi<ChatStore> | null = null;
@@ -167,6 +176,10 @@ export class ChatV2TauriAdapter {
   private isSetup = false;
   private setupGeneration = 0;
   private readonly adapterInstanceId: number;
+  private unregisterStreamingBlockSaver: (() => void) | null = null;
+  private cancelScheduledFullHistoryLoad: (() => void) | null = null;
+  private fullHistoryLoadInFlight = false;
+  private fullHistoryLoadComplete = false;
   
   /** 🚀 性能优化：数据恢复完成回调，在 restoreFromBackend 后立即触发 */
   public onDataRestored: (() => void) | null = null;
@@ -180,7 +193,13 @@ export class ChatV2TauriAdapter {
   /** 🆕 并发控制：防止 retrySetupListeners 重入 */
   private isRetryingListeners = false;
   /** 当前会话预期流式消息（用于过滤 stale session 事件） */
-  private streamExpectation: { messageId: string; startedAt: number } | null = null;
+  private streamExpectation: {
+    messageId: string;
+    startedAt: number;
+    streamGeneration: number | null;
+  } | null = null;
+  /** 最近一次已接受的后端流代次，防止同 messageId retry 被旧终态结束。 */
+  private lastStreamGenerationByMessageId = new Map<string, number>();
   /** ChatAnki 桥接 chunk 日志节流计数器（按 blockId） */
   private chatAnkiChunkLogCounter = new Map<string, number>();
 
@@ -204,11 +223,53 @@ export class ChatV2TauriAdapter {
     return this.storeApi?.getState() ?? this.store;
   }
 
+  private claimSessionRuntimeOwnership(): boolean {
+    const currentOwner = ChatV2TauriAdapter.sessionRuntimeOwners.get(this.sessionId);
+    if (!currentOwner || currentOwner.adapterInstanceId <= this.adapterInstanceId) {
+      ChatV2TauriAdapter.sessionRuntimeOwners.set(this.sessionId, this);
+    }
+    return ChatV2TauriAdapter.sessionRuntimeOwners.get(this.sessionId) === this;
+  }
+
+  private isSessionRuntimeOwner(): boolean {
+    const owner = ChatV2TauriAdapter.sessionRuntimeOwners.get(this.sessionId);
+    // Unit tests and direct method use may not call setup(). With no claimed
+    // owner, this instance is the only possible handler and remains valid.
+    return !owner || owner === this;
+  }
+
+  private releaseSessionRuntimeOwnershipIfHeld(): void {
+    if (ChatV2TauriAdapter.sessionRuntimeOwners.get(this.sessionId) === this) {
+      ChatV2TauriAdapter.sessionRuntimeOwners.delete(this.sessionId);
+    }
+  }
+
+  private captureRestoreBaseline(): SessionRestoreBaseline {
+    const state = this.getCurrentState();
+    let oldestMessageTimestamp: number | undefined;
+    for (const message of state.messageMap.values()) {
+      if (
+        oldestMessageTimestamp === undefined
+        || message.timestamp < oldestMessageTimestamp
+      ) {
+        oldestMessageTimestamp = message.timestamp;
+      }
+    }
+    return {
+      messageIds: new Set(state.messageMap.keys()),
+      blockIds: new Set(state.blocks.keys()),
+      oldestMessageTimestamp,
+      sessionStatus: state.sessionStatus,
+      currentStreamingMessageId: state.currentStreamingMessageId,
+    };
+  }
+
   private beginStreamExpectation(messageId: string): void {
     if (!messageId) return;
     this.streamExpectation = {
       messageId,
       startedAt: Date.now(),
+      streamGeneration: null,
     };
   }
 
@@ -221,23 +282,38 @@ export class ChatV2TauriAdapter {
     this.streamExpectation = {
       ...this.streamExpectation,
       messageId,
+      streamGeneration:
+        this.streamExpectation.messageId === messageId
+          ? this.streamExpectation.streamGeneration
+          : null,
     };
   }
 
-  private syncStreamExpectationFromEvent(messageId: string, timestamp?: number): void {
+  private syncStreamExpectationFromEvent(
+    messageId: string,
+    timestamp?: number,
+    streamGeneration?: number,
+  ): void {
     if (!messageId) return;
     if (!this.streamExpectation || this.streamExpectation.messageId !== messageId) {
       this.streamExpectation = {
         messageId,
         startedAt: timestamp ?? Date.now(),
+        streamGeneration: streamGeneration ?? null,
       };
-      return;
-    }
-    if (typeof timestamp === 'number' && Number.isFinite(timestamp) && timestamp > this.streamExpectation.startedAt) {
+    } else {
       this.streamExpectation = {
         ...this.streamExpectation,
-        startedAt: timestamp,
+        ...(typeof timestamp === 'number'
+          && Number.isFinite(timestamp)
+          && timestamp > this.streamExpectation.startedAt
+          ? { startedAt: timestamp }
+          : {}),
+        ...(streamGeneration !== undefined ? { streamGeneration } : {}),
       };
+    }
+    if (streamGeneration !== undefined) {
+      this.lastStreamGenerationByMessageId.set(messageId, streamGeneration);
     }
   }
 
@@ -253,6 +329,34 @@ export class ChatV2TauriAdapter {
     if (this.streamExpectation.messageId !== payload.messageId) return false;
     if (typeof payload.timestamp !== 'number' || !Number.isFinite(payload.timestamp)) return false;
     return payload.timestamp < this.streamExpectation.startedAt - 500;
+  }
+
+  private isStaleByStreamGeneration(payload: SessionEventPayload): boolean {
+    if (!payload.messageId || payload.streamGeneration === undefined) return false;
+    const lastAcceptedGeneration = this.lastStreamGenerationByMessageId.get(payload.messageId);
+
+    if (payload.eventType === 'stream_start') {
+      if (
+        this.streamExpectation?.messageId === payload.messageId
+        && this.streamExpectation.streamGeneration === null
+        && lastAcceptedGeneration !== undefined
+      ) {
+        return payload.streamGeneration <= lastAcceptedGeneration;
+      }
+      return lastAcceptedGeneration !== undefined
+        && payload.streamGeneration < lastAcceptedGeneration;
+    }
+
+    if (!this.streamExpectation || this.streamExpectation.messageId !== payload.messageId) {
+      return lastAcceptedGeneration !== undefined
+        && payload.streamGeneration <= lastAcceptedGeneration;
+    }
+
+    // A frontend retry expectation is created before the backend start event
+    // returns its new generation. Any generation-bearing terminal that arrives
+    // in this window belongs to the previous run.
+    if (this.streamExpectation.streamGeneration === null) return true;
+    return payload.streamGeneration !== this.streamExpectation.streamGeneration;
   }
 
   private isTargetingCurrentStreamMessage(messageId?: string): boolean {
@@ -515,6 +619,10 @@ export class ChatV2TauriAdapter {
       return;
     }
 
+    if (!this.claimSessionRuntimeOwnership()) {
+      throw new Error(`A newer adapter owns the runtime for session ${this.sessionId}`);
+    }
+
     // 📊 性能打点：adapter_setup_start
     const alreadyLoadedBefore = this.store.isDataLoaded;
     sessionSwitchPerf.mark('adapter_setup_start', { fromCache: alreadyLoadedBefore });
@@ -641,8 +749,11 @@ export class ChatV2TauriAdapter {
       this.store.setUpdateSessionSettingsCallback((settings) =>
         this.executeUpdateSessionSettings(settings)
       );
-      streamingBlockSaver.setSaveCallback((blockId, messageId, blockType, content, sessionId) =>
-        this.executeUpsertStreamingBlock(blockId, messageId, blockType, content, sessionId)
+      this.unregisterStreamingBlockSaver?.();
+      this.unregisterStreamingBlockSaver = streamingBlockSaver.registerSaveCallback(
+        this.sessionId,
+        (blockId, messageId, blockType, content, sessionId) =>
+          this.executeUpsertStreamingBlock(blockId, messageId, blockType, content, sessionId),
       );
 
       // 🔧 2026-01-15: 移除超时机制，后端工具调用参数累积时会实时发送事件
@@ -758,6 +869,9 @@ export class ChatV2TauriAdapter {
     console.log(LOG_PREFIX, 'Cleaning up...');
     // 使正在进行的 setup/listener 注册代际失效，防止过期监听器被挂回当前实例
     this.setupGeneration += 1;
+    this.cancelScheduledFullHistoryLoad?.();
+    this.cancelScheduledFullHistoryLoad = null;
+    this.fullHistoryLoadComplete = false;
 
     // 等待监听器注册完成，确保 unlisteners 已填充
     if (this.listenersReadyPromise) {
@@ -767,6 +881,9 @@ export class ChatV2TauriAdapter {
         // 注册失败的情况已由 .catch() 分支处理
       }
     }
+
+    const ownsSessionRuntime = this.isSessionRuntimeOwner();
+    if (ownsSessionRuntime) {
 
     // 🔧 同步修复：cleanup 前先保存会话状态（fire-and-forget）
     // 确保 idle 状态下修改的 UI 设置（chatParams, features 等）不丢失
@@ -917,9 +1034,18 @@ export class ChatV2TauriAdapter {
       console.error(LOG_PREFIX, 'Error clearing updateSessionSettings callback:', getErrorMessage(error));
     }
 
-    // 🔧 防闪退：清除流式块保存回调
     try {
-      streamingBlockSaver.setSaveCallback(null);
+      streamingBlockSaver.cleanup(this.sessionId);
+    } catch (error) {
+      console.error(LOG_PREFIX, 'Error cleaning streamingBlockSaver state:', getErrorMessage(error));
+    }
+    }
+
+    // Identity-safe unregister: an old generation cannot clear the callback
+    // installed by a newer adapter for the same session.
+    try {
+      this.unregisterStreamingBlockSaver?.();
+      this.unregisterStreamingBlockSaver = null;
     } catch (error) {
       console.error(LOG_PREFIX, 'Error clearing streamingBlockSaver callback:', getErrorMessage(error));
     }
@@ -936,6 +1062,10 @@ export class ChatV2TauriAdapter {
     this.releaseAnkiEventOwnershipIfHeld('cleanup');
     this.chatAnkiChunkLogCounter.clear();
     this.clearStreamExpectation();
+    this.lastStreamGenerationByMessageId.clear();
+    if (ownsSessionRuntime) {
+      this.releaseSessionRuntimeOwnershipIfHeld();
+    }
     this.isSetup = false;
     console.log(LOG_PREFIX, 'Cleanup complete');
   }
@@ -1323,6 +1453,7 @@ export class ChatV2TauriAdapter {
    * 处理块级事件
    */
   private handleBlockEvent(event: BackendEvent): void {
+    if (!this.isSessionRuntimeOwner()) return;
     try {
       // ChatAnki 工具调用拦截 — 捕获 tool_call 的 start/end/error 供调试面板显示
       {
@@ -1436,6 +1567,7 @@ export class ChatV2TauriAdapter {
    * 然后将 rawRequest 更新为后端的真实请求体（替换之前保存的前端请求）。
    */
   private handleLlmRequestBody(payload: LlmRequestBodyEventPayload): void {
+    if (!this.isSessionRuntimeOwner()) return;
     const prefix = `chat_v2_event_${this.sessionId}`;
     if (payload.streamEvent !== prefix && !payload.streamEvent.startsWith(`${prefix}_`)) {
       return;
@@ -1493,6 +1625,7 @@ export class ChatV2TauriAdapter {
    * 为了确保 UI 响应性，先重置状态再执行保存。
    */
   private handleSessionEvent(payload: SessionEventPayload): void {
+    if (!this.isSessionRuntimeOwner()) return;
     if (payload.sessionId !== this.sessionId) {
       return;
     }
@@ -1513,9 +1646,13 @@ export class ChatV2TauriAdapter {
             console.warn(LOG_PREFIX, 'Ignore stream_start without messageId');
             break;
           }
-          if (this.isStaleByExpectationTimestamp(payload)) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_start by timestamp:', {
+          if (
+            this.isStaleByStreamGeneration(payload)
+            || this.isStaleByExpectationTimestamp(payload)
+          ) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_start:', {
               messageId: payload.messageId,
+              streamGeneration: payload.streamGeneration,
               eventTimestamp: payload.timestamp,
               expectation: this.streamExpectation,
             });
@@ -1583,6 +1720,17 @@ export class ChatV2TauriAdapter {
             ? currentState.messageMap.get(payload.messageId)
             : undefined;
           if (
+            isAutonomousStreamStart &&
+            autonomousTargetMessage &&
+            autonomousTargetMessage.role !== 'assistant'
+          ) {
+            console.warn(LOG_PREFIX, 'Ignore autonomous stream_start targeting a non-assistant message:', {
+              messageId: payload.messageId,
+              role: autonomousTargetMessage.role,
+            });
+            break;
+          }
+          if (
             isAutonomousStreamStart
             && autonomousTargetMessage
             && currentState.sessionStatus === 'idle'
@@ -1597,7 +1745,11 @@ export class ChatV2TauriAdapter {
             break;
           }
 
-          this.syncStreamExpectationFromEvent(payload.messageId, payload.timestamp);
+          this.syncStreamExpectationFromEvent(
+            payload.messageId,
+            payload.timestamp,
+            payload.streamGeneration,
+          );
 
           // 流式开始
           // 🆕 2026-02-16: 重置工具调用生命周期追踪器的轮次计数器
@@ -1622,6 +1774,7 @@ export class ChatV2TauriAdapter {
           // 检查消息是否存在，不存在则创建占位消息（与普通会话 sendMessageWithIds 等价）
           // （历史消息 stale 拦截已前移到 syncStreamExpectationFromEvent 之前，见上方守卫）
           const messageExists = currentState.messageMap.has(payload.messageId);
+          const streamStoreApi = this.storeApi ?? sessionManager.get(this.sessionId);
 
           // 🔧 P31 全链路诊断
           const diagData = {
@@ -1665,10 +1818,8 @@ export class ChatV2TauriAdapter {
             };
             
             // 🔧 P32 修复：不依赖 this.storeApi，从 sessionManager 获取 store 作为后备
-            const storeApi = this.storeApi ?? sessionManager.get(this.sessionId);
-            
-            if (storeApi) {
-              storeApi.setState((s) => ({
+            if (streamStoreApi) {
+              streamStoreApi.setState((s) => ({
                 sessionStatus: 'streaming' as const,
                 messageMap: new Map(s.messageMap).set(payload.messageId, placeholderMessage),
                 messageOrder: s.messageOrder.includes(payload.messageId)
@@ -1680,7 +1831,21 @@ export class ChatV2TauriAdapter {
             } else {
               console.error(LOG_PREFIX, '[P32] Cannot create placeholder: no storeApi available');
             }
-          } else if (messageExists && payload.messageId && payload.modelId) {
+          } else {
+            // An autonomous backend stream can race with session loading: the
+            // empty assistant placeholder may already exist even though the
+            // frontend never entered streaming state. Adopt every accepted
+            // stream_start into the same invariant used by the send path so
+            // terminal events are not discarded by completeStream().
+            if (streamStoreApi) {
+              streamStoreApi.setState({
+                sessionStatus: 'streaming' as const,
+                currentStreamingMessageId: payload.messageId,
+              });
+            }
+          }
+
+          if (messageExists && payload.messageId && payload.modelId) {
             // 普通会话：消息已存在，仅更新 modelId
             logMultiVariant('adapter', 'stream_start_update_meta', {
               messageId: payload.messageId,
@@ -1694,7 +1859,7 @@ export class ChatV2TauriAdapter {
               modelId: fallbackModelId,
             }, 'warning');
             this.store.updateMessageMeta(payload.messageId, { modelId: fallbackModelId });
-          } else {
+          } else if (messageExists) {
             logMultiVariant('adapter', 'stream_start_no_modelId', {
               messageId: payload.messageId,
               hasMessageId: !!payload.messageId,
@@ -1705,7 +1870,12 @@ export class ChatV2TauriAdapter {
         }
 
         case 'stream_reconnect':
-          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+          if (
+            !payload.messageId
+            || !this.isTargetingCurrentStreamMessage(payload.messageId)
+            || this.isStaleByStreamGeneration(payload)
+            || this.isStaleByExpectationTimestamp(payload)
+          ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_reconnect:', {
               messageId: payload.messageId,
               currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
@@ -1723,7 +1893,12 @@ export class ChatV2TauriAdapter {
           break;
 
         case 'stream_complete':
-          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+          if (
+            !payload.messageId
+            || !this.isTargetingCurrentStreamMessage(payload.messageId)
+            || this.isStaleByStreamGeneration(payload)
+            || this.isStaleByExpectationTimestamp(payload)
+          ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_complete:', {
               messageId: payload.messageId,
               currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
@@ -1762,7 +1937,12 @@ export class ChatV2TauriAdapter {
           break;
 
         case 'stream_error':
-          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+          if (
+            !payload.messageId
+            || !this.isTargetingCurrentStreamMessage(payload.messageId)
+            || this.isStaleByStreamGeneration(payload)
+            || this.isStaleByExpectationTimestamp(payload)
+          ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_error:', {
               messageId: payload.messageId,
               currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
@@ -1791,7 +1971,12 @@ export class ChatV2TauriAdapter {
           break;
 
         case 'stream_cancelled':
-          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+          if (
+            !payload.messageId
+            || !this.isTargetingCurrentStreamMessage(payload.messageId)
+            || this.isStaleByStreamGeneration(payload)
+            || this.isStaleByExpectationTimestamp(payload)
+          ) {
             console.warn(LOG_PREFIX, 'Ignore stale stream_cancelled:', {
               messageId: payload.messageId,
               currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
@@ -2841,7 +3026,7 @@ export class ChatV2TauriAdapter {
    * 加载会话（尾部分块）
    *
    * 第一阶段只取最近 LOAD_SESSION_TAIL_LIMIT 条消息，首屏 IPC/渲染成本与会话
-   * 总长度解耦；若后端报告还有更早历史，首帧空闲后全量拉取并合并到头部
+   * 总长度解耦；若后端报告还有缺失历史，首帧空闲后全量拉取并按锚点合并
    * （store.prependHistoryFromBackend，滚动锚定由 MessageList 补偿）。
    */
   async loadSession(): Promise<void> {
@@ -2850,6 +3035,7 @@ export class ChatV2TauriAdapter {
     // 📊 性能打点：backend_load_start
     sessionSwitchPerf.mark('backend_load_start');
     const t0 = performance.now();
+    const restoreBaseline = this.captureRestoreBaseline();
 
     try {
       // 📊 细粒度打点：invoke 开始
@@ -2917,8 +3103,13 @@ export class ChatV2TauriAdapter {
       // 📊 性能打点：restore_start
       sessionSwitchPerf.mark('restore_start');
 
+      if (!this.isSessionRuntimeOwner()) {
+        console.warn(LOG_PREFIX, 'Discarding session load from stale adapter generation:', this.sessionId);
+        return;
+      }
+
       // 使用 Store 的 restoreFromBackend 方法恢复状态
-      this.store.restoreFromBackend(response);
+      this.store.restoreFromBackend(response, restoreBaseline);
 
       await this.hydrateDefaultChatModelIfMissing();
 
@@ -2945,27 +3136,56 @@ export class ChatV2TauriAdapter {
   }
 
   /**
-   * 尾部分块加载第二阶段：空闲期全量加载并把更早历史合并到会话头部。
+   * 尾部分块加载第二阶段：空闲期全量加载并把缺失历史合并到正确位置。
    * 失败静默降级（首屏尾部数据已可用；下次进入会话会重试）。
    */
-  private scheduleFullHistoryLoad(): void {
+  private scheduleFullHistoryLoad(attempt = 0): void {
+    if (
+      this.fullHistoryLoadComplete
+      || this.fullHistoryLoadInFlight
+      || this.cancelScheduledFullHistoryLoad
+    ) {
+      return;
+    }
     const generation = this.setupGeneration;
     const win = window as Window & {
       requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
     };
-    const schedule = win.requestIdleCallback?.bind(win)
-      ?? ((cb: () => void) => window.setTimeout(cb, 120));
+    let started = false;
+    let idleId: number | null = null;
+    let watchdogId: number | null = null;
+    const cancelSchedule = () => {
+      if (idleId !== null) {
+        if (win.cancelIdleCallback) win.cancelIdleCallback(idleId);
+        else window.clearTimeout(idleId);
+        idleId = null;
+      }
+      if (watchdogId !== null) {
+        window.clearTimeout(watchdogId);
+        watchdogId = null;
+      }
+      if (this.cancelScheduledFullHistoryLoad === cancelSchedule) {
+        this.cancelScheduledFullHistoryLoad = null;
+      }
+    };
 
-    schedule(async () => {
+    const run = async () => {
+      if (started) return;
+      started = true;
+      cancelSchedule();
       // cleanup()/重新 setup 会推进 setupGeneration，此时放弃过期的补齐任务
-      if (generation !== this.setupGeneration) return;
+      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
+      this.fullHistoryLoadInFlight = true;
       try {
         const t0 = performance.now();
+        const restoreBaseline = this.captureRestoreBaseline();
         const fullResponse = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
           sessionId: this.sessionId,
         });
-        if (generation !== this.setupGeneration) return;
-        this.store.prependHistoryFromBackend(fullResponse);
+        if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
+        this.store.prependHistoryFromBackend(fullResponse, restoreBaseline);
+        this.fullHistoryLoadComplete = true;
         console.log(LOG_PREFIX, 'Full history merged:', {
           sessionId: this.sessionId,
           totalMessages: fullResponse.messages?.length ?? 0,
@@ -2973,8 +3193,41 @@ export class ChatV2TauriAdapter {
         });
       } catch (error) {
         console.warn(LOG_PREFIX, 'Full history load failed (tail view remains):', getErrorMessage(error));
+        if (
+          attempt < FULL_HISTORY_MAX_RETRIES
+          && generation === this.setupGeneration
+          && this.isSessionRuntimeOwner()
+        ) {
+          const retryDelay = FULL_HISTORY_RETRY_BASE_MS * (2 ** attempt);
+          const retryTimer = window.setTimeout(() => {
+            if (this.cancelScheduledFullHistoryLoad === cancelRetry) {
+              this.cancelScheduledFullHistoryLoad = null;
+            }
+            this.scheduleFullHistoryLoad(attempt + 1);
+          }, retryDelay);
+          const cancelRetry = () => {
+            window.clearTimeout(retryTimer);
+            if (this.cancelScheduledFullHistoryLoad === cancelRetry) {
+              this.cancelScheduledFullHistoryLoad = null;
+            }
+          };
+          this.cancelScheduledFullHistoryLoad = cancelRetry;
+        }
+      } finally {
+        this.fullHistoryLoadInFlight = false;
       }
-    });
+    };
+
+    if (win.requestIdleCallback) {
+      idleId = win.requestIdleCallback(() => { void run(); }, {
+        timeout: FULL_HISTORY_IDLE_TIMEOUT_MS,
+      });
+      // Some WebView/test implementations ignore requestIdleCallback timeout.
+      watchdogId = window.setTimeout(() => { void run(); }, FULL_HISTORY_IDLE_TIMEOUT_MS + 100);
+    } else {
+      idleId = window.setTimeout(() => { void run(); }, 120);
+    }
+    this.cancelScheduledFullHistoryLoad = cancelSchedule;
   }
 
   /**

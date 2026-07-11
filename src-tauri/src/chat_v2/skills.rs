@@ -10,12 +10,16 @@
 //! - 系统数据目录下的 skills 文件夹
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs as std_fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use tauri::Manager;
 use tokio::fs;
+use tokio::io::AsyncReadExt;
 use tracing::{debug, info, warn};
+use uuid::Uuid;
 
 use super::error::{ChatV2Error, ChatV2Result};
 
@@ -75,36 +79,67 @@ pub struct SkillPackageFileEntry {
 // 路径安全验证
 // ============================================================================
 
-/// 获取允许的 skills 基础目录列表
-pub(crate) fn get_allowed_skills_bases() -> Vec<PathBuf> {
+/// Push a path while preserving deterministic order and removing platform aliases.
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.contains(&path) {
+        paths.push(path);
+    }
+}
+
+fn build_allowed_skills_bases(
+    home: Option<PathBuf>,
+    data_dir: Option<PathBuf>,
+    app_data_dir: Option<PathBuf>,
+    current_dir: Option<PathBuf>,
+    mobile: bool,
+) -> Vec<PathBuf> {
     let mut bases = Vec::new();
 
-    if let Some(home) = resolve_home_dir() {
-        bases.push(home.join(".cursor").join("skills-cursor"));
-        bases.push(home.join(".deep-student").join("skills"));
+    if let Some(home) = home {
+        push_unique_path(&mut bases, home.join(".cursor").join("skills-cursor"));
+        push_unique_path(&mut bases, home.join(".deep-student").join("skills"));
         // 移动端 project skills 映射到 {app_data_dir}/.skills（loader.ts resolveDefaultProjectRootDir）
-        if cfg!(any(target_os = "android", target_os = "ios")) {
-            bases.push(home.join(".skills"));
+        if mobile {
+            push_unique_path(&mut bases, home.join(".skills"));
         }
     }
 
+    // loader.ts 在 packaged desktop 与移动端都可能把 project skills 根解析为
+    // {app_data_dir}/.skills。必须直接把 Tauri appDataDir 纳入白名单，不能只依赖
+    // dirs::data_dir() 的产品名猜测路径。
+    if let Some(app_data_dir) = app_data_dir {
+        push_unique_path(&mut bases, app_data_dir.join(".skills"));
+    }
+
     // 桌面端额外的系统数据目录（移动端 dirs::data_dir() 不可靠，已由 resolve_home_dir 覆盖）
-    if !cfg!(any(target_os = "android", target_os = "ios")) {
-        if let Some(data_dir) = dirs::data_dir() {
-            bases.push(data_dir.join("ds91").join("skills"));
-            bases.push(data_dir.join("deep-student").join("skills"));
+    if !mobile {
+        if let Some(data_dir) = data_dir {
+            push_unique_path(&mut bases, data_dir.join("ds91").join("skills"));
+            push_unique_path(&mut bases, data_dir.join("deep-student").join("skills"));
         }
     }
 
     // 当前工作目录下的标准 Skill 目录（项目内，兼容 Agent Skills 开放标准）
-    if let Ok(current_dir) = std::env::current_dir() {
-        bases.push(current_dir.join(".skills"));
-        bases.push(current_dir.join(".agents").join("skills"));
-        bases.push(current_dir.join(".claude").join("skills"));
-        bases.push(current_dir.join(".github").join("skills"));
+    if let Some(current_dir) = current_dir {
+        push_unique_path(&mut bases, current_dir.join(".skills"));
+        push_unique_path(&mut bases, current_dir.join(".agents").join("skills"));
+        push_unique_path(&mut bases, current_dir.join(".claude").join("skills"));
+        push_unique_path(&mut bases, current_dir.join(".github").join("skills"));
     }
 
     bases
+}
+
+/// 获取允许的 skills 基础目录列表
+pub(crate) fn get_allowed_skills_bases() -> Vec<PathBuf> {
+    let mobile = cfg!(any(target_os = "android", target_os = "ios"));
+    build_allowed_skills_bases(
+        resolve_home_dir(),
+        if mobile { None } else { dirs::data_dir() },
+        get_tauri_app_data_dir(),
+        std::env::current_dir().ok(),
+        mobile,
+    )
 }
 
 /// shell deny 规则使用的字面技能目录模式（不依赖绝对路径解析，
@@ -413,7 +448,10 @@ fn collect_package_files(
     }
 
     let read_dir = std_fs::read_dir(current).map_err(|e| {
-        ChatV2Error::IoError(format!("Failed to read package directory {:?}: {}", current, e))
+        ChatV2Error::IoError(format!(
+            "Failed to read package directory {:?}: {}",
+            current, e
+        ))
     })?;
 
     for entry in read_dir {
@@ -426,7 +464,10 @@ fn collect_package_files(
         })?;
         let path = entry.path();
         let file_type = entry.file_type().map_err(|e| {
-            ChatV2Error::IoError(format!("Failed to read package file type {:?}: {}", path, e))
+            ChatV2Error::IoError(format!(
+                "Failed to read package file type {:?}: {}",
+                path, e
+            ))
         })?;
 
         if file_type.is_symlink() {
@@ -768,15 +809,45 @@ fn is_safe_zip_entry(name: &str) -> bool {
     if normalized.is_empty() || normalized.starts_with('/') {
         return false;
     }
-    if normalized.split('/').any(|part| part == "..") {
-        return false;
-    }
     for part in normalized.split('/') {
-        if matches!(part, "node_modules" | ".git" | "target" | "dist" | "build") {
+        if !is_portable_skill_path_component(part) {
+            return false;
+        }
+        if matches!(
+            part.to_ascii_lowercase().as_str(),
+            "node_modules" | ".git" | "target" | "dist" | "build"
+        ) {
             return false;
         }
     }
     true
+}
+
+pub(crate) fn is_portable_skill_path_component(component: &str) -> bool {
+    if component.is_empty() || matches!(component, "." | "..") {
+        return false;
+    }
+    if component.len() > 255 || component.encode_utf16().count() > 255 {
+        return false;
+    }
+    if component.ends_with(' ')
+        || component.ends_with('.')
+        || component
+            .chars()
+            .any(|ch| ch.is_control() || matches!(ch, '<' | '>' | ':' | '"' | '|' | '?' | '*'))
+    {
+        return false;
+    }
+
+    let stem = component
+        .split_once('.')
+        .map(|(stem, _)| stem)
+        .unwrap_or(component)
+        .to_ascii_uppercase();
+    !matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        && !(stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && matches!(stem.as_bytes()[3], b'1'..=b'9'))
 }
 
 fn zip_skill_prefix(entry_names: &[String]) -> Option<(String, String)> {
@@ -785,9 +856,16 @@ fn zip_skill_prefix(entry_names: &[String]) -> Option<(String, String)> {
         if norm.eq_ignore_ascii_case("SKILL.md") {
             return Some(("".to_string(), "imported-skill".to_string()));
         }
-        if norm.ends_with("/SKILL.md") {
-            let parts: Vec<&str> = norm.split('/').filter(|p| !p.is_empty()).collect();
-            if parts.len() >= 2 {
+        let parts: Vec<&str> = norm.split('/').collect();
+        if parts.len() >= 2
+            && parts
+                .last()
+                .is_some_and(|part| part.eq_ignore_ascii_case("SKILL.md"))
+        {
+            if parts
+                .iter()
+                .all(|part| is_portable_skill_path_component(part))
+            {
                 let skill_id = parts[parts.len() - 2].to_string();
                 let prefix = format!("{}/", parts[..parts.len() - 1].join("/"));
                 return Some((prefix, skill_id));
@@ -809,7 +887,8 @@ fn count_yaml_list_items(content: &str, key: &str) -> usize {
         if in_block {
             if trimmed.starts_with("- ") {
                 count += 1;
-            } else if !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.starts_with('-') {
+            } else if !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.starts_with('-')
+            {
                 break;
             }
         }
@@ -828,8 +907,8 @@ const RISK_BINARY_EXTENSIONS: &[&str] = &[
 
 /// 常见媒体/字体扩展名：内容含 NUL 字节也不算 "binary_files"（非可执行载体）
 const RISK_MEDIA_EXTENSIONS: &[&str] = &[
-    "png", "jpg", "jpeg", "gif", "webp", "ico", "svg", "pdf", "woff", "woff2", "ttf", "otf",
-    "eot", "mp3", "mp4", "wav", "avif",
+    "png", "jpg", "jpeg", "gif", "webp", "ico", "svg", "pdf", "woff", "woff2", "ttf", "otf", "eot",
+    "mp3", "mp4", "wav", "avif",
 ];
 
 /// scripts/ 下的可执行脚本扩展名 → "executable_scripts" 信号
@@ -845,7 +924,10 @@ const RISK_NETWORK_KEYWORDS: &[&str] = &["fetch", "curl", "wget", "http_request"
 const RISK_CREDENTIAL_KEYWORDS: &[&str] = &["token", "secret", "password", "api_key", "credential"];
 
 fn risk_file_extension(normalized_lower: &str) -> &str {
-    let file_name = normalized_lower.rsplit('/').next().unwrap_or(normalized_lower);
+    let file_name = normalized_lower
+        .rsplit('/')
+        .next()
+        .unwrap_or(normalized_lower);
     match file_name.rsplit_once('.') {
         Some((stem, ext)) if !stem.is_empty() => ext,
         _ => "",
@@ -858,7 +940,7 @@ fn risk_file_extension(normalized_lower: &str) -> &str {
 /// - binary_files 或 credential_keywords 或 (shell_tools + network_tools 同时) → "high"
 /// - shell_tools / network_tools / executable_scripts / external_urls 任一 → "medium"
 /// - 否则 → "low"
-fn assess_skill_package_risk(files: &[(String, Vec<u8>)]) -> (String, Vec<String>) {
+pub(crate) fn assess_skill_package_risk(files: &[(String, Vec<u8>)]) -> (String, Vec<String>) {
     let mut shell_tools = false;
     let mut network_tools = false;
     let mut executable_scripts = false;
@@ -936,6 +1018,7 @@ fn assess_skill_package_risk(files: &[(String, Vec<u8>)]) -> (String, Vec<String
 }
 
 /// zip 扫描阶段（spawn_blocking 闭包）的产出
+#[derive(Debug)]
 struct ZipScanOutcome {
     skill_id: String,
     files: Vec<(String, Vec<u8>)>,
@@ -950,13 +1033,82 @@ pub(crate) const DEFAULT_AGENT_SKILLS_BASE: &str = "~/.deep-student/skills";
 /// 技能包 zip 本体（压缩态字节）的大小上限，与解压总量限额一致。
 pub(crate) const MAX_SKILL_PACKAGE_ZIP_BYTES: u64 = 64 * 1024 * 1024;
 
+#[derive(Clone, Copy)]
+struct ZipScanLimits {
+    max_entries: usize,
+    max_file_bytes: u64,
+    max_total_bytes: u64,
+    max_entry_name_bytes: usize,
+}
+
+const DEFAULT_ZIP_SCAN_LIMITS: ZipScanLimits = ZipScanLimits {
+    max_entries: 2000,
+    max_file_bytes: 8 * 1024 * 1024,
+    max_total_bytes: 64 * 1024 * 1024,
+    max_entry_name_bytes: 1024,
+};
+
+fn zip_entry_count_preflight(zip_bytes: &[u8]) -> Result<usize, String> {
+    const EOCD_SIGNATURE: &[u8; 4] = b"PK\x05\x06";
+    const EOCD_FIXED_BYTES: usize = 22;
+    const MAX_ZIP_COMMENT_BYTES: usize = u16::MAX as usize;
+
+    if zip_bytes.len() < EOCD_FIXED_BYTES {
+        return Err("Invalid zip: missing end-of-central-directory record".to_string());
+    }
+    let search_start = zip_bytes
+        .len()
+        .saturating_sub(EOCD_FIXED_BYTES + MAX_ZIP_COMMENT_BYTES);
+    let search_end = zip_bytes.len() - EOCD_FIXED_BYTES;
+    for offset in (search_start..=search_end).rev() {
+        if !zip_bytes[offset..].starts_with(EOCD_SIGNATURE) {
+            continue;
+        }
+        let comment_len =
+            u16::from_le_bytes([zip_bytes[offset + 20], zip_bytes[offset + 21]]) as usize;
+        if offset + EOCD_FIXED_BYTES + comment_len != zip_bytes.len() {
+            continue;
+        }
+        if offset >= 20 && &zip_bytes[offset - 20..offset - 16] == b"PK\x06\x07" {
+            return Err("ZIP64 skill packages are not supported".to_string());
+        }
+
+        let disk_number = u16::from_le_bytes([zip_bytes[offset + 4], zip_bytes[offset + 5]]);
+        let central_disk = u16::from_le_bytes([zip_bytes[offset + 6], zip_bytes[offset + 7]]);
+        let entries_on_disk = u16::from_le_bytes([zip_bytes[offset + 8], zip_bytes[offset + 9]]);
+        let total_entries = u16::from_le_bytes([zip_bytes[offset + 10], zip_bytes[offset + 11]]);
+        if disk_number != 0 || central_disk != 0 || entries_on_disk != total_entries {
+            return Err("Multi-disk skill packages are not supported".to_string());
+        }
+        // A package constrained to 64 MiB and 2000 entries never needs ZIP64.
+        // Rejecting it here prevents ZipArchive from trusting a ZIP64 entry count
+        // and allocating metadata before our hard file-count check.
+        if total_entries == u16::MAX {
+            return Err("ZIP64 skill packages are not supported".to_string());
+        }
+        return Ok(total_entries as usize);
+    }
+    Err("Invalid zip: missing end-of-central-directory record".to_string())
+}
+
 /// 对 zip 字节做扫描：sha256 + 解压到内存（三重限额 + 路径校验）+ 风险分级。
 ///
 /// 这是 `skill_import_zip` 与 `skill_install` 共用的只读扫描内核，不写盘。
 fn scan_skill_zip_bytes(zip_bytes: &[u8]) -> Result<ZipScanOutcome, String> {
-    const MAX_ZIP_ENTRIES: usize = 2000;
-    const MAX_ZIP_FILE_BYTES: u64 = 8 * 1024 * 1024;
-    const MAX_ZIP_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
+    scan_skill_zip_bytes_with_limits(zip_bytes, DEFAULT_ZIP_SCAN_LIMITS)
+}
+
+fn scan_skill_zip_bytes_with_limits(
+    zip_bytes: &[u8],
+    limits: ZipScanLimits,
+) -> Result<ZipScanOutcome, String> {
+    let declared_entries = zip_entry_count_preflight(zip_bytes)?;
+    if declared_entries > limits.max_entries {
+        return Err(format!(
+            "Zip contains too many entries ({} > {})",
+            declared_entries, limits.max_entries
+        ));
+    }
 
     let package_sha256 = {
         use sha2::{Digest, Sha256};
@@ -968,20 +1120,28 @@ fn scan_skill_zip_bytes(zip_bytes: &[u8]) -> Result<ZipScanOutcome, String> {
     let cursor = std::io::Cursor::new(zip_bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| format!("Invalid zip: {}", e))?;
 
-    if archive.len() > MAX_ZIP_ENTRIES {
+    if archive.len() > limits.max_entries {
         return Err(format!(
             "Zip contains too many entries ({} > {})",
             archive.len(),
-            MAX_ZIP_ENTRIES
+            limits.max_entries
         ));
     }
 
-    let mut entry_names = Vec::new();
+    let mut entry_names = Vec::with_capacity(archive.len());
     for i in 0..archive.len() {
         let file = archive
             .by_index(i)
             .map_err(|e| format!("Zip read error: {}", e))?;
-        entry_names.push(file.name().to_string());
+        let name = file.name();
+        if name.len() > limits.max_entry_name_bytes {
+            return Err(format!(
+                "Zip entry name is too long ({} bytes > {} bytes)",
+                name.len(),
+                limits.max_entry_name_bytes
+            ));
+        }
+        entry_names.push(name.to_string());
     }
 
     let (prefix, skill_id) = zip_skill_prefix(&entry_names)
@@ -996,8 +1156,9 @@ fn scan_skill_zip_bytes(zip_bytes: &[u8]) -> Result<ZipScanOutcome, String> {
 
     let mut extracted: Vec<(String, Vec<u8>)> = Vec::new();
     let mut total_bytes: u64 = 0;
+    let mut extracted_paths = HashSet::new();
     for i in 0..archive.len() {
-        let mut file = archive
+        let file = archive
             .by_index(i)
             .map_err(|e| format!("Zip read error: {}", e))?;
         if file.is_dir() || file.name().ends_with('/') {
@@ -1007,24 +1168,17 @@ fn scan_skill_zip_bytes(zip_bytes: &[u8]) -> Result<ZipScanOutcome, String> {
         if !is_safe_zip_entry(&raw_name) {
             continue;
         }
-        // 防 zip bomb：按声明的解压后大小限制单文件和总量
-        if file.size() > MAX_ZIP_FILE_BYTES {
+        // 声明大小只用于早拒绝，不能用于总量核算：ZIP header 可伪造。
+        if file.size() > limits.max_file_bytes {
             return Err(format!(
                 "Zip entry too large: {} ({} bytes > {} bytes)",
                 raw_name,
                 file.size(),
-                MAX_ZIP_FILE_BYTES
-            ));
-        }
-        total_bytes = total_bytes.saturating_add(file.size());
-        if total_bytes > MAX_ZIP_TOTAL_BYTES {
-            return Err(format!(
-                "Zip uncompressed size exceeds limit ({} bytes)",
-                MAX_ZIP_TOTAL_BYTES
+                limits.max_file_bytes
             ));
         }
         let norm = raw_name.replace('\\', "/");
-        let relative = if prefix.is_empty() {
+        let mut relative = if prefix.is_empty() {
             norm
         } else if let Some(stripped) = norm.strip_prefix(&prefix) {
             stripped.to_string()
@@ -1034,18 +1188,40 @@ fn scan_skill_zip_bytes(zip_bytes: &[u8]) -> Result<ZipScanOutcome, String> {
         if relative.is_empty() || relative.contains("..") {
             continue;
         }
-        let mut buf = Vec::new();
-        // take() 上限防止 zip 头声明大小与实际解压量不符
-        let mut limited = file.take(MAX_ZIP_FILE_BYTES + 1);
+        if relative.eq_ignore_ascii_case("SKILL.md") {
+            relative = "SKILL.md".to_string();
+        }
+        // Reject case-folding collisions so the package has identical semantics on
+        // case-sensitive Linux and default case-insensitive macOS/Windows volumes.
+        if !extracted_paths.insert(relative.to_lowercase()) {
+            return Err(format!("Zip contains duplicate path: {}", relative));
+        }
+
+        // 读取上限同时受单文件与剩余总预算约束。最多多读 1 byte 用于判定超限，
+        // 因而攻击者即使把 2000 个 entry 的 header size 都伪造成 0，也不能让
+        // retained Vec 累积为 2000 * max_file_bytes。
+        let remaining_total = limits.max_total_bytes.saturating_sub(total_bytes);
+        let read_budget = limits.max_file_bytes.min(remaining_total).saturating_add(1);
+        let initial_capacity = file.size().min(read_budget).min(64 * 1024) as usize;
+        let mut buf = Vec::with_capacity(initial_capacity);
+        let mut limited = file.take(read_budget);
         limited
             .read_to_end(&mut buf)
             .map_err(|e| format!("Failed to read zip entry: {}", e))?;
-        if buf.len() as u64 > MAX_ZIP_FILE_BYTES {
+        let actual_bytes = buf.len() as u64;
+        if actual_bytes > limits.max_file_bytes {
             return Err(format!(
-                "Zip entry decompressed larger than declared: {}",
-                raw_name
+                "Zip entry decompressed size exceeds per-file limit: {} ({} bytes > {} bytes)",
+                raw_name, actual_bytes, limits.max_file_bytes
             ));
         }
+        if actual_bytes > remaining_total {
+            return Err(format!(
+                "Zip actual uncompressed size exceeds limit ({} bytes)",
+                limits.max_total_bytes
+            ));
+        }
+        total_bytes += actual_bytes;
         extracted.push((relative, buf));
     }
 
@@ -1064,20 +1240,551 @@ fn scan_skill_zip_bytes(zip_bytes: &[u8]) -> Result<ZipScanOutcome, String> {
     })
 }
 
-/// 从 zip 字节安装（或 dry_run 扫描）技能包到指定 base 目录。
-///
-/// `skill_import_zip` Tauri command 与 `skill_install` agent executor 共用的
-/// 完整内核：读 zip 字节 → sha256 → 解压扫描（限额 + 路径校验）→ 风险分级 →
-/// （非 dry_run 时）写盘安装。行为与原 `skill_import_zip` 内联实现一致。
-///
-/// 安全：拒绝路径遍历、隐藏目录、符号链接式路径；只解压到新建的 skill 子目录；
-/// zip 本体超过 `MAX_SKILL_PACKAGE_ZIP_BYTES` 直接拒绝。
-pub(crate) async fn install_skill_package_from_zip_bytes(
+static SKILL_DIRECTORY_COMMIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn skill_directory_commit_lock() -> &'static Mutex<()> {
+    SKILL_DIRECTORY_COMMIT_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn remove_path_if_exists(path: &Path) -> std::io::Result<()> {
+    let metadata = match std_fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() {
+        std_fs::remove_dir_all(path)
+    } else {
+        std_fs::remove_file(path)
+    }
+}
+
+fn sync_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std_fs::File::open(path)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(())
+    }
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn atomic_exchange_directories(left: &Path, right: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let left = CString::new(left.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in path"))?;
+    let right = CString::new(right.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in path"))?;
+    // SAFETY: both C strings are NUL-terminated and remain alive for the call.
+    let result = unsafe { libc::renamex_np(left.as_ptr(), right.as_ptr(), libc::RENAME_SWAP) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn atomic_exchange_directories(left: &Path, right: &Path) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let left = CString::new(left.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in path"))?;
+    let right = CString::new(right.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "NUL in path"))?;
+    // SAFETY: both C strings are valid for the duration of renameat2.
+    let result = unsafe {
+        libc::renameat2(
+            libc::AT_FDCWD,
+            left.as_ptr(),
+            libc::AT_FDCWD,
+            right.as_ptr(),
+            libc::RENAME_EXCHANGE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(not(any(
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "linux",
+    target_os = "android"
+)))]
+fn atomic_exchange_directories(_left: &Path, _right: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic directory exchange is unavailable on this platform",
+    ))
+}
+
+fn sync_directory_tree(root: &Path) -> Result<(), String> {
+    let mut directories = Vec::new();
+    for entry in walkdir::WalkDir::new(root).follow_links(false) {
+        let entry = entry.map_err(|e| format!("Failed to inspect staging directory: {}", e))?;
+        let file_type = entry.file_type();
+        if file_type.is_symlink() {
+            return Err(format!(
+                "Symlinks are not allowed in staged skill directories: {:?}",
+                entry.path()
+            ));
+        }
+        if file_type.is_dir() {
+            directories.push(entry.path().to_path_buf());
+        }
+    }
+    for directory in directories.into_iter().rev() {
+        sync_directory(&directory)
+            .map_err(|e| format!("Failed to fsync staged directory {:?}: {}", directory, e))?;
+    }
+    Ok(())
+}
+
+fn copy_skill_directory_to_staging(source: &Path, staging: &Path) -> Result<(), String> {
+    for entry in walkdir::WalkDir::new(source).follow_links(false) {
+        let entry = entry.map_err(|e| format!("Failed to inspect existing skill: {}", e))?;
+        if entry.path() == source {
+            continue;
+        }
+        if entry.file_type().is_symlink() {
+            return Err(format!(
+                "Cannot transactionally update a skill containing symlinks: {:?}",
+                entry.path()
+            ));
+        }
+        let relative = entry
+            .path()
+            .strip_prefix(source)
+            .map_err(|e| format!("Failed to resolve existing skill path: {}", e))?;
+        let target = staging.join(relative);
+        if entry.file_type().is_dir() {
+            std_fs::create_dir_all(&target)
+                .map_err(|e| format!("Failed to create staged directory {:?}: {}", target, e))?;
+        } else if entry.file_type().is_file() {
+            if let Some(parent) = target.parent() {
+                std_fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create staged parent {:?}: {}", parent, e))?;
+            }
+            let source_metadata = entry.metadata().map_err(|e| {
+                format!(
+                    "Failed to inspect existing skill file {:?}: {}",
+                    entry.path(),
+                    e
+                )
+            })?;
+            let mut source_file = std_fs::File::open(entry.path()).map_err(|e| {
+                format!(
+                    "Failed to open existing skill file {:?}: {}",
+                    entry.path(),
+                    e
+                )
+            })?;
+            let mut target_file = std_fs::File::create(&target)
+                .map_err(|e| format!("Failed to create staged copy {:?}: {}", target, e))?;
+            std::io::copy(&mut source_file, &mut target_file).map_err(|e| {
+                format!(
+                    "Failed to copy existing skill file {:?}: {}",
+                    entry.path(),
+                    e
+                )
+            })?;
+            target_file
+                .sync_all()
+                .map_err(|e| format!("Failed to fsync staged copy {:?}: {}", target, e))?;
+            std_fs::set_permissions(&target, source_metadata.permissions()).map_err(|e| {
+                format!(
+                    "Failed to preserve permissions for staged copy {:?}: {}",
+                    target, e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn safe_staged_relative_path(relative: &str) -> Result<PathBuf, String> {
+    let path = Path::new(relative);
+    if relative.is_empty() || path.is_absolute() {
+        return Err(format!("Invalid staged skill path: {:?}", relative));
+    }
+    let mut safe = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(part) => safe.push(part),
+            _ => return Err(format!("Invalid staged skill path: {:?}", relative)),
+        }
+    }
+    if safe.as_os_str().is_empty() {
+        return Err(format!("Invalid staged skill path: {:?}", relative));
+    }
+    Ok(safe)
+}
+
+/// A fully isolated skill directory that is not visible to the loader yet.
+/// Dropping it before commit removes the staging directory.
+pub(crate) struct StagedSkillDirectory {
+    live_dir: PathBuf,
+    staging_dir: PathBuf,
+    overwrite: bool,
+}
+
+impl StagedSkillDirectory {
+    pub(crate) fn new(
+        live_dir: PathBuf,
+        overwrite: bool,
+        preserve_existing: bool,
+    ) -> Result<Self, String> {
+        let parent = live_dir
+            .parent()
+            .ok_or_else(|| format!("Skill directory has no parent: {:?}", live_dir))?;
+        std_fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create skills base {:?}: {}", parent, e))?;
+
+        let name = live_dir
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("Invalid skill directory name: {:?}", live_dir))?;
+        let staging_dir = parent.join(format!(".{}.staging-{}", name, Uuid::new_v4()));
+        std_fs::create_dir(&staging_dir).map_err(|e| {
+            format!(
+                "Failed to create skill staging directory {:?}: {}",
+                staging_dir, e
+            )
+        })?;
+
+        let staged = Self {
+            live_dir,
+            staging_dir,
+            overwrite,
+        };
+        if preserve_existing && staged.live_dir.exists() {
+            copy_skill_directory_to_staging(&staged.live_dir, &staged.staging_dir)?;
+        }
+        Ok(staged)
+    }
+
+    pub(crate) fn write_file(&self, relative: &str, bytes: &[u8]) -> Result<(), String> {
+        let relative = safe_staged_relative_path(relative)?;
+        let target = self.staging_dir.join(relative);
+        if let Some(parent) = target.parent() {
+            std_fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create staged parent {:?}: {}", parent, e))?;
+        }
+        let mut file = std_fs::File::create(&target)
+            .map_err(|e| format!("Failed to create staged file {:?}: {}", target, e))?;
+        file.write_all(bytes)
+            .map_err(|e| format!("Failed to write staged file {:?}: {}", target, e))?;
+        file.sync_all()
+            .map_err(|e| format!("Failed to fsync staged file {:?}: {}", target, e))?;
+        Ok(())
+    }
+
+    pub(crate) fn commit(self) -> Result<CommittedSkillDirectory, String> {
+        self.commit_inner(false, None)
+    }
+
+    pub(crate) fn commit_if_file_unchanged(
+        self,
+        relative: &str,
+        expected_sha256: &str,
+    ) -> Result<CommittedSkillDirectory, String> {
+        let relative = safe_staged_relative_path(relative)?;
+        self.commit_inner(false, Some((relative, expected_sha256.to_string())))
+    }
+
+    fn commit_inner(
+        mut self,
+        inject_failure_after_backup: bool,
+        expected_live_file: Option<(PathBuf, String)>,
+    ) -> Result<CommittedSkillDirectory, String> {
+        sync_directory_tree(&self.staging_dir)?;
+        let commit_lock = skill_directory_commit_lock()
+            .lock()
+            .map_err(|_| "Skill directory commit lock is poisoned".to_string())?;
+
+        if let Some((relative, expected_sha256)) = expected_live_file {
+            use sha2::{Digest, Sha256};
+            let live_file = self.live_dir.join(relative);
+            let bytes = std_fs::read(&live_file).map_err(|e| {
+                format!(
+                    "Failed to re-read live skill precondition {:?}: {}",
+                    live_file, e
+                )
+            })?;
+            let actual_sha256 = hex::encode(Sha256::digest(&bytes));
+            if actual_sha256 != expected_sha256 {
+                return Err(format!(
+                    "Live skill changed before commit: expected SHA-256 {}, got {}",
+                    expected_sha256, actual_sha256
+                ));
+            }
+        }
+
+        let live_exists = std_fs::symlink_metadata(&self.live_dir).is_ok();
+        if live_exists && !self.overwrite {
+            return Err(format!(
+                "Skill directory already exists: {:?}. Pass overwrite=true to replace.",
+                self.live_dir
+            ));
+        }
+
+        let parent = self
+            .live_dir
+            .parent()
+            .ok_or_else(|| format!("Skill directory has no parent: {:?}", self.live_dir))?;
+        let mut used_atomic_exchange = false;
+        let backup_dir = if live_exists {
+            match atomic_exchange_directories(&self.staging_dir, &self.live_dir) {
+                Ok(()) => {
+                    // live now points at the complete new skill; the staging name holds the
+                    // previous skill as the rollback backup. There was no missing-live window.
+                    used_atomic_exchange = true;
+                    Some(self.staging_dir.clone())
+                }
+                Err(exchange_error) => {
+                    debug!(
+                        "[Skills] Atomic directory exchange unavailable ({}); using rollback rename fallback",
+                        exchange_error
+                    );
+                    let name = self
+                        .live_dir
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("skill");
+                    let backup = parent.join(format!(".{}.backup-{}", name, Uuid::new_v4()));
+                    std_fs::rename(&self.live_dir, &backup).map_err(|e| {
+                        format!(
+                            "Failed to move existing skill {:?} to rollback backup: {}",
+                            self.live_dir, e
+                        )
+                    })?;
+                    if let Err(sync_error) = sync_directory(parent) {
+                        let restore_result = std_fs::rename(&backup, &self.live_dir);
+                        return match restore_result {
+                            Ok(()) => Err(format!(
+                                "Failed to fsync skills base after creating rollback backup: {}",
+                                sync_error
+                            )),
+                            Err(restore_error) => Err(format!(
+                                "Failed to fsync skills base ({}), and failed to restore the previous skill ({}). Rollback backup: {:?}",
+                                sync_error, restore_error, backup
+                            )),
+                        };
+                    }
+                    Some(backup)
+                }
+            }
+        } else {
+            None
+        };
+
+        if inject_failure_after_backup {
+            if let Some(backup) = &backup_dir {
+                let restore_result = if used_atomic_exchange {
+                    atomic_exchange_directories(&self.live_dir, backup)
+                } else {
+                    std_fs::rename(backup, &self.live_dir)
+                };
+                if let Err(restore_error) = restore_result {
+                    // Preserve the rollback copy for manual recovery; Drop must not delete it.
+                    let backup_path = backup.clone();
+                    if used_atomic_exchange {
+                        self.staging_dir.clear();
+                    }
+                    return Err(format!(
+                        "Injected failure, and failed to restore the previous skill ({}). Rollback backup: {:?}",
+                        restore_error, backup_path
+                    ));
+                }
+                let _ = sync_directory(parent);
+            }
+            return Err("Injected failure after existing skill backup".to_string());
+        }
+
+        if !used_atomic_exchange {
+            if let Err(commit_error) = std_fs::rename(&self.staging_dir, &self.live_dir) {
+                let restore_result = backup_dir.as_ref().map(|backup| {
+                    std_fs::rename(backup, &self.live_dir).and_then(|_| sync_directory(parent))
+                });
+                return match restore_result {
+                    Some(Err(restore_error)) => Err(format!(
+                        "Failed to publish staged skill ({}), and failed to restore the previous skill ({}). Rollback backup: {:?}",
+                        commit_error, restore_error, backup_dir
+                    )),
+                    _ => Err(format!("Failed to publish staged skill: {}", commit_error)),
+                };
+            }
+        }
+        if let Err(sync_error) = sync_directory(parent) {
+            let committed = CommittedSkillDirectory {
+                live_dir: self.live_dir.clone(),
+                backup_dir,
+                finalized: false,
+                commit_lock: Some(commit_lock),
+            };
+            return match committed.rollback() {
+                Ok(()) => Err(format!(
+                    "Failed to fsync committed skill directory ({}); the previous skill was restored.",
+                    sync_error
+                )),
+                Err(rollback_error) => Err(format!(
+                    "Failed to fsync committed skill directory ({}), and rollback failed ({}).",
+                    sync_error, rollback_error
+                )),
+            };
+        }
+
+        // The staging path was renamed, so Drop no longer has anything to clean.
+        self.staging_dir.clear();
+        Ok(CommittedSkillDirectory {
+            live_dir: self.live_dir.clone(),
+            backup_dir,
+            finalized: false,
+            commit_lock: Some(commit_lock),
+        })
+    }
+}
+
+impl Drop for StagedSkillDirectory {
+    fn drop(&mut self) {
+        if !self.staging_dir.as_os_str().is_empty() {
+            let _ = remove_path_if_exists(&self.staging_dir);
+        }
+    }
+}
+
+/// Holds the rollback backup until provenance and other metadata have committed.
+#[derive(Debug)]
+pub(crate) struct CommittedSkillDirectory {
+    live_dir: PathBuf,
+    backup_dir: Option<PathBuf>,
+    finalized: bool,
+    commit_lock: Option<MutexGuard<'static, ()>>,
+}
+
+impl CommittedSkillDirectory {
+    fn rollback_inner(&mut self) -> Result<(), String> {
+        let parent = self
+            .live_dir
+            .parent()
+            .ok_or_else(|| format!("Skill directory has no parent: {:?}", self.live_dir))?;
+        if let Some(backup) = self.backup_dir.as_ref() {
+            if std_fs::symlink_metadata(&self.live_dir).is_ok()
+                && std_fs::symlink_metadata(backup).is_ok()
+            {
+                match atomic_exchange_directories(&self.live_dir, backup) {
+                    Ok(()) => {
+                        if let Err(error) = remove_path_if_exists(backup) {
+                            warn!(
+                                "[Skills] Failed to remove rolled-back replacement {:?}: {}",
+                                backup, error
+                            );
+                        }
+                        self.backup_dir.take();
+                        self.finalized = true;
+                        self.commit_lock.take();
+                        return sync_directory(parent).map_err(|e| {
+                            format!("Failed to fsync skills base after atomic rollback: {}", e)
+                        });
+                    }
+                    Err(error) => debug!(
+                        "[Skills] Atomic rollback exchange unavailable ({}); using rename fallback",
+                        error
+                    ),
+                }
+            }
+        }
+
+        let discarded = parent.join(format!(".skill.rollback-discard-{}", Uuid::new_v4()));
+        let live_exists = std_fs::symlink_metadata(&self.live_dir).is_ok();
+        if live_exists {
+            std_fs::rename(&self.live_dir, &discarded).map_err(|e| {
+                format!(
+                    "Failed to move newly committed skill aside during rollback: {}",
+                    e
+                )
+            })?;
+        }
+        if let Some(backup) = &self.backup_dir {
+            if let Err(restore_error) = std_fs::rename(backup, &self.live_dir) {
+                if live_exists {
+                    let _ = std_fs::rename(&discarded, &self.live_dir);
+                }
+                return Err(format!(
+                    "Failed to restore previous skill: {}",
+                    restore_error
+                ));
+            }
+        }
+        if live_exists {
+            if let Err(error) = remove_path_if_exists(&discarded) {
+                warn!(
+                    "[Skills] Failed to remove rolled-back replacement {:?}: {}",
+                    discarded, error
+                );
+            }
+        }
+        self.backup_dir.take();
+        self.finalized = true;
+        self.commit_lock.take();
+        sync_directory(parent)
+            .map_err(|e| format!("Failed to fsync skills base after rollback: {}", e))
+    }
+
+    pub(crate) fn rollback(mut self) -> Result<(), String> {
+        self.rollback_inner()
+    }
+
+    pub(crate) fn finalize(mut self) {
+        if let Some(backup) = self.backup_dir.take() {
+            if let Err(error) = remove_path_if_exists(&backup) {
+                warn!(
+                    "[Skills] Failed to remove finalized rollback backup {:?}: {}",
+                    backup, error
+                );
+            }
+        }
+        if let Some(parent) = self.live_dir.parent() {
+            let _ = sync_directory(parent);
+        }
+        self.finalized = true;
+        self.commit_lock.take();
+    }
+}
+
+impl Drop for CommittedSkillDirectory {
+    fn drop(&mut self) {
+        if !self.finalized {
+            if let Err(error) = self.rollback_inner() {
+                log::error!(
+                    "[Skills] Failed to roll back unfinalized skill commit: {}",
+                    error
+                );
+            }
+        }
+    }
+}
+
+struct ScannedSkillPackage {
+    result: SkillImportZipResult,
+    files: Vec<(String, Vec<u8>)>,
+    skill_dir: PathBuf,
+}
+
+async fn scan_skill_package_for_base(
     zip_bytes: Vec<u8>,
     base_path: &str,
-    overwrite: bool,
-    dry_run: bool,
-) -> ChatV2Result<SkillImportZipResult> {
+) -> ChatV2Result<ScannedSkillPackage> {
     if zip_bytes.is_empty() {
         return Err(ChatV2Error::InvalidInput(
             "Skill package is empty".to_string(),
@@ -1139,79 +1846,10 @@ pub(crate) async fn install_skill_package_from_zip_bytes(
     } else {
         let declared =
             crate::chat_v2::skill_requires::parse_requires_from_skill_md(&skill_md_content);
-        Some(
-            crate::chat_v2::skill_requires::probe_requires(declared)
-                .await,
-        )
+        Some(crate::chat_v2::skill_requires::probe_requires(declared).await)
     };
 
-    // 扫描先行：dry_run 只返回扫描结果（含风险分级），不写盘、不删已有目录
-    if dry_run {
-        info!(
-            "[Skills] Zip dry-run scan complete: {} files, risk={} (sha256={})",
-            files.len(),
-            risk_level,
-            package_sha256
-        );
-        return Ok(SkillImportZipResult {
-            skill_id,
-            path: skill_dir.to_string_lossy().to_string(),
-            files_extracted: files.len(),
-            scripts_count,
-            references_count,
-            allowed_tools_count,
-            package_sha256,
-            risk_level,
-            risk_signals,
-            requires,
-        });
-    }
-
-    if skill_dir.exists() && !overwrite {
-        return Err(ChatV2Error::InvalidInput(format!(
-            "Skill directory already exists: {:?}. Pass overwrite=true to replace.",
-            skill_dir
-        )));
-    }
-
-    if skill_dir.exists() {
-        fs::remove_dir_all(&skill_dir).await.map_err(|e| {
-            ChatV2Error::IoError(format!("Failed to remove existing skill dir: {}", e))
-        })?;
-    }
-
-    if !expanded_base.exists() {
-        fs::create_dir_all(&expanded_base).await.map_err(|e| {
-            ChatV2Error::IoError(format!("Failed to create base directory: {}", e))
-        })?;
-    }
-
-    fs::create_dir(&skill_dir).await.map_err(|e| {
-        ChatV2Error::IoError(format!("Failed to create skill directory: {}", e))
-    })?;
-
-    for (relative, bytes) in &files {
-        let target = skill_dir.join(relative);
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent).await.map_err(|e| {
-                ChatV2Error::IoError(format!("Failed to create parent dir: {}", e))
-            })?;
-        }
-        validate_skill_path(&target)?;
-        fs::write(&target, bytes).await.map_err(|e| {
-            ChatV2Error::IoError(format!("Failed to write {:?}: {}", target, e))
-        })?;
-    }
-
-    info!(
-        "[Skills] Zip import complete: {} files -> {:?} (risk={}, sha256={})",
-        files.len(),
-        skill_dir,
-        risk_level,
-        package_sha256
-    );
-
-    Ok(SkillImportZipResult {
+    let result = SkillImportZipResult {
         skill_id,
         path: skill_dir.to_string_lossy().to_string(),
         files_extracted: files.len(),
@@ -1222,7 +1860,95 @@ pub(crate) async fn install_skill_package_from_zip_bytes(
         risk_level,
         risk_signals,
         requires,
+    };
+    Ok(ScannedSkillPackage {
+        result,
+        files,
+        skill_dir,
     })
+}
+
+pub(crate) struct PreparedSkillPackage {
+    result: SkillImportZipResult,
+    staged: StagedSkillDirectory,
+}
+
+impl PreparedSkillPackage {
+    pub(crate) fn result(&self) -> &SkillImportZipResult {
+        &self.result
+    }
+
+    pub(crate) fn write_staged_file(&self, relative: &str, bytes: &[u8]) -> Result<(), String> {
+        self.staged.write_file(relative, bytes)
+    }
+
+    pub(crate) fn commit(self) -> ChatV2Result<(SkillImportZipResult, CommittedSkillDirectory)> {
+        let committed = self.staged.commit().map_err(ChatV2Error::IoError)?;
+        Ok((self.result, committed))
+    }
+}
+
+/// Scan and write a complete package into a hidden, fsynced staging directory.
+/// The live skill remains untouched until [`PreparedSkillPackage::commit`].
+pub(crate) async fn prepare_skill_package_from_zip_bytes(
+    zip_bytes: Vec<u8>,
+    base_path: &str,
+    overwrite: bool,
+) -> ChatV2Result<PreparedSkillPackage> {
+    let scanned = scan_skill_package_for_base(zip_bytes, base_path).await?;
+    if scanned.skill_dir.exists() && !overwrite {
+        return Err(ChatV2Error::InvalidInput(format!(
+            "Skill directory already exists: {:?}. Pass overwrite=true to replace.",
+            scanned.skill_dir
+        )));
+    }
+
+    tokio::task::spawn_blocking(move || {
+        let staged = StagedSkillDirectory::new(scanned.skill_dir, overwrite, false)
+            .map_err(ChatV2Error::IoError)?;
+        for (relative, bytes) in scanned.files {
+            staged
+                .write_file(&relative, &bytes)
+                .map_err(ChatV2Error::IoError)?;
+        }
+        Ok(PreparedSkillPackage {
+            result: scanned.result,
+            staged,
+        })
+    })
+    .await
+    .map_err(|e| ChatV2Error::IoError(format!("Skill staging task failed: {}", e)))?
+}
+
+/// 从 zip 字节安装（或 dry_run 扫描）技能包到指定 base 目录。
+///
+/// 非 dry-run 安装始终先写入同文件系统内的 staging 目录并 fsync，再以可回滚
+/// rename 发布。覆盖失败时旧技能保持不变，不会暴露半写入目录。
+pub(crate) async fn install_skill_package_from_zip_bytes(
+    zip_bytes: Vec<u8>,
+    base_path: &str,
+    overwrite: bool,
+    dry_run: bool,
+) -> ChatV2Result<SkillImportZipResult> {
+    if dry_run {
+        let scanned = scan_skill_package_for_base(zip_bytes, base_path).await?;
+        info!(
+            "[Skills] Zip dry-run scan complete: {} files, risk={} (sha256={})",
+            scanned.result.files_extracted,
+            scanned.result.risk_level,
+            scanned.result.package_sha256
+        );
+        return Ok(scanned.result);
+    }
+
+    let prepared = prepare_skill_package_from_zip_bytes(zip_bytes, base_path, overwrite).await?;
+    let (result, committed) = prepared.commit()?;
+    committed.finalize();
+    info!(
+        "[Skills] Zip import complete: {} files -> {} (risk={}, sha256={})",
+        result.files_extracted, result.path, result.risk_level, result.package_sha256
+    );
+    Ok(result)
 }
 
 /// 从 zip 包导入 Skill 到指定 base 目录（默认 ~/.deep-student/skills）。
@@ -1260,9 +1986,22 @@ pub async fn skill_import_zip(
         )));
     }
 
-    let zip_bytes = fs::read(&expanded_zip).await.map_err(|e| {
-        ChatV2Error::IoError(format!("Failed to read zip {:?}: {}", expanded_zip, e))
+    let file = fs::File::open(&expanded_zip).await.map_err(|e| {
+        ChatV2Error::IoError(format!("Failed to open zip {:?}: {}", expanded_zip, e))
     })?;
+    let mut zip_bytes = Vec::with_capacity(metadata.len() as usize);
+    file.take(MAX_SKILL_PACKAGE_ZIP_BYTES + 1)
+        .read_to_end(&mut zip_bytes)
+        .await
+        .map_err(|e| {
+            ChatV2Error::IoError(format!("Failed to read zip {:?}: {}", expanded_zip, e))
+        })?;
+    if zip_bytes.len() as u64 > MAX_SKILL_PACKAGE_ZIP_BYTES {
+        return Err(ChatV2Error::InvalidInput(format!(
+            "Zip grew beyond the {} byte limit while being read",
+            MAX_SKILL_PACKAGE_ZIP_BYTES
+        )));
+    }
 
     install_skill_package_from_zip_bytes(zip_bytes, &base_path, overwrite, dry_run).await
 }
@@ -1293,7 +2032,10 @@ mod tests {
     #[test]
     fn risk_medium_for_scripts_and_external_urls() {
         let files = vec![
-            text_file("SKILL.md", "---\nname: demo\n---\n参见 https://example.com/manual 获取手册。"),
+            text_file(
+                "SKILL.md",
+                "---\nname: demo\n---\n参见 https://example.com/manual 获取手册。",
+            ),
             text_file("scripts/run.py", "print('hello')"),
         ];
         let (level, signals) = assess_skill_package_risk(&files);
@@ -1362,9 +2104,7 @@ mod tests {
         assert!(command_mentions_skills_directory(
             "cat ./.agents/skills/foo/SKILL.md"
         ));
-        assert!(command_mentions_skills_directory(
-            "ls .github/skills"
-        ));
+        assert!(command_mentions_skills_directory("ls .github/skills"));
     }
 
     #[test]
@@ -1398,6 +2138,49 @@ mod tests {
             "python scripts/convert.py --input data.xlsx"
         ));
         assert!(!command_mentions_skills_directory(""));
+    }
+
+    #[test]
+    fn packaged_desktop_app_data_skills_is_an_allowed_base() {
+        let home = PathBuf::from("home-root");
+        let data = PathBuf::from("desktop-data");
+        let app_data = PathBuf::from("tauri-app-data");
+        let current = PathBuf::from("project-root");
+        let bases = build_allowed_skills_bases(
+            Some(home.clone()),
+            Some(data.clone()),
+            Some(app_data.clone()),
+            Some(current),
+            false,
+        );
+
+        assert!(bases.contains(&app_data.join(".skills")));
+        assert!(bases.contains(&home.join(".deep-student").join("skills")));
+        assert!(bases.contains(&data.join("deep-student").join("skills")));
+        assert!(!bases.contains(&home.join(".skills")));
+    }
+
+    #[test]
+    fn mobile_app_data_skills_is_allowed_without_desktop_data_guessing() {
+        let app_data = PathBuf::from("mobile-app-data");
+        let desktop_data = PathBuf::from("must-not-be-used");
+        let bases = build_allowed_skills_bases(
+            Some(app_data.clone()),
+            Some(desktop_data.clone()),
+            Some(app_data.clone()),
+            None,
+            true,
+        );
+
+        assert_eq!(
+            bases
+                .iter()
+                .filter(|base| **base == app_data.join(".skills"))
+                .count(),
+            1,
+            "mobile home and appDataDir aliases must be de-duplicated"
+        );
+        assert!(!bases.contains(&desktop_data.join("deep-student").join("skills")));
     }
 
     // ------------------------------------------------------------------
@@ -1451,7 +2234,8 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         {
             let mut writer = zip::ZipWriter::new(&mut cursor);
-            let options = zip::write::FileOptions::default();
+            let options = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Deflated);
             for (name, content) in files {
                 writer.start_file(*name, options).expect("start zip entry");
                 writer
@@ -1461,6 +2245,190 @@ mod tests {
             writer.finish().expect("finish zip");
         }
         cursor.into_inner()
+    }
+
+    fn forge_zip_uncompressed_sizes(zip_bytes: &mut [u8], declared_size: u32) {
+        const LOCAL_HEADER: &[u8; 4] = b"PK\x03\x04";
+        const CENTRAL_HEADER: &[u8; 4] = b"PK\x01\x02";
+        let mut index = 0usize;
+        while index + 28 <= zip_bytes.len() {
+            if zip_bytes[index..].starts_with(LOCAL_HEADER) {
+                zip_bytes[index + 22..index + 26].copy_from_slice(&declared_size.to_le_bytes());
+                index += 4;
+            } else if zip_bytes[index..].starts_with(CENTRAL_HEADER) {
+                zip_bytes[index + 24..index + 28].copy_from_slice(&declared_size.to_le_bytes());
+                index += 4;
+            } else {
+                index += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn zip_total_limit_counts_actual_bytes_not_forged_header_sizes() {
+        let mut zip_bytes = build_test_zip(&[(
+            "forged/SKILL.md",
+            "---\nname: forged\n---\nbody larger than the tiny test budget",
+        )]);
+        forge_zip_uncompressed_sizes(&mut zip_bytes, 1);
+
+        let error = scan_skill_zip_bytes_with_limits(
+            &zip_bytes,
+            ZipScanLimits {
+                max_entries: 8,
+                max_file_bytes: 128,
+                max_total_bytes: 16,
+                max_entry_name_bytes: 128,
+            },
+        )
+        .expect_err("actual decompressed bytes must exceed the total budget");
+        assert!(
+            error.contains("actual uncompressed size exceeds limit"),
+            "unexpected error: {}",
+            error
+        );
+    }
+
+    #[test]
+    fn zip_entry_count_has_a_hard_limit_before_extraction() {
+        let zip_bytes = build_test_zip(&[
+            ("many/SKILL.md", "---\nname: many\n---\nbody"),
+            ("many/a.md", "a"),
+            ("many/b.md", "b"),
+        ]);
+        let error = scan_skill_zip_bytes_with_limits(
+            &zip_bytes,
+            ZipScanLimits {
+                max_entries: 2,
+                max_file_bytes: 128,
+                max_total_bytes: 256,
+                max_entry_name_bytes: 128,
+            },
+        )
+        .expect_err("entry count above the hard limit must fail");
+        assert!(error.contains("too many entries"));
+    }
+
+    #[test]
+    fn zip_rejects_case_folding_path_collisions() {
+        let zip_bytes = build_test_zip(&[
+            ("collision/SKILL.md", "---\nname: first\n---\nbody"),
+            ("collision/skill.md", "---\nname: second\n---\nbody"),
+        ]);
+        let error = scan_skill_zip_bytes(&zip_bytes)
+            .expect_err("case-folding collisions must be rejected cross-platform");
+        assert!(error.contains("duplicate path"));
+
+        let unicode_zip = build_test_zip(&[
+            ("unicode/SKILL.md", "---\nname: unicode\n---\nbody"),
+            ("unicode/Ä.md", "first"),
+            ("unicode/ä.md", "second"),
+        ]);
+        let unicode_error = scan_skill_zip_bytes(&unicode_zip)
+            .expect_err("Unicode lowercase collisions must also be rejected");
+        assert!(unicode_error.contains("duplicate path"));
+    }
+
+    #[test]
+    fn zip_canonicalizes_lowercase_root_entry_file() {
+        let zip_bytes = build_test_zip(&[(
+            "skill.md",
+            "---\nname: portable\ndescription: portable skill package\n---\nbody",
+        )]);
+        let scan = scan_skill_zip_bytes(&zip_bytes).expect("lowercase entry should be normalized");
+        assert_eq!(scan.files[0].0, "SKILL.md");
+    }
+
+    #[test]
+    fn zip_rejects_non_portable_path_components() {
+        for path in [
+            "portable//file.md",
+            "portable/./file.md",
+            "portable/CON.txt",
+            "portable/trailing. ",
+            "portable/a:b.md",
+        ] {
+            assert!(!is_safe_zip_entry(path), "path should be rejected: {path}");
+        }
+        assert!(is_safe_zip_entry("portable/参考资料.md"));
+    }
+
+    #[test]
+    fn staged_overwrite_failure_restores_previous_skill() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let live = root.path().join("atomic-skill");
+        std_fs::create_dir(&live).expect("create live skill");
+        std_fs::write(live.join("SKILL.md"), b"old").expect("write old skill");
+
+        let staged = StagedSkillDirectory::new(live.clone(), true, false).expect("stage skill");
+        staged
+            .write_file("SKILL.md", b"new")
+            .expect("write staged skill");
+        let error = staged
+            .commit_inner(true, None)
+            .expect_err("injected failure must abort commit");
+
+        assert!(error.contains("Injected failure"));
+        assert_eq!(std_fs::read(live.join("SKILL.md")).unwrap(), b"old");
+        assert_eq!(
+            std_fs::read_dir(root.path())
+                .unwrap()
+                .filter_map(Result::ok)
+                .count(),
+            1,
+            "staging and backup directories must be cleaned"
+        );
+    }
+
+    #[test]
+    fn unfinalized_commit_can_restore_previous_skill() {
+        let root = tempfile::tempdir().expect("tempdir");
+        let live = root.path().join("rollback-skill");
+        std_fs::create_dir(&live).expect("create live skill");
+        std_fs::write(live.join("SKILL.md"), b"old").expect("write old skill");
+        std_fs::write(live.join("old-only.md"), b"keep on rollback").expect("write old extra");
+
+        let staged = StagedSkillDirectory::new(live.clone(), true, false).expect("stage skill");
+        staged
+            .write_file("SKILL.md", b"new")
+            .expect("write staged skill");
+        staged
+            .write_file("AGENT_INSTALLED.json", b"{}")
+            .expect("write staged marker");
+        let committed = staged.commit().expect("commit staged skill");
+        assert_eq!(std_fs::read(live.join("SKILL.md")).unwrap(), b"new");
+        assert!(live.join("AGENT_INSTALLED.json").exists());
+
+        committed.rollback().expect("rollback committed skill");
+        assert_eq!(std_fs::read(live.join("SKILL.md")).unwrap(), b"old");
+        assert!(live.join("old-only.md").exists());
+        assert!(!live.join("AGENT_INSTALLED.json").exists());
+    }
+
+    #[test]
+    fn staged_update_rechecks_live_hash_inside_commit_lock() {
+        use sha2::{Digest, Sha256};
+
+        let root = tempfile::tempdir().expect("tempdir");
+        let live = root.path().join("precondition-skill");
+        std_fs::create_dir(&live).expect("create live skill");
+        std_fs::write(live.join("SKILL.md"), b"original").expect("write original skill");
+        let expected = hex::encode(Sha256::digest(b"original"));
+
+        let staged = StagedSkillDirectory::new(live.clone(), true, true).expect("stage update");
+        staged
+            .write_file("SKILL.md", b"proposal")
+            .expect("write proposal");
+        std_fs::write(live.join("SKILL.md"), b"external edit").expect("simulate concurrent edit");
+
+        let error = staged
+            .commit_if_file_unchanged("SKILL.md", &expected)
+            .expect_err("concurrent live edit must abort proposal commit");
+        assert!(error.contains("Live skill changed before commit"));
+        assert_eq!(
+            std_fs::read(live.join("SKILL.md")).unwrap(),
+            b"external edit"
+        );
     }
 
     #[tokio::test]
@@ -1514,10 +2482,7 @@ mod tests {
         assert_eq!(scan.references_count, 1);
         assert_eq!(scan.risk_level, "low");
         assert_eq!(scan.package_sha256.len(), 64);
-        assert!(
-            !skill_dir.exists(),
-            "dry-run scan must not write to disk"
-        );
+        assert!(!skill_dir.exists(), "dry-run scan must not write to disk");
 
         // 2) install：写盘，SKILL.md 落地
         let installed =

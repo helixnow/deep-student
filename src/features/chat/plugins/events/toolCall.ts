@@ -194,8 +194,11 @@ const toolCallEventHandler: EventHandler = {
       blockId = preparingBlockId;
     } else if (backendBlockId) {
       // 情况 3: 无 preparing 块 + 有后端 block_id
-      // 使用后端 block_id 创建新块
-      blockId = store.createBlockWithId(messageId, blockType, backendBlockId);
+      // 工具的瞬时失败重试会对同一逻辑块再次发 start。已存在时直接复用，
+      // 否则 createBlockWithId 会把同一 ID 再次追加到 message.blockIds。
+      blockId = store.blocks.has(backendBlockId)
+        ? backendBlockId
+        : store.createBlockWithId(messageId, blockType, backendBlockId);
     } else {
       // 情况 4: 无 preparing 块 + 无后端 block_id
       // 前端生成 block_id
@@ -211,6 +214,9 @@ const toolCallEventHandler: EventHandler = {
       toolCallId,
       isPreparing: false,
       content: '',
+      error: undefined,
+      toolOutput: undefined,
+      endedAt: undefined,
     });
 
     // 🔧 修复：立即将状态更新为 running

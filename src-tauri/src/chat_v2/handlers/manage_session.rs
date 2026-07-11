@@ -2,15 +2,16 @@
 //!
 //! 包含创建、更新设置、归档、保存、列表、删除会话等命令。
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use serde_json::Value;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::runtime_roots::cleanup_session_runtime_roots;
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{
     ChatSession, PersistStatus, SessionSettings, SessionSkillState, SessionState,
@@ -20,6 +21,17 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
 const MANUALLY_ARCHIVED_BY_KEY: &str = "manuallyArchivedBy";
+static SESSION_LIFECYCLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn session_lifecycle_guard() -> MutexGuard<'static, ()> {
+    SESSION_LIFECYCLE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| {
+            log::error!("[ChatV2::handlers] Session lifecycle mutex poisoned; recovering");
+            poisoned.into_inner()
+        })
+}
 
 /// 将 `Value` 中所有出现在 `id_map` 里的字符串原值替换为新 ID。
 /// 仅替换“整字符串完全等于映射键”的情况，避免对 UUID 子串、URL、日志文本等产生误命中。
@@ -487,6 +499,7 @@ pub async fn chat_v2_soft_delete_session(
     db: State<'_, Arc<ChatV2Database>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!(
         "[ChatV2::handlers] chat_v2_soft_delete_session: session_id={}",
         session_id
@@ -543,6 +556,7 @@ pub async fn chat_v2_restore_session(
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<ChatSession, String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!(
         "[ChatV2::handlers] chat_v2_restore_session: session_id={}",
         session_id
@@ -586,11 +600,13 @@ pub async fn chat_v2_restore_session(
 /// - `chat_v2_session_state` 表中的会话状态
 #[tauri::command]
 pub async fn chat_v2_delete_session(
+    app: AppHandle,
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
 ) -> Result<(), String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!(
         "[ChatV2::handlers] chat_v2_delete_session: session_id={}",
         session_id
@@ -622,6 +638,11 @@ pub async fn chat_v2_delete_session(
             ChatV2Error::Validation(format!("Invalid session ID format: {}", session_id)).into(),
         );
     }
+
+    // Keep the database record retryable when filesystem cleanup fails. Runtime
+    // roots are session-scoped derived data, so remove them before committing the
+    // irreversible database deletion.
+    cleanup_session_runtime_roots(&app, &session_id)?;
 
     // 会话删除前递减 VFS 资源引用计数，防止 CASCADE DELETE 后引用计数永远无法归零
     decrement_vfs_refs_for_session(&db, &vfs_db, &session_id);
@@ -655,13 +676,21 @@ pub async fn chat_v2_delete_session(
 /// - `Err(String)`: 删除失败
 #[tauri::command]
 pub async fn chat_v2_empty_deleted_sessions(
+    app: AppHandle,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<u32, String> {
+    let _lifecycle_guard = session_lifecycle_guard();
     log::info!("[ChatV2::handlers] chat_v2_empty_deleted_sessions");
 
     // ★ 先查出所有待删除的会话 ID，逐个收集资源引用并批量递减
     let deleted_ids = ChatV2Repo::list_deleted_session_ids(&db).map_err(|e| e.to_string())?;
+
+    // Abort before purging database rows if any runtime root cannot be removed.
+    // Already-cleaned roots are harmless and the remaining rows make retry safe.
+    for session_id in &deleted_ids {
+        cleanup_session_runtime_roots(&app, session_id)?;
+    }
 
     if !deleted_ids.is_empty() {
         // 收集所有待删除会话中消息引用的资源 ID（不去重，与递增时对称）
@@ -710,6 +739,9 @@ pub async fn chat_v2_empty_deleted_sessions(
 
     // 执行批量硬删除
     let count = ChatV2Repo::purge_deleted_sessions(&db).map_err(|e| e.to_string())?;
+    for session_id in &deleted_ids {
+        clear_session_sequence_counter(session_id);
+    }
     log::info!(
         "[ChatV2::handlers] Emptied trash: {} sessions permanently deleted",
         count

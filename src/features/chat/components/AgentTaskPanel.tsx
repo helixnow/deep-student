@@ -143,6 +143,8 @@ interface ChangeItem {
   relativePath?: string;
   /** 覆盖写时旧内容在 temp 根备份区的相对引用（撤销时恢复、预览时做 diff） */
   backupRef?: string;
+  /** 写入完成后的内容哈希；撤销时用于阻止覆盖用户的后续修改 */
+  afterHash?: string;
 }
 
 /** Changes 内联预览的加载态（当前内容 + 可选备份旧内容） */
@@ -356,6 +358,7 @@ function extractChanges(blocks: Block[]): ChangeItem[] {
         const rootId = firstString(change.root_id, data.root_id);
         const relativePath = firstString(change.relative_path, data.path);
         const backupRef = firstString(change.backup_ref);
+        const afterHash = firstString(change.after_hash, change.afterHash);
         const id = `file:${itemAction}:${rootId ?? 'root'}:${target ?? label}:${toolName}`;
         changes.set(id, {
           id,
@@ -367,6 +370,7 @@ function extractChanges(blocks: Block[]): ChangeItem[] {
           rootId,
           relativePath,
           backupRef,
+          afterHash,
         });
       }
       continue;
@@ -747,7 +751,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
 
   /** 真实撤销：有 backupRef 恢复旧内容，无 backupRef（当次新建）删除该文件。 */
   const revertArtifactWrite = useCallback(async (item: ChangeItem) => {
-    if (!sessionId || !item.relativePath || item.rootId !== 'artifacts') return;
+    if (!sessionId || !item.relativePath || !item.afterHash || item.rootId !== 'artifacts') return;
     if (revertingIdsRef.current.has(item.id)) return;
     revertingIdsRef.current.add(item.id);
     try {
@@ -755,6 +759,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
         sessionId,
         relativePath: item.relativePath,
         backupRef: item.backupRef ?? null,
+        expectedAfterHash: item.afterHash,
       });
       setRevertedIds((prev) => {
         const next = new Set(prev);
@@ -1216,6 +1221,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, className }) => {
                       const canRevert = !isReverted
                         && item.rootId === 'artifacts'
                         && !!item.relativePath
+                        && !!item.afterHash
                         && !!sessionId
                         && item.action !== 'delete';
                       const savedNoteId = savedNoteIds.get(item.id);

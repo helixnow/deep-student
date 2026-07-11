@@ -212,7 +212,10 @@ impl ChatV2Pipeline {
             .unwrap_or_else(ChatMessage::generate_id);
 
         // === 3. 创建事件发射器 ===
-        let emitter = Arc::new(ChatV2EventEmitter::new(window.clone(), session_id.clone()));
+        let emitter = Arc::new(
+            ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(options.stream_generation),
+        );
 
         // === 4. 执行共享检索（只执行一次）===
         let shared_context = self
@@ -786,12 +789,22 @@ impl ChatV2Pipeline {
             Some("variant-tool-round-0".to_string()),
         ));
 
-        // 注册 LLM 流式回调 hooks
-        // 🔧 P0修复：每个变体使用唯一的 hook 键，避免并行执行时互相覆盖
-        // 前端仍然监听 chat_v2_event_{session_id}，变体 ID 通过 VariantLLMAdapter 在事件 payload 中携带
-        let stream_event = format!("chat_v2_event_{}_{}", session_id, ctx.variant_id());
+        // Each concrete variant attempt gets a unique hook key. Variant IDs are reused by retry,
+        // so `{session}:{variant}` alone is not an ownership identity.
+        let stream_event = super::tool_loop::build_run_scoped_stream_event(
+            &session_id,
+            ctx.variant_id(),
+            &Uuid::new_v4().simple().to_string(),
+            options.stream_generation,
+        );
+        let registered_hooks: Arc<dyn LLMStreamHooks> = emitter.clone();
+        let mut hooks_guard = super::tool_loop::StreamHooksGuard::new(
+            self.llm_manager.clone(),
+            stream_event.clone(),
+            registered_hooks.clone(),
+        );
         self.llm_manager
-            .register_stream_hooks(&stream_event, emitter.clone())
+            .register_stream_hooks(&stream_event, registered_hooks.clone())
             .await;
 
         // 构建消息历史
@@ -814,10 +827,7 @@ impl ChatV2Pipeline {
                 .unwrap_or(&empty_skill_contents),
             options.skill_dependencies.as_ref(),
             // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-            options
-                .context_limit
-                .filter(|v| *v > 0)
-                .map(|v| v as usize),
+            options.context_limit.filter(|v| *v > 0).map(|v| v as usize),
         );
         insert_transient_skill_messages(&mut messages, base_history_len, transient_skill_messages);
 
@@ -952,9 +962,7 @@ impl ChatV2Pipeline {
                         idle_secs,
                         ctx.variant_id()
                     );
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
+                    hooks_guard.cleanup().await;
                     let msg = format!("LLM stream timed out: no data received for {}s", idle_secs);
                     ctx.fail(&msg);
                     return Err(ChatV2Error::Timeout(msg));
@@ -965,13 +973,8 @@ impl ChatV2Pipeline {
                         total_secs,
                         ctx.variant_id()
                     );
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
-                    let msg = format!(
-                        "LLM stream exceeded absolute time limit ({}s)",
-                        total_secs
-                    );
+                    hooks_guard.cleanup().await;
+                    let msg = format!("LLM stream exceeded absolute time limit ({}s)", total_secs);
                     ctx.fail(&msg);
                     return Err(ChatV2Error::Timeout(msg));
                 }
@@ -979,9 +982,7 @@ impl ChatV2Pipeline {
         };
 
         // 注销 hooks
-        self.llm_manager
-            .unregister_stream_hooks(&stream_event)
-            .await;
+        hooks_guard.cleanup().await;
 
         // 处理结果
         match call_result {
@@ -1065,9 +1066,20 @@ impl ChatV2Pipeline {
             options.skill_state_version,
             Some("variant-tool-round-0".to_string()),
         ));
-        let stream_event = format!("chat_v2_event_{}_{}", session_id, ctx.variant_id());
+        let stream_event = super::tool_loop::build_run_scoped_stream_event(
+            &session_id,
+            ctx.variant_id(),
+            &Uuid::new_v4().simple().to_string(),
+            options.stream_generation,
+        );
+        let registered_hooks: Arc<dyn LLMStreamHooks> = adapter.clone();
+        let mut hooks_guard = super::tool_loop::StreamHooksGuard::new(
+            self.llm_manager.clone(),
+            stream_event.clone(),
+            registered_hooks.clone(),
+        );
         self.llm_manager
-            .register_stream_hooks(&stream_event, adapter.clone())
+            .register_stream_hooks(&stream_event, registered_hooks.clone())
             .await;
 
         let mut llm_context: std::collections::HashMap<String, Value> =
@@ -1262,9 +1274,7 @@ impl ChatV2Pipeline {
                                 ctx.variant_id(),
                                 tool_round
                             );
-                            self.llm_manager
-                                .unregister_stream_hooks(&stream_event)
-                                .await;
+                            hooks_guard.cleanup().await;
                             let msg = format!(
                                 "LLM stream timed out: no data received for {}s",
                                 idle_secs
@@ -1279,9 +1289,7 @@ impl ChatV2Pipeline {
                                 ctx.variant_id(),
                                 tool_round
                             );
-                            self.llm_manager
-                                .unregister_stream_hooks(&stream_event)
-                                .await;
+                            hooks_guard.cleanup().await;
                             let msg = format!(
                                 "LLM stream exceeded absolute time limit ({}s)",
                                 total_secs
@@ -1316,9 +1324,7 @@ impl ChatV2Pipeline {
                     }
                 }
                 Some(Err(e)) => {
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
+                    hooks_guard.cleanup().await;
                     ctx.fail(&e.to_string());
                     return Err(ChatV2Error::Llm(e.to_string()));
                 }
@@ -1606,9 +1612,7 @@ impl ChatV2Pipeline {
             adapter.reset_for_new_round();
         }
 
-        self.llm_manager
-            .unregister_stream_hooks(&stream_event)
-            .await;
+        hooks_guard.cleanup().await;
         Ok(())
     }
 
@@ -2350,10 +2354,10 @@ impl ChatV2Pipeline {
         }
 
         // 单一事件发射器，确保 sequenceId 全局递增
-        let emitter = Arc::new(super::super::events::ChatV2EventEmitter::new(
-            window.clone(),
-            session_id.clone(),
-        ));
+        let emitter = Arc::new(
+            super::super::events::ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(options.stream_generation),
+        );
 
         let shared_context_arc = Arc::new(shared_context);
 
@@ -2365,6 +2369,7 @@ impl ChatV2Pipeline {
             String,
             Option<crate::chat_v2::types::VariantMeta>,
         )> = Vec::with_capacity(variants.len());
+        let mut variant_stream_guards = Vec::with_capacity(variants.len());
 
         for spec in &variants {
             let ctx = manager.create_variant(
@@ -2379,7 +2384,13 @@ impl ChatV2Pipeline {
             // 注册每个变体的 cancel token（用于按 variant 取消）
             if let Some(ref state) = chat_v2_state {
                 let cancel_key = format!("{}:{}", session_id, spec.variant_id);
-                state.register_existing_token(&cancel_key, ctx.cancel_token().clone());
+                let registration =
+                    state.register_existing_token_owned(&cancel_key, ctx.cancel_token().clone());
+                variant_stream_guards.push(super::super::state::StreamGuard::new(
+                    Arc::clone(state),
+                    cancel_key.clone(),
+                    registration,
+                ));
                 log::debug!(
                     "[ChatV2::pipeline] Registered cancel token for retry variant: {}",
                     cancel_key
@@ -2481,13 +2492,8 @@ impl ChatV2Pipeline {
             }
         }
 
-        // 清理 cancel token
-        if let Some(ref state) = chat_v2_state {
-            for (ctx, _, _) in &variant_contexts {
-                let cancel_key = format!("{}:{}", session_id, ctx.variant_id());
-                state.remove_stream(&cancel_key);
-            }
-        }
+        // Generation-owned guards clean up retry child keys without deleting a newer retry.
+        drop(variant_stream_guards);
 
         if let Some(err) = update_error {
             return Err(err);
@@ -2536,10 +2542,10 @@ impl ChatV2Pipeline {
         );
 
         // 创建事件发射器
-        let emitter = Arc::new(super::super::events::ChatV2EventEmitter::new(
-            window.clone(),
-            session_id.clone(),
-        ));
+        let emitter = Arc::new(
+            super::super::events::ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(options.stream_generation),
+        );
 
         // 创建共享上下文的 Arc
         let shared_context_arc = Arc::new(shared_context);

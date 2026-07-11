@@ -351,6 +351,23 @@ mod tests {
     }
 
     #[test]
+    fn chat_v2_run_scope_recovers_session_and_generation() {
+        let event = format!(
+            "chat_v2_event_sess_123_var_variant_456_run_deadbeef{}73",
+            crate::llm_manager::CHAT_V2_STREAM_GENERATION_MARKER
+        );
+        assert_eq!(
+            chat_v2_session_scope_and_generation(&event),
+            Some(("sess_123", Some(73)))
+        );
+        assert_eq!(
+            chat_v2_session_scope_and_generation("chat_v2_event_legacy_session"),
+            Some(("legacy_session", None))
+        );
+        assert!(chat_v2_session_scope_and_generation("other_event").is_none());
+    }
+
+    #[test]
     fn test_sanitize_url_for_log_redacts_query_keys() {
         // Gemini 风格：key 在 query
         let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:streamGenerateContent?alt=sse&key=AIzaSySECRET123";
@@ -366,8 +383,10 @@ mod tests {
         // 大小写与变体参数名
         let mixed = "https://x.example/api?API_KEY=abc&access_token=tok&foo=bar";
         let s = sanitize_url_for_log(mixed);
-        assert!(!s.contains("abc"));
-        assert!(!s.contains("tok"));
+        assert!(!s.contains("API_KEY=abc"));
+        assert!(!s.contains("access_token=tok"));
+        assert!(s.contains("API_KEY=[REDACTED]"));
+        assert!(s.contains("access_token=[REDACTED]"));
         assert!(s.contains("foo=bar"));
     }
 
@@ -793,6 +812,23 @@ impl Default for RawPromptOptions {
     }
 }
 
+fn chat_v2_session_scope_and_generation(stream_event: &str) -> Option<(&str, Option<u64>)> {
+    let raw_scope = stream_event.strip_prefix("chat_v2_event_")?;
+    let (scope_without_generation, stream_generation) =
+        match raw_scope.rsplit_once(super::CHAT_V2_STREAM_GENERATION_MARKER) {
+            Some((scope, raw_generation)) => {
+                let generation = raw_generation.parse::<u64>().ok()?;
+                (scope, Some(generation))
+            }
+            None => (raw_scope, None),
+        };
+    let session_id = scope_without_generation
+        .rsplit_once("_var_")
+        .map(|(session, _)| session)
+        .unwrap_or(scope_without_generation);
+    Some((session_id, stream_generation))
+}
+
 impl LLMManager {
     /// 从 DB 读取 debug 持久化配置
     fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
@@ -828,34 +864,29 @@ impl LLMManager {
             return;
         };
 
-        let Some(raw_session_scope) = stream_event.strip_prefix("chat_v2_event_") else {
+        let Some((session_id, stream_generation)) =
+            chat_v2_session_scope_and_generation(stream_event)
+        else {
             return;
         };
-
-        // 多变体流的 stream_event 形如 `chat_v2_event_{session_id}_{variant_id}`。
-        // reconnect 是会话级事件，前端监听的是 `chat_v2_session_{session_id}`，
-        // 因此这里需要剥掉尾部的 `_var_xxx` 变体后缀。
-        let session_id = raw_session_scope
-            .rsplit_once("_var_")
-            .map(|(sid, _)| sid)
-            .unwrap_or(raw_session_scope);
 
         let session_channel = format!("chat_v2_session_{}", session_id);
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as i64;
-        let _ = window.emit(
-            &session_channel,
-            &json!({
-                "sessionId": session_id,
-                "eventType": "stream_reconnect",
-                "messageId": mid,
-                "retryAttempt": retry_attempt,
-                "retryMax": retry_max,
-                "timestamp": now_ms,
-            }),
-        );
+        let mut payload = json!({
+            "sessionId": session_id,
+            "eventType": "stream_reconnect",
+            "messageId": mid,
+            "retryAttempt": retry_attempt,
+            "retryMax": retry_max,
+            "timestamp": now_ms,
+        });
+        if let Some(generation) = stream_generation {
+            payload["streamGeneration"] = json!(generation);
+        }
+        let _ = window.emit(&session_channel, &payload);
     }
 
     fn compute_retry_delay(min_delay_ms: u64, max_delay_ms: u64) -> u64 {
@@ -2444,10 +2475,9 @@ impl LLMManager {
                                     // 同时发送通用错误事件
                                     // 🔧 区分供应商错误（provider_error）与安全阻断，避免
                                     // 把配额不足/参数错误等误报为"安全策略阻断"
-                                    let is_provider_error = safety_info
-                                        .get("type")
-                                        .and_then(|v| v.as_str())
-                                        == Some("provider_error");
+                                    let is_provider_error =
+                                        safety_info.get("type").and_then(|v| v.as_str())
+                                            == Some("provider_error");
                                     let error_event = if is_provider_error {
                                         json!({
                                             "type": "provider_error",
@@ -3954,8 +3984,14 @@ impl LLMManager {
         caller_type: crate::llm_usage::CallerType,
     ) -> Result<StandardModel2Output> {
         let config = self.get_model2_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, image_payloads, caller_type, "utility")
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            image_payloads,
+            caller_type,
+            "utility",
+        )
+        .await
     }
 
     /// 🆕 P1: 使用指定 config_id（或显示名称）对应的 ApiConfig 发起 raw prompt 调用
@@ -4506,11 +4542,9 @@ impl LLMManager {
         }
 
         // 5. 发送请求
-        let response = request_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url())))?;
+        let response = request_builder.json(&preq.body).send().await.map_err(|e| {
+            AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url()))
+        })?;
 
         // 6. 检查响应状态
         if !response.status().is_success() {

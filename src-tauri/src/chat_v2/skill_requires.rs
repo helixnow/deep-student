@@ -77,8 +77,14 @@ pub fn parse_requires_from_skill_md(text: &str) -> SkillRequires {
     let mut bins = Vec::new();
     let mut env = Vec::new();
 
-    merge_string_lists(&mut bins, parse_requires_block(frontmatter, "requires", "bins"));
-    merge_string_lists(&mut env, parse_requires_block(frontmatter, "requires", "env"));
+    merge_string_lists(
+        &mut bins,
+        parse_requires_block(frontmatter, "requires", "bins"),
+    );
+    merge_string_lists(
+        &mut env,
+        parse_requires_block(frontmatter, "requires", "env"),
+    );
 
     if let Some(openclaw) = parse_openclaw_requires(frontmatter) {
         merge_string_lists(&mut bins, openclaw.bins);
@@ -176,11 +182,7 @@ fn parse_mapping_value(block: &str, key: &str, base_indent: usize) -> Option<Str
                         block_start = idx + 1;
                         continue;
                     }
-                    return Some(
-                        rest.trim_matches('"')
-                            .trim_matches('\'')
-                            .to_string(),
-                    );
+                    return Some(rest.trim_matches('"').trim_matches('\'').to_string());
                 }
             }
         } else if indent <= base_indent {
@@ -201,7 +203,10 @@ fn parse_mapping_value(block: &str, key: &str, base_indent: usize) -> Option<Str
         if indent < block_indent {
             break;
         }
-        collected.push(*line);
+        collected.push(
+            line.get(block_indent..)
+                .unwrap_or_else(|| line.trim_start()),
+        );
     }
     Some(collected.join("\n"))
 }
@@ -343,8 +348,8 @@ pub async fn probe_requires(requires: SkillRequires) -> SkillRequiresProbe {
         env.push(SkillRequiresEnvProbe { name, set });
     }
 
-    let missing_count = bins.iter().filter(|b| !b.found).count()
-        + env.iter().filter(|e| !e.set).count();
+    let missing_count =
+        bins.iter().filter(|b| !b.found).count() + env.iter().filter(|e| !e.set).count();
 
     invalid.sort();
     invalid.dedup();
@@ -401,7 +406,9 @@ fn bin_missing_hint(bin: &str) -> String {
     #[cfg(not(target_os = "windows"))]
     {
         let pkg_hint = match lower.as_str() {
-            "python" | "python3" => "Install Python 3 via your system package manager (e.g. apt install python3).",
+            "python" | "python3" => {
+                "Install Python 3 via your system package manager (e.g. apt install python3)."
+            }
             "node" | "npm" | "npx" => "Install Node.js LTS via your system package manager or nvm.",
             "pandoc" => "Install pandoc via your system package manager.",
             "git" => "Install git via your system package manager.",
@@ -517,14 +524,25 @@ metadata: {"openclaw":{"requires":{"bins":["rg"],"env":["TOKEN"]}}}
         std::env::set_var("SKILL_REQUIRES_TEST_VAR", "1");
         let probe = probe_requires(SkillRequires {
             bins: Vec::new(),
-            env: vec!["SKILL_REQUIRES_TEST_VAR".to_string(), "SKILL_REQUIRES_MISSING_VAR".to_string()],
+            env: vec![
+                "SKILL_REQUIRES_TEST_VAR".to_string(),
+                "SKILL_REQUIRES_MISSING_VAR".to_string(),
+            ],
         })
         .await;
         std::env::remove_var("SKILL_REQUIRES_TEST_VAR");
 
-        let present = probe.env.iter().find(|e| e.name == "SKILL_REQUIRES_TEST_VAR").unwrap();
+        let present = probe
+            .env
+            .iter()
+            .find(|e| e.name == "SKILL_REQUIRES_TEST_VAR")
+            .unwrap();
         assert!(present.set);
-        let missing = probe.env.iter().find(|e| e.name == "SKILL_REQUIRES_MISSING_VAR").unwrap();
+        let missing = probe
+            .env
+            .iter()
+            .find(|e| e.name == "SKILL_REQUIRES_MISSING_VAR")
+            .unwrap();
         assert!(!missing.set);
         assert_eq!(probe.missing_count, 1);
     }

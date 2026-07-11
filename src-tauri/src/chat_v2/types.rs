@@ -1908,6 +1908,11 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_state_version: Option<u64>,
 
+    /// Backend-owned stream registration generation. Never accepted from or returned to the
+    /// frontend as part of SendOptions; it is copied into session lifecycle events instead.
+    #[serde(skip)]
+    pub stream_generation: Option<u64>,
+
     /// 禁用工具调用
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_tools: Option<bool>,

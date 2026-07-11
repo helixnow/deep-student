@@ -1,6 +1,10 @@
 import type { Block, BlockType, BlockStatus } from '../types/block';
 import type { Message } from '../types/message';
-import type { ChatStore, LoadSessionResponseType } from '../types';
+import type {
+  ChatStore,
+  LoadSessionResponseType,
+  SessionRestoreBaseline,
+} from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -109,6 +113,170 @@ function convertBackendMessage(msg: LoadSessionResponseType['messages'][number])
   };
 }
 
+/**
+ * Insert backend-only IDs around IDs that already exist in the live order.
+ * Live-only IDs retain their relative order. With no shared anchor, backend
+ * IDs are treated as the persisted prefix and live IDs as newer additions.
+ */
+function mergeAnchoredReferenceOrder(
+  currentOrder: readonly string[],
+  backendOrder: readonly string[],
+): string[] {
+  const dedupedCurrent = Array.from(new Set(currentOrder));
+  const currentPosition = new Map(dedupedCurrent.map((id, index) => [id, index]));
+  const seenBackend = new Set<string>();
+  const responseOrder = backendOrder.filter((id) => {
+    if (seenBackend.has(id)) return false;
+    seenBackend.add(id);
+    return true;
+  });
+  const missingIds = responseOrder.filter((id) => !currentPosition.has(id));
+  if (missingIds.length === 0) return dedupedCurrent;
+
+  const hasSharedAnchor = responseOrder.some((id) => currentPosition.has(id));
+  if (!hasSharedAnchor) {
+    return [...missingIds, ...dedupedCurrent];
+  }
+
+  const nextAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  let nextAnchor: number | undefined;
+  for (let index = responseOrder.length - 1; index >= 0; index--) {
+    nextAnchorPositions[index] = nextAnchor;
+    const position = currentPosition.get(responseOrder[index]);
+    if (position !== undefined) nextAnchor = position;
+  }
+
+  const previousAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  let previousAnchor: number | undefined;
+  for (let index = 0; index < responseOrder.length; index++) {
+    previousAnchorPositions[index] = previousAnchor;
+    const position = currentPosition.get(responseOrder[index]);
+    if (position !== undefined) previousAnchor = position;
+  }
+
+  const buckets = new Map<number, string[]>();
+  for (let index = 0; index < responseOrder.length; index++) {
+    const id = responseOrder[index];
+    if (currentPosition.has(id)) continue;
+    const gap = nextAnchorPositions[index]
+      ?? (previousAnchorPositions[index] !== undefined
+        ? previousAnchorPositions[index]! + 1
+        : 0);
+    const bucket = buckets.get(gap);
+    if (bucket) bucket.push(id);
+    else buckets.set(gap, [id]);
+  }
+
+  const merged: string[] = [];
+  for (let gap = 0; gap <= dedupedCurrent.length; gap++) {
+    const bucket = buckets.get(gap);
+    if (bucket) merged.push(...bucket);
+    if (gap < dedupedCurrent.length) merged.push(dedupedCurrent[gap]);
+  }
+  return merged;
+}
+
+function hasSameIdOrder(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function mergeExistingMessageReferences(
+  currentMessage: Message,
+  backendMessage: LoadSessionResponseType['messages'][number],
+  availableBlockIds: ReadonlySet<string>,
+): Message {
+  const backendBlockIds = backendMessage.blockIds.filter((id) => availableBlockIds.has(id));
+  const blockIds = mergeAnchoredReferenceOrder(currentMessage.blockIds, backendBlockIds);
+
+  const currentVariants = currentMessage.variants ?? [];
+  const backendVariants = backendMessage.variants ?? [];
+  if (backendVariants.length === 0) {
+    return hasSameIdOrder(blockIds, currentMessage.blockIds)
+      ? currentMessage
+      : { ...currentMessage, blockIds };
+  }
+
+  const currentVariantById = new Map(currentVariants.map((variant) => [variant.id, variant]));
+  const mergedVariantById = new Map(currentVariantById);
+  for (const backendVariant of backendVariants) {
+    const currentVariant = currentVariantById.get(backendVariant.id);
+    const filteredBackendBlockIds = backendVariant.blockIds.filter((id) => availableBlockIds.has(id));
+    if (currentVariant) {
+      mergedVariantById.set(backendVariant.id, {
+        ...backendVariant,
+        ...currentVariant,
+        blockIds: mergeAnchoredReferenceOrder(currentVariant.blockIds, filteredBackendBlockIds),
+      });
+    } else {
+      mergedVariantById.set(backendVariant.id, {
+        ...backendVariant,
+        blockIds: filteredBackendBlockIds,
+      });
+    }
+  }
+
+  const variantOrder = mergeAnchoredReferenceOrder(
+    currentVariants.map((variant) => variant.id),
+    backendVariants.map((variant) => variant.id),
+  );
+  const variants = variantOrder
+    .map((id) => mergedVariantById.get(id))
+    .filter((variant): variant is NonNullable<(typeof currentVariants)[number]> => !!variant);
+
+  const variantsUnchanged =
+    variants.length === currentVariants.length
+    && variants.every((variant, index) => {
+      const currentVariant = currentVariants[index];
+      return currentVariant === variant
+        || (
+          currentVariant.id === variant.id
+          && hasSameIdOrder(currentVariant.blockIds, variant.blockIds)
+          && currentVariant.status === variant.status
+          && currentVariant.error === variant.error
+        );
+    });
+
+  if (hasSameIdOrder(blockIds, currentMessage.blockIds) && variantsUnchanged) {
+    return currentMessage;
+  }
+
+  return {
+    ...currentMessage,
+    blockIds,
+    variants,
+  };
+}
+
+function shouldRestoreMissingMessage(
+  message: LoadSessionResponseType['messages'][number],
+  baseline?: SessionRestoreBaseline,
+): boolean {
+  if (!baseline) return true;
+  if (baseline.messageIds.has(message.id)) return false;
+  if (
+    baseline.oldestMessageTimestamp !== undefined
+    && message.timestamp >= baseline.oldestMessageTimestamp
+  ) {
+    // Full-history completion is expected to add messages before the loaded
+    // tail. A same/newer missing row was removed locally or created by a stale
+    // backend snapshot and must not be resurrected.
+    return false;
+  }
+  return true;
+}
+
+function hasIdentitySetChanged(
+  currentIds: Iterable<string>,
+  baselineIds: ReadonlySet<string>,
+): boolean {
+  const currentSet = currentIds instanceof Set ? currentIds : new Set(currentIds);
+  if (currentSet.size !== baselineIds.size) return true;
+  for (const id of currentSet) {
+    if (!baselineIds.has(id)) return true;
+  }
+  return false;
+}
+
 function filterSkillInstructionRefsWhenStructuredStateExists(
   refs: import('../../context/types').ContextRef[],
   state?: LoadSessionResponseType['state'],
@@ -161,6 +329,117 @@ function getRestoredLoadedSkillIds(state?: LoadSessionResponseType['state']): st
   }
 }
 
+/**
+ * Merge missing backend messages without assuming they all predate the current
+ * window. Backend neighbours provide stable anchors; timestamps place messages
+ * among local-only entries inside those bounds.
+ */
+export function mergeHistoryMessageOrder(
+  currentOrder: string[],
+  currentMessages: ReadonlyMap<string, Message>,
+  backendMessages: LoadSessionResponseType['messages'],
+): string[] {
+  const messageById = new Map<string, Pick<Message, 'timestamp'>>();
+  for (const [id, message] of currentMessages) {
+    messageById.set(id, message);
+  }
+  for (const message of backendMessages) {
+    messageById.set(message.id, message);
+  }
+
+  const seenResponseIds = new Set<string>();
+  const responseOrder = backendMessages
+    .map((message, index) => ({ message, index }))
+    .sort((a, b) => a.message.timestamp - b.message.timestamp || a.index - b.index)
+    .map(({ message }) => message.id)
+    .filter((id) => {
+      if (seenResponseIds.has(id)) return false;
+      seenResponseIds.add(id);
+      return true;
+    });
+  const currentPosition = new Map(currentOrder.map((id, index) => [id, index]));
+
+  // Precompute response neighbours that already exist in the live order. This
+  // makes anchor lookup O(1) for every missing message.
+  const previousAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  const nextAnchorPositions: Array<number | undefined> = new Array(responseOrder.length);
+  let anchorPosition: number | undefined;
+  for (let index = 0; index < responseOrder.length; index++) {
+    previousAnchorPositions[index] = anchorPosition;
+    const currentIndex = currentPosition.get(responseOrder[index]);
+    if (currentIndex !== undefined) anchorPosition = currentIndex;
+  }
+  anchorPosition = undefined;
+  for (let index = responseOrder.length - 1; index >= 0; index--) {
+    nextAnchorPositions[index] = anchorPosition;
+    const currentIndex = currentPosition.get(responseOrder[index]);
+    if (currentIndex !== undefined) anchorPosition = currentIndex;
+  }
+
+  let currentOrderIsChronological = true;
+  let previousTimestamp = Number.NEGATIVE_INFINITY;
+  for (const messageId of currentOrder) {
+    const timestamp = messageById.get(messageId)?.timestamp;
+    if (timestamp === undefined) continue;
+    if (timestamp < previousTimestamp) {
+      currentOrderIsChronological = false;
+      break;
+    }
+    previousTimestamp = timestamp;
+  }
+
+  const gapBuckets = new Map<number, string[]>();
+  for (let responseIndex = 0; responseIndex < responseOrder.length; responseIndex++) {
+    const messageId = responseOrder[responseIndex];
+    if (currentPosition.has(messageId)) continue;
+
+    const previousAnchor = previousAnchorPositions[responseIndex];
+    const nextAnchor = nextAnchorPositions[responseIndex];
+    let lowerBound = previousAnchor !== undefined ? previousAnchor + 1 : 0;
+    let upperBound = nextAnchor ?? currentOrder.length;
+    if (upperBound < lowerBound) {
+      lowerBound = 0;
+      upperBound = currentOrder.length;
+    }
+
+    let gap: number;
+    if (currentOrderIsChronological) {
+      const timestamp = messageById.get(messageId)?.timestamp ?? Number.POSITIVE_INFINITY;
+      let low = lowerBound;
+      let high = upperBound;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        const candidateTimestamp =
+          messageById.get(currentOrder[middle])?.timestamp ?? Number.POSITIVE_INFINITY;
+        if (candidateTimestamp <= timestamp) {
+          low = middle + 1;
+        } else {
+          high = middle;
+        }
+      }
+      gap = low;
+    } else {
+      // Corrupt/legacy timestamp order: preserve the live order and use the
+      // nearest backend neighbour as the deterministic insertion anchor.
+      gap = nextAnchor ?? (previousAnchor !== undefined ? previousAnchor + 1 : currentOrder.length);
+    }
+
+    const bucket = gapBuckets.get(gap);
+    if (bucket) bucket.push(messageId);
+    else gapBuckets.set(gap, [messageId]);
+  }
+
+  if (gapBuckets.size === 0) return currentOrder;
+
+  const merged: string[] = [];
+  for (let gap = 0; gap <= currentOrder.length; gap++) {
+    const bucket = gapBuckets.get(gap);
+    if (bucket) merged.push(...bucket);
+    if (gap < currentOrder.length) merged.push(currentOrder[gap]);
+  }
+  return merged;
+}
+
 export function createRestoreActions(
   set: SetState,
   getState: GetState,
@@ -172,49 +451,101 @@ export function createRestoreActions(
 
   return {
         /**
-         * 尾部分块加载第二阶段：把全量响应中的更早历史合并到会话头部。
+         * 尾部分块加载第二阶段：把全量响应中的缺失历史合并到正确位置。
          * 只补 messageMap/messageOrder/blocks，不触碰运行时状态。
          */
-        prependHistoryFromBackend: (response: LoadSessionResponseType): void => {
+        prependHistoryFromBackend: (
+          response: LoadSessionResponseType,
+          baseline?: SessionRestoreBaseline,
+        ): void => {
           const current = getState();
           // 会话已切换或数据未就绪时丢弃（补齐请求可能晚于切换返回）
           if (current.sessionId !== response.session.id || !current.isDataLoaded) {
             return;
           }
 
-          const olderMessages = [...response.messages]
-            .sort((a, b) => a.timestamp - b.timestamp)
-            .filter((msg) => !current.messageMap.has(msg.id));
-          if (olderMessages.length === 0) return;
+          const missingMessages = response.messages.filter(
+            (msg) => !current.messageMap.has(msg.id) && shouldRestoreMissingMessage(msg, baseline),
+          );
+          const retainedMessageIds = new Set(current.messageMap.keys());
+          for (const message of missingMessages) retainedMessageIds.add(message.id);
 
+          // Blocks belonging to a message that was deleted while the request
+          // was in flight are excluded with that message. A block that existed
+          // at request start but is now gone is also treated as an intentional
+          // live deletion and is not resurrected.
+          let blocksChanged = false;
           const messageMap = new Map(current.messageMap);
-          const prependOrder: string[] = [];
-          for (const msg of olderMessages) {
-            messageMap.set(msg.id, convertBackendMessage(msg));
-            prependOrder.push(msg.id);
-          }
-
-          // 块只增不改：已存在的块可能承载着流式/编辑后的最新内容
           const blocksMap = new Map(current.blocks);
           for (const blk of response.blocks) {
-            if (!blocksMap.has(blk.id)) {
-              blocksMap.set(blk.id, convertBackendBlock(blk));
+            if (blocksMap.has(blk.id)) continue;
+            if (!retainedMessageIds.has(blk.messageId)) continue;
+            if (baseline?.blockIds.has(blk.id)) continue;
+            blocksMap.set(blk.id, convertBackendBlock(blk));
+            blocksChanged = true;
+          }
+
+          const availableBlockIds = new Set(blocksMap.keys());
+          let messagesChanged = false;
+          for (const msg of response.messages) {
+            const currentMessage = messageMap.get(msg.id);
+            if (!currentMessage) {
+              if (!retainedMessageIds.has(msg.id)) continue;
+              const converted = convertBackendMessage(msg);
+              messageMap.set(msg.id, {
+                ...converted,
+                blockIds: converted.blockIds.filter((id) => availableBlockIds.has(id)),
+                variants: converted.variants?.map((variant) => ({
+                  ...variant,
+                  blockIds: variant.blockIds.filter((id) => availableBlockIds.has(id)),
+                })),
+              });
+              messagesChanged = true;
+              continue;
             }
+
+            const mergedMessage = mergeExistingMessageReferences(
+              currentMessage,
+              msg,
+              availableBlockIds,
+            );
+            if (mergedMessage !== currentMessage) {
+              messageMap.set(msg.id, mergedMessage);
+              messagesChanged = true;
+            }
+          }
+
+          const retainedBackendMessages = response.messages.filter((msg) => retainedMessageIds.has(msg.id));
+          const messageOrder = mergeHistoryMessageOrder(
+            current.messageOrder,
+            messageMap,
+            retainedBackendMessages,
+          );
+          const orderChanged = !hasSameIdOrder(messageOrder, current.messageOrder);
+          if (
+            !messagesChanged
+            && !blocksChanged
+            && !orderChanged
+          ) {
+            return;
           }
 
           set({
             messageMap,
-            messageOrder: [...prependOrder, ...current.messageOrder],
+            messageOrder,
             blocks: blocksMap,
           });
 
           console.log(
-            '[ChatStore] Prepended history from backend:',
+            '[ChatStore] Merged history from backend:',
             response.session.id,
-            `+${prependOrder.length} messages`
+            `+${missingMessages.length} messages`
           );
         },
-        restoreFromBackend: (response: LoadSessionResponseType): void => {
+        restoreFromBackend: (
+          response: LoadSessionResponseType,
+          baseline?: SessionRestoreBaseline,
+        ): void => {
           const { session, messages, blocks, state } = response;
           const t0 = performance.now();
 
@@ -661,6 +992,85 @@ export function createRestoreActions(
               .map((block) => block.id)
           );
 
+          // Listener registration and initial load deliberately run in
+          // parallel. If a stream (or an edit/delete) advanced the live Store
+          // while the backend snapshot was in flight, merge the snapshot into
+          // that live state instead of replacing it with idle/null and losing
+          // already received chunks.
+          const liveState = getState();
+          const liveStateAdvanced = !!baseline && (
+            liveState.sessionStatus !== baseline.sessionStatus
+            || liveState.currentStreamingMessageId !== baseline.currentStreamingMessageId
+            || hasIdentitySetChanged(liveState.messageMap.keys(), baseline.messageIds)
+            || hasIdentitySetChanged(liveState.blocks.keys(), baseline.blockIds)
+          );
+
+          let finalMessageMap = messageMap;
+          let finalMessageOrder = messageOrder;
+          let finalBlocksMap = blocksMap;
+          let finalSessionStatus: ChatStore['sessionStatus'] = 'idle';
+          let finalCurrentStreamingMessageId: string | null = null;
+          let finalActiveBlockIds = restoredActiveBlockIds;
+          let finalStreamingVariantIds = new Set<string>();
+
+          if (liveStateAdvanced) {
+            finalBlocksMap = new Map(liveState.blocks);
+            const retainedMessageIds = new Set(liveState.messageMap.keys());
+            for (const backendMessage of sortedMessages) {
+              if (
+                liveState.messageMap.has(backendMessage.id)
+                || shouldRestoreMissingMessage(backendMessage, baseline)
+              ) {
+                retainedMessageIds.add(backendMessage.id);
+              }
+            }
+            for (const backendBlock of blocks) {
+              if (finalBlocksMap.has(backendBlock.id)) continue;
+              if (!retainedMessageIds.has(backendBlock.messageId)) continue;
+              if (baseline?.blockIds.has(backendBlock.id)) continue;
+              finalBlocksMap.set(backendBlock.id, convertBackendBlock(backendBlock));
+            }
+
+            const availableBlockIds = new Set(finalBlocksMap.keys());
+            finalMessageMap = new Map(liveState.messageMap);
+            for (const backendMessage of sortedMessages) {
+              const existingMessage = finalMessageMap.get(backendMessage.id);
+              if (existingMessage) {
+                finalMessageMap.set(
+                  backendMessage.id,
+                  mergeExistingMessageReferences(
+                    existingMessage,
+                    backendMessage,
+                    availableBlockIds,
+                  ),
+                );
+              } else if (retainedMessageIds.has(backendMessage.id)) {
+                const converted = convertBackendMessage(backendMessage);
+                finalMessageMap.set(backendMessage.id, {
+                  ...converted,
+                  blockIds: converted.blockIds.filter((id) => availableBlockIds.has(id)),
+                  variants: converted.variants?.map((variant) => ({
+                    ...variant,
+                    blockIds: variant.blockIds.filter((id) => availableBlockIds.has(id)),
+                  })),
+                });
+              }
+            }
+            const retainedBackendMessages = sortedMessages.filter((message) => retainedMessageIds.has(message.id));
+            finalMessageOrder = mergeHistoryMessageOrder(
+              liveState.messageOrder,
+              finalMessageMap,
+              retainedBackendMessages,
+            );
+            finalSessionStatus = liveState.sessionStatus;
+            finalCurrentStreamingMessageId = liveState.currentStreamingMessageId;
+            finalActiveBlockIds = new Set([
+              ...restoredActiveBlockIds,
+              ...liveState.activeBlockIds,
+            ]);
+            finalStreamingVariantIds = new Set(liveState.streamingVariantIds);
+          }
+
           set({
             sessionId: session.id,
             mode: session.mode,
@@ -668,14 +1078,14 @@ export function createRestoreActions(
             description: '', // 文档 28 改造：description 由后端事件更新，恢复时初始化为空
             groupId: session.groupId ?? null,
             sessionMetadata: session.metadata ?? null,
-            sessionStatus: 'idle',
+            sessionStatus: finalSessionStatus,
             isDataLoaded: true,
-            messageMap,
-            messageOrder,
-            blocks: blocksMap,
-            currentStreamingMessageId: null,
-            activeBlockIds: restoredActiveBlockIds,
-            streamingVariantIds: new Set(),
+            messageMap: finalMessageMap,
+            messageOrder: finalMessageOrder,
+            blocks: finalBlocksMap,
+            currentStreamingMessageId: finalCurrentStreamingMessageId,
+            activeBlockIds: finalActiveBlockIds,
+            streamingVariantIds: finalStreamingVariantIds,
             chatParams,
             features,
             modeState,

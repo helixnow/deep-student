@@ -467,7 +467,7 @@ describe('tool_pack interleaving', () => {
       error: 'phase 3 failure',
       status: 'error',
     });
-    expect(mockStore.blocks.get('parent-tool_pack-0')).not.toHaveProperty('error');
+    expect(mockStore.blocks.get('parent-tool_pack-0')?.error).toBeUndefined();
   });
 });
 

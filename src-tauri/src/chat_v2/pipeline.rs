@@ -18,6 +18,7 @@
 //! - 数据持久化：每个阶段完成后立即保存
 
 pub(crate) use std::collections::{HashMap, HashSet};
+pub(crate) use std::sync::atomic::{AtomicBool, AtomicI64};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::time::Instant;
 
@@ -34,13 +35,12 @@ pub(crate) use super::approval_manager::{ApprovalManager, ApprovalRequest};
 pub(crate) use super::database::ChatV2Database;
 pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
-    AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
+    AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, ImageGenerationExecutor, KnowledgeExecutor,
-    LocalShellExecuteExecutor, LocalShellPreflightExecutor, AutomationExecutor, McpProposeExecutor, MemoryToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
-    WorkspaceFsExecutor,
-    WorkspaceToolExecutor,
+    LocalShellExecuteExecutor, LocalShellPreflightExecutor, McpProposeExecutor, MemoryToolExecutor,
+    SkillsExecutor, TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity,
+    UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -80,6 +80,8 @@ pub mod helpers;
 pub mod history;
 pub mod llm_adapter;
 pub mod multi_variant;
+#[cfg(test)]
+mod parallel_exec_tests;
 pub mod persistence;
 pub mod prompt;
 pub mod retrieval;
@@ -87,7 +89,6 @@ pub mod summary;
 pub mod token_resources;
 pub mod tool_loop;
 pub mod variant_adapter;
-#[cfg(test)] mod parallel_exec_tests;
 
 pub use compaction::*;
 pub use constants::*;
@@ -141,6 +142,10 @@ pub struct ChatV2Pipeline {
     /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
     /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
     compaction_locks: Arc<Mutex<HashSet<String>>>,
+    /// 全局 memory-flush 恢复单 worker 门闩。所有 Pipeline clone 共享状态。
+    memory_flush_recovery_running: Arc<AtomicBool>,
+    /// 恢复失败后的下次允许尝试时间，避免每条消息都重试故障依赖。
+    memory_flush_next_retry_at_ms: Arc<AtomicI64>,
 }
 
 impl ChatV2Pipeline {
@@ -180,6 +185,8 @@ impl ChatV2Pipeline {
             question_bank_service: None,
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
+            memory_flush_recovery_running: Arc::new(AtomicBool::new(false)),
+            memory_flush_next_retry_at_ms: Arc::new(AtomicI64::new(0)),
         }
     }
 
@@ -409,6 +416,10 @@ impl ChatV2Pipeline {
         cancel_token: CancellationToken,
         chat_v2_state: Option<Arc<super::state::ChatV2State>>,
     ) -> ChatV2Result<String> {
+        // 启动时 VFS/Lance 可能尚未就绪。正常请求入口做带退避的异步兜底，
+        // 不让 compaction 已提交的 memory-flush ledger 永久滞留。
+        self.schedule_memory_flush_recovery();
+
         // === Feature Flag 检查 ===
         let multi_variant_enabled = feature_flags::is_multi_variant_enabled();
         log::info!(
@@ -481,7 +492,10 @@ impl ChatV2Pipeline {
         let assistant_message_id = ctx.assistant_message_id.clone();
 
         // 创建事件发射器
-        let emitter = Arc::new(ChatV2EventEmitter::new(window.clone(), session_id.clone()));
+        let emitter = Arc::new(
+            ChatV2EventEmitter::new(window.clone(), session_id.clone())
+                .with_stream_generation(ctx.options.stream_generation),
+        );
 
         // 获取模型名称用于前端显示
         // 从 API 配置中解析 model_id 到真正的模型名称（如 "Qwen/Qwen3-8B"）
@@ -920,6 +934,21 @@ mod tests {
             "WorkspaceFsExecutor",
             "WorkspaceFsExecutor must be matched before GeneralToolExecutor"
         );
+    }
+
+    #[test]
+    fn test_external_mcp_workspace_name_bypasses_builtin_executor() {
+        let registry = ChatV2Pipeline::create_executor_registry();
+        for tool_name in ["mcp_workspace_file_read", "mcp.tools.workspace_file_read"] {
+            let executor = registry
+                .get_executor(tool_name)
+                .expect("external MCP tools must route through the general bridge");
+            assert_eq!(
+                executor.name(),
+                "GeneralToolExecutor",
+                "external MCP tools must not collide with WorkspaceFsExecutor"
+            );
+        }
     }
 
     #[test]

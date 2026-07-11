@@ -2,6 +2,7 @@ use super::*;
 use crate::canonical_tools::{
     encode_tool_name_for_api, prepare_external_tool, ApiNameSource, CanonicalExternalToolConfig,
 };
+use crate::chat_v2::tools::types::EXTERNAL_MCP_TOOL_PREFIX;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -198,7 +199,7 @@ pub(crate) fn external_tool_raw_name(tool_name: &str) -> String {
     if tool_name.starts_with(BUILTIN_NAMESPACE) {
         tool_name.to_string()
     } else {
-        format!("mcp_{}", tool_name)
+        format!("{}{}", EXTERNAL_MCP_TOOL_PREFIX, tool_name)
     }
 }
 
@@ -214,14 +215,25 @@ pub(crate) fn prepare_external_tool_schema(
     tool: &crate::chat_v2::types::McpToolSchema,
     include_server_suffix: bool,
 ) -> Option<PreparedExternalToolSchema> {
+    if tool
+        .server_id
+        .as_deref()
+        .is_some_and(|server_id| server_id.trim().is_empty())
+    {
+        return None;
+    }
     let prepared = prepare_external_tool(
         &tool.name,
         tool.server_id.as_deref(),
         tool.description.as_deref(),
         tool.input_schema.as_ref(),
         CanonicalExternalToolConfig {
-            internal_prefix: Some("mcp_"),
-            preserve_prefix: Some(BUILTIN_NAMESPACE),
+            internal_prefix: Some(EXTERNAL_MCP_TOOL_PREFIX),
+            // `server_id` is the source marker for selected external MCP
+            // schemas. Only trusted builtin/skill schemas (no server_id) may
+            // retain `builtin-`; otherwise an external server could claim a
+            // builtin executor name and cross the execution boundary.
+            preserve_prefix: tool.server_id.is_none().then_some(BUILTIN_NAMESPACE),
             api_name_prefix: None,
             include_server_suffix,
             api_name_source: ApiNameSource::InternalToolName,
@@ -902,7 +914,7 @@ mod tests {
         );
         assert_eq!(
             crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
-            Some("mcp_fetch:url__srv_server:alpha".to_string())
+            Some("[\"mcp-route-v1\",\"mcp_fetch:url\",\"server:alpha\"]".to_string())
         );
         assert_eq!(
             prepared.schema["function"]["name"],
@@ -920,5 +932,55 @@ mod tests {
         };
 
         assert!(prepare_external_tool_schema(&tool, false).is_none());
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_namespaces_external_builtin_name() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "builtin-workspace_file_read".to_string(),
+            server_id: Some("external-server".to_string()),
+            description: None,
+            input_schema: Some(json!({ "type": "object" })),
+        };
+
+        let prepared =
+            prepare_external_tool_schema(&tool, false).expect("schema should be prepared");
+
+        assert_eq!(prepared.raw_tool_name, "mcp_builtin-workspace_file_read");
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
+            Some("mcp_builtin-workspace_file_read".to_string())
+        );
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_preserves_trusted_builtin_name() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "builtin-workspace_file_read".to_string(),
+            server_id: None,
+            description: None,
+            input_schema: Some(json!({ "type": "object" })),
+        };
+
+        let prepared =
+            prepare_external_tool_schema(&tool, false).expect("schema should be prepared");
+
+        assert_eq!(prepared.raw_tool_name, "builtin-workspace_file_read");
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
+            Some("builtin-workspace_file_read".to_string())
+        );
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_rejects_blank_server_id() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "web_search".to_string(),
+            server_id: Some("   ".to_string()),
+            description: None,
+            input_schema: Some(json!({ "type": "object" })),
+        };
+
+        assert!(prepare_external_tool_schema(&tool, true).is_none());
     }
 }

@@ -1139,8 +1139,7 @@ impl QBankExecutor {
                 let result = service
                     .reset_questions_progress(&question_ids)
                     .map_err(|e| format!("Failed to reset progress: {}", e))?;
-                let entity_ids: Vec<String> =
-                    card_ids.iter().map(|id| (*id).to_string()).collect();
+                let entity_ids: Vec<String> = card_ids.iter().map(|id| (*id).to_string()).collect();
                 emit_qbank_changed(ctx, "reset_progress", &entity_ids);
                 return Ok(json!({
                     "success": true,

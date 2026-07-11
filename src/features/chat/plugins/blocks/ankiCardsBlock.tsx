@@ -832,7 +832,7 @@ const ActionButtons: React.FC<{
       cardIds: cardIds.length > 0 ? cardIds : cards.map((_, i) => `chat-batch-${blockId}-${i}`),
     };
     // R2-04：收编双路径——统一走 onActivation startReview（已开窗 activate；未开窗 fallbackLaunch）
-    workbenchBus.activate({
+    void workbenchBus.activate({
       typeId: 'flashcards',
       instanceKey: '',
       action: 'startReview',

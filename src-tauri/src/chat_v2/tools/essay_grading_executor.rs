@@ -90,7 +90,10 @@ fn truncate_chars(s: &str, max_chars: usize) -> String {
         s.to_string()
     } else {
         let truncated: String = s.chars().take(max_chars).collect();
-        format!("{}…（已截断，完整内容请用 essay_get_result 查询）", truncated)
+        format!(
+            "{}…（已截断，完整内容请用 essay_get_result 查询）",
+            truncated
+        )
     }
 }
 
@@ -132,7 +135,11 @@ impl EssayGradingExecutor {
     // essay_grade：发起批改（异步任务）
     // ========================================================================
 
-    async fn execute_grade(&self, call: &ToolCall, ctx: &ExecutionContext) -> Result<Value, String> {
+    async fn execute_grade(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
         let text = call
             .arguments
             .get("text")
@@ -149,7 +156,11 @@ impl EssayGradingExecutor {
             ));
         }
 
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?.clone();
+        let vfs_db = ctx
+            .vfs_db
+            .as_ref()
+            .ok_or("VFS database not available")?
+            .clone();
         let llm_manager = ctx
             .llm_manager
             .as_ref()
@@ -194,7 +205,9 @@ impl EssayGradingExecutor {
             if let Some(sid) = session_id_arg {
                 let session = VfsEssayRepo::get_session(&vfs_db, &sid)
                     .map_err(|e| format!("获取批改会话失败: {}", e))?
-                    .ok_or_else(|| format!("批改会话不存在: {}（请先用 essay_list_sessions 查询）", sid))?;
+                    .ok_or_else(|| {
+                        format!("批改会话不存在: {}（请先用 essay_list_sessions 查询）", sid)
+                    })?;
                 let latest = VfsEssayRepo::get_latest_round_number(&vfs_db, &session.id)
                     .map_err(|e| format!("获取最新轮次失败: {}", e))?;
                 // 多轮上下文：带上上一轮的批改结果与原文，便于流水线做修改对比
@@ -206,7 +219,11 @@ impl EssayGradingExecutor {
                                 .ok()
                                 .flatten();
                             (
-                                if prev_text.is_empty() { None } else { Some(prev_text) },
+                                if prev_text.is_empty() {
+                                    None
+                                } else {
+                                    Some(prev_text)
+                                },
                                 prev_input,
                             )
                         }
@@ -470,10 +487,11 @@ impl EssayGradingExecutor {
                     .unwrap_or(0) as i32;
                 if let Some(vfs_db) = ctx.vfs_db.as_ref() {
                     if let Ok(Some(essay)) = VfsEssayRepo::get_round(vfs_db, &sid, round) {
-                        let result_text =
-                            Self::extract_result_text(essay.grading_result.as_ref());
-                        payload["grading_result"] =
-                            json!(truncate_chars(&result_text, MAX_RESULT_CHARS_IN_TOOL_OUTPUT));
+                        let result_text = Self::extract_result_text(essay.grading_result.as_ref());
+                        payload["grading_result"] = json!(truncate_chars(
+                            &result_text,
+                            MAX_RESULT_CHARS_IN_TOOL_OUTPUT
+                        ));
                         if let Some(dims) = essay.dimension_scores.as_ref() {
                             payload["dimension_scores"] = dims.clone();
                         }
@@ -843,7 +861,10 @@ mod tests {
             EssayGradingExecutor::extract_overall_score(None, Some(40)),
             Some(40.0)
         );
-        assert_eq!(EssayGradingExecutor::extract_overall_score(None, None), None);
+        assert_eq!(
+            EssayGradingExecutor::extract_overall_score(None, None),
+            None
+        );
     }
 
     #[test]

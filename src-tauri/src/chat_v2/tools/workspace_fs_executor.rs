@@ -1,4 +1,5 @@
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -10,8 +11,8 @@ use tauri::Manager;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{
-    artifact_root, create_write_backup, normalize_runtime_relative_path, runtime_root_by_id,
-    temp_root, RuntimeRoot, RuntimeRootKind,
+    artifact_mutation_guard, create_write_backup_from_file, normalize_runtime_relative_path,
+    revalidate_runtime_root, runtime_root_by_id, temp_root, RuntimeRoot, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -20,6 +21,25 @@ pub mod tool_names {
     pub const FILE_LIST: &str = "workspace_file_list";
     pub const FILE_READ: &str = "workspace_file_read";
     pub const ARTIFACT_WRITE: &str = "workspace_artifact_write";
+}
+
+const MAX_FILE_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
+const MAX_ARTIFACT_WRITE_BYTES: usize = 16 * 1024 * 1024;
+const READ_BUFFER_BYTES: usize = 64 * 1024;
+const MAX_DIRECTORY_SCAN_ENTRIES: usize = 2_000;
+
+struct BoundedFileRead {
+    visible: Vec<u8>,
+    bytes: u64,
+    sha256: String,
+    truncated: bool,
+}
+
+struct BoundedDirectoryList {
+    entries: Vec<Value>,
+    skipped: usize,
+    scanned: usize,
+    truncated: bool,
 }
 
 pub struct WorkspaceFsExecutor;
@@ -33,38 +53,65 @@ impl WorkspaceFsExecutor {
         strip_tool_namespace(tool_name)
     }
 
-    fn resolve_root(root_id: Option<&str>, ctx: &ExecutionContext) -> Result<RuntimeRoot, String> {
+    fn resolve_root(
+        root_id: Option<&str>,
+        ctx: &ExecutionContext,
+    ) -> Result<(RuntimeRoot, PathBuf), String> {
         let state = ctx.window.state::<AppState>();
-        runtime_root_by_id(
+        let root = runtime_root_by_id(
             &ctx.window.app_handle(),
             &state.database,
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             root_id,
             true,
-        )
+        )?;
+        let canonical = revalidate_runtime_root(&state.database, &root)?;
+        Ok((root, canonical))
     }
 
     fn normalize_relative_path(raw: Option<&str>) -> Result<PathBuf, String> {
         normalize_runtime_relative_path(raw)
     }
 
-    fn ensure_inside_existing(root: &RuntimeRoot, relative: &Path) -> Result<PathBuf, String> {
-        let root_canon = root
-            .path
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize runtime root: {}", e))?;
-        let target = root.path.join(relative);
+    fn ensure_no_symlink_components(root_canon: &Path, relative: &Path) -> Result<(), String> {
+        let mut current = root_canon.to_path_buf();
+        for component in relative.components() {
+            let std::path::Component::Normal(part) = component else {
+                continue;
+            };
+            current.push(part);
+            let metadata = fs::symlink_metadata(&current).map_err(|error| {
+                format!("Path does not exist or cannot be inspected: {}", error)
+            })?;
+            if metadata.file_type().is_symlink() {
+                return Err("Workspace tools do not follow symlinks".to_string());
+            }
+        }
+        Ok(())
+    }
+
+    fn ensure_inside_existing(root_canon: &Path, relative: &Path) -> Result<PathBuf, String> {
+        Self::ensure_no_symlink_components(root_canon, relative)?;
+        let target = root_canon.join(relative);
         let target_canon = target
             .canonicalize()
             .map_err(|e| format!("Path does not exist or cannot be read: {}", e))?;
         if !target_canon.starts_with(&root_canon) {
             return Err("Path escapes the selected runtime root".to_string());
         }
+        let canonical_relative = target_canon
+            .strip_prefix(root_canon)
+            .map_err(|_| "Path escapes the selected runtime root".to_string())?;
+        Self::ensure_public_runtime_path(canonical_relative)?;
         Ok(target_canon)
     }
 
-    fn ensure_write_target(root: &RuntimeRoot, relative: &Path) -> Result<PathBuf, String> {
+    fn ensure_write_target(
+        root: &RuntimeRoot,
+        root_canon: &Path,
+        relative: &Path,
+    ) -> Result<PathBuf, String> {
         if root.kind != RuntimeRootKind::Artifact {
             return Err("Only the artifacts runtime root is writable".to_string());
         }
@@ -72,13 +119,7 @@ impl WorkspaceFsExecutor {
             return Err("Artifact path is required".to_string());
         }
 
-        fs::create_dir_all(&root.path)
-            .map_err(|e| format!("Failed to create artifact root: {}", e))?;
-        let root_canon = root
-            .path
-            .canonicalize()
-            .map_err(|e| format!("Failed to canonicalize artifact root: {}", e))?;
-        let target = root.path.join(relative);
+        let target = root_canon.join(relative);
         if let Ok(meta) = fs::symlink_metadata(&target) {
             if meta.file_type().is_symlink() {
                 return Err("Writing through symlinks is not allowed".to_string());
@@ -87,17 +128,37 @@ impl WorkspaceFsExecutor {
                 return Err("Cannot write text content to a directory".to_string());
             }
         }
-        if let Some(parent) = target.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
-            let parent_canon = parent
-                .canonicalize()
-                .map_err(|e| format!("Failed to canonicalize parent directory: {}", e))?;
-            if !parent_canon.starts_with(&root_canon) {
-                return Err("Artifact path escapes the runtime root".to_string());
+        let mut parent = root_canon.to_path_buf();
+        if let Some(relative_parent) = relative.parent() {
+            for component in relative_parent.components() {
+                let std::path::Component::Normal(part) = component else {
+                    continue;
+                };
+                parent.push(part);
+                match fs::create_dir(&parent) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => {
+                        return Err(format!("Failed to create artifact parent: {}", error))
+                    }
+                }
+                let metadata = fs::symlink_metadata(&parent)
+                    .map_err(|error| format!("Failed to inspect artifact parent: {}", error))?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err("Artifact parent must be a real directory".to_string());
+                }
             }
         }
-        Ok(target)
+        let parent_canon = parent
+            .canonicalize()
+            .map_err(|e| format!("Failed to canonicalize parent directory: {}", e))?;
+        if !parent_canon.starts_with(root_canon) {
+            return Err("Artifact path escapes the runtime root".to_string());
+        }
+        let file_name = relative
+            .file_name()
+            .ok_or_else(|| "Artifact target has no file name".to_string())?;
+        Ok(parent_canon.join(file_name))
     }
 
     fn root_json(root: &RuntimeRoot) -> Value {
@@ -116,61 +177,305 @@ impl WorkspaceFsExecutor {
         hex::encode(hasher.finalize())
     }
 
+    fn is_private_component(component: &std::ffi::OsStr) -> bool {
+        let Some(name) = component.to_str() else {
+            return true;
+        };
+        let lower = name.trim().to_ascii_lowercase();
+        if lower.is_empty() || lower.starts_with('.') {
+            return true;
+        }
+
+        const SECRET_NAMES: &[&str] = &[
+            "credential",
+            "credentials",
+            "credential.json",
+            "credentials.json",
+            "secret",
+            "secrets",
+            "secret.json",
+            "secrets.json",
+            "token",
+            "tokens",
+            "token.json",
+            "tokens.json",
+            "password",
+            "passwords",
+            "passwd",
+            "shadow",
+            "id_rsa",
+            "id_dsa",
+            "id_ecdsa",
+            "id_ed25519",
+        ];
+        SECRET_NAMES.contains(&lower.as_str())
+            || lower.ends_with(".pem")
+            || lower.ends_with(".key")
+            || lower.ends_with(".p12")
+            || lower.ends_with(".pfx")
+            || lower.contains("private_key")
+            || lower.contains("private-key")
+            || lower.starts_with("service-account")
+            || lower.starts_with("service_account")
+    }
+
+    fn ensure_public_runtime_path(relative: &Path) -> Result<(), String> {
+        if relative
+            .components()
+            .filter_map(|component| match component {
+                std::path::Component::Normal(value) => Some(value),
+                _ => None,
+            })
+            .any(Self::is_private_component)
+        {
+            return Err(
+                "Hidden files and common credential/secret paths are not available to workspace tools"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    fn read_file_bounded(target: &Path, max_bytes: usize) -> Result<BoundedFileRead, String> {
+        let before = fs::symlink_metadata(target)
+            .map_err(|error| format!("Failed to inspect file: {}", error))?;
+        if before.file_type().is_symlink() || !before.is_file() {
+            return Err("workspace_file_read path must be a regular file".to_string());
+        }
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+        }
+        let mut file = options.open(target).map_err(|error| {
+            format!("Failed to open file without following symlinks: {}", error)
+        })?;
+        let metadata = file
+            .metadata()
+            .map_err(|error| format!("Failed to read file metadata: {}", error))?;
+        if !metadata.is_file() {
+            return Err("workspace_file_read path must be a file".to_string());
+        }
+        if !Self::metadata_matches(&before, &metadata) {
+            return Err("workspace_file_read target changed while it was being opened".to_string());
+        }
+        if metadata.len() > MAX_FILE_SOURCE_BYTES {
+            return Err(format!(
+                "workspace_file_read refuses files larger than {} MiB",
+                MAX_FILE_SOURCE_BYTES / (1024 * 1024)
+            ));
+        }
+
+        let mut visible = Vec::with_capacity(max_bytes.min(metadata.len() as usize));
+        let mut hasher = Sha256::new();
+        let mut total = 0u64;
+        let mut buffer = [0u8; READ_BUFFER_BYTES];
+        loop {
+            let read = file
+                .read(&mut buffer)
+                .map_err(|error| format!("Failed to read file: {}", error))?;
+            if read == 0 {
+                break;
+            }
+            total = total
+                .checked_add(read as u64)
+                .ok_or_else(|| "File length overflow while reading".to_string())?;
+            if total > MAX_FILE_SOURCE_BYTES {
+                return Err(format!(
+                    "workspace_file_read stopped because the file grew beyond {} MiB",
+                    MAX_FILE_SOURCE_BYTES / (1024 * 1024)
+                ));
+            }
+            hasher.update(&buffer[..read]);
+            let remaining = max_bytes.saturating_sub(visible.len());
+            if remaining > 0 {
+                visible.extend_from_slice(&buffer[..read.min(remaining)]);
+            }
+        }
+
+        Ok(BoundedFileRead {
+            truncated: total > visible.len() as u64,
+            visible,
+            bytes: total,
+            sha256: hex::encode(hasher.finalize()),
+        })
+    }
+
+    fn metadata_matches(before: &fs::Metadata, opened: &fs::Metadata) -> bool {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            return before.dev() == opened.dev() && before.ino() == opened.ino();
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            return before.volume_serial_number() == opened.volume_serial_number()
+                && before.file_index() == opened.file_index();
+        }
+        #[cfg(not(any(unix, windows)))]
+        {
+            before.len() == opened.len()
+                && before.modified().ok().is_some()
+                && before.modified().ok() == opened.modified().ok()
+        }
+    }
+
+    fn decode_utf8_prefix(bytes: &[u8], truncated: bool) -> Result<String, String> {
+        match std::str::from_utf8(bytes) {
+            Ok(text) => Ok(text.to_string()),
+            Err(error) if truncated && error.error_len().is_none() => {
+                Ok(String::from_utf8_lossy(&bytes[..error.valid_up_to()]).to_string())
+            }
+            Err(_) => {
+                Err("workspace_file_read currently supports UTF-8 text files only".to_string())
+            }
+        }
+    }
+
+    fn list_directory_bounded(
+        target: &Path,
+        relative: &Path,
+        max_entries: usize,
+    ) -> Result<BoundedDirectoryList, String> {
+        let mut iterator =
+            fs::read_dir(target).map_err(|error| format!("Failed to list directory: {}", error))?;
+        let scan_limit = max_entries
+            .saturating_mul(4)
+            .max(max_entries)
+            .min(MAX_DIRECTORY_SCAN_ENTRIES);
+        let mut entries = Vec::with_capacity(max_entries);
+        let mut skipped = 0usize;
+        let mut scanned = 0usize;
+
+        while scanned < scan_limit && entries.len() < max_entries {
+            let Some(entry) = iterator.next() else {
+                return Ok(BoundedDirectoryList {
+                    entries,
+                    skipped,
+                    scanned,
+                    truncated: false,
+                });
+            };
+            let entry =
+                entry.map_err(|error| format!("Failed to read directory entry: {}", error))?;
+            scanned += 1;
+            let name = entry.file_name();
+            if Self::is_private_component(&name) {
+                skipped += 1;
+                continue;
+            }
+            let file_type = entry
+                .file_type()
+                .map_err(|error| format!("Failed to read entry type: {}", error))?;
+            if file_type.is_symlink() {
+                skipped += 1;
+                continue;
+            }
+            let metadata = entry
+                .metadata()
+                .map_err(|error| format!("Failed to read entry metadata: {}", error))?;
+            let name_display = name.to_string_lossy().to_string();
+            let entry_relative = relative.join(&name);
+            entries.push(json!({
+                "name": name_display,
+                "relative_path": entry_relative.to_string_lossy(),
+                "kind": if metadata.is_dir() { "directory" } else { "file" },
+                "bytes": if metadata.is_file() { Some(metadata.len()) } else { None },
+            }));
+        }
+
+        let truncated = match iterator.next() {
+            Some(Ok(_)) => true,
+            Some(Err(error)) => {
+                return Err(format!("Failed to read directory entry: {}", error));
+            }
+            None => false,
+        };
+        Ok(BoundedDirectoryList {
+            entries,
+            skipped,
+            scanned,
+            truncated,
+        })
+    }
+
+    fn atomic_write_bytes(target: &Path, bytes: &[u8], overwrite: bool) -> Result<(), String> {
+        let parent = target
+            .parent()
+            .ok_or_else(|| "Artifact target has no parent directory".to_string())?;
+        let mut staged = tempfile::NamedTempFile::new_in(parent)
+            .map_err(|error| format!("Failed to create staged artifact: {}", error))?;
+        staged
+            .write_all(bytes)
+            .map_err(|error| format!("Failed to stage artifact: {}", error))?;
+        staged
+            .as_file_mut()
+            .sync_all()
+            .map_err(|error| format!("Failed to sync staged artifact: {}", error))?;
+
+        // Re-check the destination immediately before the atomic replacement.
+        match fs::symlink_metadata(target) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err("Refusing to replace a symlink or non-file artifact".to_string());
+                }
+                if !overwrite {
+                    return Err("Artifact already exists and overwrite=false".to_string());
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("Failed to inspect artifact target: {}", error)),
+        }
+
+        if overwrite {
+            staged.persist(target).map_err(|error| {
+                format!("Failed to atomically replace artifact: {}", error.error)
+            })?;
+        } else {
+            staged.persist_noclobber(target).map_err(|error| {
+                format!("Failed to atomically create artifact: {}", error.error)
+            })?;
+        }
+        #[cfg(unix)]
+        if let Ok(directory) = fs::File::open(parent) {
+            let _ = directory.sync_all();
+        }
+        Ok(())
+    }
+
     async fn execute_file_list(
         &self,
         args: &Value,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        let root = Self::resolve_root(args.get("root_id").and_then(|v| v.as_str()), ctx)?;
+        let (root, root_canon) =
+            Self::resolve_root(args.get("root_id").and_then(|v| v.as_str()), ctx)?;
         let relative = Self::normalize_relative_path(args.get("path").and_then(|v| v.as_str()))?;
+        Self::ensure_public_runtime_path(&relative)?;
         let max_entries = args
             .get("max_entries")
             .and_then(|v| v.as_u64())
             .unwrap_or(200)
             .clamp(1, 500) as usize;
-        let target = Self::ensure_inside_existing(&root, &relative)?;
+        let target = Self::ensure_inside_existing(&root_canon, &relative)?;
         let metadata = fs::metadata(&target).map_err(|e| format!("Failed to read path: {}", e))?;
         if !metadata.is_dir() {
             return Err("workspace_file_list path must be a directory".to_string());
         }
 
-        let mut entries = Vec::new();
-        let mut skipped = 0usize;
-        for entry in
-            fs::read_dir(&target).map_err(|e| format!("Failed to list directory: {}", e))?
-        {
-            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-            let file_type = entry
-                .file_type()
-                .map_err(|e| format!("Failed to read entry type: {}", e))?;
-            if file_type.is_symlink() {
-                skipped += 1;
-                continue;
-            }
-            if entries.len() >= max_entries {
-                skipped += 1;
-                continue;
-            }
-
-            let name = entry.file_name().to_string_lossy().to_string();
-            let entry_relative = relative.join(&name);
-            let meta = entry
-                .metadata()
-                .map_err(|e| format!("Failed to read entry metadata: {}", e))?;
-            entries.push(json!({
-                "name": name,
-                "relative_path": entry_relative.to_string_lossy(),
-                "kind": if meta.is_dir() { "directory" } else { "file" },
-                "bytes": if meta.is_file() { Some(meta.len()) } else { None },
-            }));
-        }
+        let listed = Self::list_directory_bounded(&target, &relative, max_entries)?;
 
         Ok(json!({
             "root": Self::root_json(&root),
             "root_id": root.id.clone(),
             "relative_path": relative.to_string_lossy(),
-            "entries": entries,
-            "skipped": skipped,
+            "entries": listed.entries,
+            "skipped": listed.skipped,
+            "scanned": listed.scanned,
+            "truncated": listed.truncated,
         }))
     }
 
@@ -179,41 +484,30 @@ impl WorkspaceFsExecutor {
         args: &Value,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        let root = Self::resolve_root(args.get("root_id").and_then(|v| v.as_str()), ctx)?;
+        let (root, root_canon) =
+            Self::resolve_root(args.get("root_id").and_then(|v| v.as_str()), ctx)?;
         let relative = Self::normalize_relative_path(args.get("path").and_then(|v| v.as_str()))?;
         if relative.as_os_str().is_empty() {
             return Err("path is required".to_string());
         }
+        Self::ensure_public_runtime_path(&relative)?;
         let max_bytes = args
             .get("max_bytes")
             .and_then(|v| v.as_u64())
             .unwrap_or(64 * 1024)
             .clamp(1, 1024 * 1024) as usize;
-        let target = Self::ensure_inside_existing(&root, &relative)?;
-        let meta =
-            fs::metadata(&target).map_err(|e| format!("Failed to read file metadata: {}", e))?;
-        if !meta.is_file() {
-            return Err("workspace_file_read path must be a file".to_string());
-        }
-        let bytes = fs::read(&target).map_err(|e| format!("Failed to read file: {}", e))?;
-        let truncated = bytes.len() > max_bytes;
-        let visible = if truncated {
-            &bytes[..max_bytes]
-        } else {
-            &bytes[..]
-        };
-        let content = String::from_utf8(visible.to_vec()).map_err(|_| {
-            "workspace_file_read currently supports UTF-8 text files only".to_string()
-        })?;
+        let target = Self::ensure_inside_existing(&root_canon, &relative)?;
+        let read = Self::read_file_bounded(&target, max_bytes)?;
+        let content = Self::decode_utf8_prefix(&read.visible, read.truncated)?;
 
         Ok(json!({
             "root": Self::root_json(&root),
             "root_id": root.id.clone(),
             "relative_path": relative.to_string_lossy(),
             "content": content,
-            "bytes": bytes.len(),
-            "sha256": Self::sha256_hex(&bytes),
-            "truncated": truncated,
+            "bytes": read.bytes,
+            "sha256": read.sha256,
+            "truncated": read.truncated,
         }))
     }
 
@@ -222,8 +516,10 @@ impl WorkspaceFsExecutor {
         args: &Value,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        let root = artifact_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        let _mutation_guard = artifact_mutation_guard();
+        let (root, root_canon) = Self::resolve_root(Some("artifacts"), ctx)?;
         let relative = Self::normalize_relative_path(args.get("path").and_then(|v| v.as_str()))?;
+        Self::ensure_public_runtime_path(&relative)?;
         let content = args
             .get("content")
             .and_then(|v| v.as_str())
@@ -232,52 +528,61 @@ impl WorkspaceFsExecutor {
             .get("overwrite")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
-        let target = Self::ensure_write_target(&root, &relative)?;
-        let before = if target.exists() {
-            if !overwrite {
-                return Err("Artifact already exists and overwrite=false".to_string());
+        if content.len() > MAX_ARTIFACT_WRITE_BYTES {
+            return Err(format!(
+                "Artifact content exceeds the {} MiB write limit",
+                MAX_ARTIFACT_WRITE_BYTES / (1024 * 1024)
+            ));
+        }
+        let target = Self::ensure_write_target(&root, &root_canon, &relative)?;
+        let existed = match fs::symlink_metadata(&target) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err("Existing artifact must be a regular file".to_string());
+                }
+                true
             }
-            Some(
-                fs::read(&target)
-                    .map_err(|e| format!("Failed to read existing artifact: {}", e))?,
-            )
-        } else {
-            None
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => return Err(format!("Failed to inspect artifact target: {}", error)),
         };
+        if existed && !overwrite {
+            return Err("Artifact already exists and overwrite=false".to_string());
+        }
         let file_name = relative
             .file_name()
             .map(|v| v.to_string_lossy().to_string())
             .unwrap_or_else(|| relative.to_string_lossy().to_string());
         // 覆盖已存在文件前先把旧内容备份到 temp 根备份区；备份失败则整个写入中止，
         // 保证只要返回了 modified change，就一定有可用的 backup_ref 供撤销恢复。
-        let backup_ref = match before.as_ref() {
-            Some(old_bytes) => {
-                let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
-                Some(create_write_backup(&temp.path, &file_name, old_bytes)?)
-            }
-            None => None,
+        let backup = if existed {
+            let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+            let snapshot = create_write_backup_from_file(&temp.path, &file_name, &target)?;
+            Some((temp.path, snapshot))
+        } else {
+            None
         };
 
-        fs::write(&target, content.as_bytes())
-            .map_err(|e| format!("Failed to write artifact: {}", e))?;
-        let after = fs::read(&target).map_err(|e| format!("Failed to verify artifact: {}", e))?;
-        let op = if before.is_some() {
-            "modified"
-        } else {
-            "created"
-        };
+        if let Err(error) = Self::atomic_write_bytes(&target, content.as_bytes(), overwrite) {
+            if let Some((temp_path, snapshot)) = &backup {
+                let _ = fs::remove_file(temp_path.join(&snapshot.backup_ref));
+            }
+            return Err(error);
+        }
+        let after_hash = Self::sha256_hex(content.as_bytes());
+        let after_bytes = content.len();
+        let op = if existed { "modified" } else { "created" };
 
         let mut change = json!({
             "op": op,
             "root_id": root.id.clone(),
             "relative_path": relative.to_string_lossy(),
-            "before_hash": before.as_ref().map(|bytes| Self::sha256_hex(bytes)),
-            "after_hash": Self::sha256_hex(&after),
-            "bytes": after.len(),
+            "before_hash": backup.as_ref().map(|(_, snapshot)| snapshot.sha256.clone()),
+            "after_hash": after_hash.clone(),
+            "bytes": after_bytes,
         });
         // backup_ref 仅在覆盖写时出现，None 时不落 key，保持旧前端向后兼容
-        if let Some(ref backup_ref) = backup_ref {
-            change["backup_ref"] = json!(backup_ref);
+        if let Some((_, snapshot)) = &backup {
+            change["backup_ref"] = json!(snapshot.backup_ref);
         }
 
         Ok(json!({
@@ -285,13 +590,13 @@ impl WorkspaceFsExecutor {
             "root_id": root.id.clone(),
             "path": relative.to_string_lossy(),
             "file_name": file_name,
-            "bytes_written": after.len(),
-            "sha256": Self::sha256_hex(&after),
+            "bytes_written": after_bytes,
+            "sha256": after_hash,
             "file_change_summary": {
-                "created": if before.is_none() { 1 } else { 0 },
-                "modified": if before.is_some() { 1 } else { 0 },
+                "created": if existed { 0 } else { 1 },
+                "modified": if existed { 1 } else { 0 },
                 "deleted": 0,
-                "bytes_written": after.len(),
+                "bytes_written": after_bytes,
                 "changes": [change]
             }
         }))
@@ -399,10 +704,10 @@ mod tests {
 
     #[test]
     fn sanitizes_session_dir() {
-        assert_eq!(
-            crate::chat_v2::runtime_roots::safe_session_dir("sess:abc/123"),
-            "sess_abc_123"
-        );
+        let unsafe_id = crate::chat_v2::runtime_roots::safe_session_dir("sess:abc/123");
+        let formerly_colliding = crate::chat_v2::runtime_roots::safe_session_dir("sess_abc_123");
+        assert!(unsafe_id.starts_with("v2-sess_abc_123-"));
+        assert_ne!(unsafe_id, formerly_colliding);
     }
 
     #[test]
@@ -435,5 +740,124 @@ mod tests {
             executor.sensitivity_level("builtin-workspace_file_read"),
             ToolSensitivity::Low
         );
+    }
+
+    #[test]
+    fn hidden_and_secret_paths_are_private_by_default() {
+        for path in [
+            ".env",
+            ".npmrc",
+            ".ssh/id_ed25519",
+            "config/credentials.json",
+            "keys/server.pem",
+            "auth/private_key.txt",
+        ] {
+            assert!(
+                WorkspaceFsExecutor::ensure_public_runtime_path(Path::new(path)).is_err(),
+                "expected private path rejection for {path}"
+            );
+        }
+        assert!(WorkspaceFsExecutor::ensure_public_runtime_path(Path::new(
+            "notes/semester-plan.md"
+        ))
+        .is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_path_resolution_rejects_symlinked_private_targets() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        fs::write(temp_dir.path().join(".env"), "SECRET=value").expect("secret");
+        symlink(
+            temp_dir.path().join(".env"),
+            temp_dir.path().join("public.txt"),
+        )
+        .expect("symlink");
+        let root_canon = temp_dir.path().canonicalize().expect("canonical root");
+
+        let error =
+            WorkspaceFsExecutor::ensure_inside_existing(&root_canon, Path::new("public.txt"))
+                .expect_err("symlink must be rejected");
+        assert!(error.contains("symlink"));
+    }
+
+    #[test]
+    fn directory_list_stops_after_requested_limit() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        for index in 0..50 {
+            fs::write(temp_dir.path().join(format!("file-{index:03}.txt")), "x")
+                .expect("write file");
+        }
+
+        let listed = WorkspaceFsExecutor::list_directory_bounded(temp_dir.path(), Path::new(""), 5)
+            .expect("list");
+        assert_eq!(listed.entries.len(), 5);
+        assert!(listed.truncated);
+        assert!(listed.scanned <= 20);
+    }
+
+    #[test]
+    fn directory_list_filters_hidden_and_secret_entries() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        fs::write(temp_dir.path().join("visible.txt"), "ok").expect("visible");
+        fs::write(temp_dir.path().join(".env"), "secret").expect("hidden");
+        fs::write(temp_dir.path().join("credentials.json"), "secret").expect("credentials");
+
+        let listed =
+            WorkspaceFsExecutor::list_directory_bounded(temp_dir.path(), Path::new(""), 10)
+                .expect("list");
+        let names = listed
+            .entries
+            .iter()
+            .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["visible.txt"]);
+        assert_eq!(listed.skipped, 2);
+        assert!(!listed.truncated);
+    }
+
+    #[test]
+    fn file_read_streams_full_hash_but_keeps_only_visible_prefix() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("unicode.txt");
+        let content = "ab你cd";
+        fs::write(&target, content).expect("write");
+
+        let read = WorkspaceFsExecutor::read_file_bounded(&target, 4).expect("read");
+        assert_eq!(read.bytes, content.len() as u64);
+        assert_eq!(read.visible.len(), 4);
+        assert!(read.truncated);
+        assert_eq!(
+            read.sha256,
+            WorkspaceFsExecutor::sha256_hex(content.as_bytes())
+        );
+        assert_eq!(
+            WorkspaceFsExecutor::decode_utf8_prefix(&read.visible, read.truncated).unwrap(),
+            "ab"
+        );
+    }
+
+    #[test]
+    fn file_read_rejects_oversized_sparse_files_before_allocating() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("oversized.txt");
+        let file = fs::File::create(&target).expect("create");
+        file.set_len(MAX_FILE_SOURCE_BYTES + 1).expect("set length");
+        assert!(WorkspaceFsExecutor::read_file_bounded(&target, 1024).is_err());
+    }
+
+    #[test]
+    fn atomic_write_replaces_or_preserves_existing_content() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let target = temp_dir.path().join("artifact.md");
+        fs::write(&target, "old").expect("old");
+
+        WorkspaceFsExecutor::atomic_write_bytes(&target, b"new", true).expect("replace");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new");
+
+        assert!(WorkspaceFsExecutor::atomic_write_bytes(&target, b"unexpected", false).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "new");
     }
 }

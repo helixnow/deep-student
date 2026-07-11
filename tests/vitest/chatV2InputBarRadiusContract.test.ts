@@ -46,6 +46,15 @@ describe('chat v2 input bar radius contract', () => {
 
   it('keeps only the primary send and stop affordances circular inside the composer', () => {
     expect(inputBarSource).toContain("const studyUiSendButtonSizeClass =\n    'h-11 w-11 !rounded-full");
-    expect(inputBarSource).toContain("className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 !rounded-full shadow-sm')}");
+    const stopButtonStart = inputBarSource.indexOf('data-testid="btn-stop"');
+    const stopButtonEnd = inputBarSource.indexOf('</NotionButton>', stopButtonStart);
+    const stopButton = inputBarSource.slice(stopButtonStart, stopButtonEnd);
+    const sendButtonStart = inputBarSource.indexOf('data-testid="btn-send"');
+    const sendButtonEnd = inputBarSource.indexOf('</button>', sendButtonStart);
+    const sendButton = inputBarSource.slice(sendButtonStart, sendButtonEnd);
+
+    expect(stopButton).toContain('!rounded-full');
+    expect(stopButton).toContain('max-md:!w-11 max-md:!h-11');
+    expect(sendButton).toContain('studyUiSendButtonSizeClass');
   });
 });

@@ -163,10 +163,25 @@ impl ToolExecutionResult {
 // 公共工具命名空间剥离
 // ============================================================================
 
+/// External MCP tools are always routed through the frontend MCP bridge.
+pub const EXTERNAL_MCP_TOOL_PREFIX: &str = "mcp_";
+pub const EXTERNAL_MCP_DOTTED_TOOL_PREFIX: &str = "mcp.tools.";
+
+/// Returns whether a tool name carries an external MCP source namespace.
+///
+/// This check is intentionally source-preserving. Callers that select an
+/// executor must use it before stripping namespaces, otherwise an external
+/// tool such as `mcp_workspace_file_read` can collide with a builtin executor.
+pub fn is_external_mcp_tool_name(tool_name: &str) -> bool {
+    tool_name.starts_with(EXTERNAL_MCP_TOOL_PREFIX)
+        || tool_name.starts_with(EXTERNAL_MCP_DOTTED_TOOL_PREFIX)
+}
+
 /// 移除工具名的命名空间前缀（builtin-、mcp_）
 ///
 /// 多数执行器使用 `builtin-` 前缀注册工具名，部分 MCP 桥接使用 `mcp_` 前缀。
 /// 本函数统一剥离这些前缀，返回裸工具名。
+/// 仅用于执行器内部兼容匹配；来源路由必须先调用 `is_external_mcp_tool_name`。
 pub fn strip_tool_namespace(tool_name: &str) -> &str {
     tool_name
         .strip_prefix("builtin-")
@@ -240,5 +255,13 @@ mod tests {
         assert!(!result.success);
         assert!(result.data.is_none());
         assert_eq!(result.error, Some("Something went wrong".to_string()));
+    }
+
+    #[test]
+    fn test_external_mcp_namespace_detection_preserves_source() {
+        assert!(is_external_mcp_tool_name("mcp_workspace_file_read"));
+        assert!(is_external_mcp_tool_name("mcp.tools.workspace_file_read"));
+        assert!(!is_external_mcp_tool_name("builtin-workspace_file_read"));
+        assert!(!is_external_mcp_tool_name("workspace_file_read"));
     }
 }

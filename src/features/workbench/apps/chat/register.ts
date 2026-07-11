@@ -17,7 +17,7 @@
 import React from 'react';
 import { ChatCircleDots } from '@phosphor-icons/react';
 import { appRegistry } from '../../core/appRegistry';
-import type { ActivationContext, AppDefinition } from '../../core/types';
+import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import type { ChatStore } from '@/features/chat/core/types';
 import type { StoreApi } from 'zustand';
 
@@ -44,57 +44,108 @@ async function withSessionStore(
   sessionId: string,
   fn: (store: StoreApi<ChatStore>) => void,
   delays: number[] = [0, 120, 400, 1000],
-): Promise<void> {
+): Promise<boolean> {
   const manager = await getSessionManager();
-  const attempt = (index: number) => {
-    if (typeof window === 'undefined') return;
-    const store = manager.get(sessionId);
-    if (store) {
-      fn(store);
-      return;
-    }
-    if (index >= delays.length) {
-      console.warn(`[workbench:chat] session store not ready, action dropped: ${sessionId}`);
-      return;
-    }
-    window.setTimeout(() => attempt(index + 1), delays[index]);
-  };
-  attempt(0);
+  return new Promise<boolean>((resolve, reject) => {
+    const attempt = (index: number) => {
+      if (typeof window === 'undefined') {
+        resolve(false);
+        return;
+      }
+      const store = manager.get(sessionId);
+      if (store) {
+        try {
+          fn(store);
+          resolve(true);
+        } catch (error) {
+          reject(error);
+        }
+        return;
+      }
+      if (index >= delays.length) {
+        console.warn(`[workbench:chat] session store not ready, action dropped: ${sessionId}`);
+        resolve(false);
+        return;
+      }
+      window.setTimeout(() => attempt(index + 1), delays[index]);
+    };
+    attempt(0);
+  });
 }
 
-/** 与 useSessionLifecycle.requestChatInputFocus 相同的 rAF + timeout 双保险 */
-function dispatchFocusInput(sessionId: string): void {
-  const emitFocus = () => {
-    // 双保险定时器可能在 jsdom teardown 后触发，window 已被移除时静默跳过
-    if (typeof window === 'undefined') return;
-    window.dispatchEvent(
-      new CustomEvent('CHAT_V2_FOCUS_INPUT', { detail: { sessionId } }),
-    );
-  };
-  if (typeof requestAnimationFrame === 'function') {
-    requestAnimationFrame(emitFocus);
-  }
-  window.setTimeout(emitFocus, 120);
+function findSessionInput(sessionId: string): HTMLTextAreaElement | null {
+  if (typeof document === 'undefined') return null;
+  const root = document.querySelector(
+    `[data-wb-chat-session="${escapeAttrValue(sessionId)}"]`,
+  );
+  return root?.querySelector<HTMLTextAreaElement>(
+    'textarea[data-testid="input-bar-v2-textarea"]',
+  ) ?? null;
 }
 
-function setInput(sessionId: string, payload: unknown): void {
+/**
+ * Wait for the actual composer, then confirm DOM focus before reporting success.
+ * WindowBody readiness only proves that the app shell committed; ChatContainer may
+ * still be rendering its cold-start skeleton while the adapter loads.
+ */
+async function focusSessionInput(
+  sessionId: string,
+  delays: number[] = [0, 120, 400, 1000],
+): Promise<boolean> {
+  const storeReady = await withSessionStore(sessionId, () => {});
+  if (!storeReady || typeof window === 'undefined') return false;
+
+  return new Promise<boolean>((resolve) => {
+    const attempt = (index: number) => {
+      if (typeof window === 'undefined' || typeof document === 'undefined') {
+        resolve(false);
+        return;
+      }
+
+      const input = findSessionInput(sessionId);
+      if (input?.isConnected) {
+        window.dispatchEvent(
+          new CustomEvent('CHAT_V2_FOCUS_INPUT', { detail: { sessionId } }),
+        );
+        try {
+          input.focus({ preventScroll: true });
+        } catch {
+          input.focus();
+        }
+        if (document.activeElement === input) {
+          resolve(true);
+          return;
+        }
+      }
+
+      if (index >= delays.length) {
+        console.warn(`[workbench:chat] input not ready, focus action dropped: ${sessionId}`);
+        resolve(false);
+        return;
+      }
+      window.setTimeout(() => attempt(index + 1), delays[index]);
+    };
+    attempt(0);
+  });
+}
+
+async function setInput(sessionId: string, payload: unknown): Promise<boolean> {
   const content =
     typeof payload === 'string'
       ? payload
       : payload && typeof payload === 'object'
         ? (payload as { content?: unknown }).content
         : undefined;
-  if (typeof content !== 'string') return;
+  if (typeof content !== 'string') return false;
 
   const shouldFocus =
     !!payload && typeof payload === 'object' && (payload as { focus?: unknown }).focus === true;
 
-  void withSessionStore(sessionId, (store) => {
+  const delivered = await withSessionStore(sessionId, (store) => {
     store.getState().setInputValue(content);
-    if (shouldFocus) {
-      dispatchFocusInput(sessionId);
-    }
   });
+  if (!delivered) return false;
+  return shouldFocus ? await focusSessionInput(sessionId) : true;
 }
 
 function escapeAttrValue(value: string): string {
@@ -110,17 +161,21 @@ function escapeAttrValue(value: string): string {
  * 直接渲染模式下 div[role="log"] 的子节点与 messageOrder 一一对应，按索引定位；
  * 虚拟化模式（>80 条）或渐进渲染首帧窗口期无法精确定位，记录为遗留。
  */
-function scrollToMessage(sessionId: string, payload: unknown): void {
+async function scrollToMessage(sessionId: string, payload: unknown): Promise<boolean> {
   const messageId =
     payload && typeof payload === 'object'
       ? (payload as { messageId?: unknown }).messageId
       : payload;
-  if (typeof messageId !== 'string' || !messageId) return;
+  if (typeof messageId !== 'string' || !messageId) return false;
 
-  void getSessionManager().then((manager) => {
+  const manager = await getSessionManager();
+  return await new Promise<boolean>((resolve) => {
     const delays = [0, 250, 800];
     const attempt = (index: number) => {
-      if (typeof window === 'undefined' || typeof document === 'undefined') return;
+      if (typeof window === 'undefined' || typeof document === 'undefined') {
+        resolve(false);
+        return;
+      }
       const store = manager.get(sessionId);
       const order = store?.getState().messageOrder ?? [];
       const targetIndex = order.indexOf(messageId);
@@ -133,6 +188,7 @@ function scrollToMessage(sessionId: string, payload: unknown): void {
         const el = log.children[targetIndex] as HTMLElement | undefined;
         if (el) {
           el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+          resolve(true);
           return;
         }
       }
@@ -143,31 +199,37 @@ function scrollToMessage(sessionId: string, payload: unknown): void {
         console.warn(
           `[workbench:chat] scrollToMessage best-effort failed (virtualized or not mounted): ${sessionId}/${messageId}`,
         );
+        resolve(false);
       }
     };
     attempt(0);
   });
 }
 
-export function handleChatActivation(ctx: ActivationContext): void {
+export async function handleChatActivation(ctx: ActivationContext): Promise<ActivationResult> {
   const sessionId = ctx.instanceKey;
   if (!sessionId) {
     console.warn('[workbench:chat] activation ignored: window has no sessionId (instanceKey=null)');
-    return;
+    return { handled: false, code: 'SESSION_ID_REQUIRED', hint: '目标 Chat 窗口缺少 sessionId' };
   }
+  let delivered = false;
   switch (ctx.action) {
     case 'setInput':
-      setInput(sessionId, ctx.payload);
+      delivered = await setInput(sessionId, ctx.payload);
       break;
     case 'focusInput':
-      dispatchFocusInput(sessionId);
+      delivered = await focusSessionInput(sessionId);
       break;
     case 'scrollToMessage':
-      scrollToMessage(sessionId, ctx.payload);
+      delivered = await scrollToMessage(sessionId, ctx.payload);
       break;
     default:
       console.warn(`[workbench:chat] unknown activation action: ${ctx.action}`);
+      return { handled: false, code: 'UNKNOWN_ACTION', hint: `Chat 不支持指令 ${ctx.action}` };
   }
+  return delivered
+    ? { handled: true }
+    : { handled: false, code: 'DELIVERY_FAILED', hint: 'Chat 指令未投递到目标会话' };
 }
 
 // ============================================================================

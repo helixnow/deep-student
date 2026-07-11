@@ -44,10 +44,12 @@ describe('modern sidebar icon contract', () => {
   });
 
   it('uses CommonTooltip and icon swap for recent-session archive quick actions', () => {
-    const recentSessionRow = sidebarSource.match(
-      /const renderRecentSessionRow = useCallback\([\s\S]*?<AppMenuContent align="end" width=\{180\}>/
-    )?.[0] ?? '';
+    const recentSessionRowStart = sidebarSource.indexOf('const renderRecentSessionRow = useCallback');
+    const recentSessionRowEnd = sidebarSource.indexOf('const pinnedRecentSessions', recentSessionRowStart);
+    const recentSessionRow = sidebarSource.slice(recentSessionRowStart, recentSessionRowEnd);
 
+    expect(recentSessionRowStart).toBeGreaterThanOrEqual(0);
+    expect(recentSessionRowEnd).toBeGreaterThan(recentSessionRowStart);
     expect(recentSessionRow).toContain("content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')}");
     expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session', '确认归档会话') : t('sidebar:aria.archive_session', '归档会话')}");
     expect(recentSessionRow).toContain('className="w-3.5 h-3.5 t-icon-swap"');

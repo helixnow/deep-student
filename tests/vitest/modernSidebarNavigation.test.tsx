@@ -999,15 +999,18 @@ describe('ModernSidebar shell navigation', () => {
 
     const pinThreadButton = await screen.findByRole('button', { name: '会话 A' });
     await user.hover(pinThreadButton);
+    const sessionARow = pinThreadButton.parentElement;
+    expect(sessionARow).not.toBeNull();
 
-    expect(screen.getAllByRole('button', { name: '置顶会话' })[0]).toBeInTheDocument();
-    const archiveQuickAction = screen.getAllByRole('button', { name: '归档会话' })[0];
+    const pinQuickAction = within(sessionARow!).getByRole('button', { name: '置顶会话' });
+    expect(pinQuickAction).toBeInTheDocument();
+    const archiveQuickAction = within(sessionARow!).getByRole('button', { name: '归档会话' });
     expect(archiveQuickAction).toBeInTheDocument();
     expect(archiveQuickAction.querySelector('.t-icon-swap')).toHaveAttribute('data-state', 'a');
     expect(screen.queryByRole('button', { name: '归档线程' })).not.toBeInTheDocument();
     expect(screen.queryByText('刚刚')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: '置顶会话' })[0]);
+    await user.click(pinQuickAction);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_update_session_settings', {
         sessionId: 'session-1',
@@ -1017,14 +1020,16 @@ describe('ModernSidebar shell navigation', () => {
 
     const archiveThreadButton = await screen.findByRole('button', { name: '会话 B' });
     await user.hover(archiveThreadButton);
-    fireEvent.click(screen.getAllByRole('button', { name: '归档会话' })[0]);
+    const sessionBRow = archiveThreadButton.parentElement;
+    expect(sessionBRow).not.toBeNull();
+    await user.click(within(sessionBRow!).getByRole('button', { name: '归档会话' }));
 
-    const confirmArchiveQuickAction = screen.getByRole('button', { name: '确认归档会话' });
+    const confirmArchiveQuickAction = within(sessionBRow!).getByRole('button', { name: '确认归档会话' });
     expect(confirmArchiveQuickAction).toBeInTheDocument();
     expect(confirmArchiveQuickAction.querySelector('.t-icon-swap')).toHaveAttribute('data-state', 'b');
     expect(invokeMock).not.toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-2' });
 
-    fireEvent.click(screen.getByRole('button', { name: '确认归档会话' }));
+    await user.click(confirmArchiveQuickAction);
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-2' });
     });

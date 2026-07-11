@@ -3278,7 +3278,7 @@ impl ChatV2Repo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chat_v2::SourceInfo;
+    use crate::chat_v2::{block_status, SourceInfo};
     use rusqlite::Connection;
     use std::collections::HashMap;
 
@@ -3798,6 +3798,58 @@ mod tests {
         ChatV2Repo::delete_block_with_conn(&conn, &block_id).unwrap();
         let deleted = ChatV2Repo::get_block_with_conn(&conn, &block_id).unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_retry_block_upsert_reloads_one_final_logical_block() {
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_retry_block".to_string(), "analysis".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let mut message = ChatMessage::new_assistant(session.id.clone());
+        let message_id = message.id.clone();
+        let logical_block_id = "blk_retry_logical".to_string();
+        message.block_ids = vec![logical_block_id.clone()];
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let mut block = MessageBlock::new_tool(
+            message_id.clone(),
+            "builtin-web_fetch",
+            serde_json::json!({"url": "https://example.com"}),
+            0,
+        );
+        block.id = logical_block_id.clone();
+        block.status = block_status::ERROR.to_string();
+        block.error = Some("connection reset by peer".to_string());
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        // A successful physical retry UPSERTs the same logical block instead of inserting a
+        // second failed-attempt row that would be returned by full-session reload.
+        block.status = block_status::SUCCESS.to_string();
+        block.error = None;
+        block.tool_output = Some(serde_json::json!({
+            "ok": true,
+            "_auto_retry_attempts": 1
+        }));
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+
+        let reloaded = ChatV2Repo::load_session_full_with_conn(&conn, &session.id).unwrap();
+        let retry_blocks: Vec<_> = reloaded
+            .blocks
+            .iter()
+            .filter(|candidate| candidate.message_id == message_id)
+            .collect();
+        assert_eq!(retry_blocks.len(), 1);
+        assert_eq!(retry_blocks[0].id, logical_block_id);
+        assert_eq!(retry_blocks[0].status, block_status::SUCCESS);
+        assert!(retry_blocks[0].error.is_none());
+        assert_eq!(
+            retry_blocks[0]
+                .tool_output
+                .as_ref()
+                .and_then(|output| output.get("_auto_retry_attempts")),
+            Some(&serde_json::json!(1))
+        );
     }
 
     #[test]

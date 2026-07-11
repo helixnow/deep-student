@@ -678,7 +678,11 @@ mod tests {
         // Cancelled 终态同样拒绝
         let task2 = make_task(&manager);
         manager
-            .update_status(&task2.id, SubagentTaskStatus::Cancelled, Some("user cancelled"))
+            .update_status(
+                &task2.id,
+                SubagentTaskStatus::Cancelled,
+                Some("user cancelled"),
+            )
             .expect("cancelled");
         let err2 = manager
             .mark_running(&task2.id)

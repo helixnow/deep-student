@@ -9,6 +9,8 @@
  * - 预取后立即 adapterManager.release()，净引用计数为 0，
  *   不改变适配器生命周期语义（cleanup 仍由会话销毁触发）。
  * - 已加载的会话（LRU 命中）直接跳过，不产生任何 IPC。
+ * - 缓存已满时不创建新 Store。预取是推测性工作，不能为了 hover
+ *   淘汰当前挂载会话或其他已有缓存。
  * - 并发预取上限 2，防止鼠标快速扫过列表引发请求风暴
  *   （hover intent 延迟本身已过滤大部分扫过场景）。
  * - 预取失败静默：点击时会走正常加载路径重试并报错。
@@ -26,19 +28,30 @@ const hoverTimers = new Map<string, number>();
 async function prefetchSessionNow(sessionId: string): Promise<void> {
   if (inflight.size >= MAX_CONCURRENT_PREFETCH) return;
   if (inflight.has(sessionId)) return;
+  if (sessionManager.getCurrentSessionId() === sessionId) return;
 
   // LRU 命中且数据已加载：无需预取
-  const cached = sessionManager.get(sessionId);
+  const cached = sessionManager.peek(sessionId);
   if (cached?.getState().isDataLoaded) return;
 
+  // Do not let speculative hover work perturb the LRU cache. In particular,
+  // creating a store at capacity could evict the currently mounted session
+  // before the pointer ever turns into a click.
+  if (!cached && sessionManager.getSessionCount() >= sessionManager.getMaxSessions()) {
+    return;
+  }
+
   inflight.add(sessionId);
+  let acquisition: Awaited<ReturnType<typeof adapterManager.getOrCreate>> | undefined;
   try {
     const store = cached ?? sessionManager.getOrCreate(sessionId);
-    await adapterManager.getOrCreate(sessionId, store);
-    adapterManager.release(sessionId);
+    acquisition = await adapterManager.getOrCreate(sessionId, store);
   } catch {
     // 静默：正常点击路径会重试并向用户报错
   } finally {
+    if (acquisition) {
+      adapterManager.release(sessionId, acquisition.lease);
+    }
     inflight.delete(sessionId);
   }
 }

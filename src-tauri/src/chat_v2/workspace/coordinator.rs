@@ -13,6 +13,7 @@ use super::subagent_task::SubagentTaskManager;
 use super::types::*;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::runtime_roots::cleanup_session_runtime_roots;
 use crate::data_governance::file_deletion_queue::enqueue_workspace_deletion;
 use tauri::AppHandle;
 
@@ -34,6 +35,8 @@ pub struct WorkspaceCoordinator {
     chat_v2_db: Option<Arc<ChatV2Database>>,
     /// 事件发射器，用于向前端发射工作区事件
     emitter: WorkspaceEventEmitter,
+    /// Used to remove per-worker artifacts/temp after permanent session deletion.
+    app_handle: Option<AppHandle>,
 }
 
 impl WorkspaceCoordinator {
@@ -44,12 +47,14 @@ impl WorkspaceCoordinator {
             instances: RwLock::new(HashMap::new()),
             chat_v2_db: None,
             emitter: WorkspaceEventEmitter::new(None),
+            app_handle: None,
         }
     }
 
     /// 设置 AppHandle，用于发射事件到前端
     pub fn with_app_handle(mut self, app_handle: AppHandle) -> Self {
-        self.emitter = WorkspaceEventEmitter::new(Some(app_handle));
+        self.emitter = WorkspaceEventEmitter::new(Some(app_handle.clone()));
+        self.app_handle = Some(app_handle);
         self
     }
 
@@ -796,12 +801,28 @@ impl WorkspaceCoordinator {
             None => return,
         };
         for session_id in worker_session_ids {
+            let Some(app_handle) = &self.app_handle else {
+                log::warn!(
+                    "[WorkspaceCoordinator] Deferring deletion of worker session {} because AppHandle is unavailable for runtime-root cleanup",
+                    session_id
+                );
+                continue;
+            };
+            if let Err(error) = cleanup_session_runtime_roots(app_handle, session_id) {
+                log::warn!(
+                    "[WorkspaceCoordinator] Deferring deletion of worker session {} because runtime-root cleanup failed: {}",
+                    session_id,
+                    error
+                );
+                continue;
+            }
             if let Err(e) = ChatV2Repo::delete_session_v2(db, session_id) {
                 log::warn!(
                     "[WorkspaceCoordinator] Failed to delete worker session {}: {:?}",
                     session_id,
                     e
                 );
+                continue;
             }
         }
     }

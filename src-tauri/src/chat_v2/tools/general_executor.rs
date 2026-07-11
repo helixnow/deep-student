@@ -12,6 +12,7 @@ use serde_json::json;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::is_canvas_tool;
+use super::types::is_external_mcp_tool_name;
 use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::tools::ToolContext;
@@ -154,12 +155,7 @@ impl ToolExecutor for GeneralToolExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         // 默认提升到 Medium，避免审批机制被通用执行器绕过
-        const LOW_RISK_TOOLS: &[&str] = &[
-            // 明确的只读/外部检索工具
-            "web_search",
-            "mcp_brave_search",
-            "mcp_web_search",
-        ];
+        const LOW_RISK_TOOLS: &[&str] = &["web_search"];
 
         const HIGH_RISK_TOOLS: &[&str] = &[
             // 明确的高风险工具
@@ -174,6 +170,13 @@ impl ToolExecutor for GeneralToolExecutor {
                 tool_name
             );
             return ToolSensitivity::High;
+        }
+
+        // An external server controls the implementation behind its advertised
+        // name. It must not inherit a local low-risk classification merely by
+        // calling itself `web_search` or `brave_search`.
+        if is_external_mcp_tool_name(tool_name) {
+            return ToolSensitivity::Medium;
         }
 
         if LOW_RISK_TOOLS.contains(&tool_name) {
@@ -216,14 +219,18 @@ mod tests {
     fn test_sensitivity_level() {
         let executor = GeneralToolExecutor::new();
 
-        // 明确的低风险工具
+        // 只有本地受信实现可以按名称降为 Low
         assert_eq!(
             executor.sensitivity_level("web_search"),
             ToolSensitivity::Low
         );
         assert_eq!(
             executor.sensitivity_level("mcp_brave_search"),
-            ToolSensitivity::Low
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("mcp_web_search"),
+            ToolSensitivity::Medium
         );
 
         // 默认 Medium

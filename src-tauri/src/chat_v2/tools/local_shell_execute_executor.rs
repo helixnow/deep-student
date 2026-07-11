@@ -8,14 +8,19 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use tauri::Manager;
+use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
+use tokio::sync::Mutex as AsyncMutex;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
-use crate::chat_v2::approval_scope::analyze_shell_command;
+use crate::chat_v2::approval_scope::{
+    analyze_shell_command, normalized_shell_runtime_location, redact_tool_arguments_for_display,
+    validate_shell_path_operands_within_root,
+};
 use crate::chat_v2::runtime_roots::{
-    normalize_runtime_relative_path, runtime_root_by_id, RuntimeRoot, RuntimeRootAccess,
-    RuntimeRootKind,
+    normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id, RuntimeRoot,
+    RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -34,6 +39,12 @@ struct ShellEnvPlan {
     explicit_keys: Vec<String>,
     denied_keys: Vec<String>,
     explicit_values: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct BoundedPipeOutput {
+    visible: Vec<u8>,
+    total_bytes: usize,
 }
 
 /// Planned `SKILL_DIR` environment injection for running scripts that ship
@@ -197,7 +208,10 @@ impl LocalShellExecuteExecutor {
         Ok(trimmed.to_string())
     }
 
-    fn normalize_env_key_set(value: Option<&Value>, field_name: &str) -> Result<BTreeSet<String>, String> {
+    fn normalize_env_key_set(
+        value: Option<&Value>,
+        field_name: &str,
+    ) -> Result<BTreeSet<String>, String> {
         let Some(value) = value else {
             return Ok(BTreeSet::new());
         };
@@ -228,84 +242,8 @@ impl LocalShellExecuteExecutor {
             || upper == "ANTHROPIC_API_KEY"
     }
 
-    fn command_tokens_lower(command: &str) -> Vec<String> {
-        command
-            .split_whitespace()
-            .take(3)
-            .map(|token| {
-                token
-                    .trim_matches(|ch: char| ch == '"' || ch == '\'' || ch == '`')
-                    .to_ascii_lowercase()
-            })
-            .collect()
-    }
-
-    /// 去掉 Windows 可执行后缀（`curl.exe` → `curl`），便于命中启发式名单。
-    fn strip_exe_suffix(token: &str) -> &str {
-        token
-            .strip_suffix(".exe")
-            .or_else(|| token.strip_suffix(".cmd"))
-            .or_else(|| token.strip_suffix(".bat"))
-            .unwrap_or(token)
-    }
-
     fn looks_network_capable(command: &str) -> bool {
-        let tokens = Self::command_tokens_lower(command);
-        let first = tokens
-            .first()
-            .map(|t| Self::strip_exe_suffix(t))
-            .unwrap_or("");
-        let second = tokens.get(1).map(String::as_str).unwrap_or("");
-
-        if matches!(
-            first,
-            "curl"
-                | "wget"
-                | "ssh"
-                | "scp"
-                | "sftp"
-                | "rsync"
-                | "nc"
-                | "ncat"
-                | "telnet"
-                | "ftp"
-                | "ping"
-                | "tracert"
-                | "traceroute"
-                | "nslookup"
-                | "dig"
-                // PowerShell 原生联网 cmdlet 与别名（Windows 主平台）
-                | "invoke-webrequest"
-                | "iwr"
-                | "invoke-restmethod"
-                | "irm"
-                | "start-bitstransfer"
-                | "test-netconnection"
-                | "wsman"
-        ) || (first == "git"
-            && matches!(second, "clone" | "fetch" | "pull" | "push" | "ls-remote"))
-            || (matches!(first, "npm" | "pnpm" | "yarn" | "bun") && second == "install")
-        {
-            return true;
-        }
-
-        // cmdlet 可能不在首 token（管道 / 变量赋值后），做整句小写子串兜底。
-        // 方向 fail-safe：误报只会要求 allow_network=true 并重新审批。
-        let lower = command.to_ascii_lowercase();
-        const NETWORK_MARKERS: &[&str] = &[
-            "invoke-webrequest",
-            "invoke-restmethod",
-            "start-bitstransfer",
-            "net.webclient",
-            "net.sockets",
-            "system.net.http",
-        ];
-        if NETWORK_MARKERS.iter().any(|marker| lower.contains(marker)) {
-            return true;
-        }
-        lower
-            .split_whitespace()
-            .any(|token| matches!(token.trim_matches(|ch: char| ch == '"' || ch == '\'' || ch == '`' || ch == ';' || ch == '('), "iwr" | "irm"))
+        analyze_shell_command(command).network_capable
     }
 
     fn network_policy_json(allow_network: bool, network_capable: bool) -> Value {
@@ -322,52 +260,19 @@ impl LocalShellExecuteExecutor {
     /// 写入类命令启发式：与 preflight 的 dangerous prefix 同源，外加重定向。
     /// 用于闭合「ReadOnly root 作为 cwd 时 shell 仍可写入」的边界。
     pub(crate) fn command_appears_write_capable(command: &str) -> bool {
-        let tokens = Self::command_tokens_lower(command);
-        let first = tokens
-            .first()
-            .map(|t| Self::strip_exe_suffix(t))
-            .unwrap_or("");
-        let second = tokens.get(1).map(String::as_str).unwrap_or("");
-
-        matches!(
-            first,
-            "rm" | "del"
-                | "erase"
-                | "rmdir"
-                | "rd"
-                | "mv"
-                | "move"
-                | "cp"
-                | "copy"
-                | "mkdir"
-                | "md"
-                | "touch"
-                | "tee"
-                | "remove-item"
-                | "move-item"
-                | "copy-item"
-                | "rename-item"
-                | "set-content"
-                | "add-content"
-                | "out-file"
-                | "new-item"
-                | "ni"
-        ) || (first == "git"
-            && matches!(
-                second,
-                "checkout" | "reset" | "clean" | "restore" | "merge" | "rebase" | "commit"
-                    | "apply" | "stash" | "pull"
-            ))
-            // 重定向写文件（`>` / `>>`）。引号内 `>` 会误报，但方向 fail-safe。
-            || command.contains('>')
+        analyze_shell_command(command).write_capable
     }
 
-    /// ReadOnly root（workspace / authorized）作为 cwd 时阻止明显的写入类命令。
-    /// 说明：这是启发式闭合而非强隔离——脚本运行器/绝对路径写入仍由审批兜底。
-    fn ensure_root_writable_for_command(root: &RuntimeRoot, command: &str) -> Result<(), String> {
-        if root.access == RuntimeRootAccess::ReadOnly
-            && Self::command_appears_write_capable(command)
-        {
+    /// ReadOnly roots reject every write-capable effective command. Writable
+    /// roots additionally reject explicit absolute/parent-traversing operands
+    /// that resolve outside the selected root.
+    fn ensure_root_writable_for_command(
+        root: &RuntimeRoot,
+        cwd: &Path,
+        command: &str,
+    ) -> Result<(), String> {
+        let analysis = analyze_shell_command(command);
+        if root.access == RuntimeRootAccess::ReadOnly && analysis.write_capable {
             return Err(format!(
                 "Runtime root '{}' is read-only for the agent runtime, but this command looks \
                  write-capable. Run writes inside root_id=artifacts or root_id=temp, or ask the \
@@ -375,18 +280,35 @@ impl LocalShellExecuteExecutor {
                 root.id
             ));
         }
+        validate_shell_path_operands_within_root(&root.path, cwd, command).map_err(|error| {
+            format!(
+                "Write-capable command violates runtime root '{}': {}",
+                root.id, error
+            )
+        })?;
         Ok(())
     }
 
     fn platform_minimal_env_keys() -> &'static [&'static str] {
         #[cfg(windows)]
         {
-            &["PATH", "Path", "PATHEXT", "SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE"]
+            &[
+                "PATH",
+                "Path",
+                "PATHEXT",
+                "SystemRoot",
+                "WINDIR",
+                "TEMP",
+                "TMP",
+                "USERPROFILE",
+            ]
         }
 
         #[cfg(not(windows))]
         {
-            &["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER"]
+            &[
+                "PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER",
+            ]
         }
     }
 
@@ -397,7 +319,8 @@ impl LocalShellExecuteExecutor {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
         let allowlist = Self::normalize_env_key_set(
-            args.get("env_allowlist").or_else(|| args.get("envAllowlist")),
+            args.get("env_allowlist")
+                .or_else(|| args.get("envAllowlist")),
             "env_allowlist",
         )?;
         let explicit_denylist = Self::normalize_env_key_set(
@@ -433,7 +356,10 @@ impl LocalShellExecuteExecutor {
                     .as_str()
                     .ok_or_else(|| format!("env.{} must be a string", key))?;
                 if value.len() > 8192 || value.contains('\0') {
-                    return Err(format!("env.{} is too large or contains an invalid character", key));
+                    return Err(format!(
+                        "env.{} is too large or contains an invalid character",
+                        key
+                    ));
                 }
                 explicit_values.insert(key, value.to_string());
             }
@@ -669,6 +595,48 @@ impl LocalShellExecuteExecutor {
         )
     }
 
+    async fn drain_bounded<R>(
+        mut reader: R,
+        capture: std::sync::Arc<AsyncMutex<BoundedPipeOutput>>,
+        max_bytes: usize,
+    ) -> Result<(), String>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let mut chunk = [0u8; 8192];
+        loop {
+            let read = reader
+                .read(&mut chunk)
+                .await
+                .map_err(|error| format!("Failed to read local shell output: {error}"))?;
+            if read == 0 {
+                return Ok(());
+            }
+            let mut output = capture.lock().await;
+            output.total_bytes = output.total_bytes.saturating_add(read);
+            let remaining = max_bytes.saturating_sub(output.visible.len());
+            if remaining > 0 {
+                output
+                    .visible
+                    .extend_from_slice(&chunk[..read.min(remaining)]);
+            }
+        }
+    }
+
+    async fn finish_drain_task(
+        task: &mut tokio::task::JoinHandle<Result<(), String>>,
+    ) -> Result<(), String> {
+        match tokio::time::timeout(Duration::from_secs(2), &mut *task).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(error)) => Err(format!("Local shell output reader task failed: {error}")),
+            Err(_) => {
+                task.abort();
+                let _ = task.await;
+                Ok(())
+            }
+        }
+    }
+
     async fn execute_shell(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let command = args
             .get("command")
@@ -694,9 +662,9 @@ impl LocalShellExecuteExecutor {
             );
         }
 
-        let root_id_input = args.get("root_id").and_then(|v| v.as_str());
-        let cwd_relative =
-            normalize_runtime_relative_path(args.get("cwd").and_then(|v| v.as_str()))?;
+        let (root_id, cwd_input) = normalized_shell_runtime_location(args);
+        let root_id_input = Some(root_id.as_str());
+        let cwd_relative = normalize_runtime_relative_path(Some(cwd_input.as_str()))?;
         let cwd_display = if cwd_relative.as_os_str().is_empty() {
             ".".to_string()
         } else {
@@ -704,11 +672,13 @@ impl LocalShellExecuteExecutor {
         };
         let timeout_ms = args
             .get("timeout_ms")
+            .or_else(|| args.get("timeoutMs"))
             .and_then(|v| v.as_u64())
             .unwrap_or(30_000)
             .clamp(1_000, 120_000);
         let max_output_bytes = args
             .get("max_output_bytes")
+            .or_else(|| args.get("maxOutputBytes"))
             .and_then(|v| v.as_u64())
             .unwrap_or(64 * 1024)
             .clamp(1_024, 1024 * 1024) as usize;
@@ -738,10 +708,14 @@ impl LocalShellExecuteExecutor {
             .map(str::trim)
             .filter(|value| !value.is_empty());
 
-        let root = Self::resolve_root(root_id_input, ctx)?;
-        // 🔒 P2（05 号报告 P2-1）：只读 root（workspace / authorized）不放行明显写入类命令
-        Self::ensure_root_writable_for_command(&root, &command)?;
+        let mut root = Self::resolve_root(root_id_input, ctx)?;
+        let validated_root_path = {
+            let state = ctx.window.state::<AppState>();
+            revalidate_runtime_root(&state.database, &root)?
+        };
+        root.path = validated_root_path;
         let cwd_abs = Self::resolve_cwd(&root, &cwd_relative)?;
+        Self::ensure_root_writable_for_command(&root, &cwd_abs, &command)?;
         let skill_dir_injection = skill_root_id_input
             .map(|skill_root_id| Self::resolve_skill_dir(skill_root_id, ctx))
             .transpose()?;
@@ -767,71 +741,70 @@ impl LocalShellExecuteExecutor {
         let mut shell = Self::shell_command(&command, &cwd_abs);
         Self::apply_env_plan(&mut shell, &env_plan);
         Self::apply_skill_dir_injection(&mut shell, skill_dir_injection.as_ref());
-        let output_result = tokio::time::timeout(
-            Duration::from_millis(timeout_ms),
-            shell.output(),
-        )
-        .await;
+        let mut child = shell
+            .spawn()
+            .map_err(|error| format!("Failed to execute local shell command: {error}"))?;
+        let stdout_reader = child
+            .stdout
+            .take()
+            .ok_or_else(|| "Failed to capture local shell stdout".to_string())?;
+        let stderr_reader = child
+            .stderr
+            .take()
+            .ok_or_else(|| "Failed to capture local shell stderr".to_string())?;
+        let stdout_capture = std::sync::Arc::new(AsyncMutex::new(BoundedPipeOutput::default()));
+        let stderr_capture = std::sync::Arc::new(AsyncMutex::new(BoundedPipeOutput::default()));
+        let mut stdout_task = tokio::spawn(Self::drain_bounded(
+            stdout_reader,
+            stdout_capture.clone(),
+            max_output_bytes,
+        ));
+        let mut stderr_task = tokio::spawn(Self::drain_bounded(
+            stderr_reader,
+            stderr_capture.clone(),
+            max_output_bytes,
+        ));
+
+        let (status, timed_out) =
+            match tokio::time::timeout(Duration::from_millis(timeout_ms), child.wait()).await {
+                Ok(Ok(status)) => (Some(status), false),
+                Ok(Err(error)) => {
+                    stdout_task.abort();
+                    stderr_task.abort();
+                    return Err(format!("Failed to wait for local shell command: {error}"));
+                }
+                Err(_) => {
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
+                    (None, true)
+                }
+            };
+        Self::finish_drain_task(&mut stdout_task).await?;
+        Self::finish_drain_task(&mut stderr_task).await?;
         let duration_ms = start.elapsed().as_millis() as u64;
-
-        let output = match output_result {
-            Ok(Ok(output)) => output,
-            Ok(Err(error)) => {
-                return Err(format!("Failed to execute local shell command: {}", error));
+        let stdout_capture = stdout_capture.lock().await.clone();
+        let stderr_capture = stderr_capture.lock().await.clone();
+        let stdout = String::from_utf8_lossy(&stdout_capture.visible).to_string();
+        let mut stderr = String::from_utf8_lossy(&stderr_capture.visible).to_string();
+        if timed_out {
+            let timeout_message = format!("Command timed out after {}ms", timeout_ms);
+            if stderr.is_empty() {
+                stderr = timeout_message;
+            } else if stderr.len() < max_output_bytes {
+                let remaining = max_output_bytes.saturating_sub(stderr.len());
+                let suffix = format!("\n{timeout_message}");
+                stderr.push_str(&suffix[..suffix.len().min(remaining)]);
             }
-            Err(_) => {
-                let after_snapshot = if track_file_changes {
-                    Self::collect_file_snapshot(&root_abs_for_snapshot, &cwd_abs).ok()
-                } else {
-                    None
-                };
-                let snapshot_error = before_snapshot_error.or_else(|| {
-                    if track_file_changes && after_snapshot.is_none() {
-                        Some("failed to collect file snapshot after command")
-                    } else {
-                        None
-                    }
-                });
-                let file_change_summary = Self::file_change_summary_json(
-                    &root,
-                    before_snapshot.as_ref(),
-                    after_snapshot.as_ref(),
-                    snapshot_error,
-                );
-                return Ok(json!({
-                    "command": command,
-                    "command_prefix": analysis.command_prefix,
-                    "root": Self::root_json(&root),
-                    "root_id": root.id,
-                    "skill_root_id": skill_dir_injection.as_ref().map(|injection| injection.root_id.clone()),
-                    "cwd": cwd_display,
-                    "timeout_ms": timeout_ms,
-                    "duration_ms": duration_ms,
-                    "timed_out": true,
-                    "exit_code": Value::Null,
-                    "success": false,
-                    "stdout": "",
-                    "stderr": format!("Command timed out after {}ms", timeout_ms),
-                    "stdout_bytes": 0,
-                    "stderr_bytes": 0,
-                    "stdout_truncated": false,
-                    "stderr_truncated": false,
-                    "max_output_bytes": max_output_bytes,
-                    "env_policy": env_policy,
-                    "network_policy": network_policy,
-                    "file_change_summary": file_change_summary,
-                    "has_shell_operators": analysis.has_shell_operators,
-                    "uses_script_runner": analysis.uses_script_runner,
-                }));
-            }
-        };
-
-        let (stdout, stdout_truncated, stdout_bytes) =
-            Self::truncate_output(&output.stdout, max_output_bytes);
-        let (stderr, stderr_truncated, stderr_bytes) =
-            Self::truncate_output(&output.stderr, max_output_bytes);
-        let exit_code = output.status.code();
-        let success = output.status.success();
+        }
+        let stdout_bytes = stdout_capture.total_bytes;
+        let stderr_bytes = stderr_capture.total_bytes;
+        let stdout_truncated = stdout_bytes > stdout_capture.visible.len();
+        let stderr_truncated = stderr_bytes > stderr_capture.visible.len();
+        let exit_code = status.as_ref().and_then(|status| status.code());
+        let success = status
+            .as_ref()
+            .map(|status| status.success())
+            .unwrap_or(false);
         let after_snapshot = if track_file_changes {
             Self::collect_file_snapshot(&root_abs_for_snapshot, &cwd_abs).ok()
         } else {
@@ -860,7 +833,7 @@ impl LocalShellExecuteExecutor {
             "cwd": cwd_display,
             "timeout_ms": timeout_ms,
             "duration_ms": duration_ms,
-            "timed_out": false,
+            "timed_out": timed_out,
             "exit_code": exit_code,
             "success": success,
             "stdout": stdout,
@@ -891,8 +864,9 @@ impl ToolExecutor for LocalShellExecuteExecutor {
         ctx: &ExecutionContext,
     ) -> Result<ToolResultInfo, String> {
         let start = Instant::now();
+        let redacted_arguments = redact_tool_arguments_for_display(&call.name, &call.arguments);
 
-        ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
+        ctx.emit_tool_call_start(&call.name, redacted_arguments.clone(), Some(&call.id));
 
         let result = self.execute_shell(&call.arguments, ctx).await;
         let duration_ms = start.elapsed().as_millis() as u64;
@@ -911,7 +885,7 @@ impl ToolExecutor for LocalShellExecuteExecutor {
                     tool_call_id: Some(call.id.clone()),
                     block_id: Some(ctx.block_id.clone()),
                     tool_name: call.name.clone(),
-                    input: call.arguments.clone(),
+                    input: redacted_arguments.clone(),
                     output,
                     success,
                     error: if success {
@@ -924,7 +898,10 @@ impl ToolExecutor for LocalShellExecuteExecutor {
                     thought_signature: None,
                 };
                 if let Err(e) = ctx.save_tool_block(&result) {
-                    log::warn!("[LocalShellExecuteExecutor] Failed to save tool block: {}", e);
+                    log::warn!(
+                        "[LocalShellExecuteExecutor] Failed to save tool block: {}",
+                        e
+                    );
                 }
                 Ok(result)
             }
@@ -934,12 +911,15 @@ impl ToolExecutor for LocalShellExecuteExecutor {
                     Some(call.id.clone()),
                     Some(ctx.block_id.clone()),
                     call.name.clone(),
-                    call.arguments.clone(),
+                    redacted_arguments,
                     error,
                     duration_ms,
                 );
                 if let Err(e) = ctx.save_tool_block(&result) {
-                    log::warn!("[LocalShellExecuteExecutor] Failed to save tool block: {}", e);
+                    log::warn!(
+                        "[LocalShellExecuteExecutor] Failed to save tool block: {}",
+                        e
+                    );
                 }
                 Ok(result)
             }
@@ -959,6 +939,7 @@ impl ToolExecutor for LocalShellExecuteExecutor {
 mod tests {
     use super::*;
     use crate::chat_v2::runtime_roots::{RuntimeRootAccess, RuntimeRootKind};
+    use tokio::io::AsyncWriteExt;
 
     #[test]
     fn truncates_stdout_by_bytes() {
@@ -966,6 +947,27 @@ mod tests {
         assert_eq!(text, "abc");
         assert!(truncated);
         assert_eq!(bytes, 6);
+    }
+
+    #[tokio::test]
+    async fn bounded_pipe_drain_counts_but_does_not_retain_unbounded_output() {
+        let (mut writer, reader) = tokio::io::duplex(4 * 1024);
+        let payload = vec![b'y'; 256 * 1024];
+        let expected_len = payload.len();
+        let write_task = tokio::spawn(async move {
+            writer.write_all(&payload).await.expect("write payload");
+            writer.shutdown().await.expect("shutdown writer");
+        });
+        let capture = std::sync::Arc::new(AsyncMutex::new(BoundedPipeOutput::default()));
+        LocalShellExecuteExecutor::drain_bounded(reader, capture.clone(), 1_024)
+            .await
+            .expect("drain output");
+        write_task.await.expect("writer task");
+
+        let capture = capture.lock().await;
+        assert_eq!(capture.total_bytes, expected_len);
+        assert_eq!(capture.visible.len(), 1_024);
+        assert!(capture.total_bytes > capture.visible.len());
     }
 
     /// SECURITY: 封侧门谓词——命令命中技能目录（Windows 反斜杠与正斜杠两种写法）
@@ -1112,7 +1114,10 @@ mod tests {
     #[test]
     fn network_policy_audit_has_no_external_target() {
         let audit = LocalShellExecuteExecutor::network_policy_json(true, true);
-        assert_eq!(audit.get("allow_network").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            audit.get("allow_network").and_then(|v| v.as_bool()),
+            Some(true)
+        );
         assert_eq!(
             audit
                 .get("network_capable_command")
@@ -1189,14 +1194,22 @@ mod tests {
             "git checkout -- .",
         ] {
             assert!(
-                LocalShellExecuteExecutor::ensure_root_writable_for_command(&readonly_root, cmd)
-                    .is_err(),
+                LocalShellExecuteExecutor::ensure_root_writable_for_command(
+                    &readonly_root,
+                    temp_dir.path(),
+                    cmd,
+                )
+                .is_err(),
                 "read-only root must block: {}",
                 cmd
             );
             assert!(
-                LocalShellExecuteExecutor::ensure_root_writable_for_command(&writable_root, cmd)
-                    .is_ok(),
+                LocalShellExecuteExecutor::ensure_root_writable_for_command(
+                    &writable_root,
+                    temp_dir.path(),
+                    cmd,
+                )
+                .is_ok(),
                 "read-write root should allow: {}",
                 cmd
             );
@@ -1206,10 +1219,101 @@ mod tests {
         for cmd in ["git status --short", "rg TODO src", "Get-Content notes.txt"] {
             assert!(LocalShellExecuteExecutor::ensure_root_writable_for_command(
                 &readonly_root,
+                temp_dir.path(),
                 cmd
             )
             .is_ok());
         }
+    }
+
+    #[test]
+    fn wrapper_classification_uses_the_effective_command() {
+        for command in [
+            "env MODE=test rm -rf notes",
+            "nice -n 5 rm -rf notes",
+            "nohup rm -rf notes",
+            "timeout 5 rm -rf notes",
+            "npm exec -- rm -rf notes",
+            "npx --yes arbitrary-package",
+        ] {
+            assert!(
+                LocalShellExecuteExecutor::command_appears_write_capable(command),
+                "wrapper must expose write-capable payload: {command}"
+            );
+        }
+        for command in [
+            "env MODE=test curl https://example.com",
+            "nice curl https://example.com",
+            "nohup curl https://example.com",
+            "timeout 5 curl https://example.com",
+            "npm exec -- arbitrary-package",
+            "npx --yes arbitrary-package",
+        ] {
+            assert!(
+                LocalShellExecuteExecutor::looks_network_capable(command),
+                "wrapper must expose network-capable payload: {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn writable_root_rejects_absolute_and_parent_escape_operands() {
+        let root_dir = tempfile::tempdir().expect("root tempdir");
+        let cwd = root_dir.path().join("nested");
+        fs::create_dir_all(&cwd).expect("nested cwd");
+        let outside_dir = tempfile::tempdir().expect("outside tempdir");
+        let root = RuntimeRoot {
+            id: "artifacts".to_string(),
+            kind: RuntimeRootKind::Artifact,
+            path: root_dir.path().to_path_buf(),
+            access: RuntimeRootAccess::ReadWrite,
+            label: "Artifacts".to_string(),
+            description: String::new(),
+            session_scoped: true,
+            configured: false,
+        };
+
+        let inside = root_dir.path().join("inside.txt");
+        assert!(LocalShellExecuteExecutor::ensure_root_writable_for_command(
+            &root,
+            &cwd,
+            &format!("touch {}", inside.display()),
+        )
+        .is_ok());
+
+        for command in [
+            format!("rm -f {}", outside_dir.path().join("victim").display()),
+            format!(
+                "env MODE=test rm -f {}",
+                outside_dir.path().join("victim").display()
+            ),
+            "touch ../../escaped.txt".to_string(),
+            "echo payload > /tmp/deep-student-shell-escape".to_string(),
+        ] {
+            let error =
+                LocalShellExecuteExecutor::ensure_root_writable_for_command(&root, &cwd, &command)
+                    .expect_err("outside operand must be rejected");
+            assert!(
+                error.contains("escapes") || error.contains("cannot be constrained"),
+                "unexpected error for {command}: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn execution_argument_aliases_match_approval_normalization() {
+        let snake = json!({
+            "root_id": "workspace",
+            "cwd": "src-tauri",
+        });
+        let camel = json!({
+            "rootId": "workspace",
+            "workingDir": "src-tauri",
+        });
+        assert_eq!(
+            normalized_shell_runtime_location(&snake),
+            normalized_shell_runtime_location(&camel)
+        );
     }
 
     #[test]

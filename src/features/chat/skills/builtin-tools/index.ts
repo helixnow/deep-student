@@ -67,6 +67,15 @@ import { reviewPlanningSkill } from './review-planning';
 import { documentProcessingSkill } from './document-processing';
 import { workbenchToolsSkill } from './workbench-tools';
 import type { SkillDefinition } from '../types';
+import { getPlatform } from '@/utils/platform';
+
+export function filterBuiltinToolSkillsForPlatform(
+  skills: readonly SkillDefinition[],
+  platform: string,
+): SkillDefinition[] {
+  if (platform.toLowerCase() === 'windows') return [...skills];
+  return skills.filter((skill) => skill.id !== browserToolsSkill.id);
+}
 
 /**
  * 所有内置工具组 Skills
@@ -74,7 +83,7 @@ import type { SkillDefinition } from '../types';
  * 完全替代 builtinMcpServer.ts，所有内置工具通过 Skills 渐进披露加载。
  * LLM 通过 load_skills 工具按需加载。
  */
-export const builtinToolSkills: SkillDefinition[] = [
+const allBuiltinToolSkills: SkillDefinition[] = [
   knowledgeRetrievalSkill,
   canvasNoteSkill,
   vfsMemorySkill,
@@ -105,6 +114,16 @@ export const builtinToolSkills: SkillDefinition[] = [
   documentProcessingSkill,
   workbenchToolsSkill,
 ];
+
+// The result-returning browser bridge is currently implemented only for
+// Windows WebView2. Unknown/non-Windows runtimes fail closed and do not
+// advertise tools that can only return BRIDGE_UNSUPPORTED.
+const runtimePlatform =
+  typeof window === 'undefined' || typeof navigator === 'undefined' ? 'unknown' : getPlatform();
+export const builtinToolSkills: SkillDefinition[] = filterBuiltinToolSkillsForPlatform(
+  allBuiltinToolSkills,
+  runtimePlatform,
+);
 
 /**
  * 获取所有内置工具组 Skills

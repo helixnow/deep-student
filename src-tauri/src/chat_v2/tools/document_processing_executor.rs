@@ -70,7 +70,12 @@ impl DocumentProcessingExecutor {
         if id.starts_with("file_") {
             return VfsFileRepo::get_file(vfs_db, &id)
                 .map_err(|e| format!("查询文件失败: {}", e))?
-                .ok_or_else(|| format!("文件不存在: {}（请用 resource_list/resource_search 获取有效 ID）", id));
+                .ok_or_else(|| {
+                    format!(
+                        "文件不存在: {}（请用 resource_list/resource_search 获取有效 ID）",
+                        id
+                    )
+                });
         }
 
         if id.starts_with("res_") {
@@ -235,8 +240,10 @@ impl DocumentProcessingExecutor {
 
         match status {
             Some(s) => {
-                let terminal =
-                    matches!(s.stage.as_str(), "completed" | "completed_with_issues" | "error");
+                let terminal = matches!(
+                    s.stage.as_str(),
+                    "completed" | "completed_with_issues" | "error"
+                );
                 payload["stage"] = json!(s.stage);
                 payload["progress"] = json!(s.progress);
                 if let Some(err) = &s.error {

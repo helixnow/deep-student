@@ -30,8 +30,8 @@ pub mod repo;
 pub mod resource_repo; // ⚠️ DEPRECATED: 资源存储已迁移到 VFS (vfs.db)，由 vfs/repos/resource_repo.rs 替代。参见 P1-#9。
 pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（类型仍被 pipeline/context 使用，暂不废弃）
 pub mod runtime_roots;
-pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod skill_requires; // SKILL.md requires.bins/env 解析与本地探测
+pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
 pub mod tool_policy;
 pub mod tools;
@@ -160,6 +160,8 @@ pub use handlers::{
     chat_v2_delete_variant,
     chat_v2_edit_and_resend,
     chat_v2_empty_deleted_sessions,
+    // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
+    chat_v2_get_message_summary,
     chat_v2_list_sessions,
     chat_v2_load_session,
     chat_v2_migrate_legacy_chat,
@@ -168,8 +170,6 @@ pub use handlers::{
     chat_v2_retry_variant,
     chat_v2_retry_variants,
     chat_v2_rollback_migration,
-    // 资源库命令已迁移至 VFS 模块（vfs_* 命令）
-    chat_v2_get_message_summary,
     chat_v2_save_session,
     chat_v2_send_message,
     chat_v2_session_message_count,

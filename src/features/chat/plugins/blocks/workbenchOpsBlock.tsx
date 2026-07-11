@@ -234,7 +234,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   const handleOpenTarget = () => {
     if (!target.typeId) return;
     const instanceKey = target.instanceKey ?? '';
-    workbenchBus.activate({
+    void workbenchBus.activate({
       typeId: target.typeId,
       instanceKey,
       action: 'focus',

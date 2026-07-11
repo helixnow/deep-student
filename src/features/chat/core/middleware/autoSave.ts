@@ -106,14 +106,7 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
       console.log(`[AutoSave] Force immediate save for session ${sessionId}`);
     }
 
-    // 等待正在进行的保存完成
-    const existingPromise = this.savingPromises.get(sessionId);
-    if (existingPromise) {
-      await existingPromise;
-    }
-
-    // 执行保存
-    await this.executeSaveAsync(store);
+    await this.enqueueSave(store, false);
   }
 
   /**
@@ -142,71 +135,61 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
    * 执行保存（同步调用，不等待）
    */
   private executeSave(store: ChatStore): void {
-    const sessionId = store.sessionId;
-
-    // 如果正在保存，跳过
-    if (this.savingPromises.has(sessionId)) {
-      if (this.config.debug) {
-        console.log(`[AutoSave] Save already in progress for session ${sessionId}`);
-      }
-      return;
-    }
-
-    // 更新最后保存时间
-    this.lastSaveTimes.set(sessionId, Date.now());
-
-    // 异步执行保存，支持失败重试（最多1次）
-    const attemptSave = async (retryCount = 0): Promise<void> => {
-      try {
-        await store.saveSession();
-      } catch (error) {
-        if (retryCount < 1) {
-          console.warn(`[AutoSave] Save failed for session ${sessionId}, retrying in 2s...`, error);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          return attemptSave(retryCount + 1);
-        }
-        console.error(`[AutoSave] Save failed after retry for session ${sessionId}:`, error);
-        const now = Date.now();
-        const lastNotifyKey = `autoSave_lastNotify_${sessionId}`;
-        const lastNotify = (this as any)[lastNotifyKey] || 0;
-        if (now - lastNotify > SAVE_FAILURE_NOTIFICATION_THROTTLE_MS) {
-          (this as any)[lastNotifyKey] = now;
-          showGlobalNotification('warning', i18next.t('chatV2:error.saveFailedDesc'));
-        }
-      }
-    };
-    const savePromise = attemptSave()
-      .finally(() => {
-        this.savingPromises.delete(sessionId);
-      });
-
-    this.savingPromises.set(sessionId, savePromise);
+    void this.enqueueSave(store, true);
 
     if (this.config.debug) {
-      console.log(`[AutoSave] Executing save for session ${sessionId}`);
+      console.log(`[AutoSave] Queued save for session ${store.sessionId}`);
     }
   }
 
   /**
-   * 执行保存（异步，等待完成）
+   * Serialize every save for a session. Scheduled saves retry once and report
+   * failures; force saves preserve rejection semantics for lifecycle callers.
+   * A newly queued save always chains behind the current tail, so a timer that
+   * fires during a slow save becomes a trailing latest-state persistence pass.
    */
-  private async executeSaveAsync(store: ChatStore): Promise<void> {
+  private enqueueSave(store: ChatStore, retryOnFailure: boolean): Promise<void> {
     const sessionId = store.sessionId;
-
-    // 更新最后保存时间
     this.lastSaveTimes.set(sessionId, Date.now());
+    const previousTail = this.savingPromises.get(sessionId);
+    const runSave = async () => {
+      if (!retryOnFailure) {
+        await store.saveSession();
+        return;
+      }
 
-    const savePromise = store.saveSession().finally(() => {
-      this.savingPromises.delete(sessionId);
-    });
+      try {
+        await store.saveSession();
+      } catch (firstError) {
+        console.warn(`[AutoSave] Save failed for session ${sessionId}, retrying in 2s...`, firstError);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        try {
+          await store.saveSession();
+        } catch (retryError) {
+          console.error(`[AutoSave] Save failed after retry for session ${sessionId}:`, retryError);
+          const now = Date.now();
+          const lastNotifyKey = `autoSave_lastNotify_${sessionId}`;
+          const lastNotify = (this as any)[lastNotifyKey] || 0;
+          if (now - lastNotify > SAVE_FAILURE_NOTIFICATION_THROTTLE_MS) {
+            (this as any)[lastNotifyKey] = now;
+            showGlobalNotification('warning', i18next.t('chatV2:error.saveFailedDesc'));
+          }
+        }
+      }
+    };
 
-    this.savingPromises.set(sessionId, savePromise);
+    const ownPromise = previousTail
+      ? previousTail.catch(() => undefined).then(runSave)
+      : runSave();
 
-    await savePromise;
-
-    if (this.config.debug) {
-      console.log(`[AutoSave] Save completed for session ${sessionId}`);
-    }
+    this.savingPromises.set(sessionId, ownPromise);
+    const clearIfCurrentTail = () => {
+      if (this.savingPromises.get(sessionId) === ownPromise) {
+        this.savingPromises.delete(sessionId);
+      }
+    };
+    void ownPromise.then(clearIfCurrentTail, clearIfCurrentTail);
+    return ownPromise;
   }
 
   /**
@@ -215,7 +198,9 @@ class AutoSaveMiddlewareImpl implements AutoSaveMiddleware {
   cleanup(sessionId: string): void {
     this.cancelPendingSave(sessionId);
     this.lastSaveTimes.delete(sessionId);
-    this.savingPromises.delete(sessionId);
+    // An in-flight save cannot be cancelled. Keep the chain registered until
+    // its identity-checked settlement so a reopened same-ID session queues
+    // behind it instead of writing concurrently.
   }
 
   /**
@@ -253,6 +238,16 @@ export function createAutoSaveMiddleware(
  * 用于在流式过程中定期保存块内容到后端，防止闪退丢失
  */
 export interface StreamingBlockSaver {
+  /**
+   * Register the persistence callback owned by one adapter generation.
+   * The returned unregister function is identity-safe: it cannot remove a
+   * newer callback registered for the same session.
+   */
+  registerSaveCallback(
+    sessionId: string,
+    callback: StreamingBlockSaveCallback,
+  ): () => void;
+
   /**
    * 调度流式块保存（节流 5 秒：持续流式期间最多每 5 秒保存一次）
    * @param blockId 块 ID
@@ -302,7 +297,7 @@ export type StreamingBlockSaveCallback = (
  */
 class StreamingBlockSaverImpl implements StreamingBlockSaver {
   private pendingTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private saveCallback: StreamingBlockSaveCallback | null = null;
+  private saveCallbacks = new Map<string, StreamingBlockSaveCallback>();
   private throttleMs = STREAMING_BLOCK_SAVE_THROTTLE_MS;
 
   private accumulatedContent: Map<string, {
@@ -349,12 +344,21 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
     }
   }
 
-  /**
-   * 设置保存回调
-   */
-  setSaveCallback(callback: StreamingBlockSaveCallback | null): void {
-    this.saveCallback = callback;
-    console.log('[StreamingBlockSaver] Save callback', callback ? 'set' : 'cleared');
+  registerSaveCallback(
+    sessionId: string,
+    callback: StreamingBlockSaveCallback,
+  ): () => void {
+    this.saveCallbacks.set(sessionId, callback);
+    console.log('[StreamingBlockSaver] Save callback registered:', sessionId);
+    let unregistered = false;
+    return () => {
+      if (unregistered) return;
+      unregistered = true;
+      if (this.saveCallbacks.get(sessionId) === callback) {
+        this.saveCallbacks.delete(sessionId);
+        console.log('[StreamingBlockSaver] Save callback unregistered:', sessionId);
+      }
+    };
   }
 
   /**
@@ -372,7 +376,11 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
     chunk: string,
     sessionId?: string
   ): void {
-    if (!this.saveCallback) {
+    if (!sessionId) {
+      console.warn('[StreamingBlockSaver] Ignoring block save without sessionId:', blockId);
+      return;
+    }
+    if (!this.saveCallbacks.has(sessionId)) {
       return;
     }
 
@@ -416,16 +424,15 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
    * 执行保存
    */
   private executeSave(blockId: string): void {
-    if (!this.saveCallback) {
-      return;
-    }
-
     const data = this.accumulatedContent.get(blockId);
     if (!data) {
       return;
     }
 
-    this.saveCallback(
+    const saveCallback = this.saveCallbacks.get(data.sessionId);
+    if (!saveCallback) return;
+
+    saveCallback(
       blockId,
       data.messageId,
       data.blockType,
@@ -490,8 +497,7 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
     // 清空累积内容
     this.accumulatedContent.clear();
 
-    // 清除回调
-    this.saveCallback = null;
+    this.saveCallbacks.clear();
 
     console.log('[StreamingBlockSaver] Destroyed and cleaned up');
   }
@@ -500,7 +506,9 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
 /**
  * 流式块保存器单例
  */
-export const streamingBlockSaver = new StreamingBlockSaverImpl() as StreamingBlockSaver & {
-  setSaveCallback: (callback: StreamingBlockSaveCallback | null) => void;
-  destroy: () => void;
-};
+export const streamingBlockSaver: StreamingBlockSaver = new StreamingBlockSaverImpl();
+
+/** Isolated instance for lifecycle tests. */
+export function createStreamingBlockSaver(): StreamingBlockSaver {
+  return new StreamingBlockSaverImpl();
+}

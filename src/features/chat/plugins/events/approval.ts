@@ -27,7 +27,7 @@ function focusChatWindowForApproval(store: ChatStore, sensitivity: string | unde
   const sessionId = store.sessionId;
   if (!sessionId) return;
   try {
-    workbenchBus.activate({
+    void workbenchBus.activate({
       typeId: 'chat',
       instanceKey: sessionId,
       action: 'focus',
@@ -66,9 +66,34 @@ interface ApprovalResultPayload {
 
 const APPROVAL_RESOLUTION_DISPLAY_MS = 1000;
 
-// 简单队列：避免并发审批请求互相覆盖
-const approvalQueue: ApprovalRequestPayload[] = [];
-let resolutionTimer: ReturnType<typeof setTimeout> | null = null;
+interface ApprovalRuntimeState {
+  queue: ApprovalRequestPayload[];
+  resolutionTimer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * Store state snapshots are replaced after every Zustand update, while action
+ * functions remain stable for the lifetime of a store. Keying by the action
+ * therefore keeps each chat window's queue and timer isolated without keeping
+ * destroyed stores alive.
+ */
+const approvalRuntimeByStore = new WeakMap<
+  ChatStore['setPendingApproval'],
+  ApprovalRuntimeState
+>();
+
+function getApprovalRuntime(store: ChatStore): ApprovalRuntimeState {
+  const storeIdentity = store.setPendingApproval;
+  let runtime = approvalRuntimeByStore.get(storeIdentity);
+  if (!runtime) {
+    runtime = {
+      queue: [],
+      resolutionTimer: null,
+    };
+    approvalRuntimeByStore.set(storeIdentity, runtime);
+  }
+  return runtime;
+}
 
 function toStoreApproval(request: ApprovalRequestPayload) {
   return {
@@ -113,19 +138,23 @@ function shouldResolveApproval(store: ChatStore, toolCallId?: string | null) {
 }
 
 function scheduleAdvanceQueue(store: ChatStore) {
-  if (resolutionTimer) {
-    clearTimeout(resolutionTimer);
+  const runtime = getApprovalRuntime(store);
+  if (runtime.resolutionTimer) {
+    clearTimeout(runtime.resolutionTimer);
   }
-  resolutionTimer = setTimeout(() => {
-    resolutionTimer = null;
+
+  const timer = setTimeout(() => {
+    if (runtime.resolutionTimer !== timer) return;
+    runtime.resolutionTimer = null;
     store.clearPendingApproval();
-    const next = approvalQueue.shift();
+    const next = runtime.queue.shift();
     if (next) {
       const normalized = toStoreApproval(next);
       focusChatWindowForApproval(store, normalized.sensitivity);
       store.setPendingApproval(normalized);
     }
   }, APPROVAL_RESOLUTION_DISPLAY_MS);
+  runtime.resolutionTimer = timer;
 }
 
 function normalizeApprovalError(error: string): 'timeout' | 'expired' | 'error' {
@@ -204,8 +233,9 @@ export const approvalEventHandler: EventHandler = {
 
     // 已有待审批请求时进入队列，避免覆盖
     if (store.pendingBlockingInteraction) {
-      approvalQueue.push(request);
-      console.log('[ApprovalEventHandler] Queued approval request:', request.toolCallId, 'queueSize=', approvalQueue.length);
+      const runtime = getApprovalRuntime(store);
+      runtime.queue.push(request);
+      console.log('[ApprovalEventHandler] Queued approval request:', request.toolCallId, 'queueSize=', runtime.queue.length);
     } else {
       store.setPendingApproval(normalized);
     }

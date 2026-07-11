@@ -62,7 +62,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
    - \`propose_update\`：修改已有技能，目标须已存在于 \`~/.deep-student/skills/<skill_id>/\`
    - \`list\`：查看 pending 提案
    - \`reject\`：按 \`proposal_id\` 拒绝提案（留审计）
-2. **生效**：用户审阅后调用 \`builtin-skill_workshop_apply\`（High，**必须用户审批且不可 remember**），携带 \`proposal_id\`；\`propose_create\` 目标目录已存在时需 \`overwrite: true\`
+2. **生效**：用户审阅后调用 \`builtin-skill_workshop_apply\`（High，**必须用户审批且不可 remember**），原样携带 propose/list 返回的 \`proposal_id\`、\`skill_id\`、\`content_sha256\`（作为 \`expected_content_sha256\`）和 \`proposal_revision\`（作为 \`expected_proposal_revision\`）；不得自行重算或更新摘要。\`propose_create\` 目标目录已存在时需 \`overwrite: true\`
 3. **信任**：新写入技能默认 **untrusted**，需用户在技能管理中信任后才能注入 runtime root；下一轮可 \`load_skills\` 使用正文
 
 ## 纪律
@@ -168,15 +168,34 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_workshop_apply',
       description:
-        '将 pending 技能提案写入 ~/.deep-student/skills（High 审批，不可 remember）。校验提案哈希与 TOCTOU 后落盘，写 provenance，新技能默认 untrusted。propose_create 目标已存在时需 overwrite=true。',
+        '将已审阅的 pending 技能提案写入 ~/.deep-student/skills（High 审批，不可 remember）。必须原样携带 propose/list 返回的内容摘要和 revision；审批后任何提案或 SKILL.md 变化都会拒绝。写 provenance，新技能默认 untrusted。propose_create 目标已存在时需 overwrite=true。',
       inputSchema: {
         type: 'object',
-        required: ['proposal_id'],
+        required: [
+          'proposal_id',
+          'skill_id',
+          'expected_content_sha256',
+          'expected_proposal_revision',
+        ],
         additionalProperties: false,
         properties: {
           proposal_id: {
             type: 'string',
             description: '待应用的提案 ID（来自 propose 返回或 list）',
+          },
+          skill_id: {
+            type: 'string',
+            description: '提案返回的目标技能 ID，用于审批界面明确展示写入目标',
+          },
+          expected_content_sha256: {
+            type: 'string',
+            description:
+              '必填：用户审阅的 propose/list 结果中的 content_sha256，必须原样传递，不得重算',
+          },
+          expected_proposal_revision: {
+            type: 'string',
+            description:
+              '必填：同一 propose/list 结果中的 proposal_revision，必须原样传递',
           },
           overwrite: {
             type: 'boolean',

@@ -9,6 +9,7 @@ use std::sync::Arc;
 use tokio::time::{timeout, Duration};
 
 use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensitivity};
+use super::types::is_external_mcp_tool_name;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 // ============================================================================
@@ -88,7 +89,7 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
             } else if stripped.starts_with("workbench_") {
                 // ACR workbench_*：桥调用 + 前端 pacing 演出，外层放宽到 180s（DESIGN §6）
                 180 // 3 分钟
-            } else if stripped.starts_with("mcp_") {
+            } else if is_external_mcp_tool_name(stripped) {
                 // 前缀匹配：MCP 工具通常需要网络请求
                 180 // 3 分钟
             } else {
@@ -149,6 +150,17 @@ impl ToolExecutorRegistry {
     /// - `Some(executor)`: 找到的执行器
     /// - `None`: 没有执行器能处理此工具
     pub fn get_executor(&self, tool_name: &str) -> Option<Arc<dyn ToolExecutor>> {
+        if is_external_mcp_tool_name(tool_name) {
+            // External MCP names must never be normalized into a builtin
+            // executor. GeneralToolExecutor forwards them to ToolRegistry,
+            // which preserves the MCP bridge/source routing.
+            return self
+                .executors
+                .iter()
+                .find(|executor| executor.name() == "GeneralToolExecutor")
+                .cloned();
+        }
+
         for executor in &self.executors {
             if executor.can_handle(tool_name) {
                 return Some(executor.clone());
@@ -478,6 +490,12 @@ mod tests {
     fn image_generation_tool_uses_five_minute_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-image_generate"), 300);
         assert_eq!(get_tool_timeout_secs("image_generate"), 300);
+    }
+
+    #[test]
+    fn external_mcp_namespaces_use_three_minute_timeout() {
+        assert_eq!(get_tool_timeout_secs("mcp_brave_search"), 180);
+        assert_eq!(get_tool_timeout_secs("mcp.tools.brave_search"), 180);
     }
 
     #[test]

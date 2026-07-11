@@ -1,5 +1,5 @@
 import React from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { StoreApi } from 'zustand';
 import type { ChatStore } from '@/features/chat/core/types';
@@ -8,6 +8,7 @@ let mockMessageOrder = ['message-1'];
 let mockSessionStatus = 'idle';
 let mockIsDataLoaded = true;
 let latestViewport: HTMLDivElement | null = null;
+let latestVirtualizerOptions: any = null;
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -17,12 +18,15 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: () => ({
-    getVirtualItems: () => [],
-    getTotalSize: () => 0,
-    measure: vi.fn(),
-    measureElement: vi.fn(),
-  }),
+  useVirtualizer: (options: any) => {
+    latestVirtualizerOptions = options;
+    return {
+      getVirtualItems: () => [],
+      getTotalSize: () => 0,
+      measure: vi.fn(),
+      measureElement: vi.fn(),
+    };
+  },
 }));
 
 vi.mock('@/components/custom-scroll-area', () => ({
@@ -117,7 +121,10 @@ function renderMessageList() {
     setState: vi.fn(),
     destroy: vi.fn(),
   } as unknown as StoreApi<ChatStore>;
-  return render(<MessageList store={store} />);
+  return {
+    ...render(<MessageList store={store} />),
+    store,
+  };
 }
 
 function requireViewport() {
@@ -179,12 +186,17 @@ describe('MessageList scroll-to-bottom control', () => {
     mockSessionStatus = 'idle';
     mockIsDataLoaded = true;
     latestViewport = null;
+    latestVirtualizerOptions = null;
     vi.clearAllMocks();
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
     });
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('shows an icon-only scroll-to-bottom control whenever the thread is away from the bottom', async () => {
@@ -226,5 +238,73 @@ describe('MessageList scroll-to-bottom control', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { hidden: true, name: 'Scroll to bottom' })).toHaveAttribute('tabindex', '-1');
     });
+  });
+
+  it('preserves the visible anchor offset when history is inserted at the head', () => {
+    mockMessageOrder = ['a', 'b', 'c', 'd'];
+    const { rerender, store } = renderMessageList();
+    const viewport = requireViewport();
+    const { getScrollTop } = configureViewportMetrics(viewport, {
+      scrollHeight: 400,
+      clientHeight: 300,
+      scrollTop: 150,
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this === viewport) {
+        return { top: 0, bottom: 300, left: 0, right: 600, width: 600, height: 300, x: 0, y: 0, toJSON() {} } as DOMRect;
+      }
+      if (this instanceof HTMLElement && this.dataset.chatMessageId) {
+        const siblings = Array.from(this.parentElement?.children ?? []);
+        const top = siblings.indexOf(this) * 100 - viewport.scrollTop;
+        return { top, bottom: top + 100, left: 0, right: 600, width: 600, height: 100, x: 0, y: top, toJSON() {} } as DOMRect;
+      }
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON() {} } as DOMRect;
+    });
+
+    mockMessageOrder = ['old', 'a', 'b', 'c', 'd'];
+    rerender(<MessageList store={store} className="history-updated" />);
+
+    expect(getScrollTop()).toBe(250);
+  });
+
+  it('preserves the visible anchor offset for a middle insertion above the viewport', () => {
+    mockMessageOrder = ['a', 'b', 'c', 'd', 'e'];
+    const { rerender, store } = renderMessageList();
+    const viewport = requireViewport();
+    const { getScrollTop } = configureViewportMetrics(viewport, {
+      scrollHeight: 500,
+      clientHeight: 300,
+      scrollTop: 250,
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this === viewport) {
+        return { top: 0, bottom: 300, left: 0, right: 600, width: 600, height: 300, x: 0, y: 0, toJSON() {} } as DOMRect;
+      }
+      if (this instanceof HTMLElement && this.dataset.chatMessageId) {
+        const siblings = Array.from(this.parentElement?.children ?? []);
+        const top = siblings.indexOf(this) * 100 - viewport.scrollTop;
+        return { top, bottom: top + 100, left: 0, right: 600, width: 600, height: 100, x: 0, y: top, toJSON() {} } as DOMRect;
+      }
+      return { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0, x: 0, y: 0, toJSON() {} } as DOMRect;
+    });
+
+    mockMessageOrder = ['a', 'b', 'middle-history', 'c', 'd', 'e'];
+    rerender(<MessageList store={store} className="history-updated" />);
+
+    expect(getScrollTop()).toBe(350);
+  });
+
+  it('keys virtualized measurements by message ID across head insertion', () => {
+    const originalOrder = Array.from({ length: 81 }, (_, index) => `message-${index}`);
+    mockMessageOrder = originalOrder;
+    const { rerender, store } = renderMessageList();
+
+    expect(latestVirtualizerOptions.getItemKey(40)).toBe('message-40');
+
+    mockMessageOrder = ['history-message', ...originalOrder];
+    rerender(<MessageList store={store} className="history-updated" />);
+
+    expect(latestVirtualizerOptions.getItemKey(0)).toBe('history-message');
+    expect(latestVirtualizerOptions.getItemKey(41)).toBe('message-40');
   });
 });

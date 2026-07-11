@@ -162,7 +162,11 @@ impl RequestAdapter for MoonshotAdapter {
             let mut thinking_map = Map::new();
             thinking_map.insert(
                 "type".to_string(),
-                json!(if thinking_enabled { "enabled" } else { "disabled" }),
+                json!(if thinking_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }),
             );
             // Preserved Thinking（跨轮保留历史 reasoning_content）：
             // K2.7-code 强制 keep:"all"；K2.6+ 在 include_thoughts 开启时携带
@@ -331,7 +335,10 @@ mod tests {
             Some((2, 0))
         );
         // 未来版本
-        assert_eq!(MoonshotAdapter::parse_k_version("kimi-k2.10"), Some((2, 10)));
+        assert_eq!(
+            MoonshotAdapter::parse_k_version("kimi-k2.10"),
+            Some((2, 10))
+        );
         assert_eq!(MoonshotAdapter::parse_k_version("kimi-k3"), Some((3, 0)));
         // 非 K 系模型
         assert_eq!(MoonshotAdapter::parse_k_version("moonshot-v1-128k"), None);

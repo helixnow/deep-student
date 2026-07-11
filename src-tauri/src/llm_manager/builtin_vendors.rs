@@ -1219,16 +1219,16 @@ mod tests {
     #[test]
     fn retired_models_are_absent_from_builtin_catalog() {
         const RETIRED_MODELS: &[&str] = &[
-            "kimi-k2",                 // 2026-05-25 停服
-            "kimi-k2-thinking",        // 2026-05-25 停服
-            "kimi-latest",             // 2026-01-28 停服
-            "mimo-v2-pro",             // 2026-06-30 下线
-            "mimo-v2-omni",            // 2026-06-30 下线
-            "mimo-v2-flash",           // 2026-06-30 下线
-            "deepseek-chat",           // 2026-07-24 停用
-            "deepseek-reasoner",       // 2026-07-24 停用
-            "01-ai/yi-large",          // 零一万物退出公有 API
-            "doubao-seed-1-8-251215",  // 无效快照 ID（正确为 251228）
+            "kimi-k2",                // 2026-05-25 停服
+            "kimi-k2-thinking",       // 2026-05-25 停服
+            "kimi-latest",            // 2026-01-28 停服
+            "mimo-v2-pro",            // 2026-06-30 下线
+            "mimo-v2-omni",           // 2026-06-30 下线
+            "mimo-v2-flash",          // 2026-06-30 下线
+            "deepseek-chat",          // 2026-07-24 停用
+            "deepseek-reasoner",      // 2026-07-24 停用
+            "01-ai/yi-large",         // 零一万物退出公有 API
+            "doubao-seed-1-8-251215", // 无效快照 ID（正确为 251228）
         ];
 
         for model in RETIRED_MODELS {

@@ -904,9 +904,9 @@ pub fn parse_gemini_stream_line(
                                     .expect("Gemini tool state poisoned");
                                 let entry = state.entry(index).or_insert_with(|| {
                                     (
-                                        native_id.clone().unwrap_or_else(|| {
-                                            format!("call-{}", Uuid::new_v4())
-                                        }),
+                                        native_id
+                                            .clone()
+                                            .unwrap_or_else(|| format!("call-{}", Uuid::new_v4())),
                                         name.to_string(),
                                     )
                                 });
@@ -1067,9 +1067,9 @@ pub fn parse_gemini_stream_line(
                                     .expect("Gemini tool state poisoned");
                                 let entry = state.entry(index).or_insert_with(|| {
                                     (
-                                        native_id.clone().unwrap_or_else(|| {
-                                            format!("call-{}", Uuid::new_v4())
-                                        }),
+                                        native_id
+                                            .clone()
+                                            .unwrap_or_else(|| format!("call-{}", Uuid::new_v4())),
                                         name.to_string(),
                                     )
                                 });
@@ -2503,7 +2503,11 @@ mod tests {
         match &events[0] {
             StreamEvent::ToolCall(value) => {
                 let id = value.get("id").unwrap().as_str().unwrap();
-                assert!(is_synthetic_tool_call_id(id), "expected synthetic id, got {}", id);
+                assert!(
+                    is_synthetic_tool_call_id(id),
+                    "expected synthetic id, got {}",
+                    id
+                );
             }
             _ => panic!("Expected ToolCall"),
         }
@@ -2538,8 +2542,9 @@ mod tests {
             }]
         });
 
-        let result = convert_gemini_nonstream_response_to_openai(&gemini_response, "gemini-3.5-flash")
-            .unwrap();
+        let result =
+            convert_gemini_nonstream_response_to_openai(&gemini_response, "gemini-3.5-flash")
+                .unwrap();
         let tool_calls = result["choices"][0]["message"]["tool_calls"]
             .as_array()
             .unwrap();
@@ -2576,7 +2581,9 @@ mod tests {
         assert_eq!(contents.len(), 3);
 
         // functionCall part 应携带原生 id
-        let fc = contents[1]["parts"][0].get("functionCall").expect("functionCall kept");
+        let fc = contents[1]["parts"][0]
+            .get("functionCall")
+            .expect("functionCall kept");
         assert_eq!(fc.get("id").unwrap(), "fc-native-1");
         assert_eq!(fc.get("name").unwrap(), "get_weather");
 
@@ -2616,7 +2623,9 @@ mod tests {
         .expect("request");
 
         let contents = request.body.get("contents").unwrap().as_array().unwrap();
-        let fc = contents[1]["parts"][0].get("functionCall").expect("functionCall kept");
+        let fc = contents[1]["parts"][0]
+            .get("functionCall")
+            .expect("functionCall kept");
         assert!(fc.get("id").is_none(), "synthetic id must not be sent back");
         let fr = contents[2]["parts"][0]
             .get("functionResponse")

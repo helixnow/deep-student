@@ -46,8 +46,10 @@ use super::error::{ChatV2Error, ChatV2Result};
 use super::pipeline::ChatV2Pipeline;
 use super::repo::ChatV2Repo;
 use super::state::ChatV2State;
+use super::tools::attempt_completion::is_attempt_completion;
 use super::types::{
-    ChatMessage, ChatSession, McpToolSchema, PersistStatus, SendMessageRequest, SendOptions,
+    block_status, ChatMessage, ChatSession, McpToolSchema, MessageBlock, PersistStatus,
+    SendMessageRequest, SendOptions,
 };
 
 // ============================================================================
@@ -632,7 +634,7 @@ pub struct HeadlessTurnResult {
     pub assistant_message_id: String,
     /// completed | timeout | error
     pub status: String,
-    /// 结果摘要（助手最终回复的截断文本，用于通知正文）
+    /// 结果摘要（优先使用 attempt_completion 结果，否则使用助手正文；用于通知正文）
     pub summary: String,
     /// 执行耗时（毫秒）
     pub duration_ms: u64,
@@ -663,7 +665,7 @@ pub struct HeadlessTurnOutcome {
     pub session_id: String,
     /// 助手消息 ID
     pub assistant_message_id: String,
-    /// 助手最终回复全文（content 块拼接，未截断）
+    /// 助手最终结果（优先使用 attempt_completion 结果，否则拼接 content 块；未截断）
     pub content: String,
     /// 执行耗时（毫秒）
     pub duration_ms: u64,
@@ -835,10 +837,7 @@ pub fn create_headless_session(
 }
 
 /// 确保高层请求的会话存在（isolated 新建 / named 复用或新建），返回会话 ID。
-fn ensure_headless_session(
-    db: &ChatV2Database,
-    req: &HeadlessTurnRequest,
-) -> ChatV2Result<String> {
+fn ensure_headless_session(db: &ChatV2Database, req: &HeadlessTurnRequest) -> ChatV2Result<String> {
     if req.session_mode == HeadlessSessionMode::Named {
         if let Some(existing_id) = req
             .named_session_id
@@ -872,12 +871,10 @@ fn ensure_headless_session(
         }),
     };
 
-    let title = req.title.clone().unwrap_or_else(|| {
-        format!(
-            "自动化任务 {}",
-            chrono::Local::now().format("%m-%d %H:%M")
-        )
-    });
+    let title = req
+        .title
+        .clone()
+        .unwrap_or_else(|| format!("自动化任务 {}", chrono::Local::now().format("%m-%d %H:%M")));
 
     create_headless_session(db, "automation", &title, metadata).map_err(ChatV2Error::Other)
 }
@@ -919,7 +916,9 @@ async fn execute_headless_pipeline(
         .ok_or_else(|| "没有可用的应用窗口，无法创建事件发射通道".to_string())?;
 
     let max_tool_rounds = max_tool_rounds_override
-        .or_else(|| read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32))
+        .or_else(|| {
+            read_main_db_setting_u64(app, SETTING_HEADLESS_MAX_TOOL_ROUNDS).map(|v| v as u32)
+        })
         .unwrap_or(DEFAULT_MAX_TOOL_ROUNDS)
         .clamp(1, MAX_TOOL_ROUNDS_CAP);
 
@@ -1077,7 +1076,11 @@ fn headless_system_prompt_note() -> String {
     .join("\n")
 }
 
-/// 从助手消息的 content 块提取最终回复全文。
+/// 从助手消息中提取最终结果。
+///
+/// Headless prompt 要求模型以 `attempt_completion` 结束任务，因此正常完成时可能
+/// 完全没有 content 块。成功完成工具的 `tool_output.result` 是通知正文的权威来源；
+/// 工具失败、输出缺失或结果为空时才回退到 content 块。
 fn summarize_assistant_message(db: &ChatV2Database, message_id: &str) -> String {
     let blocks = match ChatV2Repo::get_message_blocks_v2(db, message_id) {
         Ok(blocks) => blocks,
@@ -1090,6 +1093,31 @@ fn summarize_assistant_message(db: &ChatV2Database, message_id: &str) -> String 
             return String::new();
         }
     };
+
+    summarize_assistant_blocks(&blocks)
+}
+
+fn summarize_assistant_blocks(blocks: &[MessageBlock]) -> String {
+    if let Some(result) = blocks.iter().rev().find_map(|block| {
+        if block.status != block_status::SUCCESS
+            || !block
+                .tool_name
+                .as_deref()
+                .is_some_and(is_attempt_completion)
+        {
+            return None;
+        }
+
+        block
+            .tool_output
+            .as_ref()?
+            .get("result")?
+            .as_str()
+            .map(str::trim)
+            .filter(|result| !result.is_empty())
+    }) {
+        return result.to_string();
+    }
 
     blocks
         .iter()
@@ -1116,6 +1144,7 @@ fn truncate_chars(text: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::automations::heartbeat_is_silent;
     use crate::chat_v2::tool_policy::is_tool_allowed_by_skill_policy;
     use crate::chat_v2::tools::{
         AttemptCompletionExecutor, BuiltinResourceExecutor, BuiltinRetrievalExecutor,
@@ -1156,7 +1185,11 @@ mod tests {
                     short == *blocked
                 }
             });
-            assert!(!hit, "黑名单工具 '{}'（{}）不得出现在白名单", blocked, reason);
+            assert!(
+                !hit,
+                "黑名单工具 '{}'（{}）不得出现在白名单",
+                blocked, reason
+            );
         }
     }
 
@@ -1353,5 +1386,55 @@ mod tests {
         let note = headless_system_prompt_note();
         assert!(note.contains("headless"));
         assert!(note.contains("attempt_completion"));
+    }
+
+    fn completion_block(status: &str, result: &str, block_index: u32) -> MessageBlock {
+        let mut block = MessageBlock::new_tool(
+            "msg_headless_test".to_string(),
+            "attempt_completion",
+            json!({ "result": result }),
+            block_index,
+        );
+        block.status = status.to_string();
+        block.tool_output = Some(json!({
+            "completed": status == block_status::SUCCESS,
+            "result": result,
+            "command": null,
+            "task_completed": status == block_status::SUCCESS,
+        }));
+        block
+    }
+
+    #[test]
+    fn summary_uses_successful_completion_tool_without_content() {
+        let blocks = vec![completion_block(
+            block_status::SUCCESS,
+            "已检查 3 项，均正常",
+            0,
+        )];
+
+        assert_eq!(summarize_assistant_blocks(&blocks), "已检查 3 项，均正常");
+    }
+
+    #[test]
+    fn completion_tool_heartbeat_result_remains_silent() {
+        let blocks = vec![completion_block(block_status::SUCCESS, "HEARTBEAT_OK", 0)];
+
+        let summary = summarize_assistant_blocks(&blocks);
+        assert_eq!(summary, "HEARTBEAT_OK");
+        assert!(heartbeat_is_silent(&summary));
+    }
+
+    #[test]
+    fn summary_ignores_failed_completion_tool_output() {
+        let mut content = MessageBlock::new_content("msg_headless_test".to_string(), 0);
+        content.status = block_status::SUCCESS.to_string();
+        content.content = Some("可用的正文结果".to_string());
+        let failed = completion_block(block_status::ERROR, "不应展示的伪结果", 1);
+
+        assert_eq!(
+            summarize_assistant_blocks(&[content, failed]),
+            "可用的正文结果"
+        );
     }
 }

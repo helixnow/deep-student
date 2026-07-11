@@ -22,6 +22,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::{BTreeMap, BTreeSet};
+use std::env;
+use std::path::{Path, PathBuf};
 
 /// Source namespace used in scope keys. Prevents a user-granted approval on one
 /// tool source from leaking to a same-named tool on another source.
@@ -141,6 +144,28 @@ pub fn never_remember_approval(tool_name: &str) -> bool {
     is_privilege_escalation_tool(tool_name)
 }
 
+/// Argument-aware never-remember policy. Commands that select arbitrary code,
+/// a wrapper payload, or a mutable path executable cannot be bound to a stable
+/// filesystem identity at ApprovalManager time, so they are single-use only.
+pub fn never_remember_approval_for_args(tool_name: &str, args: &Value) -> bool {
+    if never_remember_approval(tool_name) {
+        return true;
+    }
+    if !is_shell_runtime_tool(tool_name) {
+        return false;
+    }
+    let Some(command) = args.get("command").and_then(Value::as_str) else {
+        return true;
+    };
+    let analysis = analyze_shell_command(command);
+    analysis.uses_script_runner
+        || analysis
+            .first_token
+            .as_deref()
+            .map(is_path_executable_token)
+            .unwrap_or(true)
+}
+
 /// Tools in this family can execute local commands or mutate local files. They
 /// must never be remembered only by tool name.
 pub fn requires_precise_approval_scope(tool_name: &str) -> bool {
@@ -157,6 +182,30 @@ pub fn ignores_broad_approval_bypass(tool_name: &str) -> bool {
     requires_precise_approval_scope(tool_name)
 }
 
+/// Redact all explicit shell environment values before arguments cross an IPC
+/// or persistence boundary. Environment key names remain visible so the user
+/// can understand that execution semantics are being changed.
+pub fn redact_tool_arguments_for_display(tool_name: &str, args: &Value) -> Value {
+    if !is_shell_runtime_tool(tool_name) {
+        return args.clone();
+    }
+    let mut redacted = args.clone();
+    let Some(object) = redacted.as_object_mut() else {
+        return redacted;
+    };
+    let Some(env_value) = object.get_mut("env") else {
+        return redacted;
+    };
+    if let Some(env_object) = env_value.as_object_mut() {
+        for value in env_object.values_mut() {
+            *value = Value::String("[REDACTED]".to_string());
+        }
+    } else {
+        *env_value = Value::String("[REDACTED]".to_string());
+    }
+    redacted
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeApprovalScope {
@@ -167,6 +216,13 @@ pub struct RuntimeApprovalScope {
     pub cwd: String,
     pub command_prefix: String,
     pub command_hash: String,
+    /// SHA-256 of the complete effective environment plan. Values are never
+    /// exposed, but changing an inherited or explicit value requires a fresh
+    /// approval even when the visible command is unchanged.
+    pub env_plan_hash: String,
+    pub timeout_ms: u64,
+    pub max_output_bytes: u64,
+    pub track_file_changes: bool,
     pub risk_level: String,
     pub network_allowed: bool,
     pub has_shell_operators: bool,
@@ -256,12 +312,33 @@ fn extract_generic_scope_identity(args: &Value) -> Option<String> {
     })
 }
 
-fn normalized_shell_runtime_location(args: &Value) -> (String, String) {
-    let root_id = extract_str_field(args, &["root_id", "rootId"])
-        .unwrap_or_else(|| "workspace".to_string());
+pub(crate) fn normalized_shell_runtime_location(args: &Value) -> (String, String) {
+    let root_id =
+        extract_str_field(args, &["root_id", "rootId"]).unwrap_or_else(|| "workspace".to_string());
     let cwd = extract_str_field(args, &["cwd", "working_dir", "workingDir"])
         .unwrap_or_else(|| ".".to_string());
     (root_id, cwd)
+}
+
+fn normalized_shell_execution_controls(args: &Value) -> (u64, u64, bool) {
+    let timeout_ms = args
+        .get("timeout_ms")
+        .or_else(|| args.get("timeoutMs"))
+        .and_then(Value::as_u64)
+        .unwrap_or(30_000)
+        .clamp(1_000, 120_000);
+    let max_output_bytes = args
+        .get("max_output_bytes")
+        .or_else(|| args.get("maxOutputBytes"))
+        .and_then(Value::as_u64)
+        .unwrap_or(64 * 1024)
+        .clamp(1_024, 1024 * 1024);
+    let track_file_changes = args
+        .get("track_file_changes")
+        .or_else(|| args.get("trackFileChanges"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    (timeout_ms, max_output_bytes, track_file_changes)
 }
 
 /// Optional `skill_root_id` argument (SKILL_DIR injection target). Must be part
@@ -269,6 +346,89 @@ fn normalized_shell_runtime_location(args: &Value) -> (String, String) {
 /// must not auto-approve the same prefix with a skill package path injected.
 fn shell_skill_root_id(args: &Value) -> Option<String> {
     extract_str_field(args, &["skill_root_id", "skillRootId"])
+}
+
+fn canonical_env_key_list(value: Option<&Value>) -> Value {
+    let Some(value) = value else {
+        return Value::Array(Vec::new());
+    };
+    let Some(values) = value.as_array() else {
+        return value.clone();
+    };
+    let mut keys = values
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|key| !key.is_empty())
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(Value::String)
+        .collect::<Vec<_>>();
+    if keys.len() != values.len() {
+        // Invalid/mixed arrays must not collapse onto a valid plan.
+        return value.clone();
+    }
+    Value::Array(std::mem::take(&mut keys))
+}
+
+fn canonical_json(value: &Value) -> Value {
+    match value {
+        Value::Object(object) => {
+            let sorted = object
+                .iter()
+                .map(|(key, value)| (key.clone(), canonical_json(value)))
+                .collect::<BTreeMap<_, _>>();
+            serde_json::to_value(sorted).unwrap_or(Value::Null)
+        }
+        Value::Array(values) => Value::Array(values.iter().map(canonical_json).collect()),
+        _ => value.clone(),
+    }
+}
+
+/// Digest the complete environment that will influence the child shell.
+///
+/// The requested plan is canonicalized across snake/camel aliases and the
+/// current parent environment is included because `inherit_env=true` makes
+/// values such as NODE_OPTIONS, LD_PRELOAD, BASH_ENV, and PATH executable
+/// inputs. Only the digest is surfaced; environment values never enter an
+/// approval request or audit record.
+fn shell_env_plan_hash(args: &Value) -> String {
+    let inherit_parent_env = args
+        .get("inherit_env")
+        .or_else(|| args.get("inheritEnv"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let allowlist = canonical_env_key_list(
+        args.get("env_allowlist")
+            .or_else(|| args.get("envAllowlist")),
+    );
+    let denylist =
+        canonical_env_key_list(args.get("env_denylist").or_else(|| args.get("envDenylist")));
+    let explicit = canonical_json(args.get("env").unwrap_or(&Value::Null));
+
+    // Even inherit_env=false retains the platform-minimal environment in the
+    // executor. Hashing the complete parent environment is intentionally
+    // conservative and guarantees every effective inherited value is covered.
+    let parent_env = env::vars_os()
+        .map(|(key, value)| {
+            (
+                key.to_string_lossy().into_owned(),
+                value.to_string_lossy().into_owned(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let plan = serde_json::json!({
+        "inherit_parent_env": inherit_parent_env,
+        "allowlist": allowlist,
+        "denylist": denylist,
+        "explicit": explicit,
+        "parent_env": parent_env,
+    });
+    raw_hash(&serde_json::to_string(&plan).unwrap_or_else(|_| "null".to_string()))
+        .strip_prefix("raw:")
+        .unwrap_or("")
+        .to_string()
 }
 
 fn shell_scope_fingerprint(args: &Value) -> Option<String> {
@@ -281,9 +441,19 @@ fn shell_scope_fingerprint(args: &Value) -> Option<String> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let skill_root_id = shell_skill_root_id(args).unwrap_or_else(|| "-".to_string());
+    let (timeout_ms, max_output_bytes, track_file_changes) =
+        normalized_shell_execution_controls(args);
     Some(format!(
-        "root={};cwd={};net={};skill={};cmd={}",
-        root_id, cwd, network_allowed, skill_root_id, analysis.command_prefix
+        "root={};cwd={};net={};skill={};env={};timeout={};maxout={};track={};cmd={}",
+        root_id,
+        cwd,
+        network_allowed,
+        skill_root_id,
+        shell_env_plan_hash(args),
+        timeout_ms,
+        max_output_bytes,
+        track_file_changes,
+        raw_hash(&analysis.trimmed)
     ))
 }
 
@@ -335,6 +505,10 @@ fn make_skill_install_approval_scope(
             .strip_prefix("raw:")
             .unwrap_or("")
             .to_string(),
+        env_plan_hash: "-".to_string(),
+        timeout_ms: 0,
+        max_output_bytes: 0,
+        track_file_changes: false,
         risk_level: risk_level.to_string(),
         network_allowed: false,
         has_shell_operators: false,
@@ -360,10 +534,18 @@ fn make_skill_workshop_approval_scope(
     }
     let (tool_source, short_tool_name) = tool_source_namespace(tool_name, args);
     let proposal_id = extract_str_field(args, &["proposal_id", "proposalId"])?;
-    let content_sha256 = extract_str_field(args, &["content_sha256", "contentSha256"]);
-    let sha_prefix = content_sha256
-        .as_deref()
-        .map(|sha| sha.chars().take(12).collect::<String>());
+    let content_sha256 =
+        extract_str_field(args, &["expected_content_sha256", "expectedContentSha256"])?;
+    let proposal_revision = extract_str_field(
+        args,
+        &["expected_proposal_revision", "expectedProposalRevision"],
+    )?;
+    let skill_id = extract_str_field(args, &["skill_id", "skillId"])?;
+    let sha_prefix = content_sha256.chars().take(12).collect::<String>();
+    let approval_identity = format!(
+        "{}:{}:{}:{}",
+        proposal_id, skill_id, content_sha256, proposal_revision
+    );
     Some(RuntimeApprovalScope {
         kind: "skill_workshop".to_string(),
         tool_source,
@@ -371,10 +553,14 @@ fn make_skill_workshop_approval_scope(
         root_id: "-".to_string(),
         cwd: "-".to_string(),
         command_prefix: "-".to_string(),
-        command_hash: raw_hash(&proposal_id)
+        command_hash: raw_hash(&approval_identity)
             .strip_prefix("raw:")
             .unwrap_or("")
             .to_string(),
+        env_plan_hash: "-".to_string(),
+        timeout_ms: 0,
+        max_output_bytes: 0,
+        track_file_changes: false,
         risk_level: risk_level.to_string(),
         network_allowed: false,
         has_shell_operators: false,
@@ -383,9 +569,9 @@ fn make_skill_workshop_approval_scope(
         skill_root_id: None,
         remember_disabled: Some(true),
         source_summary: Some(proposal_id),
-        expected_sha256_prefix: sha_prefix,
+        expected_sha256_prefix: Some(sha_prefix),
         declared_risk_level: None,
-        skill_id: extract_str_field(args, &["skill_id", "skillId"]),
+        skill_id: Some(skill_id),
     })
 }
 
@@ -417,6 +603,10 @@ fn make_automation_propose_approval_scope(
             .strip_prefix("raw:")
             .unwrap_or("")
             .to_string(),
+        env_plan_hash: "-".to_string(),
+        timeout_ms: 0,
+        max_output_bytes: 0,
+        track_file_changes: false,
         risk_level: risk_level.to_string(),
         network_allowed: false,
         has_shell_operators: false,
@@ -457,6 +647,9 @@ pub fn make_runtime_approval_scope(
         .or_else(|| args.get("allowNetwork"))
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
+    let (timeout_ms, max_output_bytes, track_file_changes) =
+        normalized_shell_execution_controls(args);
+    let remember_disabled = never_remember_approval_for_args(tool_name, args).then_some(true);
     Some(RuntimeApprovalScope {
         kind: "shell".to_string(),
         tool_source,
@@ -468,13 +661,17 @@ pub fn make_runtime_approval_scope(
             .strip_prefix("raw:")
             .unwrap_or("")
             .to_string(),
+        env_plan_hash: shell_env_plan_hash(args),
+        timeout_ms,
+        max_output_bytes,
+        track_file_changes,
         risk_level: risk_level.to_string(),
         network_allowed,
         has_shell_operators: analysis.has_shell_operators,
         uses_script_runner: analysis.uses_script_runner,
         first_token: analysis.first_token,
         skill_root_id: shell_skill_root_id(args),
-        remember_disabled: None,
+        remember_disabled,
         source_summary: None,
         expected_sha256_prefix: None,
         declared_risk_level: None,
@@ -585,14 +782,29 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         | "bash"
         | "shell"
         | "shell_execute"
-        |         "local_shell_execute"
+        | "local_shell_execute"
         | "local_shell_preflight" => shell_scope_fingerprint(args),
 
         "skill_install" => extract_str_field(args, &["expected_sha256", "expectedSha256"])
             .map(|sha| format!("sha={}", sha)),
 
-        "skill_workshop_apply" => extract_str_field(args, &["proposal_id", "proposalId"])
-            .map(|id| format!("proposal={}", id)),
+        "skill_workshop_apply" => {
+            let proposal_id = extract_str_field(args, &["proposal_id", "proposalId"]);
+            let content_sha256 =
+                extract_str_field(args, &["expected_content_sha256", "expectedContentSha256"]);
+            let revision = extract_str_field(
+                args,
+                &["expected_proposal_revision", "expectedProposalRevision"],
+            );
+            let skill_id = extract_str_field(args, &["skill_id", "skillId"]);
+            match (proposal_id, skill_id, content_sha256, revision) {
+                (Some(id), Some(skill_id), Some(sha), Some(revision)) => Some(format!(
+                    "proposal={}:skill={}:sha={}:revision={}",
+                    id, skill_id, sha, revision
+                )),
+                _ => None,
+            }
+        }
 
         // --- 未知工具：尝试从通用资源字段中保守提取；否则 fallback v1 ---
         _ => extract_generic_scope_identity(args),
@@ -622,12 +834,64 @@ const DANGEROUS_SHELL_OPERATORS: &[&str] = &[
 /// 🔒 02 号报告 P1-1：补齐 Windows 主平台运行器（powershell/pwsh/cmd/iex 等），
 /// 否则 `pwsh -c '<任意脚本>'` 会塌陷成 `pwsh -c` 前缀，remember 后放行任意命令。
 const ARBITRARY_CODE_RUNNERS: &[&str] = &[
-    "bash", "sh", "zsh", "fish", "ash", "dash", "ksh", "csh", "tcsh", "python", "python3",
-    "python2", "ruby", "perl", "lua", "node", "deno", "bun", "eval", "exec", "source",
+    "bash",
+    "sh",
+    "zsh",
+    "fish",
+    "ash",
+    "dash",
+    "ksh",
+    "csh",
+    "tcsh",
+    "python",
+    "python3",
+    "python2",
+    "ruby",
+    "perl",
+    "lua",
+    "node",
+    "deno",
+    "bun",
+    "java",
+    "dotnet",
+    "php",
+    "cargo",
+    "make",
+    "cmake",
+    "ninja",
+    "eval",
+    "exec",
+    "source",
     // Windows 脚本解释器 / 任意代码入口
-    "powershell", "pwsh", "cmd", "command", "iex", "invoke-expression", "invoke-command",
-    "wscript", "cscript", "mshta",
+    "powershell",
+    "pwsh",
+    "cmd",
+    "command",
+    "iex",
+    "invoke-expression",
+    "invoke-command",
+    "wscript",
+    "cscript",
+    "mshta",
 ];
+
+/// Launchers whose remaining operands select another executable or arbitrary
+/// payload. The outer launcher is not the command whose effects should be
+/// classified (`env FOO=1 rm x`, `timeout 5 curl ...`, and so on).
+const COMMAND_WRAPPERS: &[&str] = &[
+    "env", "nice", "nohup", "timeout", "gtimeout", "command", "sudo", "doas", "xargs", "setsid",
+    "stdbuf", "ionice", "chrt",
+];
+
+#[derive(Debug)]
+struct PolicyCommandView<'a> {
+    words: &'a [String],
+    effective_index: usize,
+    executable: String,
+    wrappers: Vec<String>,
+    package_runner: bool,
+    arbitrary_payload: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellCommandAnalysis {
@@ -636,16 +900,41 @@ pub struct ShellCommandAnalysis {
     pub has_shell_operators: bool,
     pub uses_script_runner: bool,
     pub first_token: Option<String>,
+    /// Effective command after unwrapping launchers such as env/nice/timeout.
+    pub effective_first_token: Option<String>,
+    pub network_capable: bool,
+    pub write_capable: bool,
+    /// Explicit absolute or parent-traversing operands. The executor validates
+    /// these against the selected runtime root before launching the shell.
+    pub path_operands: Vec<String>,
 }
 
 pub fn analyze_shell_command(cmd: &str) -> ShellCommandAnalysis {
-    let trimmed = cmd.trim().to_string();
+    let trimmed = cmd.trim().replace("\r\n", "\n").replace('\r', "\n");
     let has_shell_operators = contains_shell_operator(&trimmed);
-    let first_token = trimmed.split_whitespace().next().map(str::to_string);
-    let uses_script_runner = first_token
-        .as_deref()
-        .map(is_script_runner_token)
-        .unwrap_or(false);
+    let segments = lex_shell_command_segments(&trimmed);
+    let views = segments
+        .iter()
+        .filter_map(|words| policy_command_view(words))
+        .collect::<Vec<_>>();
+    let first_token = segments.first().and_then(|words| words.first()).cloned();
+    let effective_first_token = views.first().map(|view| view.executable.clone());
+    let uses_script_runner = views.iter().any(|view| {
+        !view.wrappers.is_empty()
+            || view.package_runner
+            || view.arbitrary_payload
+            || is_script_runner_token(&view.executable)
+    });
+    let network_capable =
+        views.iter().any(command_view_is_network_capable) || contains_network_marker(&trimmed);
+    let write_capable =
+        has_write_redirection(&trimmed) || views.iter().any(command_view_is_write_capable);
+    let path_operands = views
+        .iter()
+        .flat_map(command_view_path_operands)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
     let command_prefix = if trimmed.is_empty() {
         "__empty__".to_string()
     } else if has_shell_operators || uses_script_runner {
@@ -664,7 +953,624 @@ pub fn analyze_shell_command(cmd: &str) -> ShellCommandAnalysis {
         has_shell_operators,
         uses_script_runner,
         first_token,
+        effective_first_token,
+        network_capable,
+        write_capable,
+        path_operands,
     }
+}
+
+fn lexical_normalize_path(path: &Path) -> PathBuf {
+    use std::path::Component;
+
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other.as_os_str()),
+        }
+    }
+    normalized
+}
+
+fn canonicalize_path_with_missing_tail(path: &Path) -> Result<PathBuf, String> {
+    let mut ancestor = path;
+    let mut tail = Vec::new();
+    while !ancestor.exists() {
+        let name = ancestor
+            .file_name()
+            .ok_or_else(|| format!("cannot resolve path operand '{}'", path.to_string_lossy()))?;
+        tail.push(name.to_os_string());
+        ancestor = ancestor
+            .parent()
+            .ok_or_else(|| format!("cannot resolve path operand '{}'", path.to_string_lossy()))?;
+    }
+    let mut resolved = ancestor.canonicalize().map_err(|error| {
+        format!(
+            "failed to canonicalize path operand '{}': {}",
+            path.to_string_lossy(),
+            error
+        )
+    })?;
+    for component in tail.into_iter().rev() {
+        resolved.push(component);
+    }
+    Ok(lexical_normalize_path(&resolved))
+}
+
+/// Enforce the selected runtime root for explicit path operands of a
+/// write-capable command. Existing symlinks and the nearest existing ancestor
+/// of a not-yet-created target are canonicalized before containment checks.
+pub(crate) fn validate_shell_path_operands_within_root(
+    root: &Path,
+    cwd: &Path,
+    command: &str,
+) -> Result<(), String> {
+    let analysis = analyze_shell_command(command);
+    if !analysis.write_capable || analysis.path_operands.is_empty() {
+        return Ok(());
+    }
+    let root_canon = root
+        .canonicalize()
+        .map_err(|error| format!("failed to canonicalize runtime root: {error}"))?;
+
+    for operand in &analysis.path_operands {
+        if operand.starts_with('~') || operand.starts_with('$') || operand.starts_with('%') {
+            return Err(format!(
+                "path operand '{}' uses a shell expansion that cannot be constrained",
+                operand
+            ));
+        }
+
+        #[cfg(not(windows))]
+        {
+            let bytes = operand.as_bytes();
+            if bytes.len() >= 3 && bytes[1] == b':' && matches!(bytes[2], b'/' | b'\\') {
+                return Err(format!(
+                    "foreign absolute path operand '{}' cannot be constrained",
+                    operand
+                ));
+            }
+        }
+
+        let raw = PathBuf::from(operand);
+        let candidate = if raw.is_absolute() {
+            raw
+        } else {
+            cwd.join(raw)
+        };
+        let resolved = canonicalize_path_with_missing_tail(&candidate)?;
+        if !resolved.starts_with(&root_canon) {
+            return Err(format!(
+                "path operand '{}' escapes the selected runtime root",
+                operand
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn flush_lex_word(current: &mut String, words: &mut Vec<String>) {
+    if !current.is_empty() {
+        words.push(std::mem::take(current));
+    }
+}
+
+fn flush_lex_segment(words: &mut Vec<String>, segments: &mut Vec<Vec<String>>) {
+    if !words.is_empty() {
+        segments.push(std::mem::take(words));
+    }
+}
+
+/// Quote-aware lexer used only for conservative policy classification. It is
+/// intentionally not an execution parser; the platform shell remains the
+/// source of truth. Control operators split commands, while redirection tokens
+/// stay in the segment so their target path can be root-checked.
+fn lex_shell_command_segments(command: &str) -> Vec<Vec<String>> {
+    let mut segments = Vec::new();
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    let mut chars = command.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            } else if ch == '\\' && active_quote == '"' {
+                match chars.peek().copied() {
+                    Some(next) if matches!(next, '"' | '\\' | '$' | '`') => {
+                        current.push(chars.next().unwrap_or(next));
+                    }
+                    _ => current.push(ch),
+                }
+            } else {
+                current.push(ch);
+            }
+            continue;
+        }
+
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '\\' => match chars.peek().copied() {
+                Some(next)
+                    if next.is_whitespace()
+                        || matches!(next, '\'' | '"' | '\\' | ';' | '|' | '&' | '<' | '>') =>
+                {
+                    current.push(chars.next().unwrap_or(next));
+                }
+                _ => current.push(ch),
+            },
+            ';' | '|' | '&' | '\n' | '\r' | '；' | '｜' | '＆' => {
+                flush_lex_word(&mut current, &mut words);
+                flush_lex_segment(&mut words, &mut segments);
+            }
+            '<' | '>' => {
+                flush_lex_word(&mut current, &mut words);
+                words.push(ch.to_string());
+            }
+            ch if ch.is_whitespace() => flush_lex_word(&mut current, &mut words),
+            _ => current.push(ch),
+        }
+    }
+    flush_lex_word(&mut current, &mut words);
+    flush_lex_segment(&mut words, &mut segments);
+    segments
+}
+
+fn executable_basename_lower(token: &str) -> String {
+    let basename = token
+        .rsplit(|ch| ch == '/' || ch == '\\')
+        .next()
+        .unwrap_or(token)
+        .to_ascii_lowercase();
+    basename
+        .strip_suffix(".exe")
+        .or_else(|| basename.strip_suffix(".cmd"))
+        .or_else(|| basename.strip_suffix(".bat"))
+        .unwrap_or(&basename)
+        .to_string()
+}
+
+fn is_env_assignment(token: &str) -> bool {
+    let Some((key, _)) = token.split_once('=') else {
+        return false;
+    };
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
+        && key
+            .chars()
+            .next()
+            .map(|ch| ch == '_' || ch.is_ascii_alphabetic())
+            .unwrap_or(false)
+}
+
+fn policy_command_view(words: &[String]) -> Option<PolicyCommandView<'_>> {
+    let mut index = 0usize;
+    let mut wrappers = Vec::new();
+    let mut package_runner = false;
+    let mut arbitrary_payload = false;
+
+    while index < words.len() {
+        let launcher = executable_basename_lower(&words[index]);
+
+        if launcher == "npx" {
+            wrappers.push(launcher);
+            package_runner = true;
+            index += 1;
+            while index < words.len() && words[index].starts_with('-') {
+                let takes_value = matches!(
+                    words[index].as_str(),
+                    "-p" | "--package" | "-c" | "--call" | "--cache" | "--userconfig"
+                ) && !words[index].contains('=');
+                index += 1 + usize::from(takes_value && index + 1 < words.len());
+            }
+            break;
+        }
+        if launcher == "npm"
+            && words
+                .get(index + 1)
+                .map(|word| matches!(word.as_str(), "exec" | "x"))
+                .unwrap_or(false)
+        {
+            wrappers.push("npm-exec".to_string());
+            package_runner = true;
+            index += 2;
+            while index < words.len() && words[index].starts_with('-') {
+                let takes_value = matches!(
+                    words[index].as_str(),
+                    "--package" | "--workspace" | "--prefix" | "--userconfig"
+                ) && !words[index].contains('=');
+                index += 1 + usize::from(takes_value && index + 1 < words.len());
+            }
+            if words.get(index).map(String::as_str) == Some("--") {
+                index += 1;
+            }
+            break;
+        }
+        if !COMMAND_WRAPPERS.contains(&launcher.as_str()) {
+            break;
+        }
+
+        wrappers.push(launcher.clone());
+        index += 1;
+        match launcher.as_str() {
+            "env" => {
+                while index < words.len() {
+                    let token = words[index].as_str();
+                    if token == "--" {
+                        index += 1;
+                        break;
+                    }
+                    let takes_value = matches!(
+                        token,
+                        "-u" | "--unset" | "-C" | "--chdir" | "-S" | "--split-string"
+                    ) && !token.contains('=');
+                    if matches!(token, "-S" | "--split-string")
+                        || token.starts_with("--split-string=")
+                    {
+                        arbitrary_payload = true;
+                    }
+                    if token.starts_with('-') {
+                        index += 1 + usize::from(takes_value && index + 1 < words.len());
+                    } else if is_env_assignment(token) {
+                        index += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            "nice" => {
+                while index < words.len() && words[index].starts_with('-') {
+                    let takes_value = matches!(words[index].as_str(), "-n" | "--adjustment")
+                        && !words[index].contains('=');
+                    index += 1 + usize::from(takes_value && index + 1 < words.len());
+                }
+            }
+            "timeout" | "gtimeout" => {
+                while index < words.len() && words[index].starts_with('-') {
+                    let takes_value = matches!(
+                        words[index].as_str(),
+                        "-k" | "--kill-after" | "-s" | "--signal"
+                    ) && !words[index].contains('=');
+                    index += 1 + usize::from(takes_value && index + 1 < words.len());
+                }
+                if index < words.len() {
+                    index += 1; // duration
+                }
+            }
+            "sudo" | "doas" => {
+                while index < words.len() && words[index].starts_with('-') {
+                    let takes_value = matches!(
+                        words[index].as_str(),
+                        "-C" | "-D"
+                            | "-g"
+                            | "-h"
+                            | "-p"
+                            | "-R"
+                            | "-T"
+                            | "-u"
+                            | "--chdir"
+                            | "--group"
+                            | "--host"
+                            | "--prompt"
+                            | "--role"
+                            | "--type"
+                            | "--user"
+                    ) && !words[index].contains('=');
+                    index += 1 + usize::from(takes_value && index + 1 < words.len());
+                }
+            }
+            "xargs" => {
+                while index < words.len() && words[index].starts_with('-') {
+                    let takes_value = matches!(
+                        words[index].as_str(),
+                        "-a" | "--arg-file"
+                            | "-d"
+                            | "--delimiter"
+                            | "-E"
+                            | "--eof"
+                            | "-I"
+                            | "--replace"
+                            | "-L"
+                            | "--max-lines"
+                            | "-n"
+                            | "--max-args"
+                            | "-P"
+                            | "--max-procs"
+                            | "-s"
+                            | "--max-chars"
+                    ) && !words[index].contains('=');
+                    index += 1 + usize::from(takes_value && index + 1 < words.len());
+                }
+            }
+            "stdbuf" | "ionice" | "chrt" => {
+                while index < words.len() && words[index].starts_with('-') {
+                    let takes_value = matches!(
+                        words[index].as_str(),
+                        "-i" | "-o"
+                            | "-e"
+                            | "-c"
+                            | "--class"
+                            | "-n"
+                            | "--classdata"
+                            | "-p"
+                            | "--pid"
+                            | "-r"
+                            | "--priority"
+                    ) && !words[index].contains('=');
+                    index += 1 + usize::from(takes_value && index + 1 < words.len());
+                }
+            }
+            _ => {
+                while index < words.len() && words[index].starts_with('-') {
+                    index += 1;
+                }
+            }
+        }
+    }
+
+    let executable = words
+        .get(index)
+        .map(|word| executable_basename_lower(word))
+        .or_else(|| wrappers.last().cloned())?;
+    Some(PolicyCommandView {
+        words,
+        effective_index: index,
+        executable,
+        wrappers,
+        package_runner,
+        arbitrary_payload,
+    })
+}
+
+fn command_view_is_network_capable(view: &PolicyCommandView<'_>) -> bool {
+    if view.package_runner
+        || view.arbitrary_payload
+        || is_script_runner_token(&view.executable)
+        || is_path_executable_token(
+            view.words
+                .get(view.effective_index)
+                .map(String::as_str)
+                .unwrap_or(&view.executable),
+        )
+    {
+        return true;
+    }
+    let second = view
+        .words
+        .get(view.effective_index + 1)
+        .map(|word| word.to_ascii_lowercase())
+        .unwrap_or_default();
+    matches!(
+        view.executable.as_str(),
+        "curl"
+            | "wget"
+            | "ssh"
+            | "scp"
+            | "sftp"
+            | "rsync"
+            | "nc"
+            | "ncat"
+            | "telnet"
+            | "ftp"
+            | "ping"
+            | "tracert"
+            | "traceroute"
+            | "nslookup"
+            | "dig"
+            | "invoke-webrequest"
+            | "iwr"
+            | "invoke-restmethod"
+            | "irm"
+            | "start-bitstransfer"
+            | "test-netconnection"
+            | "wsman"
+    ) || (view.executable == "git"
+        && matches!(
+            second.as_str(),
+            "clone" | "fetch" | "pull" | "push" | "ls-remote" | "submodule"
+        ))
+        || (matches!(
+            view.executable.as_str(),
+            "npm" | "pnpm" | "yarn" | "bun" | "pip" | "pip3" | "cargo" | "gem"
+        ) && matches!(
+            second.as_str(),
+            "install" | "add" | "update" | "publish" | "search" | "login"
+        ))
+}
+
+fn contains_network_marker(command: &str) -> bool {
+    let lower = command.to_ascii_lowercase();
+    const MARKERS: &[&str] = &[
+        "invoke-webrequest",
+        "invoke-restmethod",
+        "start-bitstransfer",
+        "net.webclient",
+        "net.sockets",
+        "system.net.http",
+        "http://",
+        "https://",
+    ];
+    MARKERS.iter().any(|marker| lower.contains(marker))
+}
+
+fn command_view_is_write_capable(view: &PolicyCommandView<'_>) -> bool {
+    if view.package_runner
+        || view.arbitrary_payload
+        || is_script_runner_token(&view.executable)
+        || is_path_executable_token(
+            view.words
+                .get(view.effective_index)
+                .map(String::as_str)
+                .unwrap_or(&view.executable),
+        )
+    {
+        return true;
+    }
+    let second = view
+        .words
+        .get(view.effective_index + 1)
+        .map(|word| word.to_ascii_lowercase())
+        .unwrap_or_default();
+    let writes_network_output = matches!(view.executable.as_str(), "curl" | "wget")
+        && view
+            .words
+            .iter()
+            .skip(view.effective_index + 1)
+            .any(|word| {
+                matches!(
+                    word.as_str(),
+                    "-o" | "-O" | "--output" | "--output-dir" | "--output-document"
+                ) || word.starts_with("--output=")
+                    || word.starts_with("--output-dir=")
+                    || word.starts_with("--output-document=")
+            });
+    matches!(
+        view.executable.as_str(),
+        "rm" | "del"
+            | "erase"
+            | "rmdir"
+            | "rd"
+            | "mv"
+            | "move"
+            | "cp"
+            | "copy"
+            | "mkdir"
+            | "md"
+            | "touch"
+            | "tee"
+            | "remove-item"
+            | "move-item"
+            | "copy-item"
+            | "rename-item"
+            | "set-content"
+            | "add-content"
+            | "out-file"
+            | "new-item"
+            | "ni"
+            | "ln"
+            | "install"
+            | "truncate"
+            | "dd"
+            | "unzip"
+            | "unrar"
+            | "7z"
+            | "chmod"
+            | "chown"
+            | "rsync"
+    ) || (view.executable == "git"
+        && matches!(
+            second.as_str(),
+            "checkout"
+                | "reset"
+                | "clean"
+                | "restore"
+                | "merge"
+                | "rebase"
+                | "commit"
+                | "apply"
+                | "stash"
+                | "pull"
+                | "add"
+                | "rm"
+                | "mv"
+        ))
+        || (matches!(
+            view.executable.as_str(),
+            "npm" | "pnpm" | "yarn" | "bun" | "pip" | "pip3" | "cargo" | "gem"
+        ) && matches!(
+            second.as_str(),
+            "install" | "add" | "update" | "remove" | "uninstall" | "exec" | "x" | "run"
+        ))
+        || (view.executable == "sed"
+            && view
+                .words
+                .iter()
+                .skip(view.effective_index + 1)
+                .any(|word| {
+                    word == "-i" || word.starts_with("-i") || word.starts_with("--in-place")
+                }))
+        || (view.executable == "tar"
+            && view
+                .words
+                .iter()
+                .skip(view.effective_index + 1)
+                .any(|word| word == "-x" || word.starts_with("-x") || word == "--extract"))
+        || writes_network_output
+}
+
+fn has_write_redirection(command: &str) -> bool {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for ch in command.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' && quote != Some('\'') {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if ch == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '>' => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn policy_path_candidate(token: &str) -> Option<String> {
+    let trimmed = token.trim_matches(|ch: char| {
+        matches!(ch, '\'' | '"' | '`' | ',' | ';' | '(' | ')' | '[' | ']')
+    });
+    if trimmed.is_empty()
+        || matches!(trimmed, ">" | ">>" | "<" | "<<" | "--")
+        || (trimmed.starts_with('-') && !trimmed.contains('='))
+    {
+        return None;
+    }
+    let candidate = trimmed
+        .split_once('=')
+        .map(|(_, value)| value)
+        .unwrap_or(trimmed);
+    if candidate.is_empty()
+        || candidate.contains("://")
+        || candidate.starts_with("data:")
+        || candidate.starts_with("mailto:")
+    {
+        return None;
+    }
+    #[cfg(windows)]
+    if candidate.starts_with('/')
+        && candidate.len() <= 4
+        && candidate[1..]
+            .chars()
+            .all(|ch| ch.is_ascii_alphabetic() || ch == '?')
+    {
+        return None;
+    }
+    Some(candidate.to_string())
+}
+
+fn command_view_path_operands(view: &PolicyCommandView<'_>) -> Vec<String> {
+    view.words
+        .iter()
+        .skip(view.effective_index + 1)
+        .filter_map(|word| policy_path_candidate(word))
+        .collect()
 }
 
 fn contains_shell_operator(trimmed: &str) -> bool {
@@ -687,6 +1593,14 @@ fn is_script_runner_token(token: &str) -> bool {
         || basename_lower.ends_with(".vbs")
         || basename_lower.ends_with(".jse")
         || basename_lower.ends_with(".wsf")
+        || basename_lower.ends_with(".sh")
+        || basename_lower.ends_with(".py")
+        || basename_lower.ends_with(".js")
+        || basename_lower.ends_with(".mjs")
+        || basename_lower.ends_with(".cjs")
+        || basename_lower.ends_with(".rb")
+        || basename_lower.ends_with(".pl")
+        || basename_lower.ends_with(".lua")
     {
         return true;
     }
@@ -694,6 +1608,10 @@ fn is_script_runner_token(token: &str) -> bool {
         .strip_suffix(".exe")
         .unwrap_or(&basename_lower);
     ARBITRARY_CODE_RUNNERS.contains(&normalized)
+}
+
+fn is_path_executable_token(token: &str) -> bool {
+    token.contains('/') || token.contains('\\') || token.starts_with('.') || token.starts_with('~')
 }
 
 /// 把命令字符串归一化为作用域前缀
@@ -894,13 +1812,14 @@ mod tests {
     }
 
     #[test]
-    fn execute_command_prefix_scope() {
+    fn execute_command_scope_includes_every_operand() {
         let args1 = json!({"command": "git status"});
         let args2 = json!({"command": "git status --porcelain"});
         let args3 = json!({"command": "git push origin main"});
-        assert_eq!(
+        assert_ne!(
             make_runtime_scope_key_v2("execute_command", &args1),
             make_runtime_scope_key_v2("execute_command", &args2),
+            "different operands must require a fresh approval"
         );
         assert_ne!(
             make_runtime_scope_key_v2("execute_command", &args1),
@@ -927,10 +1846,9 @@ mod tests {
         });
 
         let workspace_key = make_runtime_scope_key_v2("execute_command", &workspace_root).unwrap();
-        assert_eq!(
-            workspace_key,
-            "local:execute_command::root=workspace;cwd=.;net=false;skill=-;cmd=git status"
-        );
+        assert!(workspace_key
+            .starts_with("local:execute_command::root=workspace;cwd=.;net=false;skill=-;env="));
+        assert!(workspace_key.contains(";cmd=raw:"));
         assert_ne!(
             make_runtime_scope_key_v2("execute_command", &workspace_root),
             make_runtime_scope_key_v2("execute_command", &skill_root),
@@ -951,16 +1869,16 @@ mod tests {
             "cwd": "src-tauri"
         });
 
-        assert_eq!(
-            make_runtime_scope_key_v2("builtin-local_shell_execute", &args).as_deref(),
-            Some("builtin:local_shell_execute::root=workspace;cwd=src-tauri;net=false;skill=-;cmd=cargo test")
-        );
+        let key = make_runtime_scope_key_v2("builtin-local_shell_execute", &args)
+            .expect("shell scope key");
+        assert!(key.starts_with(
+            "builtin:local_shell_execute::root=workspace;cwd=src-tauri;net=false;skill=-;env="
+        ));
+        assert!(key.contains(";cmd=raw:"));
         assert!(requires_precise_approval_scope(
             "builtin-local_shell_execute"
         ));
-        assert!(ignores_broad_approval_bypass(
-            "builtin-local_shell_execute"
-        ));
+        assert!(ignores_broad_approval_bypass("builtin-local_shell_execute"));
     }
 
     #[test]
@@ -985,6 +1903,275 @@ mod tests {
         assert!(!scope.uses_script_runner);
         assert_eq!(scope.first_token.as_deref(), Some("git"));
         assert_eq!(scope.command_hash.len(), 64);
+        assert_eq!(scope.env_plan_hash.len(), 64);
+        assert_eq!(scope.timeout_ms, 30_000);
+        assert_eq!(scope.max_output_bytes, 64 * 1024);
+        assert!(scope.track_file_changes);
+    }
+
+    #[test]
+    fn shell_scope_canonicalizes_root_and_working_dir_aliases() {
+        let snake = json!({
+            "command": "git status --short",
+            "root_id": "workspace",
+            "cwd": "src-tauri",
+            "allow_network": false,
+            "inherit_env": false,
+        });
+        let camel = json!({
+            "command": "git status --short",
+            "rootId": "workspace",
+            "workingDir": "src-tauri",
+            "allowNetwork": false,
+            "inheritEnv": false,
+        });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &snake),
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &camel),
+            "approval aliases must match the arguments consumed by execution"
+        );
+
+        let scope = make_runtime_approval_scope("builtin-local_shell_execute", &camel, "medium")
+            .expect("runtime scope");
+        assert_eq!(scope.root_id, "workspace");
+        assert_eq!(scope.cwd, "src-tauri");
+    }
+
+    #[test]
+    fn shell_scope_includes_full_environment_plan_without_exposing_values() {
+        let base = json!({
+            "command": "node script.js",
+            "root_id": "temp",
+            "cwd": ".",
+            "inherit_env": false,
+        });
+        let node_options = json!({
+            "command": "node script.js",
+            "root_id": "temp",
+            "cwd": ".",
+            "inherit_env": false,
+            "env": {"NODE_OPTIONS": "--require=/tmp/payload.js"},
+        });
+        let preload = json!({
+            "command": "node script.js",
+            "root_id": "temp",
+            "cwd": ".",
+            "inherit_env": false,
+            "env": {"LD_PRELOAD": "/tmp/payload.so"},
+        });
+        let base_key = make_runtime_scope_key_v2("builtin-local_shell_execute", &base).unwrap();
+        let node_key =
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &node_options).unwrap();
+        let preload_key =
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &preload).unwrap();
+        assert_ne!(base_key, node_key);
+        assert_ne!(base_key, preload_key);
+        assert_ne!(node_key, preload_key);
+        assert!(!node_key.contains("NODE_OPTIONS"));
+        assert!(!node_key.contains("payload.js"));
+
+        let node_scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &node_options, "high")
+                .unwrap();
+        let preload_scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &preload, "high").unwrap();
+        assert_ne!(node_scope.env_plan_hash, preload_scope.env_plan_hash);
+    }
+
+    #[test]
+    fn shell_scope_binds_execution_controls_and_aliases() {
+        let baseline = json!({
+            "command": "rm -f harmless.txt",
+            "root_id": "artifacts",
+            "cwd": ".",
+            "inherit_env": false,
+            "timeout_ms": 1_000,
+            "max_output_bytes": 1_024,
+            "track_file_changes": true,
+        });
+        let aliases = json!({
+            "command": "rm -f harmless.txt",
+            "rootId": "artifacts",
+            "workingDir": ".",
+            "inheritEnv": false,
+            "timeoutMs": 1_000,
+            "maxOutputBytes": 1_024,
+            "trackFileChanges": true,
+        });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &baseline),
+            make_runtime_scope_key_v2("builtin-local_shell_execute", &aliases),
+        );
+        for changed in [
+            json!({
+                "command": "rm -f harmless.txt", "root_id": "artifacts", "cwd": ".",
+                "inherit_env": false, "timeout_ms": 120_000,
+                "max_output_bytes": 1_024, "track_file_changes": true,
+            }),
+            json!({
+                "command": "rm -f harmless.txt", "root_id": "artifacts", "cwd": ".",
+                "inherit_env": false, "timeout_ms": 1_000,
+                "max_output_bytes": 1024 * 1024, "track_file_changes": true,
+            }),
+            json!({
+                "command": "rm -f harmless.txt", "root_id": "artifacts", "cwd": ".",
+                "inherit_env": false, "timeout_ms": 1_000,
+                "max_output_bytes": 1_024, "track_file_changes": false,
+            }),
+        ] {
+            assert_ne!(
+                make_runtime_scope_key_v2("builtin-local_shell_execute", &baseline),
+                make_runtime_scope_key_v2("builtin-local_shell_execute", &changed),
+            );
+        }
+        let scope =
+            make_runtime_approval_scope("builtin-local_shell_execute", &aliases, "high").unwrap();
+        assert_eq!(scope.timeout_ms, 1_000);
+        assert_eq!(scope.max_output_bytes, 1_024);
+        assert!(scope.track_file_changes);
+    }
+
+    #[test]
+    fn shell_environment_values_are_redacted_at_boundary() {
+        let args = json!({
+            "command": "node script.js",
+            "env": {
+                "NODE_OPTIONS": "--require=/tmp/secret.js",
+                "CUSTOM": "not-obviously-secret-but-still-sensitive",
+            }
+        });
+        let redacted = redact_tool_arguments_for_display("builtin-local_shell_execute", &args);
+        assert_eq!(redacted["env"]["NODE_OPTIONS"], "[REDACTED]");
+        assert_eq!(redacted["env"]["CUSTOM"], "[REDACTED]");
+        assert!(!redacted.to_string().contains("secret.js"));
+        assert!(!redacted.to_string().contains("not-obviously-secret"));
+        assert_eq!(
+            redact_tool_arguments_for_display("note_set", &args),
+            args,
+            "non-shell tool arguments must remain unchanged"
+        );
+    }
+
+    #[test]
+    fn arbitrary_code_and_path_executables_are_single_use_and_effectful() {
+        for command in [
+            "python analyze.py",
+            "node -e 'console.log(1)'",
+            "cargo test --lib",
+            "./run-analysis",
+            "/tmp/custom-tool --read-only",
+        ] {
+            let args = json!({"command": command});
+            assert!(
+                never_remember_approval_for_args("builtin-local_shell_execute", &args),
+                "dynamic executable must be single-use: {command}"
+            );
+            let analysis = analyze_shell_command(command);
+            assert!(analysis.write_capable, "runner can write: {command}");
+            assert!(
+                analysis.network_capable,
+                "runner can use network: {command}"
+            );
+        }
+        assert!(!never_remember_approval_for_args(
+            "builtin-local_shell_execute",
+            &json!({"command": "rm -f harmless.txt"})
+        ));
+        assert!(never_remember_approval_for_args(
+            "builtin-local_shell_execute",
+            &json!({"command": "env MODE=test printf ok"})
+        ));
+    }
+
+    #[test]
+    fn wrapper_payloads_are_hashed_and_classified_by_effective_command() {
+        let cases = [
+            ("env MODE=test rm -rf notes", true, false, "rm"),
+            ("nice -n 5 rm -rf notes", true, false, "rm"),
+            ("nohup curl https://example.com", false, true, "curl"),
+            ("timeout 5 curl https://example.com", false, true, "curl"),
+            ("npx --yes some-package", true, true, "some-package"),
+            ("npm exec -- some-package", true, true, "some-package"),
+            ("env -S 'rm -rf notes'", true, true, "env"),
+        ];
+        for (command, write_capable, network_capable, effective) in cases {
+            let analysis = analyze_shell_command(command);
+            assert!(analysis.uses_script_runner, "wrapper: {command}");
+            assert!(
+                analysis.command_prefix.starts_with("raw:"),
+                "wrapper: {command}"
+            );
+            assert_eq!(analysis.write_capable, write_capable, "wrapper: {command}");
+            assert_eq!(
+                analysis.network_capable, network_capable,
+                "wrapper: {command}"
+            );
+            assert_eq!(
+                analysis.effective_first_token.as_deref(),
+                Some(effective),
+                "wrapper: {command}"
+            );
+        }
+
+        let benign = json!({"command": "env MODE=test printf ok", "inherit_env": false});
+        for attack in [
+            "env MODE=test rm -rf notes",
+            "env MODE=test curl https://example.com",
+            "timeout 5 rm -rf notes",
+        ] {
+            assert_ne!(
+                make_runtime_scope_key_v2("execute_command", &benign),
+                make_runtime_scope_key_v2(
+                    "execute_command",
+                    &json!({"command": attack, "inherit_env": false})
+                ),
+                "wrapper payload must not reuse benign approval: {attack}"
+            );
+        }
+    }
+
+    #[test]
+    fn write_capable_path_operands_cannot_escape_runtime_root() {
+        let root_dir = tempfile::tempdir().expect("root tempdir");
+        let outside_dir = tempfile::tempdir().expect("outside tempdir");
+        let cwd = root_dir.path().join("nested");
+        std::fs::create_dir_all(&cwd).expect("nested cwd");
+
+        let inside = root_dir.path().join("inside.txt");
+        assert!(validate_shell_path_operands_within_root(
+            root_dir.path(),
+            &cwd,
+            &format!("touch {}", inside.display()),
+        )
+        .is_ok());
+
+        for command in [
+            format!("rm -f {}", outside_dir.path().join("victim").display()),
+            format!(
+                "env MODE=test rm -f {}",
+                outside_dir.path().join("victim").display()
+            ),
+            "touch ../../escaped.txt".to_string(),
+            "echo payload > /tmp/deep-student-shell-escape".to_string(),
+            "touch $HOME/deep-student-shell-escape".to_string(),
+        ] {
+            assert!(
+                validate_shell_path_operands_within_root(root_dir.path(), &cwd, &command).is_err(),
+                "outside path operand must be rejected: {command}"
+            );
+        }
+
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(outside_dir.path(), cwd.join("out"))
+                .expect("relative outside symlink");
+            assert!(validate_shell_path_operands_within_root(
+                root_dir.path(),
+                &cwd,
+                "touch out/escaped.txt",
+            )
+            .is_err());
+        }
     }
 
     /// SECURITY: 带 SKILL_DIR 注入（skill_root_id）的执行必须与不带的隔离，
@@ -1009,8 +2196,7 @@ mod tests {
             "skill_root_id": "skill:doc-tools"
         });
 
-        let plain_key =
-            make_runtime_scope_key_v2("builtin-local_shell_execute", &plain).unwrap();
+        let plain_key = make_runtime_scope_key_v2("builtin-local_shell_execute", &plain).unwrap();
         let skill_key =
             make_runtime_scope_key_v2("builtin-local_shell_execute", &with_skill).unwrap();
         let other_skill_key =
@@ -1331,7 +2517,10 @@ mod tests {
     fn windows_script_runners_do_not_collapse_to_prefix() {
         let victims = [
             ("pwsh -c 'echo hi'", "pwsh -c 'rm -rf C:/'"),
-            ("powershell -Command Get-Date", "powershell -Command Remove-Item -Recurse C:/"),
+            (
+                "powershell -Command Get-Date",
+                "powershell -Command Remove-Item -Recurse C:/",
+            ),
             (
                 "powershell.exe -Command Get-Date",
                 "powershell.exe -Command Remove-Item -Recurse C:/",
@@ -1359,10 +2548,11 @@ mod tests {
                 ka
             );
         }
-        // 普通命令仍保持 2-token 前缀（不误伤）
-        let plain = make_runtime_scope_key_v2("execute_command", &json!({"command": "git status --short"}))
-            .unwrap();
-        assert!(plain.ends_with("cmd=git status"));
+        // 普通命令的 UI 摘要仍可读，但审批 fingerprint 始终包含完整命令哈希。
+        let plain =
+            make_runtime_scope_key_v2("execute_command", &json!({"command": "git status --short"}))
+                .unwrap();
+        assert!(plain.contains(";cmd=raw:"));
     }
 
     /// 08 号报告：automation_propose 审批卡必须带 remember_disabled scope。
@@ -1397,7 +2587,10 @@ mod tests {
             .expect("skill_install scope");
         assert_eq!(scope.kind, "skill_install");
         assert_eq!(scope.remember_disabled, Some(true));
-        assert_eq!(scope.expected_sha256_prefix.as_deref(), Some("0123456789ab"));
+        assert_eq!(
+            scope.expected_sha256_prefix.as_deref(),
+            Some("0123456789ab")
+        );
         assert_eq!(scope.declared_risk_level.as_deref(), Some("medium"));
         assert_eq!(scope.skill_id.as_deref(), Some("pdf-tools"));
         assert!(scope.source_summary.unwrap().contains("temp:"));
@@ -1420,7 +2613,8 @@ mod tests {
         let args = json!({
             "proposal_id": "wp_1234567890_abcd",
             "skill_id": "my-workflow",
-            "content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+            "expected_content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "expected_proposal_revision": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
         });
         let scope = make_runtime_approval_scope("builtin-skill_workshop_apply", &args, "high")
             .expect("skill_workshop_apply scope");
@@ -1428,15 +2622,29 @@ mod tests {
         assert_eq!(scope.remember_disabled, Some(true));
         assert_eq!(scope.source_summary.as_deref(), Some("wp_1234567890_abcd"));
         assert_eq!(scope.skill_id.as_deref(), Some("my-workflow"));
-        assert_eq!(scope.expected_sha256_prefix.as_deref(), Some("0123456789ab"));
+        assert_eq!(
+            scope.expected_sha256_prefix.as_deref(),
+            Some("0123456789ab")
+        );
     }
 
     #[test]
-    fn skill_workshop_apply_scope_fingerprint_uses_proposal_id() {
-        let args = json!({ "proposal_id": "wp_1234567890_abcd" });
+    fn skill_workshop_apply_scope_fingerprint_binds_reviewed_content_and_revision() {
+        let args = json!({
+            "proposal_id": "wp_1234567890_abcd",
+            "skill_id": "my-workflow",
+            "expected_content_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "expected_proposal_revision": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        });
         assert_eq!(
             make_runtime_scope_key_v2("builtin-skill_workshop_apply", &args).as_deref(),
-            Some("builtin:skill_workshop_apply::proposal=wp_1234567890_abcd")
+            Some("builtin:skill_workshop_apply::proposal=wp_1234567890_abcd:skill=my-workflow:sha=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef:revision=abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+        );
+
+        let missing_review_hash = json!({ "proposal_id": "wp_1234567890_abcd" });
+        assert!(
+            make_runtime_scope_key_v2("builtin-skill_workshop_apply", &missing_review_hash)
+                .is_none()
         );
     }
 }

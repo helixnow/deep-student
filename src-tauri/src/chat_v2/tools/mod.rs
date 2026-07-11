@@ -41,34 +41,37 @@ mod arg_utils;
 pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互） // Anki 工具执行器（桥接到前端 CardAgent）
 pub mod attachment_executor; // 🆕 附件工具执行器（解决 P0 断裂点）
 pub mod attachment_stage_executor; // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径）
-pub mod automation_executor; // 🆕 周期自动化提案/列表/启停执行器
 pub mod attempt_completion; // 🆕 任务完成工具（文档 29 P1-4）
+pub mod automation_executor; // 🆕 周期自动化提案/列表/启停执行器
 pub mod browser_executor; // 🆕 内置浏览器 Agent 工具（BrowserService + 注入桥；非 Playwright）
 pub mod builtin_resource_executor; // 🆕 内置学习资源工具执行器
 pub mod builtin_retrieval_executor; // 🆕 内置检索工具执行器（MCP 工具化）
 pub mod canvas_executor;
 pub mod canvas_tools;
 pub mod chatanki_executor; // 🆕 ChatAnki 工具执行器（文件→卡片闭环）
+pub mod document_processing_executor; // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
 pub mod docx_executor; // 🆕 DOCX 文档读写工具执行器（docx-rs 完整能力）
+pub mod essay_grading_executor; // 🆕 作文批改工具执行器（essay_grade 异步任务 + 历史查询）
 pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
-pub mod mcp_propose_executor; // 🆕 MCP server 提案执行器（High 敏感度，secure store 写入）
-pub mod mcp_settings_store; // MCP tools.list secure 读写 helper
 pub mod general_executor;
 pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod injector;
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
 pub mod local_shell_execute_executor;
 pub mod local_shell_preflight_executor;
+pub mod mcp_propose_executor; // 🆕 MCP server 提案执行器（High 敏感度，secure store 写入）
+pub mod mcp_settings_store; // MCP tools.list secure 读写 helper
 pub mod memory_executor;
 pub mod paper_save_executor; // 🆕 论文保存+引用格式化工具执行器
 pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
 pub mod registry;
-pub mod session_executor; // 🆕 会话管理工具执行器（AI 自主管理会话/分组/标签）
+pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（review_* 工具组，SM-2）
 pub mod runtime_root_request_executor; // 🆕 runtime_root_request 授权请求执行器（High，never-remember）
 pub mod self_inspect_executor; // 🆕 self_inspect 只读自查工具执行器（脱敏状态概览）
+pub mod session_executor; // 🆕 会话管理工具执行器（AI 自主管理会话/分组/标签）
 pub mod skill_install_executor; // 🆕 skill_scan / skill_install 技能包自装执行器
 pub mod skill_workshop_executor; // 🆕 skill_workshop_propose / skill_workshop_apply 提案式技能 workshop
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
@@ -79,15 +82,12 @@ pub mod todo_executor;
 pub mod tool_pack_executor; // ToolPack parallel executor
 pub mod types;
 pub mod user_todo_executor;
-pub mod workspace_executor;
-pub mod workspace_fs_executor;
-pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet） // 🆕 Coordinator 睡眠工具执行器（睡眠/唤醒机制）
-pub mod document_processing_executor; // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
-pub mod essay_grading_executor; // 🆕 作文批改工具执行器（essay_grade 异步任务 + 历史查询）
-pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（review_* 工具组，SM-2）
 pub mod workbench_bridge; // ACR R1-01：工作台桥 RPC（acr_bridge_call）
 /// ACR R1-02 提供实现文件 `workbench_executor.rs`；本处仅预留 mod/pub use，避免 R1-01 悬空引用。
 pub mod workbench_executor;
+pub mod workspace_executor;
+pub mod workspace_fs_executor;
+pub mod xlsx_executor; // 🆕 XLSX 电子表格读写工具执行器（umya-spreadsheet） // 🆕 Coordinator 睡眠工具执行器（睡眠/唤醒机制）
 
 // 重导出工具
 pub use canvas_tools::{
@@ -112,26 +112,29 @@ pub use anki_executor::AnkiToolExecutor; // 🆕 Anki 工具执行器
 pub use ask_user_executor::AskUserExecutor; // 🆕 用户提问工具执行器
 pub use attachment_executor::AttachmentToolExecutor; // 🆕 附件工具执行器
 pub use attachment_stage_executor::AttachmentStageExecutor; // 🆕 附件物化工具执行器
-pub use automation_executor::AutomationExecutor; // 🆕 周期自动化执行器
 pub use attempt_completion::AttemptCompletionExecutor;
+pub use automation_executor::AutomationExecutor; // 🆕 周期自动化执行器
 pub use browser_executor::BrowserToolExecutor; // 🆕 内置浏览器 Agent 工具执行器
 pub use builtin_resource_executor::BuiltinResourceExecutor; // 🆕 内置学习资源工具执行器
 pub use builtin_retrieval_executor::BuiltinRetrievalExecutor; // 🆕 内置检索工具执行器
 pub use canvas_executor::CanvasToolExecutor;
 pub use chatanki_executor::ChatAnkiToolExecutor; // 🆕 ChatAnki 工具执行器
+pub use document_processing_executor::DocumentProcessingExecutor; // 🆕 文档解析/OCR 主动触发执行器
 pub use docx_executor::DocxToolExecutor; // 🆕 DOCX 文档读写工具执行器
+pub use essay_grading_executor::EssayGradingExecutor; // 🆕 作文批改工具执行器
 pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::ToolExecutorRegistry;
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
-pub use mcp_propose_executor::McpProposeExecutor; // 🆕 MCP server 提案执行器
 pub use general_executor::GeneralToolExecutor;
 pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
 pub use local_shell_execute_executor::LocalShellExecuteExecutor;
 pub use local_shell_preflight_executor::LocalShellPreflightExecutor;
+pub use mcp_propose_executor::McpProposeExecutor; // 🆕 MCP server 提案执行器
 pub use memory_executor::MemoryToolExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器
 pub use pptx_executor::PptxToolExecutor; // 🆕 PPTX 演示文稿读写工具执行器
+pub use review_executor::ReviewToolExecutor; // 🆕 间隔重复复习计划工具执行器
 pub use session_executor::SessionToolExecutor; // 🆕 会话管理工具执行器
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::{get_coordinator_sleep_tool_schema, CoordinatorSleepExecutor};
@@ -140,14 +143,11 @@ pub use template_executor::TemplateDesignerExecutor; // 🆕 模板设计师工�
 pub use todo_executor::TodoListExecutor;
 pub use tool_pack_executor::ToolPackExecutor; // ToolPack parallel executor
 pub use user_todo_executor::UserTodoExecutor;
+pub use workbench_bridge::{acr_bridge_call, AcrBridgeRequest, AcrBridgeResponse, AcrProgress}; // ACR R1-01
+pub use workbench_executor::WorkbenchToolExecutor;
 pub use workspace_executor::{get_workspace_tool_schemas, WorkspaceToolExecutor};
 pub use workspace_fs_executor::WorkspaceFsExecutor;
-pub use xlsx_executor::XlsxToolExecutor; // 🆕 XLSX 电子表格读写工具执行器 // 🆕 Coordinator 睡眠执行器
-pub use document_processing_executor::DocumentProcessingExecutor; // 🆕 文档解析/OCR 主动触发执行器
-pub use essay_grading_executor::EssayGradingExecutor; // 🆕 作文批改工具执行器
-pub use review_executor::ReviewToolExecutor; // 🆕 间隔重复复习计划工具执行器
-pub use workbench_bridge::{acr_bridge_call, AcrBridgeRequest, AcrBridgeResponse, AcrProgress}; // ACR R1-01
-pub use workbench_executor::WorkbenchToolExecutor; // ACR R1-02 提供（见上方 mod 注释）
+pub use xlsx_executor::XlsxToolExecutor; // 🆕 XLSX 电子表格读写工具执行器 // 🆕 Coordinator 睡眠执行器 // ACR R1-02 提供（见上方 mod 注释）
 
 /// Canvas 工具名称常量
 pub mod canvas_tool_names {

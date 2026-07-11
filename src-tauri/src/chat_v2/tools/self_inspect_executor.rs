@@ -167,9 +167,8 @@ impl SelfInspectExecutor {
                 }
             }
         } else {
-            limitations.push(
-                "session skill state unavailable in this execution context".to_string(),
-            );
+            limitations
+                .push("session skill state unavailable in this execution context".to_string());
         }
 
         let mut registered: Vec<Value> = Vec::new();
@@ -307,10 +306,7 @@ impl SelfInspectExecutor {
                     });
                 }
                 Err(error) => {
-                    limitations.push(format!(
-                        "failed to read web_search.* settings: {}",
-                        error
-                    ));
+                    limitations.push(format!("failed to read web_search.* settings: {}", error));
                 }
             }
         } else {
@@ -366,9 +362,9 @@ impl SelfInspectExecutor {
         let mcp = section
             .includes_mcp()
             .then(|| Self::collect_mcp(main_db, &mut limitations));
-        let search = section.includes_search().then(|| {
-            Self::collect_search(main_db, ctx.web_search_enabled, &mut limitations)
-        });
+        let search = section
+            .includes_search()
+            .then(|| Self::collect_search(main_db, ctx.web_search_enabled, &mut limitations));
 
         let payload = Self::assemble_payload(section, roots, skills, mcp, search, limitations);
         Ok(redact_sensitive_json(payload))
@@ -535,15 +531,11 @@ mod tests {
         assert!(!serialized.contains("BEGIN"));
         assert!(serialized.contains("visible"));
         assert_eq!(
-            output
-                .pointer("/nested/apiKey")
-                .and_then(Value::as_str),
+            output.pointer("/nested/apiKey").and_then(Value::as_str),
             Some("<redacted>")
         );
         assert_eq!(
-            output
-                .pointer("/nested/token")
-                .and_then(Value::as_str),
+            output.pointer("/nested/token").and_then(Value::as_str),
             Some("<redacted>")
         );
     }
@@ -563,9 +555,18 @@ mod tests {
             "apiKey": "plain-key"
         });
         let sanitized = SelfInspectExecutor::sanitize_mcp_server_entry(&entry).unwrap();
-        assert_eq!(sanitized.get("name").and_then(Value::as_str), Some("Brave Search"));
-        assert_eq!(sanitized.get("transport").and_then(Value::as_str), Some("stdio"));
-        assert_eq!(sanitized.get("enabled").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            sanitized.get("name").and_then(Value::as_str),
+            Some("Brave Search")
+        );
+        assert_eq!(
+            sanitized.get("transport").and_then(Value::as_str),
+            Some("stdio")
+        );
+        assert_eq!(
+            sanitized.get("enabled").and_then(Value::as_bool),
+            Some(true)
+        );
         assert!(sanitized.get("command").is_none());
         assert!(sanitized.get("env").is_none());
         assert!(sanitized.get("url").is_none());

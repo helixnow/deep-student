@@ -7,8 +7,8 @@
  * 焦点隔离视觉的 data-wb-chat-active 状态。
  */
 import React from 'react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 
 vi.mock('@/features/chat/components/ChatContainer', async () => {
   const { useStreamPreferences } = await vi.importActual<
@@ -29,8 +29,42 @@ vi.mock('@/features/chat/components/ChatContainer', async () => {
   return { ChatContainer, default: ChatContainer };
 });
 
+vi.mock('@/features/sandbox/components/SandboxWorkbenchSurface', () => ({
+  SandboxWorkbenchSurface: ({ ownerKey }: { ownerKey?: string }) => (
+    <div data-testid="mock-sandbox-surface" data-owner-key={ownerKey} />
+  ),
+}));
+
 import { ChatSessionSurface } from '../ChatSessionSurface';
 import { STREAM_PRESET_DOWNSHIFT_DELAY_MS } from '../useDeferredStreamPreset';
+import {
+  createChatSandboxOwnerKey,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import type { SandboxSessionInput } from '@/features/sandbox/types';
+import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
+
+function sandboxInput(title: string): SandboxSessionInput {
+  return {
+    sourceType: 'chat-code-block',
+    sourceMessageId: `message-${title}`,
+    language: 'html',
+    title,
+    content: `<h1>${title}</h1>`,
+  };
+}
+
+beforeEach(() => {
+  useSandboxWorkbenchStore.setState({
+    activeSession: null,
+    isOpen: false,
+    viewportPreset: 'desktop',
+    inspectorOpen: false,
+    ownerStates: {},
+    activeOwnerKey: 'sandbox:legacy',
+  });
+});
 
 afterEach(() => {
   vi.useRealTimers();
@@ -46,6 +80,9 @@ describe('ChatSessionSurface', () => {
     const scoped = container.querySelector('[data-wb-chat-session="sess_1"]');
     expect(scoped).not.toBeNull();
     expect(scoped?.contains(inner)).toBe(true);
+    expect(scoped?.getAttribute('data-sandbox-owner-key')).toBe(
+      createChatSandboxOwnerKey('sess_1'),
+    );
   });
 
   it('uses balanced preset + blocked mode when visible (parity with ChatV2Page)', () => {
@@ -155,4 +192,79 @@ describe('ChatSessionSurface', () => {
     expect(rootA?.contains(containers[1])).toBe(false);
     expect(rootB?.contains(containers[0])).toBe(false);
   });
+
+  it('activates the owner of the chat window receiving pointer input', () => {
+    const { container } = render(
+      <>
+        <ChatSessionSurface sessionId="sess_a" isVisible />
+        <ChatSessionSurface sessionId="sess_b" isVisible />
+      </>,
+    );
+    const rootA = container.querySelector('[data-wb-chat-session="sess_a"]')!;
+    const rootB = container.querySelector('[data-wb-chat-session="sess_b"]')!;
+
+    fireEvent.pointerDown(rootA);
+    expect(useSandboxWorkbenchStore.getState().activeOwnerKey).toBe(
+      createChatSandboxOwnerKey('sess_a'),
+    );
+    fireEvent.pointerDown(rootB);
+    expect(useSandboxWorkbenchStore.getState().activeOwnerKey).toBe(
+      createChatSandboxOwnerKey('sess_b'),
+    );
+  });
+
+  it('routes the legacy code-block launcher into the window that received the click', () => {
+    const { container } = render(
+      <>
+        <ChatSessionSurface sessionId="sess_a" isVisible />
+        <ChatSessionSurface sessionId="sess_b" isVisible />
+      </>,
+    );
+    const rootA = container.querySelector('[data-wb-chat-session="sess_a"]')!;
+
+    fireEvent.pointerDown(rootA);
+    act(() => {
+      launchSandboxWorkbench(sandboxInput('A'));
+    });
+
+    const sandbox = screen.getByTestId('mock-sandbox-surface');
+    expect(sandbox).toHaveAttribute('data-owner-key', createChatSandboxOwnerKey('sess_a'));
+    expect(selectSandboxWorkbenchOwnerState(
+      useSandboxWorkbenchStore.getState(),
+      createChatSandboxOwnerKey('sess_b'),
+    ).activeSession).toBeNull();
+  });
+
+  it('renders only the sandbox session owned by each chat window', () => {
+    render(
+      <>
+        <ChatSessionSurface sessionId="sess_a" isVisible />
+        <ChatSessionSurface sessionId="sess_b" isVisible />
+      </>,
+    );
+
+    const ownerA = createChatSandboxOwnerKey('sess_a');
+    const ownerB = createChatSandboxOwnerKey('sess_b');
+    act(() => {
+      useSandboxWorkbenchStore.getState().openSession(sandboxInput('A'), ownerA);
+    });
+
+    expect(screen.getAllByTestId('mock-sandbox-surface')).toHaveLength(1);
+    expect(screen.getByTestId('mock-sandbox-surface')).toHaveAttribute('data-owner-key', ownerA);
+    expect(selectSandboxWorkbenchOwnerState(useSandboxWorkbenchStore.getState(), ownerB).activeSession).toBeNull();
+
+    act(() => {
+      useSandboxWorkbenchStore.getState().openSession(sandboxInput('B'), ownerB);
+    });
+    expect(screen.getAllByTestId('mock-sandbox-surface').map((node) => node.getAttribute('data-owner-key')))
+      .toEqual([ownerA, ownerB]);
+
+    act(() => {
+      useSandboxWorkbenchStore.getState().closeSession(ownerB);
+    });
+    expect(screen.getAllByTestId('mock-sandbox-surface')).toHaveLength(1);
+    expect(screen.getByTestId('mock-sandbox-surface')).toHaveAttribute('data-owner-key', ownerA);
+    expect(selectSandboxWorkbenchOwnerState(useSandboxWorkbenchStore.getState(), ownerA).activeSession?.title).toBe('A');
+  });
+
 });

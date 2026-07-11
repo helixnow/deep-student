@@ -141,9 +141,16 @@ pub(crate) fn prepare_external_tool(
     }
 
     if config.include_server_suffix {
-        if let Some(server_id) = preferred_server_id.as_deref() {
-            api_base_name = format!("{}__srv_{}", api_base_name, server_id);
-        }
+        // Encode the complete route tuple instead of concatenating user-controlled
+        // components with a sentinel. Concatenation is ambiguous, e.g.
+        // (`foo__srv_bar`, `baz`) and (`foo`, `bar__srv_baz`) previously produced
+        // the same API name and could overwrite each other's reverse route.
+        api_base_name = serde_json::json!([
+            "mcp-route-v1",
+            api_base_name.as_str(),
+            preferred_server_id.as_deref(),
+        ])
+        .to_string();
     }
 
     let api_name = encode_tool_name_for_api(&api_base_name)?;
@@ -258,7 +265,37 @@ mod tests {
         );
         assert_eq!(
             decode_tool_name_from_api(&prepared.api_name),
-            Some("mcp_fetch:url__srv_server:alpha".to_string())
+            Some("[\"mcp-route-v1\",\"mcp_fetch:url\",\"server:alpha\"]".to_string())
+        );
+    }
+
+    #[test]
+    fn external_route_tuple_encoding_prevents_tool_server_boundary_collisions() {
+        let prepare = |name: &str, server_id: Option<&str>| {
+            prepare_external_tool(
+                name,
+                server_id,
+                None,
+                None,
+                CanonicalExternalToolConfig {
+                    internal_prefix: Some("mcp_"),
+                    preserve_prefix: None,
+                    api_name_prefix: None,
+                    include_server_suffix: true,
+                    api_name_source: ApiNameSource::InternalToolName,
+                },
+            )
+            .expect("route should prepare")
+            .api_name
+        };
+
+        assert_ne!(
+            prepare("foo__srv_bar", Some("baz")),
+            prepare("foo", Some("bar__srv_baz")),
+        );
+        assert_ne!(
+            prepare("[\"mcp-route-v1\",\"mcp_foo\",\"bar\"]", None),
+            prepare("foo", Some("bar")),
         );
     }
 }

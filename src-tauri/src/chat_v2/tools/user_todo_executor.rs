@@ -297,7 +297,11 @@ impl UserTodoExecutor {
         };
 
         let item = VfsTodoRepo::create_todo_item(vfs_db, params).map_err(|e| e.to_string())?;
-        emit_todo_changed(ctx, "create_item", &[item.id.clone(), item.todo_list_id.clone()]);
+        emit_todo_changed(
+            ctx,
+            "create_item",
+            &[item.id.clone(), item.todo_list_id.clone()],
+        );
 
         Ok(json!({
             "success": true,
@@ -338,7 +342,8 @@ impl UserTodoExecutor {
             }));
         }
 
-        let item = VfsTodoRepo::toggle_todo_item(vfs_db, item_id, None).map_err(|e| e.to_string())?;
+        let item =
+            VfsTodoRepo::toggle_todo_item(vfs_db, item_id, None).map_err(|e| e.to_string())?;
         emit_todo_changed(
             ctx,
             "complete_item",

@@ -16,7 +16,6 @@ use super::mcp_settings_store::{
     read_mcp_tools_list, restore_list_snapshot, write_mcp_tools_list, MCP_TOOLS_LIST_KEY,
 };
 use super::self_inspect_executor::redact_sensitive_json;
-use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
 use crate::database::Database;
@@ -92,10 +91,6 @@ pub struct McpProposeExecutor;
 impl McpProposeExecutor {
     pub fn new() -> Self {
         Self
-    }
-
-    fn strip_namespace(tool_name: &str) -> &str {
-        strip_tool_namespace(tool_name)
     }
 
     fn with_database<F, T>(ctx: &ExecutionContext, f: F) -> Result<T, String>
@@ -281,7 +276,8 @@ impl McpProposeExecutor {
         let target_name = input.name.to_ascii_lowercase();
         for entry in existing {
             if let Some(name) = Self::server_name(entry) {
-                if name.eq_ignore_ascii_case(&input.name) || name.to_ascii_lowercase() == target_name
+                if name.eq_ignore_ascii_case(&input.name)
+                    || name.to_ascii_lowercase() == target_name
                 {
                     return Some(format!(
                         "MCP server with name '{}' is already configured",
@@ -335,10 +331,16 @@ impl McpProposeExecutor {
                 }
             }
             McpTransport::WebSocket => {
-                entry.insert("url".to_string(), json!(input.url.clone().unwrap_or_default()));
+                entry.insert(
+                    "url".to_string(),
+                    json!(input.url.clone().unwrap_or_default()),
+                );
             }
             McpTransport::Http => {
-                entry.insert("url".to_string(), json!(input.url.clone().unwrap_or_default()));
+                entry.insert(
+                    "url".to_string(),
+                    json!(input.url.clone().unwrap_or_default()),
+                );
             }
             McpTransport::Sse | McpTransport::StreamableHttp => {
                 let url = input.url.clone().unwrap_or_default();
@@ -491,14 +493,20 @@ impl McpProposeExecutor {
         summary.insert("transport".to_string(), json!(input.transport.as_str()));
         summary.insert(
             "enabled".to_string(),
-            json!(entry.get("enabled").and_then(Value::as_bool).unwrap_or(true)),
+            json!(entry
+                .get("enabled")
+                .and_then(Value::as_bool)
+                .unwrap_or(true)),
         );
         if input.transport == McpTransport::Stdio {
             summary.insert(
                 "command".to_string(),
                 json!(entry.get("command").and_then(Value::as_str).unwrap_or("")),
             );
-            summary.insert("args".to_string(), entry.get("args").cloned().unwrap_or(json!([])));
+            summary.insert(
+                "args".to_string(),
+                entry.get("args").cloned().unwrap_or(json!([])),
+            );
             if !input.env_required.is_empty() {
                 summary.insert("env_required".to_string(), json!(input.env_required));
             }
@@ -523,7 +531,9 @@ impl McpProposeExecutor {
         updated.push(entry.clone());
 
         Self::with_database(ctx, |db| write_mcp_tools_list(db, &updated))?;
-        Self::with_database(ctx, |db| Self::write_provenance(db, &input, &ctx.session_id, should_test))?;
+        Self::with_database(ctx, |db| {
+            Self::write_provenance(db, &input, &ctx.session_id, should_test)
+        })?;
 
         if should_test {
             let test_result = Self::run_connection_test(&input, &entry).await;
@@ -587,7 +597,10 @@ impl Default for McpProposeExecutor {
 #[async_trait]
 impl ToolExecutor for McpProposeExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
-        Self::strip_namespace(tool_name) == tool_names::MCP_SERVER_PROPOSE
+        tool_name == tool_names::MCP_SERVER_PROPOSE
+            || tool_name
+                .strip_prefix("builtin-")
+                .is_some_and(|name| name == tool_names::MCP_SERVER_PROPOSE)
     }
 
     async fn execute(
@@ -769,9 +782,7 @@ mod tests {
         assert!(!enabled);
         assert_eq!(entry.get("enabled").and_then(Value::as_bool), Some(false));
         assert_eq!(
-            entry
-                .pointer("/env/BRAVE_API_KEY")
-                .and_then(Value::as_str),
+            entry.pointer("/env/BRAVE_API_KEY").and_then(Value::as_str),
             Some(ENV_PLACEHOLDER)
         );
     }
@@ -783,7 +794,10 @@ mod tests {
             transport: McpTransport::Stdio,
             purpose: "filesystem".to_string(),
             command: Some("npx".to_string()),
-            args: vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()],
+            args: vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string(),
+            ],
             env_required: vec![],
             url: None,
         };

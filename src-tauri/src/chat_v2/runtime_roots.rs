@@ -1,7 +1,9 @@
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -34,17 +36,27 @@ impl AuthorizedRootRisk {
     }
 }
 
-const BROAD_FOLDER_NAMES: &[&str] = &[
-    "desktop", "downloads", "documents", "桌面", "下载", "文档",
-];
+const BROAD_FOLDER_NAMES: &[&str] = &["desktop", "downloads", "documents", "桌面", "下载", "文档"];
 const HOME_PARENT_NAMES: &[&str] = &["users", "home"];
 const BROAD_MAX_DEPTH: usize = 3;
 
 /// 会话 temp 根下的写备份区目录名（`workspace_artifact_write` 覆盖前的旧内容存这里）。
 pub const WRITE_BACKUP_DIR: &str = ".write_backups";
+const MAX_WRITE_BACKUP_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// 进程内单调序号：同毫秒多次备份也能拿到不同文件名。
 static WRITE_BACKUP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Settings stores the authorized-root collection as one JSON value. Keep every
+/// in-process read/modify/write sequence under one lock so concurrent grants and
+/// revocations cannot overwrite each other with stale snapshots.
+static RUNTIME_ROOT_SETTINGS_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// Artifact writes, deletes, and reverts use path-based filesystem APIs. This
+/// lock closes races between those operations inside this process and makes the
+/// expected-hash check meaningful for normal UI/tool concurrency.
+static ARTIFACT_MUTATION_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static SESSION_ROOT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -80,15 +92,81 @@ struct AuthorizedRootRecord {
     id: String,
     path: PathBuf,
     label: String,
+    #[serde(default)]
+    identity: Option<RuntimeRootIdentity>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WorkspaceRootRecord {
     path: PathBuf,
     label: String,
+    #[serde(default)]
+    identity: Option<RuntimeRootIdentity>,
+}
+
+/// Stable identity of the directory object that was selected by the user.
+/// Canonical paths alone do not detect deleting and recreating a directory at
+/// the same pathname.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum RuntimeRootIdentity {
+    Unix {
+        device: u64,
+        inode: u64,
+    },
+    Windows {
+        volume_serial_number: u32,
+        file_index: u64,
+    },
+    CanonicalPath {
+        path: PathBuf,
+    },
+}
+
+fn lock_or_recover<T>(lock: &'static Mutex<T>, name: &str) -> MutexGuard<'static, T> {
+    lock.lock().unwrap_or_else(|poisoned| {
+        log::error!("[RuntimeRoots] {} mutex poisoned; recovering", name);
+        poisoned.into_inner()
+    })
+}
+
+fn runtime_root_settings_guard() -> MutexGuard<'static, ()> {
+    lock_or_recover(
+        RUNTIME_ROOT_SETTINGS_LOCK.get_or_init(|| Mutex::new(())),
+        "settings",
+    )
+}
+
+pub(crate) fn artifact_mutation_guard() -> MutexGuard<'static, ()> {
+    lock_or_recover(
+        ARTIFACT_MUTATION_LOCK.get_or_init(|| Mutex::new(())),
+        "artifact mutation",
+    )
 }
 
 pub fn safe_session_dir(session_id: &str) -> String {
+    const MAX_SANITIZED_PREFIX_LEN: usize = 96;
+
+    let mut sanitized = session_id
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .take(MAX_SANITIZED_PREFIX_LEN)
+        .collect::<String>();
+    sanitized = sanitized.trim_matches(['-', '_']).to_string();
+    if sanitized.is_empty() {
+        sanitized = "session".to_string();
+    }
+    let digest = Sha256::digest(session_id.as_bytes());
+    format!("v2-{}-{}", sanitized, &hex::encode(digest)[..32])
+}
+
+fn legacy_safe_session_dir(session_id: &str) -> String {
     session_id
         .chars()
         .map(|ch| {
@@ -99,6 +177,238 @@ pub fn safe_session_dir(session_id: &str) -> String {
             }
         })
         .collect()
+}
+
+fn unambiguous_legacy_session_dir(session_id: &str) -> Option<String> {
+    const MAX_LEGACY_COMPONENT_BYTES: usize = 200;
+    if session_id.is_empty() || session_id.len() > MAX_LEGACY_COMPONENT_BYTES {
+        return None;
+    }
+    let legacy = legacy_safe_session_dir(session_id);
+    (legacy == session_id).then_some(legacy)
+}
+
+fn session_runtime_root_path(base: &Path, directory: &str, session_id: &str) -> PathBuf {
+    base.join(directory).join(safe_session_dir(session_id))
+}
+
+fn legacy_session_runtime_root_path(
+    base: &Path,
+    directory: &str,
+    session_id: &str,
+) -> Option<PathBuf> {
+    unambiguous_legacy_session_dir(session_id).map(|legacy| base.join(directory).join(legacy))
+}
+
+fn resolve_session_runtime_root(
+    base: &Path,
+    directory: &str,
+    session_id: &str,
+    create: bool,
+) -> Result<PathBuf, String> {
+    let _session_root_guard = lock_or_recover(
+        SESSION_ROOT_LOCK.get_or_init(|| Mutex::new(())),
+        "session root",
+    );
+    if create {
+        fs::create_dir_all(base)
+            .map_err(|error| format!("Failed to create app data dir: {}", error))?;
+    }
+    let base_canon = match base.canonicalize() {
+        Ok(path) => path,
+        Err(error) if !create && error.kind() == io::ErrorKind::NotFound => {
+            return Ok(session_runtime_root_path(base, directory, session_id));
+        }
+        Err(error) => return Err(format!("Failed to resolve app data dir: {}", error)),
+    };
+    let container = base_canon.join(directory);
+    if create {
+        fs::create_dir_all(&container)
+            .map_err(|error| format!("Failed to create runtime-root container: {}", error))?;
+    }
+
+    match fs::symlink_metadata(&container) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                return Err("Runtime-root container must be a real directory".to_string());
+            }
+            let container_canon = container
+                .canonicalize()
+                .map_err(|error| format!("Failed to resolve runtime-root container: {}", error))?;
+            if !container_canon.starts_with(&base_canon) {
+                return Err("Runtime-root container escapes the app data directory".to_string());
+            }
+
+            let root = container_canon.join(safe_session_dir(session_id));
+            if create {
+                if !root.exists() {
+                    if let Some(legacy_name) = unambiguous_legacy_session_dir(session_id) {
+                        let legacy = container_canon.join(legacy_name);
+                        match fs::symlink_metadata(&legacy) {
+                            Ok(metadata) => {
+                                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                                    return Err(
+                                        "Legacy session runtime root must be a real directory"
+                                            .to_string(),
+                                    );
+                                }
+                                fs::rename(&legacy, &root).map_err(|error| {
+                                    format!(
+                                        "Failed to migrate legacy session runtime root: {}",
+                                        error
+                                    )
+                                })?;
+                            }
+                            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                            Err(error) => {
+                                return Err(format!(
+                                    "Failed to inspect legacy session runtime root: {}",
+                                    error
+                                ))
+                            }
+                        }
+                    }
+                }
+                if !root.exists() {
+                    match fs::create_dir(&root) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+                        Err(error) => {
+                            return Err(format!("Failed to create session runtime root: {}", error))
+                        }
+                    }
+                }
+            }
+            match fs::symlink_metadata(&root) {
+                Ok(metadata) => {
+                    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                        return Err("Session runtime root must be a real directory".to_string());
+                    }
+                    let root_canon = root.canonicalize().map_err(|error| {
+                        format!("Failed to resolve session runtime root: {}", error)
+                    })?;
+                    if !root_canon.starts_with(&container_canon) {
+                        return Err("Session runtime root escapes its container".to_string());
+                    }
+                    Ok(root_canon)
+                }
+                Err(error) if !create && error.kind() == io::ErrorKind::NotFound => {
+                    let Some(legacy_name) = unambiguous_legacy_session_dir(session_id) else {
+                        return Ok(root);
+                    };
+                    let legacy = container_canon.join(legacy_name);
+                    match fs::symlink_metadata(&legacy) {
+                        Ok(metadata) => {
+                            if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                                return Err("Legacy session runtime root must be a real directory"
+                                    .to_string());
+                            }
+                            legacy.canonicalize().map_err(|error| {
+                                format!("Failed to resolve legacy session runtime root: {}", error)
+                            })
+                        }
+                        Err(legacy_error) if legacy_error.kind() == io::ErrorKind::NotFound => {
+                            Ok(root)
+                        }
+                        Err(legacy_error) => Err(format!(
+                            "Failed to inspect legacy session runtime root: {}",
+                            legacy_error
+                        )),
+                    }
+                }
+                Err(error) => Err(format!("Failed to inspect session runtime root: {}", error)),
+            }
+        }
+        Err(error) if !create && error.kind() == io::ErrorKind::NotFound => Ok(
+            session_runtime_root_path(&base_canon, directory, session_id),
+        ),
+        Err(error) => Err(format!(
+            "Failed to inspect runtime-root container: {}",
+            error
+        )),
+    }
+}
+
+fn remove_runtime_root_path(path: &Path) -> Result<(), String> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to inspect session runtime root '{}': {}",
+                path.display(),
+                error
+            ))
+        }
+    };
+
+    if metadata.file_type().is_symlink() {
+        remove_symlink(path, &metadata)
+    } else if metadata.is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+    .map_err(|error| {
+        format!(
+            "Failed to remove session runtime root '{}': {}",
+            path.display(),
+            error
+        )
+    })
+}
+
+#[cfg(not(windows))]
+fn remove_symlink(path: &Path, _metadata: &fs::Metadata) -> io::Result<()> {
+    fs::remove_file(path)
+}
+
+#[cfg(windows)]
+fn remove_symlink(path: &Path, metadata: &fs::Metadata) -> io::Result<()> {
+    use std::os::windows::fs::FileTypeExt;
+
+    if metadata.file_type().is_symlink_dir() {
+        fs::remove_dir(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+fn cleanup_session_runtime_roots_in_base(base: &Path, session_id: &str) -> Result<(), String> {
+    let _artifact_guard = artifact_mutation_guard();
+    let _session_root_guard = lock_or_recover(
+        SESSION_ROOT_LOCK.get_or_init(|| Mutex::new(())),
+        "session root",
+    );
+
+    let mut failures = Vec::new();
+    for directory in ["chat_v2_artifacts", "chat_v2_temp"] {
+        let current = session_runtime_root_path(base, directory, session_id);
+        if let Err(error) = remove_runtime_root_path(&current) {
+            failures.push(error);
+        }
+        if let Some(legacy) = legacy_session_runtime_root_path(base, directory, session_id) {
+            if let Err(error) = remove_runtime_root_path(&legacy) {
+                failures.push(error);
+            }
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("; "))
+    }
+}
+
+/// Remove every per-session filesystem root, including artifact undo backups.
+/// Call this before committing permanent session deletion so cleanup failures
+/// leave a database record that can be retried.
+pub fn cleanup_session_runtime_roots(app: &AppHandle, session_id: &str) -> Result<(), String> {
+    let base = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve app data dir: {}", error))?;
+    cleanup_session_runtime_roots_in_base(&base, session_id)
 }
 
 pub fn normalize_runtime_relative_path(raw: Option<&str>) -> Result<PathBuf, String> {
@@ -147,6 +457,73 @@ fn canonicalize_existing_dir(raw_path: &str, label: &str) -> Result<PathBuf, Str
     Ok(canonical)
 }
 
+fn runtime_root_identity(path: &Path) -> Result<RuntimeRootIdentity, String> {
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("Failed to inspect runtime root identity: {}", error))?;
+    if !metadata.is_dir() {
+        return Err("Runtime root identity target is not a directory".to_string());
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        return Ok(RuntimeRootIdentity::Unix {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+        });
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        let volume_serial_number = metadata
+            .volume_serial_number()
+            .ok_or_else(|| "Failed to resolve runtime root volume serial number".to_string())?;
+        let file_index = metadata
+            .file_index()
+            .ok_or_else(|| "Failed to resolve runtime root file index".to_string())?;
+        return Ok(RuntimeRootIdentity::Windows {
+            volume_serial_number,
+            file_index,
+        });
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        Ok(RuntimeRootIdentity::CanonicalPath {
+            path: path.to_path_buf(),
+        })
+    }
+}
+
+fn validate_persisted_root_binding(
+    stored_path: &Path,
+    stored_identity: Option<&RuntimeRootIdentity>,
+    label: &str,
+) -> Result<PathBuf, String> {
+    let current = canonicalize_existing_dir(&stored_path.to_string_lossy(), label)?;
+    if current != stored_path {
+        return Err(format!(
+            "{} was moved or rebound to a different target; select it again",
+            label
+        ));
+    }
+    let expected = stored_identity.ok_or_else(|| {
+        format!(
+            "{} predates runtime-root identity binding; select it again",
+            label
+        )
+    })?;
+    let current_identity = runtime_root_identity(&current)?;
+    if &current_identity != expected {
+        return Err(format!(
+            "{} was replaced since it was authorized; select it again",
+            label
+        ));
+    }
+    Ok(current)
+}
+
 fn load_workspace_record(
     database: &crate::database::Database,
 ) -> Result<Option<WorkspaceRootRecord>, String> {
@@ -175,22 +552,37 @@ fn save_workspace_record(
         .map_err(|e| format!("Failed to save workspace runtime root: {}", e))
 }
 
-fn configured_workspace_runtime_root(record: WorkspaceRootRecord) -> RuntimeRoot {
+fn workspace_runtime_root(record: WorkspaceRootRecord, configured: bool) -> RuntimeRoot {
     RuntimeRoot {
         id: "workspace".to_string(),
         kind: RuntimeRootKind::Workspace,
         path: record.path,
         access: RuntimeRootAccess::ReadOnly,
         label: record.label,
-        description: "User-selected workspace root. Read-only for agent runtime.".to_string(),
+        description: if configured {
+            "User-selected workspace root. Read-only for agent runtime.".to_string()
+        } else {
+            "Workspace authorization is stale or the directory was replaced. Select it again."
+                .to_string()
+        },
         session_scoped: false,
-        configured: true,
+        configured,
     }
+}
+
+fn configured_workspace_runtime_root(record: WorkspaceRootRecord) -> RuntimeRoot {
+    workspace_runtime_root(record, true)
 }
 
 pub fn workspace_root(database: &crate::database::Database) -> Result<RuntimeRoot, String> {
     if let Some(record) = load_workspace_record(database)? {
-        return Ok(configured_workspace_runtime_root(record));
+        let is_valid = validate_persisted_root_binding(
+            &record.path,
+            record.identity.as_ref(),
+            "workspace runtime root",
+        )
+        .is_ok();
+        return Ok(workspace_runtime_root(record, is_valid));
     }
 
     let path = std::env::current_dir()
@@ -216,12 +608,7 @@ pub fn artifact_root(
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
-    let path = base
-        .join("chat_v2_artifacts")
-        .join(safe_session_dir(session_id));
-    if create {
-        fs::create_dir_all(&path).map_err(|e| format!("Failed to create artifact root: {}", e))?;
-    }
+    let path = resolve_session_runtime_root(&base, "chat_v2_artifacts", session_id, create)?;
     Ok(RuntimeRoot {
         id: "artifacts".to_string(),
         kind: RuntimeRootKind::Artifact,
@@ -240,10 +627,7 @@ pub fn temp_root(app: &AppHandle, session_id: &str, create: bool) -> Result<Runt
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to resolve app data dir: {}", e))?;
-    let path = base.join("chat_v2_temp").join(safe_session_dir(session_id));
-    if create {
-        fs::create_dir_all(&path).map_err(|e| format!("Failed to create temp root: {}", e))?;
-    }
+    let path = resolve_session_runtime_root(&base, "chat_v2_temp", session_id, create)?;
     Ok(RuntimeRoot {
         id: "temp".to_string(),
         kind: RuntimeRootKind::Temp,
@@ -382,11 +766,16 @@ pub(crate) fn authorize_runtime_root_path(
     label: Option<&str>,
 ) -> Result<AuthorizeRuntimeRootOutcome, String> {
     let canonical = canonicalize_authorized_dir(path)?;
+    let identity = runtime_root_identity(&canonical)?;
     let id = authorized_root_id(&canonical);
     let label = derive_authorized_root_label(&canonical, label);
 
+    let _settings_guard = runtime_root_settings_guard();
     let mut records = load_authorized_records(database)?;
-    if let Some(existing) = records.iter().find(|record| record.path == canonical) {
+    if let Some(existing) = records
+        .iter()
+        .find(|record| record.path == canonical && record.identity.as_ref() == Some(&identity))
+    {
         return Ok(AuthorizeRuntimeRootOutcome {
             root_id: existing.id.clone(),
             path: canonical,
@@ -400,6 +789,7 @@ pub(crate) fn authorize_runtime_root_path(
         id: id.clone(),
         path: canonical.clone(),
         label: label.clone(),
+        identity: Some(identity),
     });
     records.sort_by(|a, b| a.label.cmp(&b.label).then(a.path.cmp(&b.path)));
     save_authorized_records(database, &records)?;
@@ -436,17 +826,93 @@ fn save_authorized_records(
         .map_err(|e| format!("Failed to save authorized runtime roots: {}", e))
 }
 
-fn authorized_runtime_root(record: AuthorizedRootRecord) -> RuntimeRoot {
+fn authorized_runtime_root(record: AuthorizedRootRecord, configured: bool) -> RuntimeRoot {
     RuntimeRoot {
         id: record.id,
         kind: RuntimeRootKind::Authorized,
         path: record.path,
         access: RuntimeRootAccess::ReadOnly,
         label: record.label,
-        description: "User-authorized local directory. Read-only for agent runtime.".to_string(),
+        description: if configured {
+            "User-authorized local directory. Read-only for agent runtime.".to_string()
+        } else {
+            "Directory authorization is stale or the directory was replaced. Authorize it again."
+                .to_string()
+        },
         session_scoped: false,
-        configured: true,
+        configured,
     }
+}
+
+fn validate_authorized_record(record: &AuthorizedRootRecord) -> Result<(), String> {
+    let canonical = validate_persisted_root_binding(
+        &record.path,
+        record.identity.as_ref(),
+        "authorized runtime root",
+    )?;
+    if authorized_root_id(&canonical) != record.id {
+        return Err("Authorized runtime root identity does not match its stored id".to_string());
+    }
+    Ok(())
+}
+
+/// Re-check a persisted root immediately before filesystem use. This closes the
+/// gap between root lookup and opening a target when the selected directory was
+/// renamed, recreated, or replaced with a symlink.
+pub(crate) fn revalidate_runtime_root(
+    database: &crate::database::Database,
+    root: &RuntimeRoot,
+) -> Result<PathBuf, String> {
+    match root.kind {
+        RuntimeRootKind::Workspace => {
+            let record = load_workspace_record(database)?
+                .ok_or_else(|| "Workspace root is no longer configured".to_string())?;
+            if record.path != root.path {
+                return Err("Workspace root changed while resolving the request".to_string());
+            }
+            validate_persisted_root_binding(
+                &record.path,
+                record.identity.as_ref(),
+                "workspace runtime root",
+            )
+        }
+        RuntimeRootKind::Authorized => {
+            let record = load_authorized_records(database)?
+                .into_iter()
+                .find(|record| record.id == root.id)
+                .ok_or_else(|| "Authorized runtime root was revoked".to_string())?;
+            if record.path != root.path {
+                return Err(
+                    "Authorized runtime root changed while resolving the request".to_string(),
+                );
+            }
+            validate_authorized_record(&record)?;
+            Ok(record.path)
+        }
+        _ => root
+            .path
+            .canonicalize()
+            .map_err(|error| format!("Failed to canonicalize runtime root: {}", error)),
+    }
+}
+
+/// Stable token for approval scopes. It binds remembered authorization to the
+/// currently opened directory object, not merely to aliases such as
+/// `workspace` or a reusable canonical pathname.
+pub(crate) fn runtime_root_binding_token(
+    database: &crate::database::Database,
+    root: &RuntimeRoot,
+) -> Result<String, String> {
+    let canonical = revalidate_runtime_root(database, root)?;
+    let identity = runtime_root_identity(&canonical)?;
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "root_id": root.id,
+        "kind": root.kind,
+        "canonical_path": canonical,
+        "identity": identity,
+    }))
+    .map_err(|error| format!("Failed to serialize runtime-root binding: {}", error))?;
+    Ok(hex::encode(Sha256::digest(payload)))
 }
 
 pub fn skill_package_runtime_root(skill_id: &str, raw_path: &str) -> Result<RuntimeRoot, String> {
@@ -482,7 +948,10 @@ pub fn authorized_roots(database: &crate::database::Database) -> Result<Vec<Runt
     load_authorized_records(database).map(|records| {
         records
             .into_iter()
-            .map(authorized_runtime_root)
+            .map(|record| {
+                let configured = validate_authorized_record(&record).is_ok();
+                authorized_runtime_root(record, configured)
+            })
             .collect::<Vec<_>>()
     })
 }
@@ -491,10 +960,19 @@ pub fn authorized_root_by_id(
     database: &crate::database::Database,
     root_id: &str,
 ) -> Result<Option<RuntimeRoot>, String> {
-    Ok(load_authorized_records(database)?
+    let Some(record) = load_authorized_records(database)?
         .into_iter()
         .find(|record| record.id == root_id)
-        .map(authorized_runtime_root))
+    else {
+        return Ok(None);
+    };
+    validate_authorized_record(&record).map_err(|error| {
+        format!(
+            "Authorized runtime root '{}' is no longer valid: {}",
+            root_id, error
+        )
+    })?;
+    Ok(Some(authorized_runtime_root(record, true)))
 }
 
 pub fn runtime_root_by_id(
@@ -583,6 +1061,7 @@ pub async fn chat_v2_set_workspace_root(
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
     let canonical = canonicalize_workspace_dir(&path)?;
+    let identity = runtime_root_identity(&canonical)?;
     let label = label
         .as_deref()
         .map(str::trim)
@@ -595,13 +1074,17 @@ pub async fn chat_v2_set_workspace_root(
         })
         .unwrap_or_else(|| "Workspace".to_string());
 
-    save_workspace_record(
-        &state.database,
-        &WorkspaceRootRecord {
-            path: canonical,
-            label,
-        },
-    )?;
+    {
+        let _settings_guard = runtime_root_settings_guard();
+        save_workspace_record(
+            &state.database,
+            &WorkspaceRootRecord {
+                path: canonical,
+                label,
+                identity: Some(identity),
+            },
+        )?;
+    }
 
     chat_v2_list_runtime_roots(app, state, session_id).await
 }
@@ -612,10 +1095,13 @@ pub async fn chat_v2_reset_workspace_root(
     state: State<'_, AppState>,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
-    state
-        .database
-        .delete_setting(WORKSPACE_ROOT_KEY)
-        .map_err(|e| format!("Failed to reset workspace runtime root: {}", e))?;
+    {
+        let _settings_guard = runtime_root_settings_guard();
+        state
+            .database
+            .delete_setting(WORKSPACE_ROOT_KEY)
+            .map_err(|e| format!("Failed to reset workspace runtime root: {}", e))?;
+    }
 
     chat_v2_list_runtime_roots(app, state, session_id).await
 }
@@ -640,6 +1126,7 @@ pub async fn chat_v2_revoke_runtime_root(
     root_id: String,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
+    let _settings_guard = runtime_root_settings_guard();
     let mut records = load_authorized_records(&state.database)?;
     let before = records.len();
     records.retain(|record| record.id != root_id);
@@ -647,6 +1134,7 @@ pub async fn chat_v2_revoke_runtime_root(
         return Err("Authorized runtime root not found".to_string());
     }
     save_authorized_records(&state.database, &records)?;
+    drop(_settings_guard);
 
     chat_v2_list_runtime_roots(app, state, session_id).await
 }
@@ -666,14 +1154,18 @@ fn resolve_runtime_target(
     create_session_roots: bool,
 ) -> Result<PathBuf, String> {
     let relative = normalize_runtime_relative_path(Some(relative_path))?;
-    let root = runtime_root_by_id(app, database, session_id, None, root_id, create_session_roots)?;
+    let root = runtime_root_by_id(
+        app,
+        database,
+        session_id,
+        None,
+        root_id,
+        create_session_roots,
+    )?;
     if !root.path.exists() {
         return Err("runtime root does not exist".to_string());
     }
-    let root_canon = root
-        .path
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve runtime root: {}", e))?;
+    let root_canon = revalidate_runtime_root(database, &root)?;
     let target = root_canon.join(&relative);
     let target_canon = target
         .canonicalize()
@@ -711,10 +1203,11 @@ pub async fn chat_v2_resolve_runtime_path(
 #[tauri::command]
 pub async fn chat_v2_delete_artifact(
     app: AppHandle,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
     session_id: String,
     relative_path: String,
 ) -> Result<serde_json::Value, String> {
+    let _mutation_guard = artifact_mutation_guard();
     let relative = normalize_runtime_relative_path(Some(&relative_path))?;
     if relative.as_os_str().is_empty() {
         return Err("A relative artifact path is required".to_string());
@@ -723,26 +1216,7 @@ pub async fn chat_v2_delete_artifact(
     if !root.path.exists() {
         return Err("No artifacts exist for this session yet".to_string());
     }
-    let root_canon = root
-        .path
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve artifacts root: {}", e))?;
-    let target = root_canon.join(&relative);
-    let target_canon = target
-        .canonicalize()
-        .map_err(|e| format!("Artifact does not exist: {}", e))?;
-    if !target_canon.starts_with(&root_canon) {
-        return Err("Path escapes the artifacts root".to_string());
-    }
-    let metadata = fs::symlink_metadata(&target_canon)
-        .map_err(|e| format!("Failed to inspect artifact: {}", e))?;
-    if metadata.file_type().is_symlink() {
-        return Err("Refusing to delete a symlink artifact".to_string());
-    }
-    if !metadata.is_file() {
-        return Err("Only artifact files can be deleted, not directories".to_string());
-    }
-    fs::remove_file(&target_canon).map_err(|e| format!("Failed to delete artifact: {}", e))?;
+    remove_artifact_file(&root.path, &relative, None)?;
     Ok(serde_json::json!({
         "deleted": true,
         "root_id": root.id,
@@ -770,6 +1244,83 @@ fn safe_backup_file_name(name: &str) -> String {
     }
 }
 
+fn metadata_matches_opened_file(before: &fs::Metadata, opened: &fs::Metadata) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        return before.dev() == opened.dev() && before.ino() == opened.ino();
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        return before.volume_serial_number() == opened.volume_serial_number()
+            && before.file_index() == opened.file_index();
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        before.len() == opened.len()
+            && before.modified().ok().is_some()
+            && before.modified().ok() == opened.modified().ok()
+    }
+}
+
+fn open_regular_file_no_follow(path: &Path, label: &str) -> Result<fs::File, String> {
+    let before = fs::symlink_metadata(path)
+        .map_err(|error| format!("Failed to inspect {}: {}", label, error))?;
+    if before.file_type().is_symlink() || !before.is_file() {
+        return Err(format!("{} must be a regular file, not a symlink", label));
+    }
+
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
+    }
+    let file = options
+        .open(path)
+        .map_err(|error| format!("Failed to open {}: {}", label, error))?;
+    let opened = file
+        .metadata()
+        .map_err(|error| format!("Failed to inspect opened {}: {}", label, error))?;
+    if !opened.is_file() || !metadata_matches_opened_file(&before, &opened) {
+        return Err(format!("{} changed while it was being opened", label));
+    }
+    Ok(file)
+}
+
+fn ensure_write_backup_dir(temp_root_path: &Path) -> Result<PathBuf, String> {
+    let temp_meta = fs::symlink_metadata(temp_root_path)
+        .map_err(|error| format!("Failed to inspect temp root: {}", error))?;
+    if temp_meta.file_type().is_symlink() || !temp_meta.is_dir() {
+        return Err("Temp root must be a real directory".to_string());
+    }
+    let temp_canon = temp_root_path
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve temp root: {}", error))?;
+    let backup_dir = temp_canon.join(WRITE_BACKUP_DIR);
+    match fs::create_dir(&backup_dir) {
+        Ok(()) => {}
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
+        Err(error) => return Err(format!("Failed to create write backup dir: {}", error)),
+    }
+    let backup_meta = fs::symlink_metadata(&backup_dir)
+        .map_err(|error| format!("Failed to inspect write backup dir: {}", error))?;
+    if backup_meta.file_type().is_symlink() || !backup_meta.is_dir() {
+        return Err("Write backup area must be a real directory".to_string());
+    }
+    let backup_canon = backup_dir
+        .canonicalize()
+        .map_err(|error| format!("Failed to resolve write backup dir: {}", error))?;
+    if !backup_canon.starts_with(&temp_canon) {
+        return Err("Write backup area escapes the temp root".to_string());
+    }
+    Ok(backup_canon)
+}
+
 /// 把即将被覆盖的旧产物内容写入 temp 根备份区，返回相对 temp 根的 backup_ref
 /// （形如 `.write_backups/<毫秒时间戳>_<序号>_<原文件名>`，供撤销时恢复）。
 pub fn create_write_backup(
@@ -777,9 +1328,27 @@ pub fn create_write_backup(
     original_file_name: &str,
     bytes: &[u8],
 ) -> Result<String, String> {
-    let backup_dir = temp_root_path.join(WRITE_BACKUP_DIR);
-    fs::create_dir_all(&backup_dir)
-        .map_err(|e| format!("Failed to create write backup dir: {}", e))?;
+    let snapshot = create_write_backup_from_reader(
+        temp_root_path,
+        original_file_name,
+        io::Cursor::new(bytes),
+    )?;
+    Ok(snapshot.backup_ref)
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct WriteBackupSnapshot {
+    pub backup_ref: String,
+    pub sha256: String,
+    pub bytes: u64,
+}
+
+fn create_write_backup_from_reader<R: Read>(
+    temp_root_path: &Path,
+    original_file_name: &str,
+    mut reader: R,
+) -> Result<WriteBackupSnapshot, String> {
+    let backup_dir = ensure_write_backup_dir(temp_root_path)?;
     let millis = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
@@ -792,88 +1361,141 @@ pub fn create_write_backup(
         safe_backup_file_name(original_file_name)
     );
     let backup_path = backup_dir.join(&backup_name);
-    fs::write(&backup_path, bytes).map_err(|e| format!("Failed to write backup: {}", e))?;
-    Ok(format!("{}/{}", WRITE_BACKUP_DIR, backup_name))
+    let mut staged = tempfile::NamedTempFile::new_in(&backup_dir)
+        .map_err(|e| format!("Failed to create staged backup: {}", e))?;
+    let mut hasher = Sha256::new();
+    let mut total = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|e| format!("Failed to read backup source: {}", e))?;
+        if read == 0 {
+            break;
+        }
+        staged
+            .write_all(&buffer[..read])
+            .map_err(|e| format!("Failed to write staged backup: {}", e))?;
+        hasher.update(&buffer[..read]);
+        total = total
+            .checked_add(read as u64)
+            .ok_or_else(|| "Write backup size overflow".to_string())?;
+        if total > MAX_WRITE_BACKUP_SOURCE_BYTES {
+            return Err(format!(
+                "Write backup source exceeds the {} MiB limit",
+                MAX_WRITE_BACKUP_SOURCE_BYTES / (1024 * 1024)
+            ));
+        }
+    }
+    staged
+        .as_file_mut()
+        .sync_all()
+        .map_err(|e| format!("Failed to sync staged backup: {}", e))?;
+    staged
+        .persist_noclobber(&backup_path)
+        .map_err(|e| format!("Failed to persist backup: {}", e.error))?;
+
+    Ok(WriteBackupSnapshot {
+        backup_ref: format!("{}/{}", WRITE_BACKUP_DIR, backup_name),
+        sha256: hex::encode(hasher.finalize()),
+        bytes: total,
+    })
+}
+
+pub(crate) fn create_write_backup_from_file(
+    temp_root_path: &Path,
+    original_file_name: &str,
+    source: &Path,
+) -> Result<WriteBackupSnapshot, String> {
+    let file = open_regular_file_no_follow(source, "existing artifact for backup")?;
+    let source_bytes = file
+        .metadata()
+        .map_err(|error| format!("Failed to inspect opened artifact for backup: {}", error))?
+        .len();
+    if source_bytes > MAX_WRITE_BACKUP_SOURCE_BYTES {
+        return Err(format!(
+            "Write backup source exceeds the {} MiB limit",
+            MAX_WRITE_BACKUP_SOURCE_BYTES / (1024 * 1024)
+        ));
+    }
+    create_write_backup_from_reader(temp_root_path, original_file_name, file)
 }
 
 /// 校验 backup_ref 并解析为 temp 根备份区内的规范化绝对路径。
 /// 只接受 `.write_backups/` 下的普通文件，拒绝绝对路径、`..` 与 symlink。
-fn resolve_write_backup_source(
-    temp_root_path: &Path,
-    backup_ref: &str,
-) -> Result<PathBuf, String> {
+fn resolve_write_backup_source(temp_root_path: &Path, backup_ref: &str) -> Result<PathBuf, String> {
     let relative = normalize_runtime_relative_path(Some(backup_ref))?;
     let mut components = relative.components();
     match components.next() {
         Some(Component::Normal(part)) if part == std::ffi::OsStr::new(WRITE_BACKUP_DIR) => {}
         _ => return Err("backup_ref must point into the write backup area".to_string()),
     }
-    if components.next().is_none() {
+    let Some(Component::Normal(_file_name)) = components.next() else {
         return Err("backup_ref must point to a backup file".to_string());
+    };
+    if components.next().is_some() {
+        return Err("backup_ref must identify one direct backup file".to_string());
     }
     let temp_canon = temp_root_path
         .canonicalize()
         .map_err(|e| format!("Failed to resolve temp root: {}", e))?;
     let source = temp_canon.join(&relative);
+    let source_meta =
+        fs::symlink_metadata(&source).map_err(|e| format!("Failed to inspect backup: {}", e))?;
+    if source_meta.file_type().is_symlink() {
+        return Err("Refusing to restore from a symlink backup".to_string());
+    }
+    if !source_meta.is_file() {
+        return Err("backup_ref must be a file".to_string());
+    }
+    let parent_canon = source
+        .parent()
+        .ok_or_else(|| "Backup has no parent directory".to_string())?
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve backup parent: {}", e))?;
+    if !parent_canon.starts_with(&temp_canon) {
+        return Err("backup_ref escapes the temp root".to_string());
+    }
     let source_canon = source
         .canonicalize()
         .map_err(|e| format!("Backup does not exist: {}", e))?;
     if !source_canon.starts_with(&temp_canon) {
         return Err("backup_ref escapes the temp root".to_string());
     }
-    let meta = fs::symlink_metadata(&source_canon)
-        .map_err(|e| format!("Failed to inspect backup: {}", e))?;
-    if meta.file_type().is_symlink() {
-        return Err("Refusing to restore from a symlink backup".to_string());
-    }
-    if !meta.is_file() {
-        return Err("backup_ref must be a file".to_string());
-    }
     Ok(source_canon)
 }
 
-/// 从备份把旧内容写回 artifacts 根内的目标文件，返回恢复的字节数。
-/// `relative` 必须已经过 `normalize_runtime_relative_path` 归一化。
-fn restore_artifact_from_backup(
-    artifact_root_path: &Path,
-    temp_root_path: &Path,
-    relative: &Path,
-    backup_ref: &str,
-) -> Result<u64, String> {
-    if relative.as_os_str().is_empty() {
-        return Err("A relative artifact path is required".to_string());
-    }
-    let source = resolve_write_backup_source(temp_root_path, backup_ref)?;
-    let root_canon = artifact_root_path
-        .canonicalize()
-        .map_err(|e| format!("Failed to resolve artifacts root: {}", e))?;
-    let target = root_canon.join(relative);
-    if let Ok(meta) = fs::symlink_metadata(&target) {
-        if meta.file_type().is_symlink() {
-            return Err("Refusing to restore through a symlink".to_string());
+fn sha256_file(path: &Path) -> Result<(String, u64), String> {
+    let mut file = open_regular_file_no_follow(path, "artifact")?;
+    let mut hasher = Sha256::new();
+    let mut total = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buffer)
+            .map_err(|e| format!("Failed to read artifact: {}", e))?;
+        if read == 0 {
+            break;
         }
-        if meta.is_dir() {
-            return Err("Cannot restore file content to a directory".to_string());
-        }
+        hasher.update(&buffer[..read]);
+        total = total.saturating_add(read as u64);
     }
-    // 目标可能已被删除（撤销前用户手动删过），所以校验父目录仍在 artifacts 根内后重建
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
-        let parent_canon = parent
-            .canonicalize()
-            .map_err(|e| format!("Failed to resolve parent directory: {}", e))?;
-        if !parent_canon.starts_with(&root_canon) {
-            return Err("Path escapes the artifacts root".to_string());
-        }
-    }
-    let bytes = fs::read(&source).map_err(|e| format!("Failed to read backup: {}", e))?;
-    fs::write(&target, &bytes).map_err(|e| format!("Failed to restore artifact: {}", e))?;
-    Ok(bytes.len() as u64)
+    Ok((hex::encode(hasher.finalize()), total))
 }
 
-/// 撤销一次新建写入：删除 artifacts 根内的目标文件（校验语义与 `chat_v2_delete_artifact` 一致）。
-fn remove_artifact_file(artifact_root_path: &Path, relative: &Path) -> Result<(), String> {
+fn normalize_expected_sha256(expected: &str) -> Result<String, String> {
+    let normalized = expected.trim().to_ascii_lowercase();
+    if normalized.len() != 64 || !normalized.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("expected_after_hash must be a 64-character SHA-256 hex digest".to_string());
+    }
+    Ok(normalized)
+}
+
+fn artifact_target_with_parent(
+    artifact_root_path: &Path,
+    relative: &Path,
+    create_parent: bool,
+) -> Result<(PathBuf, PathBuf), String> {
     if relative.as_os_str().is_empty() {
         return Err("A relative artifact path is required".to_string());
     }
@@ -881,21 +1503,154 @@ fn remove_artifact_file(artifact_root_path: &Path, relative: &Path) -> Result<()
         .canonicalize()
         .map_err(|e| format!("Failed to resolve artifacts root: {}", e))?;
     let target = root_canon.join(relative);
+    let parent = target
+        .parent()
+        .ok_or_else(|| "Artifact target has no parent directory".to_string())?;
+    if create_parent {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+    let parent_canon = parent
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve parent directory: {}", e))?;
+    if !parent_canon.starts_with(&root_canon) {
+        return Err("Path escapes the artifacts root".to_string());
+    }
+    let file_name = relative
+        .file_name()
+        .ok_or_else(|| "Artifact target has no file name".to_string())?;
+    Ok((root_canon, parent_canon.join(file_name)))
+}
+
+fn verify_regular_artifact_hash(
+    root_canon: &Path,
+    target: &Path,
+    expected_after_hash: &str,
+) -> Result<(), String> {
+    let expected = normalize_expected_sha256(expected_after_hash)?;
+    let metadata = fs::symlink_metadata(target)
+        .map_err(|e| format!("Artifact does not exist or cannot be inspected: {}", e))?;
+    if metadata.file_type().is_symlink() {
+        return Err("Artifact changed into a symlink; refusing stale undo".to_string());
+    }
+    if !metadata.is_file() {
+        return Err("Artifact is no longer a regular file; refusing stale undo".to_string());
+    }
     let target_canon = target
         .canonicalize()
         .map_err(|e| format!("Artifact does not exist: {}", e))?;
     if !target_canon.starts_with(&root_canon) {
         return Err("Path escapes the artifacts root".to_string());
     }
-    let metadata = fs::symlink_metadata(&target_canon)
-        .map_err(|e| format!("Failed to inspect artifact: {}", e))?;
+    let (actual, _) = sha256_file(&target_canon)?;
+    if actual != expected {
+        return Err(format!(
+            "Artifact changed since this write (expected {}, found {}); refusing stale undo",
+            expected, actual
+        ));
+    }
+    Ok(())
+}
+
+fn atomic_copy_to_target<R: Read>(
+    mut reader: R,
+    target: &Path,
+    overwrite: bool,
+) -> Result<u64, String> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| "Artifact target has no parent directory".to_string())?;
+    let mut staged = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|e| format!("Failed to create staged artifact: {}", e))?;
+    let bytes = io::copy(&mut reader, &mut staged)
+        .map_err(|e| format!("Failed to stage artifact content: {}", e))?;
+    staged
+        .as_file_mut()
+        .sync_all()
+        .map_err(|e| format!("Failed to sync staged artifact: {}", e))?;
+    match fs::symlink_metadata(target) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err("Refusing to replace a symlink or non-file artifact".to_string());
+            }
+            if !overwrite {
+                return Err("Artifact already exists".to_string());
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("Failed to inspect artifact target: {}", error)),
+    }
+    if overwrite {
+        staged
+            .persist(target)
+            .map_err(|e| format!("Failed to atomically replace artifact: {}", e.error))?;
+    } else {
+        staged
+            .persist_noclobber(target)
+            .map_err(|e| format!("Failed to atomically create artifact: {}", e.error))?;
+    }
+    #[cfg(unix)]
+    if let Ok(directory) = fs::File::open(parent) {
+        let _ = directory.sync_all();
+    }
+    Ok(bytes)
+}
+
+/// Atomically restore old content from the backup. When an expected hash is
+/// supplied, the current target must still be the exact output being undone.
+fn restore_artifact_from_backup(
+    artifact_root_path: &Path,
+    temp_root_path: &Path,
+    relative: &Path,
+    backup_ref: &str,
+    expected_after_hash: Option<&str>,
+) -> Result<u64, String> {
+    let source = resolve_write_backup_source(temp_root_path, backup_ref)?;
+    let (root_canon, target) =
+        artifact_target_with_parent(artifact_root_path, relative, expected_after_hash.is_none())?;
+    if let Some(expected) = expected_after_hash {
+        verify_regular_artifact_hash(&root_canon, &target, expected)?;
+    } else if let Ok(metadata) = fs::symlink_metadata(&target) {
+        if metadata.file_type().is_symlink() || metadata.is_dir() {
+            return Err("Refusing to restore over a symlink or directory".to_string());
+        }
+    }
+    let source_file = open_regular_file_no_follow(&source, "backup for restore")?;
+    atomic_copy_to_target(source_file, &target, true)
+}
+
+/// Delete an artifact file or the symlink itself. Never canonicalize a symlink
+/// target before deletion, because that would delete the referent instead.
+fn remove_artifact_file(
+    artifact_root_path: &Path,
+    relative: &Path,
+    expected_after_hash: Option<&str>,
+) -> Result<(), String> {
+    let (root_canon, target) = artifact_target_with_parent(artifact_root_path, relative, false)?;
+    let metadata =
+        fs::symlink_metadata(&target).map_err(|e| format!("Artifact does not exist: {}", e))?;
+
+    if let Some(expected) = expected_after_hash {
+        verify_regular_artifact_hash(&root_canon, &target, expected)?;
+    }
+
     if metadata.file_type().is_symlink() {
-        return Err("Refusing to delete a symlink artifact".to_string());
+        if expected_after_hash.is_some() {
+            return Err("Artifact changed into a symlink; refusing stale undo".to_string());
+        }
+        return remove_symlink(&target, &metadata)
+            .map_err(|e| format!("Failed to delete artifact symlink: {}", e));
     }
     if !metadata.is_file() {
         return Err("Only artifact files can be deleted, not directories".to_string());
     }
-    fs::remove_file(&target_canon).map_err(|e| format!("Failed to delete artifact: {}", e))
+    let target_canon = target
+        .canonicalize()
+        .map_err(|e| format!("Artifact does not exist: {}", e))?;
+    if !target_canon.starts_with(&root_canon) {
+        return Err("Path escapes the artifacts root".to_string());
+    }
+    fs::remove_file(&target).map_err(|e| format!("Failed to delete artifact: {}", e))
 }
 
 /// 真实撤销一次 `workspace_artifact_write`：
@@ -907,7 +1662,10 @@ pub async fn chat_v2_revert_artifact_write(
     session_id: String,
     relative_path: String,
     backup_ref: Option<String>,
+    expected_after_hash: String,
 ) -> Result<serde_json::Value, String> {
+    let _mutation_guard = artifact_mutation_guard();
+    let expected_after_hash = normalize_expected_sha256(&expected_after_hash)?;
     let relative = normalize_runtime_relative_path(Some(&relative_path))?;
     if relative.as_os_str().is_empty() {
         return Err("A relative artifact path is required".to_string());
@@ -925,8 +1683,13 @@ pub async fn chat_v2_revert_artifact_write(
     match backup_ref {
         Some(backup_ref) => {
             let temp = temp_root(&app, &session_id, false)?;
-            let bytes_restored =
-                restore_artifact_from_backup(&root.path, &temp.path, &relative, backup_ref)?;
+            let bytes_restored = restore_artifact_from_backup(
+                &root.path,
+                &temp.path,
+                &relative,
+                backup_ref,
+                Some(&expected_after_hash),
+            )?;
             Ok(serde_json::json!({
                 "reverted": true,
                 "mode": "restored",
@@ -936,7 +1699,7 @@ pub async fn chat_v2_revert_artifact_write(
             }))
         }
         None => {
-            remove_artifact_file(&root.path, &relative)?;
+            remove_artifact_file(&root.path, &relative, Some(&expected_after_hash))?;
             Ok(serde_json::json!({
                 "reverted": true,
                 "mode": "deleted",
@@ -972,13 +1735,12 @@ pub async fn chat_v2_read_runtime_file(
         &relative_path,
         false,
     )?;
-    let meta = fs::symlink_metadata(&target)
-        .map_err(|e| format!("Failed to inspect file: {}", e))?;
-    if !meta.is_file() {
-        return Err("Only files can be previewed".to_string());
-    }
     let max_bytes = max_bytes.unwrap_or(64 * 1024).clamp(1, 1024 * 1024) as usize;
-    let bytes = fs::read(&target).map_err(|e| format!("Failed to read file: {}", e))?;
+    let file = open_regular_file_no_follow(&target, "runtime preview file")?;
+    let mut bytes = Vec::with_capacity(max_bytes.saturating_add(1));
+    file.take(max_bytes.saturating_add(1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
     let truncated = bytes.len() > max_bytes;
     let visible = if truncated {
         &bytes[..max_bytes]
@@ -995,9 +1757,97 @@ pub async fn chat_v2_read_runtime_file(
 mod tests {
     use super::*;
 
+    fn settings_database(path: &Path) -> crate::database::Database {
+        let database = crate::database::Database::new(path).expect("database");
+        database
+            .get_conn_safe()
+            .expect("settings connection")
+            .execute_batch(
+                "CREATE TABLE settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );",
+            )
+            .expect("settings schema");
+        database
+    }
+
     #[test]
     fn sanitizes_session_dir() {
-        assert_eq!(safe_session_dir("sess:abc/123"), "sess_abc_123");
+        let sanitized = safe_session_dir("sess:abc/123");
+        assert!(sanitized.starts_with("v2-sess_abc_123-"));
+        assert_eq!(sanitized.len(), "v2-sess_abc_123-".len() + 32);
+        assert_ne!(sanitized, safe_session_dir("sess_abc_123"));
+        assert_ne!(safe_session_dir(&sanitized), sanitized);
+    }
+
+    #[test]
+    fn session_runtime_root_migrates_legacy_directory_once() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let container = temp_dir.path().join("chat_v2_artifacts");
+        fs::create_dir_all(&container).expect("container");
+        let session_id = "agent_01JUPPERCASE";
+        let legacy =
+            legacy_session_runtime_root_path(temp_dir.path(), "chat_v2_artifacts", session_id)
+                .expect("unambiguous legacy id");
+        fs::create_dir(&legacy).expect("legacy root");
+        fs::write(legacy.join("result.md"), "kept").expect("legacy artifact");
+
+        let migrated =
+            resolve_session_runtime_root(temp_dir.path(), "chat_v2_artifacts", session_id, true)
+                .expect("migrate");
+        assert_eq!(
+            migrated.file_name().unwrap(),
+            std::ffi::OsStr::new(&safe_session_dir(session_id))
+        );
+        assert_eq!(
+            fs::read_to_string(migrated.join("result.md")).unwrap(),
+            "kept"
+        );
+        assert!(!legacy.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn session_runtime_root_rejects_symlink_rebinding() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let container = temp_dir.path().join("chat_v2_artifacts");
+        let outside = temp_dir.path().join("outside");
+        fs::create_dir_all(&container).expect("container");
+        fs::create_dir_all(&outside).expect("outside");
+        let session_id = "sess_rebound";
+        symlink(&outside, container.join(safe_session_dir(session_id))).expect("symlink root");
+
+        assert!(resolve_session_runtime_root(
+            temp_dir.path(),
+            "chat_v2_artifacts",
+            session_id,
+            true,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn ambiguous_legacy_session_names_are_never_migrated_or_deleted() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let container = temp_dir.path().join("chat_v2_artifacts");
+        fs::create_dir_all(&container).expect("container");
+        let ambiguous_id = "sess_a/b";
+        let colliding_legacy = container.join(legacy_safe_session_dir(ambiguous_id));
+        fs::create_dir(&colliding_legacy).expect("legacy collision");
+        fs::write(colliding_legacy.join("keep.md"), "keep").expect("legacy content");
+
+        let root =
+            resolve_session_runtime_root(temp_dir.path(), "chat_v2_artifacts", ambiguous_id, true)
+                .expect("new isolated root");
+        assert_ne!(root, colliding_legacy);
+        assert!(colliding_legacy.join("keep.md").exists());
+
+        cleanup_session_runtime_roots_in_base(temp_dir.path(), ambiguous_id).expect("cleanup new");
+        assert!(colliding_legacy.join("keep.md").exists());
     }
 
     #[test]
@@ -1044,13 +1894,18 @@ mod tests {
 
     #[test]
     fn authorized_runtime_roots_are_read_only_and_global() {
-        let path = PathBuf::from("C:/Users/example/materials");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().canonicalize().expect("canonical");
         let id = authorized_root_id(&path);
-        let root = authorized_runtime_root(AuthorizedRootRecord {
-            id: id.clone(),
-            path: path.clone(),
-            label: "Materials".to_string(),
-        });
+        let root = authorized_runtime_root(
+            AuthorizedRootRecord {
+                id: id.clone(),
+                path: path.clone(),
+                label: "Materials".to_string(),
+                identity: Some(runtime_root_identity(&path).expect("identity")),
+            },
+            true,
+        );
 
         assert_eq!(root.id, id);
         assert_eq!(root.kind, RuntimeRootKind::Authorized);
@@ -1062,10 +1917,12 @@ mod tests {
 
     #[test]
     fn configured_workspace_roots_are_read_only_and_marked_configured() {
-        let path = PathBuf::from("C:/Users/example/workspace");
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().canonicalize().expect("canonical");
         let root = configured_workspace_runtime_root(WorkspaceRootRecord {
             path: path.clone(),
             label: "Study Workspace".to_string(),
+            identity: Some(runtime_root_identity(&path).expect("identity")),
         });
 
         assert_eq!(root.id, "workspace");
@@ -1116,6 +1973,145 @@ mod tests {
     }
 
     #[test]
+    fn persisted_root_binding_rejects_directory_replacement() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let selected = temp_dir.path().join("selected");
+        let old = temp_dir.path().join("selected-old");
+        fs::create_dir(&selected).expect("create selected");
+        let canonical = selected.canonicalize().expect("canonical");
+        let identity = runtime_root_identity(&canonical).expect("identity");
+        assert!(
+            validate_persisted_root_binding(&canonical, Some(&identity), "test runtime root")
+                .is_ok()
+        );
+
+        fs::rename(&selected, &old).expect("rename old root");
+        fs::create_dir(&selected).expect("replace selected root");
+        assert!(
+            validate_persisted_root_binding(&canonical, Some(&identity), "test runtime root")
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn stale_workspace_binding_is_listed_but_not_configured() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let database = settings_database(&temp_dir.path().join("settings.db"));
+        let selected = temp_dir.path().join("workspace");
+        let old = temp_dir.path().join("workspace-old");
+        fs::create_dir(&selected).expect("create workspace");
+        let canonical = selected.canonicalize().expect("canonical");
+        save_workspace_record(
+            &database,
+            &WorkspaceRootRecord {
+                path: canonical.clone(),
+                label: "Workspace".to_string(),
+                identity: Some(runtime_root_identity(&canonical).expect("identity")),
+            },
+        )
+        .expect("save workspace");
+
+        fs::rename(&selected, &old).expect("rename workspace");
+        fs::create_dir(&selected).expect("replace workspace");
+        let root = workspace_root(&database).expect("workspace root");
+        assert!(!root.configured);
+        assert_eq!(root.path, canonical);
+    }
+
+    #[test]
+    fn concurrent_authorized_root_updates_do_not_lose_records() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let database = std::sync::Arc::new(settings_database(&temp_dir.path().join("settings.db")));
+        let roots = (0..8)
+            .map(|index| {
+                let path = temp_dir.path().join(format!("root-{index}"));
+                fs::create_dir(&path).expect("create root");
+                path
+            })
+            .collect::<Vec<_>>();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(roots.len()));
+
+        std::thread::scope(|scope| {
+            for path in &roots {
+                let database = std::sync::Arc::clone(&database);
+                let barrier = std::sync::Arc::clone(&barrier);
+                scope.spawn(move || {
+                    barrier.wait();
+                    authorize_runtime_root_path(&database, path.to_string_lossy().as_ref(), None)
+                        .expect("authorize");
+                });
+            }
+        });
+
+        let records = load_authorized_records(&database).expect("records");
+        assert_eq!(records.len(), roots.len());
+        assert!(records.iter().all(|record| record.identity.is_some()));
+    }
+
+    #[test]
+    fn approval_binding_token_changes_with_workspace_and_directory_identity() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let database = settings_database(&temp_dir.path().join("settings.db"));
+        let first = temp_dir.path().join("first");
+        let second = temp_dir.path().join("second");
+        fs::create_dir(&first).expect("first");
+        fs::create_dir(&second).expect("second");
+
+        let save_workspace = |path: &Path| {
+            let canonical = path.canonicalize().expect("canonical");
+            save_workspace_record(
+                &database,
+                &WorkspaceRootRecord {
+                    path: canonical.clone(),
+                    label: "Workspace".to_string(),
+                    identity: Some(runtime_root_identity(&canonical).expect("identity")),
+                },
+            )
+            .expect("save workspace");
+        };
+
+        save_workspace(&first);
+        let first_root = workspace_root(&database).expect("first root");
+        let first_token =
+            runtime_root_binding_token(&database, &first_root).expect("first binding");
+        save_workspace(&second);
+        let second_root = workspace_root(&database).expect("second root");
+        let second_token =
+            runtime_root_binding_token(&database, &second_root).expect("second binding");
+        assert_ne!(first_token, second_token);
+
+        let authorized_path = temp_dir.path().join("authorized");
+        let old_authorized = temp_dir.path().join("authorized-old");
+        fs::create_dir(&authorized_path).expect("authorized");
+        let first_outcome = authorize_runtime_root_path(
+            &database,
+            authorized_path.to_string_lossy().as_ref(),
+            None,
+        )
+        .expect("authorize first");
+        let first_authorized = authorized_root_by_id(&database, &first_outcome.root_id)
+            .expect("lookup first")
+            .expect("first root");
+        let first_authorized_token = runtime_root_binding_token(&database, &first_authorized)
+            .expect("first authorized binding");
+
+        fs::rename(&authorized_path, &old_authorized).expect("move old authorized");
+        fs::create_dir(&authorized_path).expect("replace authorized");
+        let second_outcome = authorize_runtime_root_path(
+            &database,
+            authorized_path.to_string_lossy().as_ref(),
+            None,
+        )
+        .expect("authorize replacement");
+        let second_authorized = authorized_root_by_id(&database, &second_outcome.root_id)
+            .expect("lookup replacement")
+            .expect("replacement root");
+        let second_authorized_token =
+            runtime_root_binding_token(&database, &second_authorized).expect("replacement binding");
+        assert_ne!(first_authorized_token, second_authorized_token);
+    }
+
+    #[test]
     fn write_backup_roundtrip_restores_original_content() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let artifacts = temp_dir.path().join("artifacts");
@@ -1133,9 +2129,15 @@ mod tests {
         assert!(backup_ref.starts_with(".write_backups/"));
         assert!(backup_ref.ends_with("summary.md"));
 
-        let restored =
-            restore_artifact_from_backup(&artifacts, &temp_root_path, &relative, &backup_ref)
-                .expect("restore");
+        let expected_after_hash = hex::encode(Sha256::digest(b"v2 content"));
+        let restored = restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            &backup_ref,
+            Some(&expected_after_hash),
+        )
+        .expect("restore");
         assert_eq!(restored, "v1 content".len() as u64);
         assert_eq!(fs::read_to_string(&target).unwrap(), "v1 content");
     }
@@ -1148,6 +2150,21 @@ mod tests {
         assert_ne!(first, second);
         assert_eq!(fs::read(temp_dir.path().join(&first)).unwrap(), b"a");
         assert_eq!(fs::read(temp_dir.path().join(&second)).unwrap(), b"b");
+    }
+
+    #[test]
+    fn write_backup_rejects_oversized_sources_before_streaming() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let temp_root_path = temp_dir.path().join("temp");
+        fs::create_dir(&temp_root_path).expect("temp root");
+        let source = temp_dir.path().join("oversized.bin");
+        fs::File::create(&source)
+            .expect("source")
+            .set_len(MAX_WRITE_BACKUP_SOURCE_BYTES + 1)
+            .expect("sparse length");
+
+        assert!(create_write_backup_from_file(&temp_root_path, "oversized.bin", &source).is_err());
+        assert!(!temp_root_path.join(WRITE_BACKUP_DIR).exists());
     }
 
     #[test]
@@ -1166,38 +2183,85 @@ mod tests {
             &artifacts,
             &temp_root_path,
             &relative,
-            temp_dir.path().join("outside.txt").to_string_lossy().as_ref(),
+            temp_dir
+                .path()
+                .join("outside.txt")
+                .to_string_lossy()
+                .as_ref(),
+            None,
         )
         .is_err());
-        assert!(
-            restore_artifact_from_backup(&artifacts, &temp_root_path, &relative, "../outside.txt")
-                .is_err()
+        assert!(restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            "../outside.txt",
+            None,
+        )
+        .is_err());
+        assert!(restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            ".write_backups/../loose.txt",
+            None,
+        )
+        .is_err());
+        assert!(restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            "loose.txt",
+            None,
+        )
+        .is_err());
+        assert!(restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            ".write_backups",
+            None,
+        )
+        .is_err());
+        assert!(restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            ".write_backups/missing.txt",
+            None,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn persisted_root_identity_deserializes_across_operating_systems() {
+        let unix: RuntimeRootIdentity =
+            serde_json::from_str(r#"{"kind":"unix","device":1,"inode":2}"#).expect("unix identity");
+        let windows: RuntimeRootIdentity =
+            serde_json::from_str(r#"{"kind":"windows","volume_serial_number":3,"file_index":4}"#)
+                .expect("windows identity");
+        let fallback: RuntimeRootIdentity =
+            serde_json::from_str(r#"{"kind":"canonical_path","path":"/portable/workspace"}"#)
+                .expect("fallback identity");
+
+        assert_eq!(
+            unix,
+            RuntimeRootIdentity::Unix {
+                device: 1,
+                inode: 2
+            }
         );
-        assert!(restore_artifact_from_backup(
-            &artifacts,
-            &temp_root_path,
-            &relative,
-            ".write_backups/../loose.txt"
-        )
-        .is_err());
-        assert!(
-            restore_artifact_from_backup(&artifacts, &temp_root_path, &relative, "loose.txt")
-                .is_err()
+        assert_eq!(
+            windows,
+            RuntimeRootIdentity::Windows {
+                volume_serial_number: 3,
+                file_index: 4,
+            }
         );
-        assert!(restore_artifact_from_backup(
-            &artifacts,
-            &temp_root_path,
-            &relative,
-            ".write_backups"
-        )
-        .is_err());
-        assert!(restore_artifact_from_backup(
-            &artifacts,
-            &temp_root_path,
-            &relative,
-            ".write_backups/missing.txt"
-        )
-        .is_err());
+        assert!(matches!(
+            fallback,
+            RuntimeRootIdentity::CanonicalPath { .. }
+        ));
     }
 
     #[test]
@@ -1208,12 +2272,89 @@ mod tests {
         let target = artifacts.join("reports").join("summary.md");
         fs::write(&target, "content").expect("write target");
 
-        assert!(remove_artifact_file(&artifacts, Path::new("reports")).is_err());
-        assert!(remove_artifact_file(&artifacts, Path::new("missing.md")).is_err());
-        assert!(remove_artifact_file(&artifacts, Path::new("")).is_err());
-        remove_artifact_file(&artifacts, &PathBuf::from("reports").join("summary.md"))
-            .expect("delete file");
+        assert!(remove_artifact_file(&artifacts, Path::new("reports"), None).is_err());
+        assert!(remove_artifact_file(&artifacts, Path::new("missing.md"), None).is_err());
+        assert!(remove_artifact_file(&artifacts, Path::new(""), None).is_err());
+        let expected_after_hash = hex::encode(Sha256::digest(b"content"));
+        remove_artifact_file(
+            &artifacts,
+            &PathBuf::from("reports").join("summary.md"),
+            Some(&expected_after_hash),
+        )
+        .expect("delete file");
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn stale_undo_rejects_restore_and_delete() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let artifacts = temp_dir.path().join("artifacts");
+        let temp_root_path = temp_dir.path().join("temp");
+        fs::create_dir_all(&artifacts).expect("artifacts");
+        fs::create_dir_all(&temp_root_path).expect("temp");
+        let relative = PathBuf::from("report.md");
+        let target = artifacts.join(&relative);
+        fs::write(&target, "after-write").expect("after write");
+        let expected_after_hash = hex::encode(Sha256::digest(b"after-write"));
+        let backup_ref =
+            create_write_backup(&temp_root_path, "report.md", b"before-write").expect("backup");
+
+        fs::write(&target, "newer-user-edit").expect("newer edit");
+        assert!(restore_artifact_from_backup(
+            &artifacts,
+            &temp_root_path,
+            &relative,
+            &backup_ref,
+            Some(&expected_after_hash),
+        )
+        .is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "newer-user-edit");
+
+        assert!(remove_artifact_file(&artifacts, &relative, Some(&expected_after_hash)).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "newer-user-edit");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn deleting_symlink_artifact_removes_link_not_referent() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let artifacts = temp_dir.path().join("artifacts");
+        fs::create_dir_all(&artifacts).expect("artifacts");
+        let outside = temp_dir.path().join("outside.txt");
+        fs::write(&outside, "keep me").expect("outside");
+        let link = artifacts.join("link.txt");
+        symlink(&outside, &link).expect("symlink");
+
+        remove_artifact_file(&artifacts, Path::new("link.txt"), None).expect("delete symlink");
+        assert!(!link.exists());
+        assert_eq!(fs::read_to_string(&outside).unwrap(), "keep me");
+    }
+
+    #[test]
+    fn session_runtime_cleanup_removes_artifacts_temp_and_backups() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let session_id = "sess_cleanup-test";
+        let artifacts = session_runtime_root_path(temp_dir.path(), "chat_v2_artifacts", session_id);
+        let temp = session_runtime_root_path(temp_dir.path(), "chat_v2_temp", session_id);
+        fs::create_dir_all(&artifacts).expect("artifacts");
+        fs::create_dir_all(temp.join(WRITE_BACKUP_DIR)).expect("backups");
+        fs::write(artifacts.join("result.md"), "result").expect("artifact");
+        fs::write(temp.join(WRITE_BACKUP_DIR).join("backup.md"), "backup").expect("backup");
+        let legacy_artifacts =
+            legacy_session_runtime_root_path(temp_dir.path(), "chat_v2_artifacts", session_id)
+                .expect("unambiguous legacy id");
+        fs::create_dir_all(&legacy_artifacts).expect("legacy artifacts");
+        fs::write(legacy_artifacts.join("old.md"), "old").expect("legacy artifact");
+        let unrelated = temp_dir.path().join("unrelated.txt");
+        fs::write(&unrelated, "keep").expect("unrelated");
+
+        cleanup_session_runtime_roots_in_base(temp_dir.path(), session_id).expect("cleanup");
+        assert!(!artifacts.exists());
+        assert!(!temp.exists());
+        assert!(!legacy_artifacts.exists());
+        assert!(unrelated.exists());
     }
 
     #[test]
@@ -1250,7 +2391,10 @@ mod tests {
             assess_authorized_root_risk("~/Downloads"),
             AuthorizedRootRisk::Broad
         );
-        assert_eq!(assess_authorized_root_risk("~"), AuthorizedRootRisk::Critical);
+        assert_eq!(
+            assess_authorized_root_risk("~"),
+            AuthorizedRootRisk::Critical
+        );
     }
 
     /// SECURITY 回归（05 号报告 P1-1）：canonical 路径上的风险评估必须能剥掉
@@ -1308,7 +2452,7 @@ mod tests {
     fn authorize_runtime_root_path_is_idempotent() {
         let temp_dir = tempfile::tempdir().expect("tempdir");
         let db_path = temp_dir.path().join("test.db");
-        let database = crate::database::Database::new(&db_path).expect("database");
+        let database = settings_database(&db_path);
         let materials = temp_dir.path().join("materials");
         fs::create_dir(&materials).expect("create materials dir");
 

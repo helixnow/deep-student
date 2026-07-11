@@ -21,6 +21,11 @@ import { ChatWindowSkeleton } from './ChatWindowSkeleton';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { createSessionWithDefaults } from '@/features/chat/core/session/createSessionWithDefaults';
 import { getErrorMessage } from '@/utils/errorUtils';
+import {
+  createChatSandboxOwnerKey,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import { useWindowStore } from '../../core/windowStore';
 
 /**
  * 无 instanceKey 启动时自动创建的会话，按 windowId 记忆。
@@ -28,6 +33,30 @@ import { getErrorMessage } from '@/utils/errorUtils';
  * 注意：应用重启后该表为空，快照恢复出的 instanceKey=null 窗口会再建新会话（记录在 P7 进度文件遗留）。
  */
 const autoCreatedSessionByWindow = new Map<string, string>();
+const sandboxOwnerByChatWindow = new Map<string, string>();
+let sandboxWindowWatcherInstalled = false;
+
+function releaseSandboxOwner(windowId: string, ownerKey: string): void {
+  if (sandboxOwnerByChatWindow.get(windowId) !== ownerKey) return;
+  sandboxOwnerByChatWindow.delete(windowId);
+
+  // The same chat session can be projected into more than one window. Its
+  // preview state remains live until the final window releases the owner.
+  if ([...sandboxOwnerByChatWindow.values()].some((candidate) => candidate === ownerKey)) return;
+  useSandboxWorkbenchStore.getState().disposeOwner(ownerKey);
+}
+
+function ensureSandboxWindowWatcher(): void {
+  if (sandboxWindowWatcherInstalled) return;
+  sandboxWindowWatcherInstalled = true;
+  useWindowStore.subscribe((state, previousState) => {
+    if (state.windows === previousState.windows) return;
+    for (const [windowId, ownerKey] of sandboxOwnerByChatWindow) {
+      if (state.windows[windowId]) continue;
+      releaseSandboxOwner(windowId, ownerKey);
+    }
+  });
+}
 
 interface ChatLaunchPayload {
   sessionId?: string;
@@ -61,6 +90,28 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
   const creationInFlightRef = useRef(false);
 
   const sessionId = instanceKey ?? payloadSessionId ?? createdSessionId;
+  const renderedSessionIdRef = useRef(sessionId);
+  renderedSessionIdRef.current = sessionId;
+
+  // WindowBody 在 frozen 档会卸载应用子树；那不是关窗，Sandbox 预览应在
+  // 唤醒后恢复。只有会话真的变化，或 windowStore 已移除窗口时才释放 owner。
+  useEffect(() => {
+    if (!sessionId) return;
+    const ownerKey = createChatSandboxOwnerKey(sessionId);
+    ensureSandboxWindowWatcher();
+    const previousOwnerKey = sandboxOwnerByChatWindow.get(windowId);
+    if (previousOwnerKey && previousOwnerKey !== ownerKey) {
+      releaseSandboxOwner(windowId, previousOwnerKey);
+    }
+    sandboxOwnerByChatWindow.set(windowId, ownerKey);
+    return () => {
+      const sessionChanged = renderedSessionIdRef.current !== sessionId;
+      const windowStillExists = Boolean(useWindowStore.getState().windows[windowId]);
+      if (sessionChanged || !windowStillExists) {
+        releaseSandboxOwner(windowId, ownerKey);
+      }
+    };
+  }, [sessionId, windowId]);
 
   // 兜底自动建会话（Dock 无 instanceKey 直接 launch 的场景）
   // 注意：不用 effect-cleanup 的 disposed 标记 gate setState——StrictMode 双跑 effect 时

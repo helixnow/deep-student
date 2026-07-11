@@ -136,6 +136,7 @@ function createMockStore(): ChatStore {
     setUpdateBlockContentCallback: vi.fn(),
     setUpdateSessionSettingsCallback: vi.fn(),
     restoreFromBackend: vi.fn(),
+    prependHistoryFromBackend: vi.fn(),
     createBlockWithId: vi.fn(() => 'test-block-id'),
     completeStream: vi.fn(),
     forceResetToIdle: vi.fn(),
@@ -226,6 +227,26 @@ describe('ChatV2TauriAdapter', () => {
     it('should handle cleanup when not setup', () => {
       // Should not throw
       expect(() => adapter.cleanup()).not.toThrow();
+    });
+
+    it('does not clear callbacks installed by a newer same-session adapter', async () => {
+      await adapter.setup();
+      const newerAdapter = new ChatV2TauriAdapter('test-session-id', mockStore);
+      await newerAdapter.setup();
+
+      const sendCallbackBeforeOldCleanup = vi.mocked(mockStore.setSendCallback).mock.calls.at(-1)?.[0];
+      const saveCallbackBeforeOldCleanup = vi.mocked(mockStore.setSaveCallback).mock.calls.at(-1)?.[0];
+      expect(sendCallbackBeforeOldCleanup).toEqual(expect.any(Function));
+      expect(saveCallbackBeforeOldCleanup).toEqual(expect.any(Function));
+
+      await adapter.cleanup();
+
+      expect(vi.mocked(mockStore.setSendCallback).mock.calls.at(-1)?.[0])
+        .toBe(sendCallbackBeforeOldCleanup);
+      expect(vi.mocked(mockStore.setSaveCallback).mock.calls.at(-1)?.[0])
+        .toBe(saveCallbackBeforeOldCleanup);
+
+      await newerAdapter.cleanup();
     });
   });
 
@@ -926,7 +947,104 @@ describe('ChatV2TauriAdapter', () => {
       });
 
       // 验证调用了 store.restoreFromBackend
-      expect(mockStore.restoreFromBackend).toHaveBeenCalledWith(mockResponse);
+      expect(mockStore.restoreFromBackend).toHaveBeenCalledWith(
+        mockResponse,
+        expect.objectContaining({
+          messageIds: expect.any(Set),
+          blockIds: expect.any(Set),
+          sessionStatus: 'idle',
+          currentStreamingMessageId: null,
+        }),
+      );
+    });
+
+    it('runs full-history completion through a watchdog when idle callbacks never fire', async () => {
+      vi.useFakeTimers();
+      const idleCallback = vi.fn(() => 77);
+      const cancelIdleCallback = vi.fn();
+      Object.defineProperty(window, 'requestIdleCallback', {
+        configurable: true,
+        value: idleCallback,
+      });
+      Object.defineProperty(window, 'cancelIdleCallback', {
+        configurable: true,
+        value: cancelIdleCallback,
+      });
+      const tailResponse = {
+        session: {
+          id: 'test-session-id',
+          mode: 'general_chat',
+          persistStatus: 'active' as const,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+        messages: [],
+        blocks: [],
+        totalMessageCount: 1,
+      };
+      const fullResponse = { ...tailResponse, totalMessageCount: undefined };
+      let loadCalls = 0;
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'chat_v2_load_session') {
+          loadCalls += 1;
+          return loadCalls === 1 ? tailResponse : fullResponse;
+        }
+        return undefined;
+      });
+
+      await adapter.loadSession();
+      expect(loadCalls).toBe(1);
+      await vi.advanceTimersByTimeAsync(1_100);
+
+      expect(loadCalls).toBe(2);
+      expect(mockStore.prependHistoryFromBackend).toHaveBeenCalledWith(
+        fullResponse,
+        expect.objectContaining({ messageIds: expect.any(Set) }),
+      );
+      expect(cancelIdleCallback).toHaveBeenCalledWith(77);
+
+      delete (window as any).requestIdleCallback;
+      delete (window as any).cancelIdleCallback;
+      vi.useRealTimers();
+    });
+
+    it('retries a transient full-history load failure', async () => {
+      vi.useFakeTimers();
+      delete (window as any).requestIdleCallback;
+      delete (window as any).cancelIdleCallback;
+      const tailResponse = {
+        session: {
+          id: 'test-session-id',
+          mode: 'general_chat',
+          persistStatus: 'active' as const,
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+        messages: [],
+        blocks: [],
+        totalMessageCount: 1,
+      };
+      const fullResponse = { ...tailResponse, totalMessageCount: undefined };
+      let loadCalls = 0;
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command !== 'chat_v2_load_session') return undefined;
+        loadCalls += 1;
+        if (loadCalls === 1) return tailResponse;
+        if (loadCalls === 2) throw new Error('transient history failure');
+        return fullResponse;
+      });
+
+      await adapter.loadSession();
+      await vi.advanceTimersByTimeAsync(120);
+      expect(loadCalls).toBe(2);
+      await vi.advanceTimersByTimeAsync(620);
+
+      expect(loadCalls).toBe(3);
+      expect(mockStore.prependHistoryFromBackend).toHaveBeenCalledWith(
+        fullResponse,
+        expect.objectContaining({ messageIds: expect.any(Set) }),
+      );
+      vi.useRealTimers();
     });
 
     it('should hydrate empty loaded sessions with the default chat model before the first send', async () => {

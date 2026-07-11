@@ -40,6 +40,10 @@ import { cn } from '@/utils/cn';
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { manualWake } from '../../workspace/api';
+import {
+  preheatSubagentSession,
+  shouldPreheatSubagentSession,
+} from './sessionPreheat';
 
 // ============================================================================
 // 类型定义
@@ -116,40 +120,18 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
 
   // 🔧 P25 修复：子代理嵌入视图首次渲染时主动预热 Store 和 Adapter
   useEffect(() => {
-    if (!agent.sessionId) return;
+    if (!shouldPreheatSubagentSession(agent.sessionId, isCollapsed)) return;
 
-    const preheatSubagentSession = async () => {
-      try {
-        console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] Starting preheat for session: ${agent.sessionId}`);
-        
-        // 动态导入避免循环依赖
-        const { sessionManager } = await import('../../core/session/sessionManager');
-        const { adapterManager } = await import('../../adapters/AdapterManager');
-        
-        // 1. 获取或创建 Store
-        const subagentStore = sessionManager.getOrCreate(agent.sessionId);
-        console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] Store created for session: ${agent.sessionId}`);
-        
-        // 2. 获取或创建 Adapter 并等待 setup 完成
-        const adapterEntry = await adapterManager.getOrCreate(agent.sessionId, subagentStore);
-        console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] Adapter ready for session: ${agent.sessionId}, isReady: ${adapterEntry.isReady}`);
-        
-        // 3. 如果数据未加载，主动触发 loadSession
-        const state = subagentStore.getState();
-        if (!state.isDataLoaded) {
-          console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] Triggering loadSession for session: ${agent.sessionId}`);
-          await state.loadSession(agent.sessionId);
-          console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] loadSession completed for session: ${agent.sessionId}`);
-        } else {
-          console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] Data already loaded for session: ${agent.sessionId}`);
-        }
-      } catch (error: unknown) {
-        console.error(`[SleepBlock:SubagentEmbed] [PREHEAT] Failed to preheat session: ${agent.sessionId}`, error);
-      }
+    const sessionId = agent.sessionId;
+    let cancelled = false;
+    console.log(`[SleepBlock:SubagentEmbed] [PREHEAT] Starting preheat for session: ${sessionId}`);
+    void preheatSubagentSession(sessionId, () => cancelled).catch((error: unknown) => {
+      console.error(`[SleepBlock:SubagentEmbed] [PREHEAT] Failed to preheat session: ${sessionId}`, error);
+    });
+    return () => {
+      cancelled = true;
     };
-
-    preheatSubagentSession();
-  }, [agent.sessionId]);
+  }, [agent.sessionId, isCollapsed]);
 
   const statusIcon = useMemo(() => {
     switch (agent.status) {

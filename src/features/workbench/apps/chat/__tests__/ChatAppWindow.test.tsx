@@ -65,6 +65,13 @@ vi.mock('@/features/chat/components/ChatContainer', () => {
 });
 
 import { ChatAppWindow } from '../ChatAppWindow';
+import {
+  LEGACY_SANDBOX_OWNER_KEY,
+  createChatSandboxOwnerKey,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import { useWindowStore } from '../../../core/windowStore';
 
 function makeProps(overrides: Partial<AppWindowProps> = {}): AppWindowProps {
   return {
@@ -84,6 +91,22 @@ describe('ChatAppWindow', () => {
     fakeSessions.clear();
     currentSessionId = null;
     createSessionMock.mockClear();
+    useSandboxWorkbenchStore.setState({
+      activeSession: null,
+      isOpen: false,
+      viewportPreset: 'desktop',
+      inspectorOpen: false,
+      ownerStates: {},
+      activeOwnerKey: LEGACY_SANDBOX_OWNER_KEY,
+    });
+    useWindowStore.setState({
+      windows: {},
+      focusStack: [],
+      lifecycles: {},
+      launchPayloads: {},
+      tilingRatios: {},
+      transientPhases: {},
+    });
   });
 
   it('renders the surface for instanceKey session', () => {
@@ -127,6 +150,99 @@ describe('ChatAppWindow', () => {
     currentSessionId = 'sess_other';
     unmount();
     expect(currentSessionId).toBe('sess_other');
+  });
+
+  it('keeps sandbox owner state across freeze but disposes it after the window closes', () => {
+    makeFakeStore('sess_1');
+    const ownerKey = createChatSandboxOwnerKey('sess_1');
+    useSandboxWorkbenchStore.getState().openSession({
+      sourceType: 'chat-code-block',
+      sourceMessageId: 'msg_1',
+      language: 'html',
+      title: 'Preview',
+      content: '<p>preview</p>',
+    }, ownerKey);
+    useWindowStore.setState({
+      windows: {
+        win_1: {
+          id: 'win_1',
+          typeId: 'chat',
+          instanceKey: 'sess_1',
+          title: 'Chat',
+          frame: { x: 0, y: 0, w: 800, h: 600 },
+          restoreFrame: null,
+          displayMode: 'floating',
+          minimized: false,
+          zIndex: 1,
+          createdAt: 1,
+          lastFocusedAt: 1,
+        },
+      },
+    });
+
+    const frozenUnmount = render(<ChatAppWindow {...makeProps({ windowId: 'win_1' })} />);
+    frozenUnmount.unmount();
+    expect(selectSandboxWorkbenchOwnerState(
+      useSandboxWorkbenchStore.getState(),
+      ownerKey,
+    ).activeSession?.title).toBe('Preview');
+
+    act(() => useWindowStore.getState().closeWindow('win_1'));
+    expect(selectSandboxWorkbenchOwnerState(
+      useSandboxWorkbenchStore.getState(),
+      ownerKey,
+    ).activeSession).toBeNull();
+  });
+
+  it('keeps a shared session owner until its final chat window closes', () => {
+    makeFakeStore('sess_shared');
+    const ownerKey = createChatSandboxOwnerKey('sess_shared');
+    useSandboxWorkbenchStore.getState().openSession({
+      sourceType: 'chat-code-block',
+      sourceMessageId: 'msg_shared',
+      language: 'html',
+      title: 'Shared preview',
+      content: '<p>shared</p>',
+    }, ownerKey);
+
+    const createWindow = (id: string, zIndex: number) => ({
+      id,
+      typeId: 'chat',
+      instanceKey: 'sess_shared',
+      title: 'Chat',
+      frame: { x: 0, y: 0, w: 800, h: 600 },
+      restoreFrame: null,
+      displayMode: 'floating' as const,
+      minimized: false,
+      zIndex,
+      createdAt: zIndex,
+      lastFocusedAt: zIndex,
+    });
+    useWindowStore.setState({
+      windows: {
+        win_a: createWindow('win_a', 1),
+        win_b: createWindow('win_b', 2),
+      },
+    });
+
+    render(
+      <>
+        <ChatAppWindow {...makeProps({ windowId: 'win_a', instanceKey: 'sess_shared' })} />
+        <ChatAppWindow {...makeProps({ windowId: 'win_b', instanceKey: 'sess_shared' })} />
+      </>,
+    );
+
+    act(() => useWindowStore.getState().closeWindow('win_a'));
+    expect(selectSandboxWorkbenchOwnerState(
+      useSandboxWorkbenchStore.getState(),
+      ownerKey,
+    ).activeSession?.title).toBe('Shared preview');
+
+    act(() => useWindowStore.getState().closeWindow('win_b'));
+    expect(selectSandboxWorkbenchOwnerState(
+      useSandboxWorkbenchStore.getState(),
+      ownerKey,
+    ).activeSession).toBeNull();
   });
 
   it('auto-creates a session when launched without instanceKey', async () => {

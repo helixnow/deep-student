@@ -14,9 +14,9 @@ use tauri::Manager;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{
-    assess_authorized_root_risk, assess_authorized_root_risk_canonical,
-    authorize_runtime_root_path, canonicalize_authorized_dir, strip_windows_verbatim_prefix,
-    AuthorizedRootRisk, RUNTIME_ROOT_PROVENANCE_PREFIX,
+    assess_authorized_root_risk_canonical, authorize_runtime_root_path,
+    canonicalize_authorized_dir, strip_windows_verbatim_prefix, AuthorizedRootRisk,
+    RUNTIME_ROOT_PROVENANCE_PREFIX,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
@@ -112,12 +112,9 @@ impl RuntimeRootRequestExecutor {
     fn execute_request(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let (raw_path, purpose) = Self::parse_args(args)?;
 
-        // 🔒 P1（05 号报告 P1-1）：先对原始字符串做一次评估（快速拒绝显式 critical 写法），
-        // 再 canonicalize 并对**真实目标路径**复评。`..`、`\\?\` 前缀、8.3 短名等写法
-        // 只有在 canonical 路径上评估才不可绕过。
-        if assess_authorized_root_risk(raw_path) == AuthorizedRootRisk::Critical {
-            return Err(CRITICAL_REJECTION.to_string());
-        }
+        // Authorization and policy both operate on the canonical target. The raw
+        // spelling may contain symlinks, `..`, verbatim prefixes, or 8.3 aliases
+        // and must never be used as the security decision.
         let canonical = canonicalize_authorized_dir(raw_path).map_err(|error| {
             format!(
                 "Failed to authorize directory '{}': {}. Ask the user to confirm the path exists and is a directory.",
@@ -258,7 +255,7 @@ mod tests {
 
     #[test]
     fn critical_paths_are_rejected_by_agent_policy() {
-        let risk = assess_authorized_root_risk(r"C:\Users\foo");
+        let risk = crate::chat_v2::runtime_roots::assess_authorized_root_risk(r"C:\Users\foo");
         assert_eq!(risk, AuthorizedRootRisk::Critical);
         assert!(CRITICAL_REJECTION.contains("agent 不代理授权"));
     }
@@ -267,9 +264,7 @@ mod tests {
     fn parse_args_requires_path_and_purpose() {
         assert!(RuntimeRootRequestExecutor::parse_args(&json!({})).is_err());
         assert!(RuntimeRootRequestExecutor::parse_args(&json!({"path": "C:\\tmp"})).is_err());
-        assert!(
-            RuntimeRootRequestExecutor::parse_args(&json!({"purpose": "test"})).is_err()
-        );
+        assert!(RuntimeRootRequestExecutor::parse_args(&json!({"purpose": "test"})).is_err());
     }
 
     #[test]

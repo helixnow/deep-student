@@ -85,8 +85,11 @@ fn tool_call_is_mcp_sourced(tool_name: &str, arguments: &Value) -> bool {
 /// - 短名（剥前缀）匹配：仅在「调用与条目同为非 MCP 源」或「同为 MCP 命名空间」
 ///   时生效，builtin/裸名条目不再跨源放行 MCP 同名工具，反之亦然。
 pub fn tool_allow_entry_matches(allowed_entry: &str, tool_name: &str, arguments: &Value) -> bool {
-    // 1. 完整原始名精确匹配（技能作者显式写全名）
-    if allowed_entry == tool_name {
+    // 1. 完整原始名精确匹配，但裸名仍需经过来源隔离。
+    // 外部 MCP 路由可能保留工具裸名并通过参数携带 server id。
+    if allowed_entry == tool_name
+        && tool_call_is_mcp_sourced(tool_name, arguments) == is_mcp_namespaced(allowed_entry)
+    {
         return true;
     }
 

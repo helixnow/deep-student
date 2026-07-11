@@ -655,6 +655,7 @@ describe('AgentTaskPanel', () => {
       root_id: 'artifacts',
       relative_path: 'reports/session.md',
       backup_ref: '.write_backups/1_0000_session.md',
+      after_hash: 'sha256-modified',
     });
 
     render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
@@ -670,6 +671,7 @@ describe('AgentTaskPanel', () => {
       sessionId: 'sess-1',
       relativePath: 'reports/session.md',
       backupRef: '.write_backups/1_0000_session.md',
+      expectedAfterHash: 'sha256-modified',
     });
   });
 
@@ -680,6 +682,7 @@ describe('AgentTaskPanel', () => {
       op: 'created',
       root_id: 'artifacts',
       relative_path: 'reports/session.md',
+      after_hash: 'sha256-created',
     });
 
     render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
@@ -696,6 +699,7 @@ describe('AgentTaskPanel', () => {
         sessionId: 'sess-1',
         relativePath: 'reports/session.md',
         backupRef: null,
+        expectedAfterHash: 'sha256-created',
       });
     });
   });

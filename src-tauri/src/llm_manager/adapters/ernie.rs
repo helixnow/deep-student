@@ -97,8 +97,9 @@ impl RequestAdapter for ErnieAdapter {
         // 思考开关：千帆 v2 顶层 thinking:{"type":"enabled"/"disabled"}（默认 disabled）。
         // 不再删除思考参数——旧实现把 thinking/enable_thinking 全删，
         // 导致 ERNIE 5.0-thinking / X1.1 的思考控制完全失效。
-        let can_think =
-            Self::is_thinking_model(&config.model) || config.supports_reasoning || config.is_reasoning;
+        let can_think = Self::is_thinking_model(&config.model)
+            || config.supports_reasoning
+            || config.is_reasoning;
         if can_think {
             let thinking_enabled = resolve_enable_thinking(config, enable_thinking);
             body.insert(

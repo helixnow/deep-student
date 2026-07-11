@@ -75,18 +75,20 @@ fn summarize_worker_assistant_message(
     db: &ChatV2Database,
     assistant_message_id: &str,
 ) -> Option<String> {
-    let blocks =
-        match crate::chat_v2::repo::ChatV2Repo::get_message_blocks_v2(db, assistant_message_id) {
-            Ok(blocks) => blocks,
-            Err(e) => {
-                log::warn!(
+    let blocks = match crate::chat_v2::repo::ChatV2Repo::get_message_blocks_v2(
+        db,
+        assistant_message_id,
+    ) {
+        Ok(blocks) => blocks,
+        Err(e) => {
+            log::warn!(
                     "[Workspace::handlers] Failed to read assistant blocks for result_summary: message={}, err={}",
                     assistant_message_id,
                     e
                 );
-                return None;
-            }
-        };
+            return None;
+        }
+    };
 
     let text = blocks
         .iter()
@@ -860,8 +862,8 @@ pub async fn workspace_run_agent(
     }
 
     // 4. 检查是否有活跃流
-    let cancel_token = match chat_v2_state.try_register_stream(agent_session_id) {
-        Ok(token) => token,
+    let stream_registration = match chat_v2_state.try_register_stream_owned(agent_session_id) {
+        Ok(registration) => registration,
         Err(()) => {
             // 避免 drain 后因并发流冲突直接返回导致消息丢失：将消息回补到 inbox
             let mut rollback_failures: Vec<String> = Vec::new();
@@ -904,6 +906,15 @@ pub async fn workspace_run_agent(
             return Err("Agent has an active stream. Please wait for completion.".to_string());
         }
     };
+    let stream_generation = stream_registration.generation();
+    let cancel_token = stream_registration.token().clone();
+    // Create the guard before the remaining fallible setup. Early `?` returns now release exactly
+    // this generation, while a late worker cleanup cannot delete an immediate replacement run.
+    let stream_guard = StreamGuard::new(
+        chat_v2_state.inner().clone(),
+        agent_session_id.clone(),
+        stream_registration,
+    );
 
     // 5. 更新 Agent 状态为 Running
     coordinator.update_agent_status(workspace_id, agent_session_id, AgentStatus::Running)?;
@@ -1041,6 +1052,7 @@ pub async fn workspace_run_agent(
             mcp_tool_schemas: Some(workspace_tool_schemas),
             // 🆕 执行层 fail-closed：白名单外的调用在审批/执行前被直接拦截
             skill_allowed_tools: Some(worker_allowed_tools),
+            stream_generation: Some(stream_generation),
             ..Default::default()
         }),
         assistant_message_id: Some(assistant_message_id.clone()),
@@ -1063,8 +1075,7 @@ pub async fn workspace_run_agent(
     chat_v2_state.spawn_tracked(async move {
         use tauri::Emitter;
 
-        // 🔧 Panic guard: RAII 确保 remove_stream 在正常完成、取消或 panic 时都会被调用
-        let stream_guard = StreamGuard::new(chat_v2_state_clone.clone(), session_id_for_cleanup.clone());
+        let stream_guard = stream_guard;
 
         // 🆕 并发上限：全局信号量限制同时运行的 worker 管线数量。
         // acquire 放在 spawn 内部避免阻塞命令返回；permit 持有到管线结束。

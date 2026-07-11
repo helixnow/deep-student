@@ -93,6 +93,100 @@ describe('ApprovalEventHandler', () => {
     expect(mockActivate).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps interleaved approval queues isolated between chat stores', () => {
+    const handler = eventRegistry.get('tool_approval_request')!;
+    const storeA = createMockStore('sess-a');
+    const storeB = createMockStore('sess-b');
+
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-1',
+      toolName: 'tool-a-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A1',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-2',
+      toolName: 'tool-a-2',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A2',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeB, 'msg-b', {
+      toolCallId: 'b-1',
+      toolName: 'tool-b-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'B1',
+      timeoutSeconds: 30,
+    });
+
+    handler.onEnd!(storeB, 'approval_b-1', { toolCallId: 'b-1', approved: true });
+    handler.onEnd!(storeA, 'approval_a-1', { toolCallId: 'a-1', approved: false });
+    vi.advanceTimersByTime(1000);
+
+    expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
+    expect(storeB.pendingBlockingInteraction).toBeNull();
+    expect(storeA.setPendingApproval).toHaveBeenLastCalledWith(
+      expect.objectContaining({ toolCallId: 'a-2' })
+    );
+    expect(storeB.setPendingApproval).not.toHaveBeenCalledWith(
+      expect.objectContaining({ toolCallId: 'a-2' })
+    );
+  });
+
+  it('does not cancel another chat store resolution timer during concurrent cleanup', () => {
+    const handler = eventRegistry.get('tool_approval_request')!;
+    const storeA = createMockStore('sess-a');
+    const storeB = createMockStore('sess-b');
+
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-1',
+      toolName: 'tool-a-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A1',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeA, 'msg-a', {
+      toolCallId: 'a-2',
+      toolName: 'tool-a-2',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'A2',
+      timeoutSeconds: 30,
+    });
+    handler.onStart!(storeB, 'msg-b', {
+      toolCallId: 'b-1',
+      toolName: 'tool-b-1',
+      arguments: {},
+      sensitivity: 'medium',
+      description: 'B1',
+      timeoutSeconds: 30,
+    });
+
+    handler.onEnd!(storeA, 'approval_a-1', { toolCallId: 'a-1', approved: true });
+    vi.advanceTimersByTime(500);
+    handler.onEnd!(storeB, 'approval_b-1', { toolCallId: 'b-1', approved: true });
+
+    vi.advanceTimersByTime(500);
+    expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
+    expect(storeA.clearPendingApproval).toHaveBeenCalledTimes(1);
+    expect(storeB.pendingBlockingInteraction).toMatchObject({
+      toolCallId: 'b-1',
+      resolvedStatus: 'approved',
+    });
+    expect(storeB.clearPendingApproval).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(storeA.pendingBlockingInteraction?.toolCallId).toBe('a-2');
+    expect(storeA.clearPendingApproval).toHaveBeenCalledTimes(1);
+    expect(storeB.pendingBlockingInteraction).toBeNull();
+    expect(storeB.clearPendingApproval).toHaveBeenCalledTimes(1);
+  });
+
   it('does not focus chat window for medium sensitivity', () => {
     const handler = eventRegistry.get('tool_approval_request');
     const store = createMockStore();

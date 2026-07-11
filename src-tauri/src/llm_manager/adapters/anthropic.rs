@@ -75,7 +75,10 @@ fn parse_claude_model(model: &str) -> Option<(&'static str, u32, Option<u32>)> {
         .collect();
 
     let family_idx = tokens.iter().position(|t| FAMILIES.contains(t))?;
-    let family = FAMILIES.iter().copied().find(|f| *f == tokens[family_idx])?;
+    let family = FAMILIES
+        .iter()
+        .copied()
+        .find(|f| *f == tokens[family_idx])?;
 
     // 版本 token 过滤：>= 100 视为日期快照后缀（如 20250929），不是版本号
     let as_version = |t: &str| t.parse::<u32>().ok().filter(|v| *v < 100);
@@ -516,7 +519,10 @@ mod tests {
             ClaudeGeneration::Adaptive
         );
         // 未来默认：更高版本按新代际处理
-        assert_eq!(claude_generation("claude-opus-5"), ClaudeGeneration::Adaptive);
+        assert_eq!(
+            claude_generation("claude-opus-5"),
+            ClaudeGeneration::Adaptive
+        );
         assert_eq!(
             claude_generation("claude-sonnet-5-1"),
             ClaudeGeneration::Adaptive
@@ -546,10 +552,19 @@ mod tests {
             claude_generation("claude-haiku-4-5-20251001"),
             ClaudeGeneration::Manual
         );
-        assert_eq!(claude_generation("claude-opus-4-1"), ClaudeGeneration::Manual);
-        assert_eq!(claude_generation("claude-sonnet-4"), ClaudeGeneration::Manual);
+        assert_eq!(
+            claude_generation("claude-opus-4-1"),
+            ClaudeGeneration::Manual
+        );
+        assert_eq!(
+            claude_generation("claude-sonnet-4"),
+            ClaudeGeneration::Manual
+        );
         // 4.6 代仍接受 enabled（已弃用），保留 manual 通路
-        assert_eq!(claude_generation("claude-opus-4-6"), ClaudeGeneration::Manual);
+        assert_eq!(
+            claude_generation("claude-opus-4-6"),
+            ClaudeGeneration::Manual
+        );
         assert_eq!(
             claude_generation("claude-sonnet-4-6"),
             ClaudeGeneration::Manual

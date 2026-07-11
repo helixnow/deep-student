@@ -324,10 +324,7 @@ mod tests {
         assert_eq!(ZhipuAdapter::parse_glm_version("glm-5.2"), Some((5, 2)));
         assert_eq!(ZhipuAdapter::parse_glm_version("glm-5.1"), Some((5, 1)));
         assert_eq!(ZhipuAdapter::parse_glm_version("glm-5"), Some((5, 0)));
-        assert_eq!(
-            ZhipuAdapter::parse_glm_version("glm-5-turbo"),
-            Some((5, 0))
-        );
+        assert_eq!(ZhipuAdapter::parse_glm_version("glm-5-turbo"), Some((5, 0)));
         assert_eq!(
             ZhipuAdapter::parse_glm_version("glm-4.7-flash"),
             Some((4, 7))

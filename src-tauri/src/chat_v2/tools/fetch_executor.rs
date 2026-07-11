@@ -17,6 +17,7 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use encoding_rs::Encoding;
+use futures_util::{pin_mut, Stream, StreamExt};
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, ACCEPT_LANGUAGE, USER_AGENT};
 use serde_json::{json, Value};
@@ -101,6 +102,36 @@ static RE_MAIN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<main[^>]*>(.*?)</main>").unwrap());
 /// 压缩多余空行（预编译，替代 clean_markdown 中的运行时编译）
 static RE_MULTI_NEWLINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
+
+async fn collect_download_stream_limited<S, B, E>(
+    stream: S,
+    max_bytes: u64,
+    initial_capacity: usize,
+) -> Result<Vec<u8>, String>
+where
+    S: Stream<Item = Result<B, E>>,
+    B: AsRef<[u8]>,
+    E: std::fmt::Display,
+{
+    let mut output =
+        Vec::with_capacity(initial_capacity.min(max_bytes.min(usize::MAX as u64) as usize));
+    pin_mut!(stream);
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Failed to read download body: {}", e))?;
+        let chunk = chunk.as_ref();
+        let projected = (output.len() as u64)
+            .checked_add(chunk.len() as u64)
+            .ok_or_else(|| "Download size overflow".to_string())?;
+        if projected > max_bytes {
+            return Err(format!(
+                "Download exceeded size limit ({} bytes > {} bytes)",
+                projected, max_bytes
+            ));
+        }
+        output.extend_from_slice(chunk);
+    }
+    Ok(output)
+}
 
 // ============================================================================
 // 模块级辅助函数
@@ -433,18 +464,11 @@ impl FetchExecutor {
             }
         }
 
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|e| format!("Failed to read download body: {}", e))?;
-        if bytes.len() as u64 > max_bytes {
-            return Err(format!(
-                "Download exceeded size limit ({} bytes > {} bytes)",
-                bytes.len(),
-                max_bytes
-            ));
-        }
-        Ok(bytes.to_vec())
+        let initial_capacity = response
+            .content_length()
+            .unwrap_or(0)
+            .min(usize::MAX as u64) as usize;
+        collect_download_stream_limited(response.bytes_stream(), max_bytes, initial_capacity).await
     }
 
     /// 执行 fetch 操作
@@ -949,6 +973,30 @@ impl ToolExecutor for FetchExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn chunked_download_is_rejected_before_retaining_over_limit_body() {
+        let chunks = futures_util::stream::iter(vec![
+            Ok::<_, std::io::Error>(b"abc".to_vec()),
+            Ok::<_, std::io::Error>(b"def".to_vec()),
+            Ok::<_, std::io::Error>(b"never-read".to_vec()),
+        ]);
+        let error = collect_download_stream_limited(chunks, 5, 0)
+            .await
+            .expect_err("chunked response crossing the limit must fail");
+        assert!(error.contains("6 bytes > 5 bytes"));
+
+        let within_limit = futures_util::stream::iter(vec![
+            Ok::<_, std::io::Error>(b"ab".to_vec()),
+            Ok::<_, std::io::Error>(b"cde".to_vec()),
+        ]);
+        assert_eq!(
+            collect_download_stream_limited(within_limit, 5, 5)
+                .await
+                .expect("body at exact limit"),
+            b"abcde"
+        );
+    }
 
     #[test]
     fn test_can_handle() {

@@ -21,9 +21,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::time::{sleep, Duration};
 
-use crate::chat_v2::headless::{
-    run_headless_turn, HeadlessSessionMode, HeadlessTurnRequest,
-};
+use crate::chat_v2::headless::{run_headless_turn, HeadlessSessionMode, HeadlessTurnRequest};
 use crate::database::Database;
 use crate::models::AppError;
 use crate::vfs::database::VfsDatabase;
@@ -188,9 +186,24 @@ pub struct AutomationRunRecord {
 }
 
 pub fn parse_time_hhmm(raw: &str) -> Result<NaiveTime> {
-    NaiveTime::parse_from_str(raw.trim(), "%H:%M").map_err(|_| {
-        AppError::validation(format!("Invalid time '{}': expected HH:MM (24h)", raw))
-    })
+    let trimmed = raw.trim();
+    let bytes = trimmed.as_bytes();
+    let is_strict_hhmm = bytes.len() == 5
+        && bytes[0].is_ascii_digit()
+        && bytes[1].is_ascii_digit()
+        && bytes[2] == b':'
+        && bytes[3].is_ascii_digit()
+        && bytes[4].is_ascii_digit();
+
+    if !is_strict_hhmm {
+        return Err(AppError::validation(format!(
+            "Invalid time '{}': expected HH:MM (24h)",
+            raw
+        )));
+    }
+
+    NaiveTime::parse_from_str(trimmed, "%H:%M")
+        .map_err(|_| AppError::validation(format!("Invalid time '{}': expected HH:MM (24h)", raw)))
 }
 
 pub fn validate_schedule(schedule: &AutomationSchedule) -> Result<()> {
@@ -211,7 +224,9 @@ pub fn validate_schedule(schedule: &AutomationSchedule) -> Result<()> {
         ScheduleKind::Weekly => {
             parse_time_hhmm(&schedule.time)?;
             let weekday = schedule.weekday.ok_or_else(|| {
-                AppError::validation("weekday is required for weekly schedule (0=Sun … 6=Sat)".to_string())
+                AppError::validation(
+                    "weekday is required for weekly schedule (0=Sun … 6=Sat)".to_string(),
+                )
             })?;
             if weekday > 6 {
                 return Err(AppError::validation(
@@ -342,7 +357,9 @@ fn scheduled_slot_on_date(
             date.and_time(time)
                 .and_local_timezone(Local)
                 .single()
-                .ok_or_else(|| AppError::internal("Failed to build local datetime for daily slot".to_string()))?,
+                .ok_or_else(|| {
+                    AppError::internal("Failed to build local datetime for daily slot".to_string())
+                })?,
         )),
         ScheduleKind::Weekly => {
             let target = schedule.weekday.ok_or_else(|| {
@@ -356,7 +373,9 @@ fn scheduled_slot_on_date(
                     .and_local_timezone(Local)
                     .single()
                     .ok_or_else(|| {
-                        AppError::internal("Failed to build local datetime for weekly slot".to_string())
+                        AppError::internal(
+                            "Failed to build local datetime for weekly slot".to_string(),
+                        )
                     })?,
             ))
         }
@@ -493,7 +512,11 @@ fn send_automation_notification(app_handle: &AppHandle, name: &str, prompt: &str
     {
         Ok(()) => true,
         Err(e) => {
-            tracing::warn!("[AutomationScheduler] notification failed for '{}': {}", name, e);
+            tracing::warn!(
+                "[AutomationScheduler] notification failed for '{}': {}",
+                name,
+                e
+            );
             false
         }
     }
@@ -509,10 +532,7 @@ fn create_automation_todo(
     let inbox = match VfsTodoRepo::ensure_default_inbox(vfs_db) {
         Ok(inbox) => inbox,
         Err(e) => {
-            tracing::warn!(
-                "[AutomationScheduler] ensure_default_inbox failed: {}",
-                e
-            );
+            tracing::warn!("[AutomationScheduler] ensure_default_inbox failed: {}", e);
             return false;
         }
     };
@@ -620,7 +640,13 @@ fn process_due_automation(
     }
 
     if let Some(vfs_db) = vfs_db {
-        if create_automation_todo(app_handle, vfs_db, &automation.name, &automation.prompt, now) {
+        if create_automation_todo(
+            app_handle,
+            vfs_db,
+            &automation.name,
+            &automation.prompt,
+            now,
+        ) {
             delivered.push("todo".to_string());
         }
     } else {
@@ -800,11 +826,9 @@ async fn execute_agent_turn_automation(
     if session_mode == HeadlessSessionMode::Named {
         if let Ok(outcome) = result.as_ref() {
             if automation.agent_session_id.as_deref() != Some(outcome.session_id.as_str()) {
-                if let Err(e) = update_automation_agent_session_id(
-                    &db,
-                    &automation.id,
-                    &outcome.session_id,
-                ) {
+                if let Err(e) =
+                    update_automation_agent_session_id(&db, &automation.id, &outcome.session_id)
+                {
                     tracing::warn!(
                         "[AutomationScheduler] failed to persist named session id for '{}': {}",
                         automation.id,
@@ -836,7 +860,10 @@ async fn execute_agent_turn_automation(
                     status = "success".to_string();
                     summary = truncate_for_notification(&outcome.summary, 120);
                     let body = if summary.is_empty() {
-                        format!("已完成，打开 Deep Student 查看会话（{}）", outcome.session_id)
+                        format!(
+                            "已完成，打开 Deep Student 查看会话（{}）",
+                            outcome.session_id
+                        )
                     } else {
                         format!("{}\n打开 Deep Student 查看完整会话", summary)
                     };
@@ -1021,7 +1048,9 @@ pub async fn chat_v2_automation_run_now(
             }))
         }
         AutomationActionType::Notify => {
-            let vfs_db = app_handle.try_state::<Arc<VfsDatabase>>().map(|s| s.inner().clone());
+            let vfs_db = app_handle
+                .try_state::<Arc<VfsDatabase>>()
+                .map(|s| s.inner().clone());
             process_due_automation(
                 &db.inner().clone(),
                 vfs_db.as_ref(),
@@ -1037,7 +1066,11 @@ pub async fn chat_v2_automation_run_now(
     }
 }
 
-pub fn update_automation_last_run_at(db: &Database, automation_id: &str, fired_at: &str) -> Result<()> {
+pub fn update_automation_last_run_at(
+    db: &Database,
+    automation_id: &str,
+    fired_at: &str,
+) -> Result<()> {
     // 🔧 P1-1 修复：读改写序列加互斥。调度器持旧快照整表覆盖会抹掉
     // 刚 propose 的新自动化 / 刚 set_enabled 的启停状态
     with_automations_lock(|| {
@@ -1197,9 +1230,58 @@ mod tests {
 
     #[test]
     fn parse_time_accepts_hhmm() {
-        assert_eq!(parse_time_hhmm("09:30").unwrap(), NaiveTime::from_hms_opt(9, 30, 0).unwrap());
-        assert!(parse_time_hhmm("25:00").is_err());
-        assert!(parse_time_hhmm("9:30").is_err());
+        assert_eq!(
+            parse_time_hhmm("09:30").unwrap(),
+            NaiveTime::from_hms_opt(9, 30, 0).unwrap()
+        );
+        assert_eq!(
+            parse_time_hhmm(" 23:59\n").unwrap(),
+            NaiveTime::from_hms_opt(23, 59, 0).unwrap()
+        );
+    }
+
+    #[test]
+    fn parse_time_accepts_24_hour_boundaries() {
+        assert_eq!(
+            parse_time_hhmm("00:00").unwrap(),
+            NaiveTime::from_hms_opt(0, 0, 0).unwrap()
+        );
+        assert_eq!(
+            parse_time_hhmm("23:59").unwrap(),
+            NaiveTime::from_hms_opt(23, 59, 0).unwrap()
+        );
+        assert!(parse_time_hhmm("24:00").is_err());
+        assert!(parse_time_hhmm("23:60").is_err());
+    }
+
+    #[test]
+    fn parse_time_rejects_non_hhmm_shapes() {
+        for invalid in [
+            "",
+            "9:30",
+            "09:3",
+            "009:30",
+            "09:030",
+            "09-30",
+            "09:30:00",
+            "09 :30",
+            "０９:３０",
+        ] {
+            assert!(
+                parse_time_hhmm(invalid).is_err(),
+                "unexpectedly accepted {invalid:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_last_run_at_preserves_rfc3339_timezone_instant() {
+        let parsed = parse_last_run_at(Some("2026-07-08T09:30:00+08:00"))
+            .unwrap()
+            .unwrap();
+        let expected = Utc.with_ymd_and_hms(2026, 7, 8, 1, 30, 0).single().unwrap();
+
+        assert_eq!(parsed.with_timezone(&Utc), expected);
     }
 
     #[test]

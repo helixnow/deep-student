@@ -6,7 +6,7 @@
 //!    仅当用户开启 `auto_degrade_chat` 后才允许模型级 fallback；
 //! 2. Failover 默认只对后台/工具型任务（标题生成、压缩、记忆决策、utility 等）生效；
 //! 3. Provider 内先做 API key 轮换（含冷却），key 耗尽后才切换 fallback 模型；
-//! 4. 自动 fallback 是临时状态：不持久化 override，每次新请求都先试主模型，
+//! 4. 自动 fallback 是临时状态：不持久化 override；每次新请求重新评估冷却状态，
 //!    主模型恢复后自然切回（简化实现，不做后台探测）；
 //! 5. 只在「请求发起失败 / 流建立失败」时切换；流已开始输出后中断不做续传。
 //!
@@ -144,7 +144,10 @@ pub fn resolve_purpose_model_id(policy: &FailoverPolicy, task: &str) -> Option<M
 
 /// select_model_for 新增的用途类型：未配置专属模型时回落到 default（model2）逻辑
 pub fn is_known_utility_purpose(task: &str) -> bool {
-    matches!(task, "compaction" | "memory_flush" | "utility" | "memory_decision")
+    matches!(
+        task,
+        "compaction" | "memory_flush" | "utility" | "memory_decision"
+    )
 }
 
 // ============================================================
@@ -227,7 +230,7 @@ pub fn classify_llm_error(err: &AppError) -> LlmErrorClass {
 // key 冷却表（内存态）
 // ============================================================
 
-/// API key 冷却表：被 429/401 的 key 在冷却期内排到候选序列末尾/被跳过
+/// API key 冷却表：被 429/401 的 key 在冷却期内跳过；仅全体冷却时保底一个候选
 pub struct CooldownTable {
     inner: Mutex<HashMap<String, Instant>>,
 }
@@ -308,46 +311,62 @@ pub struct PlannedAttempt {
     pub cooldown_key: String,
 }
 
+/// 按候选顺序选择第一个启用且可用于文本调用的模型。
+///
+/// `enabled=false` 表示用户已停用该配置，不能再通过任务分配、用途路由、
+/// fallback 链或普通 override 被隐式重新启用。
+pub(crate) fn resolve_enabled_text_model<'a, I, S>(
+    configs: &'a [ApiConfig],
+    candidate_ids: I,
+) -> Option<&'a ApiConfig>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    candidate_ids.into_iter().find_map(|candidate_id| {
+        let candidate_id = candidate_id.as_ref();
+        configs.iter().find(|config| {
+            config.id == candidate_id
+                && config.enabled
+                && !config.is_embedding
+                && !config.is_reranker
+        })
+    })
+}
+
 /// 构建尝试计划：
 /// - 每个模型内部先列未冷却的 key（保持配置顺序），冷却中的 key 跳过；
-/// - 主模型（idx 0）即使所有 key 都在冷却也保底保留第一个 key
-///   ——「每次新请求先试主模型」，主模型恢复后自然切回；
-/// - fallback 模型若所有 key 均冷却/为空则整体跳过；
-/// - 空 key 一律跳过（主模型保底 key 除外，保持旧的报错行为）。
+/// - 只要任一模型仍有未冷却 key，就绝不重试冷却 key；
+/// - 只有全部有效 key 都在冷却时，才确定性地保底尝试首个候选；
+/// - 空 key 一律跳过。
 pub fn build_attempt_plan(
     models: &[ModelKeySet],
     cooldowns: &CooldownTable,
     now: Instant,
 ) -> Vec<PlannedAttempt> {
     let mut plan = Vec::new();
+    let mut all_cooling_fallback = None;
     for (model_idx, set) in models.iter().enumerate() {
-        let mut added_for_model = 0usize;
         for (key_idx, key) in set.keys.iter().enumerate() {
-            let is_primary_first_key = model_idx == 0 && key_idx == 0;
-            if key.trim().is_empty() && !is_primary_first_key {
+            if key.trim().is_empty() {
                 continue;
             }
             let cooldown_key = key_fingerprint(&set.vendor_id, key);
-            if cooldowns.is_cooling_at(&cooldown_key, now) && !is_primary_first_key {
-                continue;
-            }
-            plan.push(PlannedAttempt {
+            let attempt = PlannedAttempt {
                 model_idx,
                 key_idx,
                 cooldown_key,
-            });
-            added_for_model += 1;
-        }
-        // 主模型保底：所有 key 都被冷却过滤时，仍强制尝试第一个 key
-        if model_idx == 0 && added_for_model == 0 {
-            if let Some(first) = set.keys.first() {
-                plan.push(PlannedAttempt {
-                    model_idx: 0,
-                    key_idx: 0,
-                    cooldown_key: key_fingerprint(&set.vendor_id, first),
-                });
+            };
+            if cooldowns.is_cooling_at(&attempt.cooldown_key, now) {
+                all_cooling_fallback.get_or_insert(attempt);
+                continue;
             }
+            plan.push(attempt);
         }
+    }
+
+    if plan.is_empty() {
+        plan.extend(all_cooling_fallback);
     }
     plan
 }
@@ -472,7 +491,7 @@ impl LLMManager {
     }
 
     /// 带 failover 的统一调用驱动：
-    /// 1. 主模型（每次都先试）→ 同 provider 内 key 轮换（含冷却）→ fallback 链模型；
+    /// 1. 主模型未冷却 key → 同 provider 内 key 轮换 → fallback 链模型；
     /// 2. 只有被打标为「建立阶段」的可重试错误才推进候选；
     /// 3. 429 先做同候选短退避重试一次（若 attempt 内部不自带）；
     /// 4. 发生切换时打日志并向前端 emit `llm-failover` 事件。
@@ -488,6 +507,20 @@ impl LLMManager {
     {
         let policy = self.get_failover_policy().await.unwrap_or_default();
 
+        if resolve_enabled_text_model(std::slice::from_ref(&primary), [&primary.id]).is_none() {
+            return Err(AppError::configuration(format!(
+                "模型配置 {} 已禁用或不支持文本调用",
+                primary.id
+            )));
+        }
+
+        // 总开关关闭时完全绕过 key 轮换、冷却与模型 fallback，保持单模型旧行为。
+        if !policy.enabled {
+            let mut config = primary;
+            run.param_overrides.apply(&mut config);
+            return attempt(config, ESTABLISH_RETRIES_WITHOUT_FALLBACK).await;
+        }
+
         // 1. 候选模型集：主模型 + （允许时的）fallback 链
         let mut models: Vec<ApiConfig> = vec![primary];
         if model_fallback_allowed(&policy, run.scenario) {
@@ -499,10 +532,13 @@ impl LLMManager {
                             if models.iter().any(|m| m.id == target) {
                                 continue;
                             }
-                            if let Some(cfg) = all.iter().find(|c| c.id == target) {
+                            if let Some(cfg) = resolve_enabled_text_model(&all, [target.as_str()]) {
                                 models.push(cfg.clone());
                             } else {
-                                warn!("[Failover] fallback 模型配置 {} 未找到，跳过", target);
+                                warn!(
+                                    "[Failover] fallback 模型配置 {} 未找到、已禁用或不支持文本调用，跳过",
+                                    target
+                                );
                             }
                         }
                     }
@@ -517,7 +553,7 @@ impl LLMManager {
             key_sets.push(self.candidate_api_keys_for(model).await);
         }
 
-        // 3. 扁平化尝试计划（冷却过滤 + 主模型保底）
+        // 3. 扁平化尝试计划（过滤冷却 key；全体冷却时确定性保底一个候选）
         let metas: Vec<ModelKeySet> = models
             .iter()
             .zip(key_sets.iter())
@@ -529,7 +565,9 @@ impl LLMManager {
             .collect();
         let plan = build_attempt_plan(&metas, key_cooldowns(), Instant::now());
         if plan.is_empty() {
-            return Err(AppError::configuration("没有可用的模型候选（Failover 计划为空）"));
+            return Err(AppError::configuration(
+                "没有可用的模型候选（Failover 计划为空）",
+            ));
         }
 
         let establish_retries = if plan.len() > 1 {
@@ -574,7 +612,7 @@ impl LLMManager {
                             "attempt": idx + 1,
                             "total": plan.len(),
                             "user_pinned": run.user_pinned,
-                            // 临时 override：每次新请求仍先试主模型
+                            // 临时 override：每次新请求重新评估主模型与 key 的冷却状态
                             "temporary": true,
                         }),
                     );
@@ -589,9 +627,14 @@ impl LLMManager {
                         return Err(err);
                     }
                     // 429/401 的 key 进入冷却
-                    if matches!(class, LlmErrorClass::RateLimited | LlmErrorClass::AuthFailed) {
-                        key_cooldowns()
-                            .set_for(&att.cooldown_key, Duration::from_secs(policy.key_cooldown_secs));
+                    if matches!(
+                        class,
+                        LlmErrorClass::RateLimited | LlmErrorClass::AuthFailed
+                    ) {
+                        key_cooldowns().set_for(
+                            &att.cooldown_key,
+                            Duration::from_secs(policy.key_cooldown_secs),
+                        );
                     }
                     // 429：同候选先做一次短退避重试（attempt 内部已自带退避的出口跳过）
                     if class == LlmErrorClass::RateLimited
@@ -651,9 +694,32 @@ pub async fn llm_set_failover_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use tempfile::TempDir;
 
     fn err_with_status(status: Option<u16>, message: &str) -> AppError {
         tag_establish_failure(AppError::llm(message), status)
+    }
+
+    fn create_test_manager(temp_dir: &TempDir) -> LLMManager {
+        let db_path = temp_dir.path().join("routing-test.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create settings table");
+        let db = Arc::new(crate::database::Database::new(&db_path).expect("create test database"));
+        let file_manager = Arc::new(
+            crate::file_manager::FileManager::new(temp_dir.path().to_path_buf())
+                .expect("create file manager"),
+        );
+        LLMManager::new(db, file_manager).expect("create llm manager")
     }
 
     // ---------- 错误分类 ----------
@@ -727,9 +793,10 @@ mod tests {
     fn policy_with_chains() -> FailoverPolicy {
         let mut policy = FailoverPolicy::default();
         policy.default_fallbacks = vec!["m-b".into(), "m-c".into()];
-        policy
-            .task_fallbacks
-            .insert("chat_title".into(), vec!["m-cheap".into(), "m-a".into(), "m-cheap".into()]);
+        policy.task_fallbacks.insert(
+            "chat_title".into(),
+            vec!["m-cheap".into(), "m-a".into(), "m-cheap".into()],
+        );
         policy
     }
 
@@ -757,7 +824,10 @@ mod tests {
     fn model_fallback_gating() {
         let mut policy = FailoverPolicy::default();
         // 后台任务默认允许；对话主链路默认严格
-        assert!(model_fallback_allowed(&policy, FailoverScenario::BackgroundTask));
+        assert!(model_fallback_allowed(
+            &policy,
+            FailoverScenario::BackgroundTask
+        ));
         assert!(!model_fallback_allowed(&policy, FailoverScenario::ChatMain));
         // 用户显式开启自动降级后对话主链路才允许
         policy.auto_degrade_chat = true;
@@ -765,13 +835,65 @@ mod tests {
         // 总开关关闭后一律不允许
         policy.enabled = false;
         assert!(!model_fallback_allowed(&policy, FailoverScenario::ChatMain));
-        assert!(!model_fallback_allowed(&policy, FailoverScenario::BackgroundTask));
+        assert!(!model_fallback_allowed(
+            &policy,
+            FailoverScenario::BackgroundTask
+        ));
+    }
+
+    #[tokio::test]
+    async fn disabled_policy_bypasses_retry_and_failover_driver() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_manager(&temp_dir);
+        let policy = FailoverPolicy {
+            enabled: false,
+            ..FailoverPolicy::default()
+        };
+        manager
+            .save_failover_policy(&policy)
+            .await
+            .expect("save policy");
+
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let attempts_for_call = attempts.clone();
+        let primary = ApiConfig {
+            id: "primary".into(),
+            enabled: true,
+            api_key: "key-primary".into(),
+            ..ApiConfig::default()
+        };
+        let result = manager
+            .run_with_failover(
+                FailoverRun {
+                    task: "utility".into(),
+                    scenario: FailoverScenario::BackgroundTask,
+                    user_pinned: false,
+                    window: None,
+                    attempts_handle_429_internally: false,
+                    param_overrides: ParamOverrides::default(),
+                },
+                primary,
+                move |_config, establish_retries| {
+                    let attempts = attempts_for_call.clone();
+                    async move {
+                        attempts.fetch_add(1, Ordering::SeqCst);
+                        assert_eq!(establish_retries, ESTABLISH_RETRIES_WITHOUT_FALLBACK);
+                        Err::<(), _>(err_with_status(Some(429), "rate limited"))
+                    }
+                },
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert_eq!(attempts.load(Ordering::SeqCst), 1);
     }
 
     #[test]
     fn purpose_model_resolution() {
         let mut policy = FailoverPolicy::default();
-        policy.purpose_models.insert("compaction".into(), "m-cheap".into());
+        policy
+            .purpose_models
+            .insert("compaction".into(), "m-cheap".into());
         policy.purpose_models.insert("utility".into(), "  ".into());
         assert_eq!(
             resolve_purpose_model_id(&policy, "compaction"),
@@ -804,7 +926,9 @@ mod tests {
         ];
         let plan = build_attempt_plan(&models, &CooldownTable::new(), Instant::now());
         assert_eq!(
-            plan.iter().map(|a| (a.model_idx, a.key_idx)).collect::<Vec<_>>(),
+            plan.iter()
+                .map(|a| (a.model_idx, a.key_idx))
+                .collect::<Vec<_>>(),
             vec![(0, 0), (0, 1), (1, 0)]
         );
     }
@@ -817,31 +941,114 @@ mod tests {
         ];
         let table = CooldownTable::new();
         let now = Instant::now();
-        table.set_until(&key_fingerprint("v1", "key-a1"), now + Duration::from_secs(60));
+        table.set_until(
+            &key_fingerprint("v1", "key-a1"),
+            now + Duration::from_secs(60),
+        );
         let plan = build_attempt_plan(&models, &table, now);
         // 主模型冷却中的 key-a1 被跳过，key-a2 顶上
         assert_eq!(
-            plan.iter().map(|a| (a.model_idx, a.key_idx)).collect::<Vec<_>>(),
+            plan.iter()
+                .map(|a| (a.model_idx, a.key_idx))
+                .collect::<Vec<_>>(),
             vec![(0, 1), (1, 0)]
         );
     }
 
     #[test]
-    fn attempt_plan_primary_model_guaranteed_when_all_cooling() {
+    fn attempt_plan_uses_available_fallback_when_primary_is_all_cooling() {
         let models = vec![
-            model_set("m-a", "v1", &["key-a1"]),
+            model_set("m-a", "v1", &["key-a1", "key-a2"]),
             model_set("m-b", "v2", &["key-b1"]),
         ];
         let table = CooldownTable::new();
         let now = Instant::now();
-        table.set_until(&key_fingerprint("v1", "key-a1"), now + Duration::from_secs(60));
-        table.set_until(&key_fingerprint("v2", "key-b1"), now + Duration::from_secs(60));
+        table.set_until(
+            &key_fingerprint("v1", "key-a1"),
+            now + Duration::from_secs(60),
+        );
+        table.set_until(
+            &key_fingerprint("v1", "key-a2"),
+            now + Duration::from_secs(60),
+        );
         let plan = build_attempt_plan(&models, &table, now);
-        // 主模型保底保留第一个 key（每次新请求先试主模型）；fallback 全冷却则跳过
         assert_eq!(
-            plan.iter().map(|a| (a.model_idx, a.key_idx)).collect::<Vec<_>>(),
+            plan.iter()
+                .map(|a| (a.model_idx, a.key_idx))
+                .collect::<Vec<_>>(),
+            vec![(1, 0)]
+        );
+    }
+
+    #[test]
+    fn attempt_plan_uses_first_candidate_only_when_all_keys_are_cooling() {
+        let models = vec![
+            model_set("m-a", "v1", &["key-a1", "key-a2"]),
+            model_set("m-b", "v2", &["key-b1"]),
+        ];
+        let table = CooldownTable::new();
+        let now = Instant::now();
+        table.set_until(
+            &key_fingerprint("v1", "key-a1"),
+            now + Duration::from_secs(60),
+        );
+        table.set_until(
+            &key_fingerprint("v1", "key-a2"),
+            now + Duration::from_secs(60),
+        );
+        table.set_until(
+            &key_fingerprint("v2", "key-b1"),
+            now + Duration::from_secs(60),
+        );
+        let plan = build_attempt_plan(&models, &table, now);
+        assert_eq!(
+            plan.iter()
+                .map(|a| (a.model_idx, a.key_idx))
+                .collect::<Vec<_>>(),
             vec![(0, 0)]
         );
+    }
+
+    #[test]
+    fn attempt_plan_skips_empty_primary_key() {
+        let models = vec![
+            model_set("m-a", "v1", &["", "key-a2"]),
+            model_set("m-b", "v2", &["key-b1"]),
+        ];
+        let plan = build_attempt_plan(&models, &CooldownTable::new(), Instant::now());
+        assert_eq!(
+            plan.iter()
+                .map(|a| (a.model_idx, a.key_idx))
+                .collect::<Vec<_>>(),
+            vec![(0, 1), (1, 0)]
+        );
+    }
+
+    #[test]
+    fn enabled_model_resolution_skips_disabled_and_non_text_configs() {
+        let configs = vec![
+            ApiConfig {
+                id: "disabled".into(),
+                enabled: false,
+                ..ApiConfig::default()
+            },
+            ApiConfig {
+                id: "embedding".into(),
+                enabled: true,
+                is_embedding: true,
+                ..ApiConfig::default()
+            },
+            ApiConfig {
+                id: "enabled".into(),
+                enabled: true,
+                ..ApiConfig::default()
+            },
+        ];
+
+        let selected =
+            resolve_enabled_text_model(&configs, ["disabled", "missing", "embedding", "enabled"]);
+        assert_eq!(selected.map(|config| config.id.as_str()), Some("enabled"));
+        assert!(resolve_enabled_text_model(&configs, ["disabled", "embedding"]).is_none());
     }
 
     #[test]
@@ -852,7 +1059,9 @@ mod tests {
         ];
         let plan = build_attempt_plan(&models, &CooldownTable::new(), Instant::now());
         assert_eq!(
-            plan.iter().map(|a| (a.model_idx, a.key_idx)).collect::<Vec<_>>(),
+            plan.iter()
+                .map(|a| (a.model_idx, a.key_idx))
+                .collect::<Vec<_>>(),
             vec![(0, 0)]
         );
     }
@@ -877,14 +1086,38 @@ mod tests {
             cooldown_key: "v1:z".into(),
         };
         // 鉴权失败：可换同模型 key，不可降级到其他模型
-        assert!(failover_to_next_allowed(LlmErrorClass::AuthFailed, &current, &same_model_next));
-        assert!(!failover_to_next_allowed(LlmErrorClass::AuthFailed, &current, &other_model_next));
+        assert!(failover_to_next_allowed(
+            LlmErrorClass::AuthFailed,
+            &current,
+            &same_model_next
+        ));
+        assert!(!failover_to_next_allowed(
+            LlmErrorClass::AuthFailed,
+            &current,
+            &other_model_next
+        ));
         // 瞬态错误 / 429：均可推进
-        assert!(failover_to_next_allowed(LlmErrorClass::RetryableTransient, &current, &other_model_next));
-        assert!(failover_to_next_allowed(LlmErrorClass::RateLimited, &current, &other_model_next));
+        assert!(failover_to_next_allowed(
+            LlmErrorClass::RetryableTransient,
+            &current,
+            &other_model_next
+        ));
+        assert!(failover_to_next_allowed(
+            LlmErrorClass::RateLimited,
+            &current,
+            &other_model_next
+        ));
         // 不可重试 / 取消：不推进
-        assert!(!failover_to_next_allowed(LlmErrorClass::NonRetryable, &current, &same_model_next));
-        assert!(!failover_to_next_allowed(LlmErrorClass::Cancelled, &current, &same_model_next));
+        assert!(!failover_to_next_allowed(
+            LlmErrorClass::NonRetryable,
+            &current,
+            &same_model_next
+        ));
+        assert!(!failover_to_next_allowed(
+            LlmErrorClass::Cancelled,
+            &current,
+            &same_model_next
+        ));
     }
 
     // ---------- 配置序列化向后兼容 ----------
@@ -903,8 +1136,12 @@ mod tests {
         let mut policy = FailoverPolicy::default();
         policy.auto_degrade_chat = true;
         policy.default_fallbacks = vec!["m-b".into()];
-        policy.task_fallbacks.insert("chat_title".into(), vec!["m-cheap".into()]);
-        policy.purpose_models.insert("compaction".into(), "m-cheap".into());
+        policy
+            .task_fallbacks
+            .insert("chat_title".into(), vec!["m-cheap".into()]);
+        policy
+            .purpose_models
+            .insert("compaction".into(), "m-cheap".into());
         let raw = serde_json::to_string(&policy).unwrap();
         let back: FailoverPolicy = serde_json::from_str(&raw).unwrap();
         assert_eq!(policy, back);

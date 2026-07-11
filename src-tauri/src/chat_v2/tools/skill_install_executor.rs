@@ -4,7 +4,6 @@
 //! - `skill_install`（High，必审批）：重新取源 → 校验 sha256 → 安装 → provenance
 
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -13,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::Manager;
+use tokio::io::AsyncReadExt;
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::fetch_executor::FetchExecutor;
@@ -20,11 +20,12 @@ use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{normalize_runtime_relative_path, runtime_root_by_id};
 use crate::chat_v2::skill_requires::format_missing_requires_hints;
 use crate::chat_v2::skills::{
-    install_skill_package_from_zip_bytes, DEFAULT_AGENT_SKILLS_BASE, MAX_SKILL_PACKAGE_ZIP_BYTES,
-    SkillImportZipResult,
+    install_skill_package_from_zip_bytes, prepare_skill_package_from_zip_bytes,
+    SkillImportZipResult, DEFAULT_AGENT_SKILLS_BASE, MAX_SKILL_PACKAGE_ZIP_BYTES,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
+use crate::utils::text::safe_truncate;
 
 pub mod tool_names {
     pub const SKILL_SCAN: &str = "skill_scan";
@@ -89,6 +90,27 @@ impl SkillInstallExecutor {
         Ok(trimmed)
     }
 
+    fn expected_skill_id(args: &Value) -> Result<String, String> {
+        let skill_id = args
+            .get("skill_id")
+            .or_else(|| args.get("skillId"))
+            .and_then(|value| value.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or("skill_id is required (use skill_id from skill_scan)")?;
+        Ok(skill_id.to_string())
+    }
+
+    fn verify_expected_skill_id(expected: &str, actual: &str) -> Result<(), String> {
+        if expected == actual {
+            return Ok(());
+        }
+        Err(format!(
+            "Skill target mismatch: approval expected skill_id '{}', but the scanned package installs '{}'. Run skill_scan again and use its exact skill_id.",
+            expected, actual
+        ))
+    }
+
     fn parse_source(args: &Value) -> Result<ParsedSource, String> {
         let source = args
             .get("source")
@@ -99,16 +121,14 @@ impl SkillInstallExecutor {
             if trimmed.is_empty() {
                 return Err("source.url must not be empty".to_string());
             }
-            let parsed = reqwest::Url::parse(trimmed)
-                .map_err(|e| format!("Invalid source.url: {}", e))?;
+            let parsed =
+                reqwest::Url::parse(trimmed).map_err(|e| format!("Invalid source.url: {}", e))?;
             if parsed.scheme() != "https" {
-                return Err("source.url must use https:// (http and other schemes are blocked)".to_string());
+                return Err(
+                    "source.url must use https:// (http and other schemes are blocked)".to_string(),
+                );
             }
-            let summary = if trimmed.len() > 80 {
-                format!("{}…", &trimmed[..80])
-            } else {
-                trimmed.to_string()
-            };
+            let summary = safe_truncate(trimmed, 80);
             return Ok(ParsedSource {
                 kind: "url".to_string(),
                 detail: trimmed.to_string(),
@@ -146,7 +166,11 @@ impl SkillInstallExecutor {
         })
     }
 
-    async fn fetch_zip_bytes(&self, source: &ParsedSource, ctx: &ExecutionContext) -> Result<Vec<u8>, String> {
+    async fn fetch_zip_bytes(
+        &self,
+        source: &ParsedSource,
+        ctx: &ExecutionContext,
+    ) -> Result<Vec<u8>, String> {
         match source.kind.as_str() {
             "url" => {
                 self.fetch
@@ -158,7 +182,10 @@ impl SkillInstallExecutor {
         }
     }
 
-    async fn read_zip_from_runtime(source: &ParsedSource, ctx: &ExecutionContext) -> Result<Vec<u8>, String> {
+    async fn read_zip_from_runtime(
+        source: &ParsedSource,
+        ctx: &ExecutionContext,
+    ) -> Result<Vec<u8>, String> {
         let (root_id, rel_path) = source
             .detail
             .split_once(':')
@@ -179,7 +206,10 @@ impl SkillInstallExecutor {
             .map_err(|e| format!("Failed to canonicalize runtime root: {}", e))?;
         let target = root.path.join(&relative);
         if !target.exists() {
-            return Err(format!("Skill package file not found at {}", source.summary));
+            return Err(format!(
+                "Skill package file not found at {}",
+                source.summary
+            ));
         }
         let target_canon = target
             .canonicalize()
@@ -189,6 +219,9 @@ impl SkillInstallExecutor {
         }
         let meta = fs::metadata(&target_canon)
             .map_err(|e| format!("Failed to stat skill package file: {}", e))?;
+        if !meta.is_file() {
+            return Err("Skill package source must be a regular file".to_string());
+        }
         if meta.len() > MAX_SKILL_PACKAGE_ZIP_BYTES {
             return Err(format!(
                 "Skill package too large ({} bytes > {} bytes)",
@@ -196,7 +229,21 @@ impl SkillInstallExecutor {
                 MAX_SKILL_PACKAGE_ZIP_BYTES
             ));
         }
-        fs::read(&target_canon).map_err(|e| format!("Failed to read skill package file: {}", e))
+        let file = tokio::fs::File::open(&target_canon)
+            .await
+            .map_err(|e| format!("Failed to open skill package file: {}", e))?;
+        let mut bytes = Vec::with_capacity(meta.len().min(MAX_SKILL_PACKAGE_ZIP_BYTES) as usize);
+        file.take(MAX_SKILL_PACKAGE_ZIP_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| format!("Failed to read skill package file: {}", e))?;
+        if bytes.len() as u64 > MAX_SKILL_PACKAGE_ZIP_BYTES {
+            return Err(format!(
+                "Skill package grew beyond the {} byte limit while being read",
+                MAX_SKILL_PACKAGE_ZIP_BYTES
+            ));
+        }
+        Ok(bytes)
     }
 
     fn scan_result_payload(result: &SkillImportZipResult, source: &ParsedSource) -> Value {
@@ -222,25 +269,19 @@ impl SkillInstallExecutor {
     async fn execute_scan(&self, args: &Value, ctx: &ExecutionContext) -> Result<Value, String> {
         let source = Self::parse_source(args)?;
         let bytes = self.fetch_zip_bytes(&source, ctx).await?;
-        let result = install_skill_package_from_zip_bytes(
-            bytes,
-            DEFAULT_AGENT_SKILLS_BASE,
-            false,
-            true,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+        let result =
+            install_skill_package_from_zip_bytes(bytes, DEFAULT_AGENT_SKILLS_BASE, false, true)
+                .await
+                .map_err(|e| e.to_string())?;
         Ok(Self::scan_result_payload(&result, &source))
     }
 
-    fn write_provenance_and_marker(
+    fn provenance_json(
         ctx: &ExecutionContext,
-        skill_id: &str,
-        skill_dir: &Path,
         source: &ParsedSource,
         package_sha256: &str,
         risk_level: &str,
-    ) -> Result<(), String> {
+    ) -> Result<String, String> {
         let provenance = SkillInstallProvenance {
             source_kind: source.kind.clone(),
             source_detail: source.detail.clone(),
@@ -249,19 +290,18 @@ impl SkillInstallExecutor {
             installed_at: Utc::now().to_rfc3339(),
             session_id: ctx.session_id.clone(),
         };
-        let json_text = serde_json::to_string_pretty(&provenance)
-            .map_err(|e| format!("Failed to serialize provenance: {}", e))?;
+        serde_json::to_string_pretty(&provenance)
+            .map_err(|e| format!("Failed to serialize provenance: {}", e))
+    }
 
-        fs::write(skill_dir.join(AGENT_INSTALLED_MARKER), &json_text).map_err(|e| {
-            format!(
-                "Failed to write {} marker: {}",
-                AGENT_INSTALLED_MARKER, e
-            )
-        })?;
-
+    fn persist_provenance(
+        ctx: &ExecutionContext,
+        skill_id: &str,
+        json_text: &str,
+    ) -> Result<(), String> {
         if let Some(db) = ctx.main_db.as_ref() {
             let key = format!("{}{}", PROVENANCE_SETTINGS_PREFIX, skill_id);
-            db.save_setting(&key, &json_text)
+            db.save_setting(&key, json_text)
                 .map_err(|e| format!("Failed to persist skill provenance: {}", e))?;
         } else {
             log::warn!(
@@ -279,6 +319,7 @@ impl SkillInstallExecutor {
             .and_then(|v| v.as_str())
             .ok_or("expected_sha256 is required (use package_sha256 from skill_scan)")?;
         let expected_sha256 = Self::normalize_sha256(expected_sha256)?;
+        let expected_skill_id = Self::expected_skill_id(args)?;
 
         let declared_risk = args
             .get("declared_risk_level")
@@ -305,59 +346,49 @@ impl SkillInstallExecutor {
             ));
         }
 
-        let scan = install_skill_package_from_zip_bytes(
-            bytes.clone(),
-            DEFAULT_AGENT_SKILLS_BASE,
-            overwrite,
-            true,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
+        let prepared =
+            prepare_skill_package_from_zip_bytes(bytes, DEFAULT_AGENT_SKILLS_BASE, overwrite)
+                .await
+                .map_err(|e| e.to_string())?;
 
-        if Self::risk_rank(&scan.risk_level) > Self::risk_rank(&declared_risk) {
+        Self::verify_expected_skill_id(&expected_skill_id, &prepared.result().skill_id)?;
+
+        if Self::risk_rank(&prepared.result().risk_level) > Self::risk_rank(&declared_risk) {
             return Err(format!(
                 "Detected risk_level '{}' is higher than declared_risk_level '{}'. Run skill_scan again and update declared_risk_level before installing.",
-                scan.risk_level, declared_risk
+                prepared.result().risk_level, declared_risk
             ));
         }
 
-        let installed = install_skill_package_from_zip_bytes(
-            bytes,
-            DEFAULT_AGENT_SKILLS_BASE,
-            overwrite,
-            false,
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-
-        let skill_dir = PathBuf::from(&installed.path);
-        // P1 修复（fail-closed）：前端信任判定以"marker 缺失即 trusted"为默认。
-        // 技能文件已落盘后若 marker 写入失败，agent 装入的技能会被误判为受信任（违反 ADR-B3），
-        // 因此 marker 写入失败时必须回滚删除整个技能目录。
-        if let Err(marker_err) = Self::write_provenance_and_marker(
+        let provenance_json = Self::provenance_json(
             ctx,
-            &installed.skill_id,
-            &skill_dir,
             &source,
-            &installed.package_sha256,
-            &installed.risk_level,
-        ) {
-            if let Err(cleanup_err) = fs::remove_dir_all(&skill_dir) {
-                log::error!(
-                    "[SkillInstallExecutor] Marker write failed AND rollback failed for '{}': {}",
-                    installed.skill_id,
-                    cleanup_err
-                );
-                return Err(format!(
-                    "Failed to record agent provenance ({}) and rollback of the skill directory also failed ({}). SECURITY: manually remove {} — without the provenance marker this skill would be treated as trusted.",
-                    marker_err, cleanup_err, installed.path
-                ));
-            }
-            return Err(format!(
-                "Failed to record agent provenance ({}); the installation was rolled back and the skill directory removed.",
-                marker_err
-            ));
+            &prepared.result().package_sha256,
+            &prepared.result().risk_level,
+        )?;
+        prepared
+            .write_staged_file(AGENT_INSTALLED_MARKER, provenance_json.as_bytes())
+            .map_err(|e| format!("Failed to stage agent provenance marker: {}", e))?;
+
+        // The marker is part of the same staged directory as SKILL.md. Only after the
+        // complete directory is published do we update the secondary DB index. A DB
+        // failure rolls the directory swap back to the previous skill.
+        let (installed, committed) = prepared.commit().map_err(|e| e.to_string())?;
+        if let Err(provenance_error) =
+            Self::persist_provenance(ctx, &installed.skill_id, &provenance_json)
+        {
+            return match committed.rollback() {
+                Ok(()) => Err(format!(
+                    "Failed to persist agent provenance ({}); the previous skill was restored.",
+                    provenance_error
+                )),
+                Err(rollback_error) => Err(format!(
+                    "Failed to persist agent provenance ({}), and failed to restore the previous skill ({}).",
+                    provenance_error, rollback_error
+                )),
+            };
         }
+        committed.finalize();
 
         let missing_hints = installed
             .requires
@@ -485,7 +516,9 @@ mod tests {
 
     #[test]
     fn risk_rank_orders_levels() {
-        assert!(SkillInstallExecutor::risk_rank("high") > SkillInstallExecutor::risk_rank("medium"));
+        assert!(
+            SkillInstallExecutor::risk_rank("high") > SkillInstallExecutor::risk_rank("medium")
+        );
         assert!(SkillInstallExecutor::risk_rank("medium") > SkillInstallExecutor::risk_rank("low"));
     }
 
@@ -515,5 +548,23 @@ mod tests {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
         )
         .is_ok());
+    }
+
+    #[test]
+    fn expected_skill_id_must_match_scanned_package_target() {
+        assert!(SkillInstallExecutor::verify_expected_skill_id("reviewed", "reviewed").is_ok());
+        let error = SkillInstallExecutor::verify_expected_skill_id("reviewed", "different")
+            .expect_err("approval target mismatch must fail closed");
+        assert!(error.contains("approval expected skill_id 'reviewed'"));
+    }
+
+    #[test]
+    fn url_source_summary_truncates_multibyte_text_without_panicking() {
+        let url = format!("https://example.com/{}中文", "a".repeat(70));
+        let parsed = SkillInstallExecutor::parse_source(&json!({ "source": { "url": url } }))
+            .expect("unicode URL should parse");
+        assert!(parsed.summary.is_char_boundary(parsed.summary.len()));
+        assert!(parsed.summary.chars().count() <= 83);
+        assert!(parsed.summary.ends_with("..."));
     }
 }

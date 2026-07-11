@@ -162,6 +162,22 @@ export interface LoadSessionResponseType {
   totalMessageCount?: number;
 }
 
+/**
+ * Snapshot captured immediately before an asynchronous session/history load.
+ *
+ * The backend response is not a transaction with subsequent frontend edits.
+ * These IDs let restore code distinguish genuinely unloaded history from an
+ * item that existed when the request started and was deleted while it was in
+ * flight.
+ */
+export interface SessionRestoreBaseline {
+  messageIds: ReadonlySet<string>;
+  blockIds: ReadonlySet<string>;
+  oldestMessageTimestamp?: number;
+  sessionStatus: SessionStatus;
+  currentStreamingMessageId: string | null;
+}
+
 // ============================================================================
 // Blocking Interaction 类型
 // ============================================================================
@@ -190,13 +206,27 @@ export interface SkillInstallRuntimeApprovalScope {
   expectedSha256Prefix?: string;
   declaredRiskLevel?: 'low' | 'medium' | 'high' | string;
   skillId?: string;
+  overwriteExisting?: boolean;
+  riskLevel?: 'low' | 'medium' | 'high' | string;
+  rememberDisabled?: boolean;
+}
+
+export interface SkillWorkshopRuntimeApprovalScope {
+  kind: 'skill_workshop';
+  toolSource?: string;
+  toolName?: string;
+  sourceSummary?: string;
+  expectedSha256Prefix?: string;
+  skillId?: string;
+  overwriteExisting?: boolean;
   riskLevel?: 'low' | 'medium' | 'high' | string;
   rememberDisabled?: boolean;
 }
 
 export type RuntimeApprovalScope =
   | ShellRuntimeApprovalScope
-  | SkillInstallRuntimeApprovalScope;
+  | SkillInstallRuntimeApprovalScope
+  | SkillWorkshopRuntimeApprovalScope;
 
 export interface ToolApprovalBlockingInteraction {
   kind: 'tool_approval';
@@ -843,7 +873,10 @@ export interface ChatStore {
   ): void;
 
   /** 从后端响应恢复状态（适配器调用） */
-  restoreFromBackend(response: LoadSessionResponseType): void;
+  restoreFromBackend(
+    response: LoadSessionResponseType,
+    baseline?: SessionRestoreBaseline,
+  ): void;
 
   /**
    * 将全量响应中的更早历史消息合并到已恢复的会话头部（适配器调用）
@@ -851,7 +884,10 @@ export interface ChatStore {
    * 用于尾部分块加载的第二阶段：只补齐 messageMap/messageOrder/blocks，
    * 不触碰运行时状态（输入草稿、流式状态、技能等）。
    */
-  prependHistoryFromBackend(response: LoadSessionResponseType): void;
+  prependHistoryFromBackend(
+    response: LoadSessionResponseType,
+    baseline?: SessionRestoreBaseline,
+  ): void;
 
   // ========== 辅助方法（O(1) 查找） ==========
 

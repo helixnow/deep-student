@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { imageDefinition, isImageContentBlock, isTextContentBlock, type Resource } from '@/features/chat/context';
+import zhChatV2 from '@/locales/zh-CN/chatV2.json';
+import enChatV2 from '@/locales/en-US/chatV2.json';
 
 function makeImageResource(content: string, mimeType = 'image/png'): Resource {
   return {
@@ -61,7 +63,14 @@ describe('imageDefinition payload integrity', () => {
 
     expect(blocks).toHaveLength(1);
     expect(isTextContentBlock(blocks[0])).toBe(true);
-    // vitest.setup.ts 固定 i18n 语言为 zh-CN，占位文案为中文
-    expect((blocks[0] as any).text).toContain('[图片内容无效]');
+    const text = (blocks[0] as any).text as string;
+    // i18n namespaces load asynchronously and other suites may switch the
+    // process-global locale. Assert against the real supported translations
+    // instead of depending on execution order.
+    expect([
+      zhChatV2.contextDef.image.invalid,
+      enChatV2.contextDef.image.invalid,
+    ].some((placeholder) => text.includes(placeholder))).toBe(true);
+    expect(text).toContain('<image name="img-test.png">');
   });
 });

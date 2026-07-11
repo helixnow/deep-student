@@ -67,6 +67,8 @@ describe('BlockingApprovalBar runtime scope', () => {
       arguments: {
         source: { root_id: 'temp', path: 'attachments/pkg.zip' },
         expected_sha256: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        skill_id: 'pdf-tools',
+        overwrite: true,
       },
       sensitivity: 'high',
       description: 'Install skill package',
@@ -77,6 +79,7 @@ describe('BlockingApprovalBar runtime scope', () => {
         expectedSha256Prefix: '0123456789ab',
         declaredRiskLevel: 'medium',
         skillId: 'pdf-tools',
+        overwriteExisting: true,
         rememberDisabled: true,
       },
     };
@@ -86,9 +89,47 @@ describe('BlockingApprovalBar runtime scope', () => {
     expect(screen.getByText('temp:attachments/pkg.zip')).toBeInTheDocument();
     expect(screen.getByText('sha:0123456789ab')).toBeInTheDocument();
     expect(screen.getByText('pdf-tools')).toBeInTheDocument();
+    expect(screen.getByText('overwrite')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Always Allow' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Always Deny' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Allow for session' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'approval.approve' })).toBeInTheDocument();
+  });
+
+  it('shows the content hash bound to a skill workshop approval', () => {
+    const interaction: ToolApprovalBlockingInteraction = {
+      kind: 'tool_approval',
+      toolCallId: 'call-workshop',
+      toolName: 'builtin-skill_workshop_apply',
+      arguments: {
+        proposal_id: 'wp_1234567890_abcd',
+        skill_id: 'reviewed-skill',
+        expected_content_sha256:
+          '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        expected_proposal_revision:
+          'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
+        overwrite: true,
+      },
+      sensitivity: 'high',
+      description: 'Apply reviewed skill proposal',
+      timeoutSeconds: 30,
+      runtimeScope: {
+        kind: 'skill_workshop',
+        sourceSummary: 'wp_1234567890_abcd',
+        expectedSha256Prefix: '0123456789ab',
+        skillId: 'reviewed-skill',
+        overwriteExisting: true,
+        riskLevel: 'high',
+        rememberDisabled: true,
+      },
+    };
+
+    render(<BlockingApprovalBar interaction={interaction} sessionId="sess-workshop" />);
+
+    expect(screen.getByText('wp_1234567890_abcd')).toBeInTheDocument();
+    expect(screen.getByText('sha:0123456789ab')).toBeInTheDocument();
+    expect(screen.getByText('reviewed-skill')).toBeInTheDocument();
+    expect(screen.getByText('overwrite')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Always Allow' })).not.toBeInTheDocument();
   });
 });

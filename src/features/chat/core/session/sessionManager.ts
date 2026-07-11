@@ -30,7 +30,17 @@ import { sessionSwitchPerf } from '../../debug/sessionSwitchPerf';
 // SessionManager 实现
 // ============================================================================
 
-class SessionManagerImpl implements ISessionManager {
+interface SessionDestroyOperation {
+  store: StoreApi<ChatStore>;
+  cancelled: boolean;
+  promise: Promise<void>;
+}
+
+interface SessionEvictionAttempt {
+  adapterGeneration: number;
+}
+
+export class SessionManagerImpl implements ISessionManager {
   /** 会话 Store 缓存 */
   private sessions = new Map<string, StoreApi<ChatStore>>();
 
@@ -57,13 +67,16 @@ class SessionManagerImpl implements ISessionManager {
    *
    * Trade-off: We keep evictLRU() synchronous (getOrCreate is called inside
    * React useMemo and cannot become async) but defer cache deletion until the
-   * autoSave promise settles. While a session is in this set it is still in
+   * autoSave promise settles. While a session is in this map it is still in
    * `this.sessions` (so the store is reachable) but is excluded from LRU
    * candidate selection and from the "effective size" calculation. If the user
    * navigates back to a pending-eviction session before save finishes, the
    * eviction is cancelled and the session stays in cache.
    */
-  private pendingEvictions = new Set<string>();
+  private pendingEvictions = new Map<string, SessionEvictionAttempt>();
+
+  /** 销毁保存阶段中的会话；同 ID 重开会取消尚未进入摘除阶段的销毁。 */
+  private destroyingSessions = new Map<string, SessionDestroyOperation>();
 
   /** [FIX-P1-26] Current active session ID */
   private currentSessionId: string | null = null;
@@ -84,7 +97,13 @@ class SessionManagerImpl implements ISessionManager {
     });
 
     // 1. 已存在则返回并更新 LRU
-    if (this.sessions.has(sessionId)) {
+    const existingStore = this.sessions.get(sessionId);
+    if (existingStore) {
+      const destruction = this.destroyingSessions.get(sessionId);
+      if (destruction?.store === existingStore) {
+        destruction.cancelled = true;
+        console.log(`[SessionManager] Cancelled destroy for re-accessed session: ${sessionId}`);
+      }
       // [FIX-LRU-EVICTION] Cancel pending eviction if user navigates back
       if (this.pendingEvictions.has(sessionId)) {
         this.pendingEvictions.delete(sessionId);
@@ -97,7 +116,7 @@ class SessionManagerImpl implements ISessionManager {
         sessionId,
         currentSize: this.sessions.size,
       });
-      return this.sessions.get(sessionId)!;
+      return existingStore;
     }
     
     // 📊 性能打点：缓存未命中
@@ -166,6 +185,11 @@ class SessionManagerImpl implements ISessionManager {
     return store;
   }
 
+  /** 只读查看缓存，不把推测性访问计入 LRU。 */
+  peek(sessionId: string): StoreApi<ChatStore> | undefined {
+    return this.sessions.get(sessionId);
+  }
+
   /**
    * 检查会话是否存在
    */
@@ -179,20 +203,63 @@ class SessionManagerImpl implements ISessionManager {
    * 销毁前会确保数据被保存，防止数据丢失。
    * [FIX-MULTI-SESSION] 同步销毁 AdapterManager 中的适配器
    */
-  async destroy(sessionId: string): Promise<void> {
+  destroy(sessionId: string): Promise<void> {
     // [FIX-RACE] Cancel pending eviction to prevent double cleanup:
     // If finalizeEviction runs after destroy has already cleaned up,
     // it would attempt to delete/cleanup resources a second time.
     this.pendingEvictions.delete(sessionId);
 
+    const existingOperation = this.destroyingSessions.get(sessionId);
+    if (existingOperation && !existingOperation.cancelled) {
+      return existingOperation.promise;
+    }
+
     const store = this.sessions.get(sessionId);
-    if (!store) return;
+    if (!store) return Promise.resolve();
+
+    let resolveOperation!: () => void;
+    let rejectOperation!: (error: unknown) => void;
+    const promise = new Promise<void>((resolve, reject) => {
+      resolveOperation = resolve;
+      rejectOperation = reject;
+    });
+    const operation: SessionDestroyOperation = {
+      store,
+      cancelled: false,
+      promise,
+    };
+    this.destroyingSessions.set(sessionId, operation);
+
+    void this.performDestroy(sessionId, operation).then(
+      () => {
+        if (this.destroyingSessions.get(sessionId) === operation) {
+          this.destroyingSessions.delete(sessionId);
+        }
+        resolveOperation();
+      },
+      (error) => {
+        if (this.destroyingSessions.get(sessionId) === operation) {
+          this.destroyingSessions.delete(sessionId);
+        }
+        rejectOperation(error);
+      }
+    );
+
+    return promise;
+  }
+
+  private async performDestroy(
+    sessionId: string,
+    operation: SessionDestroyOperation
+  ): Promise<void> {
+    const { store } = operation;
 
     const state = store.getState();
 
     // 如果正在流式，先中断
     if (state.sessionStatus === 'streaming') {
       await state.abortStream();
+      if (operation.cancelled) return;
     }
 
     // [FIX-P1] Flush and cleanup chunkBuffer for current session
@@ -207,6 +274,19 @@ class SessionManagerImpl implements ISessionManager {
       // 继续销毁流程，但记录错误
     }
 
+    if (operation.cancelled) return;
+
+    // 动态模块必须在摘除 Store 前完成；否则迟到的回调会清掉同 ID 新代状态。
+    try {
+      const { clearSessionSkills } = await import('../../skills/progressiveDisclosure');
+      if (operation.cancelled) return;
+      clearSessionSkills(sessionId);
+    } catch (err: unknown) {
+      console.error(`[SessionManager] Failed to clear skills for session ${sessionId}:`, err);
+    }
+
+    if (operation.cancelled || this.sessions.get(sessionId) !== store) return;
+
     // [FIX-P3] Cleanup all auto-save related state
     autoSave.cleanup(sessionId);
 
@@ -217,20 +297,6 @@ class SessionManagerImpl implements ISessionManager {
 
     // [FIX-P1-2026-01-11] Cleanup variant debounce timers (scoped to this session)
     clearVariantDebounceTimersForSession(sessionId);
-
-    // 🆕 渐进披露：清理已加载的 Skills 状态（destroy 时也清理，避免内存泄漏）
-    try {
-      // 使用动态 import 避免循环依赖
-      import('../../skills/progressiveDisclosure').then(({ clearSessionSkills }) => {
-        clearSessionSkills(sessionId);
-      });
-    } catch (err: unknown) {
-      console.error(`[SessionManager] Failed to clear skills for session ${sessionId}:`, err);
-    }
-
-    // [FIX-MULTI-SESSION] Destroy adapter (remove event listeners)
-    // Only cleanup adapter when session is destroyed
-    await adapterManager.destroy(sessionId);
 
     // 取消运行时状态订阅
     const streamingUnsubscribe = this.streamingUnsubscribers.get(sessionId);
@@ -245,13 +311,22 @@ class SessionManagerImpl implements ISessionManager {
     }
     this.blockingInteractionUnsubscribers.delete(sessionId);
 
-    // 从 Map 和 LRU 中移除
+    // 同步摘除 Store 和 Adapter。此后同 ID 可创建新代，旧 cleanup 不再修改 Map。
+    const adapterEntry = adapterManager.get(sessionId);
+    const adapterCleanup = adapterEntry
+      ? adapterManager.destroy(sessionId, adapterEntry.generation)
+      : Promise.resolve();
     this.sessions.delete(sessionId);
     this.sessionMeta.delete(sessionId);
     this.lruOrder = this.lruOrder.filter((id) => id !== sessionId);
+    if (this.destroyingSessions.get(sessionId) === operation) {
+      this.destroyingSessions.delete(sessionId);
+    }
 
     // 发送事件
     this.emit({ type: 'session-destroyed', sessionId });
+
+    await adapterCleanup;
   }
 
   /**
@@ -270,6 +345,9 @@ class SessionManagerImpl implements ISessionManager {
    */
   setCurrentSessionId(sessionId: string | null): void {
     this.currentSessionId = sessionId;
+    if (sessionId) {
+      this.pendingEvictions.delete(sessionId);
+    }
     console.log('[SessionManager] setCurrentSessionId:', sessionId);
     this.emit({ type: 'current-session-changed', sessionId: sessionId ?? '' });
   }
@@ -391,20 +469,26 @@ class SessionManagerImpl implements ISessionManager {
     for (const sessionId of this.lruOrder) {
       const store = this.sessions.get(sessionId);
       const state = store?.getState();
-      const hasInFlightBlocks = !!state && (
-        state.activeBlockIds.size > 0 ||
-        Array.from(state.blocks.values()).some((block) => block.status === 'running' || block.status === 'pending')
-      );
+      const isCurrentSession = this.currentSessionId === sessionId;
+      const adapterEntry = adapterManager.get(sessionId);
+      const isMatureAdapterCache = adapterEntry !== undefined;
+      const hasActiveAdapterLease = (adapterEntry?.refCount ?? 0) > 0;
+      const isRuntimeBusy = !!state && this.isRuntimeBusyForEviction(state);
       if (
         store &&
-        state.sessionStatus !== 'streaming' &&
-        !hasInFlightBlocks &&
+        !isCurrentSession &&
+        isMatureAdapterCache &&
+        !hasActiveAdapterLease &&
+        !isRuntimeBusy &&
         !this.pendingEvictions.has(sessionId)
       ) {
         console.log(`[SessionManager] Evicting LRU session: ${sessionId}`);
 
         // Mark as pending — prevents re-selection and adjusts effective size
-        this.pendingEvictions.add(sessionId);
+        const evictionToken: SessionEvictionAttempt = {
+          adapterGeneration: adapterEntry.generation,
+        };
+        this.pendingEvictions.set(sessionId, evictionToken);
 
         // Flush chunk buffer synchronously so all buffered data is available for save
         chunkBuffer.flushAndCleanupSession(sessionId);
@@ -413,7 +497,7 @@ class SessionManagerImpl implements ISessionManager {
         autoSave
           .forceImmediateSave(store.getState())
           .then(() => {
-            this.finalizeEviction(sessionId);
+            this.finalizeEviction(sessionId, evictionToken);
           })
           .catch((error) => {
             console.error(
@@ -421,7 +505,7 @@ class SessionManagerImpl implements ISessionManager {
               error
             );
             // 即使保存失败也完成淘汰，防止 sessions Map 无上限增长
-            this.finalizeEviction(sessionId);
+            this.finalizeEviction(sessionId, evictionToken);
           });
 
         return true;
@@ -442,11 +526,32 @@ class SessionManagerImpl implements ISessionManager {
    * `pendingEvictions` will no longer contain the ID and we skip cleanup
    * (the save still ran — good for data safety — but the session stays in cache).
    */
-  private finalizeEviction(sessionId: string): void {
+  private finalizeEviction(
+    sessionId: string,
+    evictionToken: SessionEvictionAttempt
+  ): void {
     // Eviction was cancelled (session re-accessed via getOrCreate) — keep it
-    if (!this.pendingEvictions.has(sessionId)) {
+    if (this.pendingEvictions.get(sessionId) !== evictionToken) {
       console.log(
         `[SessionManager] Eviction cancelled for re-accessed session: ${sessionId}, skipping cleanup`
+      );
+      return;
+    }
+
+    // 状态可能在 save 期间变化；最终摘除前必须再次验证保护条件。
+    const currentAdapterEntry = adapterManager.get(sessionId);
+    const currentStore = this.sessions.get(sessionId);
+    if (
+      !currentStore ||
+      this.currentSessionId === sessionId ||
+      this.isRuntimeBusyForEviction(currentStore.getState()) ||
+      (currentAdapterEntry?.refCount ?? 0) > 0 ||
+      (currentAdapterEntry !== undefined &&
+        currentAdapterEntry.generation !== evictionToken.adapterGeneration)
+    ) {
+      this.pendingEvictions.delete(sessionId);
+      console.log(
+        `[SessionManager] Eviction cancelled for active session: ${sessionId}`
       );
       return;
     }
@@ -467,7 +572,10 @@ class SessionManagerImpl implements ISessionManager {
     // 渐进披露：清理已加载的 Skills 状态
     try {
       import('../../skills/progressiveDisclosure').then(({ clearSessionSkills }) => {
-        clearSessionSkills(sessionId);
+        // 同 ID 已重开时，新代会复用该 key；迟到的旧淘汰不能清理新代状态。
+        if (!this.sessions.has(sessionId)) {
+          clearSessionSkills(sessionId);
+        }
       });
     } catch (err: unknown) {
       console.error(
@@ -480,7 +588,7 @@ class SessionManagerImpl implements ISessionManager {
     const destroyAdapterWithRetry = async (retries = 2) => {
       for (let i = 0; i <= retries; i++) {
         try {
-          await adapterManager.destroy(sessionId);
+          await adapterManager.destroy(sessionId, evictionToken.adapterGeneration);
           return;
         } catch (err: unknown) {
           if (i === retries) {
@@ -521,6 +629,17 @@ class SessionManagerImpl implements ISessionManager {
 
     // 发送事件
     this.emit({ type: 'session-evicted', sessionId });
+  }
+
+  private isRuntimeBusyForEviction(state: ChatStore): boolean {
+    return (
+      state.sessionStatus === 'streaming' ||
+      state.pendingBlockingInteraction !== null ||
+      state.activeBlockIds.size > 0 ||
+      Array.from(state.blocks.values()).some(
+        (block) => block.status === 'running' || block.status === 'pending'
+      )
+    );
   }
 
   /**

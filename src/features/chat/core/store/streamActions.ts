@@ -18,13 +18,21 @@ export function createStreamActions(
             // 🔧 Bug修复：即使状态已经是 idle，也要确保清空 activeBlockIds
             // 防止因其他地方的 bug 导致 isStreaming 状态残留
             if (state.sessionStatus === 'idle') {
-              // 只在有残留的 activeBlockIds 时处理
-              if (state.activeBlockIds.size > 0) {
+              // Defensive cleanup for a terminal event that arrived after a
+              // status race. Leaving currentStreamingMessageId behind causes
+              // subsequent autonomous streams to be rejected as conflicts.
+              if (state.activeBlockIds.size > 0 || state.currentStreamingMessageId !== null) {
                 console.warn(
-                  '[ChatStore] completeStream: Found stale activeBlockIds while in idle state, cleaning up:',
-                  Array.from(state.activeBlockIds)
+                  '[ChatStore] completeStream: Found stale stream state while idle, cleaning up:',
+                  {
+                    activeBlockIds: Array.from(state.activeBlockIds),
+                    currentStreamingMessageId: state.currentStreamingMessageId,
+                  }
                 );
-                set({ activeBlockIds: new Set() });
+                set({
+                  activeBlockIds: new Set(),
+                  currentStreamingMessageId: null,
+                });
               }
               return;
             }

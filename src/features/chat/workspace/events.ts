@@ -16,6 +16,11 @@ import type {
 // 🆕 P25: 导入子代理事件日志函数
 import { addSubagentEventLog } from '../debug/exportSessionDebug';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { adapterManager } from '../adapters/AdapterManager';
+import type {
+  AdapterEntry,
+  AdapterLease,
+} from '../adapters/AdapterManager';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -137,12 +142,110 @@ export interface WorkspaceWarningEvent {
 // ============================================================
 
 let unlistenFns: UnlistenFn[] = [];
+let workspaceEventGeneration = 0;
 
 // 🔧 P24 修复：跟踪已处理的 WORKER_READY 事件，防止重复启动
 const processedWorkerReadyEvents = new Set<string>();
 
 // 🔧 P34 修复：跟踪已处理的 COORDINATOR_AWAKENED 事件，防止重复恢复 pipeline
 const processedAwakenedEvents = new Set<string>();
+
+interface WorkerStartAttempt {
+  readonly token: symbol;
+  readonly workspaceId: string;
+  readonly listenerGeneration: number;
+  cancelled: boolean;
+}
+
+interface WorkerAdapterLeaseRecord {
+  readonly workspaceId: string;
+  readonly listenerGeneration: number;
+  readonly entry: AdapterEntry;
+  readonly lease: AdapterLease;
+}
+
+/** WORKER_READY 预热持有的唯一 Adapter lease，终态事件负责释放。 */
+const workerAdapterLeases = new Map<string, WorkerAdapterLeaseRecord>();
+const workerStartAttempts = new Map<string, WorkerStartAttempt>();
+
+function isWorkerStartAttemptActive(
+  sessionId: string,
+  attempt: WorkerStartAttempt,
+): boolean {
+  return !attempt.cancelled
+    && attempt.listenerGeneration === workspaceEventGeneration
+    && workerStartAttempts.get(sessionId) === attempt;
+}
+
+function releaseWorkerAdapterLease(
+  sessionId: string,
+  listenerGeneration?: number,
+  workspaceId?: string,
+): void {
+  const attempt = workerStartAttempts.get(sessionId);
+  if (
+    attempt
+    && (listenerGeneration === undefined || attempt.listenerGeneration === listenerGeneration)
+    && (workspaceId === undefined || attempt.workspaceId === workspaceId)
+  ) {
+    attempt.cancelled = true;
+    workerStartAttempts.delete(sessionId);
+  }
+
+  const record = workerAdapterLeases.get(sessionId);
+  if (!record) return;
+  if (listenerGeneration !== undefined && record.listenerGeneration !== listenerGeneration) return;
+  if (workspaceId !== undefined && record.workspaceId !== workspaceId) return;
+  workerAdapterLeases.delete(sessionId);
+  adapterManager.release(sessionId, record.lease);
+}
+
+async function acquireWorkerAdapterLease(
+  sessionId: string,
+  store: Parameters<typeof adapterManager.getOrCreate>[1],
+  attempt: WorkerStartAttempt,
+): Promise<AdapterEntry | null> {
+  if (!isWorkerStartAttemptActive(sessionId, attempt)) return null;
+
+  const existingRecord = workerAdapterLeases.get(sessionId);
+  const existingEntry = adapterManager.get(sessionId);
+  if (
+    existingRecord
+    && existingRecord.listenerGeneration === attempt.listenerGeneration
+    && existingRecord.workspaceId === attempt.workspaceId
+    && existingEntry === existingRecord.entry
+  ) {
+    return existingRecord.entry;
+  }
+  if (existingRecord) {
+    workerAdapterLeases.delete(sessionId);
+    adapterManager.release(sessionId, existingRecord.lease);
+  }
+
+  const acquisition = await adapterManager.getOrCreate(sessionId, store);
+  if (!isWorkerStartAttemptActive(sessionId, attempt)) {
+    adapterManager.release(sessionId, acquisition.lease);
+    return null;
+  }
+  // Concurrent retry events may both await the same setup. Keep exactly one
+  // WORKER_READY lease and release any duplicate acquisition immediately.
+  const concurrentRecord = workerAdapterLeases.get(sessionId);
+  if (concurrentRecord) {
+    adapterManager.release(sessionId, acquisition.lease);
+    return concurrentRecord.listenerGeneration === attempt.listenerGeneration
+      && concurrentRecord.workspaceId === attempt.workspaceId
+      ? concurrentRecord.entry
+      : null;
+  } else {
+    workerAdapterLeases.set(sessionId, {
+      workspaceId: attempt.workspaceId,
+      listenerGeneration: attempt.listenerGeneration,
+      entry: acquisition.entry,
+      lease: acquisition.lease,
+    });
+  }
+  return acquisition.entry;
+}
 
 /**
  * 🔧 识别后端"已有活跃流"语义的错误。
@@ -166,9 +269,18 @@ export function isActiveStreamError(message: string): boolean {
  */
 async function handleWorkerReady(
   payload: WorkspaceWorkerReadyEvent,
-  store: ReturnType<typeof useWorkspaceStore.getState>
+  store: ReturnType<typeof useWorkspaceStore.getState>,
+  listenerGeneration: number,
 ): Promise<void> {
   const { workspace_id, agent_session_id, skill_id, reminder } = payload;
+  if (listenerGeneration !== workspaceEventGeneration) return;
+  const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
+  if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
+    console.warn(
+      `[Workspace Events] Ignoring worker ready for workspace ${workspace_id} (current ${currentWorkspaceId})`
+    );
+    return;
+  }
   console.log(`[Workspace Events] [WORKER_READY] Received event for agent: ${agent_session_id}, skill: ${skill_id}, hasReminder: ${!!reminder}`);
   // 🆕 P25: 记录到调试日志
   addSubagentEventLog('worker_ready', agent_session_id, `skill=${skill_id}`, undefined, workspace_id);
@@ -190,13 +302,15 @@ async function handleWorkerReady(
   processedWorkerReadyEvents.add(agent_session_id);
   console.log(`[Workspace Events] [WORKER_READY] Added ${agent_session_id} to processedWorkerReadyEvents, size: ${processedWorkerReadyEvents.size}`);
   
-  const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
-  if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
-    console.warn(
-      `[Workspace Events] Ignoring worker ready for workspace ${workspace_id} (current ${currentWorkspaceId})`
-    );
-    return;
-  }
+  const previousAttempt = workerStartAttempts.get(agent_session_id);
+  if (previousAttempt) previousAttempt.cancelled = true;
+  const startAttempt: WorkerStartAttempt = {
+    token: Symbol(agent_session_id),
+    workspaceId: workspace_id,
+    listenerGeneration,
+    cancelled: false,
+  };
+  workerStartAttempts.set(agent_session_id, startAttempt);
   
   try {
     // 🔧 P20 修复：先预热子代理的 Store 和适配器
@@ -206,7 +320,6 @@ async function handleWorkerReady(
     
     // 动态导入避免循环依赖
     const { sessionManager } = await import('../core/session/sessionManager');
-    const { adapterManager } = await import('../adapters/AdapterManager');
     const { addSubagentPreheatLog } = await import('../debug/exportSessionDebug');
     
     // 1. 获取或创建 Store
@@ -217,7 +330,14 @@ async function handleWorkerReady(
     
     // 2. 获取或创建适配器并等待 setup 完成
     const adapterSetupStart = performance.now();
-    const adapterEntry = await adapterManager.getOrCreate(agent_session_id, subagentStore);
+    const adapterEntry = await acquireWorkerAdapterLease(
+      agent_session_id,
+      subagentStore,
+      startAttempt,
+    );
+    if (!adapterEntry || !isWorkerStartAttemptActive(agent_session_id, startAttempt)) {
+      return;
+    }
     const adapterSetupMs = performance.now() - adapterSetupStart;
     console.log(`[Workspace Events] [T+${(performance.now() - startTime).toFixed(1)}ms] Adapter setup done for agent: ${agent_session_id}, isReady: ${adapterEntry.isReady}`);
     
@@ -230,12 +350,18 @@ async function handleWorkerReady(
     // 这确保监听器在 runAgent 之前绑定好，不会丢失流式事件
     const listenersWaitStart = performance.now();
     await adapterManager.waitForListenersReady(agent_session_id);
+    if (!isWorkerStartAttemptActive(agent_session_id, startAttempt)) {
+      return;
+    }
     const listenersWaitMs = performance.now() - listenersWaitStart;
     console.log(`[Workspace Events] [T+${(performance.now() - startTime).toFixed(1)}ms] Listeners ready for agent: ${agent_session_id} (waited ${listenersWaitMs.toFixed(1)}ms)`);
     
     // 3. 适配器就绪后，启动子代理任务
     const runAgentStart = performance.now();
     const { runAgent } = await import('./api');
+    if (!isWorkerStartAttemptActive(agent_session_id, startAttempt)) {
+      return;
+    }
     // 🆕 P25: 记录 runAgent 调用
     addSubagentEventLog('run_agent', agent_session_id, `Calling runAgent... hasReminder=${!!reminder}`, undefined, workspace_id);
     // 🆕 P38: 传递 reminder 参数（如果有的话，用于子代理没发消息的重试提醒）
@@ -268,6 +394,10 @@ async function handleWorkerReady(
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
 
+    if (!isWorkerStartAttemptActive(agent_session_id, startAttempt)) {
+      return;
+    }
+
     // 🔧 P1 修复：后端返回"已有活跃流"说明子代理正在健康运行，
     // 不是启动失败——静默返回，不改状态也不弹错误通知
     if (isActiveStreamError(errorMsg)) {
@@ -283,6 +413,8 @@ async function handleWorkerReady(
       );
       return;
     }
+
+    releaseWorkerAdapterLease(agent_session_id, listenerGeneration, workspace_id);
 
     console.error(`[Workspace Events] Failed to auto-start worker: ${agent_session_id}`, error);
 
@@ -316,13 +448,28 @@ export async function initWorkspaceEventListeners(): Promise<void> {
   }
   // 先清理已有的监听器
   await cleanupWorkspaceEventListeners();
+  const listenerGeneration = workspaceEventGeneration;
 
   const store = useWorkspaceStore.getState();
 
+  try {
+  const registerListener = async <T,>(
+    eventName: string,
+    handler: (event: { payload: T }) => void,
+  ): Promise<void> => {
+    const unlisten = await listen<T>(eventName, handler);
+    if (listenerGeneration !== workspaceEventGeneration) {
+      unlisten();
+      throw new Error('Workspace listener generation changed during initialization');
+    }
+    unlistenFns.push(unlisten);
+  };
+
   // 监听消息接收事件
-  const unlistenMessage = await listen<WorkspaceMessageEvent>(
+  await registerListener<WorkspaceMessageEvent>(
     WORKSPACE_EVENTS.MESSAGE_RECEIVED,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, message } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       
@@ -341,12 +488,12 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       }
     }
   );
-  unlistenFns.push(unlistenMessage);
 
   // 监听 Agent 加入事件
-  const unlistenAgentJoined = await listen<WorkspaceAgentEvent>(
+  await registerListener<WorkspaceAgentEvent>(
     WORKSPACE_EVENTS.AGENT_JOINED,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, agent } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       
@@ -364,26 +511,27 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       }
     }
   );
-  unlistenFns.push(unlistenAgentJoined);
 
   // 监听 Agent 离开事件
-  const unlistenAgentLeft = await listen<WorkspaceAgentEvent>(
+  await registerListener<WorkspaceAgentEvent>(
     WORKSPACE_EVENTS.AGENT_LEFT,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, agent } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       
       if (currentWorkspaceId === workspace_id) {
         store.removeAgent(agent.session_id);
       }
+      releaseWorkerAdapterLease(agent.session_id, listenerGeneration, workspace_id);
     }
   );
-  unlistenFns.push(unlistenAgentLeft);
 
   // 监听 Agent 状态变更事件
-  const unlistenAgentStatus = await listen<WorkspaceAgentStatusEvent>(
+  await registerListener<WorkspaceAgentStatusEvent>(
     WORKSPACE_EVENTS.AGENT_STATUS_CHANGED,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, session_id, status } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       const parsedStatus = parseAgentStatus(status);
@@ -393,6 +541,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       // agent 进入非运行状态（idle/completed/failed/cancelled）时无条件清除。
       if (parsedStatus !== 'running') {
         processedWorkerReadyEvents.delete(session_id);
+        releaseWorkerAdapterLease(session_id, listenerGeneration, workspace_id);
       }
 
       if (currentWorkspaceId === workspace_id) {
@@ -400,12 +549,12 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       }
     }
   );
-  unlistenFns.push(unlistenAgentStatus);
 
   // 监听文档更新事件
-  const unlistenDocument = await listen<WorkspaceDocumentEvent>(
+  await registerListener<WorkspaceDocumentEvent>(
     WORKSPACE_EVENTS.DOCUMENT_UPDATED,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, document } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       
@@ -424,39 +573,47 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       }
     }
   );
-  unlistenFns.push(unlistenDocument);
 
   // 监听工作区关闭事件
-  const unlistenClosed = await listen<WorkspaceClosedEvent>(
+  await registerListener<WorkspaceClosedEvent>(
     WORKSPACE_EVENTS.WORKSPACE_CLOSED,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       
       if (currentWorkspaceId === workspace_id) {
         store.reset();
       }
+      for (const [sessionId, record] of workerAdapterLeases) {
+        if (
+          record.workspaceId === workspace_id
+          && record.listenerGeneration === listenerGeneration
+        ) {
+          releaseWorkerAdapterLease(sessionId, listenerGeneration, workspace_id);
+        }
+      }
     }
   );
-  unlistenFns.push(unlistenClosed);
 
   // 监听 Worker 准备启动事件（自动启动 Worker）
   // 🔧 P20 修复：先预热子代理的适配器（设置事件监听器），再启动任务
   // 🔧 P39 优化：改为并行启动，多个 worker_ready 事件不再串行等待
-  const unlistenWorkerReady = await listen<WorkspaceWorkerReadyEvent>(
+  await registerListener<WorkspaceWorkerReadyEvent>(
     WORKSPACE_EVENTS.WORKER_READY,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       // 🔧 P39: 使用 void 触发异步处理，不阻塞事件循环
       // 这允许多个子代理真正并行启动
-      void handleWorkerReady(event.payload, store);
+      void handleWorkerReady(event.payload, store, listenerGeneration);
     }
   );
-  unlistenFns.push(unlistenWorkerReady);
 
   // 🆕 监听主代理唤醒事件（触发管线恢复）
-  const unlistenCoordinatorAwakened = await listen<CoordinatorAwakenedEvent>(
+  await registerListener<CoordinatorAwakenedEvent>(
     WORKSPACE_EVENTS.COORDINATOR_AWAKENED,
     async (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const {
         workspace_id,
         coordinator_session_id,
@@ -465,6 +622,14 @@ export async function initWorkspaceEventListeners(): Promise<void> {
         awaken_message,
         wake_reason,
       } = event.payload;
+
+      const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
+      if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
+        console.warn(
+          `[Workspace Events] Ignoring coordinator awakened for workspace ${workspace_id} (current ${currentWorkspaceId})`
+        );
+        return;
+      }
       
       console.log(
         `[Workspace Events] Coordinator awakened: coordinator=${coordinator_session_id}, sleep=${sleep_id}, by=${awakened_by}, reason=${wake_reason}`
@@ -483,14 +648,6 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       processedAwakenedEvents.add(sleep_id);
       console.log(`[Workspace Events] [COORD_WAKE] Added ${sleep_id} to processedAwakenedEvents, size: ${processedAwakenedEvents.size}`);
       
-      const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
-      if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
-        console.warn(
-          `[Workspace Events] Ignoring coordinator awakened for workspace ${workspace_id} (current ${currentWorkspaceId})`
-        );
-        return;
-      }
-      
       // 🔧 P35 修复：不再调用 chat_v2_send_message
       // 后端 Pipeline 通过 oneshot channel 已经自动恢复，不需要前端发送消息
       // 之前的实现会因为 Pipeline 流仍活跃而报 "Session has an active stream" 错误
@@ -504,12 +661,12 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       );
     }
   );
-  unlistenFns.push(unlistenCoordinatorAwakened);
 
   // 🆕 P38: 监听子代理重试事件
-  const unlistenSubagentRetry = await listen<SubagentRetryEvent>(
+  await registerListener<SubagentRetryEvent>(
     WORKSPACE_EVENTS.SUBAGENT_RETRY,
     async (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, agent_session_id, reason, message, retry_count } = event.payload;
       console.log(`[Workspace Events] [SUBAGENT_RETRY] agent=${agent_session_id}, reason=${reason}, retry_count=${retry_count}`);
       addSubagentEventLog('worker_ready_retry', agent_session_id, `reason=${reason}: ${message}`, undefined, workspace_id);
@@ -590,12 +747,12 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       }
     }
   );
-  unlistenFns.push(unlistenSubagentRetry);
 
   // 🆕 工作区警告事件
-  const unlistenWorkspaceWarning = await listen<WorkspaceWarningEvent>(
+  await registerListener<WorkspaceWarningEvent>(
     WORKSPACE_EVENTS.WORKSPACE_WARNING,
     (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
       const { workspace_id, code, message, agent_session_id, retry_count, max_retries } = event.payload;
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
@@ -613,21 +770,41 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       showGlobalNotification('warning', resolvedMessage);
     }
   );
-  unlistenFns.push(unlistenWorkspaceWarning);
 
   console.log('[Workspace Events] Event listeners initialized');
+  } catch (error) {
+    // Sequential listen registration can fail after earlier listeners have
+    // already succeeded. Roll the partial generation back immediately so no
+    // stale callbacks or adapter leases survive a rejected init.
+    if (listenerGeneration === workspaceEventGeneration) {
+      await cleanupWorkspaceEventListeners();
+    }
+    throw error;
+  }
 }
 
 /**
  * 清理工作区事件监听
  */
 export async function cleanupWorkspaceEventListeners(): Promise<void> {
+  workspaceEventGeneration++;
   for (const unlisten of unlistenFns) {
     unlisten();
   }
   unlistenFns = [];
   // 🔧 P24 修复：清空已处理事件 Set，允许新工作区重新处理
   processedWorkerReadyEvents.clear();
+  for (const [sessionId, record] of [...workerAdapterLeases.entries()]) {
+    releaseWorkerAdapterLease(
+      sessionId,
+      record.listenerGeneration,
+      record.workspaceId,
+    );
+  }
+  for (const attempt of workerStartAttempts.values()) {
+    attempt.cancelled = true;
+  }
+  workerStartAttempts.clear();
   // 🔧 P34 修复：清空已处理唤醒事件 Set
   processedAwakenedEvents.clear();
   console.log('[Workspace Events] Event listeners cleaned up');

@@ -67,8 +67,15 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
 
   const isResolved = Boolean(interaction.resolvedStatus);
   const shellScope = interaction.runtimeScope?.kind === 'shell' ? interaction.runtimeScope : null;
-  const skillInstallScope =
-    interaction.runtimeScope?.kind === 'skill_install' ? interaction.runtimeScope : null;
+  const skillApprovalScope =
+    interaction.runtimeScope?.kind === 'skill_install' ||
+    interaction.runtimeScope?.kind === 'skill_workshop'
+      ? interaction.runtimeScope
+      : null;
+  const skillApprovalRisk =
+    skillApprovalScope?.kind === 'skill_install'
+      ? (skillApprovalScope.declaredRiskLevel ?? skillApprovalScope.riskLevel)
+      : skillApprovalScope?.riskLevel;
   const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled);
 
   // 工具显示名称
@@ -290,31 +297,36 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         </div>
       )}
 
-      {skillInstallScope && (
+      {skillApprovalScope && (
         <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-          {skillInstallScope.sourceSummary && (
-            <span className="max-w-[16rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono" title={skillInstallScope.sourceSummary}>
-              {skillInstallScope.sourceSummary}
+          {skillApprovalScope.sourceSummary && (
+            <span className="max-w-[16rem] truncate rounded bg-muted px-1.5 py-0.5 font-mono" title={skillApprovalScope.sourceSummary}>
+              {skillApprovalScope.sourceSummary}
             </span>
           )}
-          {skillInstallScope.expectedSha256Prefix && (
+          {skillApprovalScope.expectedSha256Prefix && (
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono" title={t('skillInstall.approval.sha256Prefix')}>
-              sha:{skillInstallScope.expectedSha256Prefix}
+              sha:{skillApprovalScope.expectedSha256Prefix}
             </span>
           )}
-          {skillInstallScope.skillId && (
-            <span className="rounded bg-muted px-1.5 py-0.5 font-mono">{skillInstallScope.skillId}</span>
+          {skillApprovalScope.skillId && (
+            <span className="rounded bg-muted px-1.5 py-0.5 font-mono">{skillApprovalScope.skillId}</span>
           )}
-          {(skillInstallScope.declaredRiskLevel || skillInstallScope.riskLevel) && (
+          {skillApprovalScope.overwriteExisting && (
+            <span className="rounded bg-red-100 px-1.5 py-0.5 font-mono text-red-700 dark:bg-red-900/30 dark:text-red-300">
+              overwrite
+            </span>
+          )}
+          {skillApprovalRisk && (
             <Badge
               className={cn(
                 'text-[10px] px-1.5 py-0',
-                SENSITIVITY_COLORS[skillInstallScope.declaredRiskLevel ?? skillInstallScope.riskLevel ?? 'medium'],
+                SENSITIVITY_COLORS[skillApprovalRisk],
               )}
             >
               {t(
-                `skillInstall.approval.risk.${skillInstallScope.declaredRiskLevel ?? skillInstallScope.riskLevel}`,
-                skillInstallScope.declaredRiskLevel ?? skillInstallScope.riskLevel,
+                `skillInstall.approval.risk.${skillApprovalRisk}`,
+                skillApprovalRisk,
               )}
             </Badge>
           )}

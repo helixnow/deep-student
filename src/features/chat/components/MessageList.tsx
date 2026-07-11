@@ -45,6 +45,52 @@ const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
 const VIRTUALIZATION_THRESHOLD = 80;
 
+interface PendingScrollCompensation {
+  scrollHeight: number;
+  scrollTop: number;
+  anchorMessageId?: string;
+  anchorViewportOffset?: number;
+}
+
+function countInsertedBeforeExisting(
+  previousOrder: readonly string[],
+  nextOrder: readonly string[],
+): number {
+  if (nextOrder.length <= previousOrder.length) return 0;
+  let previousIndex = 0;
+  let insertedBeforeExisting = 0;
+  for (const id of nextOrder) {
+    if (previousIndex < previousOrder.length && id === previousOrder[previousIndex]) {
+      previousIndex += 1;
+    } else if (previousIndex < previousOrder.length) {
+      insertedBeforeExisting += 1;
+    }
+  }
+  return previousIndex === previousOrder.length ? insertedBeforeExisting : 0;
+}
+
+function captureScrollCompensation(
+  viewport: HTMLDivElement,
+): PendingScrollCompensation {
+  const viewportRect = viewport.getBoundingClientRect();
+  const messageElements = viewport.querySelectorAll<HTMLElement>('[data-chat-message-id]');
+  for (const element of messageElements) {
+    const rect = element.getBoundingClientRect();
+    if (rect.bottom > viewportRect.top && rect.top < viewportRect.bottom) {
+      return {
+        scrollHeight: viewport.scrollHeight,
+        scrollTop: viewport.scrollTop,
+        anchorMessageId: element.dataset.chatMessageId,
+        anchorViewportOffset: rect.top - viewportRect.top,
+      };
+    }
+  }
+  return {
+    scrollHeight: viewport.scrollHeight,
+    scrollTop: viewport.scrollTop,
+  };
+}
+
 // ============================================================================
 // Props 定义
 // ============================================================================
@@ -165,14 +211,15 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // commit 内同步渲染全部 markdown/KaTeX 造成数百 ms 阻塞。
   const [tailWindowExpanded, setTailWindowExpanded] = useState(false);
   // 补齐前记录的滚动基准（补齐会在上方"插入"旧消息，需要锚定补偿）
-  const pendingScrollCompensationRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
+  const pendingScrollCompensationRef = useRef<PendingScrollCompensation | null>(null);
   // 会话打开时的底部锚定只执行一次
   const hasAnchoredRef = useRef(false);
   // 挂载/数据加载完成时已存在的消息数：仅之后追加的消息播放入场动画
   const initialMessageCountRef = useRef(messageOrder.length);
 
-  // 头部历史检测基准：上一次渲染的首条消息 ID（用于识别 prependHistoryFromBackend 合并）
-  const prevFirstMessageIdRef = useRef<string | null>(messageOrder[0] ?? null);
+  // 上一次消息顺序：用于识别头部或视口上方的中部历史插入。
+  const prevMessageOrderRef = useRef(messageOrder);
+  const historyInsertionRef = useRef(false);
 
   // 列表纪元：按会话递增，作为消息容器的 key。切换会话时旧列表子树整体卸载，
   // AnimatePresence 不再对旧会话消息播放退场动画（避免新旧内容短暂混排）；
@@ -188,7 +235,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
     hasAnchoredRef.current = false;
     pendingScrollCompensationRef.current = null;
     initialMessageCountRef.current = messageOrder.length;
-    prevFirstMessageIdRef.current = messageOrder[0] ?? null;
+    prevMessageOrderRef.current = messageOrder;
+    historyInsertionRef.current = false;
     listEpochRef.current += 1;
     if (tailWindowExpanded) {
       // render 阶段的条件 setState（React 官方 adjust-state-during-render 模式）
@@ -200,24 +248,22 @@ const MessageListInner: React.FC<MessageListProps> = ({
       setVirtualizerReady(false);
     }
   } else {
-    // 尾部分块加载补齐历史：首条消息 ID 变化且旧首条仍在列表更后位置 → 头部插入
-    // 1) 入场动画基准按插入量平移，避免原尾部消息被误判为新消息而整屏弹出
-    // 2) 记录滚动基准（render 阶段 DOM 尚未更新），commit 后做锚定补偿
-    const prevFirstId = prevFirstMessageIdRef.current;
-    const nextFirstId = messageOrder[0] ?? null;
-    if (prevFirstId !== null && nextFirstId !== null && prevFirstId !== nextFirstId) {
-      const prependCount = messageOrder.indexOf(prevFirstId);
-      if (prependCount > 0) {
-        initialMessageCountRef.current += prependCount;
+    // Full-history merge may insert at the head or between two backend anchors.
+    // Detect any pure insertion before an existing item, then preserve the
+    // first visible message's pixel offset across the commit. An insertion
+    // below the viewport yields a zero anchor delta and therefore no jump.
+    const previousOrder = prevMessageOrderRef.current;
+    if (previousOrder !== messageOrder) {
+      const insertedBeforeExisting = countInsertedBeforeExisting(previousOrder, messageOrder);
+      historyInsertionRef.current = insertedBeforeExisting > 0;
+      if (insertedBeforeExisting > 0) {
+        initialMessageCountRef.current += insertedBeforeExisting;
         if (viewportElement && !pendingScrollCompensationRef.current) {
-          pendingScrollCompensationRef.current = {
-            scrollHeight: viewportElement.scrollHeight,
-            scrollTop: viewportElement.scrollTop,
-          };
+          pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);
         }
       }
     }
-    prevFirstMessageIdRef.current = nextFirstId;
+    prevMessageOrderRef.current = messageOrder;
   }
 
   // 挂载时数据未就绪（如适配器已缓存但会话重载中）：加载完成后修正入场基准，
@@ -262,6 +308,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const virtualizer = useVirtualizer({
     count: virtualizerReady && !useDirectRender ? virtualRowCount : 0,
     getScrollElement: () => viewportElement,
+    // History completion can insert rows at the head or between anchors.
+    // Index keys would reuse a previous message's measured height for the new
+    // occupant and cause a second jump after our scroll-anchor compensation.
+    getItemKey: (index) => messageOrder[index] ?? index,
     estimateSize: () => estimatedItemSize,
     overscan,
     // 🔧 修复消息重叠：始终启用测量，不再延迟
@@ -300,10 +350,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
     const id = schedule(() => {
       // 记录补齐前的滚动基准；补齐后在 layout effect 中做锚定补偿
       if (viewportElement) {
-        pendingScrollCompensationRef.current = {
-          scrollHeight: viewportElement.scrollHeight,
-          scrollTop: viewportElement.scrollTop,
-        };
+        pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);
       }
       setTailWindowExpanded(true);
     }, { timeout: 300 });
@@ -311,17 +358,34 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => cancel(id);
   }, [useDirectRender, tailWindowExpanded, messageOrder.length, viewportElement]);
 
-  // 补齐后的滚动锚定补偿：上方插入的旧消息把内容顶下去多少，就把 scrollTop 加回多少
+  // 补齐后的滚动锚定补偿：优先按首个可见消息的像素偏移补偿，
+  // 兼容头插和中部插入；找不到锚点时才回退到 scrollHeight 差值。
   useLayoutEffect(() => {
-    if (!tailWindowExpanded) return;
     const pending = pendingScrollCompensationRef.current;
     if (!pending || !viewportElement) return;
     pendingScrollCompensationRef.current = null;
-    const delta = viewportElement.scrollHeight - pending.scrollHeight;
-    if (delta > 0) {
-      viewportElement.scrollTop = pending.scrollTop + delta;
+
+    let delta: number | null = null;
+    if (pending.anchorMessageId && pending.anchorViewportOffset !== undefined) {
+      const viewportRect = viewportElement.getBoundingClientRect();
+      const anchor = Array.from(
+        viewportElement.querySelectorAll<HTMLElement>('[data-chat-message-id]'),
+      ).find((element) => element.dataset.chatMessageId === pending.anchorMessageId);
+      if (anchor) {
+        delta = anchor.getBoundingClientRect().top
+          - viewportRect.top
+          - pending.anchorViewportOffset;
+      }
     }
-  }, [tailWindowExpanded, viewportElement]);
+
+    if (delta === null) {
+      delta = viewportElement.scrollHeight - pending.scrollHeight;
+    }
+    if (Math.abs(delta) > 0.5) {
+      viewportElement.scrollTop = pending.scrollTop + delta;
+      resetScrollBaselineRef.current();
+    }
+  }, [messageOrder, tailWindowExpanded, viewportElement]);
 
   // 🚀 会话打开即底部锚定：在绘制前执行，避免"先见顶部再跳底部"的闪动
   useLayoutEffect(() => {
@@ -612,6 +676,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
   useEffect(() => {
     const appended = messageOrder.length > prevMessageCountRef.current;
     prevMessageCountRef.current = messageOrder.length;
+    if (historyInsertionRef.current) {
+      historyInsertionRef.current = false;
+      return;
+    }
     if (!appended || isStreaming || userHasScrolledRef.current) return;
     const rafId = requestAnimationFrame(() => { scrollToBottom(); });
     return () => cancelAnimationFrame(rafId);
@@ -742,6 +810,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 return (
                   <motion.div
                     key={messageId}
+                    data-chat-message-id={messageId}
                     variants={newMessageVariants}
                     initial={isNewlyAppended ? 'initial' : false}
                     animate="animate"
@@ -751,7 +820,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                   </motion.div>
                 );
               }
-              return <div key={messageId}>{content}</div>;
+              return <div key={messageId} data-chat-message-id={messageId}>{content}</div>;
             })}
           </AnimatePresence>
         </div>
@@ -780,6 +849,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
               <div
                 key={messageId}
                 data-index={virtualRow.index}
+                data-chat-message-id={messageId}
                 ref={virtualizer.measureElement}
                 style={{
                   position: 'absolute',

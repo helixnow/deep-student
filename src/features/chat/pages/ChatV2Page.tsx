@@ -47,7 +47,11 @@ import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/com
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
-import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import {
+  createSandboxOwnerKey,
+  selectSandboxWorkbenchOwnerState,
+  useSandboxWorkbenchStore,
+} from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 // P1-07: 导入命令面板事件 hook
@@ -132,6 +136,13 @@ export const ChatV2Page: React.FC = () => {
 
   // ========== 响应式布局支持 ==========
   const { isSmallScreen } = useBreakpoint();
+  const [sandboxOwnerKey] = useState(() => createSandboxOwnerKey('chat-page'));
+
+  useEffect(() => {
+    return () => {
+      useSandboxWorkbenchStore.getState().disposeOwner(sandboxOwnerKey);
+    };
+  }, [sandboxOwnerKey]);
 
   // 状态声明提前，用于 useMobileHeader
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -163,19 +174,27 @@ export const ChatV2Page: React.FC = () => {
     if (newId !== prev) {
       setOpenApp(null);
       setAttachmentPreviewOpen(false);
-      useSandboxWorkbenchStore.getState().closeSession();
+      useSandboxWorkbenchStore.getState().closeSession(sandboxOwnerKey);
     }
     setCurrentSessionIdState(newId);
-  }, []);
+  }, [sandboxOwnerKey]);
   // 🔧 P1-005 修复：使用 ref 追踪最新状态，避免 deleteSession 中的闭包竞态条件
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
-  const sandboxActiveSession = useSandboxWorkbenchStore((state) => state.activeSession);
-  const sandboxWorkbenchOpen = useSandboxWorkbenchStore((state) => state.isOpen);
+  const sandboxActiveSession = useSandboxWorkbenchStore(
+    (state) => selectSandboxWorkbenchOwnerState(state, sandboxOwnerKey).activeSession,
+  );
+  const sandboxWorkbenchOpen = useSandboxWorkbenchStore(
+    (state) => selectSandboxWorkbenchOwnerState(state, sandboxOwnerKey).isOpen,
+  );
+  const activateSandboxOwner = useSandboxWorkbenchStore((state) => state.activateOwner);
   const openSandboxWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
   const closeSandboxWorkbench = useSandboxWorkbenchStore((state) => state.closeWorkbench);
+  const handleSandboxOwnerActivation = useCallback(() => {
+    activateSandboxOwner(sandboxOwnerKey);
+  }, [activateSandboxOwner, sandboxOwnerKey]);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
   // 移动端：分组编辑器资源选择回调（右面板复用，返回 'added'|'removed'|false）
@@ -602,9 +621,9 @@ export const ChatV2Page: React.FC = () => {
   // 沙箱工作台占据右屏时，顶栏返回箭头与手势/返回键统一走这里收回
   const mobileSandboxOpen = sandboxWorkbenchOpen && !!sandboxActiveSession;
   const closeMobileSandbox = useCallback(() => {
-    closeSandboxWorkbench();
+    closeSandboxWorkbench(sandboxOwnerKey);
     setMobileResourcePanelOpen(false);
-  }, [closeSandboxWorkbench]);
+  }, [closeSandboxWorkbench, sandboxOwnerKey]);
   // 右屏资源预览返回上一层（资源库列表），而非直接退回聊天
   const closeMobileOpenApp = useCallback(() => {
     setOpenApp(null);
@@ -718,11 +737,11 @@ export const ChatV2Page: React.FC = () => {
     if (!sandboxActiveSession) return;
 
     if (sandboxWorkbenchOpen) {
-      closeSandboxWorkbench();
+      closeSandboxWorkbench(sandboxOwnerKey);
     } else {
-      openSandboxWorkbench();
+      openSandboxWorkbench(sandboxOwnerKey);
     }
-  }, [closeSandboxWorkbench, openSandboxWorkbench, sandboxActiveSession, sandboxWorkbenchOpen]);
+  }, [closeSandboxWorkbench, openSandboxWorkbench, sandboxActiveSession, sandboxOwnerKey, sandboxWorkbenchOpen]);
 
   const desktopSecondaryPanelMode: DesktopSecondaryPanelMode | null = sandboxWorkbenchOpen && sandboxActiveSession
     ? 'sandbox'
@@ -785,6 +804,7 @@ export const ChatV2Page: React.FC = () => {
             embedded
             className="h-full"
             onClose={handleCloseSandbox}
+            ownerKey={sandboxOwnerKey}
           />
         </div>
       );
@@ -1050,7 +1070,11 @@ export const ChatV2Page: React.FC = () => {
       <div className={cn(
         "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
         isSmallScreen && "flex-col"
-      )}>
+      )}
+        data-sandbox-owner-key={sandboxOwnerKey}
+        onPointerDownCapture={handleSandboxOwnerActivation}
+        onFocusCapture={handleSandboxOwnerActivation}
+      >
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
         <MobileSlidingLayout
@@ -1072,6 +1096,7 @@ export const ChatV2Page: React.FC = () => {
                   embedded
                   className="h-full"
                   onClose={handleCloseSandbox}
+                  ownerKey={sandboxOwnerKey}
                 />
               ) : openApp ? (
                 renderOpenAppPanel({
@@ -1118,7 +1143,7 @@ export const ChatV2Page: React.FC = () => {
             // 沙箱工作台占据右屏时，手势/返回键滑回中屏必须同步关闭工作台，
             // 否则 screenPosition 会被 sandboxWorkbenchOpen 锁在 'right'（导航死胡同）
             if (pos !== 'right' && sandboxWorkbenchOpen) {
-              closeSandboxWorkbench();
+              closeSandboxWorkbench(sandboxOwnerKey);
             }
           }}
           rightPanelEnabled={true}

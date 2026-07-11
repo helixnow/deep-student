@@ -1,4 +1,6 @@
-use crate::llm_manager::adapters::{claude_generation, map_budget_tokens_to_effort, ClaudeGeneration};
+use crate::llm_manager::adapters::{
+    claude_generation, map_budget_tokens_to_effort, ClaudeGeneration,
+};
 use crate::utils::fetch::fetch_binary_with_cache;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -158,12 +160,10 @@ impl ProviderAdapter for OpenAIAdapter {
                                     delta.get("reasoning_details").and_then(|v| v.as_array())
                                 {
                                     for detail in details {
-                                        let text = detail
-                                            .get("text")
-                                            .and_then(|v| v.as_str())
-                                            .or_else(|| {
-                                                detail.get("summary").and_then(|v| v.as_str())
-                                            });
+                                        let text =
+                                            detail.get("text").and_then(|v| v.as_str()).or_else(
+                                                || detail.get("summary").and_then(|v| v.as_str()),
+                                            );
                                         if let Some(text) = text {
                                             if !text.is_empty() {
                                                 events.push(StreamEvent::ReasoningChunk(
@@ -658,7 +658,10 @@ impl OpenAIResponsesAdapter {
             .and_then(|v| v.as_str())
             .unwrap_or("");
         if format_type == "json_schema" {
-            if let Some(nested) = response_format.get("json_schema").and_then(|v| v.as_object()) {
+            if let Some(nested) = response_format
+                .get("json_schema")
+                .and_then(|v| v.as_object())
+            {
                 let mut flat = Map::new();
                 flat.insert("type".to_string(), json!("json_schema"));
                 for (key, value) in nested {
@@ -773,10 +776,7 @@ impl OpenAIResponsesAdapter {
 
         // 尊重调用方 body 中的 stream 值：非流式路径（标题生成/OCR 等）显式传
         // stream:false 时必须透传，否则收到 SSE 流导致 JSON 解析失败；缺省仍为 true
-        let stream_enabled = body
-            .get("stream")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true);
+        let stream_enabled = body.get("stream").and_then(|v| v.as_bool()).unwrap_or(true);
         let mut payload = json!({
             "model": model,
             "input": input_blocks,
@@ -2603,8 +2603,8 @@ mod tests {
         let adapter = OpenAIAdapter;
 
         // (c) delta.reasoning 字符串：Together/Groq(parsed)/Cerebras/阶跃
-        let reasoning = adapter
-            .parse_stream(r#"data: {"choices":[{"delta":{"reasoning":"thinking hard"}}]}"#);
+        let reasoning =
+            adapter.parse_stream(r#"data: {"choices":[{"delta":{"reasoning":"thinking hard"}}]}"#);
         assert!(
             matches!(reasoning.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "thinking hard")
         );
@@ -2623,9 +2623,7 @@ mod tests {
             r#"data: {"choices":[{"delta":{"reasoning_content":"same text","reasoning":"same text"}}]}"#,
         );
         assert_eq!(both.len(), 1);
-        assert!(
-            matches!(both.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "same text")
-        );
+        assert!(matches!(both.first(), Some(StreamEvent::ReasoningChunk(s)) if s == "same text"));
     }
 
     #[test]
@@ -2633,9 +2631,8 @@ mod tests {
         // OpenRouter 等平台会在流中注入 {"error":{...}}（研报 09 §1），不能静默忽略
         let adapter = OpenAIAdapter;
 
-        let events = adapter.parse_stream(
-            r#"data: {"error":{"code":402,"message":"Insufficient credits"}}"#,
-        );
+        let events = adapter
+            .parse_stream(r#"data: {"error":{"code":402,"message":"Insufficient credits"}}"#);
 
         assert!(matches!(
             events.first(),
@@ -3144,7 +3141,10 @@ mod tests {
                 .any(|e| matches!(e, StreamEvent::ReasoningChunk(_))),
             "response.completed 不应再次提取 reasoning"
         );
-        assert!(matches!(completed_events.first(), Some(StreamEvent::Usage(_))));
+        assert!(matches!(
+            completed_events.first(),
+            Some(StreamEvent::Usage(_))
+        ));
         assert!(matches!(completed_events.last(), Some(StreamEvent::Done)));
     }
 
@@ -3377,10 +3377,7 @@ mod tests {
         assert_eq!(thinking.get("type"), Some(&json!("adaptive")));
         assert!(thinking.get("budget_tokens").is_none());
         assert_eq!(
-            request
-                .output_config
-                .as_ref()
-                .and_then(|c| c.get("effort")),
+            request.output_config.as_ref().and_then(|c| c.get("effort")),
             Some(&json!("medium"))
         );
     }

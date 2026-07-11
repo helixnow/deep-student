@@ -15,7 +15,8 @@ use std::time::Duration;
 use serde_json::json;
 
 use super::tool_loop::{
-    annotate_auto_retry, is_transient_tool_error, plan_parallel_segments, run_bounded_ordered,
+    annotate_auto_retry, build_run_scoped_stream_event, is_transient_tool_error,
+    pin_tool_result_to_block, plan_parallel_segments, run_bounded_ordered,
     PARALLEL_TOOL_CONCURRENCY, TOOL_TRANSIENT_RETRY_BACKOFF_MS,
 };
 use crate::chat_v2::types::ToolResultInfo;
@@ -198,7 +199,10 @@ fn permanent_errors_are_not_retryable() {
         "No executor found for tool: foo",
     ];
     for err in cases {
-        assert!(!is_transient_tool_error(err), "should NOT be transient: {err}");
+        assert!(
+            !is_transient_tool_error(err),
+            "should NOT be transient: {err}"
+        );
     }
 }
 
@@ -259,7 +263,10 @@ fn annotate_success_after_retries_marks_output() {
     let info = make_result(true, json!({"ok": true}), None);
     let annotated = annotate_auto_retry(info, 2);
     assert!(annotated.success);
-    assert_eq!(annotated.output.get("_auto_retry_attempts"), Some(&json!(2)));
+    assert_eq!(
+        annotated.output.get("_auto_retry_attempts"),
+        Some(&json!(2))
+    );
 }
 
 #[test]
@@ -269,8 +276,14 @@ fn annotate_failure_after_retries_appends_error_note() {
     assert!(!annotated.success);
     let err = annotated.error.expect("error must be present");
     assert!(err.contains("connection reset by peer"));
-    assert!(err.contains("自动重试 2 次"), "error should note retries: {err}");
-    assert_eq!(annotated.output.get("_auto_retry_attempts"), Some(&json!(2)));
+    assert!(
+        err.contains("自动重试 2 次"),
+        "error should note retries: {err}"
+    );
+    assert_eq!(
+        annotated.output.get("_auto_retry_attempts"),
+        Some(&json!(2))
+    );
 }
 
 /// 非对象输出（如 null）不插入标注字段，但错误信息仍注明
@@ -280,6 +293,36 @@ fn annotate_non_object_output_only_touches_error() {
     let annotated = annotate_auto_retry(info, 1);
     assert!(annotated.output.is_null());
     assert!(annotated.error.expect("error").contains("自动重试 1 次"));
+}
+
+#[test]
+fn retry_attempts_are_pinned_to_one_logical_block() {
+    let failed_attempt = make_result(false, json!({}), Some("connection reset"));
+    let mut successful_attempt = make_result(true, json!({"ok": true}), None);
+    successful_attempt.block_id = Some("executor_returned_a_different_id".to_string());
+
+    let failed = pin_tool_result_to_block(failed_attempt, "blk_logical_retry");
+    let succeeded = pin_tool_result_to_block(successful_attempt, "blk_logical_retry");
+
+    assert_eq!(failed.block_id.as_deref(), Some("blk_logical_retry"));
+    assert_eq!(succeeded.block_id.as_deref(), Some("blk_logical_retry"));
+}
+
+#[test]
+fn stream_hook_keys_are_unique_across_same_message_retry() {
+    let first = build_run_scoped_stream_event("sess_1", "msg_1", "run_a", Some(41));
+    let retry = build_run_scoped_stream_event("sess_1", "msg_1", "run_b", Some(42));
+
+    assert_ne!(first, retry, "old async cleanup must target a distinct key");
+    assert_eq!(
+        first
+            .strip_prefix("chat_v2_event_")
+            .and_then(|scope| scope.rsplit_once("_var_").map(|(session, _)| session)),
+        Some("sess_1"),
+        "run scoping must preserve reconnect session routing"
+    );
+    assert!(first.ends_with("__stream_generation__41"));
+    assert!(retry.ends_with("__stream_generation__42"));
 }
 
 // ============================================================================

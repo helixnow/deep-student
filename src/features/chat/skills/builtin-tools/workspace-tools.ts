@@ -79,7 +79,7 @@ export const workspaceToolsSkill: SkillDefinition = {
 
 1. 若 zip 在聊天附件里：先用 **builtin-attachment_stage** 物化到 temp root（见上文「处理用户发送的附件」）。
 2. 调用 **builtin-skill_scan**（Low，免审批）：\`source\` 填 \`{ url: "https://..." }\` 或 \`{ root_id: "temp", path: "attachments/xxx.zip" }\`；返回 \`package_sha256\`、\`risk_level\`、\`risk_signals\` 等扫描摘要。
-3. 向用户展示风险与能力摘要，口头确认后再调用 **builtin-skill_install**（High，**必须用户审批**）：携带相同 \`source\`、必填 \`expected_sha256\`（来自 scan 的 \`package_sha256\`）、可选 \`declared_risk_level\` 与 \`overwrite\`。
+3. 向用户展示风险与能力摘要，口头确认后再调用 **builtin-skill_install**（High，**必须用户审批**）：携带相同 \`source\`、必填 \`expected_sha256\` 和 \`skill_id\`（均来自 scan 结果）、可选 \`declared_risk_level\` 与 \`overwrite\`。
 4. 安装成功后告知用户：技能已装入 \`~/.deep-student/skills/<id>/\`，**默认未信任**；需在技能管理中信任后，包内脚本才可通过 SKILL_DIR 执行。
 
 **禁止**用 shell / 文件工具绕过上述流程直接改技能目录。
@@ -471,7 +471,7 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
     {
       name: 'builtin-skill_scan',
       description:
-        'Scan a skill package zip without installing. Accepts https URL or a path under temp/artifacts runtime root. Returns package_sha256, risk_level, risk_signals, and counts — use expected_sha256 from this result when calling skill_install after user confirmation.',
+        'Scan a skill package zip without installing. Accepts https URL or a path under temp/artifacts runtime root. Returns skill_id, package_sha256, risk_level, risk_signals, and counts — pass the exact skill_id and expected_sha256 to skill_install after user confirmation.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -527,10 +527,11 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
           skill_id: {
             type: 'string',
-            description: 'Optional skill id hint for approval display (from scan result)',
+            description:
+              'Required exact skill id from skill_scan; install fails if the rescanned package target differs',
           },
         },
-        required: ['source', 'expected_sha256'],
+        required: ['source', 'expected_sha256', 'skill_id'],
       },
     },
   ],

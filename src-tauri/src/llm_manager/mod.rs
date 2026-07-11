@@ -2,9 +2,9 @@ pub mod adapters;
 mod builtin_vendors;
 mod exam_engine;
 mod model2_pipeline;
-pub mod routing;
 pub(crate) mod parser;
 mod rag_extension;
+pub mod routing;
 pub mod utf8_stream;
 
 // 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
@@ -38,6 +38,9 @@ use std::sync::LazyLock;
 use tokio::sync::RwLock;
 use tokio::time::{Duration, Instant};
 use uuid::Uuid;
+
+/// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
+pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
 
 #[derive(Debug, Clone, Deserialize)]
 struct RegistryCapabilityFlags {
@@ -195,6 +198,76 @@ mod tests {
         LLMManager::new(db, file_manager).expect("create llm manager")
     }
 
+    struct TestStreamHooks;
+    impl LLMStreamHooks for TestStreamHooks {}
+
+    #[tokio::test]
+    async fn stale_stream_hook_owner_cannot_unregister_replacement() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let old_owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+        let replacement: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+
+        manager
+            .register_stream_hooks("chat_v2_event_test", old_owner.clone())
+            .await;
+        manager
+            .register_stream_hooks("chat_v2_event_test", replacement.clone())
+            .await;
+
+        assert!(
+            !manager
+                .unregister_stream_hooks_if_owner("chat_v2_event_test", &old_owner)
+                .await,
+            "stale cleanup must not remove the replacement Arc"
+        );
+        let current = manager
+            .get_hook("chat_v2_event_test")
+            .await
+            .expect("replacement hook should remain registered");
+        assert!(Arc::ptr_eq(&current, &replacement));
+        assert!(
+            manager
+                .unregister_stream_hooks_if_owner("chat_v2_event_test", &replacement)
+                .await
+        );
+        assert!(manager.get_hook("chat_v2_event_test").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn stream_guard_cleanup_clears_hook_channel_and_pending_cancel() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = Arc::new(create_test_llm_manager(&temp_dir));
+        let stream_event = "chat_v2_event_test_var_msg_run_1";
+        let owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+
+        manager
+            .register_stream_hooks(stream_event, owner.clone())
+            .await;
+        let _receiver = manager.register_cancel_channel(stream_event).await;
+        manager.request_cancel_stream(stream_event).await;
+        assert!(manager
+            .cancel_channels
+            .lock()
+            .await
+            .contains_key(stream_event));
+        assert!(manager.cancel_registry.lock().await.contains(stream_event));
+        let mut guard = crate::chat_v2::pipeline::tool_loop::StreamHooksGuard::new(
+            Arc::clone(&manager),
+            stream_event.to_string(),
+            owner,
+        );
+        guard.cleanup().await;
+
+        assert!(manager.get_hook(stream_event).await.is_none());
+        assert!(!manager
+            .cancel_channels
+            .lock()
+            .await
+            .contains_key(stream_event));
+        assert!(!manager.cancel_registry.lock().await.contains(stream_event));
+    }
+
     #[test]
     fn prepare_frontend_mcp_tool_for_legacy_api_encodes_invalid_names_with_namespace_prefix() {
         let tool = FrontendMcpTool {
@@ -339,7 +412,12 @@ mod tests {
                 "{provider} should keep responses selectable"
             );
             assert_eq!(
-                resolve_preferred_protocol_for_provider(Some(provider), Some("general"), base_url, None),
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    base_url,
+                    None
+                ),
                 "openai_chat_completions",
                 "{provider} default routing should stay on chat completions"
             );
@@ -371,7 +449,9 @@ mod tests {
         ] {
             let allowed = provider_allowed_protocols(Some(provider));
             assert!(
-                !allowed.iter().any(|protocol| protocol == "openai_responses"),
+                !allowed
+                    .iter()
+                    .any(|protocol| protocol == "openai_responses"),
                 "{provider} must not expose the phantom openai_responses protocol"
             );
             assert_eq!(
@@ -1103,7 +1183,7 @@ mod tests {
             ("qwen-plus", Some("qwen")),
             ("qwq-plus", Some("qwen")),
             ("glm-5", Some("zhipu")),
-            ("kimi-latest", Some("moonshot")),
+            ("kimi-k2.6", Some("moonshot")),
             ("MiniMax-M2.5", Some("minimax")),
             ("doubao-seed-2-0-pro-260215", Some("doubao")),
             ("gpt-5-mini", Some("openai")),
@@ -2653,8 +2733,11 @@ impl LLMManager {
     ) {
         let key = stream_event.to_string();
         debug!("[Hook] 注册 hook: key={}", key);
-        self.hooks_registry.lock().await.insert(key, hooks);
-        let count = self.hooks_registry.lock().await.len();
+        let count = {
+            let mut registry = self.hooks_registry.lock().await;
+            registry.insert(key, hooks);
+            registry.len()
+        };
         debug!("[Hook] 注册后 registry 大小: {}", count);
     }
 
@@ -2662,6 +2745,36 @@ impl LLMManager {
         let key = stream_event.to_string();
         debug!("[Hook] 注销 hook: key={}", key);
         self.hooks_registry.lock().await.remove(&key);
+    }
+
+    /// Remove a hook only if the registry still points at the caller's exact Arc allocation.
+    ///
+    /// Cancellation cleanup is spawned from `Drop`, so it may run after a replacement request has
+    /// registered under the same logical key. A key-only remove would silently detach the new
+    /// stream; Arc identity turns cleanup into compare-and-remove.
+    pub async fn unregister_stream_hooks_if_owner(
+        &self,
+        stream_event: &str,
+        owner: &std::sync::Arc<dyn LLMStreamHooks>,
+    ) -> bool {
+        use std::collections::hash_map::Entry;
+
+        let key = stream_event.to_string();
+        let mut registry = self.hooks_registry.lock().await;
+        match registry.entry(key) {
+            Entry::Occupied(entry) if std::sync::Arc::ptr_eq(entry.get(), owner) => {
+                entry.remove();
+                true
+            }
+            Entry::Occupied(_) => {
+                debug!(
+                    "[Hook] 忽略旧 owner 的延迟注销，保留 replacement hook: key={}",
+                    stream_event
+                );
+                false
+            }
+            Entry::Vacant(_) => false,
+        }
     }
 
     async fn get_hook(&self, stream_event: &str) -> Option<std::sync::Arc<dyn LLMStreamHooks>> {
@@ -3160,6 +3273,15 @@ impl LLMManager {
 
     async fn clear_cancel_channel(&self, stream_event: &str) {
         self.cancel_channels.lock().await.remove(stream_event);
+    }
+
+    /// Clear both cancellation mechanisms for a run that has definitively ended.
+    ///
+    /// Outer `select!` callers may drop the model2 future before its normal channel cleanup runs.
+    /// Run-scoped keys make this safe: no later attempt can legitimately reuse the same key.
+    pub(crate) async fn clear_cancel_artifacts(&self, stream_event: &str) {
+        self.cancel_channels.lock().await.remove(stream_event);
+        self.cancel_registry.lock().await.remove(stream_event);
     }
 
     /// 取消所有以某个前缀匹配的流事件（用于题目集分割按 session 级别取消）
@@ -4320,15 +4442,10 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
 
         let configs = self.get_api_configs().await?;
-        // 注意：已分配的模型即使 enabled=false 也允许使用
-        // enabled 仅影响模型选择器中的显示，不阻止已分配模型的调用
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == model2_id && !c.is_embedding && !c.is_reranker)
+        let config = routing::resolve_enabled_text_model(&configs, [model2_id.as_str()])
+            .cloned()
             .ok_or_else(|| {
-                AppError::configuration(
-                    "找不到有效的对话模型配置（禁止使用嵌入/重排序模型作为对话模型）",
-                )
+                AppError::configuration("找不到已启用的有效对话模型配置（禁止使用嵌入/重排序模型）")
             })?;
 
         Ok(config)
@@ -4339,17 +4456,17 @@ impl LLMManager {
     /// 回退链：memory_decision_model_config_id → model2_config_id
     pub async fn get_memory_decision_model_config(&self) -> Result<ApiConfig> {
         let assignments = self.get_model_assignments().await?;
-        let model_id = assignments
-            .memory_decision_model_config_id
-            .or(assignments.model2_config_id)
-            .ok_or_else(|| AppError::configuration("没有配置可用的记忆决策模型"))?;
-
         let configs = self.get_api_configs().await?;
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
+        let candidate_ids = [
+            assignments.memory_decision_model_config_id.as_deref(),
+            assignments.model2_config_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten();
+        let config = routing::resolve_enabled_text_model(&configs, candidate_ids)
+            .cloned()
             .ok_or_else(|| {
-                AppError::configuration("找不到有效的记忆决策模型配置（禁止使用嵌入/重排序模型）")
+                AppError::configuration("没有已启用的有效记忆决策模型（禁止使用嵌入/重排序模型）")
             })?;
 
         Ok(config)
@@ -4360,18 +4477,18 @@ impl LLMManager {
     /// 回退链：chat_title_model_config_id → model2_config_id
     pub async fn get_chat_title_model_config(&self) -> Result<ApiConfig> {
         let assignments = self.get_model_assignments().await?;
-        let model_id = assignments
-            .chat_title_model_config_id
-            .or(assignments.model2_config_id)
-            .ok_or_else(|| AppError::configuration("没有配置可用的标题/标签生成模型"))?;
-
         let configs = self.get_api_configs().await?;
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == model_id && !c.is_embedding && !c.is_reranker)
+        let candidate_ids = [
+            assignments.chat_title_model_config_id.as_deref(),
+            assignments.model2_config_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten();
+        let config = routing::resolve_enabled_text_model(&configs, candidate_ids)
+            .cloned()
             .ok_or_else(|| {
                 AppError::configuration(
-                    "找不到有效的标题/标签生成模型配置（禁止使用嵌入/重排序模型）",
+                    "没有已启用的有效标题/标签生成模型（禁止使用嵌入/重排序模型）",
                 )
             })?;
 
@@ -4951,11 +5068,9 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("Anki制卡模型未配置"))?;
 
         let configs = self.get_api_configs().await?;
-        // 注意：已分配的模型即使 enabled=false 也允许使用
-        let config = configs
-            .into_iter()
-            .find(|c| c.id == anki_model_id)
-            .ok_or_else(|| AppError::configuration("找不到有效的Anki制卡模型配置"))?;
+        let config = routing::resolve_enabled_text_model(&configs, [anki_model_id.as_str()])
+            .cloned()
+            .ok_or_else(|| AppError::configuration("找不到已启用的有效 Anki 制卡模型配置"))?;
 
         debug!(
             "找到 Anki 制卡模型配置: 模型={}, API地址={}",
@@ -4986,15 +5101,14 @@ impl LLMManager {
         presence_penalty: Option<f32>,
         max_output_tokens: Option<u32>,
     ) -> Result<(ApiConfig, bool)> {
-        // 如果有覆盖ID，使用覆盖配置
-        // 注意：覆盖模型即使 enabled=false 也允许使用（用于历史消息重试等场景）
+        // 如果有覆盖 ID，使用覆盖配置。override_id 本身不授予绕过 enabled 的权限；
+        // 如未来需要调用已禁用模型，必须提供独立且显式的授权参数。
         if let Some(ref override_id) = override_id {
             let configs = self.get_api_configs().await?;
-            let mut config = configs
-                .into_iter()
-                .find(|c| c.id == *override_id)
+            let mut config = routing::resolve_enabled_text_model(&configs, [override_id.as_str()])
+                .cloned()
                 .ok_or_else(|| {
-                    AppError::configuration(format!("找不到可用的模型配置: {}", override_id))
+                    AppError::configuration(format!("找不到已启用的有效模型配置: {}", override_id))
                 })?;
 
             // 应用参数覆盖
@@ -5016,37 +5130,47 @@ impl LLMManager {
         let assignments = self.get_model_assignments().await?;
         let configs = self.get_api_configs().await?;
 
-        let (model_id, enable_cot) = match task {
+        let (model_ids, enable_cot): (Vec<String>, bool) = match task {
             "default" => {
                 let model_id = assignments
                     .model2_config_id
                     .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
-                (model_id, true) // 默认启用CoT
+                (vec![model_id], true) // 默认启用CoT
             }
             "chat_title" | "tag_generation" => {
-                let model_id = assignments
-                    .chat_title_model_config_id
-                    .or(assignments.model2_config_id)
-                    .ok_or_else(|| AppError::configuration("没有配置可用的标题/标签生成模型"))?;
-                (model_id, false)
+                let model_ids = [
+                    assignments.chat_title_model_config_id,
+                    assignments.model2_config_id,
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+                if model_ids.is_empty() {
+                    return Err(AppError::configuration("没有配置可用的标题/标签生成模型"));
+                }
+                (model_ids, false)
             }
             "review" => {
                 let model_id = assignments
                     .review_analysis_model_config_id
                     .ok_or_else(|| AppError::configuration("未配置回顾分析模型"))?;
-                (model_id, true) // 回顾分析通常需要CoT
+                (vec![model_id], true) // 回顾分析通常需要CoT
             }
             other => {
                 // 🆕 用途分模型路由（routing.rs）：compaction / memory_flush / utility 等
                 // 新用途可在 Failover 策略中配置专属（廉价）模型；未配置时回落 default 逻辑
                 let policy = self.get_failover_policy().await.unwrap_or_default();
                 if let Some(purpose_model_id) = routing::resolve_purpose_model_id(&policy, other) {
-                    (purpose_model_id, false)
+                    let mut model_ids = vec![purpose_model_id];
+                    if let Some(default_id) = assignments.model2_config_id {
+                        model_ids.push(default_id);
+                    }
+                    (model_ids, false)
                 } else if routing::is_known_utility_purpose(other) {
                     let model_id = assignments
                         .model2_config_id
                         .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
-                    (model_id, false)
+                    (vec![model_id], false)
                 } else {
                     return Err(AppError::configuration(format!(
                         "不支持的任务类型: {}",
@@ -5056,14 +5180,15 @@ impl LLMManager {
             }
         };
 
-        // 注意：已分配的模型即使 enabled=false 也允许使用
-        // enabled 仅影响模型选择器中的显示，不阻止已分配模型的调用
-        let mut config = configs
-            .into_iter()
-            .find(|c| c.id == model_id)
-            .ok_or_else(|| {
-                AppError::configuration(format!("找不到可用的模型配置: {}", model_id))
-            })?;
+        let mut config =
+            routing::resolve_enabled_text_model(&configs, model_ids.iter().map(String::as_str))
+                .cloned()
+                .ok_or_else(|| {
+                    AppError::configuration(format!(
+                        "找不到已启用的有效模型配置，候选: {}",
+                        model_ids.join(", ")
+                    ))
+                })?;
 
         // 应用参数覆盖
         if let Some(temp) = temperature {

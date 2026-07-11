@@ -114,6 +114,9 @@ export function createBlockActions(
                 // ✅ 健壮性优化：只有块存在时才从活跃集合移除
                 if (status === 'success' || status === 'error') {
                   draft.activeBlockIds = removeFromSet(draft.activeBlockIds, blockId);
+                } else {
+                  // A transient tool retry reopens the same logical block after an error.
+                  draft.activeBlockIds = addToSet(draft.activeBlockIds, blockId);
                 }
               }
             })(s);

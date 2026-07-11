@@ -19,6 +19,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { StoreApi } from 'zustand';
 import { ChatV2TauriAdapter } from '../adapters/TauriAdapter';
 import { adapterManager } from '../adapters/AdapterManager';
+import type { AdapterLease } from '../adapters/AdapterManager';
 import type { ChatStore, AttachmentMeta } from '../core/types';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
@@ -136,6 +137,8 @@ export function useTauriAdapter(
 
   // 使用 ref 存储适配器实例
   const adapterRef = useRef<ChatV2TauriAdapter | null>(null);
+  const leaseRef = useRef<AdapterLease | null>(null);
+  const initializeGenerationRef = useRef(0);
   // 追踪当前 sessionId，用于检测变化
   const sessionIdRef = useRef<string>(sessionId);
   // 追踪是否已卸载
@@ -159,6 +162,7 @@ export function useTauriAdapter(
    * 🔧 多会话保活：通过 AdapterManager 获取适配器
    */
   const initialize = useCallback(async () => {
+    const initializeGeneration = ++initializeGenerationRef.current;
     const storeApi = getStoreApi();
     if (!storeApi) {
       console.warn(LOG_PREFIX, 'StoreApi not available, skipping initialization');
@@ -169,7 +173,10 @@ export function useTauriAdapter(
     // 🔧 竞态修复：快速切换会话时，旧会话的异步初始化可能晚于新会话 effect 完成。
     // 若不检查 sessionIdRef，过期的 getOrCreate 结果会把旧会话的 adapter 写入
     // adapterRef 并覆盖新会话的 isReady/error 状态（后续 sendMessage 会发往旧会话）。
-    const isStale = () => !isMountedRef.current || sessionIdRef.current !== sessionId;
+    const isStale = () =>
+      !isMountedRef.current
+      || sessionIdRef.current !== sessionId
+      || initializeGenerationRef.current !== initializeGeneration;
 
     // 📊 性能打点：开始追踪会话切换
     sessionSwitchPerf.startTrace(sessionId);
@@ -212,7 +219,8 @@ export function useTauriAdapter(
       const getOrCreateStart = performance.now();
       sessionSwitchPerf.mark('cc_get_or_create_start', { wasAlreadyReady });
       
-      const entry = await adapterManager.getOrCreate(sessionId, storeApi);
+      const acquisition = await adapterManager.getOrCreate(sessionId, storeApi);
+      const { entry, lease } = acquisition;
       
       // 取消订阅（如果还没取消）
       unsubscribeDataLoaded();
@@ -247,10 +255,16 @@ export function useTauriAdapter(
       // 的引用计数调用过 release，重复调用会导致 refCount 双重递减。
       if (isStale()) {
         console.log(LOG_PREFIX, `Stale initialize result for ${sessionId}, discarding (unmounted or session switched)`);
+        adapterManager.release(sessionId, lease);
         return;
       }
 
+      const previousLease = leaseRef.current;
+      leaseRef.current = lease;
       adapterRef.current = entry.adapter;
+      if (previousLease && previousLease !== lease) {
+        adapterManager.release(previousLease.sessionId, previousLease);
+      }
 
       // 🚀 性能优化：如果已经提前设置了 isReady，跳过重复的 setState
       if (!hasSetReadyEarly && isMountedRef.current) {
@@ -348,24 +362,33 @@ export function useTauriAdapter(
 
     // 🚀 性能优化：缓存命中时使用同步路径，避免 await 让出控制权导致多次渲染
     const existingEntry = adapterManager.get(sessionId);
-    if (existingEntry && existingEntry.isReady && !existingEntry.setupPromise && !existingEntry.error) {
+    const existingAcquisition =
+      existingEntry && existingEntry.isReady && !existingEntry.setupPromise && !existingEntry.error
+        ? adapterManager.acquireExisting(sessionId)
+        : undefined;
+    if (existingAcquisition) {
+      const { entry: acquiredEntry, lease } = existingAcquisition;
       // 缓存命中且已就绪：同步设置状态，不调用异步的 initialize
       console.log(LOG_PREFIX, `Sync path: adapter already ready for ${sessionId}`);
       sessionSwitchPerf.startTrace(sessionId);
       sessionSwitchPerf.mark('cc_adapter_state', { state: 'sync_cache_hit' });
-      
-      existingEntry.refCount++;
-      adapterRef.current = existingEntry.adapter;
+
+      leaseRef.current = lease;
+      adapterRef.current = acquiredEntry.adapter;
       
       // 同步设置状态（只触发一次 setState）
       setState({ isLoading: false, error: null, isReady: true });
       
-      sessionSwitchPerf.mark('adapter_already_setup', { fromCache: true, refCount: existingEntry.refCount, syncPath: true });
+      sessionSwitchPerf.mark('adapter_already_setup', { fromCache: true, refCount: acquiredEntry.refCount, syncPath: true });
       sessionSwitchPerf.mark('cc_adapter_state', { state: 'sync_done' });
       return () => {
         isMountedRef.current = false;
+        initializeGenerationRef.current += 1;
         console.log(LOG_PREFIX, `Releasing adapter for session: ${sessionId}`);
-        adapterManager.release(sessionId);
+        if (leaseRef.current === lease) {
+          leaseRef.current = null;
+          adapterManager.release(sessionId, lease);
+        }
         adapterRef.current = null;
       };
     }
@@ -377,11 +400,16 @@ export function useTauriAdapter(
     // 适配器保持活跃，事件监听器继续工作
     return () => {
       isMountedRef.current = false;
+      initializeGenerationRef.current += 1;
 
       // 释放引用（不 cleanup）
       // 适配器只在会话销毁时才会被 cleanup
       console.log(LOG_PREFIX, `Releasing adapter for session: ${sessionId}`);
-      adapterManager.release(sessionId);
+      const lease = leaseRef.current;
+      leaseRef.current = null;
+      if (lease) {
+        adapterManager.release(lease.sessionId, lease);
+      }
       adapterRef.current = null;
     };
   }, [sessionId, store, initialize]);

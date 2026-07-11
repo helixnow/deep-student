@@ -48,8 +48,7 @@ const TIMEOUT_MUTATE_MS: u64 = 15_000;
 
 const HINT_UNAVAILABLE: &str =
     "桌面模式未开启或未就绪，导航类操作不可用；数据修改请改用对应领域工具";
-const HINT_DISABLED: &str =
-    "将设置「AI 助手操控」改为后台或跟随即可；数据修改也可改用领域工具";
+const HINT_DISABLED: &str = "将设置「AI 助手操控」改为后台或跟随即可；数据修改也可改用领域工具";
 const HINT_FLAG_OFF: &str = "请开启 feature flag tools.workbench_agent；数据修改请改用领域工具";
 const HINT_CANCELLED: &str = "用户已取消；请根据 partial 回执的 done/undone 继续，勿原样重试";
 

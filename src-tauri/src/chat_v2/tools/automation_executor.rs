@@ -12,8 +12,8 @@ use super::strip_tool_namespace;
 use crate::chat_v2::automations::{
     automation_to_list_item, compute_next_trigger, generate_automation_id, load_automations,
     save_automations, validate_automation_fields, validate_schedule, with_automations_lock,
-    AutomationActionType, AutomationDefinition, AutomationSchedule, MAX_AUTOMATIONS, MAX_PROMPT_LEN,
-    ScheduleKind,
+    AutomationActionType, AutomationDefinition, AutomationSchedule, ScheduleKind, MAX_AUTOMATIONS,
+    MAX_PROMPT_LEN,
 };
 use crate::chat_v2::headless::HeadlessSessionMode;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
@@ -130,7 +130,10 @@ impl AutomationExecutor {
                     .as_u64()
                     .ok_or("'schedule.weekday' must be an integer 0-6")?;
                 if n > 6 {
-                    return Err("'schedule.weekday' must be between 0 (Sunday) and 6 (Saturday)".to_string());
+                    return Err(
+                        "'schedule.weekday' must be between 0 (Sunday) and 6 (Saturday)"
+                            .to_string(),
+                    );
                 }
                 Some(n as u8)
             }
@@ -142,9 +145,10 @@ impl AutomationExecutor {
                 let n = v
                     .as_u64()
                     .ok_or("'schedule.interval_minutes' must be a positive integer")?;
-                Some(u32::try_from(n).map_err(|_| {
-                    "'schedule.interval_minutes' is out of range".to_string()
-                })?)
+                Some(
+                    u32::try_from(n)
+                        .map_err(|_| "'schedule.interval_minutes' is out of range".to_string())?,
+                )
             }
         };
 
@@ -237,15 +241,10 @@ impl AutomationExecutor {
         let prompt = Self::parse_required_string(args, "prompt")?;
         validate_automation_fields(&name, &prompt).map_err(|e| e.to_string())?;
 
-        let schedule_value = args
-            .get("schedule")
-            .ok_or("'schedule' is required")?;
+        let schedule_value = args.get("schedule").ok_or("'schedule' is required")?;
         let schedule = Self::parse_schedule(schedule_value)?;
 
-        let enabled = args
-            .get("enabled")
-            .and_then(Value::as_bool)
-            .unwrap_or(true);
+        let enabled = args.get("enabled").and_then(Value::as_bool).unwrap_or(true);
 
         let action_type = Self::parse_action_type(args)?;
         let (agent_prompt, session_mode, model_id) = Self::parse_agent_fields(args, action_type)?;
@@ -538,8 +537,7 @@ mod tests {
             AutomationActionType::Notify
         );
         assert_eq!(
-            AutomationExecutor::parse_action_type(&json!({ "action_type": "agent_turn" }))
-                .unwrap(),
+            AutomationExecutor::parse_action_type(&json!({ "action_type": "agent_turn" })).unwrap(),
             AutomationActionType::AgentTurn
         );
         assert_eq!(
@@ -624,5 +622,4 @@ mod tests {
             ToolSensitivity::Low
         );
     }
-
 }

@@ -193,7 +193,10 @@ mod tests {
             Some((2, 5))
         );
         assert_eq!(MiniMaxAdapter::parse_m_version("M2-her"), Some((2, 0)));
-        assert_eq!(MiniMaxAdapter::parse_m_version("MiniMax-M3.5"), Some((3, 5)));
+        assert_eq!(
+            MiniMaxAdapter::parse_m_version("MiniMax-M3.5"),
+            Some((3, 5))
+        );
         assert_eq!(MiniMaxAdapter::parse_m_version("abab6.5s-chat"), None);
     }
 
