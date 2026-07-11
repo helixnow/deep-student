@@ -321,15 +321,15 @@ function getCardFieldValue(card: AnkiCard, fieldName: string): string {
 
 const SessionRow: React.FC<{
   session: DocumentSession;
+  isSmallScreen: boolean;
   expanded: boolean;
   onToggle: () => void;
   onJump: () => void;
   onRefresh: () => void;
-}> = ({ session, expanded, onToggle, onJump, onRefresh }) => {
+}> = ({ session, isSmallScreen, expanded, onToggle, onJump, onRefresh }) => {
   const { t } = useTranslation('anki');
   // 移动端：行内 24px 图标簇触控目标过小且会溢出 48px 容器，改为隐藏行内簇、
   // 在展开区提供全套 44px 操作按钮（见下方展开区）
-  const { isSmallScreen } = useBreakpoint();
   const [cards, setCards] = useState<AnkiCard[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -853,11 +853,14 @@ const SessionRow: React.FC<{
 interface TaskDashboardPageProps {
   onNavigateToChat?: (sessionId: string) => void;
   onOpenTemplateManagement?: () => void;
+  /** Workbench visibility overrides the legacy route visibility when provided. */
+  isVisible?: boolean;
 }
 
 export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   onNavigateToChat,
   onOpenTemplateManagement,
+  isVisible,
 }) => {
   const { t } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
@@ -873,7 +876,12 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   // P2: 智能轮询 —— 通过 ref 跟踪是否有活跃任务
   const hasActiveRef = useRef(false);
-  const { isActive: isViewActive } = useViewVisibility('task-dashboard');
+  const previousActiveForSleepRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const onLatestLoadSettledRef = useRef<((hasActive: boolean) => void) | null>(null);
+  // Hook 必须始终调用；Workbench 窗口通过 isVisible 覆盖 legacy currentView。
+  const { isActive: isLegacyViewActive } = useViewVisibility('task-dashboard');
+  const isViewActive = isVisible ?? isLegacyViewActive;
 
   // ★ 4.2 防休眠开关（长任务时阻止系统休眠）
   const [preventSleep, setPreventSleep] = useState(false);
@@ -896,53 +904,76 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   }, [preventSleep, t]);
 
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+    let nextHasActive = hasActiveRef.current;
     try {
       const [s, st] = await Promise.all([
         invoke<DocumentSession[]>('list_document_sessions', { limit: DASHBOARD_SESSION_LIMIT }),
         invoke<AnkiStats>('get_anki_stats'),
       ]);
+      if (generation !== loadGenerationRef.current) return;
+
+      nextHasActive = s.some(session => classify(session) === 'active');
+      hasActiveRef.current = nextHasActive;
       setSessions(s);
       setStats(st);
     } catch (err: unknown) {
       debugLog.error('[TaskDashboard] load failed:', err);
     } finally {
-      setLoading(false);
+      if (generation === loadGenerationRef.current) {
+        setLoading(false);
+        onLatestLoadSettledRef.current?.(nextHasActive);
+      }
     }
   }, []);
 
   // P2: 智能轮询 —— 有活跃任务 5s，无则 30s；视图不可见时暂停
   useEffect(() => {
-    if (!isViewActive) return; // 视图不可见时完全跳过轮询
+    if (!isViewActive) {
+      // 失活时使在途请求失效，避免隐藏页面被旧响应覆盖。
+      loadGenerationRef.current += 1;
+      onLatestLoadSettledRef.current = null;
+      return;
+    }
 
-    let isActive = true;
+    let effectActive = true;
     let timerId: ReturnType<typeof setTimeout> | null = null;
 
-    load(); // 首次加载（切回视图时也刷新一次）
-
-    const schedulePoll = () => {
-      if (!isActive) return;
-      const delay = hasActiveRef.current ? POLL_ACTIVE : POLL_IDLE;
+    const schedulePoll = (hasActive: boolean) => {
+      if (!effectActive) return;
+      if (timerId) clearTimeout(timerId);
+      const delay = hasActive ? POLL_ACTIVE : POLL_IDLE;
       timerId = setTimeout(() => {
-        if (!isActive) return;
+        timerId = null;
+        if (!effectActive) return;
         if (!document.hidden) {
-          load().finally(() => {
-            if (isActive) schedulePoll();
-          });
+          void load();
         } else {
-          schedulePoll();
+          schedulePoll(hasActiveRef.current);
         }
       }, delay);
     };
 
-    schedulePoll();
+    // 所有加载入口（首次、轮询、visibility、手动刷新）完成后均重置唯一 timer。
+    // 只有最新 generation 能触发该回调，因此旧响应不会改变状态或轮询节奏。
+    onLatestLoadSettledRef.current = schedulePoll;
+    void load(); // 首次加载完成后，再按实际任务状态安排 5s/30s timer。
 
     const handleVisibility = () => {
-      if (!document.hidden && isActive) load();
+      if (!document.hidden && effectActive) {
+        if (timerId) clearTimeout(timerId);
+        timerId = null;
+        void load();
+      }
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
-      isActive = false;
+      effectActive = false;
+      if (onLatestLoadSettledRef.current === schedulePoll) {
+        onLatestLoadSettledRef.current = null;
+      }
+      loadGenerationRef.current += 1;
       if (timerId) clearTimeout(timerId);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
@@ -979,9 +1010,11 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
   // 同步 hasActiveRef；任务全部结束时自动解除防休眠
   useEffect(() => {
-    const hadActive = hasActiveRef.current;
-    hasActiveRef.current = groups.active.length > 0;
-    if (hadActive && groups.active.length === 0) {
+    const hasActive = groups.active.length > 0;
+    const hadActive = previousActiveForSleepRef.current;
+    previousActiveForSleepRef.current = hasActive;
+    hasActiveRef.current = hasActive;
+    if (hadActive && !hasActive) {
       invoke<boolean>('set_prevent_sleep', { enabled: false })
         .then(setPreventSleep)
         .catch(() => { /* ignore */ });
@@ -1435,6 +1468,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                       <SessionRow
                         key={s.documentId}
                         session={s}
+                        isSmallScreen={isSmallScreen}
                         expanded={expandedId === s.documentId}
                         onToggle={() => setExpandedId(p => (p === s.documentId ? null : s.documentId))}
                         onJump={() => s.sourceSessionId && onNavigateToChat?.(s.sourceSessionId)}

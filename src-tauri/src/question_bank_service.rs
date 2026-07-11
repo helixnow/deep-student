@@ -630,7 +630,7 @@ impl QuestionBankService {
                 true
             } else {
                 let p = chars[i - 1];
-                p.is_whitespace() || "（(，,、;；:：".contains(p)
+                p.is_whitespace() || "（(，,、;；:：选".contains(p)
             };
             let right_ok = match chars.get(i + 1) {
                 None => true,
@@ -2407,30 +2407,43 @@ pub struct CheckInCalendar {
 mod tests {
     use super::*;
 
-    fn check(
-        user: &str,
-        correct: Option<&str>,
-        qtype: QuestionType,
-    ) -> (bool, bool) {
+    fn check(user: &str, correct: Option<&str>, qtype: QuestionType) -> (bool, bool) {
         QuestionBankService::check_answer_correctness(user, correct, &qtype)
     }
 
     #[test]
     fn test_single_choice_basic_and_case_insensitive() {
-        assert_eq!(check("A", Some("A"), QuestionType::SingleChoice), (true, false));
-        assert_eq!(check("a", Some("A."), QuestionType::SingleChoice), (true, false));
-        assert_eq!(check("B", Some("A"), QuestionType::SingleChoice), (false, false));
+        assert_eq!(
+            check("A", Some("A"), QuestionType::SingleChoice),
+            (true, false)
+        );
+        assert_eq!(
+            check("a", Some("A."), QuestionType::SingleChoice),
+            (true, false)
+        );
+        assert_eq!(
+            check("B", Some("A"), QuestionType::SingleChoice),
+            (false, false)
+        );
     }
 
     #[test]
     fn test_single_choice_answer_with_option_text() {
         // 导入答案携带选项全文时，提取键比较
         assert_eq!(
-            check("A", Some("A. 三角形内角和为180°"), QuestionType::SingleChoice),
+            check(
+                "A",
+                Some("A. 三角形内角和为180°"),
+                QuestionType::SingleChoice
+            ),
             (true, false)
         );
         assert_eq!(
-            check("B", Some("A. 三角形内角和为180°"), QuestionType::SingleChoice),
+            check(
+                "B",
+                Some("A. 三角形内角和为180°"),
+                QuestionType::SingleChoice
+            ),
             (false, false)
         );
         assert_eq!(
@@ -2442,12 +2455,24 @@ mod tests {
     #[test]
     fn test_multiple_choice_order_and_missing() {
         // 乱序等价
-        assert_eq!(check("BA", Some("AB"), QuestionType::MultipleChoice), (true, false));
-        assert_eq!(check("A,B", Some("B、A"), QuestionType::MultipleChoice), (true, false));
+        assert_eq!(
+            check("BA", Some("AB"), QuestionType::MultipleChoice),
+            (true, false)
+        );
+        assert_eq!(
+            check("A,B", Some("B、A"), QuestionType::MultipleChoice),
+            (true, false)
+        );
         // 漏选判错
-        assert_eq!(check("A", Some("AB"), QuestionType::MultipleChoice), (false, false));
+        assert_eq!(
+            check("A", Some("AB"), QuestionType::MultipleChoice),
+            (false, false)
+        );
         // 多选判错
-        assert_eq!(check("ABC", Some("AB"), QuestionType::MultipleChoice), (false, false));
+        assert_eq!(
+            check("ABC", Some("AB"), QuestionType::MultipleChoice),
+            (false, false)
+        );
     }
 
     #[test]
@@ -2493,7 +2518,10 @@ mod tests {
     #[test]
     fn test_missing_answer_needs_manual_grading() {
         assert_eq!(check("A", None, QuestionType::SingleChoice), (false, true));
-        assert_eq!(check("A", Some("  "), QuestionType::SingleChoice), (false, true));
+        assert_eq!(
+            check("A", Some("  "), QuestionType::SingleChoice),
+            (false, true)
+        );
     }
 
     #[test]

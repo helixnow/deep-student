@@ -152,7 +152,8 @@ impl CompactionMemoryFlush {
             }
         }
 
-        report.activities_stored = daily_log::append_entries(memory_service, &extraction.activities);
+        report.activities_stored =
+            daily_log::append_entries(memory_service, &extraction.activities);
 
         if report.facts_stored > 0 || report.activities_stored > 0 {
             info!(
@@ -344,10 +345,7 @@ mod tests {
         let result = parse_flush_response(raw);
         assert_eq!(result.facts.len(), 1);
         assert_eq!(result.facts[0].title, "二次函数薄弱");
-        assert_eq!(
-            result.facts[0].folder.as_deref(),
-            Some("经历/学科状态")
-        );
+        assert_eq!(result.facts[0].folder.as_deref(), Some("经历/学科状态"));
         assert_eq!(result.activities.len(), 1);
     }
 

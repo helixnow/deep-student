@@ -811,7 +811,9 @@ impl StreamingAnkiService {
                             }
                             buffer.push_str(&content);
                             if *cancel_rx.borrow() {
-                                return Err(AppError::validation(CANCELLED_BY_USER_MSG.to_string()));
+                                return Err(AppError::validation(
+                                    CANCELLED_BY_USER_MSG.to_string(),
+                                ));
                             }
 
                             // 检查是否有完整的卡片

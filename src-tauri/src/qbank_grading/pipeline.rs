@@ -711,7 +711,8 @@ mod tests {
 
     #[test]
     fn test_parse_verdict_and_score_clamps_range() {
-        let (_, score) = parse_verdict_and_score("<verdict>correct</verdict> <score value=\"150\"/>");
+        let (_, score) =
+            parse_verdict_and_score("<verdict>correct</verdict> <score value=\"150\"/>");
         assert_eq!(score, Some(100));
     }
 }

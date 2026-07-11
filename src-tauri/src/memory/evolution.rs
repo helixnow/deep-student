@@ -608,12 +608,36 @@ impl MemoryEvolution {
         // 指纹守卫：近 7 天日志内容无变化时不再重复调用 LLM
         let fingerprint = Self::promotion_fingerprint(&logs);
         let mem_cfg = super::config::MemoryConfig::new(self.vfs_db.clone());
-        if mem_cfg.get(PROMOTION_LAST_FINGERPRINT_KEY)?.as_deref() == Some(fingerprint.as_str()) {
+        let cached_fingerprint = mem_cfg.get(PROMOTION_LAST_FINGERPRINT_KEY)?;
+        let current_profile = learner_profile::load_profile(memory_service)?.unwrap_or_default();
+        if current_profile.has_promotion_fingerprint(&fingerprint)
+            || cached_fingerprint.as_deref() == Some(fingerprint.as_str())
+        {
+            // The profile marker is authoritative because it commits with the profile CAS.
+            // Replaying a legacy config-only marker upgrades it in place; a marker replay also
+            // repairs history that may have been interrupted after the profile commit.
+            learner_profile::apply_profile_promotion_update(
+                memory_service,
+                &LearnerProfileUpdate::default(),
+                MemoryOpSource::Evolution,
+                None,
+                "日志→画像晋升指纹恢复",
+                learner_profile::ProfileLimitPolicy::Enforce,
+                &fingerprint,
+                || false,
+            )?;
+            if cached_fingerprint.as_deref() != Some(fingerprint.as_str()) {
+                if let Err(error) = mem_cfg.set(PROMOTION_LAST_FINGERPRINT_KEY, &fingerprint) {
+                    warn!(
+                        "[Evolution] Failed to repair promotion fingerprint cache: {}",
+                        error
+                    );
+                }
+            }
             debug!("[Evolution] Promotion: logs unchanged since last pass; skip");
             return Ok(report);
         }
 
-        let current_profile = learner_profile::load_profile(memory_service)?.unwrap_or_default();
         let prompt = build_promotion_prompt(&logs, &current_profile);
 
         let output = llm_manager
@@ -623,37 +647,36 @@ impl MemoryEvolution {
 
         let update = parse_promotion_response(&output.assistant_message);
 
-        // 无论是否有更新提案，都记录指纹，避免对同一批日志反复调用
-        if let Err(e) = mem_cfg.set(PROMOTION_LAST_FINGERPRINT_KEY, &fingerprint) {
-            warn!("[Evolution] Failed to persist promotion fingerprint: {}", e);
-        }
-
         if update.is_empty() {
             debug!("[Evolution] Promotion: LLM proposed no profile update");
-            return Ok(report);
         }
 
-        let mut profile = current_profile;
-        if !profile.merge_update(&update) {
-            debug!("[Evolution] Promotion: update proposal produced no actual change");
-            return Ok(report);
-        }
-        // 自动路径：超限时强制精炼（保留高证据条目）
-        profile.enforce_char_limit();
-
-        learner_profile::save_profile(
+        // Apply the proposal to the latest profile, not the snapshot used to
+        // build the LLM prompt. The CAS loop replays this merge if another
+        // writer commits while the LLM call is in flight.
+        let outcome = learner_profile::apply_profile_promotion_update(
             memory_service,
-            &mut profile,
+            &update,
             MemoryOpSource::Evolution,
             None,
             &format!(
                 "日志→画像晋升：扫描近 {} 天共 {} 条日志",
                 PROMOTION_SCAN_DAYS, report.logs_scanned
             ),
+            learner_profile::ProfileLimitPolicy::Enforce,
+            &fingerprint,
+            || false,
         )?;
 
-        report.applied = true;
-        report.new_version = Some(profile.version);
+        // Persist the fingerprint only after the profile commit (or a
+        // confirmed no-op). If the profile write fails, the same logs remain
+        // eligible for a later retry.
+        if let Err(e) = mem_cfg.set(PROMOTION_LAST_FINGERPRINT_KEY, &fingerprint) {
+            warn!("[Evolution] Failed to persist promotion fingerprint: {}", e);
+        }
+
+        report.applied = outcome.changed;
+        report.new_version = outcome.changed.then_some(outcome.profile.version);
         Ok(report)
     }
 

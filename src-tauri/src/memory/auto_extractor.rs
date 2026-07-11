@@ -296,36 +296,29 @@ impl MemoryAutoExtractor {
     fn parse_extraction_response_full(response: &str) -> (Vec<CandidateMemory>, Vec<String>) {
         let cleaned = crate::llm_manager::parser::enhanced_clean_json_response(response);
 
-        // 1. 对象格式（facts + activities）
-        let object = serde_json::from_str::<serde_json::Value>(&cleaned)
-            .ok()
-            .filter(|v| v.is_object())
-            .or_else(|| {
-                super::compaction_flush::extract_json_object(&cleaned)
-                    .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            })
+        // First honor the complete JSON value. Otherwise an old top-level array
+        // would be mistaken for the first object contained inside that array.
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) {
+            if let Some(items) = value.as_array() {
+                return (Self::values_to_candidates(items), vec![]);
+            }
+            if value.is_object() {
+                return Self::extraction_from_object(&value);
+            }
+        }
+
+        // 1. 带杂讯的对象格式（facts + activities）
+        let object = super::compaction_flush::extract_json_object(&cleaned)
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             .or_else(|| {
                 super::compaction_flush::extract_json_object(response)
                     .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             });
         if let Some(obj) = object {
-            let facts = obj
-                .get("facts")
-                .and_then(|v| v.as_array())
-                .map(|items| Self::values_to_candidates(items))
-                .unwrap_or_default();
-            let activities = obj
-                .get("activities")
-                .and_then(|v| v.as_array())
-                .map(|items| Self::values_to_activities(items))
-                .unwrap_or_default();
-            return (facts, activities);
+            return Self::extraction_from_object(&obj);
         }
 
-        // 2. 旧格式兜底：裸数组视为 facts
-        if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&cleaned) {
-            return (Self::values_to_candidates(&items), vec![]);
-        }
+        // 2. 旧格式兜底：从带杂讯文本中提取裸数组并视为 facts
         if let Some(arr_str) = Self::extract_json_array(&cleaned) {
             if let Ok(items) = serde_json::from_str::<Vec<serde_json::Value>>(&arr_str) {
                 return (Self::values_to_candidates(&items), vec![]);
@@ -339,6 +332,20 @@ impl MemoryAutoExtractor {
 
         debug!("[MemoryAutoExtractor] No valid JSON found in response, returning empty");
         (vec![], vec![])
+    }
+
+    fn extraction_from_object(obj: &serde_json::Value) -> (Vec<CandidateMemory>, Vec<String>) {
+        let facts = obj
+            .get("facts")
+            .and_then(|v| v.as_array())
+            .map(|items| Self::values_to_candidates(items))
+            .unwrap_or_default();
+        let activities = obj
+            .get("activities")
+            .and_then(|v| v.as_array())
+            .map(|items| Self::values_to_activities(items))
+            .unwrap_or_default();
+        (facts, activities)
     }
 
     /// 过滤活动流水条目（长度/敏感信息）
@@ -394,16 +401,15 @@ impl MemoryAutoExtractor {
     fn contains_sensitive_pattern(text: &str) -> bool {
         use regex::Regex;
         use std::sync::OnceLock;
-        // Rust regex crate 不支持 look-around，用 \b 边界代替
+        // Use ASCII digit boundaries rather than Unicode `\b`: Han characters
+        // count as word characters, so `手机号138...相关` otherwise evades the filter.
         static RE: OnceLock<Regex> = OnceLock::new();
         let re = RE.get_or_init(|| {
             Regex::new(concat!(
                 r"(?:",
-                r"\b1[3-9]\d{9}\b",     // 手机号（11 位，1[3-9] 开头）
-                r"|\b\d{15,18}[Xx]?\b", // 身份证号（15-18 位 + 可选 X）
-                r"|\b\d{16,19}\b",      // 银行卡号（16-19 位）
+                r"(?:^|[^0-9])(?:1[3-9][0-9]{9}|[0-9]{15,19}[Xx]?)(?:$|[^0-9A-Za-z])",
                 r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", // 邮箱
-                r"|密码.{0,5}[:：].+",  // 密码
+                r"|密码.{0,5}[:：].+",                              // 密码
                 r"|password.{0,5}[:=].+",
                 r")"
             ))

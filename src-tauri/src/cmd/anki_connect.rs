@@ -682,7 +682,11 @@ pub async fn export_cards_as_apkg_with_template(
         let full_tmpl = match state.database.get_custom_template_by_id(tid) {
             Ok(tmpl) => tmpl,
             Err(e) => {
-                log::warn!("获取完整模板失败 - 模板ID: {}, 错误: {}，回退默认模板", tid, e);
+                log::warn!(
+                    "获取完整模板失败 - 模板ID: {}, 错误: {}，回退默认模板",
+                    tid,
+                    e
+                );
                 None
             }
         };
@@ -1061,8 +1065,7 @@ mod save_anki_cards_semantics_tests {
     #[test]
     fn save_response_serde_defaults_new_fields() {
         let json = r#"{"savedIds":["a"],"taskId":"t1"}"#;
-        let parsed: SaveAnkiCardsResponse =
-            serde_json::from_str(json).expect("compat deserialize");
+        let parsed: SaveAnkiCardsResponse = serde_json::from_str(json).expect("compat deserialize");
         assert_eq!(parsed.saved_ids, vec!["a".to_string()]);
         assert_eq!(parsed.task_id, "t1");
         assert!(parsed.skipped_ids.is_empty());

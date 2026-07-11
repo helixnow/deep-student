@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use rusqlite::OptionalExtension;
 use tracing::{debug, warn};
 
 use crate::vfs::database::VfsDatabase;
@@ -32,6 +33,7 @@ pub const DAILY_LOG_TAG: &str = "daily_log";
 pub const TAG_DAILY_LOG_DATE_PREFIX: &str = "_daily_log_date:";
 /// 单日日志内容上限（与 study 类型 4000 字上限一致）
 pub const DAILY_LOG_MAX_CHARS: usize = 4000;
+const DAILY_LOG_CAS_MAX_RETRIES: usize = 32;
 
 /// 每日日志笔记标题：`__daily_log_2026-07-08__`
 pub fn daily_log_note_title(date: &str) -> String {
@@ -63,10 +65,7 @@ pub struct DailyLogRecord {
 }
 
 /// 定位（不创建）日志文件夹 ID
-fn find_log_folder_id(
-    vfs_db: &Arc<VfsDatabase>,
-    root_id: &str,
-) -> VfsResult<Option<String>> {
+fn find_log_folder_id(vfs_db: &Arc<VfsDatabase>, root_id: &str) -> VfsResult<Option<String>> {
     let children = VfsFolderRepo::list_folders_by_parent(vfs_db, Some(root_id))?;
     Ok(children
         .iter()
@@ -90,28 +89,42 @@ fn get_or_create_log_folder_id(vfs_db: &Arc<VfsDatabase>, root_id: &str) -> VfsR
     Ok(folder.id)
 }
 
-/// 在日志文件夹下按标题查找笔记
+#[derive(Debug, Clone)]
+struct DailyLogSnapshot {
+    note_id: String,
+    updated_at: String,
+    content: String,
+}
+
+/// 在日志文件夹下按标题读取笔记及其 CAS token。
 fn find_log_note(
     vfs_db: &Arc<VfsDatabase>,
     folder_id: &str,
     title: &str,
-) -> VfsResult<Option<(String, String)>> {
+) -> VfsResult<Option<DailyLogSnapshot>> {
     use rusqlite::params;
     let conn = vfs_db.get_conn_safe()?;
-    let found: Option<(String, String)> = conn
-        .query_row(
-            r#"
-            SELECT n.id, n.resource_id FROM notes n
+    conn.query_row(
+        r#"
+            SELECT n.id, n.updated_at, r.data
+            FROM notes n
             JOIN folder_items fi ON fi.item_type = 'note' AND fi.item_id = n.id
+            JOIN resources r ON r.id = n.resource_id
             WHERE n.title = ?1 AND fi.folder_id = ?2
               AND n.deleted_at IS NULL AND fi.deleted_at IS NULL
             LIMIT 1
             "#,
-            params![title, folder_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .ok();
-    Ok(found)
+        params![title, folder_id],
+        |row| {
+            Ok(DailyLogSnapshot {
+                note_id: row.get(0)?,
+                updated_at: row.get(1)?,
+                content: row.get(2)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(Into::into)
 }
 
 /// 追加一条日志条目到"今天"的日志（外部入口）
@@ -129,6 +142,18 @@ pub fn append_entry_for_date(
     date: &str,
     entry: &str,
 ) -> VfsResult<DailyLogAppendOutcome> {
+    append_entry_for_date_inner(service, date, entry, None::<fn()>)
+}
+
+fn append_entry_for_date_inner<H>(
+    service: &MemoryService,
+    date: &str,
+    entry: &str,
+    mut before_first_commit: Option<H>,
+) -> VfsResult<DailyLogAppendOutcome>
+where
+    H: FnOnce(),
+{
     let entry = entry.trim();
     if entry.is_empty() {
         return Ok(DailyLogAppendOutcome {
@@ -140,87 +165,139 @@ pub fn append_entry_for_date(
     }
 
     let vfs_db = service.vfs_db_ref().clone();
-    let root_id = service.get_or_create_root_folder()?;
-    let folder_id = get_or_create_log_folder_id(&vfs_db, &root_id)?;
+    let folder_id = {
+        let _guard = super::lock_memory_structure();
+        let root_id = service.get_or_create_root_folder_unlocked()?;
+        get_or_create_log_folder_id(&vfs_db, &root_id)?
+    };
     let title = daily_log_note_title(date);
 
-    // 条目单行化，防止破坏日志的行结构
-    let entry_single_line = entry.replace('\n', " ").replace('\r', " ");
+    // 条目单行化，防止破坏日志的行结构。单条也必须服从硬上限，
+    // 否则一个超长条目会永久突破 Study memory 的 4000 字约束。
+    let raw_entry_single_line = entry.replace('\n', " ").replace('\r', " ");
     let time_str = chrono::Local::now().format("%H:%M").to_string();
-    let new_line = format!("- [{}] {}", time_str, entry_single_line);
+    let prefix = format!("- [{}] ", time_str);
+    let body_limit = DAILY_LOG_MAX_CHARS.saturating_sub(prefix.chars().count());
+    let entry_single_line: String = raw_entry_single_line.chars().take(body_limit).collect();
+    let new_line = format!("{}{}", prefix, entry_single_line);
 
-    match find_log_note(&vfs_db, &folder_id, &title)? {
-        Some((note_id, resource_id)) => {
-            let current = VfsNoteRepo::get_note_content(&vfs_db, &note_id)?.unwrap_or_default();
+    for attempt in 0..DAILY_LOG_CAS_MAX_RETRIES {
+        match find_log_note(&vfs_db, &folder_id, &title)? {
+            Some(snapshot) => {
+                // 去重：忽略时间戳前缀比较条目正文
+                if lines_contain_entry(&snapshot.content, &entry_single_line) {
+                    return Ok(DailyLogAppendOutcome {
+                        note_id: snapshot.note_id,
+                        resource_id: None,
+                        appended: false,
+                        reason: "当日已有相同条目，跳过".to_string(),
+                    });
+                }
 
-            // 去重：忽略时间戳前缀比较条目正文
-            if lines_contain_entry(&current, &entry_single_line) {
+                let mut lines: Vec<String> = snapshot
+                    .content
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| l.to_string())
+                    .collect();
+                lines.push(new_line.clone());
+                let content = enforce_log_char_limit(lines);
+
+                if let Some(hook) = before_first_commit.take() {
+                    hook();
+                }
+                match VfsNoteRepo::update_note(
+                    &vfs_db,
+                    &snapshot.note_id,
+                    VfsUpdateNoteParams {
+                        title: None,
+                        content: Some(content),
+                        tags: None,
+                        expected_updated_at: Some(snapshot.updated_at),
+                    },
+                ) {
+                    Ok(updated_note) => {
+                        if let Err(e) =
+                            VfsIndexStateRepo::mark_pending(&vfs_db, &updated_note.resource_id)
+                        {
+                            warn!("[DailyLog] Failed to mark pending for indexing: {}", e);
+                        }
+                        debug!(
+                            "[DailyLog] Appended entry to {} ({})",
+                            title, snapshot.note_id
+                        );
+                        return Ok(DailyLogAppendOutcome {
+                            note_id: snapshot.note_id,
+                            resource_id: Some(updated_note.resource_id),
+                            appended: true,
+                            reason: "已追加".to_string(),
+                        });
+                    }
+                    Err(crate::vfs::error::VfsError::Conflict { .. }) => {
+                        debug!(
+                            "[DailyLog] CAS conflict on attempt {}; replaying append",
+                            attempt + 1
+                        );
+                        super::backoff_memory_write(attempt);
+                        continue;
+                    }
+                    Err(error) if super::is_retryable_sqlite_lock(&error) => {
+                        debug!(
+                            "[DailyLog] SQLite write contention on attempt {}; replaying append",
+                            attempt + 1
+                        );
+                        super::backoff_memory_write(attempt);
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                }
+            }
+            None => {
+                if let Some(hook) = before_first_commit.take() {
+                    hook();
+                }
+                let _guard = super::lock_memory_structure();
+                if find_log_note(&vfs_db, &folder_id, &title)?.is_some() {
+                    continue;
+                }
+
+                // 每日首条：创建当日日志笔记（保持索引启用 → memory_search 可检索）
+                let tags = vec![
+                    DAILY_LOG_TAG.to_string(),
+                    format!("{}{}", TAG_DAILY_LOG_DATE_PREFIX, date),
+                    MemoryType::Study.to_tag(),
+                    MemoryPurpose::Systemic.to_tag(),
+                ];
+                let note = VfsNoteRepo::create_note_in_folder(
+                    &vfs_db,
+                    VfsCreateNoteParams {
+                        title: title.clone(),
+                        content: new_line.clone(),
+                        tags,
+                    },
+                    Some(&folder_id),
+                )?;
+                if let Err(e) = VfsIndexStateRepo::mark_pending(&vfs_db, &note.resource_id) {
+                    warn!("[DailyLog] Failed to mark pending for indexing: {}", e);
+                }
+                debug!(
+                    "[DailyLog] Created daily log note for {}: {}",
+                    date, note.id
+                );
                 return Ok(DailyLogAppendOutcome {
-                    note_id,
-                    resource_id: None,
-                    appended: false,
-                    reason: "当日已有相同条目，跳过".to_string(),
+                    note_id: note.id,
+                    resource_id: Some(note.resource_id),
+                    appended: true,
+                    reason: "已创建当日日志并写入首条".to_string(),
                 });
             }
-
-            let mut lines: Vec<String> = current
-                .lines()
-                .filter(|l| !l.trim().is_empty())
-                .map(|l| l.to_string())
-                .collect();
-            lines.push(new_line);
-            let content = enforce_log_char_limit(lines);
-
-            VfsNoteRepo::update_note(
-                &vfs_db,
-                &note_id,
-                VfsUpdateNoteParams {
-                    title: None,
-                    content: Some(content),
-                    tags: None,
-                    expected_updated_at: None,
-                },
-            )?;
-            if let Err(e) = VfsIndexStateRepo::mark_pending(&vfs_db, &resource_id) {
-                warn!("[DailyLog] Failed to mark pending for indexing: {}", e);
-            }
-            debug!("[DailyLog] Appended entry to {} ({})", title, note_id);
-            Ok(DailyLogAppendOutcome {
-                note_id,
-                resource_id: Some(resource_id),
-                appended: true,
-                reason: "已追加".to_string(),
-            })
-        }
-        None => {
-            // 每日首条：创建当日日志笔记（保持索引启用 → memory_search 可检索）
-            let tags = vec![
-                DAILY_LOG_TAG.to_string(),
-                format!("{}{}", TAG_DAILY_LOG_DATE_PREFIX, date),
-                MemoryType::Study.to_tag(),
-                MemoryPurpose::Systemic.to_tag(),
-            ];
-            let note = VfsNoteRepo::create_note_in_folder(
-                &vfs_db,
-                VfsCreateNoteParams {
-                    title,
-                    content: new_line,
-                    tags,
-                },
-                Some(&folder_id),
-            )?;
-            if let Err(e) = VfsIndexStateRepo::mark_pending(&vfs_db, &note.resource_id) {
-                warn!("[DailyLog] Failed to mark pending for indexing: {}", e);
-            }
-            debug!("[DailyLog] Created daily log note for {}: {}", date, note.id);
-            Ok(DailyLogAppendOutcome {
-                note_id: note.id,
-                resource_id: Some(note.resource_id),
-                appended: true,
-                reason: "已创建当日日志并写入首条".to_string(),
-            })
         }
     }
+
+    Err(crate::vfs::error::VfsError::Conflict {
+        key: "daily_log.conflict".to_string(),
+        message: "The daily log remained busy after repeated retries.".to_string(),
+    })
 }
 
 /// 批量追加（flush / 自动提取路径用）；返回实际追加条数
@@ -322,27 +399,27 @@ fn strip_entry_prefix(line: &str) -> &str {
 fn enforce_log_char_limit(lines: Vec<String>) -> String {
     let mut kept = lines;
     loop {
-        let total: usize = kept.iter().map(|l| l.chars().count() + 1).sum();
+        let total = kept.iter().map(|line| line.chars().count()).sum::<usize>()
+            + kept.len().saturating_sub(1);
         if total <= DAILY_LOG_MAX_CHARS || kept.len() <= 1 {
             break;
         }
         kept.remove(0);
     }
-    kept.join("\n")
+    let joined = kept.join("\n");
+    joined.chars().take(DAILY_LOG_MAX_CHARS).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Arc, Barrier};
 
     #[test]
     fn test_daily_log_note_title_and_parse() {
         let title = daily_log_note_title("2026-07-08");
         assert_eq!(title, "__daily_log_2026-07-08__");
-        assert_eq!(
-            parse_date_from_title(&title).as_deref(),
-            Some("2026-07-08")
-        );
+        assert_eq!(parse_date_from_title(&title).as_deref(), Some("2026-07-08"));
         assert!(parse_date_from_title("__user_profile__").is_none());
         assert!(parse_date_from_title("__daily_log_bad__").is_none());
     }
@@ -368,7 +445,9 @@ mod tests {
     #[test]
     fn test_enforce_log_char_limit_drops_oldest() {
         let long_line = "x".repeat(1000);
-        let lines: Vec<String> = (0..10).map(|i| format!("- [10:0{}] {}", i, long_line)).collect();
+        let lines: Vec<String> = (0..10)
+            .map(|i| format!("- [10:0{}] {}", i, long_line))
+            .collect();
         let result = enforce_log_char_limit(lines);
         assert!(result.chars().count() <= DAILY_LOG_MAX_CHARS);
         // 最新的行必须保留
@@ -381,7 +460,118 @@ mod tests {
     fn test_enforce_log_char_limit_keeps_single_oversize_line() {
         let lines = vec!["y".repeat(DAILY_LOG_MAX_CHARS + 100)];
         let result = enforce_log_char_limit(lines);
-        // 单行超限时保留（不产生空日志）
+        // 单行也要截断到硬上限，同时不能产生空日志。
         assert!(!result.is_empty());
+        assert_eq!(result.chars().count(), DAILY_LOG_MAX_CHARS);
+    }
+
+    #[test]
+    fn concurrent_daily_log_appends_replay_after_cas_conflict() {
+        let (_temp_dir, _vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        let date = "2026-07-11";
+        append_entry_for_date(&service, date, "seed").expect("seed daily log");
+
+        let service = Arc::new(service);
+        let barrier = Arc::new(Barrier::new(2));
+        let mut handles = Vec::new();
+        for entry in ["concurrent-a", "concurrent-b"] {
+            let service = service.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                append_entry_for_date_inner(
+                    &service,
+                    date,
+                    entry,
+                    Some(move || {
+                        barrier.wait();
+                    }),
+                )
+                .expect("concurrent append should retry")
+            }));
+        }
+        for handle in handles {
+            assert!(handle.join().expect("append thread panicked").appended);
+        }
+
+        let root_id = service
+            .get_or_create_root_folder()
+            .expect("memory root should exist");
+        let folder_id = find_log_folder_id(service.vfs_db_ref(), &root_id)
+            .expect("find log folder")
+            .expect("log folder should exist");
+        let snapshot = find_log_note(
+            service.vfs_db_ref(),
+            &folder_id,
+            &daily_log_note_title(date),
+        )
+        .expect("read daily log")
+        .expect("daily log should exist");
+        assert!(lines_contain_entry(&snapshot.content, "seed"));
+        assert!(lines_contain_entry(&snapshot.content, "concurrent-a"));
+        assert!(lines_contain_entry(&snapshot.content, "concurrent-b"));
+    }
+
+    #[test]
+    fn concurrent_first_daily_log_appends_create_one_reserved_structure() {
+        let (_temp_dir, vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        let service = Arc::new(service);
+        let barrier = Arc::new(Barrier::new(2));
+        let date = "2026-07-12";
+        let mut handles = Vec::new();
+        for entry in ["first-entry-a", "first-entry-b"] {
+            let service = service.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                append_entry_for_date_inner(
+                    &service,
+                    date,
+                    entry,
+                    Some(move || {
+                        barrier.wait();
+                    }),
+                )
+                .expect("first daily log append should replay")
+            }));
+        }
+        for handle in handles {
+            assert!(handle.join().expect("daily log thread panicked").appended);
+        }
+
+        let conn = vfs_db.get_conn_safe().expect("open VFS database");
+        for (title, expected) in [("记忆", 1_i64), (DAILY_LOG_FOLDER_TITLE, 1_i64)] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM folders WHERE title = ?1 AND deleted_at IS NULL",
+                    rusqlite::params![title],
+                    |row| row.get(0),
+                )
+                .expect("count reserved folders");
+            assert_eq!(count, expected, "reserved folder {title} must be unique");
+        }
+        let note_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM notes WHERE title = ?1 AND deleted_at IS NULL",
+                rusqlite::params![daily_log_note_title(date)],
+                |row| row.get(0),
+            )
+            .expect("count daily log notes");
+        assert_eq!(note_count, 1);
+        drop(conn);
+
+        let root_id = service
+            .get_or_create_root_folder()
+            .expect("memory root should exist");
+        let folder_id = find_log_folder_id(service.vfs_db_ref(), &root_id)
+            .expect("find log folder")
+            .expect("log folder should exist");
+        let snapshot = find_log_note(
+            service.vfs_db_ref(),
+            &folder_id,
+            &daily_log_note_title(date),
+        )
+        .expect("read daily log")
+        .expect("daily log should exist");
+        assert!(lines_contain_entry(&snapshot.content, "first-entry-a"));
+        assert!(lines_contain_entry(&snapshot.content, "first-entry-b"));
     }
 }

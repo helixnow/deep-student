@@ -265,7 +265,11 @@ impl EnhancedAnkiService {
                         let window_clone = window_clone.clone();
                         async move {
                             if let Err(e) = service
-                                .process_task_and_generate_cards_stream(task, window_clone, Some(ready_tx))
+                                .process_task_and_generate_cards_stream(
+                                    task,
+                                    window_clone,
+                                    Some(ready_tx),
+                                )
                                 .await
                             {
                                 warn!("任务处理失败: {}", e);
@@ -350,7 +354,11 @@ impl EnhancedAnkiService {
                     let (ready_tx, ready_rx) = tokio::sync::oneshot::channel::<()>();
                     let handle = tokio::spawn(async move {
                         if let Err(e) = service
-                            .process_task_and_generate_cards_stream(retry_task, window_clone, Some(ready_tx))
+                            .process_task_and_generate_cards_stream(
+                                retry_task,
+                                window_clone,
+                                Some(ready_tx),
+                            )
                             .await
                         {
                             warn!("统一重试任务处理失败: {}", e);
@@ -455,9 +463,7 @@ impl EnhancedAnkiService {
                     h.abort();
                 }
                 // abort 后清理可能残留的取消通道，避免泄漏
-                self.streaming_service
-                    .clear_cancel_sender(&task_id)
-                    .await;
+                self.streaming_service.clear_cancel_sender(&task_id).await;
             }
 
             // abort 兜底后仍写 DB 终态 Paused
@@ -573,7 +579,10 @@ impl EnhancedAnkiService {
 
         if !matches!(
             task.status,
-            TaskStatus::Pending | TaskStatus::Failed | TaskStatus::Truncated | TaskStatus::Cancelled
+            TaskStatus::Pending
+                | TaskStatus::Failed
+                | TaskStatus::Truncated
+                | TaskStatus::Cancelled
         ) {
             return Err(AppError::validation("任务状态不是待处理"));
         }
@@ -659,14 +668,16 @@ impl EnhancedAnkiService {
         }) {
             // 运行中的任务先断流
             if matches!(task.status, TaskStatus::Processing | TaskStatus::Streaming) {
-                if let Err(e) = self.streaming_service.cancel_streaming(task.id.clone()).await {
+                if let Err(e) = self
+                    .streaming_service
+                    .cancel_streaming(task.id.clone())
+                    .await
+                {
                     warn!("取消流失败: {}，尝试直接中止任务句柄", e);
                     if let Some((_, h)) = RUNNING_HANDLES.remove(&task.id) {
                         h.abort();
                     }
-                    self.streaming_service
-                        .clear_cancel_sender(&task.id)
-                        .await;
+                    self.streaming_service.clear_cancel_sender(&task.id).await;
                 }
             }
 
