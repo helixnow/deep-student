@@ -25,6 +25,8 @@ jobs:
   e2e-test:
     name: Tauri E2E (${{ matrix.platform }})
     runs-on: ${{ matrix.platform }}
+    env:
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
     
     strategy:
       # 不因单个平台失败而取消其他平台

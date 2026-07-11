@@ -279,6 +279,7 @@ src-tauri/.codex_appcast.xml
 mcp-feedback-enhanced/
 # 根目录调试数据库副本
 /deep-student.db
+/dev.db
 # 本机参考代码副本（不入库）
 deep-agent-ref/
 # MCP 反馈工具会话接力文档（本机生成，不入库）

@@ -1,9 +1,8 @@
 [build]
 # rustc-wrapper = "sccache"  # Windows 开发环境临时禁用
 
-# 本机 Clash 代理（仅开发机；CI/无代理环境可忽略）
-[http]
-proxy = "http://127.0.0.1:7897"
+# 代理必须由开发机或 CI 环境注入，例如 CARGO_HTTP_PROXY / HTTPS_PROXY。
+# 不要在仓库配置中写入本机端口，否则干净 runner 无法下载依赖。
 
 # Windows 本地编译链接器配置 - 解决内存不足问题
 # /PDBPAGESIZE:16384：debug PDB 超过默认 4GB 上限会 LNK1140（勿用 /PDB:NONE，会生成名为 NONE 的垃圾文件）
@@ -33,8 +32,3 @@ opt-level = 0
 
 
 # Android NDK 配置请通过环境变量注入（见 scripts/build_android.sh）
-
-# Android NDK 配置（由 build_android.sh 自动添加）
-[target.aarch64-linux-android]
-linker = "/Users/houxuefei/Library/Android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android21-clang"
-ar = "/Users/houxuefei/Library/Android/sdk/ndk/27.2.12479018/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar"

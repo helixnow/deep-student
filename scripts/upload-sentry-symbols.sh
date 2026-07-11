@@ -41,11 +41,8 @@ SCRIPT_DIR="$(dirname "$0")"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="$PROJECT_ROOT/src-tauri/target/release"
 
-# 从 Cargo.toml 读取版本号
-APP_VERSION=$(grep '^version' "$PROJECT_ROOT/src-tauri/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/')
-BUILD_NUMBER=$(git -C "$PROJECT_ROOT" rev-list --all --count 2>/dev/null || echo "0")
-BUILD_NUMBER=$((9000 + BUILD_NUMBER))
-SENTRY_RELEASE="${APP_VERSION}+${BUILD_NUMBER}"
+# 与前端和 Rust 共用内部 build number；Android versionCode 独立管理。
+SENTRY_RELEASE=$(node "$PROJECT_ROOT/scripts/generate-version.mjs" --print-sentry-release)
 
 log_info "Sentry Release: ${SENTRY_RELEASE}"
 log_info "Target Dir: ${TARGET_DIR}"

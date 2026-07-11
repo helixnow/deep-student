@@ -12,12 +12,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Only this contract job needs full history. Non-release jobs below inject a
+  # deterministic build number so their default shallow checkouts remain cheap.
+  # Stable release metadata and clean-runner Cargo configuration.
+  build-config:
+    name: Build Configuration Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Test version and proxy contracts
+        run: node --test scripts/__tests__/*.test.mjs
+
+      - name: Validate generated Android versionCode
+        run: node scripts/generate-version.mjs --check
+
+      - name: Verify generation leaves tracked build config clean
+        run: |
+          mkdir -p src-tauri/gen/android/app
+          : > src-tauri/gen/android/app/tauri.properties
+          node scripts/generate-version.mjs
+          ANDROID_VERSION_CODE="$(node scripts/generate-version.mjs --print-android-version-code)"
+          grep -qx "tauri.android.versionCode=${ANDROID_VERSION_CODE}" src-tauri/gen/android/app/tauri.properties
+          git diff --exit-code
+
   # ============================================
   # 前端编译检查
   # ============================================
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    env:
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
     steps:
       - uses: actions/checkout@v7
 
@@ -55,6 +87,8 @@ jobs:
     name: Frontend Tests (Vitest ${{ matrix.shard }}/4)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
     strategy:
       fail-fast: false
       matrix:
@@ -83,6 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
     steps:
       - name: Free disk space
         run: |
@@ -141,6 +176,7 @@ jobs:
           - sync_schema_coverage_tests
     env:
       CARGO_INCREMENTAL: 0
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
       # proptest 在 CI 里用随机种子；固定一下便于 reproduce
       PROPTEST_CASES: '64'
     steps:
@@ -184,6 +220,7 @@ jobs:
     timeout-minutes: 45
     env:
       CARGO_INCREMENTAL: 0
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
     steps:
       - name: Free disk space
         run: |
@@ -230,8 +267,10 @@ jobs:
           - anki_export_integration
           - mcpbench_integration
           - error_details_tests
+          - app_command_acl
     env:
       CARGO_INCREMENTAL: 0
+      DEEP_STUDENT_BUILD_NUMBER: '14635'
     steps:
       - name: Free disk space
         run: |

@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+source "$SCRIPT_DIR/android-ndk-tools.sh"
 
 say() { echo -e "\033[1;32m==>\033[0m $*"; }
 warn() { echo -e "\033[1;33m[warn]\033[0m $*"; }
@@ -22,7 +23,6 @@ DEBUG_MODE=false
 USE_DEV_PACKAGE=false
 ORIGINAL_IDENTIFIER=""
 TAURI_CONF="$REPO_ROOT/src-tauri/tauri.conf.json"
-TAURI_CONF_BACKUP=""
 
 # ============================================================================
 # 交互式菜单函数
@@ -297,42 +297,8 @@ normalize_android_sdk_path() {
   echo "$path"
 }
 
-apply_android_version_code() {
-    local build_number="$1"
-    if [[ -z "$build_number" ]]; then
-        warn "内部版本号为空，跳过写入 tauri.conf.json"
-        return
-    fi
-    if [[ ! -f "$TAURI_CONF" ]]; then
-        warn "未找到 tauri.conf.json，跳过写入 versionCode"
-        return
-    fi
-    TAURI_CONF_BACKUP="$(mktemp)"
-    cp "$TAURI_CONF" "$TAURI_CONF_BACKUP"
-    node -e '
-const fs = require("fs");
-const path = process.argv[1];
-const buildNumber = Number(process.argv[2]);
-const raw = fs.readFileSync(path, "utf8");
-const data = JSON.parse(raw);
-if (!data.bundle) data.bundle = {};
-if (!data.bundle.android) data.bundle.android = {};
-data.bundle.android.versionCode = Number.isNaN(buildNumber) ? 1 : buildNumber;
-fs.writeFileSync(path, JSON.stringify(data, null, 2) + "\n", "utf8");
-' "$TAURI_CONF" "$build_number"
-    say "✓ tauri.conf.json 已写入 Android versionCode: $build_number"
-}
-
-restore_android_version_code() {
-    if [[ -n "$TAURI_CONF_BACKUP" && -f "$TAURI_CONF_BACKUP" ]]; then
-        mv "$TAURI_CONF_BACKUP" "$TAURI_CONF"
-        TAURI_CONF_BACKUP=""
-        info "✓ tauri.conf.json 已恢复"
-    fi
-}
-
 # 确保脚本退出时恢复
-trap 'restore_android_version_code; restore_package_name' EXIT
+trap 'restore_package_name' EXIT
 
 # ============================================================================
 # 解析命令行参数
@@ -475,12 +441,17 @@ fi
 if [[ -z "${NDK_HOME:-}" ]]; then
     warn "未设置 NDK_HOME，将尝试使用 ANDROID_HOME 下的 NDK"
     if [[ -d "$ANDROID_HOME/ndk" ]]; then
-        NDK_HOME=$(find "$ANDROID_HOME/ndk" -maxdepth 1 -type d | tail -n 1)
+        NDK_HOME=$(find "$ANDROID_HOME/ndk" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)
         export NDK_HOME
         say "自动检测到 NDK: $NDK_HOME"
     else
         die "未找到 NDK。请设置 NDK_HOME 或在 ANDROID_HOME 下安装 NDK"
     fi
+fi
+NDK_HOME="$(normalize_android_sdk_path "$NDK_HOME")"
+export NDK_HOME
+if [[ ! -d "$NDK_HOME" ]]; then
+    die "NDK_HOME 路径不存在: $NDK_HOME"
 fi
 
 # 检查 Rust Android 目标
@@ -657,77 +628,44 @@ if [[ -z "${SKIP_ANDROID_BUILD:-}" ]]; then
     # 清理旧的构建产物（可选）
     # rm -rf src-tauri/gen/android/app/build/outputs/apk
 
-    # 配置 Android NDK 工具链环境变量
-    # 检测系统架构（darwin-x86_64 或 darwin-arm64）
-    NDK_PREBUILT_DIR=""
-    if [[ -d "$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64" ]]; then
-        NDK_PREBUILT_DIR="$NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64"
-    elif [[ -d "$NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64" ]]; then
-        NDK_PREBUILT_DIR="$NDK_HOME/toolchains/llvm/prebuilt/darwin-arm64"
-    else
-        die "无法找到 NDK 预构建工具链目录"
-    fi
+    # 配置 Android NDK 工具链环境变量。宿主标签和 Windows 扩展名
+    # 由独立 helper 解析，避免把开发机路径写回 Cargo 配置。
+    NDK_PREBUILT_DIR="$(android_ndk_find_prebuilt "$NDK_HOME")" \
+        || die "当前宿主不受支持，或 NDK 缺少匹配的预构建工具链: $(uname -s)/$(uname -m)"
+    NDK_CC="$(android_ndk_find_tool "$NDK_PREBUILT_DIR" aarch64-linux-android21-clang)" \
+        || die "缺少 NDK 工具: aarch64-linux-android21-clang"
+    NDK_CXX="$(android_ndk_find_tool "$NDK_PREBUILT_DIR" aarch64-linux-android21-clang++)" \
+        || die "缺少 NDK 工具: aarch64-linux-android21-clang++"
+    NDK_AR="$(android_ndk_find_tool "$NDK_PREBUILT_DIR" llvm-ar)" \
+        || die "缺少 NDK 工具: llvm-ar"
 
     # 设置 Cargo 使用的 Android 工具链
-    export CC_aarch64_linux_android="$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang"
-    export CXX_aarch64_linux_android="$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang++"
-    export AR_aarch64_linux_android="$NDK_PREBUILT_DIR/bin/llvm-ar"
-    export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang"
-    
-    # 配置 src-tauri/.cargo/config.toml 中的 Android 链接器
-    # 确保 Cargo 使用正确的链接器
-    CARGO_CONFIG_FILE="$REPO_ROOT/src-tauri/.cargo/config.toml"
-    if ! grep -q "\[target.aarch64-linux-android\]" "$CARGO_CONFIG_FILE" 2>/dev/null; then
-        say "更新 Cargo 配置文件以包含 Android NDK 链接器配置..."
-        cat >> "$CARGO_CONFIG_FILE" <<EOF
-
-# Android NDK 配置（由 build_android.sh 自动添加）
-[target.aarch64-linux-android]
-linker = "$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang"
-ar = "$NDK_PREBUILT_DIR/bin/llvm-ar"
-EOF
-    else
-        # 如果配置已存在，更新链接器路径
-        say "更新 Android NDK 链接器路径..."
-        if [[ "$(uname)" == "Darwin" ]]; then
-            if [[ "$(uname -m)" == "arm64" ]]; then
-                sed -i '' "s|linker = \".*aarch64-linux-android.*\"|linker = \"$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang\"|" "$CARGO_CONFIG_FILE"
-                sed -i '' "s|ar = \".*llvm-ar\"|ar = \"$NDK_PREBUILT_DIR/bin/llvm-ar\"|" "$CARGO_CONFIG_FILE"
-            else
-                sed -i '' "s|linker = \".*aarch64-linux-android.*\"|linker = \"$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang\"|" "$CARGO_CONFIG_FILE"
-                sed -i '' "s|ar = \".*llvm-ar\"|ar = \"$NDK_PREBUILT_DIR/bin/llvm-ar\"|" "$CARGO_CONFIG_FILE"
-            fi
-        else
-            sed -i "s|linker = \".*aarch64-linux-android.*\"|linker = \"$NDK_PREBUILT_DIR/bin/aarch64-linux-android21-clang\"|" "$CARGO_CONFIG_FILE"
-            sed -i "s|ar = \".*llvm-ar\"|ar = \"$NDK_PREBUILT_DIR/bin/llvm-ar\"|" "$CARGO_CONFIG_FILE"
-        fi
-    fi
+    export CC_aarch64_linux_android="$NDK_CC"
+    export CXX_aarch64_linux_android="$NDK_CXX"
+    export AR_aarch64_linux_android="$NDK_AR"
+    export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$NDK_CC"
     
     say "配置 Android NDK 工具链:"
     say "  CC: $CC_aarch64_linux_android"
     say "  AR: $AR_aarch64_linux_android"
     say "  Linker: $CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
 
-    # 设置内部版本号（versionCode）
-    say "设置内部版本号..."
-    BUILD_NUMBER=$(grep "BUILD_NUMBER:" "$REPO_ROOT/src/version.ts" | sed "s/.*BUILD_NUMBER: '\([^']*\)'.*/\1/")
-    if [[ -z "$BUILD_NUMBER" ]]; then
-        warn "无法获取内部版本号，使用默认值 1"
-        BUILD_NUMBER="1"
+    # Android 商店发布号与内部 build number 分离，必须使用 tracked release code。
+    say "设置 Android versionCode..."
+    ANDROID_VERSION_CODE=$(node scripts/generate-version.mjs --print-android-version-code) \
+        || die "无法获取 Android versionCode"
+    if [[ ! "$ANDROID_VERSION_CODE" =~ ^[0-9]+$ ]]; then
+        die "Android versionCode 不是纯数字: $ANDROID_VERSION_CODE"
     fi
-    if [[ ! "$BUILD_NUMBER" =~ ^[0-9]+$ ]]; then
-        warn "内部版本号不是纯数字，重置为 1"
-        BUILD_NUMBER="1"
-    fi
-    say "✓ 内部版本号: $BUILD_NUMBER"
+    say "✓ Android versionCode: $ANDROID_VERSION_CODE"
 
-    apply_android_version_code "$BUILD_NUMBER"
-    
     # 导出环境变量供Tauri使用
-    export TAURI_ANDROID_VERSION_CODE="$BUILD_NUMBER"
+    export TAURI_ANDROID_VERSION_CODE="$ANDROID_VERSION_CODE"
+    TAURI_ANDROID_CONFIG="{\"bundle\":{\"android\":{\"versionCode\":${ANDROID_VERSION_CODE}}}}"
 
     # 使用 Tauri CLI 进行标准构建（默认 release）
-    npx @tauri-apps/cli android build --target aarch64 || die "Android 构建失败"
+    npx @tauri-apps/cli android build --target aarch64 --config "$TAURI_ANDROID_CONFIG" \
+        || die "Android 构建失败"
 
     # 可选：构建一个可调试的发布变体，便于用 Chrome Inspect 调试发布白屏
     if [[ -n "${ANDROID_DEBUGGABLE_RELEASE:-}" ]]; then

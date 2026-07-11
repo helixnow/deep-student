@@ -520,16 +520,16 @@ jobs:
       - name: Configure NDK toolchain
         run: |
           NDK_PREBUILT="${NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64"
-
-          sed -i '/\[target.aarch64-linux-android\]/,/^$/{ s|linker = .*|linker = "'"${NDK_PREBUILT}"'/bin/aarch64-linux-android21-clang"|; s|ar = .*|ar = "'"${NDK_PREBUILT}"'/bin/llvm-ar"| }' src-tauri/.cargo/config.toml
+          for TOOL in aarch64-linux-android21-clang aarch64-linux-android21-clang++ llvm-ar; do
+            test -x "${NDK_PREBUILT}/bin/${TOOL}" || { echo "::error::missing NDK tool ${TOOL}"; exit 1; }
+          done
 
           echo "CC_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
           echo "CXX_aarch64_linux_android=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang++" >> $GITHUB_ENV
           echo "AR_aarch64_linux_android=${NDK_PREBUILT}/bin/llvm-ar" >> $GITHUB_ENV
           echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=${NDK_PREBUILT}/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
 
-          echo "✅ NDK toolchain configured:"
-          cat src-tauri/.cargo/config.toml | grep -A2 aarch64-linux-android
+          echo "✅ NDK toolchain configured: ${NDK_PREBUILT}"
 
       - name: Build Android APK
         env:
