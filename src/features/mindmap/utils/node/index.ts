@@ -21,6 +21,7 @@ export {
   countNodes,
   countDescendants,
   getMaxDepth,
+  collectTopLevelNodeIds,
 } from './traverse';
 
 // 查找
@@ -83,4 +84,3 @@ export {
 // 拆分 / 合并
 export type { SplitNodeResult, MergeWithPreviousResult } from './splitMerge';
 export { splitNode, mergeWithPrevious } from './splitMerge';
-

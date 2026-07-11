@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
 import { markdownListToNodes } from '@/features/mindmap/utils/pasteMarkdown';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
-import type { MindMapDocument } from '@/features/mindmap/types';
+import type { MindMapDocument, MindMapNode } from '@/features/mindmap/types';
 
 function createDocument(): MindMapDocument {
   return {
@@ -34,6 +34,34 @@ function createDocument(): MindMapDocument {
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     },
+  };
+}
+
+function createFlatDocument(): MindMapDocument {
+  return {
+    version: '1.0',
+    root: {
+      id: 'root_flat',
+      text: 'Root',
+      children: ['a', 'b', 'c', 'd'].map((id) => ({ id, text: id.toUpperCase(), children: [] })),
+    },
+    meta: { createdAt: '2026-01-01T00:00:00.000Z' },
+  };
+}
+
+function createWideDocument(childCount: number): MindMapDocument {
+  return {
+    version: '1.0',
+    root: {
+      id: 'root_wide',
+      text: 'Root',
+      children: Array.from({ length: childCount }, (_, index) => ({
+        id: `wide_${index}`,
+        text: `${index}`,
+        children: [],
+      })),
+    },
+    meta: { createdAt: '2026-01-01T00:00:00.000Z' },
   };
 }
 
@@ -202,6 +230,142 @@ describe('mindmap store polish APIs', () => {
     expect(findNodeById(useMindMapStore.getState().document.root, 'node_a')!.completed).toBe(
       false
     );
+  });
+
+  it('batch indent/outdent preserve sibling order and undo in one step', () => {
+    seedStore(createFlatDocument());
+    useMindMapStore.getState().indentNodes(['b', 'c']);
+    let root = useMindMapStore.getState().document.root;
+    expect(root.children.map((child) => child.id)).toEqual(['a', 'd']);
+    expect(findNodeById(root, 'a')?.children.map((child) => child.id)).toEqual(['b', 'c']);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+
+    useMindMapStore.getState().undo();
+    expect(useMindMapStore.getState().document.root.children.map((child) => child.id)).toEqual([
+      'a', 'b', 'c', 'd',
+    ]);
+
+    const nested = createFlatDocument();
+    nested.root.children = [
+      {
+        id: 'parent',
+        text: 'Parent',
+        children: nested.root.children.slice(0, 3),
+      },
+      nested.root.children[3],
+    ];
+    seedStore(nested);
+    useMindMapStore.getState().outdentNodes(['b', 'c']);
+    root = useMindMapStore.getState().document.root;
+    expect(root.children.map((child) => child.id)).toEqual(['parent', 'b', 'c', 'd']);
+    expect(findNodeById(root, 'parent')?.children.map((child) => child.id)).toEqual(['a']);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+  });
+
+  it('group move preserves order and creates one undo entry', () => {
+    seedStore(createFlatDocument());
+    expect(useMindMapStore.getState().moveNodes(['b', 'c'], 'root_flat', 4)).toBe(true);
+    expect(useMindMapStore.getState().document.root.children.map((child) => child.id)).toEqual([
+      'a', 'd', 'b', 'c',
+    ]);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+    useMindMapStore.getState().undo();
+    expect(useMindMapStore.getState().document.root.children.map((child) => child.id)).toEqual([
+      'a', 'b', 'c', 'd',
+    ]);
+  });
+
+  it('hideCompleted prunes newly hidden selections in the same transaction', () => {
+    seedStore(createFlatDocument());
+    useMindMapStore.getState().setHideCompleted(true);
+    useMindMapStore.getState().setSelection(['b']);
+    useMindMapStore.getState().setFocusedNodeId('b');
+    useMindMapStore.getState().toggleCompleted(['b']);
+    expect(useMindMapStore.getState().selection).toEqual([]);
+    expect(useMindMapStore.getState().focusedNodeId).toBe('root_flat');
+  });
+
+  it('deleting a selected ancestor clears descendant interaction state', () => {
+    seedStore(createDocument());
+    useMindMapStore.setState({
+      selection: ['node_a', 'node_a1'],
+      focusedNodeId: 'node_a1',
+      editingNodeId: 'node_a1',
+      editingNoteNodeId: null,
+    });
+    useMindMapStore.getState().deleteNodes(['node_a', 'node_a1']);
+    const state = useMindMapStore.getState();
+    expect(state.selection).toEqual([]);
+    expect(state.focusedNodeId).toBe('root_test');
+    expect(state.editingNodeId).toBeNull();
+  });
+
+  it('pastes plain text lines in one transaction and one undo step', () => {
+    seedStore(createFlatDocument());
+    useMindMapStore.getState().pasteTextChildren('root_flat', [' first ', '', 'second']);
+    const state = useMindMapStore.getState();
+    expect(state.document.root.children.slice(-2).map((node) => node.text)).toEqual([
+      'first',
+      'second',
+    ]);
+    expect(state.history.past).toHaveLength(1);
+    expect(state._documentVersion).toBe(1);
+
+    state.undo();
+    expect(useMindMapStore.getState().document.root.children.map((node) => node.id)).toEqual([
+      'a', 'b', 'c', 'd',
+    ]);
+  });
+
+  it('pasteNodes allows exactly 10k nodes and rejects 10,001 atomically', () => {
+    seedStore(createWideDocument(9_998));
+    useMindMapStore.setState({
+      clipboard: {
+        sourceOperation: 'copy',
+        nodes: [{ id: 'clipboard_leaf', text: 'leaf', children: [] }],
+      },
+    });
+    useMindMapStore.getState().pasteNodes('root_wide');
+    expect(useMindMapStore.getState().document.root.children).toHaveLength(9_999);
+    expect(useMindMapStore.getState().history.past).toHaveLength(1);
+
+    seedStore(createWideDocument(9_999));
+    useMindMapStore.setState({
+      clipboard: {
+        sourceOperation: 'copy',
+        nodes: [{ id: 'clipboard_overflow', text: 'overflow', children: [] }],
+      },
+    });
+    const before = useMindMapStore.getState();
+    useMindMapStore.getState().pasteNodes('root_wide');
+    const after = useMindMapStore.getState();
+    expect(after.document).toBe(before.document);
+    expect(after.history.past).toHaveLength(0);
+    expect(after._documentVersion).toBe(0);
+    expect(after.isDirty).toBe(false);
+    expect(after.clipboard).toBe(before.clipboard);
+  });
+
+  it('pasteNodes rejects a subtree that would reach depth 100', () => {
+    const deep = createFlatDocument();
+    let current = deep.root;
+    current.children = [];
+    for (let depth = 1; depth <= 99; depth++) {
+      const child = { id: `deep_${depth}`, text: `${depth}`, children: [] as MindMapNode[] };
+      current.children = [child];
+      current = child;
+    }
+    seedStore(deep);
+    useMindMapStore.setState({
+      clipboard: {
+        sourceOperation: 'copy',
+        nodes: [{ id: 'too_deep', text: 'too deep', children: [] }],
+      },
+    });
+    const before = useMindMapStore.getState().document;
+    useMindMapStore.getState().pasteNodes('deep_99');
+    expect(useMindMapStore.getState().document).toBe(before);
+    expect(useMindMapStore.getState().history.past).toHaveLength(0);
   });
 });
 

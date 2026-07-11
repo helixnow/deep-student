@@ -4,7 +4,9 @@
  * 整合：文档状态、UI状态、历史记录、API调用
  */
 
-import { create } from 'zustand';
+import { createContext, useContext } from 'react';
+import { useStore } from 'zustand';
+import { createStore, type StoreApi } from 'zustand/vanilla';
 import { immer } from 'zustand/middleware/immer';
 import { enableMapSet } from 'immer';
 import { nanoid } from 'nanoid';
@@ -16,10 +18,18 @@ import { PresetRegistry } from '../registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { findNodeById, findParentNode, isDescendantOf } from '../utils/node/find';
 import { mergeRanges, validateRanges } from '../utils/node/blankRanges';
-import { flattenVisibleNodes, traverseDFS } from '../utils/node/traverse';
+import {
+  collectTopLevelNodeIds,
+  flattenVisibleNodes,
+  traverseDFS,
+} from '../utils/node/traverse';
 import { DEFAULT_LAYOUT_CONFIG } from '../constants';
 import { markdownListToNodes } from '../utils/pasteMarkdown';
-import { resolveVisibleFocusId } from '../utils/hideCompleted';
+import {
+  buildCompletedVisibilityIndex,
+  resolveVisibleIdFromIndex,
+} from '../utils/hideCompleted';
+import { collectSearchPathIds, searchMindMapNodeIds } from '../utils/searchFilter';
 
 /** ACR R1-11：agentEnteringIds 使用 Set，需启用 Immer MapSet 插件 */
 enableMapSet();
@@ -42,8 +52,8 @@ export interface MergeWithPreviousResult {
 // M-070: 前端节点深度/数量限制（与后端保持一致）
 // ============================================================================
 
-const MAX_MINDMAP_DEPTH = 100;
-const MAX_MINDMAP_NODES = 10000;
+export const MAX_MINDMAP_DEPTH = 100;
+export const MAX_MINDMAP_NODES = 10000;
 
 function getNodeDepth(root: MindMapNode, targetId: string, depth = 0): number {
   if (root.id === targetId) return depth;
@@ -58,41 +68,69 @@ function countNodes(node: MindMapNode): number {
   return 1 + node.children.reduce((sum, child) => sum + countNodes(child), 0);
 }
 
-function collectTopLevelNodeIds(
-  root: MindMapNode,
-  nodeIds: string[],
-  options?: { excludeRoot?: boolean }
-): string[] {
-  const uniqueExistingIds: string[] = [];
-  const seen = new Set<string>();
-
-  for (const nodeId of nodeIds) {
-    if (seen.has(nodeId)) continue;
-    if (options?.excludeRoot && nodeId === root.id) continue;
-    if (!findNodeById(root, nodeId)) continue;
-    seen.add(nodeId);
-    uniqueExistingIds.push(nodeId);
+function getSubtreeHeight(node: MindMapNode): number {
+  let height = 0;
+  for (const child of node.children) {
+    height = Math.max(height, 1 + getSubtreeHeight(child));
   }
-
-  return uniqueExistingIds.filter((nodeId) => {
-    return !uniqueExistingIds.some(
-      (candidateAncestorId) =>
-        candidateAncestorId !== nodeId &&
-        isDescendantOf(root, candidateAncestorId, nodeId)
-    );
-  });
+  return height;
 }
 
-function removeNodeById(root: MindMapNode, id: string): boolean {
-  const idx = root.children.findIndex((c) => c.id === id);
-  if (idx !== -1) {
-    root.children.splice(idx, 1);
-    return true;
+function buildNodeIndex(root: MindMapNode): {
+  nodeById: Map<string, MindMapNode>;
+  parentById: Map<string, MindMapNode | null>;
+  depthById: Map<string, number>;
+  indexById: Map<string, number>;
+} {
+  const nodeById = new Map<string, MindMapNode>();
+  const parentById = new Map<string, MindMapNode | null>();
+  const depthById = new Map<string, number>();
+  const indexById = new Map<string, number>();
+  const stack: Array<{
+    node: MindMapNode;
+    parent: MindMapNode | null;
+    depth: number;
+    index: number;
+  }> = [
+    { node: root, parent: null, depth: 0, index: 0 },
+  ];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    nodeById.set(current.node.id, current.node);
+    parentById.set(current.node.id, current.parent);
+    depthById.set(current.node.id, current.depth);
+    indexById.set(current.node.id, current.index);
+    for (let i = current.node.children.length - 1; i >= 0; i--) {
+      stack.push({
+        node: current.node.children[i],
+        parent: current.node,
+        depth: current.depth + 1,
+        index: i,
+      });
+    }
   }
-  for (const child of root.children) {
-    if (removeNodeById(child, id)) return true;
+  return { nodeById, parentById, depthById, indexById };
+}
+
+function collectNodeAndDescendantIds(root: MindMapNode, nodeIds: readonly string[]): Set<string> {
+  const nodeById = buildNodeIndex(root).nodeById;
+  const result = new Set<string>();
+  const stack = nodeIds.flatMap((id) => {
+    const node = nodeById.get(id);
+    return node ? [node] : [];
+  });
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (result.has(node.id)) continue;
+    result.add(node.id);
+    stack.push(...node.children);
   }
-  return false;
+  return result;
+}
+
+function removeNodesById(root: MindMapNode, ids: ReadonlySet<string>): void {
+  root.children = root.children.filter((child) => !ids.has(child.id));
+  for (const child of root.children) removeNodesById(child, ids);
 }
 
 function createDefaultDocument(title?: string): MindMapDocument {
@@ -130,7 +168,7 @@ export interface MindMapConflictSnapshot {
   edgeType: EdgeType;
 }
 
-interface MindMapStoreState {
+export interface MindMapStoreState {
   // 元数据
   mindmapId: string | null;
   metadata: VfsMindMap | null;
@@ -164,8 +202,13 @@ interface MindMapStoreState {
    * 既有 addNode/deleteNode/moveNode 签名不变。
    */
   agentAddNode: (parentId: string, index?: number) => string;
+  agentAddSubtree: (
+    parentId: string,
+    data: Omit<MindMapNode, 'id'>,
+    index?: number,
+  ) => string;
   agentDeleteNode: (nodeId: string) => void;
-  agentMoveNode: (nodeId: string, newParentId: string, index: number) => void;
+  agentMoveNode: (nodeId: string, newParentId: string, index: number) => boolean;
   /** 将完整子树插入 parent（delete 逆操作 / add 带 children 时用） */
   agentInsertSubtree: (parentId: string, node: MindMapNode, index?: number) => void;
 
@@ -268,6 +311,7 @@ interface MindMapStoreState {
   deleteNode: (nodeId: string) => void;
   deleteNodes: (nodeIds: string[]) => void;
   moveNode: (nodeId: string, newParentId: string, index: number) => void;
+  moveNodes: (nodeIds: string[], newParentId: string, index: number) => boolean;
   toggleCollapse: (
     nodeId: string,
     options?: {
@@ -288,6 +332,8 @@ interface MindMapStoreState {
   collapseToDepth: (maxDepth: number) => void;
   indentNode: (nodeId: string) => void;
   outdentNode: (nodeId: string) => void;
+  indentNodes: (nodeIds: string[]) => void;
+  outdentNodes: (nodeIds: string[]) => void;
 
   /**
    * Workflowy 惯例：当前节点保留光标前文本，光标后文本成为下方新同级节点；子树留在原节点。
@@ -334,6 +380,8 @@ interface MindMapStoreState {
   copyNodes: (nodeIds: string[]) => void;
   cutNodes: (nodeIds: string[]) => void;
   pasteNodes: (targetId: string) => void;
+  /** 将普通多行文本作为同级子节点一次性粘贴（单 history）。 */
+  pasteTextChildren: (targetId: string, lines: string[]) => void;
   /** 将 Markdown 列表解析为层级子树，一次 undo 贴到 targetId 下 */
   pasteMarkdownChildren: (targetId: string, markdown: string) => void;
 
@@ -436,8 +484,11 @@ const clearDraft = (mindmapId: string): void => {
 // Store 创建
 // ============================================================================
 
-export const useMindMapStore = create<MindMapStoreState>()(
-  immer((set, get) => {
+export type MindMapStoreApi = StoreApi<MindMapStoreState>;
+
+export function createMindMapStore(): MindMapStoreApi {
+  return createStore<MindMapStoreState>()(
+    immer((set, get) => {
     let saveDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let retrySaveTimer: ReturnType<typeof setTimeout> | null = null;
     /** 非结构性保存失败的自动重试计数（成功或用户新编辑周期后清零） */
@@ -551,6 +602,15 @@ export const useMindMapStore = create<MindMapStoreState>()(
       }, 1500);
     };
 
+    const refreshSearchResults = (state: MindMapStoreState) => {
+      if (!state.searchQuery.trim()) return;
+      const currentId = state.searchResults[state.currentSearchIndex] ?? null;
+      const results = searchMindMapNodeIds(state.document.root, state.searchQuery);
+      state.searchResults = results;
+      const retainedIndex = currentId ? results.indexOf(currentId) : -1;
+      state.currentSearchIndex = retainedIndex >= 0 ? retainedIndex : (results.length > 0 ? 0 : -1);
+    };
+
     const applyMutation = (
       mutate: (state: MindMapStoreState) => void,
       options?: {
@@ -565,6 +625,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
       }
       set((state) => {
         mutate(state);
+        refreshSearchResults(state);
+        reconcileFilteredInteractionState(state);
         if (options?.markDirty !== false) {
           state.isDirty = true;
           state._documentVersion += 1;
@@ -580,6 +642,35 @@ export const useMindMapStore = create<MindMapStoreState>()(
         debounceSave();
       }
     };
+
+    function reconcileFilteredInteractionState(state: MindMapStoreState) {
+      if (state.searchFilterMode && state.searchQuery.trim()) {
+        const allowedIds = collectSearchPathIds(state.document.root, state.searchResults);
+        state.selection = state.selection.filter((id) => allowedIds.has(id));
+        if (state.editingNodeId && !allowedIds.has(state.editingNodeId)) {
+          state.editingNodeId = null;
+        }
+        if (state.focusedNodeId && !allowedIds.has(state.focusedNodeId)) {
+          state.focusedNodeId = state.searchResults.find((id) => allowedIds.has(id)) ?? null;
+        }
+        return;
+      }
+
+      if (!state.hideCompleted) return;
+      const visibility = buildCompletedVisibilityIndex(state.document.root);
+      state.selection = state.selection.filter((id) => visibility.visibleIds.has(id));
+      state.focusedNodeId = resolveVisibleIdFromIndex(
+        visibility,
+        state.focusedNodeId,
+        state.document.root.id,
+      );
+      if (state.editingNodeId && !visibility.visibleIds.has(state.editingNodeId)) {
+        state.editingNodeId = null;
+      }
+      if (state.editingNoteNodeId && !visibility.visibleIds.has(state.editingNoteNodeId)) {
+        state.editingNoteNodeId = null;
+      }
+    }
 
     return {
       // 初始状态
@@ -844,24 +935,31 @@ export const useMindMapStore = create<MindMapStoreState>()(
       // 分支专注根（大纲/画布共享）
       setViewRootId: (nodeId: string | null) => {
         set((state) => {
+          const nodeIndex = buildNodeIndex(state.document.root);
           if (!nodeId) {
             state.viewRootId = null;
           } else if (nodeId === state.document.root.id) {
             // 根节点等同于退出专注
             state.viewRootId = null;
           } else {
-            const node = findNodeById(state.document.root, nodeId);
+            const node = nodeIndex.nodeById.get(nodeId);
             state.viewRootId = node ? nodeId : null;
           }
 
           // 清理不在当前可见子树内的选中，避免批量操作改到屏外节点
           const rootId = state.viewRootId;
           if (!rootId) return;
-          const scopeRoot = findNodeById(state.document.root, rootId);
+          const scopeRoot = nodeIndex.nodeById.get(rootId);
           if (!scopeRoot) return;
-          const inScope = (id: string) => !!findNodeById(scopeRoot, id);
-          state.selection = state.selection.filter(inScope);
-          if (state.focusedNodeId && !inScope(state.focusedNodeId)) {
+          const scopeIds = new Set<string>();
+          const stack = [scopeRoot];
+          while (stack.length > 0) {
+            const current = stack.pop()!;
+            scopeIds.add(current.id);
+            stack.push(...current.children);
+          }
+          state.selection = state.selection.filter((id) => scopeIds.has(id));
+          if (state.focusedNodeId && !scopeIds.has(state.focusedNodeId)) {
             state.focusedNodeId = scopeRoot.id;
           }
         });
@@ -920,44 +1018,57 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
       // ACR R1-11：等价 addNode + applyMutation({ skipHistory: true })
       agentAddNode: (parentId: string, index?: number) => {
+        return get().agentAddSubtree(parentId, { text: '', children: [] }, index);
+      },
+
+      // Agent 外层节点及其 children 单事务插入，避免半棵树与重复保存调度。
+      agentAddSubtree: (parentId, data, index) => {
         const state = get();
         const parentDepth = getNodeDepth(state.document.root, parentId);
-        if (parentDepth < 0 || parentDepth >= MAX_MINDMAP_DEPTH - 1) {
+        if (parentDepth < 0) return '';
+
+        const clonedData = JSON.parse(JSON.stringify(data)) as Omit<MindMapNode, 'id'>;
+        let newId = `node_${nanoid(10)}`;
+        while (findNodeById(state.document.root, newId)) {
+          newId = `node_${nanoid(10)}`;
+        }
+        const newNode: MindMapNode = { ...clonedData, id: newId };
+
+        if (parentDepth + 1 + getSubtreeHeight(newNode) >= MAX_MINDMAP_DEPTH) {
           if (parentDepth >= 0) {
             showGlobalNotification('warning', i18next.t('store.depthExceeded', { ns: 'mindmap' }));
           }
           return '';
         }
-        const totalNodes = countNodes(state.document.root);
-        if (totalNodes >= MAX_MINDMAP_NODES) {
+        if (countNodes(state.document.root) + countNodes(newNode) > MAX_MINDMAP_NODES) {
           showGlobalNotification('warning', i18next.t('store.nodeCountExceeded', { ns: 'mindmap' }));
           return '';
         }
 
-        const newId = `node_${nanoid(10)}`;
-        const newNode: MindMapNode = {
-          id: newId,
-          text: '',
-          children: [],
-        };
+        let inserted = false;
         applyMutation((s) => {
           const parent = findNodeById(s.document.root, parentId);
           if (parent) {
             // 仅在确为折叠时展开，避免写入 collapsed:false 污染树快照
             if (parent.collapsed === true) parent.collapsed = false;
-            const insertIndex = index ?? parent.children.length;
+            const insertIndex = Math.max(
+              0,
+              Math.min(index ?? parent.children.length, parent.children.length),
+            );
             parent.children.splice(insertIndex, 0, newNode);
+            inserted = true;
             // ACR R2-02：不在此设 focusedNodeId——由 mindmapDriver 视口节流统一控制
           }
         }, { skipHistory: true });
 
-        return newId;
+        return inserted ? newId : '';
       },
 
       agentDeleteNode: (nodeId: string) => {
         const { document } = get();
         const normalizedIds = collectTopLevelNodeIds(document.root, [nodeId], { excludeRoot: true });
         if (normalizedIds.length === 0) return;
+        const removedIds = collectNodeAndDescendantIds(document.root, normalizedIds);
 
         let nextFocusedNodeId = document.root.id;
         for (const id of normalizedIds) {
@@ -969,22 +1080,20 @@ export const useMindMapStore = create<MindMapStoreState>()(
         }
 
         applyMutation((state) => {
-          for (const id of normalizedIds) {
-            removeNodeById(state.document.root, id);
-          }
-          if (!state.focusedNodeId || normalizedIds.includes(state.focusedNodeId)) {
+          removeNodesById(state.document.root, new Set(normalizedIds));
+          if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
             state.focusedNodeId = nextFocusedNodeId;
           }
-          if (state.editingNodeId && normalizedIds.includes(state.editingNodeId)) {
+          if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
             state.editingNodeId = null;
           }
-          if (state.editingNoteNodeId && normalizedIds.includes(state.editingNoteNodeId)) {
+          if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
             state.editingNoteNodeId = null;
           }
-          state.selection = state.selection.filter((id) => !normalizedIds.includes(id));
+          state.selection = state.selection.filter((id) => !removedIds.has(id));
           if (
             state.viewRootId &&
-            (normalizedIds.includes(state.viewRootId) ||
+            (removedIds.has(state.viewRootId) ||
               !findNodeById(state.document.root, state.viewRootId))
           ) {
             state.viewRootId = null;
@@ -994,10 +1103,21 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
       agentMoveNode: (nodeId: string, newParentId: string, index: number) => {
         const { document } = get();
-        if (document.root.id === nodeId) return;
-        if (nodeId === newParentId) return;
-        if (isDescendantOf(document.root, nodeId, newParentId)) return;
+        if (document.root.id === nodeId) return false;
+        if (nodeId === newParentId) return false;
+        if (isDescendantOf(document.root, nodeId, newParentId)) return false;
 
+        const movingNode = findNodeById(document.root, nodeId);
+        const currentParent = findParentNode(document.root, nodeId);
+        const nextParent = findNodeById(document.root, newParentId);
+        const nextParentDepth = getNodeDepth(document.root, newParentId);
+        if (!movingNode || !currentParent || !nextParent || nextParentDepth < 0) return false;
+        if (nextParentDepth + 1 + getSubtreeHeight(movingNode) >= MAX_MINDMAP_DEPTH) {
+          showGlobalNotification('warning', i18next.t('store.depthExceeded', { ns: 'mindmap' }));
+          return false;
+        }
+
+        let moved = false;
         applyMutation((state) => {
           const node = findNodeById(state.document.root, nodeId);
           const currentParent = findParentNode(state.document.root, nodeId);
@@ -1023,7 +1143,9 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
           const boundedIndex = Math.max(0, Math.min(targetIndex, nextParent.children.length));
           nextParent.children.splice(boundedIndex, 0, detachedNode);
+          moved = true;
         }, { skipHistory: true });
+        return moved;
       },
 
       agentInsertSubtree: (parentId: string, node: MindMapNode, index?: number) => {
@@ -1107,6 +1229,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
         const { document } = get();
         const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds, { excludeRoot: true });
         if (normalizedIds.length === 0) return;
+        const removedIds = collectNodeAndDescendantIds(document.root, normalizedIds);
 
         let nextFocusedNodeId = document.root.id;
         for (const nodeId of normalizedIds) {
@@ -1118,24 +1241,22 @@ export const useMindMapStore = create<MindMapStoreState>()(
         }
 
         applyMutation((state) => {
-          for (const nodeId of normalizedIds) {
-            removeNodeById(state.document.root, nodeId);
-          }
+          removeNodesById(state.document.root, new Set(normalizedIds));
 
-          if (!state.focusedNodeId || normalizedIds.includes(state.focusedNodeId)) {
+          if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
             state.focusedNodeId = nextFocusedNodeId;
           }
-          if (state.editingNodeId && normalizedIds.includes(state.editingNodeId)) {
+          if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
             state.editingNodeId = null;
           }
-          if (state.editingNoteNodeId && normalizedIds.includes(state.editingNoteNodeId)) {
+          if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
             state.editingNoteNodeId = null;
           }
-          state.selection = state.selection.filter((id) => !normalizedIds.includes(id));
+          state.selection = state.selection.filter((id) => !removedIds.has(id));
           // 专注根被删或其祖先被删时退出专注
           if (
             state.viewRootId &&
-            (normalizedIds.includes(state.viewRootId) ||
+            (removedIds.has(state.viewRootId) ||
               !findNodeById(state.document.root, state.viewRootId))
           ) {
             state.viewRootId = null;
@@ -1145,37 +1266,75 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
       // 移动节点
       moveNode: (nodeId: string, newParentId: string, index: number) => {
+        get().moveNodes([nodeId], newParentId, index);
+      },
+
+      moveNodes: (nodeIds: string[], newParentId: string, index: number) => {
         const { document } = get();
-        if (document.root.id === nodeId) return;
-        if (nodeId === newParentId) return;
-        if (isDescendantOf(document.root, nodeId, newParentId)) return;
-
-        applyMutation((state) => {
-          const node = findNodeById(state.document.root, nodeId);
-          const currentParent = findParentNode(state.document.root, nodeId);
-          const nextParent = findNodeById(state.document.root, newParentId);
-          if (!node || !currentParent || !nextParent) {
-            return;
-          }
-
-          const sourceIndex = currentParent.children.findIndex((child) => child.id === nodeId);
-          if (sourceIndex === -1) {
-            return;
-          }
-
-          const [detachedNode] = currentParent.children.splice(sourceIndex, 1);
-          if (!detachedNode) {
-            return;
-          }
-
-          let targetIndex = index;
-          if (currentParent.id === nextParent.id && sourceIndex < targetIndex) {
-            targetIndex -= 1;
-          }
-
-          const boundedIndex = Math.max(0, Math.min(targetIndex, nextParent.children.length));
-          nextParent.children.splice(boundedIndex, 0, detachedNode);
+        const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds, {
+          excludeRoot: true,
         });
+        if (normalizedIds.length === 0) return false;
+
+        const treeIndex = buildNodeIndex(document.root);
+        const nextParent = treeIndex.nodeById.get(newParentId);
+        const nextParentDepth = treeIndex.depthById.get(newParentId);
+        if (!nextParent || nextParentDepth === undefined) return false;
+
+        for (const nodeId of normalizedIds) {
+          let currentId: string | null = newParentId;
+          while (currentId) {
+            if (currentId === nodeId) return false;
+            currentId = treeIndex.parentById.get(currentId)?.id ?? null;
+          }
+          const node = treeIndex.nodeById.get(nodeId);
+          if (!node || nextParentDepth + 1 + getSubtreeHeight(node) >= MAX_MINDMAP_DEPTH) {
+            showGlobalNotification('warning', i18next.t('store.depthExceeded', { ns: 'mindmap' }));
+            return false;
+          }
+        }
+
+        const requestedIndex = Math.max(0, Math.floor(index));
+        let removedBeforeTarget = 0;
+        for (const nodeId of normalizedIds) {
+          const parent = treeIndex.parentById.get(nodeId);
+          if (parent?.id !== newParentId) continue;
+          const sourceIndex = parent.children.findIndex((child) => child.id === nodeId);
+          if (sourceIndex >= 0 && sourceIndex < requestedIndex) removedBeforeTarget += 1;
+        }
+        const adjustedIndex = requestedIndex - removedBeforeTarget;
+
+        let moved = false;
+        applyMutation((state) => {
+          const liveIndex = buildNodeIndex(state.document.root);
+          const movingNodes = normalizedIds.flatMap((nodeId) => {
+            const node = liveIndex.nodeById.get(nodeId);
+            return node ? [node] : [];
+          });
+          if (movingNodes.length !== normalizedIds.length) return;
+
+          const movingIdSet = new Set(normalizedIds);
+          const touchedParents = new Set<MindMapNode>();
+          for (const nodeId of normalizedIds) {
+            const parent = liveIndex.parentById.get(nodeId);
+            if (parent) touchedParents.add(parent);
+          }
+          for (const parent of touchedParents) {
+            parent.children = parent.children.filter((child) => !movingIdSet.has(child.id));
+          }
+
+          const liveNextParent = liveIndex.nodeById.get(newParentId);
+          if (!liveNextParent) return;
+          const boundedIndex = Math.max(
+            0,
+            Math.min(adjustedIndex, liveNextParent.children.length),
+          );
+          liveNextParent.children.splice(boundedIndex, 0, ...movingNodes);
+          if (liveNextParent.collapsed === true) liveNextParent.collapsed = false;
+          moved = true;
+        });
+
+        return moved;
       },
 
       // 切换折叠
@@ -1216,32 +1375,119 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
       // 缩进节点
       indentNode: (nodeId: string) => {
+        get().indentNodes([nodeId]);
+      },
+
+      indentNodes: (nodeIds: string[]) => {
         const { document } = get();
-        if (document.root.id === nodeId) return;
+        const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds, {
+          excludeRoot: true,
+        });
+        if (normalizedIds.length === 0) return;
 
-        const parent = findParentNode(document.root, nodeId);
-        if (!parent) return;
+        const selectedIds = new Set(normalizedIds);
+        const treeIndex = buildNodeIndex(document.root);
 
-        const idx = parent.children.findIndex((c) => c.id === nodeId);
-        if (idx <= 0) return;
+        const plans: Array<{ parentId: string; targetId: string; nodeIds: string[] }> = [];
+        let exceedsDepth = false;
+        traverseDFS(document.root, (parent) => {
+          let index = 0;
+          while (index < parent.children.length) {
+            if (!selectedIds.has(parent.children[index].id)) {
+              index += 1;
+              continue;
+            }
+            const start = index;
+            const blockIds: string[] = [];
+            while (index < parent.children.length && selectedIds.has(parent.children[index].id)) {
+              blockIds.push(parent.children[index].id);
+              index += 1;
+            }
+            if (start === 0) continue;
 
-        const prevSibling = parent.children[idx - 1];
-        get().moveNode(nodeId, prevSibling.id, prevSibling.children.length);
+            const target = parent.children[start - 1];
+            const targetDepth = treeIndex.depthById.get(target.id) ?? -1;
+            const blockFits = blockIds.every((id) => {
+              const node = treeIndex.nodeById.get(id);
+              return node && targetDepth + 1 + getSubtreeHeight(node) < MAX_MINDMAP_DEPTH;
+            });
+            if (!blockFits) {
+              exceedsDepth = true;
+              continue;
+            }
+            plans.push({ parentId: parent.id, targetId: target.id, nodeIds: blockIds });
+          }
+        });
+
+        if (exceedsDepth) {
+          showGlobalNotification('warning', i18next.t('store.depthExceeded', { ns: 'mindmap' }));
+          return;
+        }
+        if (plans.length === 0) return;
+
+        applyMutation((state) => {
+          const liveNodeById = buildNodeIndex(state.document.root).nodeById;
+          for (const plan of plans) {
+            const parent = liveNodeById.get(plan.parentId);
+            const target = liveNodeById.get(plan.targetId);
+            if (!parent || !target) continue;
+            const movingIds = new Set(plan.nodeIds);
+            const movingNodes = parent.children.filter((child) => movingIds.has(child.id));
+            if (movingNodes.length === 0) continue;
+            parent.children = parent.children.filter((child) => !movingIds.has(child.id));
+            target.children.push(...movingNodes);
+            if (target.collapsed === true) target.collapsed = false;
+          }
+        });
       },
 
       // 反缩进节点
       outdentNode: (nodeId: string) => {
+        get().outdentNodes([nodeId]);
+      },
+
+      outdentNodes: (nodeIds: string[]) => {
         const { document } = get();
-        if (document.root.id === nodeId) return;
+        const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds, {
+          excludeRoot: true,
+        });
+        if (normalizedIds.length === 0) return;
 
-        const parent = findParentNode(document.root, nodeId);
-        if (!parent || parent.id === document.root.id) return;
+        const selectedIds = new Set(normalizedIds);
+        const plans: Array<{ parentId: string; grandParentId: string; nodeIds: string[] }> = [];
+        const visit = (parent: MindMapNode, grandParent: MindMapNode | null) => {
+          if (grandParent) {
+            const movingIds = parent.children
+              .filter((child) => selectedIds.has(child.id))
+              .map((child) => child.id);
+            if (movingIds.length > 0) {
+              plans.push({
+                parentId: parent.id,
+                grandParentId: grandParent.id,
+                nodeIds: movingIds,
+              });
+            }
+          }
+          for (const child of parent.children) visit(child, parent);
+        };
+        visit(document.root, null);
+        if (plans.length === 0) return;
 
-        const grandParent = findParentNode(document.root, parent.id);
-        if (!grandParent) return;
-
-        const parentIdx = grandParent.children.findIndex((c) => c.id === parent.id);
-        get().moveNode(nodeId, grandParent.id, parentIdx + 1);
+        applyMutation((state) => {
+          const liveNodeById = buildNodeIndex(state.document.root).nodeById;
+          for (const plan of plans) {
+            const parent = liveNodeById.get(plan.parentId);
+            const grandParent = liveNodeById.get(plan.grandParentId);
+            if (!parent || !grandParent) continue;
+            const movingIds = new Set(plan.nodeIds);
+            const movingNodes = parent.children.filter((child) => movingIds.has(child.id));
+            if (movingNodes.length === 0) continue;
+            parent.children = parent.children.filter((child) => !movingIds.has(child.id));
+            const parentIndex = grandParent.children.findIndex((child) => child.id === parent.id);
+            if (parentIndex < 0) continue;
+            grandParent.children.splice(parentIndex + 1, 0, ...movingNodes);
+          }
+        });
       },
 
 
@@ -1397,16 +1643,19 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
       toggleCompleted: (nodeIds: string[]) => {
         const { document } = get();
-        const uniqueIds = Array.from(new Set(nodeIds)).filter((id) =>
-          findNodeById(document.root, id)
-        );
+        const nodeIndex = buildNodeIndex(document.root);
+        const uniqueIds = Array.from(new Set(nodeIds)).filter((id) => nodeIndex.nodeById.has(id));
         if (uniqueIds.length === 0) return;
+        const markCompleted = !uniqueIds.every(
+          (id) => nodeIndex.nodeById.get(id)?.completed === true,
+        );
 
         applyMutation((state) => {
+          const liveNodeById = buildNodeIndex(state.document.root).nodeById;
           for (const id of uniqueIds) {
-            const node = findNodeById(state.document.root, id);
+            const node = liveNodeById.get(id);
             if (node) {
-              node.completed = !node.completed;
+              node.completed = markCompleted;
             }
           }
         });
@@ -1467,6 +1716,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
             // document 为 immer frozen 树，直接存引用（见 pushHistory）
             state.history.future.push(document);
             state.document = prev;
+            refreshSearchResults(state);
+            reconcileFilteredInteractionState(state);
             state.isDirty = true;
             state._documentVersion += 1;
             // ★ 2026-02 修复：退出编辑模式，防止 OutlineView 的 localText 与撤销后的文档不一致
@@ -1505,6 +1756,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
             // document 为 immer frozen 树，直接存引用（见 pushHistory）
             state.history.past.push(document);
             state.document = next;
+            refreshSearchResults(state);
+            reconcileFilteredInteractionState(state);
             state.isDirty = true;
             state._documentVersion += 1;
             state.editingNodeId = null;
@@ -1858,30 +2111,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
       setHideCompleted: (hide: boolean) => {
         set((state) => {
           state.hideCompleted = hide;
-          if (hide) {
-            const nextFocus = resolveVisibleFocusId(
-              state.document.root,
-              state.focusedNodeId,
-              true
-            );
-            if (nextFocus !== state.focusedNodeId) {
-              state.focusedNodeId = nextFocus;
-            }
-            if (state.editingNodeId) {
-              const editFocus = resolveVisibleFocusId(
-                state.document.root,
-                state.editingNodeId,
-                true
-              );
-              if (editFocus !== state.editingNodeId) {
-                state.editingNodeId = null;
-              }
-            }
-            state.selection = state.selection.filter((id) => {
-              const resolved = resolveVisibleFocusId(state.document.root, id, true);
-              return resolved === id;
-            });
-          }
+          if (hide) reconcileFilteredInteractionState(state);
         });
       },
 
@@ -1983,25 +2213,13 @@ export const useMindMapStore = create<MindMapStoreState>()(
         }
 
         const { document } = get();
-        const results: string[] = [];
-        const lowerQuery = query.toLowerCase();
-
-        const searchNode = (node: MindMapNode) => {
-          if (
-            node.text.toLowerCase().includes(lowerQuery) ||
-            (node.note && node.note.toLowerCase().includes(lowerQuery))
-          ) {
-            results.push(node.id);
-          }
-          node.children.forEach(searchNode);
-        };
-
-        searchNode(document.root);
+        const results = searchMindMapNodeIds(document.root, query);
 
         set((state) => {
           state.searchQuery = query;
           state.searchResults = results;
           state.currentSearchIndex = results.length > 0 ? 0 : -1;
+          reconcileFilteredInteractionState(state);
         });
 
         if (results.length > 0) {
@@ -2055,24 +2273,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
       setSearchFilterMode: (enabled: boolean) => {
         set((state) => {
           state.searchFilterMode = enabled;
-          if (enabled && state.searchResults.length > 0) {
-            const allowed = new Set(state.searchResults);
-            for (const hitId of state.searchResults) {
-              const walk = (n: MindMapNode, trail: string[]): boolean => {
-                if (n.id === hitId) {
-                  trail.forEach((id) => allowed.add(id));
-                  allowed.add(n.id);
-                  return true;
-                }
-                for (const c of n.children) {
-                  if (walk(c, [...trail, n.id])) return true;
-                }
-                return false;
-              };
-              walk(state.document.root, []);
-            }
-            state.selection = state.selection.filter((id) => allowed.has(id));
-          }
+          if (enabled) reconcileFilteredInteractionState(state);
         });
       },
 
@@ -2113,10 +2314,11 @@ export const useMindMapStore = create<MindMapStoreState>()(
       copyNodes: (nodeIds: string[]) => {
         const { document } = get();
         const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds);
+        const nodeById = buildNodeIndex(document.root).nodeById;
         const copiedNodes: MindMapNode[] = [];
 
         for (const nodeId of normalizedIds) {
-          const node = findNodeById(document.root, nodeId);
+          const node = nodeById.get(nodeId);
           if (node) {
             copiedNodes.push(JSON.parse(JSON.stringify(node)));
           }
@@ -2136,10 +2338,12 @@ export const useMindMapStore = create<MindMapStoreState>()(
         const { document } = get();
         const normalizedIds = collectTopLevelNodeIds(document.root, nodeIds, { excludeRoot: true });
         if (normalizedIds.length === 0) return;
+        const treeIndex = buildNodeIndex(document.root);
+        const removedIds = collectNodeAndDescendantIds(document.root, normalizedIds);
 
         const copiedNodes: MindMapNode[] = [];
         for (const nodeId of normalizedIds) {
-          const node = findNodeById(document.root, nodeId);
+          const node = treeIndex.nodeById.get(nodeId);
           if (node) {
             copiedNodes.push(JSON.parse(JSON.stringify(node)));
           }
@@ -2149,7 +2353,7 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
         let nextFocusedNodeId = document.root.id;
         for (const nodeId of normalizedIds) {
-          const parent = findParentNode(document.root, nodeId);
+          const parent = treeIndex.parentById.get(nodeId);
           if (parent) {
             nextFocusedNodeId = parent.id;
             break;
@@ -2162,55 +2366,95 @@ export const useMindMapStore = create<MindMapStoreState>()(
             sourceOperation: 'cut',
           };
 
-          for (const nodeId of normalizedIds) {
-            removeNodeById(state.document.root, nodeId);
-          }
+          removeNodesById(state.document.root, new Set(normalizedIds));
 
-          if (!state.focusedNodeId || normalizedIds.includes(state.focusedNodeId)) {
+          if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
             state.focusedNodeId = nextFocusedNodeId;
           }
-          if (state.editingNodeId && normalizedIds.includes(state.editingNodeId)) {
+          if (state.editingNodeId && removedIds.has(state.editingNodeId)) {
             state.editingNodeId = null;
           }
-          if (state.editingNoteNodeId && normalizedIds.includes(state.editingNoteNodeId)) {
+          if (state.editingNoteNodeId && removedIds.has(state.editingNoteNodeId)) {
             state.editingNoteNodeId = null;
           }
-          state.selection = state.selection.filter((id) => !normalizedIds.includes(id));
+          state.selection = state.selection.filter((id) => !removedIds.has(id));
         });
       },
 
       pasteNodes: (targetId: string) => {
-        const { clipboard } = get();
+        const { clipboard, document } = get();
         if (!clipboard || clipboard.nodes.length === 0) return;
 
+        const parentDepth = getNodeDepth(document.root, targetId);
+        if (parentDepth < 0) return;
+        const pendingCount = clipboard.nodes.reduce((sum, node) => sum + countNodes(node), 0);
+        if (countNodes(document.root) + pendingCount > MAX_MINDMAP_NODES) {
+          showGlobalNotification('warning', i18next.t('store.nodeCountExceeded', { ns: 'mindmap' }));
+          return;
+        }
+        const pendingHeight = Math.max(...clipboard.nodes.map(getSubtreeHeight));
+        if (parentDepth + 1 + pendingHeight >= MAX_MINDMAP_DEPTH) {
+          showGlobalNotification('warning', i18next.t('store.depthExceeded', { ns: 'mindmap' }));
+          return;
+        }
+
+        const usedIds = new Set(buildNodeIndex(document.root).nodeById.keys());
+        const nextNodeId = () => {
+          let id = `node_${nanoid(10)}`;
+          while (usedIds.has(id)) id = `node_${nanoid(10)}`;
+          usedIds.add(id);
+          return id;
+        };
         function regenerateIds(node: MindMapNode): MindMapNode {
           return {
             ...node,
-            id: `node_${nanoid(10)}`,
+            id: nextNodeId(),
             children: node.children.map(child => regenerateIds(child)),
           };
         }
+        const sourceForest = JSON.parse(JSON.stringify(clipboard.nodes)) as MindMapNode[];
+        const forest = sourceForest.map(regenerateIds);
+        const clearClipboard = clipboard.sourceOperation === 'cut';
 
         applyMutation((state) => {
           const parentNode = findNodeById(state.document.root, targetId);
           if (!parentNode) return;
+          parentNode.children.push(...forest);
+          state.focusedNodeId = forest[0].id;
+          if (clearClipboard) state.clipboard = null;
+        });
+      },
 
-          for (const node of clipboard.nodes) {
-            const newNode = regenerateIds(node);
-            parentNode.children.push(newNode);
-          }
+      pasteTextChildren: (targetId: string, lines: string[]) => {
+        const texts = lines.map((line) => line.trim()).filter(Boolean);
+        if (texts.length === 0) return;
 
-          const firstNewIndex = parentNode.children.length - clipboard.nodes.length;
-          if (firstNewIndex >= 0) {
-            state.focusedNodeId = parentNode.children[firstNewIndex].id;
-          }
+        const { document } = get();
+        const parentDepth = getNodeDepth(document.root, targetId);
+        if (parentDepth < 0) return;
+        if (parentDepth + 1 >= MAX_MINDMAP_DEPTH) {
+          showGlobalNotification('warning', i18next.t('store.depthExceeded', { ns: 'mindmap' }));
+          return;
+        }
+        if (countNodes(document.root) + texts.length > MAX_MINDMAP_NODES) {
+          showGlobalNotification('warning', i18next.t('store.nodeCountExceeded', { ns: 'mindmap' }));
+          return;
+        }
+
+        const usedIds = new Set(buildNodeIndex(document.root).nodeById.keys());
+        const nodes = texts.map((text) => {
+          let id = `node_${nanoid(10)}`;
+          while (usedIds.has(id)) id = `node_${nanoid(10)}`;
+          usedIds.add(id);
+          return { id, text, children: [] } satisfies MindMapNode;
         });
 
-        if (clipboard.sourceOperation === 'cut') {
-          set((state) => {
-            state.clipboard = null;
-          });
-        }
+        applyMutation((state) => {
+          const parentNode = findNodeById(state.document.root, targetId);
+          if (!parentNode) return;
+          parentNode.children.push(...nodes);
+          state.focusedNodeId = nodes[0].id;
+        });
       },
 
       pasteMarkdownChildren: (targetId: string, markdown: string) => {
@@ -2262,5 +2506,131 @@ export const useMindMapStore = create<MindMapStoreState>()(
         });
       },
     };
-  })
-);
+    })
+  );
+}
+
+export const defaultMindMapStore = createMindMapStore();
+
+/**
+ * MindMapContentView 为每个资源实例提供独立 store；未挂 Provider 的旧入口继续
+ * 使用 defaultMindMapStore，保持既有 API 兼容。
+ */
+export const MindMapStoreContext = createContext<MindMapStoreApi | null>(null);
+
+export function useMindMapStoreApi(): MindMapStoreApi {
+  return useContext(MindMapStoreContext) ?? defaultMindMapStore;
+}
+
+type MindMapStoreHook = {
+  <T>(selector: (state: MindMapStoreState) => T): T;
+} & MindMapStoreApi;
+
+const useMindMapStoreSelector = <T,>(selector: (state: MindMapStoreState) => T): T => {
+  return useStore(useMindMapStoreApi(), selector);
+};
+
+export const useMindMapStore = Object.assign(
+  useMindMapStoreSelector,
+  defaultMindMapStore,
+) as MindMapStoreHook;
+
+const registeredStores = new Map<string, MindMapStoreApi[]>();
+const registeredStoresByInstance = new Map<
+  string,
+  { resourceId: string; store: MindMapStoreApi }
+>();
+interface MindMapStoreReadyWaiter {
+  instanceId?: string;
+  callback: (store: MindMapStoreApi) => void;
+}
+const readyWaiters = new Map<string, Set<MindMapStoreReadyWaiter>>();
+
+function flushReadyWaiters(resourceId: string): void {
+  const waiters = readyWaiters.get(resourceId);
+  if (!waiters || waiters.size === 0) return;
+  for (const waiter of [...waiters]) {
+    const store = waiter.instanceId
+      ? getMindMapStoreForInstance(waiter.instanceId, resourceId)
+      : getMindMapStoreForResource(resourceId);
+    if (!store || store.getState().mindmapId !== resourceId) continue;
+    waiters.delete(waiter);
+    waiter.callback(store);
+  }
+  if (waiters.size === 0) readyWaiters.delete(resourceId);
+}
+
+/** 注册一个已挂载的资源实例；同资源多实例时最近注册者优先。 */
+export function registerMindMapStore(
+  resourceId: string,
+  store: MindMapStoreApi,
+  instanceId?: string,
+): () => void {
+  const current = registeredStores.get(resourceId) ?? [];
+  registeredStores.set(resourceId, [...current.filter((item) => item !== store), store]);
+  if (instanceId) registeredStoresByInstance.set(instanceId, { resourceId, store });
+  const unsubscribeStore = store.subscribe(() => flushReadyWaiters(resourceId));
+  flushReadyWaiters(resourceId);
+  return () => {
+    unsubscribeStore();
+    const next = (registeredStores.get(resourceId) ?? []).filter((item) => item !== store);
+    if (next.length > 0) registeredStores.set(resourceId, next);
+    else registeredStores.delete(resourceId);
+    if (instanceId && registeredStoresByInstance.get(instanceId)?.store === store) {
+      registeredStoresByInstance.delete(instanceId);
+    }
+    flushReadyWaiters(resourceId);
+  };
+}
+
+/** Agent/Workbench 按资源定位实例；默认 store 仅作为旧入口兼容回退。 */
+export function getMindMapStoreForResource(resourceId: string): MindMapStoreApi | null {
+  const stores = registeredStores.get(resourceId);
+  if (stores && stores.length > 0) return stores[stores.length - 1] ?? null;
+  return defaultMindMapStore.getState().mindmapId === resourceId
+    ? defaultMindMapStore
+    : null;
+}
+
+/** Workbench activation 按窗口实例精确定位，避免同资源多宿主时命中最近注册者。 */
+export function getMindMapStoreForInstance(
+  instanceId: string,
+  resourceId?: string,
+): MindMapStoreApi | null {
+  const entry = registeredStoresByInstance.get(instanceId);
+  if (!entry || (resourceId && entry.resourceId !== resourceId)) return null;
+  return entry.store;
+}
+
+/** 在指定资源的实例完成加载后执行一次；返回取消等待的清理函数。 */
+export function subscribeMindMapStoreReady(
+  resourceId: string,
+  callback: (store: MindMapStoreApi) => void,
+  instanceId?: string,
+): () => void {
+  const readyStore = instanceId
+    ? getMindMapStoreForInstance(instanceId, resourceId)
+    : getMindMapStoreForResource(resourceId);
+  if (readyStore?.getState().mindmapId === resourceId) {
+    callback(readyStore);
+    return () => undefined;
+  }
+
+  const waiters = readyWaiters.get(resourceId) ?? new Set<MindMapStoreReadyWaiter>();
+  const waiter = { instanceId, callback };
+  waiters.add(waiter);
+  readyWaiters.set(resourceId, waiters);
+  return () => {
+    const current = readyWaiters.get(resourceId);
+    if (!current) return;
+    current.delete(waiter);
+    if (current.size === 0) readyWaiters.delete(resourceId);
+  };
+}
+
+/** 仅供测试清理资源实例注册表。 */
+export function __resetMindMapStoreRegistry(): void {
+  registeredStores.clear();
+  registeredStoresByInstance.clear();
+  readyWaiters.clear();
+}

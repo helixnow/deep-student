@@ -6,7 +6,17 @@
 
 // 主 Store（整合文档、UI、历史、API）
 export {
+  createMindMapStore,
+  defaultMindMapStore,
+  MindMapStoreContext,
+  registerMindMapStore,
+  getMindMapStoreForResource,
+  getMindMapStoreForInstance,
+  subscribeMindMapStoreReady,
   useMindMapStore,
+  useMindMapStoreApi,
+  type MindMapStoreApi,
+  type MindMapStoreState,
   type MindMapViewports,
   type MindMapViewportView,
   type MergeWithPreviousResult,

@@ -1,7 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 // 初始化思维导图模块（注册布局、样式、预设）
 import './init';
-import { useMindMapStore } from './store';
+import {
+  createMindMapStore,
+  MindMapStoreContext,
+  registerMindMapStore,
+  useMindMapStore,
+  useMindMapStoreApi,
+  type MindMapStoreApi,
+} from './store';
 import { MindMapActiveContext } from './MindMapActiveContext';
 import { MindMapErrorBoundary } from './MindMapErrorBoundary';
 import { dstu } from '@/dstu';
@@ -64,19 +71,26 @@ const MindMapClipboardEffects: React.FC = () => {
 
 interface MindMapContentViewProps {
   resourceId?: string;
+  /** Workbench windowId；用于同资源多宿主时精确路由 activation。 */
+  storeInstanceId?: string;
   onTitleChange?: (title: string) => void;
+  onReady?: () => void;
+  onLoadError?: (message: string) => void;
   /** ★ 标签页：当前视图是否为活跃标签页 */
   isActive?: boolean;
   className?: string;
 }
 
-export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
+const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   resourceId,
   onTitleChange,
+  onReady,
+  onLoadError,
   isActive,
   className
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
+  const storeApi = useMindMapStoreApi();
   
   // 从新 store 获取状态
   const currentView = useMindMapStore(state => state.currentView);
@@ -148,7 +162,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
   const switchView = useCallback(
     (next: 'outline' | 'mindmap') => {
-      const prev = useMindMapStore.getState().currentView;
+      const prev = storeApi.getState().currentView;
       if (prev === next) return;
 
       if (prev === 'outline') {
@@ -165,7 +179,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
       setCurrentView(next);
     },
-    [setCurrentView, setViewViewport],
+    [setCurrentView, setViewViewport, storeApi],
   );
 
   // 移动端浮层/子屏打开时注册 Android 返回键：返回 = 关闭当前层
@@ -203,18 +217,18 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
     if (wasActive && !isActive && resourceId) {
       // active → inactive：同步保存草稿
-      if (useMindMapStore.getState().mindmapId === resourceId) {
+      if (storeApi.getState().mindmapId === resourceId) {
         saveDraftSync();
       }
     } else if (!wasActive && isActive && resourceId) {
       // inactive → active：从草稿恢复（仅在 store 当前 mindmapId 不匹配时）
-      if (useMindMapStore.getState().mindmapId !== resourceId) {
+      if (storeApi.getState().mindmapId !== resourceId) {
         void loadMindMap(resourceId).catch(err => {
           console.error('[MindMapContentView] Failed to reload from draft:', err);
         });
       }
     }
-  }, [isActive, resourceId, saveDraftSync, loadMindMap]);
+  }, [isActive, resourceId, saveDraftSync, loadMindMap, storeApi]);
 
   const tryLoadMindMap = useCallback(async () => {
     if (!resourceId) return;
@@ -223,15 +237,17 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     setLoadError(null);
     try {
       await loadMindMap(resourceId);
+      onReady?.();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t('mindmap:loadError');
       setLoadError(message);
+      onLoadError?.(message);
       showGlobalNotification('error', message, t('mindmap:loadErrorTitle'));
       console.error('[MindMapContentView] Failed to load mindmap:', err);
     } finally {
       setIsLoadingDoc(false);
     }
-  }, [resourceId, loadMindMap]);
+  }, [resourceId, loadMindMap, onReady, onLoadError, t]);
 
   // 加载文档
   useEffect(() => {
@@ -247,7 +263,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       if (event.type !== 'updated' || !event.node) return;
       if (event.node.id !== resourceId) return;
 
-      const state = useMindMapStore.getState();
+      const state = storeApi.getState();
       if (state.mindmapId !== resourceId) return;
       // 自身保存进行中触发的事件由 save() 完成基线同步，跳过
       if (state.isSaving) return;
@@ -268,8 +284,8 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       void state
         .loadMindMap(resourceId)
         .then(() => {
-          if (useMindMapStore.getState().mindmapId !== resourceId) return;
-          useMindMapStore.setState({
+          if (storeApi.getState().mindmapId !== resourceId) return;
+          storeApi.setState({
             currentView: prevView,
             focusedNodeId: prevFocusedNodeId,
           });
@@ -279,7 +295,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
         });
     });
     return unwatch;
-  }, [resourceId, t]);
+  }, [resourceId, t, storeApi]);
 
   // 同步标题变更到外部
   // ★ 标签页：仅活跃标签页同步标题，防止其他 MindMap 标签页加载时覆盖当前标题
@@ -309,7 +325,13 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       try {
         // ★ 修复：使用当前主题的背景色；传入容器 ref 避免多实例导出错误
         const backgroundColor = currentTheme?.canvas?.background || '#ffffff';
-        const result = await exportToImage({ format: format as 'png' | 'svg', filename, backgroundColor, container: containerRef.current });
+        const result = await exportToImage({
+          format: format as 'png' | 'svg',
+          filename,
+          backgroundColor,
+          container: containerRef.current,
+          store: storeApi,
+        });
         if (result.saved) {
           showGlobalNotification('success', t('mindmap:export.success'));
         }
@@ -374,7 +396,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           t('mindmap:export.failed')
         );
     }
-  }, [mindmapDocument, currentView, t, currentTheme]);
+  }, [mindmapDocument, currentView, t, currentTheme, storeApi]);
 
   // 实际执行导入（已确认或无未保存修改时调用）
   const doImport = useCallback(async () => {
@@ -401,12 +423,12 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
   // M-073 / A6-16: 导入前检查未保存修改；有修改则弹声明式确认框，否则直接导入
   const handleImport = useCallback(() => {
-    if (useMindMapStore.getState().isDirty) {
+    if (storeApi.getState().isDirty) {
       setShowImportConfirm(true);
       return;
     }
     void doImport();
-  }, [doImport]);
+  }, [doImport, storeApi]);
 
   const handleConfirmImport = useCallback(() => {
     setShowImportConfirm(false);
@@ -469,13 +491,13 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   // loadMindMap 时会自动检查并恢复本地草稿
   useEffect(() => {
     return () => {
-      useMindMapStore.getState().saveDraftSync();
+      storeApi.getState().saveDraftSync();
     };
-  }, []);
+  }, [storeApi]);
 
   useEffect(() => {
     const flushPendingChanges = () => {
-      const state = useMindMapStore.getState();
+      const state = storeApi.getState();
       // M-069: 先同步写入 localStorage 草稿，确保即使异步 save 未完成也不丢失
       state.saveDraftSync();
       if (state.isDirty && !state.isSaving) {
@@ -484,7 +506,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     };
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      const state = useMindMapStore.getState();
+      const state = storeApi.getState();
       if (state.isDirty) {
         flushPendingChanges();
         event.preventDefault();
@@ -507,7 +529,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       window.removeEventListener('pagehide', flushPendingChanges);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [storeApi]);
 
   // 错误边界重置处理
   const handleErrorReset = useCallback(() => {
@@ -937,7 +959,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             {t('mindmap:loading')}
           </div>
         ) : loadError ? (
-          <div className="h-full w-full flex items-center justify-center p-6">
+          <div className="h-full w-full flex items-center justify-center p-6" role="alert">
             <div className="max-w-md w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] p-5 text-center shadow-sm">
               <WarningCircle size={32} className="mx-auto mb-3 text-red-500" />
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
@@ -1107,5 +1129,35 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     </div>
     </MindMapActiveContext.Provider>
     </MindMapErrorBoundary>
+  );
+};
+
+/**
+ * 每个内容视图持有独立 store。resourceId 改变时同步换新实例，避免旧资源的
+ * 文档、历史栈、编辑状态或保存定时器泄漏到新资源。
+ */
+export const MindMapContentView: React.FC<MindMapContentViewProps> = (props) => {
+  const holderRef = useRef<{
+    resourceId: string | undefined;
+    store: MindMapStoreApi;
+  } | null>(null);
+
+  if (!holderRef.current || holderRef.current.resourceId !== props.resourceId) {
+    holderRef.current = {
+      resourceId: props.resourceId,
+      store: createMindMapStore(),
+    };
+  }
+
+  const store = holderRef.current.store;
+  useEffect(() => {
+    if (!props.resourceId) return;
+    return registerMindMapStore(props.resourceId, store, props.storeInstanceId);
+  }, [props.resourceId, props.storeInstanceId, store]);
+
+  return (
+    <MindMapStoreContext.Provider value={store}>
+      <MindMapContentViewInner {...props} />
+    </MindMapStoreContext.Provider>
   );
 };

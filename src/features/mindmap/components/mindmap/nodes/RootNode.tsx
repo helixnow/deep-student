@@ -4,9 +4,10 @@ import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
-import { useMindMapStore } from '../../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../../store';
 import { StyleRegistry } from '../../../registry';
 import { openNodeRef } from '../../../utils/openNodeRef';
+import { getSearchResultIdSet } from '../../../utils/searchFilter';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 
 export interface RootNodeData extends Record<string, unknown> {
@@ -28,6 +29,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   selected,
 }) => {
   const [showActions, setShowActions] = useState(false);
+  const storeApi = useMindMapStoreApi();
   
   const updateNode = useMindMapStore(state => state.updateNode);
   const addNode = useMindMapStore(state => state.addNode);
@@ -39,8 +41,10 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const styleId = useMindMapStore(state => state.styleId);
   const setMeasuredNodeHeight = useMindMapStore(state => state.setMeasuredNodeHeight);
   const reciteMode = useMindMapStore(state => state.reciteMode);
-  const searchResults = useMindMapStore(state => state.searchResults);
-  const currentSearchIndex = useMindMapStore(state => state.currentSearchIndex);
+  const searchResultIds = useMindMapStore(state => getSearchResultIdSet(state.searchResults));
+  const currentSearchResultId = useMindMapStore(
+    state => state.searchResults[state.currentSearchIndex] ?? null,
+  );
   const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
@@ -68,11 +72,11 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
 
   // 按 nodeId 守卫：连续建点时旧 textarea blur 不得清掉新节点的 editingNodeId
   const handleEndEdit = useCallback(() => {
-    const { editingNodeId: current } = useMindMapStore.getState();
+    const { editingNodeId: current } = storeApi.getState();
     if (current === data.nodeId) {
       setEditingNodeId(null);
     }
-  }, [data.nodeId, setEditingNodeId]);
+  }, [data.nodeId, setEditingNodeId, storeApi]);
 
   const handleCommitAndCreateSibling = useCallback(() => {
     // 根节点 Enter → 子级（与非编辑快捷键一致）
@@ -146,11 +150,8 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     ...customStyle,
   };
 
-  const isSearchMatch = searchResults.includes(data.nodeId);
-  const isCurrentSearchMatch =
-    isSearchMatch &&
-    currentSearchIndex >= 0 &&
-    searchResults[currentSearchIndex] === data.nodeId;
+  const isSearchMatch = searchResultIds.has(data.nodeId);
+  const isCurrentSearchMatch = isSearchMatch && currentSearchResultId === data.nodeId;
 
   return (
     <div

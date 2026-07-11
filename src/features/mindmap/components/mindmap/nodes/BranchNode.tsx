@@ -5,10 +5,11 @@ import { cn } from '@/lib/utils';
 import { Plus, Trash, DotsThree } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { useMindMapStore } from '../../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../../store';
 import { StyleRegistry } from '../../../registry';
 import { findParentNode } from '../../../utils/node/find';
 import { openNodeRef } from '../../../utils/openNodeRef';
+import { getSearchResultIdSet } from '../../../utils/searchFilter';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
 
 export interface BranchNodeData extends Record<string, unknown> {
@@ -36,6 +37,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   selected,
 }) => {
   const { t } = useTranslation('mindmap');
+  const storeApi = useMindMapStoreApi();
   const updateNode = useMindMapStore(state => state.updateNode);
   const addNode = useMindMapStore(state => state.addNode);
   const deleteNode = useMindMapStore(state => state.deleteNode);
@@ -48,8 +50,10 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   const styleId = useMindMapStore(state => state.styleId);
   const setMeasuredNodeHeight = useMindMapStore(state => state.setMeasuredNodeHeight);
   const reciteMode = useMindMapStore(state => state.reciteMode);
-  const searchResults = useMindMapStore(state => state.searchResults);
-  const currentSearchIndex = useMindMapStore(state => state.currentSearchIndex);
+  const searchResultIds = useMindMapStore(state => getSearchResultIdSet(state.searchResults));
+  const currentSearchResultId = useMindMapStore(
+    state => state.searchResults[state.currentSearchIndex] ?? null,
+  );
   const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
   const revealBlank = useMindMapStore(state => state.revealBlank);
   const addBlankRange = useMindMapStore(state => state.addBlankRange);
@@ -62,11 +66,8 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   
   const hasChildren = data.hasChildren;
   const isCollapsed = data.collapsed;
-  const isSearchMatch = searchResults.includes(data.nodeId);
-  const isCurrentSearchMatch =
-    isSearchMatch &&
-    currentSearchIndex >= 0 &&
-    searchResults[currentSearchIndex] === data.nodeId;
+  const isSearchMatch = searchResultIds.has(data.nodeId);
+  const isCurrentSearchMatch = isSearchMatch && currentSearchResultId === data.nodeId;
   
   // Handle 位置
   const targetPos = data.targetPosition || 'left';
@@ -123,15 +124,15 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
 
   // 按 nodeId 守卫：连续建点时旧 textarea blur 不得清掉新节点的 editingNodeId
   const handleEndEdit = useCallback(() => {
-    const { editingNodeId: current } = useMindMapStore.getState();
+    const { editingNodeId: current } = storeApi.getState();
     if (current === data.nodeId) {
       setEditingNodeId(null);
     }
-  }, [data.nodeId, setEditingNodeId]);
+  }, [data.nodeId, setEditingNodeId, storeApi]);
 
   const handleCommitAndCreateSibling = useCallback(() => {
     const { document: doc, addNode: add, setFocusedNodeId: focus, setEditingNodeId: edit } =
-      useMindMapStore.getState();
+      storeApi.getState();
     const root = doc.root;
     if (root.id === data.nodeId) {
       const newId = add(data.nodeId, 0);
@@ -149,7 +150,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       focus(newId);
       edit(newId);
     }
-  }, [data.nodeId]);
+  }, [data.nodeId, storeApi]);
 
   const handleCommitAndCreateChild = useCallback(() => {
     const newId = addNode(data.nodeId, 0);

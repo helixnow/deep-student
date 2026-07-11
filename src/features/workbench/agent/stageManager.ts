@@ -640,7 +640,7 @@ function handleOpenApp(req: AcrBridgeRequest): AcrBridgeResponse {
   return bridgeOk(req.correlationId, { windowId, created });
 }
 
-function handleAppCommand(req: AcrBridgeRequest): AcrBridgeResponse {
+async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
   if (!workbenchBus.isEnabled()) {
     return bridgeGateErr(req.correlationId, gateDisabledOs());
   }
@@ -664,26 +664,31 @@ function handleAppCommand(req: AcrBridgeRequest): AcrBridgeResponse {
   const store = useWindowStore.getState();
   const prevFocus = store.focusStack[store.focusStack.length - 1] ?? null;
   const explicitFocus = args.focus === true || /^focus/i.test(action);
-  const handled = workbenchBus.activate({
-    typeId,
-    instanceKey,
-    action,
-    payload: args.payload,
-    ...(canFallback
-      ? {
-          fallbackLaunch: {
-            typeId,
-            instanceKey: instanceKey || undefined,
-            payload: args.payload,
-            reason: 'api' as const,
-          },
-        }
-      : {}),
-  });
-  if (agentControl === 'background' && !explicitFocus && prevFocus) {
-    useWindowStore.getState().focusWindow(prevFocus);
+  let activation;
+  try {
+    activation = await workbenchBus.activateDetailed({
+      typeId,
+      instanceKey,
+      action,
+      payload: args.payload,
+      ...(canFallback
+        ? {
+            fallbackLaunch: {
+              typeId,
+              instanceKey: instanceKey || undefined,
+              payload: args.payload,
+              reason: 'api' as const,
+            },
+          }
+        : {}),
+    });
+  } finally {
+    if (agentControl === 'background' && !explicitFocus && prevFocus) {
+      useWindowStore.getState().focusWindow(prevFocus);
+    }
   }
-  const detail = workbenchBus.consumeLastActivationResult();
+  const handled = activation.delivered;
+  const detail = activation.result;
   if (detail && !detail.handled) {
     return bridgeOk(req.correlationId, {
       handled: false,
@@ -1031,7 +1036,7 @@ export const stageManager: StageManagerApi & {
         case 'open_app':
           return handleOpenApp(req);
         case 'app_command':
-          return handleAppCommand(req);
+          return await handleAppCommand(req);
         case 'close_window':
           return await handleCloseWindow(req);
         case 'query_state':

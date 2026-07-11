@@ -19,9 +19,8 @@
  * renderThrottleMs>0 把 isActive 置 false——MindMapContentView 失活会同步
  * saveDraftSync，拖拽热路径写草稿比动画更伤帧。
  *
- * 已知限制（记录在 P8 进度文件）：useMindMapStore 是模块级单例，
- * 同时可见的两个 mindmap 窗口共享同一份文档状态，焦点切换时非焦点窗口
- * 展示的是最后一次渲染的画面。窗口级 store 隔离属后续改造项。
+ * 每个 MindMapContentView 持有独立 store；windowId 作为实例路由键，保证同资源
+ * 出现在多个宿主时 activation 也只命中目标窗口。
  */
 import React, { useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +34,7 @@ import { useResizeSettle } from '../content/useResizeSettle';
 import '../content/ContentAppWindow.css';
 
 const MindmapAppWindow: React.FC<AppWindowProps> = ({
+  windowId,
   instanceKey,
   isActive,
   renderThrottleMs = 0,
@@ -43,7 +43,6 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
   const { t } = useTranslation(['workbench']);
   const hostRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const titleReadyRef = useRef(false);
 
   const hasResource = Boolean(instanceKey);
   const { phase, markReady } = useContentLoadPhase({
@@ -57,13 +56,12 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
   const handleTitleChange = useCallback(
     (title: string) => {
       onTitleChange(title);
-      if (!titleReadyRef.current) {
-        titleReadyRef.current = true;
-        markReady();
-      }
     },
-    [onTitleChange, markReady],
+    [onTitleChange],
   );
+
+  const handleContentReady = useCallback(() => markReady(), [markReady]);
+  const handleLoadError = useCallback(() => markReady(), [markReady]);
 
   if (!instanceKey) {
     return (
@@ -84,8 +82,11 @@ const MindmapAppWindow: React.FC<AppWindowProps> = ({
       <div ref={contentRef} className="wb-content-viewport">
         <MindMapContentView
           resourceId={instanceKey}
+          storeInstanceId={windowId}
           isActive={isActive}
           onTitleChange={handleTitleChange}
+          onReady={handleContentReady}
+          onLoadError={handleLoadError}
           className="h-full"
         />
       </div>

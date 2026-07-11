@@ -5,6 +5,11 @@
 
 import type { MindMapNode } from '../types';
 
+export interface CompletedVisibilityIndex {
+  visibleIds: Set<string>;
+  parentById: Map<string, string | null>;
+}
+
 /** 子树内是否存在未完成节点（含自身） */
 export function subtreeHasIncomplete(node: MindMapNode): boolean {
   if (!node.completed) return true;
@@ -19,6 +24,40 @@ export function shouldHideCompletedNode(
   if (options?.isRoot) return false;
   if (!node.completed) return false;
   return !subtreeHasIncomplete(node);
+}
+
+/** 一次后序遍历构建隐藏已完成视图所需的可见集合与父链。 */
+export function buildCompletedVisibilityIndex(root: MindMapNode): CompletedVisibilityIndex {
+  const visibleIds = new Set<string>();
+  const parentById = new Map<string, string | null>();
+
+  const visit = (node: MindMapNode, parentId: string | null, isRoot: boolean): boolean => {
+    parentById.set(node.id, parentId);
+    let subtreeHasOpenNode = !node.completed;
+    for (const child of node.children) {
+      if (visit(child, node.id, false)) subtreeHasOpenNode = true;
+    }
+    if (isRoot || subtreeHasOpenNode) visibleIds.add(node.id);
+    return subtreeHasOpenNode;
+  };
+
+  visit(root, null, true);
+  return { visibleIds, parentById };
+}
+
+/** 从给定节点沿父链上溯到最近可见节点。 */
+export function resolveVisibleIdFromIndex(
+  index: CompletedVisibilityIndex,
+  nodeId: string | null,
+  rootId: string
+): string | null {
+  if (!nodeId) return null;
+  let current: string | null | undefined = nodeId;
+  while (current) {
+    if (index.visibleIds.has(current)) return current;
+    current = index.parentById.get(current);
+  }
+  return index.parentById.has(nodeId) ? rootId : nodeId;
 }
 
 /**
@@ -51,29 +90,9 @@ export function resolveVisibleFocusId(
   hideCompleted: boolean
 ): string | null {
   if (!focusedNodeId || !hideCompleted) return focusedNodeId;
-
-  const path: MindMapNode[] = [];
-  const findPath = (node: MindMapNode, trail: MindMapNode[]): boolean => {
-    const next = [...trail, node];
-    if (node.id === focusedNodeId) {
-      path.push(...next);
-      return true;
-    }
-    for (const child of node.children) {
-      if (findPath(child, next)) return true;
-    }
-    return false;
-  };
-
-  if (!findPath(root, [])) return focusedNodeId;
-
-  // path[0] 是 root；从焦点向上找第一个不应被隐藏的节点
-  for (let i = path.length - 1; i >= 0; i--) {
-    const node = path[i];
-    const isRoot = i === 0;
-    if (!shouldHideCompletedNode(node, { isRoot })) {
-      return node.id;
-    }
-  }
-  return root.id;
+  return resolveVisibleIdFromIndex(
+    buildCompletedVisibilityIndex(root),
+    focusedNodeId,
+    root.id,
+  );
 }

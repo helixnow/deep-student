@@ -14,7 +14,10 @@ import { getNodesBounds, getViewportForBounds, type Node } from '@xyflow/react';
 import i18n from 'i18next';
 import { fileManager } from '@/utils/fileManager';
 import type { MindMapDocument, MindMapNode } from '../types';
-import { useMindMapStore } from '../store/mindmapStore';
+import {
+  defaultMindMapStore,
+  type MindMapStoreApi,
+} from '../store/mindmapStore';
 
 // ============================================================================
 // OPML 导出
@@ -260,6 +263,8 @@ export interface ImageExportOptions {
   padding?: number;
   /** 指定导出的容器元素，避免多实例时全局选择器命中错误实例 */
   container?: HTMLElement | null;
+  /** 当前 MindMapContentView 的实例 store；未传时兼容旧的默认 store。 */
+  store?: MindMapStoreApi;
 }
 
 // 互斥锁：防止并发调用导致 viewport 状态竞态
@@ -302,15 +307,23 @@ export async function exportToImage(
     throw new Error('Export already in progress');
   }
   _exportLock = true;
+  const storeApi = options.store ?? defaultMindMapStore;
 
   try {
-  const { format, filename = 'mindmap', scale = 2, backgroundColor = '#ffffff', padding = 40, container } = options;
+  const {
+    format,
+    filename = 'mindmap',
+    scale = 2,
+    backgroundColor = '#ffffff',
+    padding = 40,
+    container,
+  } = options;
 
   // SVG 是矢量格式，不需要像素缩放
   const effectiveScale = format === 'svg' ? 1 : scale;
 
   // 从 store 获取 ReactFlow 实例
-  const rfGetter = useMindMapStore.getState()._reactFlowGetter;
+  const rfGetter = storeApi.getState()._reactFlowGetter;
   const rfInstance = rfGetter?.();
   const initialNodes = rfInstance?.getNodes() ?? [];
   if (initialNodes.length === 0) {
@@ -320,7 +333,7 @@ export async function exportToImage(
 
   // M-078: 导出前先禁用虚拟化，确保所有节点都被渲染
   // 清除选中和焦点状态，确保导出的是纯净的导图，没有高亮框和操作按钮
-  const store = useMindMapStore.getState();
+  const store = storeApi.getState();
   const originalSelection = store.selection;
   const originalFocusedNodeId = store.focusedNodeId;
   const originalEditingNodeId = store.editingNodeId;
@@ -343,7 +356,7 @@ export async function exportToImage(
     await waitForNodesMeasured(rfInstance);
   }
   
-  useMindMapStore.getState().setExportProgress(40);
+  storeApi.getState().setExportProgress(40);
   // 让 UI 有机会刷新
   await new Promise(resolve => setTimeout(resolve, 50));
 
@@ -351,8 +364,8 @@ export async function exportToImage(
   const freshNodes = (rfInstance?.getNodes() ?? []) as Node[];
   if (freshNodes.length === 0) {
     _exportLock = false;
-    useMindMapStore.getState().setIsExporting(false);
-    useMindMapStore.getState().setExportProgress(0);
+    storeApi.getState().setIsExporting(false);
+    storeApi.getState().setExportProgress(0);
     throw new Error('No nodes to export after rendering');
   }
 
@@ -392,8 +405,8 @@ export async function exportToImage(
     // 如果缩放后甚至小于 0.1，说明图太大无法导出清晰图，抛出错误让用户拆分
     if (safeScale < 0.1) {
        _exportLock = false;
-       useMindMapStore.getState().setIsExporting(false);
-       useMindMapStore.getState().setExportProgress(0);
+       storeApi.getState().setIsExporting(false);
+       storeApi.getState().setExportProgress(0);
        throw new Error('Mind map is too large to export as image. Please try splitting it.');
     }
   }
@@ -403,16 +416,16 @@ export async function exportToImage(
   const reactFlowContainer = scopeRoot?.querySelector('.react-flow') as HTMLElement;
   if (!reactFlowContainer) {
     _exportLock = false;
-    useMindMapStore.getState().setIsExporting(false);
-    useMindMapStore.getState().setExportProgress(0);
+    storeApi.getState().setIsExporting(false);
+    storeApi.getState().setExportProgress(0);
     throw new Error('ReactFlow container not found');
   }
 
   const viewportEl = reactFlowContainer.querySelector('.react-flow__viewport') as HTMLElement;
   if (!viewportEl) {
     _exportLock = false;
-    useMindMapStore.getState().setIsExporting(false);
-    useMindMapStore.getState().setExportProgress(0);
+    storeApi.getState().setIsExporting(false);
+    storeApi.getState().setExportProgress(0);
     throw new Error('ReactFlow viewport not found');
   }
 
@@ -450,7 +463,7 @@ export async function exportToImage(
     try {
       if (attempt > 1) {
         console.warn(`[Export] Retrying with reduced scale: ${currentScale} (Attempt ${attempt})`);
-        useMindMapStore.getState().setExportProgress(50 + (attempt * 10)); // 每次重试增加一点进度反馈
+        storeApi.getState().setExportProgress(50 + (attempt * 10)); // 每次重试增加一点进度反馈
       }
 
       // 对 reactFlowContainer 截图（不是 viewportEl）
@@ -472,7 +485,7 @@ export async function exportToImage(
         const blob = await result.toBlob({ type: 'svg' });
         if (!blob) throw new Error('Failed to generate SVG blob');
         
-        useMindMapStore.getState().setExportProgress(90);
+        storeApi.getState().setExportProgress(90);
         await new Promise(resolve => setTimeout(resolve, 50));
 
         const svgContent = await blob.text();
@@ -487,7 +500,7 @@ export async function exportToImage(
         const blob = await result.toBlob({ type: 'png' });
         if (!blob) throw new Error('Failed to generate PNG blob');
         
-        useMindMapStore.getState().setExportProgress(90);
+        storeApi.getState().setExportProgress(90);
         await new Promise(resolve => setTimeout(resolve, 50));
 
         const arrayBuffer = await blob.arrayBuffer();
@@ -519,7 +532,7 @@ export async function exportToImage(
   };
 
   try {
-    useMindMapStore.getState().setExportProgress(60);
+    storeApi.getState().setExportProgress(60);
     // 让 UI 有机会刷新，因为 snapdom 是重型操作
     await new Promise(resolve => setTimeout(resolve, 50));
     
@@ -541,7 +554,7 @@ export async function exportToImage(
     reactFlowContainer.className = originalClasses.join(' ');
     
     // 恢复虚拟化及选中状态
-    const store = useMindMapStore.getState();
+    const store = storeApi.getState();
     store.setIsExporting(false);
     store.setExportProgress(0);
     store.setSelection(originalSelection);
@@ -557,8 +570,8 @@ export async function exportToImage(
   } catch (unexpectedError) {
     // 防御性兜底：捕获 setup 阶段（如 getNodesBounds / waitForNodesMeasured 等）的意外异常
     // 内层 finally 可能已执行清理，此处调用为幂等安全
-    useMindMapStore.getState().setIsExporting(false);
-    useMindMapStore.getState().setExportProgress(0);
+    storeApi.getState().setIsExporting(false);
+    storeApi.getState().setExportProgress(0);
     _exportLock = false;
     throw unexpectedError;
   }

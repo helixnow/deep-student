@@ -6,10 +6,15 @@
  */
 import React from 'react';
 import { MindmapIcon } from '@/features/learning-hub/icons';
-import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
+import {
+  getMindMapStoreForInstance,
+  subscribeMindMapStoreReady,
+  type MindMapStoreApi,
+} from '@/features/mindmap/store/mindmapStore';
 import type { MindMapViewType } from '@/features/mindmap/types';
+import { findNodeById } from '@/features/mindmap/utils/node/find';
 import { appRegistry } from '../../core/appRegistry';
-import type { ActivationContext, AppDefinition } from '../../core/types';
+import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { MINDMAP_APP_TYPE_ID } from '../content/typeMap';
 
 function payloadRecord(payload: unknown): Record<string, unknown> | null {
@@ -19,9 +24,16 @@ function payloadRecord(payload: unknown): Record<string, unknown> | null {
   return null;
 }
 
-/** onActivation：focusNode {nodeId} / setView {view:'outline'|'mindmap'} */
-export function handleMindmapActivation(ctx: ActivationContext): void {
-  const store = useMindMapStore.getState();
+const ACTIVATION_READY_TIMEOUT_MS = 8000;
+
+function applyMindmapActivation(
+  storeApi: MindMapStoreApi,
+  ctx: ActivationContext,
+): ActivationResult {
+  const store = storeApi.getState();
+  if (!ctx.instanceKey || store.mindmapId !== ctx.instanceKey) {
+    return { handled: false, code: 'MINDMAP_NOT_READY' };
+  }
   const payload = payloadRecord(ctx.payload);
 
   switch (ctx.action) {
@@ -31,25 +43,92 @@ export function handleMindmapActivation(ctx: ActivationContext): void {
         (typeof payload?.node_id === 'string' && payload.node_id) ||
         null;
       if (!nodeId) {
-        console.warn('[workbench:mindmap] focusNode ignored: missing nodeId');
-        return;
+        return { handled: false, code: 'INVALID_ARGS', message: 'focusNode 缺少 nodeId' };
+      }
+      if (!findNodeById(store.document.root, nodeId)) {
+        return {
+          handled: false,
+          code: 'NODE_NOT_FOUND',
+          message: `导图节点 ${nodeId} 不存在`,
+        };
       }
       store.expandToNode(nodeId, { silent: true });
       store.setFocusedNodeId(nodeId);
-      break;
+      return { handled: true };
     }
     case 'setView': {
       const view = payload?.view;
       if (view !== 'outline' && view !== 'mindmap') {
-        console.warn('[workbench:mindmap] setView ignored: invalid view', view);
-        return;
+        return { handled: false, code: 'INVALID_ARGS', message: 'setView 的 view 无效' };
       }
       store.setCurrentView(view as MindMapViewType);
-      break;
+      return { handled: true };
     }
     default:
-      console.warn(`[workbench:mindmap] unknown activation action: ${ctx.action}`);
+      return {
+        handled: false,
+        code: 'UNKNOWN_ACTION',
+        message: `未知 mindmap action: ${ctx.action}`,
+      };
   }
+}
+
+function waitForMindmapStore(ctx: ActivationContext): Promise<MindMapStoreApi | null> {
+  const resourceId = ctx.instanceKey!;
+  const readyStore = getMindMapStoreForInstance(ctx.windowId, resourceId);
+  if (readyStore?.getState().mindmapId === resourceId) return Promise.resolve(readyStore);
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let cancelWait = () => undefined;
+    const finish = (store: MindMapStoreApi | null) => {
+      if (settled) return;
+      settled = true;
+      globalThis.clearTimeout(timeout);
+      cancelWait();
+      resolve(store);
+    };
+    const timeout = globalThis.setTimeout(() => finish(null), ACTIVATION_READY_TIMEOUT_MS);
+    cancelWait = subscribeMindMapStoreReady(
+      resourceId,
+      (storeApi) => finish(storeApi),
+      ctx.windowId,
+    );
+  });
+}
+
+/** onActivation：focusNode {nodeId} / setView {view:'outline'|'mindmap'} */
+export async function handleMindmapActivation(
+  ctx: ActivationContext,
+): Promise<ActivationResult> {
+  const resourceId = ctx.instanceKey;
+  if (!resourceId) {
+    return { handled: false, code: 'INVALID_ARGS', message: '缺少导图资源 ID' };
+  }
+
+  // 先校验不依赖文档的参数，避免把无效命令排队到加载完成。
+  const payload = payloadRecord(ctx.payload);
+  if (
+    (ctx.action === 'focusNode' &&
+      typeof payload?.nodeId !== 'string' &&
+      typeof payload?.node_id !== 'string') ||
+    (ctx.action === 'setView' && payload?.view !== 'outline' && payload?.view !== 'mindmap')
+  ) {
+    return { handled: false, code: 'INVALID_ARGS' };
+  }
+  if (ctx.action !== 'focusNode' && ctx.action !== 'setView') {
+    return { handled: false, code: 'UNKNOWN_ACTION' };
+  }
+
+  const storeApi = await waitForMindmapStore(ctx);
+  if (!storeApi) {
+    return {
+      handled: false,
+      code: 'MINDMAP_NOT_READY',
+      hint: '目标导图未能在超时前完成加载',
+    };
+  }
+  return applyMindmapActivation(storeApi, ctx);
 }
 
 /** 导出供测试断言元数据 */

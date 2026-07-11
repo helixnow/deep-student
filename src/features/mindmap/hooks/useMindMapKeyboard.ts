@@ -16,8 +16,7 @@ import { findNodeById, findParentNode } from '../utils/node/find';
 // ============================================================================
 
 export function useMindMapKeyboard(): void {
-  // ★ 标签页保活：非活跃实例不得响应全局按键（store 为单例，否则一次按键会被
-  // 每个保活实例各执行一次，如 Tab 连续加多个节点）
+  // ★ 标签页保活：非活跃实例不得响应全局按键，否则每个挂载实例都会处理一次。
   const isActive = useMindMapIsActive();
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
   const editingNodeId = useMindMapStore(s => s.editingNodeId);
@@ -39,6 +38,7 @@ export function useMindMapKeyboard(): void {
   const redo = useMindMapStore(s => s.redo);
   const save = useMindMapStore(s => s.save);
   const reciteMode = useMindMapStore(s => s.reciteMode);
+  const setReciteMode = useMindMapStore(s => s.setReciteMode);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     const target = e.target as HTMLElement;
@@ -97,7 +97,7 @@ export function useMindMapKeyboard(): void {
         setEditingNoteNodeId(null);
       } else if (reciteMode) {
         // ★ 背诵模式逃生舱：按 Esc 退出背诵模式
-        useMindMapStore.getState().setReciteMode(false);
+        setReciteMode(false);
       } else {
         setFocusedNodeId(null);
         setSelection([]);
@@ -361,7 +361,7 @@ export function useMindMapKeyboard(): void {
     focusedNodeId, editingNodeId, editingNoteNodeId, selection, document,
     setFocusedNodeId, setEditingNodeId, setEditingNoteNodeId, setSelection,
     addNode, deleteNodes, moveNode, toggleCollapse, collapseAll, expandAll, updateNode,
-    undo, redo, save, reciteMode,
+    undo, redo, save, reciteMode, setReciteMode,
   ]);
 
   useEffect(() => {

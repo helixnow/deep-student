@@ -10,14 +10,28 @@
  * R2-02：
  *   - 视口跟随节流：每 VIEWPORT_FOLLOW_EVERY op 才 setFocusedNodeId；结束一次 fitView
  *   - destructive+dirty/hot：书面否决升级预览，维持 v1 拒绝式 suggestionPending
- *   - 单例 store：mindmapId≠resourceId → closed / apply failed（双窗防御）
+ *   - 按 resourceId 捕获独立 store，整个 run 与 ledger 回滚保持实例绑定
  *
- * 约束：单例 useMindMapStore——若 mindmapId !== target.resourceId 视为 closed
- *（窗口可能在，但 store 加载的是别的图）。
+ * 约束：store 未注册或尚未加载 target.resourceId 时视为 closed。
  */
-import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
-import type { MindMapNode, UpdateNodeParams } from '@/features/mindmap/types';
-import { findNodeById, findParentNode } from '@/features/mindmap/utils/node/find';
+import {
+  getMindMapStoreForResource,
+  MAX_MINDMAP_DEPTH,
+  MAX_MINDMAP_NODES,
+  type MindMapStoreApi,
+} from '@/features/mindmap/store/mindmapStore';
+import type {
+  BlankRange,
+  MindMapNode,
+  MindMapNodeRef,
+  NodeStyle,
+  UpdateNodeParams,
+} from '@/features/mindmap/types';
+import {
+  findNodeById,
+  findParentNode,
+  isDescendantOf,
+} from '@/features/mindmap/utils/node/find';
 import type {
   AcrProbeState,
   AcrReceipt,
@@ -53,7 +67,7 @@ interface MindmapOpAnchor {
 
 interface MindmapOpPayload {
   patch?: UpdateNodeParams;
-  data?: Partial<MindMapNode> & { text?: string; children?: MindMapNode[] };
+  data?: Record<string, unknown>;
   index?: number;
 }
 
@@ -64,7 +78,10 @@ interface ActiveRunState {
 }
 
 const activeRuns = new Map<string, ActiveRunState>();
-const enteringTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const enteringTimers = new WeakMap<
+  MindMapStoreApi,
+  Map<string, ReturnType<typeof setTimeout>>
+>();
 
 function emptyReceipt(totalOps: number, mode: AcrReceipt['mode'] = 'frontend'): AcrReceipt {
   return {
@@ -108,6 +125,235 @@ function deepCloneNode(node: MindMapNode): MindMapNode {
   return JSON.parse(JSON.stringify(node)) as MindMapNode;
 }
 
+export type MindmapSubtreeValidationCode =
+  | 'INVALID_CHILDREN'
+  | 'INVALID_NODE'
+  | 'INVALID_ID'
+  | 'INVALID_TEXT'
+  | 'DUPLICATE_ID'
+  | 'EXISTING_ID'
+  | 'CYCLE'
+  | 'SHARED_NODE'
+  | 'DEPTH_LIMIT'
+  | 'NODE_LIMIT';
+
+export interface MindmapSubtreeValidationResult {
+  ok: boolean;
+  code?: MindmapSubtreeValidationCode;
+  reason?: string;
+  nodeCount: number;
+  maxRelativeDepth: number;
+  forest: MindMapNode[];
+}
+
+function cloneNodeStyle(value: unknown): NodeStyle | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+  const style: NodeStyle = {};
+  if (typeof raw.bgColor === 'string') style.bgColor = raw.bgColor;
+  if (typeof raw.textColor === 'string') style.textColor = raw.textColor;
+  if (typeof raw.fontSize === 'number' && Number.isFinite(raw.fontSize)) {
+    style.fontSize = raw.fontSize;
+  }
+  if (raw.fontWeight === 'normal' || raw.fontWeight === 'bold') {
+    style.fontWeight = raw.fontWeight;
+  }
+  if (raw.fontStyle === 'normal' || raw.fontStyle === 'italic') {
+    style.fontStyle = raw.fontStyle;
+  }
+  if (
+    raw.textDecoration === 'none' ||
+    raw.textDecoration === 'underline' ||
+    raw.textDecoration === 'line-through'
+  ) {
+    style.textDecoration = raw.textDecoration;
+  }
+  if (raw.headingLevel === 'h1' || raw.headingLevel === 'h2' || raw.headingLevel === 'h3') {
+    style.headingLevel = raw.headingLevel;
+  }
+  if (typeof raw.icon === 'string') style.icon = raw.icon;
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function cloneBlankedRanges(value: unknown): BlankRange[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ranges = value.flatMap((item) => {
+    const raw = asRecord(item);
+    return raw && Number.isInteger(raw.start) && Number.isInteger(raw.end)
+      ? [{ start: raw.start as number, end: raw.end as number }]
+      : [];
+  });
+  return ranges.length > 0 ? ranges : undefined;
+}
+
+function cloneNodeRefs(value: unknown): MindMapNodeRef[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const refs = value.flatMap((item) => {
+    const raw = asRecord(item);
+    if (
+      !raw ||
+      typeof raw.sourceId !== 'string' ||
+      typeof raw.type !== 'string' ||
+      typeof raw.name !== 'string'
+    ) {
+      return [];
+    }
+    const ref: MindMapNodeRef = {
+      sourceId: raw.sourceId,
+      type: raw.type,
+      name: raw.name,
+    };
+    if (typeof raw.resourceHash === 'string') ref.resourceHash = raw.resourceHash;
+    return [ref];
+  });
+  return refs.length > 0 ? refs : undefined;
+}
+
+/** 在任何文档 mutation 前验证并克隆 Agent 提供的 children forest。 */
+export function validateMindmapSubtreeInput(
+  root: MindMapNode,
+  parentId: string,
+  input: unknown,
+): MindmapSubtreeValidationResult {
+  const fail = (
+    code: MindmapSubtreeValidationCode,
+    reason: string,
+    nodeCount = 0,
+    maxRelativeDepth = 0,
+  ): MindmapSubtreeValidationResult => ({
+    ok: false,
+    code,
+    reason,
+    nodeCount,
+    maxRelativeDepth,
+    forest: [],
+  });
+
+  if (input !== undefined && !Array.isArray(input)) {
+    return fail('INVALID_CHILDREN', 'data.children 必须是数组');
+  }
+  const values = (input ?? []) as unknown[];
+
+  const existingIds = new Set<string>();
+  let existingCount = 0;
+  let parentDepth = -1;
+  const stack: Array<{ node: MindMapNode; depth: number }> = [{ node: root, depth: 0 }];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    existingCount += 1;
+    existingIds.add(current.node.id);
+    if (current.node.id === parentId) parentDepth = current.depth;
+    for (let i = current.node.children.length - 1; i >= 0; i--) {
+      stack.push({ node: current.node.children[i], depth: current.depth + 1 });
+    }
+  }
+  if (parentDepth < 0) return fail('INVALID_NODE', `父节点 ${parentId} 不存在`);
+  if (existingCount + 1 > MAX_MINDMAP_NODES) {
+    return fail('NODE_LIMIT', `节点总数不能超过 ${MAX_MINDMAP_NODES}`);
+  }
+  if (parentDepth + 1 >= MAX_MINDMAP_DEPTH) {
+    return fail('DEPTH_LIMIT', `节点深度不能达到或超过 ${MAX_MINDMAP_DEPTH}`);
+  }
+
+  const incomingIds = new Set<string>();
+  const seenObjects = new WeakSet<object>();
+  const activeObjects = new WeakSet<object>();
+  let nodeCount = 0;
+  let maxRelativeDepth = 0;
+  let failure: MindmapSubtreeValidationResult | null = null;
+
+  const visit = (value: unknown, relativeDepth: number): MindMapNode | null => {
+    if (failure) return null;
+    const raw = asRecord(value);
+    if (!raw) {
+      failure = fail('INVALID_NODE', 'children 中每一项都必须是节点对象', nodeCount, maxRelativeDepth);
+      return null;
+    }
+    if (activeObjects.has(raw)) {
+      failure = fail('CYCLE', 'children 中存在循环引用', nodeCount, maxRelativeDepth);
+      return null;
+    }
+    if (seenObjects.has(raw)) {
+      failure = fail('SHARED_NODE', '同一节点对象不能属于多个父节点', nodeCount, maxRelativeDepth);
+      return null;
+    }
+    activeObjects.add(raw);
+    seenObjects.add(raw);
+
+    if (typeof raw.id !== 'string' || raw.id.trim().length === 0) {
+      failure = fail('INVALID_ID', '子节点 id 必须是非空字符串', nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+    if (existingIds.has(raw.id)) {
+      failure = fail('EXISTING_ID', `子节点 id ${raw.id} 已存在`, nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+    if (incomingIds.has(raw.id)) {
+      failure = fail('DUPLICATE_ID', `children 中存在重复 id ${raw.id}`, nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+    if (typeof raw.text !== 'string') {
+      failure = fail('INVALID_TEXT', `子节点 ${raw.id} 的 text 必须是字符串`, nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+    if (!Array.isArray(raw.children)) {
+      failure = fail('INVALID_CHILDREN', `子节点 ${raw.id} 的 children 必须是数组`, nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+
+    incomingIds.add(raw.id);
+    nodeCount += 1;
+    maxRelativeDepth = Math.max(maxRelativeDepth, relativeDepth);
+    if (existingCount + 1 + nodeCount > MAX_MINDMAP_NODES) {
+      failure = fail('NODE_LIMIT', `节点总数不能超过 ${MAX_MINDMAP_NODES}`, nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+    if (parentDepth + 1 + relativeDepth >= MAX_MINDMAP_DEPTH) {
+      failure = fail('DEPTH_LIMIT', `节点深度不能达到或超过 ${MAX_MINDMAP_DEPTH}`, nodeCount, maxRelativeDepth);
+      activeObjects.delete(raw);
+      return null;
+    }
+
+    const children: MindMapNode[] = [];
+    for (const child of raw.children) {
+      const cloned = visit(child, relativeDepth + 1);
+      if (!cloned) {
+        activeObjects.delete(raw);
+        return null;
+      }
+      children.push(cloned);
+    }
+    activeObjects.delete(raw);
+
+    const node: MindMapNode = { id: raw.id, text: raw.text, children };
+    if (typeof raw.note === 'string') node.note = raw.note;
+    if (typeof raw.collapsed === 'boolean') node.collapsed = raw.collapsed;
+    if (typeof raw.completed === 'boolean') node.completed = raw.completed;
+    const style = cloneNodeStyle(raw.style);
+    if (style) node.style = style;
+    const blankedRanges = cloneBlankedRanges(raw.blankedRanges);
+    if (blankedRanges) node.blankedRanges = blankedRanges;
+    const refs = cloneNodeRefs(raw.refs);
+    if (refs) node.refs = refs;
+    if (typeof raw.branchColor === 'string') node.branchColor = raw.branchColor;
+    return node;
+  };
+
+  const forest: MindMapNode[] = [];
+  for (const value of values) {
+    const cloned = visit(value, 1);
+    if (!cloned) return failure!;
+    forest.push(cloned);
+  }
+  return { ok: true, nodeCount, maxRelativeDepth, forest };
+}
+
 function snapshotNodeFields(node: MindMapNode): UpdateNodeParams {
   const snap: UpdateNodeParams = { text: node.text };
   if (node.note !== undefined) snap.note = node.note;
@@ -123,18 +369,23 @@ function snapshotNodeFields(node: MindMapNode): UpdateNodeParams {
   return snap;
 }
 
-function markEntering(ids: string[]): void {
+function markEntering(storeApi: MindMapStoreApi, ids: string[]): void {
   const unique = [...new Set(ids.filter(Boolean))];
   if (unique.length === 0) return;
-  useMindMapStore.getState().markAgentEntering(unique);
+  storeApi.getState().markAgentEntering(unique);
+  let storeTimers = enteringTimers.get(storeApi);
+  if (!storeTimers) {
+    storeTimers = new Map();
+    enteringTimers.set(storeApi, storeTimers);
+  }
   for (const id of unique) {
-    const prev = enteringTimers.get(id);
+    const prev = storeTimers.get(id);
     if (prev) clearTimeout(prev);
     const timer = setTimeout(() => {
-      enteringTimers.delete(id);
-      useMindMapStore.getState().clearAgentEntering([id]);
+      storeTimers?.delete(id);
+      storeApi.getState().clearAgentEntering([id]);
     }, AGENT_ENTERING_TTL_MS);
-    enteringTimers.set(id, timer);
+    storeTimers.set(id, timer);
   }
 }
 
@@ -169,9 +420,10 @@ function shouldFollowViewport(appliedCount: number, instant: boolean): boolean {
 }
 
 function probeMindmap(target: AcrTarget): AcrProbeState {
-  const state = useMindMapStore.getState();
-  if (!target.resourceId || !state.mindmapId || state.mindmapId !== target.resourceId) {
-    // 单例 store：窗口可能开着但加载的是别的图 → 对本 target 视为 closed。
+  if (!target.resourceId) return 'closed';
+  const storeApi = getMindMapStoreForResource(target.resourceId);
+  const state = storeApi?.getState();
+  if (!state || state.mindmapId !== target.resourceId) {
     // R1-07 probeTarget 目前仅采纳 driver 的 dirty/hot；closed 会被忽略（见进度报告）。
     return 'closed';
   }
@@ -191,16 +443,37 @@ function probeMindmap(target: AcrTarget): AcrProbeState {
  * apply 入口的 hot 判定：editingNodeId 非空且属于本批操作锚点集合。
  * probe() 无 ops 时若 editingNodeId 非空即 hot（保守，避免破坏性写入撞编辑中节点）。
  */
-function isHotForOps(ops: AgentOp[]): boolean {
-  const { editingNodeId } = useMindMapStore.getState();
+function isHotForOps(storeApi: MindMapStoreApi, ops: AgentOp[]): boolean {
+  const { editingNodeId } = storeApi.getState();
   if (!editingNodeId) return false;
   const targets = collectTargetNodeIds(ops);
   if (targets.size === 0) return true;
   return targets.has(editingNodeId);
 }
 
-function resolveFailureReason(op: AgentOp, anchor: MindmapOpAnchor): string | null {
-  const root = useMindMapStore.getState().document.root;
+function getTreeDepth(root: MindMapNode, targetId: string, depth = 0): number {
+  if (root.id === targetId) return depth;
+  for (const child of root.children) {
+    const found = getTreeDepth(child, targetId, depth + 1);
+    if (found >= 0) return found;
+  }
+  return -1;
+}
+
+function getTreeHeight(root: MindMapNode): number {
+  let height = 0;
+  for (const child of root.children) {
+    height = Math.max(height, 1 + getTreeHeight(child));
+  }
+  return height;
+}
+
+function resolveFailureReason(
+  storeApi: MindMapStoreApi,
+  op: AgentOp,
+  anchor: MindmapOpAnchor,
+): string | null {
+  const root = storeApi.getState().document.root;
   switch (op.kind) {
     case 'add_node': {
       if (!anchor.parent_id) return '缺少 parent_id';
@@ -230,6 +503,18 @@ function resolveFailureReason(op: AgentOp, anchor: MindmapOpAnchor): string | nu
         return `新父节点 ${anchor.new_parent_id} 不存在`;
       }
       if (root.id === anchor.node_id) return '不能移动根节点';
+      if (anchor.node_id === anchor.new_parent_id) return '不能把节点移动到自身';
+      if (isDescendantOf(root, anchor.node_id, anchor.new_parent_id)) {
+        return '不能把节点移动到自己的后代';
+      }
+      const movingNode = findNodeById(root, anchor.node_id);
+      const nextParentDepth = getTreeDepth(root, anchor.new_parent_id);
+      if (
+        movingNode &&
+        nextParentDepth + 1 + getTreeHeight(movingNode) >= MAX_MINDMAP_DEPTH
+      ) {
+        return `移动后节点深度会达到或超过 ${MAX_MINDMAP_DEPTH}`;
+      }
       return null;
     }
     default:
@@ -239,51 +524,66 @@ function resolveFailureReason(op: AgentOp, anchor: MindmapOpAnchor): string | nu
 
 function applyOneOp(
   run: AcrRunContext,
+  storeApi: MindMapStoreApi,
+  resourceId: string,
   op: AgentOp,
 ): { entityId: string | null; ok: boolean; reason?: string } {
-  const store = useMindMapStore.getState();
   const anchor = parseAnchor(op);
   const payload = parsePayload(op);
-  const fail = resolveFailureReason(op, anchor);
+  const fail = resolveFailureReason(storeApi, op, anchor);
   if (fail) {
     return { entityId: null, ok: false, reason: fail };
   }
 
   const skipOpts = { skipHistory: true } as const;
+  const assertResource = () => {
+    if (storeApi.getState().mindmapId !== resourceId) {
+      throw new Error(`导图 ${resourceId} 已不再由原 store 持有`);
+    }
+  };
 
   switch (op.kind) {
     case 'add_node': {
       const parentId = anchor.parent_id!;
       const index = payload.index;
       const data = payload.data ?? {};
-      const newId = store.agentAddNode(parentId, index);
+      const validation = validateMindmapSubtreeInput(
+        storeApi.getState().document.root,
+        parentId,
+        data.children,
+      );
+      if (!validation.ok) {
+        return {
+          entityId: null,
+          ok: false,
+          reason: validation.reason ?? '嵌套 children 校验失败',
+        };
+      }
+
+      const nodeData: Omit<MindMapNode, 'id'> = {
+        text: typeof data.text === 'string' ? data.text : '',
+        children: validation.forest,
+      };
+      if (typeof data.note === 'string') nodeData.note = data.note;
+      if (typeof data.collapsed === 'boolean') nodeData.collapsed = data.collapsed;
+      if (typeof data.completed === 'boolean') nodeData.completed = data.completed;
+      const style = cloneNodeStyle(data.style);
+      if (style) nodeData.style = style;
+      const blankedRanges = cloneBlankedRanges(data.blankedRanges);
+      if (blankedRanges) nodeData.blankedRanges = blankedRanges;
+      const refs = cloneNodeRefs(data.refs);
+      if (refs) nodeData.refs = refs;
+
+      const newId = storeApi.getState().agentAddSubtree(parentId, nodeData, index);
       if (!newId) {
         return { entityId: null, ok: false, reason: '添加节点失败（深度/数量限制）' };
-      }
-
-      const patch: UpdateNodeParams = {};
-      if (typeof data.text === 'string') patch.text = data.text;
-      if (typeof data.note === 'string') patch.note = data.note;
-      if (typeof data.completed === 'boolean') patch.completed = data.completed;
-      if (data.style) patch.style = data.style;
-      if (data.blankedRanges) patch.blankedRanges = data.blankedRanges;
-      if (data.refs) patch.refs = data.refs;
-      if (Object.keys(patch).length > 0) {
-        useMindMapStore.getState().updateNode(newId, patch, skipOpts);
-      }
-
-      // 可选嵌套 children：整棵插入（后端 op_add_node 支持 data.children）
-      if (Array.isArray(data.children) && data.children.length > 0) {
-        for (const child of data.children) {
-          const cloned = deepCloneNode(child as MindMapNode);
-          useMindMapStore.getState().agentInsertSubtree(newId, cloned);
-        }
       }
 
       run.ledger.record(
         run.runId,
         () => {
-          useMindMapStore.getState().agentDeleteNode(newId);
+          assertResource();
+          storeApi.getState().agentDeleteNode(newId);
         },
         op.label,
       );
@@ -292,14 +592,18 @@ function applyOneOp(
 
     case 'update_node': {
       const nodeId = anchor.node_id!;
-      const node = findNodeById(store.document.root, nodeId)!;
+      const node = findNodeById(storeApi.getState().document.root, nodeId)!;
       const before = snapshotNodeFields(node);
       const patch = payload.patch ?? {};
-      useMindMapStore.getState().updateNode(nodeId, patch, skipOpts);
+      storeApi.getState().updateNode(nodeId, patch, skipOpts);
       run.ledger.record(
         run.runId,
         () => {
-          useMindMapStore.getState().updateNode(nodeId, before, skipOpts);
+          assertResource();
+          if (!findNodeById(storeApi.getState().document.root, nodeId)) {
+            throw new Error(`撤销更新失败：节点 ${nodeId} 不存在`);
+          }
+          storeApi.getState().updateNode(nodeId, before, skipOpts);
         },
         op.label,
       );
@@ -308,19 +612,24 @@ function applyOneOp(
 
     case 'delete_node': {
       const nodeId = anchor.node_id!;
-      const node = findNodeById(store.document.root, nodeId)!;
-      const parent = findParentNode(store.document.root, nodeId);
+      const root = storeApi.getState().document.root;
+      const node = findNodeById(root, nodeId)!;
+      const parent = findParentNode(root, nodeId);
       if (!parent) {
         return { entityId: null, ok: false, reason: '找不到父节点' };
       }
       const index = parent.children.findIndex((c) => c.id === nodeId);
       const snapshot = deepCloneNode(node);
       const parentId = parent.id;
-      useMindMapStore.getState().agentDeleteNode(nodeId);
+      storeApi.getState().agentDeleteNode(nodeId);
       run.ledger.record(
         run.runId,
         () => {
-          useMindMapStore.getState().agentInsertSubtree(parentId, snapshot, index);
+          assertResource();
+          if (!findNodeById(storeApi.getState().document.root, parentId)) {
+            throw new Error(`撤销删除失败：父节点 ${parentId} 不存在`);
+          }
+          storeApi.getState().agentInsertSubtree(parentId, snapshot, index);
         },
         op.label,
       );
@@ -330,23 +639,29 @@ function applyOneOp(
     case 'move_node': {
       const nodeId = anchor.node_id!;
       const newParentId = anchor.new_parent_id!;
-      const parent = findParentNode(store.document.root, nodeId);
+      const root = storeApi.getState().document.root;
+      const parent = findParentNode(root, nodeId);
       if (!parent) {
         return { entityId: null, ok: false, reason: '找不到原父节点' };
       }
       const oldParentId = parent.id;
       const oldIndex = parent.children.findIndex((c) => c.id === nodeId);
-      const nextParent = findNodeById(store.document.root, newParentId);
+      const nextParent = findNodeById(root, newParentId);
       const targetIndex =
         typeof payload.index === 'number'
           ? payload.index
           : (nextParent?.children.length ?? 0);
 
-      useMindMapStore.getState().agentMoveNode(nodeId, newParentId, targetIndex);
+      if (!storeApi.getState().agentMoveNode(nodeId, newParentId, targetIndex)) {
+        return { entityId: null, ok: false, reason: '移动节点失败' };
+      }
       run.ledger.record(
         run.runId,
         () => {
-          useMindMapStore.getState().agentMoveNode(nodeId, oldParentId, oldIndex);
+          assertResource();
+          if (!storeApi.getState().agentMoveNode(nodeId, oldParentId, oldIndex)) {
+            throw new Error(`撤销移动失败：节点 ${nodeId} 无法返回原位置`);
+          }
         },
         op.label,
       );
@@ -364,12 +679,10 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
   const runState: ActiveRunState = { aborted: false, receipt };
   activeRuns.set(run.runId, runState);
 
-  const store = useMindMapStore.getState();
-  if (
-    !run.target.resourceId ||
-    !store.mindmapId ||
-    store.mindmapId !== run.target.resourceId
-  ) {
+  const resourceId = run.target.resourceId;
+  const storeApi = resourceId ? getMindMapStoreForResource(resourceId) : null;
+  const initialState = storeApi?.getState();
+  if (!resourceId || !storeApi || initialState?.mindmapId !== resourceId) {
     receipt.status = 'failed';
     receipt.mode = 'frontend';
     receipt.undone = ops.map((op) => op.label);
@@ -380,9 +693,9 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
   }
 
   // destructive + dirty/hot → v1 拒绝式 suggestion（DESIGN §5.1 / §4.1；R2-02 否决升级预览）
-  const probeState = store.isDirty
+  const probeState = initialState.isDirty
     ? 'dirty'
-    : isHotForOps(ops)
+    : isHotForOps(storeApi, ops)
       ? 'hot'
       : 'clean';
   if (batchHasDestructive(ops) && (probeState === 'dirty' || probeState === 'hot')) {
@@ -418,11 +731,20 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
       break;
     }
 
+    if (storeApi.getState().mindmapId !== resourceId) {
+      receipt.status = receipt.applied > 0 ? 'partial' : 'failed';
+      for (let j = i; j < ops.length; j++) {
+        receipt.undone.push(`${ops[j].label}（目标资源已切换）`);
+      }
+      receipt.message = '目标导图在执行期间已切换，剩余操作未应用';
+      break;
+    }
+
     const op = ops[i];
     const step = i + 1;
     run.reportProgress(step, totalOps, op.label);
 
-    const result = applyOneOp(run, op);
+    const result = applyOneOp(run, storeApi, resourceId, op);
     if (!result.ok) {
       const reason = result.reason ?? '锚点解析失败';
       receipt.undone.push(`${op.label}（${reason}）`);
@@ -439,11 +761,11 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     }
 
     // 每 op 入场动画 + 展开路径；视口跟随节流（禁每 op fitView）
-    markEntering([entityId]);
-    useMindMapStore.getState().expandToNode(entityId, { silent: true });
+    markEntering(storeApi, [entityId]);
+    storeApi.getState().expandToNode(entityId, { silent: true });
 
     if (shouldFollowViewport(receipt.applied, instant)) {
-      useMindMapStore.getState().setFocusedNodeId(entityId);
+      storeApi.getState().setFocusedNodeId(entityId);
       lastFollowedEntityId = entityId;
     }
 
@@ -452,13 +774,13 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
   }
 
   // 收尾：保证焦点落在最后成功实体；非 instant 再请求一次 fitView（DESIGN §4.3）
-  if (receipt.applied > 0) {
+  if (receipt.applied > 0 && storeApi.getState().mindmapId === resourceId) {
     const lastEntity = receipt.entityIds[receipt.entityIds.length - 1];
     if (lastEntity && lastEntity !== lastFollowedEntityId) {
-      useMindMapStore.getState().setFocusedNodeId(lastEntity);
+      storeApi.getState().setFocusedNodeId(lastEntity);
     }
     if (!instant) {
-      useMindMapStore.getState().requestAgentFitView();
+      storeApi.getState().requestAgentFitView();
     }
   }
 

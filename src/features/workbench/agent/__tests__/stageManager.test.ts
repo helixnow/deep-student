@@ -57,6 +57,11 @@ import { ACR_ERROR_CODES } from '../types';
 registerTestApp('mock-app');
 registerTestApp('close-guard-app', { canClose: async () => false });
 registerTestApp('command-app', { onActivation: () => true });
+registerTestApp('command-reject-app', {
+  onActivation: async () => {
+    throw new Error('async activation rejected');
+  },
+});
 registerTestApp('chat');
 
 function baseReq(
@@ -155,6 +160,24 @@ describe('StageManager R1-06', () => {
     const parsed = JSON.parse(res.error!);
     expect(parsed.code).toBe(ACR_ERROR_CODES.DRIVER_NOT_FOUND);
     expect(parsed.retryable).toBe(false);
+  });
+
+  it('app_command await 异步 activation rejection，不误报 handled 成功', async () => {
+    const res = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: {
+          typeId: 'command-reject-app',
+          instanceKey: 'reject-target',
+          action: 'reject',
+        },
+      }),
+    );
+    expect(res.ok).toBe(false);
+    expect(JSON.parse(res.error!)).toMatchObject({
+      code: 'INTERNAL',
+      message: 'async activation rejected',
+    });
   });
 
   it('同 windowId 已有活跃 run 时返回 WINDOW_BUSY', async () => {

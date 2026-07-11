@@ -57,7 +57,7 @@ describe('MindmapAppWindow O17', () => {
     expect(document.querySelector('[data-wb-render-paused]')).not.toBeNull();
   });
 
-  it('shows mindmap skeleton until first onTitleChange', () => {
+  it('shows mindmap skeleton until content reports ready', () => {
     vi.useFakeTimers();
     const onTitleChange = vi.fn();
     render(<MindmapAppWindow {...makeWindowProps({ onTitleChange })} />);
@@ -72,9 +72,37 @@ describe('MindmapAppWindow O17', () => {
       mapped('导图标题');
     });
     expect(onTitleChange).toHaveBeenCalledWith('导图标题');
+    expect(skeleton?.getAttribute('data-phase')).toBe('loading');
+
+    const onReady = mindmapProps[0].onReady as () => void;
+    act(() => {
+      onReady();
+    });
     expect(skeleton?.getAttribute('data-phase')).toBe('fading');
 
     act(() => {
+      vi.advanceTimersByTime(320);
+    });
+    expect(document.querySelector('[data-wb-content-skeleton]')).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it('non-active content and load errors both dismiss the skeleton', () => {
+    vi.useFakeTimers();
+    const { unmount } = render(
+      <MindmapAppWindow {...makeWindowProps({ isActive: false })} />,
+    );
+    act(() => {
+      (mindmapProps[0].onReady as () => void)();
+      vi.advanceTimersByTime(320);
+    });
+    expect(document.querySelector('[data-wb-content-skeleton]')).toBeNull();
+    unmount();
+
+    mindmapProps.length = 0;
+    render(<MindmapAppWindow {...makeWindowProps({ isActive: false })} />);
+    act(() => {
+      (mindmapProps[0].onLoadError as (message: string) => void)('load failed');
       vi.advanceTimersByTime(320);
     });
     expect(document.querySelector('[data-wb-content-skeleton]')).toBeNull();

@@ -21,7 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import { CSS } from '@dnd-kit/utilities';
-import { useMindMapStore } from '../store';
+import { useMindMapStore, useMindMapStoreApi } from '../store';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { 
@@ -71,12 +71,12 @@ import { BlankedText } from '../components/shared/BlankedText';
 import { InlineLatex } from '../components/shared/InlineLatex';
 import { containsLatex } from '../utils/renderLatex';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../constants';
-import { getAncestors } from '../utils/node/traverse';
+import { collectTopLevelNodeIds, getAncestors } from '../utils/node/traverse';
 import { openNodeRef } from '../utils/openNodeRef';
 import { useTextSelectionBubble } from '../hooks/useTextSelectionBubble';
 import {
-  collectSearchPathIds,
   flattenOutlineTree,
+  resolveSearchPathIds,
   splitSearchHighlights,
   type OutlineFlatNode,
 } from '../utils/searchFilter';
@@ -117,39 +117,15 @@ const SearchHighlightedText: React.FC<{
   );
 };
 
-/** 去掉祖先+后代重复，只保留选中集中的顶层节点（对标 Workflowy 批量操作） */
-function getTopLevelSelectedIds(
-  root: MindMapNode,
-  selectedIds: string[],
-  options?: { excludeRootId?: string }
-): string[] {
-  const excludeRootId = options?.excludeRootId;
-  const unique: string[] = [];
-  const seen = new Set<string>();
-  for (const id of selectedIds) {
-    if (seen.has(id)) continue;
-    if (excludeRootId && id === excludeRootId) continue;
-    if (!findNodeById(root, id)) continue;
-    seen.add(id);
-    unique.push(id);
-  }
-  return unique.filter(
-    (id) =>
-      !unique.some(
-        (ancestorId) => ancestorId !== id && isDescendantOf(root, ancestorId, id)
-      )
-  );
-}
-
 /** 基于当前可见 flat 列表做 Shift 范围选 */
 function getVisibleRangeIds(
   flatNodes: FlatNode[],
   fromId: string,
   toId: string,
-  options?: { excludeRoot?: boolean }
+  options?: { excludeRoot?: boolean; indexById?: ReadonlyMap<string, number> }
 ): string[] {
-  const fromIdx = flatNodes.findIndex((n) => n.id === fromId);
-  const toIdx = flatNodes.findIndex((n) => n.id === toId);
+  const fromIdx = options?.indexById?.get(fromId) ?? flatNodes.findIndex((n) => n.id === fromId);
+  const toIdx = options?.indexById?.get(toId) ?? flatNodes.findIndex((n) => n.id === toId);
   if (fromIdx < 0 || toIdx < 0) return [toId];
   const start = Math.min(fromIdx, toIdx);
   const end = Math.max(fromIdx, toIdx);
@@ -192,6 +168,9 @@ const SortableOutlineNode: React.FC<{
   onBatchIndent?: () => void;
   onBatchOutdent?: () => void;
   onBatchDelete?: () => void;
+  searchResultIds: ReadonlySet<string>;
+  currentSearchResultId: string | null;
+  searchQuery: string;
 }> = ({
   flatNode,
   isRoot,
@@ -209,6 +188,9 @@ const SortableOutlineNode: React.FC<{
   onBatchIndent,
   onBatchOutdent,
   onBatchDelete,
+  searchResultIds,
+  currentSearchResultId,
+  searchQuery,
 }) => {
   const { t } = useTranslation('mindmap');
   const { node, level, parentId, indexInParent } = flatNode;
@@ -224,9 +206,6 @@ const SortableOutlineNode: React.FC<{
   const outdentNode = useMindMapStore(state => state.outdentNode);
   const splitNode = useMindMapStore(state => state.splitNode);
   const mergeWithPrevious = useMindMapStore(state => state.mergeWithPrevious);
-  const searchResults = useMindMapStore(state => state.searchResults);
-  const searchQuery = useMindMapStore(state => state.searchQuery);
-  const currentSearchIndex = useMindMapStore(state => state.currentSearchIndex);
   const copyNodes = useMindMapStore(state => state.copyNodes);
   const cutNodes = useMindMapStore(state => state.cutNodes);
   const pasteNodes = useMindMapStore(state => state.pasteNodes);
@@ -278,11 +257,8 @@ const SortableOutlineNode: React.FC<{
   const isFocused = focusedNodeId === node.id;
   const hasChildren = node.children && node.children.length > 0;
   const isCollapsed = node.collapsed;
-  const isSearchMatch = searchResults.includes(node.id);
-  const isCurrentSearchMatch =
-    isSearchMatch &&
-    currentSearchIndex >= 0 &&
-    searchResults[currentSearchIndex] === node.id;
+  const isSearchMatch = searchResultIds.has(node.id);
+  const isCurrentSearchMatch = isSearchMatch && currentSearchResultId === node.id;
   const showTextHighlight = isSearchMatch && !!searchQuery.trim() && !reciteMode;
   const isOver = overId === node.id;
   const isBeingDragged = activeId === node.id;
@@ -1282,21 +1258,23 @@ export interface OutlineViewProps {
 export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>(
   function OutlineView({ initialScrollTop = null }, ref) {
   const { t } = useTranslation('mindmap');
+  const storeApi = useMindMapStoreApi();
   const document = useMindMapStore(state => state.document);
   const hideCompleted = useMindMapStore(state => state.hideCompleted);
   const searchResults = useMindMapStore(state => state.searchResults);
   const searchQuery = useMindMapStore(state => state.searchQuery);
+  const currentSearchIndex = useMindMapStore(state => state.currentSearchIndex);
   const searchFilterMode = useMindMapStore(state => state.searchFilterMode);
-  const moveNode = useMindMapStore(state => state.moveNode);
+  const moveNodes = useMindMapStore(state => state.moveNodes);
   const addNode = useMindMapStore(state => state.addNode);
   const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
   const addNodeRef = useMindMapStore(state => state.addNodeRef);
   const selection = useMindMapStore(state => state.selection);
   const setSelection = useMindMapStore(state => state.setSelection);
   const deleteNodes = useMindMapStore(state => state.deleteNodes);
-  const indentNode = useMindMapStore(state => state.indentNode);
-  const outdentNode = useMindMapStore(state => state.outdentNode);
-  const updateNode = useMindMapStore(state => state.updateNode);
+  const indentNodes = useMindMapStore(state => state.indentNodes);
+  const outdentNodes = useMindMapStore(state => state.outdentNodes);
+  const toggleCompleted = useMindMapStore(state => state.toggleCompleted);
   const focusedNodeId = useMindMapStore(state => state.focusedNodeId);
   const viewRootId = useMindMapStore(state => state.viewRootId);
   const setViewRootId = useMindMapStore(state => state.setViewRootId);
@@ -1320,7 +1298,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
 
   const scrollFocusedRowIntoView = useCallback(() => {
     const root = containerRef.current;
-    const id = useMindMapStore.getState().focusedNodeId;
+    const id = storeApi.getState().focusedNodeId;
     if (!root || !id) return;
     const escaped =
       typeof globalThis.CSS?.escape === 'function'
@@ -1330,7 +1308,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       `[data-node-id="${escaped}"]`,
     ) as HTMLElement | null;
     row?.scrollIntoView({ block: 'center', behavior: 'auto' });
-  }, []);
+  }, [storeApi]);
 
   const restoreScrollIfNeeded = useCallback(
     (el: HTMLDivElement | null) => {
@@ -1341,7 +1319,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       if (top != null) el.scrollTop = top;
       // 仅当焦点行完全在视口外时再滚入，避免冲掉双模滚动保真
       requestAnimationFrame(() => {
-        const id = useMindMapStore.getState().focusedNodeId;
+        const id = storeApi.getState().focusedNodeId;
         if (!id || !containerRef.current) return;
         const escaped =
           typeof globalThis.CSS?.escape === 'function'
@@ -1360,7 +1338,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
         }
       });
     },
-    [],
+    [storeApi],
   );
 
   const setScrollViewport = useCallback(
@@ -1416,10 +1394,11 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   }, [document.root, viewRootId]);
 
   const searchPathIds = useMemo(() => {
-    if (!searchFilterMode || !searchQuery.trim() || searchResults.length === 0) {
-      return null;
-    }
-    return collectSearchPathIds(displayRoot, searchResults);
+    return resolveSearchPathIds(displayRoot, {
+      enabled: searchFilterMode,
+      query: searchQuery,
+      matchIds: searchResults,
+    });
   }, [searchFilterMode, searchQuery, searchResults, displayRoot]);
 
   const allFlatNodes = useMemo(
@@ -1430,15 +1409,23 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       }),
     [displayRoot, hideCompleted, searchPathIds]
   );
+  const allFlatNodeById = useMemo(
+    () => new Map(allFlatNodes.map((node) => [node.id, node])),
+    [allFlatNodes],
+  );
+  const allFlatNodeIndexById = useMemo(
+    () => new Map(allFlatNodes.map((node, index) => [node.id, index])),
+    [allFlatNodes],
+  );
 
   // 焦点落在被隐藏的已完成节点时，上移到可见祖先
   useEffect(() => {
-    if (!hideCompleted || !focusedNodeId) return;
+    if (!hideCompleted || searchPathIds !== null || !focusedNodeId) return;
     const next = resolveVisibleFocusId(document.root, focusedNodeId, true);
     if (next && next !== focusedNodeId) {
       setFocusedNodeId(next);
     }
-  }, [hideCompleted, focusedNodeId, document.root, setFocusedNodeId]);
+  }, [hideCompleted, searchPathIds, focusedNodeId, document.root, setFocusedNodeId]);
 
   // 追踪新出现的节点（展开动画）+ ACR agentEnteringIds（R2-02 大纲同步）
   const isInitialRender = useRef(true);
@@ -1470,13 +1457,13 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     };
     const group = dragGroupIds.length > 0 ? dragGroupIds : [String(activeId)];
     for (const gid of group) {
-      const node = findNodeById(document.root, gid);
+      const node = allFlatNodeById.get(gid)?.node;
       if (!node) continue;
       if (gid !== String(activeId)) ids.add(gid); // 隐藏组内其它顶层项
       collect(node);
     }
     return ids;
-  }, [activeId, dragGroupIds, document.root]);
+  }, [activeId, dragGroupIds, allFlatNodeById]);
 
   // 拖拽期间过滤掉后代/组内其它节点，使子树跟随父节点一起移动
   const flatNodes = useMemo(() => {
@@ -1485,22 +1472,36 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   }, [allFlatNodes, dragHiddenIds]);
 
   const nodeIds = useMemo(() => flatNodes.map(n => n.id), [flatNodes]);
+  const flatNodeById = useMemo(
+    () => new Map(flatNodes.map((node) => [node.id, node])),
+    [flatNodes],
+  );
+  const flatNodeIndexById = useMemo(
+    () => new Map(flatNodes.map((node, index) => [node.id, index])),
+    [flatNodes],
+  );
 
   const selectionSet = useMemo(() => new Set(selection), [selection]);
+  const searchResultSet = useMemo(() => new Set(searchResults), [searchResults]);
+  const currentSearchResultId =
+    currentSearchIndex >= 0 ? (searchResults[currentSearchIndex] ?? null) : null;
   const isMultiSelectActive = selection.length > 1;
 
   const topLevelSelectedIds = useMemo(
-    () => getTopLevelSelectedIds(document.root, selection, { excludeRootId: document.root.id }),
+    () => collectTopLevelNodeIds(document.root, selection, { excludeRoot: true }),
     [document.root, selection]
   );
 
   const handleRowSelect = useCallback((nodeId: string, e: React.MouseEvent) => {
     const flat = allFlatNodes;
-    const isRootRow = flat.find((n) => n.id === nodeId)?.level === 0;
+    const isRootRow = allFlatNodeById.get(nodeId)?.level === 0;
 
     if (e.shiftKey) {
       const anchor = selectionAnchorRef.current || focusedNodeId || nodeId;
-      const rangeIds = getVisibleRangeIds(flat, anchor, nodeId, { excludeRoot: true });
+      const rangeIds = getVisibleRangeIds(flat, anchor, nodeId, {
+        excludeRoot: true,
+        indexById: allFlatNodeIndexById,
+      });
       setSelection(rangeIds.length > 0 ? rangeIds : (isRootRow ? [] : [nodeId]));
       setFocusedNodeId(nodeId);
       return;
@@ -1524,7 +1525,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     setSelection(isRootRow ? [] : [nodeId]);
     selectionAnchorRef.current = nodeId;
     setFocusedNodeId(nodeId);
-  }, [allFlatNodes, focusedNodeId, selection, selectionSet, setFocusedNodeId, setSelection, document.root.id]);
+  }, [allFlatNodes, allFlatNodeById, allFlatNodeIndexById, focusedNodeId, selection, selectionSet, setFocusedNodeId, setSelection, document.root.id]);
 
   const handleBatchDelete = useCallback(() => {
     if (topLevelSelectedIds.length === 0) return;
@@ -1533,33 +1534,16 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   }, [topLevelSelectedIds, deleteNodes, setSelection]);
 
   const handleBatchIndent = useCallback(() => {
-    // 同层从后往前，避免兄弟相对顺序被破坏
-    const ordered = [...topLevelSelectedIds].sort((a, b) => {
-      const ia = allFlatNodes.findIndex((n) => n.id === a);
-      const ib = allFlatNodes.findIndex((n) => n.id === b);
-      return ib - ia;
-    });
-    for (const id of ordered) indentNode(id);
-  }, [topLevelSelectedIds, allFlatNodes, indentNode]);
+    indentNodes(topLevelSelectedIds);
+  }, [topLevelSelectedIds, indentNodes]);
 
   const handleBatchOutdent = useCallback(() => {
-    // 同层从前往后 outdent
-    const ordered = [...topLevelSelectedIds].sort((a, b) => {
-      const ia = allFlatNodes.findIndex((n) => n.id === a);
-      const ib = allFlatNodes.findIndex((n) => n.id === b);
-      return ia - ib;
-    });
-    for (const id of ordered) outdentNode(id);
-  }, [topLevelSelectedIds, allFlatNodes, outdentNode]);
+    outdentNodes(topLevelSelectedIds);
+  }, [topLevelSelectedIds, outdentNodes]);
 
   const handleBatchComplete = useCallback(() => {
-    const ids = topLevelSelectedIds;
-    if (ids.length === 0) return;
-    const allCompleted = ids.every((id) => findNodeById(document.root, id)?.completed);
-    for (const id of ids) {
-      updateNode(id, { completed: !allCompleted });
-    }
-  }, [topLevelSelectedIds, document.root, updateNode]);
+    toggleCompleted(selection);
+  }, [selection, toggleCompleted]);
 
   // 多选时 document 级快捷键（退出编辑后焦点可能不在行内）
   useEffect(() => {
@@ -1609,17 +1593,17 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
 
   const activeNode = useMemo(() => {
     if (!activeId) return null;
-    return findNodeById(document.root, String(activeId));
-  }, [activeId, document.root]);
+    return allFlatNodeById.get(String(activeId))?.node ?? null;
+  }, [activeId, allFlatNodeById]);
 
   // 计算当前拖拽的预期层级，用于 UI 展示
   const activeFlatNode = useMemo(() => 
-    flatNodes.find(n => n.id === activeId), 
-  [activeId, flatNodes]);
+    activeId ? flatNodeById.get(String(activeId)) : undefined,
+  [activeId, flatNodeById]);
   
   const overFlatNode = useMemo(() => 
-    flatNodes.find(n => n.id === overId), 
-  [overId, flatNodes]);
+    overId ? flatNodeById.get(String(overId)) : undefined,
+  [overId, flatNodeById]);
 
   const calculateDropPosition = useCallback((event: DragOverEvent): DropPosition => {
     if (!event.over) return 'inside';
@@ -1659,7 +1643,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     if (dropPosition === 'after') {
       anchorNode = overNode;
     } else {
-      const overIndex = flatNodes.findIndex(n => n.id === overNode.id);
+      const overIndex = flatNodeIndexById.get(overNode.id) ?? -1;
       if (overIndex > 0) {
         anchorNode = flatNodes[overIndex - 1];
       }
@@ -1672,7 +1656,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     const minLevel = 0; // 实际上可以更灵活，但 0 是安全的下限
     
     return Math.max(minLevel, Math.min(maxLevel, projectedDepth));
-  }, [flatNodes]);
+  }, [flatNodes, flatNodeIndexById]);
 
   const currentProjectedLevel = useMemo(() => {
     if (!activeFlatNode || !overFlatNode) return null;
@@ -1685,16 +1669,18 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     setOffsetLeft(0);
     // 若拖的是选中集之一，整组移动；按可见列表顺序（非点击序）
     if (selection.includes(id) && selection.length > 1) {
-      const top = getTopLevelSelectedIds(document.root, selection, {
-        excludeRootId: document.root.id,
+      const top = collectTopLevelNodeIds(document.root, selection, {
+        excludeRoot: true,
       });
-      const order = new Map(allFlatNodes.map((n, i) => [n.id, i]));
-      top.sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
+      top.sort(
+        (a, b) =>
+          (allFlatNodeIndexById.get(a) ?? 0) - (allFlatNodeIndexById.get(b) ?? 0),
+      );
       setDragGroupIds(top);
     } else {
       setDragGroupIds([id]);
     }
-  }, [selection, document.root, allFlatNodes]);
+  }, [selection, document.root, allFlatNodeIndexById]);
 
   const handleDragMove = useCallback((event: DragMoveEvent) => {
     setOffsetLeft(event.delta.x);
@@ -1714,8 +1700,8 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   ): { parentId: string; index: number } | null => {
     if (isDescendantOf(document.root, sourceId, targetId)) return null;
 
-    const targetFlatNode = flatNodes.find(n => n.id === targetId);
-    const sourceFlatNode = flatNodes.find(n => n.id === sourceId);
+    const targetFlatNode = flatNodeById.get(targetId);
+    const sourceFlatNode = flatNodeById.get(sourceId);
     if (!targetFlatNode || !sourceFlatNode) return null;
 
     const projectedLevel = getProjectedLevel(
@@ -1729,7 +1715,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     if (dropPosition === 'after') {
       anchorNode = targetFlatNode;
     } else {
-      const targetIndex = flatNodes.findIndex(n => n.id === targetId);
+      const targetIndex = flatNodeIndexById.get(targetId) ?? -1;
       if (targetIndex > 0) {
         anchorNode = flatNodes[targetIndex - 1];
       }
@@ -1758,7 +1744,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
 
     let current: FlatNode | undefined = anchorNode;
     while (current && current.level > projectedLevel) {
-      const parent = flatNodes.find(n => n.id === current?.parentId);
+      const parent = current?.parentId ? flatNodeById.get(current.parentId) : undefined;
       current = parent;
     }
 
@@ -1772,7 +1758,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       };
     }
     return null;
-  }, [document.root, displayRoot.id, flatNodes, dropPosition, offsetLeft, getProjectedLevel]);
+  }, [document.root, displayRoot.id, flatNodes, flatNodeById, flatNodeIndexById, dropPosition, offsetLeft, getProjectedLevel]);
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
@@ -1790,25 +1776,16 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     const drop = resolveDropTarget(sourceId, targetId);
     if (!drop) return;
 
-    // 整组移动：从后往前插入同一落点，抵消同父 moveNode 的 index 回退漂移
     const movingIds = groupIds.filter((id) => id !== document.root.id);
     if (movingIds.length === 0) return;
 
     // 若目标在移动集内，跳过
     if (movingIds.includes(targetId)) return;
 
-    const parentId = drop.parentId;
-    const baseIndex = drop.index;
-    for (let i = movingIds.length - 1; i >= 0; i--) {
-      const id = movingIds[i];
-      if (isDescendantOf(document.root, id, parentId)) continue;
-      const targetNode = findNodeById(document.root, parentId);
-      if (!targetNode) continue;
-      moveNode(id, parentId, baseIndex);
+    if (moveNodes(movingIds, drop.parentId, drop.index)) {
+      setSelection(movingIds);
     }
-
-    setSelection(movingIds);
-  }, [dragGroupIds, resolveDropTarget, document.root, moveNode, setSelection]);
+  }, [dragGroupIds, resolveDropTarget, document.root, moveNodes, setSelection]);
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
@@ -1876,6 +1853,9 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                   onBatchIndent={handleBatchIndent}
                   onBatchOutdent={handleBatchOutdent}
                   onBatchDelete={handleBatchDelete}
+                  searchResultIds={searchResultSet}
+                  currentSearchResultId={currentSearchResultId}
+                  searchQuery={searchQuery}
                   onNavigate={(direction) => {
                     if (direction === 'up') {
                       const prev = flatNodes[index - 1];

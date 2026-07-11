@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { useMindMapStore } from '../store';
 import { useMindMapIsActive } from '../MindMapActiveContext';
-import { findNodeById } from '../utils/node/find';
+import { collectTopLevelNodeIds, traverseDFS } from '../utils/node/traverse';
 import type { MindMapNode } from '../types';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
 import { looksLikeMarkdownList } from '../utils/pasteMarkdown';
@@ -17,6 +17,26 @@ function nodesToText(nodes: MindMapNode[], level = 0): string {
     .join('\n');
 }
 
+function resolveClipboardNodes(
+  root: MindMapNode,
+  nodeIds: string[],
+  options?: { excludeRoot?: boolean },
+): { ids: string[]; nodes: MindMapNode[] } {
+  const ids = collectTopLevelNodeIds(root, nodeIds, options);
+  const wanted = new Set(ids);
+  const nodeById = new Map<string, MindMapNode>();
+  traverseDFS(root, (node) => {
+    if (wanted.has(node.id)) nodeById.set(node.id, node);
+  });
+  return {
+    ids,
+    nodes: ids.flatMap((id) => {
+      const node = nodeById.get(id);
+      return node ? [node] : [];
+    }),
+  };
+}
+
 /** 写入系统剪贴板（静默失败，不阻塞流程） */
 async function writeToSystemClipboard(text: string): Promise<void> {
   try { await copyTextToClipboard(text); } catch { /* 权限被拒 */ }
@@ -28,7 +48,7 @@ async function readFromSystemClipboard(): Promise<string | null> {
 }
 
 export function useMindMapClipboard(): void {
-  // ★ 标签页保活：非活跃实例不响应复制/剪切/粘贴，防止单例 store 上重复执行
+  // ★ 标签页保活：非活跃实例不响应复制/剪切/粘贴，避免多个全局监听器重复执行
   const isActive = useMindMapIsActive();
   const document = useMindMapStore(s => s.document);
   const focusedNodeId = useMindMapStore(s => s.focusedNodeId);
@@ -38,9 +58,8 @@ export function useMindMapClipboard(): void {
   const copyNodes = useMindMapStore(s => s.copyNodes);
   const cutNodes = useMindMapStore(s => s.cutNodes);
   const pasteNodes = useMindMapStore(s => s.pasteNodes);
+  const pasteTextChildren = useMindMapStore(s => s.pasteTextChildren);
   const pasteMarkdownChildren = useMindMapStore(s => s.pasteMarkdownChildren);
-  const addNode = useMindMapStore(s => s.addNode);
-  const updateNode = useMindMapStore(s => s.updateNode);
 
   /** 从系统剪贴板粘贴外部文本为子节点（Markdown 层级优先） */
   const handlePasteExternal = useCallback(async (targetId: string) => {
@@ -53,11 +72,8 @@ export function useMindMapClipboard(): void {
     }
 
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    for (const line of lines) {
-      const newId = addNode(targetId);
-      if (newId) updateNode(newId, { text: line });
-    }
-  }, [addNode, updateNode, pasteMarkdownChildren]);
+    pasteTextChildren(targetId, lines);
+  }, [pasteMarkdownChildren, pasteTextChildren]);
 
   useEffect(() => {
     if (!isActive) return;
@@ -82,18 +98,16 @@ export function useMindMapClipboard(): void {
       if (key === 'c') {
         if (activeNodes.length === 0) return;
         e.preventDefault();
-        copyNodes(activeNodes);
-        const nodes = activeNodes
-          .map((id) => findNodeById(document.root, id))
-          .filter((n): n is MindMapNode => n !== null);
+        const { ids, nodes } = resolveClipboardNodes(document.root, activeNodes);
+        copyNodes(ids);
         if (nodes.length > 0) writeToSystemClipboard(nodesToText(nodes));
       } else if (key === 'x') {
         if (activeNodes.length === 0) return;
         e.preventDefault();
-        const nodes = activeNodes
-          .map((id) => findNodeById(document.root, id))
-          .filter((n): n is MindMapNode => n !== null);
-        cutNodes(activeNodes);
+        const { ids, nodes } = resolveClipboardNodes(document.root, activeNodes, {
+          excludeRoot: true,
+        });
+        cutNodes(ids);
         if (nodes.length > 0) writeToSystemClipboard(nodesToText(nodes));
       } else if (key === 'v') {
         // 优先粘到焦点节点，其次选中集中的第一个

@@ -3,8 +3,36 @@
  */
 
 import type { MindMapNode } from '../types';
-import { getAncestors } from './node/traverse';
 import { shouldHideCompletedNode } from './hideCompleted';
+
+const searchResultSetCache = new WeakMap<readonly string[], ReadonlySet<string>>();
+
+/** 将 store 的稳定结果数组复用为 Set，供每个画布节点 O(1) 判断命中。 */
+export function getSearchResultIdSet(ids: readonly string[]): ReadonlySet<string> {
+  const cached = searchResultSetCache.get(ids);
+  if (cached) return cached;
+  const result = new Set(ids);
+  searchResultSetCache.set(ids, result);
+  return result;
+}
+
+/** 前序搜索正文和备注，结果顺序与大纲/画布遍历顺序一致。 */
+export function searchMindMapNodeIds(root: MindMapNode, query: string): string[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+  const results: string[] = [];
+  const visit = (node: MindMapNode) => {
+    if (
+      node.text.toLowerCase().includes(normalizedQuery) ||
+      node.note?.toLowerCase().includes(normalizedQuery)
+    ) {
+      results.push(node.id);
+    }
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return results;
+}
 
 /** 收集匹配节点及其全部祖先 ID（含匹配自身） */
 export function collectSearchPathIds(
@@ -14,13 +42,31 @@ export function collectSearchPathIds(
   const pathIds = new Set<string>();
   if (matchIds.length === 0) return pathIds;
 
-  for (const id of matchIds) {
-    pathIds.add(id);
-    for (const ancestor of getAncestors(root, id)) {
-      pathIds.add(ancestor.id);
+  const matchSet = new Set(matchIds);
+  const visit = (node: MindMapNode): boolean => {
+    let subtreeMatches = matchSet.has(node.id);
+    for (const child of node.children) {
+      if (visit(child)) subtreeMatches = true;
     }
-  }
+    if (subtreeMatches) pathIds.add(node.id);
+    return subtreeMatches;
+  };
+
+  visit(root);
   return pathIds;
+}
+
+/** 解析大纲搜索过滤状态；非空查询即使零命中也返回空 Set。 */
+export function resolveSearchPathIds(
+  root: MindMapNode,
+  options: {
+    enabled: boolean;
+    query: string;
+    matchIds: readonly string[];
+  }
+): Set<string> | null {
+  if (!options.enabled || !options.query.trim()) return null;
+  return collectSearchPathIds(root, options.matchIds);
 }
 
 export interface OutlineFlatNode {

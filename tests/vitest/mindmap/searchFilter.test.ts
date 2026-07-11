@@ -4,8 +4,10 @@ import type { MindMapNode } from '@/features/mindmap/types';
 import {
   collectSearchPathIds,
   flattenOutlineTree,
+  resolveSearchPathIds,
   splitSearchHighlights,
 } from '@/features/mindmap/utils/searchFilter';
+import { collectTopLevelNodeIds } from '@/features/mindmap/utils/node/traverse';
 
 function node(
   id: string,
@@ -78,5 +80,30 @@ describe('searchFilter', () => {
     ]);
     const flat = flattenOutlineTree(tree, { hideCompleted: true });
     expect(flat.map((n) => n.id)).toEqual(['root', 'open']);
+  });
+
+  it('active non-empty search with zero matches keeps an empty filtered view', () => {
+    const pathIds = resolveSearchPathIds(root, {
+      enabled: true,
+      query: 'missing',
+      matchIds: [],
+    });
+    expect(pathIds).toEqual(new Set());
+    expect(flattenOutlineTree(root, { pathIds }).map((n) => n.id)).toEqual([]);
+  });
+
+  it('collects paths and top-level selections linearly for 10k nodes', () => {
+    const children = Array.from({ length: 10_000 }, (_, index) =>
+      node(`n_${index}`, `Node ${index}`),
+    );
+    const largeRoot = node('large_root', 'Root', children);
+    const ids = children.map((child) => child.id);
+
+    const paths = collectSearchPathIds(largeRoot, ids);
+    expect(paths.size).toBe(10_001);
+    expect(paths.has('large_root')).toBe(true);
+
+    const reversed = [...ids].reverse();
+    expect(collectTopLevelNodeIds(largeRoot, [...reversed, reversed[0]])).toEqual(reversed);
   });
 });
