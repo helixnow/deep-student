@@ -12,6 +12,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ResourceListItem } from '@/features/learning-hub/types';
 
 const sidebarProps: Array<Record<string, unknown>> = [];
+const requestWorkspaceResource = vi.hoisted(() => vi.fn(async () => 'win_notes'));
+
+vi.mock('../../notes/workspaceRegistry', () => ({ requestWorkspaceResource }));
 
 // LearningHubSidebar 引用链很重（Tauri 插件/DSTU 适配器），单测只验证接线
 vi.mock('@/features/learning-hub', () => ({
@@ -22,6 +25,7 @@ vi.mock('@/features/learning-hub', () => ({
 }));
 
 import FilesAppWindow, { launchResourceItem } from '../FilesAppWindow';
+import '../../notes/register';
 import { workbenchBus } from '../../../core/workbenchBus';
 import { useWindowStore } from '../../../core/windowStore';
 import type { AppWindowProps } from '../../../core/types';
@@ -60,6 +64,7 @@ describe('FilesAppWindow', () => {
   beforeEach(() => {
     sidebarProps.length = 0;
     workbenchBus.setEnabled(true);
+    requestWorkspaceResource.mockClear();
     resetStore();
   });
 
@@ -89,16 +94,22 @@ describe('FilesAppWindow', () => {
     const windows = Object.values(useWindowStore.getState().windows);
     expect(windows).toHaveLength(2);
     expect(windows.map((w) => `${w.typeId}:${w.instanceKey}`).sort()).toEqual([
-      'mindmap:mm_1',
+      'notes:null',
       'textbook:tb_1',
     ]);
+    expect(requestWorkspaceResource).toHaveBeenCalledWith({ type: 'mindmap', id: 'mm_1' });
   });
 
-  it('同一资源重复打开复用已有窗口（multi 按 instanceKey 去重）', () => {
+  it('连续打开不同知识资源复用单例并请求对应内部标签', () => {
     expect(launchResourceItem({ id: 'note_1', type: 'note' })).toBeTruthy();
     const first = Object.keys(useWindowStore.getState().windows);
-    expect(launchResourceItem({ id: 'note_1', type: 'note' })).toBe(first[0]);
+    expect(launchResourceItem({ id: 'map_2', type: 'mindmap' })).toBe(first[0]);
     expect(Object.keys(useWindowStore.getState().windows)).toHaveLength(1);
+    expect(requestWorkspaceResource).toHaveBeenNthCalledWith(1, { type: 'note', id: 'note_1' });
+    expect(requestWorkspaceResource).toHaveBeenNthCalledWith(2, {
+      type: 'mindmap',
+      id: 'map_2',
+    });
   });
 
   it('不可开窗类型不 launch', () => {

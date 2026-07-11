@@ -1,5 +1,7 @@
 //! Chat V2 工作区模块 - 多 Agent 协作共享空间
 
+pub mod agent_control;
+pub mod agent_profile;
 pub mod config;
 pub mod coordinator;
 pub mod database;
@@ -13,6 +15,15 @@ pub mod sleep_manager;
 pub mod subagent_task;
 pub mod types;
 
+pub use agent_control::{
+    AgentControl, AgentControlConfig, AgentControlRuntime, AgentControlSnapshot, AgentControlState,
+    AgentSpawnRequest, AgentSpawnResult, DetachedAgentRuntime,
+};
+pub use agent_profile::{
+    AgentPermissions, AgentProfile, AgentProfileOverride, AgentProfileResolver,
+    AgentProfileSelection, AgentRuntimeConfig, ApprovalPolicy, ContextInheritance, ReasoningEffort,
+    SandboxMode,
+};
 pub use types::{
     AgentId, AgentRole, AgentStatus, DocumentId, DocumentType, HistoryInjectionConfig, InboxItem,
     InboxStatus, MessageId, MessageStatus, MessageType, Workspace, WorkspaceAgent,

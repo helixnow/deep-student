@@ -68,9 +68,10 @@ pub enum RuntimeRootKind {
     Temp,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RuntimeRootAccess {
+    #[default]
     ReadOnly,
     ReadWrite,
 }
@@ -100,6 +101,8 @@ struct AuthorizedRootRecord {
 struct WorkspaceRootRecord {
     path: PathBuf,
     label: String,
+    #[serde(default)]
+    access: RuntimeRootAccess,
     #[serde(default)]
     identity: Option<RuntimeRootIdentity>,
 }
@@ -557,10 +560,17 @@ fn workspace_runtime_root(record: WorkspaceRootRecord, configured: bool) -> Runt
         id: "workspace".to_string(),
         kind: RuntimeRootKind::Workspace,
         path: record.path,
-        access: RuntimeRootAccess::ReadOnly,
+        access: record.access,
         label: record.label,
         description: if configured {
-            "User-selected workspace root. Read-only for agent runtime.".to_string()
+            match record.access {
+                RuntimeRootAccess::ReadOnly => {
+                    "User-selected workspace root. Read-only for agent runtime.".to_string()
+                }
+                RuntimeRootAccess::ReadWrite => {
+                    "User-selected workspace root with explicit agent write access.".to_string()
+                }
+            }
         } else {
             "Workspace authorization is stale or the directory was replaced. Select it again."
                 .to_string()
@@ -1058,6 +1068,7 @@ pub async fn chat_v2_set_workspace_root(
     state: State<'_, AppState>,
     path: String,
     label: Option<String>,
+    access: Option<RuntimeRootAccess>,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
     let canonical = canonicalize_workspace_dir(&path)?;
@@ -1081,6 +1092,7 @@ pub async fn chat_v2_set_workspace_root(
             &WorkspaceRootRecord {
                 path: canonical,
                 label,
+                access: access.unwrap_or_default(),
                 identity: Some(identity),
             },
         )?;
@@ -1922,6 +1934,7 @@ mod tests {
         let root = configured_workspace_runtime_root(WorkspaceRootRecord {
             path: path.clone(),
             label: "Study Workspace".to_string(),
+            access: RuntimeRootAccess::ReadOnly,
             identity: Some(runtime_root_identity(&path).expect("identity")),
         });
 
@@ -1932,6 +1945,31 @@ mod tests {
         assert_eq!(root.label, "Study Workspace");
         assert!(!root.session_scoped);
         assert!(root.configured);
+    }
+
+    #[test]
+    fn configured_workspace_root_is_writable_only_when_explicitly_requested() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let path = temp_dir.path().canonicalize().expect("canonical");
+        let root = configured_workspace_runtime_root(WorkspaceRootRecord {
+            path: path.clone(),
+            label: "Writable Workspace".to_string(),
+            access: RuntimeRootAccess::ReadWrite,
+            identity: Some(runtime_root_identity(&path).expect("identity")),
+        });
+
+        assert_eq!(root.access, RuntimeRootAccess::ReadWrite);
+        assert!(root.description.contains("explicit agent write access"));
+    }
+
+    #[test]
+    fn legacy_workspace_record_deserializes_as_read_only() {
+        let record: WorkspaceRootRecord = serde_json::from_value(serde_json::json!({
+            "path": "/tmp/project",
+            "label": "Legacy Workspace"
+        }))
+        .expect("legacy record");
+        assert_eq!(record.access, RuntimeRootAccess::ReadOnly);
     }
 
     #[test]
@@ -2006,6 +2044,7 @@ mod tests {
             &WorkspaceRootRecord {
                 path: canonical.clone(),
                 label: "Workspace".to_string(),
+                access: RuntimeRootAccess::ReadOnly,
                 identity: Some(runtime_root_identity(&canonical).expect("identity")),
             },
         )
@@ -2064,6 +2103,7 @@ mod tests {
                 &WorkspaceRootRecord {
                     path: canonical.clone(),
                     label: "Workspace".to_string(),
+                    access: RuntimeRootAccess::ReadOnly,
                     identity: Some(runtime_root_identity(&canonical).expect("identity")),
                 },
             )

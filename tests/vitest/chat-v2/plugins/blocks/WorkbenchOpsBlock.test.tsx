@@ -244,7 +244,10 @@ describe('WorkbenchOpsBlock', () => {
     render(<WorkbenchOpsBlock block={block} />);
 
     expect(screen.queryByTestId('workbench-ops-undo')).not.toBeInTheDocument();
-    expect(screen.getByTestId('workbench-ops-open')).toBeInTheDocument();
+    expect(screen.getByTestId('workbench-ops-header')).toContainElement(
+      screen.getByTestId('workbench-ops-open')
+    );
+    expect(screen.queryByTestId('workbench-ops-footer-actions')).not.toBeInTheDocument();
   });
 
   it('calls workbenchBus.activate when opening target', () => {

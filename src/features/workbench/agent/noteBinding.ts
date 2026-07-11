@@ -13,6 +13,10 @@
  * @see docs/dev/acr/ROUND1.md R1-13
  */
 import { sessionManager } from '@/features/chat/core/session';
+import {
+  getWorkspaceActiveResource,
+  subscribeWorkspaceState,
+} from '@/features/workbench/apps/notes/workspaceRegistry';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 
 /** 最近一次写入的 noteId，避免 focusStack 无关抖动重复 updateModeState */
@@ -49,7 +53,12 @@ function resolveFocusedNoteId(
   const topId = focusStack.length > 0 ? focusStack[focusStack.length - 1] : null;
   if (!topId) return null;
   const win = windows[topId];
-  if (!win || win.typeId !== 'note') return null;
+  if (!win) return null;
+  if (win.typeId === 'notes') {
+    const active = getWorkspaceActiveResource(win.id);
+    return active?.type === 'note' && active.id ? active.id : null;
+  }
+  if (win.typeId !== 'note') return null;
   const key = win.instanceKey;
   return typeof key === 'string' && key.length > 0 ? key : null;
 }
@@ -78,9 +87,11 @@ export function setupNoteBinding(): () => void {
     if (nextNoteId === prevNoteId) return;
     bindCanvasNoteId(nextNoteId);
   });
+  const unsubscribeWorkspace = subscribeWorkspaceState(sync);
 
   return () => {
     unsubscribe();
+    unsubscribeWorkspace();
     lastBoundNoteId = undefined;
   };
 }

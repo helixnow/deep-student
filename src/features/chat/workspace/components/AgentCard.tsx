@@ -20,10 +20,13 @@ interface AgentCardProps {
 
 const statusColors: Record<AgentStatus, string> = {
   idle: 'bg-gray-400',
+  queued: 'bg-blue-400',
   running: 'bg-green-500 animate-pulse',
   completed: 'bg-blue-500',
   failed: 'bg-red-500',
   cancelled: 'bg-gray-500',
+  interrupted: 'bg-amber-500',
+  closed: 'bg-gray-600',
 };
 
 // ============================================================================
@@ -116,10 +119,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   );
   const statusLabel = {
     idle: t('chatV2:workspace.status.idle'),
+    queued: t('chatV2:workspace.status.queued'),
     running: t('chatV2:workspace.status.running'),
     completed: t('chatV2:workspace.status.completed'),
     failed: t('chatV2:workspace.status.failed'),
     cancelled: t('chatV2:workspace.status.cancelled'),
+    interrupted: t('chatV2:workspace.status.interrupted'),
+    closed: t('chatV2:workspace.status.closed'),
   }[status];
 
   // 🆕 任务摘要标题：最近一条派发给该 agent 的 task 消息内容

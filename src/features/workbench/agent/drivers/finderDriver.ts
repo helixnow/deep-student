@@ -115,8 +115,30 @@ function markRemaining(state: ActiveRun): void {
   state.nextOpIndex = state.totalOps;
 }
 
-export const finderDriver: CollabDriver = {
+export const finderDriver: CollabDriver & {
+  queryState: () => Record<string, unknown>;
+} = {
   typeId: TYPE_ID,
+
+  queryState() {
+    const state = useFinderStore.getState();
+    return {
+      folderId: state.currentPath.folderId,
+      viewKind: state.currentPath.viewKind,
+      breadcrumbs: state.currentPath.breadcrumbs.map((item) => ({
+        id: item.id,
+        name: item.name,
+      })),
+      viewMode: state.viewMode,
+      sortBy: state.sortBy,
+      sortOrder: state.sortOrder,
+      searchQuery: state.searchQuery,
+      selectedIds: [...state.selectedIds],
+      itemCount: state.items.length,
+      loading: state.isLoading,
+      error: state.error,
+    };
+  },
 
   probe(_target: AcrTarget): AcrProbeState {
     return isFinderHot() ? 'hot' : 'clean';

@@ -19,7 +19,11 @@ import {
 } from '../../hooks/useDesktopDrop';
 import { workbenchBus } from '../../core/workbenchBus';
 import { announceWorkbench } from '../../hooks/useWorkbenchA11y';
-import { resourceTypeToAppTypeId } from '../content/typeMap';
+import {
+  isNotesWorkspaceResourceType,
+  resourceTypeToAppTypeId,
+} from '../content/typeMap';
+import { requestWorkspaceResource } from '../notes/workspaceRegistry';
 
 function announceDropOpened(resource: WorkbenchResourceDragData): void {
   const title = resource.title;
@@ -98,10 +102,26 @@ export function launchResourceFromDragData(
   if (!normalized) return null;
   const typeId = resourceTypeToAppTypeId(normalized.resourceType);
   if (!typeId) return null;
+  const workspaceResourceType = isNotesWorkspaceResourceType(normalized.resourceType)
+    ? normalized.resourceType
+    : null;
+  if (workspaceResourceType) {
+    void requestWorkspaceResource({
+      type: workspaceResourceType,
+      id: normalized.resourceId,
+    });
+  }
   const normalizedPoint = normalizeDropPoint(point);
   return workbenchBus.launch({
     typeId,
-    instanceKey: normalized.resourceId,
+    instanceKey: workspaceResourceType ? undefined : normalized.resourceId,
+    payload: workspaceResourceType
+      ? {
+          resourceType: workspaceResourceType,
+          resourceId: normalized.resourceId,
+          title: normalized.title,
+        }
+      : undefined,
     dropPoint: normalizedPoint
       ? { x: normalizedPoint.x, y: normalizedPoint.y }
       : undefined,

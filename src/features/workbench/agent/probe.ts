@@ -11,6 +11,10 @@ import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRe
 import { getWindowRenderHint } from '@/features/workbench/core/scheduler';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import {
+  findWorkspaceHostForResource,
+  getWorkspaceActiveResource,
+} from '@/features/workbench/apps/notes/workspaceRegistry';
 import { getAgentControlMode } from './gates';
 import { stageManager } from './stageManager';
 import type { AcrProbeState, AcrTarget, ProbeResult } from './types';
@@ -23,6 +27,23 @@ import type { AcrProbeState, AcrTarget, ProbeResult } from './types';
  */
 function findTargetWindow(target: AcrTarget): { id: string; instanceKey: string | null } | null {
   const { windows } = useWindowStore.getState();
+  if (target.typeId === 'note' || target.typeId === 'mindmap') {
+    const resourceId = target.resourceId?.trim();
+    let windowId: string | null = null;
+    if (resourceId) {
+      windowId = findWorkspaceHostForResource({ type: target.typeId, id: resourceId });
+    } else {
+      const candidate = Object.values(windows)
+        .filter((win) => win.typeId === 'notes')
+        .sort((a, b) => b.lastFocusedAt - a.lastFocusedAt)
+        .find((win) => getWorkspaceActiveResource(win.id)?.type === target.typeId);
+      windowId = candidate?.id ?? null;
+    }
+    const workspaceWindow = windowId ? windows[windowId] : undefined;
+    if (workspaceWindow) {
+      return { id: workspaceWindow.id, instanceKey: resourceId ?? null };
+    }
+  }
   const matches = Object.values(windows).filter((win) => {
     if (win.typeId !== target.typeId) return false;
     if (target.resourceId != null && target.resourceId !== '') {

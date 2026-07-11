@@ -1927,7 +1927,7 @@
     "bypass_enabled": "Global bypass mode enabled",
     "bypass_disabled": "Global bypass mode disabled",
     "runtime_roots_title": "Runtime Roots",
-    "runtime_roots_desc": "Local file tools are constrained to these roots. Workspace access is read-only; generated artifacts write into a session-scoped app data folder.",
+    "runtime_roots_desc": "Local file tools are constrained to these roots. Workspace access is read-only by default and becomes writable only after explicit authorization; generated artifacts write into a session-scoped app data folder.",
     "runtime_roots_empty": "Runtime roots are unavailable in this environment.",
     "runtime_root_session_scoped": "Session scoped",
     "runtime_root_read_only": "Read only",
@@ -1948,6 +1948,8 @@
       "temp": "Temp"
     },
     "runtime_root_set_workspace": "Set Workspace",
+    "runtime_root_workspace_access": "Workspace access",
+    "runtime_root_workspace_write_warning": "Read/write access lets the AI create, modify, move, and delete files in this workspace. Each mutation still requires path-specific approval and produces an auditable, reversible change record.",
     "runtime_root_workspace_set": "Workspace root updated",
     "runtime_root_workspace_set_failed": "Failed to update workspace root",
     "runtime_root_workspace_reset": "Reset workspace root",

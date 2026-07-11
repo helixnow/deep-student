@@ -134,195 +134,196 @@ impl ChatV2Pipeline {
         // 每轮都会嵌套 poll 一个体积很大的 future，多轮工具调用可耗尽 Tokio worker 栈。
         let mut recursion_depth = recursion_depth;
         loop {
-        // ============================================================
-        // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
-        // 连续第 5 次出现，不再调用 LLM，生成 tool_limit 块提示用户。
-        // （拦截结果已在上一轮以合成失败回喂，此处只负责终止收尾）
-        // ============================================================
-        if ctx.doom_loop_guard.abort_triggered() {
-            let tool_name = ctx
-                .doom_loop_guard
-                .abort_tool_name()
-                .unwrap_or("<unknown>")
-                .to_string();
-            log::warn!(
+            // ============================================================
+            // 🆕 2026-07 Doom loop 终止：上一轮检测到同一「工具名+参数」指纹
+            // 连续第 5 次出现，不再调用 LLM，生成 tool_limit 块提示用户。
+            // （拦截结果已在上一轮以合成失败回喂，此处只负责终止收尾）
+            // ============================================================
+            if ctx.doom_loop_guard.abort_triggered() {
+                let tool_name = ctx
+                    .doom_loop_guard
+                    .abort_tool_name()
+                    .unwrap_or("<unknown>")
+                    .to_string();
+                log::warn!(
                 "[ChatV2::pipeline] Doom loop abort: tool={} repeated {} times with identical arguments, terminating tool loop at depth={}",
                 tool_name,
                 DOOM_LOOP_ABORT_THRESHOLD,
                 recursion_depth
             );
-            let limit_message = format!(
-                "⚠️ 检测到重复调用循环，已终止本轮执行\n\n\
+                let limit_message = format!(
+                    "⚠️ 检测到重复调用循环，已终止本轮执行\n\n\
                 AI 连续 {} 次以完全相同的参数调用工具「{}」，为防止无效死循环已暂停自动执行。\n\n\
                 您可以：\n\
                 • 补充信息或调整指令后重新发送\n\
                 • 发送「继续」让 AI 换一种策略再试\n\
                 • 手动完成剩余步骤",
-                DOOM_LOOP_ABORT_THRESHOLD, tool_name
-            );
-            let result_payload = serde_json::json!({
-                "content": limit_message,
-                "reason": "doom_loop",
-                "toolName": tool_name,
-                "repeatCount": DOOM_LOOP_ABORT_THRESHOLD,
-            });
-            self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
-            return Ok(());
-        }
+                    DOOM_LOOP_ABORT_THRESHOLD, tool_name
+                );
+                let result_payload = serde_json::json!({
+                    "content": limit_message,
+                    "reason": "doom_loop",
+                    "toolName": tool_name,
+                    "repeatCount": DOOM_LOOP_ABORT_THRESHOLD,
+                });
+                self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
+                return Ok(());
+            }
 
-        // 检查递归深度限制
-        // 🔧 配置化：使用用户设置的限制值，默认 MAX_TOOL_RECURSION (30)
-        // 🔧 2026-07（短板 #13）：与多变体路径共用 effective_max_tool_rounds
-        let max_recursion = effective_max_tool_rounds(ctx.options.max_tool_recursion);
+            // 检查递归深度限制
+            // 🔧 配置化：使用用户设置的限制值，默认 MAX_TOOL_RECURSION (30)
+            // 🔧 2026-07（短板 #13）：与多变体路径共用 effective_max_tool_rounds
+            let max_recursion = effective_max_tool_rounds(ctx.options.max_tool_recursion);
 
-        // 🔒 安全修复：心跳机制仅信任白名单内部工具
-        // 外部/MCP 工具不能通过返回 continue_execution 绕过递归限制
-        const ABSOLUTE_MAX_RECURSION: u32 = 150;
-        const MAX_HEARTBEAT_COUNT: u32 = 50;
-        const HEARTBEAT_TOOLS: &[&str] = &["coordinator_sleep", "builtin-coordinator_sleep"];
+            // 🔒 安全修复：心跳机制仅信任白名单内部工具
+            // 外部/MCP 工具不能通过返回 continue_execution 绕过递归限制
+            const ABSOLUTE_MAX_RECURSION: u32 = 150;
+            const MAX_HEARTBEAT_COUNT: u32 = 50;
+            const HEARTBEAT_TOOLS: &[&str] = &["coordinator_sleep", "builtin-coordinator_sleep"];
 
-        // 🔧 F5 修复：只看最近一轮的心跳（由上一轮工具执行后写入），
-        // 而非扫描 ctx.tool_results 全量历史 —— 否则一次 continue_execution=true
-        // 会让所有后续轮次都被视为有心跳，心跳计数语义失真
-        let has_heartbeat = ctx.last_round_heartbeat;
+            // 🔧 F5 修复：只看最近一轮的心跳（由上一轮工具执行后写入），
+            // 而非扫描 ctx.tool_results 全量历史 —— 否则一次 continue_execution=true
+            // 会让所有后续轮次都被视为有心跳，心跳计数语义失真
+            let has_heartbeat = ctx.last_round_heartbeat;
 
-        // 追踪连续心跳次数，超过上限后忽略心跳
-        if has_heartbeat {
-            ctx.heartbeat_count += 1;
-            if ctx.heartbeat_count > MAX_HEARTBEAT_COUNT {
-                log::warn!(
+            // 追踪连续心跳次数，超过上限后忽略心跳
+            if has_heartbeat {
+                ctx.heartbeat_count += 1;
+                if ctx.heartbeat_count > MAX_HEARTBEAT_COUNT {
+                    log::warn!(
                     "[ChatV2::pipeline] Heartbeat count exceeded limit: count={}, max={}, ignoring heartbeat",
                     ctx.heartbeat_count,
                     MAX_HEARTBEAT_COUNT
                 );
+                }
+            } else {
+                ctx.heartbeat_count = 0;
             }
-        } else {
-            ctx.heartbeat_count = 0;
-        }
 
-        let heartbeat_effective = has_heartbeat && ctx.heartbeat_count <= MAX_HEARTBEAT_COUNT;
+            let heartbeat_effective = has_heartbeat && ctx.heartbeat_count <= MAX_HEARTBEAT_COUNT;
 
-        // 绝对上限检查（不可绕过）
-        if recursion_depth > ABSOLUTE_MAX_RECURSION {
-            log::error!(
+            // 绝对上限检查（不可绕过）
+            if recursion_depth > ABSOLUTE_MAX_RECURSION {
+                log::error!(
                 "[ChatV2::pipeline] ABSOLUTE recursion limit reached: depth={}, absolute_max={}",
                 recursion_depth,
                 ABSOLUTE_MAX_RECURSION
             );
-            return Err(ChatV2Error::Tool(format!(
-                "达到绝对递归上限 ({})，任务已终止",
-                ABSOLUTE_MAX_RECURSION
-            )));
-        }
+                return Err(ChatV2Error::Tool(format!(
+                    "达到绝对递归上限 ({})，任务已终止",
+                    ABSOLUTE_MAX_RECURSION
+                )));
+            }
 
-        // 普通限制检查（仅白名单工具的有效心跳可绕过）
-        if recursion_depth > max_recursion && !heartbeat_effective {
-            log::warn!(
-                "[ChatV2::pipeline] Tool recursion limit reached: depth={}, max={}",
-                recursion_depth,
-                max_recursion
-            );
+            // 普通限制检查（仅白名单工具的有效心跳可绕过）
+            if recursion_depth > max_recursion && !heartbeat_effective {
+                log::warn!(
+                    "[ChatV2::pipeline] Tool recursion limit reached: depth={}, max={}",
+                    recursion_depth,
+                    max_recursion
+                );
 
-            // 创建 tool_limit 块，提示用户达到限制
-            let limit_message = format!(
-                "⚠️ 已达到工具调用限制（{} 轮）\n\n\
+                // 创建 tool_limit 块，提示用户达到限制
+                let limit_message = format!(
+                    "⚠️ 已达到工具调用限制（{} 轮）\n\n\
                 AI 已执行了 {} 轮工具调用。为防止无限循环，已暂停自动执行。\n\n\
                 如果任务尚未完成，您可以：\n\
                 • 发送「继续」让 AI 继续执行\n\
                 • 发送新的指令调整方向\n\
                 • 手动完成剩余步骤",
-                max_recursion, max_recursion
-            );
-            let result_payload = serde_json::json!({
-                "content": limit_message,
-                "recursionDepth": recursion_depth,
-                "maxRecursion": max_recursion,
-            });
-            self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
+                    max_recursion, max_recursion
+                );
+                let result_payload = serde_json::json!({
+                    "content": limit_message,
+                    "recursionDepth": recursion_depth,
+                    "maxRecursion": max_recursion,
+                });
+                self.push_tool_limit_block(ctx, &emitter, limit_message, result_payload);
 
-            // 正常返回，不抛出错误
-            return Ok(());
-        }
+                // 正常返回，不抛出错误
+                return Ok(());
+            }
 
-        log::info!(
+            log::info!(
             "[ChatV2::pipeline] Executing LLM call: session={}, recursion_depth={}, tool_results={}",
             ctx.session_id,
             recursion_depth,
             ctx.tool_results.len()
         );
 
-        // 创建 LLM 适配器
-        // 🔧 修复：默认启用 thinking，确保思维链内容能正确累积和保存
-        let enable_thinking = ctx.options.enable_thinking.unwrap_or(true);
-        log::info!(
-            "[ChatV2::pipeline] enable_thinking={} (from options: {:?})",
-            enable_thinking,
-            ctx.options.enable_thinking
-        );
-        let adapter = Arc::new(ChatV2LLMAdapter::new(
-            emitter.clone(),
-            ctx.assistant_message_id.clone(),
-            enable_thinking,
-            ctx.options.skill_state_version,
-            Some(format!("tool-round-{}", recursion_depth)),
-        ));
+            // 创建 LLM 适配器
+            // 🔧 修复：默认启用 thinking，确保思维链内容能正确累积和保存
+            let enable_thinking = ctx.options.enable_thinking.unwrap_or(true);
+            log::info!(
+                "[ChatV2::pipeline] enable_thinking={} (from options: {:?})",
+                enable_thinking,
+                ctx.options.enable_thinking
+            );
+            let adapter = Arc::new(ChatV2LLMAdapter::new(
+                emitter.clone(),
+                ctx.assistant_message_id.clone(),
+                enable_thinking,
+                ctx.options.skill_state_version,
+                Some(format!("tool-round-{}", recursion_depth)),
+            ));
 
-        // 🔧 修复：存储 adapter 引用到 ctx，确保取消时可以获取已累积内容
-        ctx.current_adapter = Some(adapter.clone());
+            // 🔧 修复：存储 adapter 引用到 ctx，确保取消时可以获取已累积内容
+            ctx.current_adapter = Some(adapter.clone());
 
-        // ============================================================
-        // 构建聊天历史（真实历史 + 瞬态技能消息 + 当前用户消息 + 当前轮工具结果）
-        // ============================================================
-        let mut messages = ctx.chat_history.clone();
+            // ============================================================
+            // 构建聊天历史（真实历史 + 瞬态技能消息 + 当前用户消息 + 当前轮工具结果）
+            // ============================================================
+            let mut messages = ctx.chat_history.clone();
 
-        let skill_state = self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
-        let empty_skill_contents = std::collections::HashMap::new();
-        let skill_contents = ctx
-            .options
-            .replay_skill_contents
-            .as_ref()
-            .or(ctx.options.skill_contents.as_ref())
-            .unwrap_or(&empty_skill_contents);
-        let transient_skill_messages = build_transient_skill_messages_with_audit(
-            &skill_state,
-            skill_contents,
-            ctx.options.skill_dependencies.as_ref(),
-            // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-            ctx.options
-                .context_limit
-                .filter(|v| *v > 0)
-                .map(|v| v as usize),
-        );
-        let skill_audit = transient_skill_messages.audit.clone();
-        let injected_skill_count = skill_audit.injected_skill_ids.len();
-        let round_id = format!("tool-round-{}", recursion_depth);
-        let insertion_index = messages.len();
-        insert_transient_skill_messages(
-            &mut messages,
-            insertion_index,
-            transient_skill_messages.messages,
-        );
-        emitter.emit_skill_injection_audit(
-            &ctx.assistant_message_id,
-            json!({
-                "injectedSkillIds": skill_audit.injected_skill_ids.clone(),
-                "droppedSkillIds": skill_audit.dropped_skill_ids.clone(),
-                "missingSkillIds": skill_audit.missing_skill_ids.clone(),
-                "estimatedTokens": skill_audit.estimated_tokens,
-                "skillStateVersion": skill_audit.skill_state_version,
-            }),
-            None,
-            Some(skill_audit.skill_state_version),
-            Some(round_id.as_str()),
-        );
+            let skill_state =
+                self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
+            let empty_skill_contents = std::collections::HashMap::new();
+            let skill_contents = ctx
+                .options
+                .replay_skill_contents
+                .as_ref()
+                .or(ctx.options.skill_contents.as_ref())
+                .unwrap_or(&empty_skill_contents);
+            let transient_skill_messages = build_transient_skill_messages_with_audit(
+                &skill_state,
+                skill_contents,
+                ctx.options.skill_dependencies.as_ref(),
+                // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
+                ctx.options
+                    .context_limit
+                    .filter(|v| *v > 0)
+                    .map(|v| v as usize),
+            );
+            let skill_audit = transient_skill_messages.audit.clone();
+            let injected_skill_count = skill_audit.injected_skill_ids.len();
+            let round_id = format!("tool-round-{}", recursion_depth);
+            let insertion_index = messages.len();
+            insert_transient_skill_messages(
+                &mut messages,
+                insertion_index,
+                transient_skill_messages.messages,
+            );
+            emitter.emit_skill_injection_audit(
+                &ctx.assistant_message_id,
+                json!({
+                    "injectedSkillIds": skill_audit.injected_skill_ids.clone(),
+                    "droppedSkillIds": skill_audit.dropped_skill_ids.clone(),
+                    "missingSkillIds": skill_audit.missing_skill_ids.clone(),
+                    "estimatedTokens": skill_audit.estimated_tokens,
+                    "skillStateVersion": skill_audit.skill_state_version,
+                }),
+                None,
+                Some(skill_audit.skill_state_version),
+                Some(round_id.as_str()),
+            );
 
-        if ctx.options.is_continue != Some(true) {
-            // 🔴 关键修复：添加当前用户消息到消息列表
-            // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
-            let current_user_message = self.build_current_user_message(ctx);
-            messages.push(current_user_message);
-        }
-        log::debug!(
+            if ctx.options.is_continue != Some(true) {
+                // 🔴 关键修复：添加当前用户消息到消息列表
+                // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
+                let current_user_message = self.build_current_user_message(ctx);
+                messages.push(current_user_message);
+            }
+            log::debug!(
             "[ChatV2::pipeline] Built LLM messages: history={}, transient_skills={}, current_user={}, content_len={}, has_images={}, has_docs={}",
             ctx.chat_history.len(),
             injected_skill_count,
@@ -332,257 +333,258 @@ impl ChatV2Pipeline {
             ctx.attachments.iter().any(|a| !a.mime_type.starts_with("image/"))
         );
 
-        // 如果有工具结果（递归调用时），将**所有**工具结果添加到消息历史
-        // 🔧 关键修复：由于 messages 每次从 chat_history.clone() 重建，
-        // 之前只添加"新"工具结果会导致历史丢失。现在改为每次添加所有工具结果，
-        // 确保 LLM 能看到完整的工具调用历史（符合 Anthropic 最佳实践：
-        // "Messages API 是无状态的，必须每次发送完整对话历史"）
-        if !ctx.tool_results.is_empty() {
-            let tool_messages = ctx.all_tool_results_to_messages();
-            let tool_count = tool_messages.len();
-            messages.extend(tool_messages);
+            // 如果有工具结果（递归调用时），将**所有**工具结果添加到消息历史
+            // 🔧 关键修复：由于 messages 每次从 chat_history.clone() 重建，
+            // 之前只添加"新"工具结果会导致历史丢失。现在改为每次添加所有工具结果，
+            // 确保 LLM 能看到完整的工具调用历史（符合 Anthropic 最佳实践：
+            // "Messages API 是无状态的，必须每次发送完整对话历史"）
+            if !ctx.tool_results.is_empty() {
+                let tool_messages = ctx.all_tool_results_to_messages();
+                let tool_count = tool_messages.len();
+                messages.extend(tool_messages);
 
-            log::debug!(
+                log::debug!(
                 "[ChatV2::pipeline] Added ALL {} tool result messages to chat history (tool_results count: {})",
                 tool_count,
                 ctx.tool_results.len()
             );
-        }
+            }
 
-        // ============================================================
-        // 调用 LLM
-        // ============================================================
-        // 构建 LLM 调用上下文
-        let mut llm_context: HashMap<String, Value> = HashMap::new();
+            // ============================================================
+            // 调用 LLM
+            // ============================================================
+            // 构建 LLM 调用上下文
+            let mut llm_context: HashMap<String, Value> = HashMap::new();
 
-        // 注入检索到的来源到上下文
-        if let Some(ref rag_sources) = ctx.retrieved_sources.rag {
+            // 注入检索到的来源到上下文
+            if let Some(ref rag_sources) = ctx.retrieved_sources.rag {
+                llm_context.insert(
+                    "prefetched_rag_sources".into(),
+                    serde_json::to_value(rag_sources).unwrap_or(Value::Null),
+                );
+            }
+            if let Some(ref memory_sources) = ctx.retrieved_sources.memory {
+                llm_context.insert(
+                    "prefetched_memory_sources".into(),
+                    serde_json::to_value(memory_sources).unwrap_or(Value::Null),
+                );
+            }
+            if let Some(ref web_sources) = ctx.retrieved_sources.web_search {
+                llm_context.insert(
+                    "prefetched_web_search_sources".into(),
+                    serde_json::to_value(web_sources).unwrap_or(Value::Null),
+                );
+            }
             llm_context.insert(
-                "prefetched_rag_sources".into(),
-                serde_json::to_value(rag_sources).unwrap_or(Value::Null),
+                "memory_enabled".into(),
+                Value::Bool(ctx.options.memory_enabled.unwrap_or(true)),
             );
-        }
-        if let Some(ref memory_sources) = ctx.retrieved_sources.memory {
             llm_context.insert(
-                "prefetched_memory_sources".into(),
-                serde_json::to_value(memory_sources).unwrap_or(Value::Null),
+                "rag_enabled".into(),
+                Value::Bool(ctx.options.rag_enabled.unwrap_or(true)),
             );
-        }
-        if let Some(ref web_sources) = ctx.retrieved_sources.web_search {
             llm_context.insert(
-                "prefetched_web_search_sources".into(),
-                serde_json::to_value(web_sources).unwrap_or(Value::Null),
+                "web_search_enabled".into(),
+                Value::Bool(ctx.options.web_search_enabled.unwrap_or(true)),
             );
-        }
-        llm_context.insert(
-            "memory_enabled".into(),
-            Value::Bool(ctx.options.memory_enabled.unwrap_or(true)),
-        );
-        llm_context.insert(
-            "rag_enabled".into(),
-            Value::Bool(ctx.options.rag_enabled.unwrap_or(true)),
-        );
-        llm_context.insert(
-            "web_search_enabled".into(),
-            Value::Bool(ctx.options.web_search_enabled.unwrap_or(true)),
-        );
 
-        // ====================================================================
-        // 🆕 图片压缩策略：vision_quality 智能默认
-        // ====================================================================
-        // 策略逻辑：
-        // 1. 用户显式指定 → 直接使用
-        // 2. auto/空 → 根据图片数量和来源自动选择：
-        //    - 单图 + 非 PDF：high（保持原质量，便于 OCR）
-        //    - 2-5 张图：medium
-        //    - 6+ 张图或 PDF/教材：low（最大压缩，节省 token）
-        let vision_quality = {
-            // 检查用户是否显式指定
-            let user_specified = ctx
-                .options
-                .vision_quality
-                .as_deref()
-                .filter(|v| !v.is_empty() && *v != "auto");
+            // ====================================================================
+            // 🆕 图片压缩策略：vision_quality 智能默认
+            // ====================================================================
+            // 策略逻辑：
+            // 1. 用户显式指定 → 直接使用
+            // 2. auto/空 → 根据图片数量和来源自动选择：
+            //    - 单图 + 非 PDF：high（保持原质量，便于 OCR）
+            //    - 2-5 张图：medium
+            //    - 6+ 张图或 PDF/教材：low（最大压缩，节省 token）
+            let vision_quality = {
+                // 检查用户是否显式指定
+                let user_specified = ctx
+                    .options
+                    .vision_quality
+                    .as_deref()
+                    .filter(|v| !v.is_empty() && *v != "auto");
 
-            if let Some(vq) = user_specified {
-                // 用户显式指定
-                log::debug!("[ChatV2::pipeline] vision_quality: user specified '{}'", vq);
-                vq.to_string()
-            } else {
-                // 自动策略：统计图片数量和 PDF/教材来源
-                let mut image_count = 0usize;
-                let mut has_pdf_or_textbook = false;
+                if let Some(vq) = user_specified {
+                    // 用户显式指定
+                    log::debug!("[ChatV2::pipeline] vision_quality: user specified '{}'", vq);
+                    vq.to_string()
+                } else {
+                    // 自动策略：统计图片数量和 PDF/教材来源
+                    let mut image_count = 0usize;
+                    let mut has_pdf_or_textbook = false;
 
-                for ctx_ref in &ctx.user_context_refs {
-                    // 统计图片块数量
-                    for block in &ctx_ref.formatted_blocks {
-                        if matches!(
-                            block,
-                            super::super::resource_types::ContentBlock::Image { .. }
-                        ) {
-                            image_count += 1;
+                    for ctx_ref in &ctx.user_context_refs {
+                        // 统计图片块数量
+                        for block in &ctx_ref.formatted_blocks {
+                            if matches!(
+                                block,
+                                super::super::resource_types::ContentBlock::Image { .. }
+                            ) {
+                                image_count += 1;
+                            }
+                        }
+                        // 检查是否有 PDF/教材来源（通过 type_id 判断）
+                        let type_id_lower = ctx_ref.type_id.to_lowercase();
+                        if type_id_lower.contains("pdf")
+                            || type_id_lower.contains("textbook")
+                            || type_id_lower.contains("file")
+                            || ctx_ref.resource_id.starts_with("tb_")
+                        {
+                            has_pdf_or_textbook = true;
                         }
                     }
-                    // 检查是否有 PDF/教材来源（通过 type_id 判断）
-                    let type_id_lower = ctx_ref.type_id.to_lowercase();
-                    if type_id_lower.contains("pdf")
-                        || type_id_lower.contains("textbook")
-                        || type_id_lower.contains("file")
-                        || ctx_ref.resource_id.starts_with("tb_")
-                    {
-                        has_pdf_or_textbook = true;
-                    }
-                }
 
-                // 智能策略
-                let auto_quality = if has_pdf_or_textbook || image_count >= 6 {
-                    "low" // PDF/教材 或大量图片：最大压缩
-                } else if image_count >= 2 {
-                    "medium" // 中等数量：平衡压缩
-                } else {
-                    "high" // 单图或无图：保持原质量
-                };
+                    // 智能策略
+                    let auto_quality = if has_pdf_or_textbook || image_count >= 6 {
+                        "low" // PDF/教材 或大量图片：最大压缩
+                    } else if image_count >= 2 {
+                        "medium" // 中等数量：平衡压缩
+                    } else {
+                        "high" // 单图或无图：保持原质量
+                    };
 
-                log::info!(
+                    log::info!(
                     "[ChatV2::pipeline] vision_quality: auto -> '{}' (images={}, has_pdf_or_textbook={})",
                     auto_quality, image_count, has_pdf_or_textbook
                 );
-                auto_quality.to_string()
-            }
-        };
-
-        // 注入到 LLM 上下文
-        llm_context.insert(
-            "vision_quality".into(),
-            Value::String(vision_quality.clone()),
-        );
-
-        // ====================================================================
-        // 统一工具注入：使用 schema_tool_ids 注入工具 Schema
-        // 遵循文档 26：统一工具注入系统架构设计
-        // 🆕 文档 29 P1-4：自动注入 attempt_completion 工具（Agent 模式必备）
-        // ====================================================================
-
-        // 构建工具列表，自动添加 Agent 必备工具（如果有其他工具被注入）
-        // 注意：内置工具（包括 TodoList）应该通过内置 MCP 服务器注入，不在此处添加
-        let effective_tool_ids: Option<Vec<String>> = match ctx.options.schema_tool_ids.as_ref() {
-            Some(ids) if !ids.is_empty() => {
-                let mut extended_ids = ids.clone();
-
-                // 🆕 自动添加 attempt_completion 到工具列表（如果尚未包含）
-                // 这是唯一需要在此添加的工具，因为它是 Agent 模式的终止信号
-                if !extended_ids
-                    .iter()
-                    .any(|id| id == super::super::tools::attempt_completion::TOOL_NAME)
-                {
-                    extended_ids
-                        .push(super::super::tools::attempt_completion::TOOL_NAME.to_string());
-                    log::debug!(
-                        "[ChatV2::pipeline] Auto-injected attempt_completion tool (Agent mode)"
-                    );
+                    auto_quality.to_string()
                 }
+            };
 
-                Some(extended_ids)
-            }
-            _ => None,
-        };
-
-        let injected_count = super::super::tools::injector::inject_tool_schemas(
-            effective_tool_ids.as_ref(),
-            &mut llm_context,
-        );
-        if injected_count > 0 {
-            log::info!(
-                "[ChatV2::pipeline] Injected {} tool schemas via schema_tool_ids",
-                injected_count
+            // 注入到 LLM 上下文
+            llm_context.insert(
+                "vision_quality".into(),
+                Value::String(vision_quality.clone()),
             );
-        }
 
-        // ====================================================================
-        // 🆕 Workspace 工具注入：已迁移到内置 MCP 服务器
-        // ====================================================================
-        // 2026-01-16: Workspace 工具已迁移到 builtinMcpServer.ts，
-        // 通过前端 mcp_tool_schemas 传递，不再需要后端自动注入。
-        // 执行器 WorkspaceToolExecutor 仍然保留，负责处理 builtin-workspace_* 工具调用。
-        //
-        // 旧代码已移除：后端自动注入会导致工具重复（builtin-workspace_create vs workspace_create）
-        if ctx.get_workspace_id().is_some() && self.workspace_coordinator.is_some() {
-            log::debug!(
+            // ====================================================================
+            // 统一工具注入：使用 schema_tool_ids 注入工具 Schema
+            // 遵循文档 26：统一工具注入系统架构设计
+            // 🆕 文档 29 P1-4：自动注入 attempt_completion 工具（Agent 模式必备）
+            // ====================================================================
+
+            // 构建工具列表，自动添加 Agent 必备工具（如果有其他工具被注入）
+            // 注意：内置工具（包括 TodoList）应该通过内置 MCP 服务器注入，不在此处添加
+            let effective_tool_ids: Option<Vec<String>> = match ctx.options.schema_tool_ids.as_ref()
+            {
+                Some(ids) if !ids.is_empty() => {
+                    let mut extended_ids = ids.clone();
+
+                    // 🆕 自动添加 attempt_completion 到工具列表（如果尚未包含）
+                    // 这是唯一需要在此添加的工具，因为它是 Agent 模式的终止信号
+                    if !extended_ids
+                        .iter()
+                        .any(|id| id == super::super::tools::attempt_completion::TOOL_NAME)
+                    {
+                        extended_ids
+                            .push(super::super::tools::attempt_completion::TOOL_NAME.to_string());
+                        log::debug!(
+                            "[ChatV2::pipeline] Auto-injected attempt_completion tool (Agent mode)"
+                        );
+                    }
+
+                    Some(extended_ids)
+                }
+                _ => None,
+            };
+
+            let injected_count = super::super::tools::injector::inject_tool_schemas(
+                effective_tool_ids.as_ref(),
+                &mut llm_context,
+            );
+            if injected_count > 0 {
+                log::info!(
+                    "[ChatV2::pipeline] Injected {} tool schemas via schema_tool_ids",
+                    injected_count
+                );
+            }
+
+            // ====================================================================
+            // 🆕 Workspace 工具注入：已迁移到内置 MCP 服务器
+            // ====================================================================
+            // 2026-01-16: Workspace 工具已迁移到 builtinMcpServer.ts，
+            // 通过前端 mcp_tool_schemas 传递，不再需要后端自动注入。
+            // 执行器 WorkspaceToolExecutor 仍然保留，负责处理 builtin-workspace_* 工具调用。
+            //
+            // 旧代码已移除：后端自动注入会导致工具重复（builtin-workspace_create vs workspace_create）
+            if ctx.get_workspace_id().is_some() && self.workspace_coordinator.is_some() {
+                log::debug!(
                 "[ChatV2::pipeline] Workspace session detected, tools should come from builtin MCP server"
             );
-        }
+            }
 
-        // ====================================================================
-        // 🆕 MCP 工具注入：使用前端传递的 mcp_tool_schemas
-        // ====================================================================
-        // 架构说明：
-        // - 前端 mcpService 管理多 MCP 服务器连接，并缓存工具 Schema
-        // - 前端 TauriAdapter 从 mcpService 获取选中服务器的工具 Schema
-        // - 后端直接使用前端传递的 Schema，无需自己连接 MCP 服务器
-        // - 🔧 P1-49：后端应用 whitelist/blacklist 策略过滤，确保配置生效
+            // ====================================================================
+            // 🆕 MCP 工具注入：使用前端传递的 mcp_tool_schemas
+            // ====================================================================
+            // 架构说明：
+            // - 前端 mcpService 管理多 MCP 服务器连接，并缓存工具 Schema
+            // - 前端 TauriAdapter 从 mcpService 获取选中服务器的工具 Schema
+            // - 后端直接使用前端传递的 Schema，无需自己连接 MCP 服务器
+            // - 🔧 P1-49：后端应用 whitelist/blacklist 策略过滤，确保配置生效
 
-        // 🔧 工具名称映射：sanitized API name → original name（含 `:` 等特殊字符）
-        // 用于 LLM 返回工具调用时反向映射回原始名称
-        let mut mcp_tool_name_mapping: HashMap<String, ExternalToolRoute> = HashMap::new();
+            // 🔧 工具名称映射：sanitized API name → original name（含 `:` 等特殊字符）
+            // 用于 LLM 返回工具调用时反向映射回原始名称
+            let mut mcp_tool_name_mapping: HashMap<String, ExternalToolRoute> = HashMap::new();
 
-        // 🔍 调试日志：检查 mcp_tool_schemas 在 pipeline 中的状态
-        let mcp_schema_count = ctx
-            .options
-            .mcp_tool_schemas
-            .as_ref()
-            .map(|s| s.len())
-            .unwrap_or(0);
-        log::info!(
-            "[ChatV2::pipeline] 🔍 MCP tool schemas check: count={}, is_some={}",
-            mcp_schema_count,
-            ctx.options.mcp_tool_schemas.is_some()
-        );
+            // 🔍 调试日志：检查 mcp_tool_schemas 在 pipeline 中的状态
+            let mcp_schema_count = ctx
+                .options
+                .mcp_tool_schemas
+                .as_ref()
+                .map(|s| s.len())
+                .unwrap_or(0);
+            log::info!(
+                "[ChatV2::pipeline] 🔍 MCP tool schemas check: count={}, is_some={}",
+                mcp_schema_count,
+                ctx.options.mcp_tool_schemas.is_some()
+            );
 
-        if let Some(ref tool_schemas) = ctx.options.mcp_tool_schemas {
-            if !tool_schemas.is_empty() {
-                log::info!(
-                    "[ChatV2::pipeline] Processing {} MCP tool schemas from frontend",
-                    tool_schemas.len()
-                );
+            if let Some(ref tool_schemas) = ctx.options.mcp_tool_schemas {
+                if !tool_schemas.is_empty() {
+                    log::info!(
+                        "[ChatV2::pipeline] Processing {} MCP tool schemas from frontend",
+                        tool_schemas.len()
+                    );
 
-                // 🔧 P1-49: 读取 MCP 策略配置（whitelist/blacklist）
-                let (whitelist, blacklist) = if let Some(ref main_db) = self.main_db {
-                    let whitelist: Vec<String> = main_db
-                        .get_setting("mcp.tools.whitelist")
-                        .ok()
-                        .flatten()
-                        .map(|s| {
-                            s.split(',')
-                                .map(|x| x.trim().to_string())
-                                .filter(|x| !x.is_empty())
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    let blacklist: Vec<String> = main_db
-                        .get_setting("mcp.tools.blacklist")
-                        .ok()
-                        .flatten()
-                        .map(|s| {
-                            s.split(',')
-                                .map(|x| x.trim().to_string())
-                                .filter(|x| !x.is_empty())
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    (whitelist, blacklist)
-                } else {
-                    (Vec::new(), Vec::new())
-                };
+                    // 🔧 P1-49: 读取 MCP 策略配置（whitelist/blacklist）
+                    let (whitelist, blacklist) = if let Some(ref main_db) = self.main_db {
+                        let whitelist: Vec<String> = main_db
+                            .get_setting("mcp.tools.whitelist")
+                            .ok()
+                            .flatten()
+                            .map(|s| {
+                                s.split(',')
+                                    .map(|x| x.trim().to_string())
+                                    .filter(|x| !x.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let blacklist: Vec<String> = main_db
+                            .get_setting("mcp.tools.blacklist")
+                            .ok()
+                            .flatten()
+                            .map(|s| {
+                                s.split(',')
+                                    .map(|x| x.trim().to_string())
+                                    .filter(|x| !x.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        (whitelist, blacklist)
+                    } else {
+                        (Vec::new(), Vec::new())
+                    };
 
-                log::debug!(
-                    "[ChatV2::pipeline] MCP policy: whitelist={:?}, blacklist={:?}",
-                    whitelist,
-                    blacklist
-                );
+                    log::debug!(
+                        "[ChatV2::pipeline] MCP policy: whitelist={:?}, blacklist={:?}",
+                        whitelist,
+                        blacklist
+                    );
 
-                // 将前端传递的 MCP 工具 Schema 转换为 LLM 可用的格式
-                // 🔧 P1-49: 应用 whitelist/blacklist 过滤
-                let mcp_tool_values: Vec<Value> = tool_schemas
+                    // 将前端传递的 MCP 工具 Schema 转换为 LLM 可用的格式
+                    // 🔧 P1-49: 应用 whitelist/blacklist 过滤
+                    let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
                     .filter(|tool| {
                         // builtin- 前缀的工具不受策略过滤影响
@@ -633,100 +635,102 @@ impl ChatV2Pipeline {
                     })
                     .collect();
 
-                let filtered_count = mcp_tool_values.len();
-                let original_count = tool_schemas.len();
-                if filtered_count < original_count {
-                    log::info!(
-                        "[ChatV2::pipeline] MCP policy filtered: {}/{} tools allowed",
-                        filtered_count,
-                        original_count
-                    );
-                }
+                    let filtered_count = mcp_tool_values.len();
+                    let original_count = tool_schemas.len();
+                    if filtered_count < original_count {
+                        log::info!(
+                            "[ChatV2::pipeline] MCP policy filtered: {}/{} tools allowed",
+                            filtered_count,
+                            original_count
+                        );
+                    }
 
-                // 合并到 custom_tools（如果已存在则追加）
-                if !mcp_tool_values.is_empty() {
-                    if let Some(existing) = llm_context.get_mut("custom_tools") {
-                        if let Some(arr) = existing.as_array_mut() {
-                            for schema in mcp_tool_values {
-                                arr.push(schema);
+                    // 合并到 custom_tools（如果已存在则追加）
+                    if !mcp_tool_values.is_empty() {
+                        if let Some(existing) = llm_context.get_mut("custom_tools") {
+                            if let Some(arr) = existing.as_array_mut() {
+                                for schema in mcp_tool_values {
+                                    arr.push(schema);
+                                }
+                                log::info!(
+                                    "[ChatV2::pipeline] Appended {} MCP tools to custom_tools",
+                                    filtered_count
+                                );
                             }
+                        } else {
+                            llm_context
+                                .insert("custom_tools".into(), Value::Array(mcp_tool_values));
                             log::info!(
-                                "[ChatV2::pipeline] Appended {} MCP tools to custom_tools",
+                                "[ChatV2::pipeline] Injected {} MCP tools as custom_tools",
                                 filtered_count
                             );
                         }
-                    } else {
-                        llm_context.insert("custom_tools".into(), Value::Array(mcp_tool_values));
-                        log::info!(
-                            "[ChatV2::pipeline] Injected {} MCP tools as custom_tools",
-                            filtered_count
-                        );
                     }
+
+                    // 记录工具名称用于调试
+                    let tool_names: Vec<&str> =
+                        tool_schemas.iter().map(|t| t.name.as_str()).collect();
+                    log::debug!(
+                        "[ChatV2::pipeline] MCP tools (before filter): {:?}",
+                        tool_names
+                    );
                 }
-
-                // 记录工具名称用于调试
-                let tool_names: Vec<&str> = tool_schemas.iter().map(|t| t.name.as_str()).collect();
-                log::debug!(
-                    "[ChatV2::pipeline] MCP tools (before filter): {:?}",
-                    tool_names
-                );
             }
-        }
 
-        // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
-        // run-scoped UUID；否则旧 StreamHooksGuard 的异步 cleanup 可能删除新注册的 hook。
-        // 使用 `_var_` 分隔符与多变体键（chat_v2_event_{session}_{variant}）约定一致，
-        // 使 model2_pipeline 的 reconnect 事件能通过 rsplit("_var_") 正确还原 session_id，
-        // 前端 llm_request_body 过滤（prefix 或 prefix_ 开头）也保持兼容。
-        let stream_run_id = uuid::Uuid::new_v4().simple().to_string();
-        let stream_event = build_run_scoped_stream_event(
-            &ctx.session_id,
-            &ctx.assistant_message_id,
-            &stream_run_id,
-            ctx.options.stream_generation,
-        );
+            // 生成流事件标识符。assistant_message_id 在取消后重试时会复用，因此还需要
+            // run-scoped UUID；否则旧 StreamHooksGuard 的异步 cleanup 可能删除新注册的 hook。
+            // 使用 `_var_` 分隔符与多变体键（chat_v2_event_{session}_{variant}）约定一致，
+            // 使 model2_pipeline 的 reconnect 事件能通过 rsplit("_var_") 正确还原 session_id，
+            // 前端 llm_request_body 过滤（prefix 或 prefix_ 开头）也保持兼容。
+            let stream_run_id = uuid::Uuid::new_v4().simple().to_string();
+            let stream_event = build_run_scoped_stream_event(
+                &ctx.session_id,
+                &ctx.assistant_message_id,
+                &stream_run_id,
+                ctx.options.stream_generation,
+            );
 
-        // 注册 LLM 流式回调 hooks
-        // 🔧 P1-3 修复（取消泄漏）：外层 tokio::select! 命中取消分支时整个 future 被 drop，
-        // 下方的显式 unregister_stream_hooks 永远不会执行。RAII guard 在 Drop 时
-        // 补一次异步注销；run-scoped key 保证延迟 cleanup 不会伤及后续重试。
-        let registered_hooks: Arc<dyn LLMStreamHooks> = adapter.clone();
-        let mut hooks_guard = StreamHooksGuard::new(
-            self.llm_manager.clone(),
-            stream_event.clone(),
-            registered_hooks.clone(),
-        );
-        self.llm_manager
-            .register_stream_hooks(&stream_event, registered_hooks.clone())
-            .await;
+            // 注册 LLM 流式回调 hooks
+            // 🔧 P1-3 修复（取消泄漏）：外层 tokio::select! 命中取消分支时整个 future 被 drop，
+            // 下方的显式 unregister_stream_hooks 永远不会执行。RAII guard 在 Drop 时
+            // 补一次异步注销；run-scoped key 保证延迟 cleanup 不会伤及后续重试。
+            let registered_hooks: Arc<dyn LLMStreamHooks> = adapter.clone();
+            let mut hooks_guard = StreamHooksGuard::new(
+                self.llm_manager.clone(),
+                stream_event.clone(),
+                registered_hooks.clone(),
+            );
+            self.llm_manager
+                .register_stream_hooks(&stream_event, registered_hooks.clone())
+                .await;
 
-        // 获取调用选项
-        // 🔧 P0修复：始终禁用 LLM Manager 内部的工具执行，由 Pipeline 完全接管
-        // 这避免了工具被执行两次（LLM Manager 内部一次，Pipeline 一次）
-        // 以及工具调用 start 事件被重复发射的问题
-        let disable_tools = true;
-        // 🔧 P0修复：优先使用 model2_override_id（ModelPanel 中选择的模型），其次使用 model_id
-        let model_override = ctx
-            .options
-            .model2_override_id
-            .clone()
-            .or_else(|| ctx.options.model_id.clone());
-        let temp_override = ctx.options.temperature;
-        let top_p_override = ctx.options.top_p;
-        let frequency_penalty_override = ctx.options.frequency_penalty;
-        let presence_penalty_override = ctx.options.presence_penalty;
-        let max_tokens_override = ctx.options.max_tokens;
-        // 🔧 P1修复：将 context_limit 作为 max_input_tokens_override 传递给 LLM
-        let max_input_tokens_override = ctx.options.context_limit.map(|v| v as usize);
-        // 🔧 P2修复：始终使用 prompt_builder 生成的 system_prompt（XML 格式）
-        // prompt_builder 已经将前端传入的 system_prompt_override 作为 base_prompt 处理
-        // 不再让前端的值直接覆盖，避免丢失 LaTeX 规则等 XML 格式内容
-        let system_prompt_override = Some(system_prompt.to_string());
+            // 获取调用选项
+            // 🔧 P0修复：始终禁用 LLM Manager 内部的工具执行，由 Pipeline 完全接管
+            // 这避免了工具被执行两次（LLM Manager 内部一次，Pipeline 一次）
+            // 以及工具调用 start 事件被重复发射的问题
+            let disable_tools = true;
+            // 🔧 P0修复：优先使用 model2_override_id（ModelPanel 中选择的模型），其次使用 model_id
+            let model_override = ctx
+                .options
+                .model2_override_id
+                .clone()
+                .or_else(|| ctx.options.model_id.clone());
+            let temp_override = ctx.options.temperature;
+            let top_p_override = ctx.options.top_p;
+            let frequency_penalty_override = ctx.options.frequency_penalty;
+            let presence_penalty_override = ctx.options.presence_penalty;
+            let max_tokens_override = ctx.options.max_tokens;
+            // 🔧 P1修复：将 context_limit 作为 max_input_tokens_override 传递给 LLM
+            let max_input_tokens_override = ctx.options.context_limit.map(|v| v as usize);
+            // 🔧 P2修复：始终使用 prompt_builder 生成的 system_prompt（XML 格式）
+            // prompt_builder 已经将前端传入的 system_prompt_override 作为 base_prompt 处理
+            // 不再让前端的值直接覆盖，避免丢失 LaTeX 规则等 XML 格式内容
+            let system_prompt_override = Some(system_prompt.to_string());
 
-        // 获取 window 用于流式事件发射
-        let window = emitter.window();
+            // 获取 window 用于流式事件发射
+            let window = emitter.window();
 
-        log::info!(
+            log::info!(
             "[ChatV2::pipeline] Calling LLMManager, stream_event={}, model_override={:?}, top_p={:?}, max_tokens={:?}, max_input_tokens={:?}",
             stream_event,
             model_override,
@@ -735,236 +739,240 @@ impl ChatV2Pipeline {
             max_input_tokens_override
         );
 
-        // 调用 LLMManager 的流式接口
-        // 🔧 P1修复：添加 Pipeline 层超时保护，不完全依赖上游 LLM 配置
-        let llm_future = self.llm_manager.call_unified_model_2_stream(
-            &llm_context,
-            &messages,
-            "",   // subject - Chat V2 不使用科目
-            true, // enable_chain_of_thought
-            enable_thinking,
-            Some("chat_v2"),
-            window,
-            &stream_event,
-            Some(ctx.assistant_message_id.as_str()),
-            None, // trace_id
-            disable_tools,
-            max_input_tokens_override, // 🔧 P1修复：传递 context_limit 作为输入 token 限制
-            model_override.clone(),
-            temp_override,
-            system_prompt_override.clone(),
-            top_p_override,
-            frequency_penalty_override,
-            presence_penalty_override,
-            max_tokens_override,
-            ctx.options.reasoning_effort.clone(),
-            ctx.options.thinking_budget,
-        );
+            // 调用 LLMManager 的流式接口
+            // 🔧 P1修复：添加 Pipeline 层超时保护，不完全依赖上游 LLM 配置
+            let llm_future = self.llm_manager.call_unified_model_2_stream(
+                &llm_context,
+                &messages,
+                "",   // subject - Chat V2 不使用科目
+                true, // enable_chain_of_thought
+                enable_thinking,
+                Some("chat_v2"),
+                window,
+                &stream_event,
+                Some(ctx.assistant_message_id.as_str()),
+                None, // trace_id
+                disable_tools,
+                max_input_tokens_override, // 🔧 P1修复：传递 context_limit 作为输入 token 限制
+                model_override.clone(),
+                temp_override,
+                system_prompt_override.clone(),
+                top_p_override,
+                frequency_penalty_override,
+                presence_penalty_override,
+                max_tokens_override,
+                ctx.options.reasoning_effort.clone(),
+                ctx.options.thinking_budget,
+            );
 
-        const LLM_MAX_RETRIES: u32 = 2;
-        const LLM_RETRY_DELAY_MS: u64 = 1000;
-        // 🔧 F2 修复：超时语义从「总时长 600s」改为「空闲 600s + 绝对上限 2h」。
-        // 长 agentic 生成只要流式持续健康输出就不会被掐断；
-        // 真正挂起（10 分钟无任何数据）或病态慢滴流（总时长 2h）才超时。
-        let idle_limit = Duration::from_secs(LLM_STREAM_TIMEOUT_SECS);
-        let total_limit = Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS);
-        let timeout_error = |reason: String| crate::models::AppError::llm(reason);
-        let is_retryable_llm_error = |err_str: &str| {
-            let lower = err_str.to_ascii_lowercase();
-            lower.contains("connection")
-                || lower.contains("timeout")
-                || lower.contains("timed out")
-                || lower.contains("reset")
-                || lower.contains("broken pipe")
-                || lower.contains("connect")
-                || lower.contains("temporarily unavailable")
-                || lower.contains("status: 429")
-                || lower.contains("status: 502")
-                || lower.contains("status: 503")
-                || lower.contains("status: 504")
-        };
+            const LLM_MAX_RETRIES: u32 = 2;
+            const LLM_RETRY_DELAY_MS: u64 = 1000;
+            // 🔧 F2 修复：超时语义从「总时长 600s」改为「空闲 600s + 绝对上限 2h」。
+            // 长 agentic 生成只要流式持续健康输出就不会被掐断；
+            // 真正挂起（10 分钟无任何数据）或病态慢滴流（总时长 2h）才超时。
+            let idle_limit = Duration::from_secs(LLM_STREAM_TIMEOUT_SECS);
+            let total_limit = Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS);
+            let timeout_error = |reason: String| crate::models::AppError::llm(reason);
+            let is_retryable_llm_error = |err_str: &str| {
+                let lower = err_str.to_ascii_lowercase();
+                lower.contains("connection")
+                    || lower.contains("timeout")
+                    || lower.contains("timed out")
+                    || lower.contains("reset")
+                    || lower.contains("broken pipe")
+                    || lower.contains("connect")
+                    || lower.contains("temporarily unavailable")
+                    || lower.contains("status: 429")
+                    || lower.contains("status: 502")
+                    || lower.contains("status: 503")
+                    || lower.contains("status: 504")
+            };
 
-        let mut call_result = {
-            let adapter_for_idle = adapter.clone();
-            match wait_llm_stream_with_idle_timeout(
-                llm_future,
-                idle_limit,
-                total_limit,
-                move || adapter_for_idle.idle_elapsed(),
-            )
-            .await
-            {
-                LlmStreamWaitOutcome::Completed(result) => result,
-                LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
-                    log::error!(
+            let mut call_result = {
+                let adapter_for_idle = adapter.clone();
+                match wait_llm_stream_with_idle_timeout(
+                    llm_future,
+                    idle_limit,
+                    total_limit,
+                    move || adapter_for_idle.idle_elapsed(),
+                )
+                .await
+                {
+                    LlmStreamWaitOutcome::Completed(result) => result,
+                    LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
+                        log::error!(
                         "[ChatV2::pipeline] LLM stream idle timeout after {}s without data, session={}",
                         idle_secs,
                         ctx.session_id
                     );
-                    Err(timeout_error(format!(
-                        "LLM stream call timed out: no data received for {}s",
-                        idle_secs
-                    )))
+                        Err(timeout_error(format!(
+                            "LLM stream call timed out: no data received for {}s",
+                            idle_secs
+                        )))
+                    }
+                    LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                        log::error!(
+                            "[ChatV2::pipeline] LLM stream exceeded absolute limit {}s, session={}",
+                            total_secs,
+                            ctx.session_id
+                        );
+                        Err(timeout_error(format!(
+                            "LLM stream call exceeded absolute time limit ({}s)",
+                            total_secs
+                        )))
+                    }
                 }
-                LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
-                    log::error!(
-                        "[ChatV2::pipeline] LLM stream exceeded absolute limit {}s, session={}",
-                        total_secs,
-                        ctx.session_id
-                    );
-                    Err(timeout_error(format!(
-                        "LLM stream call exceeded absolute time limit ({}s)",
-                        total_secs
-                    )))
-                }
-            }
-        };
+            };
 
-        // 瞬时网络错误自动重试（最多 LLM_MAX_RETRIES 次）
-        if call_result.is_err() {
-            for retry in 1..=LLM_MAX_RETRIES {
-                if ctx
-                    .cancellation_token
-                    .as_ref()
-                    .map(|t| t.is_cancelled())
-                    .unwrap_or(false)
-                {
-                    break;
-                }
-
-                let err_str = format!("{:?}", call_result.as_ref().err().unwrap());
-                if !is_retryable_llm_error(&err_str) {
-                    break;
-                }
-
-                let delay = LLM_RETRY_DELAY_MS * (1_u64 << (retry - 1));
-                log::warn!(
-                    "[ChatV2::pipeline] Transient LLM error, retry {}/{} after {}ms: {}",
-                    retry,
-                    LLM_MAX_RETRIES,
-                    delay,
-                    err_str
-                );
-                emitter.emit_stream_reconnect(&ctx.assistant_message_id, retry, LLM_MAX_RETRIES);
-                tokio::time::sleep(Duration::from_millis(delay)).await;
-
-                if ctx
-                    .cancellation_token
-                    .as_ref()
-                    .map(|t| t.is_cancelled())
-                    .unwrap_or(false)
-                {
-                    break;
-                }
-
-                // 重新注册 hooks，并重置 adapter 累积状态
-                // 🔧 修复：重新注册并不会清空 adapter（Arc 共享同一实例），
-                // 若失败尝试已流出部分内容，必须显式重置，否则重试响应会被
-                // 追加到旧的部分内容之后，导致内容重复落库/重复执行工具调用
-                self.llm_manager
-                    .unregister_stream_hooks_if_owner(&stream_event, &registered_hooks)
-                    .await;
-                adapter.reset_stream_state();
-                self.llm_manager
-                    .register_stream_hooks(&stream_event, registered_hooks.clone())
-                    .await;
-
-                let retry_future = self.llm_manager.call_unified_model_2_stream(
-                    &llm_context,
-                    &messages,
-                    "",
-                    true,
-                    enable_thinking,
-                    Some("chat_v2"),
-                    emitter.window(),
-                    &stream_event,
-                    Some(ctx.assistant_message_id.as_str()),
-                    None,
-                    disable_tools,
-                    max_input_tokens_override,
-                    model_override.clone(),
-                    temp_override,
-                    system_prompt_override.clone(),
-                    top_p_override,
-                    frequency_penalty_override,
-                    presence_penalty_override,
-                    max_tokens_override,
-                    ctx.options.reasoning_effort.clone(),
-                    ctx.options.thinking_budget,
-                );
-
-                call_result = {
-                    let adapter_for_idle = adapter.clone();
-                    match wait_llm_stream_with_idle_timeout(
-                        retry_future,
-                        idle_limit,
-                        total_limit,
-                        move || adapter_for_idle.idle_elapsed(),
-                    )
-                    .await
+            // 瞬时网络错误自动重试（最多 LLM_MAX_RETRIES 次）
+            if call_result.is_err() {
+                for retry in 1..=LLM_MAX_RETRIES {
+                    if ctx
+                        .cancellation_token
+                        .as_ref()
+                        .map(|t| t.is_cancelled())
+                        .unwrap_or(false)
                     {
-                        LlmStreamWaitOutcome::Completed(result) => result,
-                        LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
-                            log::error!(
+                        break;
+                    }
+
+                    let err_str = format!("{:?}", call_result.as_ref().err().unwrap());
+                    if !is_retryable_llm_error(&err_str) {
+                        break;
+                    }
+
+                    let delay = LLM_RETRY_DELAY_MS * (1_u64 << (retry - 1));
+                    log::warn!(
+                        "[ChatV2::pipeline] Transient LLM error, retry {}/{} after {}ms: {}",
+                        retry,
+                        LLM_MAX_RETRIES,
+                        delay,
+                        err_str
+                    );
+                    emitter.emit_stream_reconnect(
+                        &ctx.assistant_message_id,
+                        retry,
+                        LLM_MAX_RETRIES,
+                    );
+                    tokio::time::sleep(Duration::from_millis(delay)).await;
+
+                    if ctx
+                        .cancellation_token
+                        .as_ref()
+                        .map(|t| t.is_cancelled())
+                        .unwrap_or(false)
+                    {
+                        break;
+                    }
+
+                    // 重新注册 hooks，并重置 adapter 累积状态
+                    // 🔧 修复：重新注册并不会清空 adapter（Arc 共享同一实例），
+                    // 若失败尝试已流出部分内容，必须显式重置，否则重试响应会被
+                    // 追加到旧的部分内容之后，导致内容重复落库/重复执行工具调用
+                    self.llm_manager
+                        .unregister_stream_hooks_if_owner(&stream_event, &registered_hooks)
+                        .await;
+                    adapter.reset_stream_state();
+                    self.llm_manager
+                        .register_stream_hooks(&stream_event, registered_hooks.clone())
+                        .await;
+
+                    let retry_future = self.llm_manager.call_unified_model_2_stream(
+                        &llm_context,
+                        &messages,
+                        "",
+                        true,
+                        enable_thinking,
+                        Some("chat_v2"),
+                        emitter.window(),
+                        &stream_event,
+                        Some(ctx.assistant_message_id.as_str()),
+                        None,
+                        disable_tools,
+                        max_input_tokens_override,
+                        model_override.clone(),
+                        temp_override,
+                        system_prompt_override.clone(),
+                        top_p_override,
+                        frequency_penalty_override,
+                        presence_penalty_override,
+                        max_tokens_override,
+                        ctx.options.reasoning_effort.clone(),
+                        ctx.options.thinking_budget,
+                    );
+
+                    call_result = {
+                        let adapter_for_idle = adapter.clone();
+                        match wait_llm_stream_with_idle_timeout(
+                            retry_future,
+                            idle_limit,
+                            total_limit,
+                            move || adapter_for_idle.idle_elapsed(),
+                        )
+                        .await
+                        {
+                            LlmStreamWaitOutcome::Completed(result) => result,
+                            LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
+                                log::error!(
                                 "[ChatV2::pipeline] LLM stream retry idle timeout after {}s, session={}, retry={}/{}",
                                 idle_secs,
                                 ctx.session_id,
                                 retry,
                                 LLM_MAX_RETRIES
                             );
-                            Err(timeout_error(format!(
-                                "LLM stream call timed out: no data received for {}s",
-                                idle_secs
-                            )))
-                        }
-                        LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
-                            log::error!(
+                                Err(timeout_error(format!(
+                                    "LLM stream call timed out: no data received for {}s",
+                                    idle_secs
+                                )))
+                            }
+                            LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                                log::error!(
                                 "[ChatV2::pipeline] LLM stream retry exceeded absolute limit {}s, session={}, retry={}/{}",
                                 total_secs,
                                 ctx.session_id,
                                 retry,
                                 LLM_MAX_RETRIES
                             );
-                            Err(timeout_error(format!(
-                                "LLM stream call exceeded absolute time limit ({}s)",
-                                total_secs
-                            )))
+                                Err(timeout_error(format!(
+                                    "LLM stream call exceeded absolute time limit ({}s)",
+                                    total_secs
+                                )))
+                            }
                         }
-                    }
-                };
+                    };
 
-                if call_result.is_ok() {
-                    log::info!("[ChatV2::pipeline] LLM retry {} succeeded", retry);
-                    break;
+                    if call_result.is_ok() {
+                        log::info!("[ChatV2::pipeline] LLM retry {} succeeded", retry);
+                        break;
+                    }
                 }
             }
-        }
 
-        // 注销 hooks（正常路径显式注销；guard 仅兜底 select! drop 取消路径）
-        hooks_guard.cleanup().await;
+            // 注销 hooks（正常路径显式注销；guard 仅兜底 select! drop 取消路径）
+            hooks_guard.cleanup().await;
 
-        // 处理 LLM 调用结果
-        // 🔧 P1-1 修复：llm_manager 存在与 pipeline CancellationToken 平行的第二条取消通道
-        // （registry / cancel channel），触发时正常返回 Ok(cancelled=true)。
-        // 必须记录该标志并在下方短路，否则「已停止」的会话仍会执行带副作用的工具调用并继续递归。
-        let mut llm_stream_cancelled = false;
-        match call_result {
-            Ok(output) => {
-                llm_stream_cancelled = output.cancelled;
-                log::info!(
-                    "[ChatV2::pipeline] LLM call succeeded, cancelled={}, content_len={}",
-                    output.cancelled,
-                    output.assistant_message.len()
-                );
+            // 处理 LLM 调用结果
+            // 🔧 P1-1 修复：llm_manager 存在与 pipeline CancellationToken 平行的第二条取消通道
+            // （registry / cancel channel），触发时正常返回 Ok(cancelled=true)。
+            // 必须记录该标志并在下方短路，否则「已停止」的会话仍会执行带副作用的工具调用并继续递归。
+            let mut llm_stream_cancelled = false;
+            match call_result {
+                Ok(output) => {
+                    llm_stream_cancelled = output.cancelled;
+                    log::info!(
+                        "[ChatV2::pipeline] LLM call succeeded, cancelled={}, content_len={}",
+                        output.cancelled,
+                        output.assistant_message.len()
+                    );
 
-                // 更新上下文
-                ctx.final_content = adapter.get_accumulated_content();
-                ctx.final_reasoning = adapter.get_accumulated_reasoning();
-                // 🔧 修复：保存流式过程中创建的块 ID，确保 save_results 使用相同的 ID
-                ctx.streaming_thinking_block_id = adapter.get_thinking_block_id();
-                ctx.streaming_content_block_id = adapter.get_content_block_id();
+                    // 更新上下文
+                    ctx.final_content = adapter.get_accumulated_content();
+                    ctx.final_reasoning = adapter.get_accumulated_reasoning();
+                    // 🔧 修复：保存流式过程中创建的块 ID，确保 save_results 使用相同的 ID
+                    ctx.streaming_thinking_block_id = adapter.get_thinking_block_id();
+                    ctx.streaming_content_block_id = adapter.get_content_block_id();
 
-                log::info!(
+                    log::info!(
                     "[ChatV2::pipeline] After LLM call: final_content_len={}, final_reasoning={:?}, thinking_block_id={:?}, content_block_id={:?}",
                     ctx.final_content.len(),
                     ctx.final_reasoning.as_ref().map(|r| r.len()),
@@ -972,26 +980,26 @@ impl ChatV2Pipeline {
                     ctx.streaming_content_block_id
                 );
 
-                // 如果 adapter 累积内容为空但输出不为空，使用 LLM 输出
-                if ctx.final_content.is_empty() && !output.assistant_message.is_empty() {
-                    ctx.final_content = output.assistant_message.clone();
-                }
+                    // 如果 adapter 累积内容为空但输出不为空，使用 LLM 输出
+                    if ctx.final_content.is_empty() && !output.assistant_message.is_empty() {
+                        ctx.final_content = output.assistant_message.clone();
+                    }
 
-                // ============================================================
-                // Token 使用量统计与累加（Prompt 4）
-                // ============================================================
-                let round_usage = self.get_or_estimate_usage(
-                    &adapter,
-                    &messages,
-                    &ctx.final_content,
-                    system_prompt,
-                    ctx.options.model_id.as_deref(),
-                );
+                    // ============================================================
+                    // Token 使用量统计与累加（Prompt 4）
+                    // ============================================================
+                    let round_usage = self.get_or_estimate_usage(
+                        &adapter,
+                        &messages,
+                        &ctx.final_content,
+                        system_prompt,
+                        ctx.options.model_id.as_deref(),
+                    );
 
-                // 累加到 PipelineContext.token_usage
-                ctx.token_usage.accumulate(&round_usage);
+                    // 累加到 PipelineContext.token_usage
+                    ctx.token_usage.accumulate(&round_usage);
 
-                log::info!(
+                    log::info!(
                     "[ChatV2::pipeline] Token usage for round {}: prompt={}, completion={}, total={}, source={}; Accumulated: prompt={}, completion={}, total={}, source={}",
                     recursion_depth,
                     round_usage.prompt_tokens,
@@ -1004,533 +1012,541 @@ impl ChatV2Pipeline {
                     ctx.token_usage.source
                 );
 
-                // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
-                // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
-                if !ctx.needs_compaction {
-                    let cfg = self.resolve_active_api_config(ctx).await;
-                    if super::compaction::should_compact(ctx, cfg.as_ref()) {
-                        ctx.needs_compaction = true;
+                    // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
+                    // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
+                    if !ctx.needs_compaction {
+                        let cfg = self.resolve_active_api_config(ctx).await;
+                        if super::compaction::should_compact(ctx, cfg.as_ref()) {
+                            ctx.needs_compaction = true;
+                        }
                     }
+
+                    // 记录 LLM 使用量到数据库
+                    // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
+                    let model_for_usage = ctx
+                        .model_display_name
+                        .as_deref()
+                        .or(ctx.options.model_id.as_deref())
+                        .unwrap_or("unknown");
+                    crate::llm_usage::record_llm_usage(
+                        crate::llm_usage::CallerType::ChatV2,
+                        model_for_usage,
+                        round_usage.prompt_tokens,
+                        round_usage.completion_tokens,
+                        round_usage.reasoning_tokens,
+                        round_usage.cached_tokens,
+                        Some(ctx.session_id.clone()),
+                        None, // duration_ms - 在 adapter 层面已记录
+                        true,
+                        None,
+                    );
                 }
+                Err(e) => {
+                    // 调用 adapter 的错误处理
+                    adapter.on_error(&e.to_string());
+                    log::error!("[ChatV2::pipeline] LLM call failed: {}", e);
 
-                // 记录 LLM 使用量到数据库
-                // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
-                let model_for_usage = ctx
-                    .model_display_name
-                    .as_deref()
-                    .or(ctx.options.model_id.as_deref())
-                    .unwrap_or("unknown");
-                crate::llm_usage::record_llm_usage(
-                    crate::llm_usage::CallerType::ChatV2,
-                    model_for_usage,
-                    round_usage.prompt_tokens,
-                    round_usage.completion_tokens,
-                    round_usage.reasoning_tokens,
-                    round_usage.cached_tokens,
-                    Some(ctx.session_id.clone()),
-                    None, // duration_ms - 在 adapter 层面已记录
-                    true,
-                    None,
-                );
-            }
-            Err(e) => {
-                // 调用 adapter 的错误处理
-                adapter.on_error(&e.to_string());
-                log::error!("[ChatV2::pipeline] LLM call failed: {}", e);
+                    // 记录失败的 LLM 调用
+                    // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
+                    let model_for_usage = ctx
+                        .model_display_name
+                        .as_deref()
+                        .or(ctx.options.model_id.as_deref())
+                        .unwrap_or("unknown");
+                    crate::llm_usage::record_llm_usage(
+                        crate::llm_usage::CallerType::ChatV2,
+                        model_for_usage,
+                        0,
+                        0,
+                        None,
+                        None,
+                        Some(ctx.session_id.clone()),
+                        None,
+                        false,
+                        Some(e.to_string()),
+                    );
 
-                // 记录失败的 LLM 调用
-                // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
-                let model_for_usage = ctx
-                    .model_display_name
-                    .as_deref()
-                    .or(ctx.options.model_id.as_deref())
-                    .unwrap_or("unknown");
-                crate::llm_usage::record_llm_usage(
-                    crate::llm_usage::CallerType::ChatV2,
-                    model_for_usage,
-                    0,
-                    0,
-                    None,
-                    None,
-                    Some(ctx.session_id.clone()),
-                    None,
-                    false,
-                    Some(e.to_string()),
-                );
-
-                let error_message = e.to_string();
-                if error_message.to_ascii_lowercase().contains("timed out") {
-                    return Err(ChatV2Error::Timeout(error_message));
+                    let error_message = e.to_string();
+                    if error_message.to_ascii_lowercase().contains("timed out") {
+                        return Err(ChatV2Error::Timeout(error_message));
+                    }
+                    return Err(ChatV2Error::Llm(error_message));
                 }
-                return Err(ChatV2Error::Llm(error_message));
             }
-        }
 
-        // ============================================================
-        // 🔧 P1-1 修复：LLM 流被内部取消（cancelled=true）时立即短路。
-        // 丢弃已收集的工具调用（不执行、不递归），把已流出的部分内容收进
-        // interleaved 列表后走取消收尾路径（外层 execute() 会保存部分结果）。
-        // ============================================================
-        if llm_stream_cancelled {
-            let dropped_tool_calls = adapter.take_tool_calls();
-            if !dropped_tool_calls.is_empty() {
-                log::warn!(
+            // ============================================================
+            // 🔧 P1-1 修复：LLM 流被内部取消（cancelled=true）时立即短路。
+            // 丢弃已收集的工具调用（不执行、不递归），把已流出的部分内容收进
+            // interleaved 列表后走取消收尾路径（外层 execute() 会保存部分结果）。
+            // ============================================================
+            if llm_stream_cancelled {
+                let dropped_tool_calls = adapter.take_tool_calls();
+                if !dropped_tool_calls.is_empty() {
+                    log::warn!(
                     "[ChatV2::pipeline] LLM stream cancelled internally, discarding {} pending tool call(s) without execution, session={}",
                     dropped_tool_calls.len(),
                     ctx.session_id
                 );
+                }
+                // 已发生过工具轮时，本轮部分内容需进入 interleaved 列表才能被保存
+                // （save_results 检测到 interleaved 块后只保存 interleaved 列表）
+                if ctx.has_interleaved_blocks() {
+                    ctx.collect_round_blocks(
+                        adapter.get_thinking_block_id(),
+                        adapter.get_accumulated_reasoning(),
+                        adapter.get_content_block_id(),
+                        Some(ctx.final_content.clone()),
+                        &ctx.assistant_message_id.clone(),
+                    );
+                }
+                adapter.finalize_all();
+                ctx.pending_reasoning_for_api = None;
+                return Err(ChatV2Error::Cancelled);
             }
-            // 已发生过工具轮时，本轮部分内容需进入 interleaved 列表才能被保存
-            // （save_results 检测到 interleaved 块后只保存 interleaved 列表）
-            if ctx.has_interleaved_blocks() {
-                ctx.collect_round_blocks(
-                    adapter.get_thinking_block_id(),
-                    adapter.get_accumulated_reasoning(),
-                    adapter.get_content_block_id(),
-                    Some(ctx.final_content.clone()),
-                    &ctx.assistant_message_id.clone(),
-                );
-            }
-            adapter.finalize_all();
-            ctx.pending_reasoning_for_api = None;
-            return Err(ChatV2Error::Cancelled);
-        }
 
-        // ============================================================
-        // 处理 LLM 返回的工具调用
-        // 工具调用通过 LLMStreamHooks.on_tool_call() 回调收集到 adapter 中。
-        // 在 LLM 调用完成后，从 adapter 取出收集到的工具调用进行处理。
-        // ============================================================
-        let tool_calls = adapter.take_tool_calls();
+            // ============================================================
+            // 处理 LLM 返回的工具调用
+            // 工具调用通过 LLMStreamHooks.on_tool_call() 回调收集到 adapter 中。
+            // 在 LLM 调用完成后，从 adapter 取出收集到的工具调用进行处理。
+            // ============================================================
+            let tool_calls = adapter.take_tool_calls();
 
-        // 如果有工具调用，执行并递归
-        if !tool_calls.is_empty() {
-            log::info!(
+            // 如果有工具调用，执行并递归
+            if !tool_calls.is_empty() {
+                log::info!(
                 "[ChatV2::pipeline] LLM returned {} tool calls, executing (parallel-safe calls run concurrently)...",
                 tool_calls.len()
             );
 
-            // ============================================================
-            // Interleaved Thinking 支持：收集本轮产生的 thinking/content 块
-            // 在工具调用之前，将本轮的 thinking 块添加到交替列表
-            // 🔧 P1-2 修复：Claude/GPT 系模型经常在 tool_use 之前输出一段伴随说明文本
-            // （text-before-tool_use）。该文本已实时流到前端，必须同时收进 interleaved
-            // 列表持久化（否则刷新后消失），并在下方回传给下一轮 LLM。
-            // ============================================================
-            let current_reasoning = adapter.get_accumulated_reasoning();
-            let round_content = adapter.get_accumulated_content();
-            ctx.collect_round_blocks(
-                adapter.get_thinking_block_id(),
-                current_reasoning.clone(),
-                adapter.get_content_block_id(),
-                if round_content.is_empty() {
-                    None
-                } else {
-                    Some(round_content.clone())
-                },
-                &ctx.assistant_message_id.clone(),
-            );
+                // ============================================================
+                // Interleaved Thinking 支持：收集本轮产生的 thinking/content 块
+                // 在工具调用之前，将本轮的 thinking 块添加到交替列表
+                // 🔧 P1-2 修复：Claude/GPT 系模型经常在 tool_use 之前输出一段伴随说明文本
+                // （text-before-tool_use）。该文本已实时流到前端，必须同时收进 interleaved
+                // 列表持久化（否则刷新后消失），并在下方回传给下一轮 LLM。
+                // ============================================================
+                let current_reasoning = adapter.get_accumulated_reasoning();
+                let round_content = adapter.get_accumulated_content();
+                ctx.collect_round_blocks(
+                    adapter.get_thinking_block_id(),
+                    current_reasoning.clone(),
+                    adapter.get_content_block_id(),
+                    if round_content.is_empty() {
+                        None
+                    } else {
+                        Some(round_content.clone())
+                    },
+                    &ctx.assistant_message_id.clone(),
+                );
 
-            // 🔧 修复：发射 thinking 块的 end 事件，通知前端思维链已结束
-            // 之前只调用了 collect_round_blocks 收集数据，但没有发射 end 事件
-            // 这导致前端一直显示"思考中..."状态
-            adapter.finalize_all();
+                // 🔧 修复：发射 thinking 块的 end 事件，通知前端思维链已结束
+                // 之前只调用了 collect_round_blocks 收集数据，但没有发射 end 事件
+                // 这导致前端一直显示"思考中..."状态
+                adapter.finalize_all();
 
-            // 🔧 DeepSeek Thinking Mode：保存 reasoning_content 用于下一轮 API 调用
-            // 根据 DeepSeek API 文档，在工具调用迭代中需要回传 reasoning_content
-            ctx.pending_reasoning_for_api = current_reasoning;
-            log::debug!(
+                // 🔧 DeepSeek Thinking Mode：保存 reasoning_content 用于下一轮 API 调用
+                // 根据 DeepSeek API 文档，在工具调用迭代中需要回传 reasoning_content
+                ctx.pending_reasoning_for_api = current_reasoning;
+                log::debug!(
                 "[ChatV2::pipeline] Interleaved: collected thinking block for round {}, total blocks={}, pending_reasoning={}",
                 recursion_depth,
                 ctx.interleaved_block_ids.len(),
                 ctx.pending_reasoning_for_api.as_ref().map(|s| s.len()).unwrap_or(0)
             );
 
-            // ============================================================
-            // 🆕 P15 修复（补充）：工具执行前中间保存点
-            // 确保 thinking 块等已生成内容在工具执行（可能阻塞）前被持久化
-            // 关键场景：coordinator_sleep 会阻塞，如果只在工具执行后保存，保存永远不会执行
-            // ============================================================
-            if let Err(e) = self.save_intermediate_results(ctx).await {
-                log::warn!(
+                // ============================================================
+                // 🆕 P15 修复（补充）：工具执行前中间保存点
+                // 确保 thinking 块等已生成内容在工具执行（可能阻塞）前被持久化
+                // 关键场景：coordinator_sleep 会阻塞，如果只在工具执行后保存，保存永远不会执行
+                // ============================================================
+                if let Err(e) = self.save_intermediate_results(ctx).await {
+                    log::warn!(
                     "[ChatV2::pipeline] Failed to save intermediate results before tool execution: {}",
                     e
                 );
-            } else if !ctx.interleaved_blocks.is_empty() {
-                log::info!(
-                    "[ChatV2::pipeline] Pre-tool intermediate save completed, blocks={}",
-                    ctx.interleaved_block_ids.len()
-                );
-            }
+                } else if !ctx.interleaved_blocks.is_empty() {
+                    log::info!(
+                        "[ChatV2::pipeline] Pre-tool intermediate save completed, blocks={}",
+                        ctx.interleaved_block_ids.len()
+                    );
+                }
 
-            // 并行执行所有工具调用
-            let canvas_note_id = ctx.options.canvas_note_id.clone();
-            let skill_contents = ctx.options.skill_contents.clone();
-            let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
-            let skill_package_roots = ctx.options.skill_package_roots.clone();
-            let active_skill_ids = ctx.options.active_skill_ids.clone();
-            let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
-                None
-            } else {
-                ctx.options.skill_allowed_tools.clone()
-            };
-            let rag_top_k = ctx.options.rag_top_k;
-            let rag_enable_reranking = ctx.options.rag_enable_reranking;
-            let memory_enabled = ctx.options.memory_enabled.unwrap_or(true);
-            let rag_enabled = ctx.options.rag_enabled.unwrap_or(true);
-            let web_search_enabled = ctx.options.web_search_enabled.unwrap_or(true);
-            let round_id = format!("tool-round-{}", recursion_depth);
+                // 并行执行所有工具调用
+                let canvas_note_id = ctx.options.canvas_note_id.clone();
+                let skill_contents = ctx.options.skill_contents.clone();
+                let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
+                let skill_package_roots = ctx.options.skill_package_roots.clone();
+                let active_skill_ids = ctx.options.active_skill_ids.clone();
+                let skill_allowed_tools = if ctx.options.disable_tool_whitelist.unwrap_or(false) {
+                    None
+                } else {
+                    ctx.options.skill_allowed_tools.clone()
+                };
+                let rag_top_k = ctx.options.rag_top_k;
+                let rag_enable_reranking = ctx.options.rag_enable_reranking;
+                let memory_enabled = ctx.options.memory_enabled.unwrap_or(true);
+                let rag_enabled = ctx.options.rag_enabled.unwrap_or(true);
+                let web_search_enabled = ctx.options.web_search_enabled.unwrap_or(true);
+                let round_id = format!("tool-round-{}", recursion_depth);
 
-            // ============================================================
-            // 🆕 2026-07 Doom loop 检测（借鉴 参考实现）：按执行顺序观察每个
-            // 调用的「工具名+参数」指纹，连续第 3 次相同的调用被拦截（不执行），
-            // 以合成失败结果回喂 LLM 要求改变策略；连续第 5 次落终止标记，
-            // 下一轮递归入口生成 tool_limit 块终止循环。
-            // 心跳白名单工具（coordinator_sleep）豁免——重复同参调用是合法轮询。
-            // ============================================================
-            let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
-                &mut ctx.doom_loop_guard,
-                &tool_calls,
-                &emitter,
-                &ctx.assistant_message_id,
-                None,
-                ctx.options.skill_state_version,
-                Some(round_id.as_str()),
-            );
-
-            // 🆕 取消支持：传递取消令牌给工具执行器
-            let cancel_token = ctx.cancellation_token();
-            let executed_results = if calls_to_execute.is_empty() {
-                Vec::new()
-            } else {
-                self.execute_tool_calls(
-                    &calls_to_execute,
+                // ============================================================
+                // 🆕 2026-07 Doom loop 检测（借鉴 参考实现）：按执行顺序观察每个
+                // 调用的「工具名+参数」指纹，连续第 3 次相同的调用被拦截（不执行），
+                // 以合成失败结果回喂 LLM 要求改变策略；连续第 5 次落终止标记，
+                // 下一轮递归入口生成 tool_limit 块终止循环。
+                // 心跳白名单工具（coordinator_sleep）豁免——重复同参调用是合法轮询。
+                // ============================================================
+                let (calls_to_execute, doom_synthetic) = self.apply_doom_loop_guard(
+                    &mut ctx.doom_loop_guard,
+                    &tool_calls,
                     &emitter,
-                    &ctx.session_id,
                     &ctx.assistant_message_id,
                     None,
                     ctx.options.skill_state_version,
                     Some(round_id.as_str()),
-                    &canvas_note_id,
-                    &skill_contents,
-                    &skill_embedded_tools,
-                    &skill_package_roots,
-                    &active_skill_ids,
-                    &skill_allowed_tools,
-                    cancel_token,
-                    rag_top_k,
-                    rag_enable_reranking,
-                    memory_enabled,
-                    rag_enabled,
-                    web_search_enabled,
-                    &mcp_tool_name_mapping,
-                )
-                .await?
-            };
-            // 拦截的合成失败结果按原始 tool_calls 顺序归并回结果列表，
-            // 保证每个 tool_call 都有对应 tool 消息（协议完整性）且历史确定
-            let tool_results =
-                merge_round_results_in_call_order(&tool_calls, executed_results, doom_synthetic);
+                );
 
-            // 记录执行结果
-            let success_count = tool_results.iter().filter(|r| r.success).count();
-            log::info!(
-                "[ChatV2::pipeline] Tool execution completed: {}/{} succeeded",
-                success_count,
-                tool_results.len()
-            );
+                // 🆕 取消支持：传递取消令牌给工具执行器
+                let cancel_token = ctx.cancellation_token();
+                let executed_results = if calls_to_execute.is_empty() {
+                    Vec::new()
+                } else {
+                    self.execute_tool_calls(
+                        &calls_to_execute,
+                        &emitter,
+                        &ctx.session_id,
+                        &ctx.assistant_message_id,
+                        None,
+                        ctx.options.skill_state_version,
+                        Some(round_id.as_str()),
+                        &canvas_note_id,
+                        &skill_contents,
+                        &skill_embedded_tools,
+                        &skill_package_roots,
+                        &active_skill_ids,
+                        &skill_allowed_tools,
+                        cancel_token,
+                        rag_top_k,
+                        rag_enable_reranking,
+                        memory_enabled,
+                        rag_enabled,
+                        web_search_enabled,
+                        &mcp_tool_name_mapping,
+                    )
+                    .await?
+                };
+                // 拦截的合成失败结果按原始 tool_calls 顺序归并回结果列表，
+                // 保证每个 tool_call 都有对应 tool 消息（协议完整性）且历史确定
+                let tool_results = merge_round_results_in_call_order(
+                    &tool_calls,
+                    executed_results,
+                    doom_synthetic,
+                );
 
-            // ============================================================
-            // 🆕 渐进披露：load_skills 执行后动态追加工具到 tools 数组
-            // ============================================================
-            for tool_result in &tool_results {
-                if super::super::tools::SkillsExecutor::is_load_skills_tool(&tool_result.tool_name)
-                    && tool_result.success
-                {
-                    // 从工具结果中提取加载的 skill_ids
-                    if let Some(skill_ids) = tool_result
-                        .output
-                        .get("result")
-                        .and_then(|r| r.get("loaded_skill_ids").or_else(|| r.get("skill_ids")))
-                        .and_then(|ids| ids.as_array())
+                // 记录执行结果
+                let success_count = tool_results.iter().filter(|r| r.success).count();
+                log::info!(
+                    "[ChatV2::pipeline] Tool execution completed: {}/{} succeeded",
+                    success_count,
+                    tool_results.len()
+                );
+
+                // ============================================================
+                // 🆕 渐进披露：load_skills 执行后动态追加工具到 tools 数组
+                // ============================================================
+                for tool_result in &tool_results {
+                    if super::super::tools::SkillsExecutor::is_load_skills_tool(
+                        &tool_result.tool_name,
+                    ) && tool_result.success
                     {
-                        let loaded_skill_ids: Vec<String> = skill_ids
-                            .iter()
-                            .filter_map(|id| id.as_str().map(|s| s.to_string()))
-                            .collect();
+                        // 从工具结果中提取加载的 skill_ids
+                        if let Some(skill_ids) = tool_result
+                            .output
+                            .get("result")
+                            .and_then(|r| r.get("loaded_skill_ids").or_else(|| r.get("skill_ids")))
+                            .and_then(|ids| ids.as_array())
+                        {
+                            let loaded_skill_ids: Vec<String> = skill_ids
+                                .iter()
+                                .filter_map(|id| id.as_str().map(|s| s.to_string()))
+                                .collect();
 
-                        if !loaded_skill_ids.is_empty() {
-                            // 从 skill_embedded_tools 中获取对应的工具 Schema
-                            if let Some(ref embedded_tools_map) = ctx.options.skill_embedded_tools {
-                                let mut new_tools: Vec<super::super::types::McpToolSchema> =
-                                    Vec::new();
-                                for skill_id in &loaded_skill_ids {
-                                    if let Some(tools) = embedded_tools_map.get(skill_id) {
-                                        for tool in tools {
-                                            new_tools.push(tool.clone());
-                                        }
-                                    }
-                                }
-
-                                if !new_tools.is_empty() {
-                                    // 动态追加到 mcp_tool_schemas（去重）
-                                    let mcp_schemas =
-                                        ctx.options.mcp_tool_schemas.get_or_insert_with(Vec::new);
-                                    let before_count = mcp_schemas.len();
-
-                                    // 收集已存在的工具名称用于去重（使用 owned String 避免借用问题）
-                                    let existing_names: std::collections::HashSet<String> =
-                                        mcp_schemas.iter().map(|t| t.name.clone()).collect();
-
-                                    let mut added_count = 0;
-                                    for tool in new_tools {
-                                        if !existing_names.contains(&tool.name) {
-                                            mcp_schemas.push(tool);
-                                            added_count += 1;
+                            if !loaded_skill_ids.is_empty() {
+                                // 从 skill_embedded_tools 中获取对应的工具 Schema
+                                if let Some(ref embedded_tools_map) =
+                                    ctx.options.skill_embedded_tools
+                                {
+                                    let mut new_tools: Vec<super::super::types::McpToolSchema> =
+                                        Vec::new();
+                                    for skill_id in &loaded_skill_ids {
+                                        if let Some(tools) = embedded_tools_map.get(skill_id) {
+                                            for tool in tools {
+                                                new_tools.push(tool.clone());
+                                            }
                                         }
                                     }
 
-                                    if added_count > 0 {
-                                        log::info!(
+                                    if !new_tools.is_empty() {
+                                        // 动态追加到 mcp_tool_schemas（去重）
+                                        let mcp_schemas = ctx
+                                            .options
+                                            .mcp_tool_schemas
+                                            .get_or_insert_with(Vec::new);
+                                        let before_count = mcp_schemas.len();
+
+                                        // 收集已存在的工具名称用于去重（使用 owned String 避免借用问题）
+                                        let existing_names: std::collections::HashSet<String> =
+                                            mcp_schemas.iter().map(|t| t.name.clone()).collect();
+
+                                        let mut added_count = 0;
+                                        for tool in new_tools {
+                                            if !existing_names.contains(&tool.name) {
+                                                mcp_schemas.push(tool);
+                                                added_count += 1;
+                                            }
+                                        }
+
+                                        if added_count > 0 {
+                                            log::info!(
                                             "[ChatV2::pipeline] 🆕 Progressive disclosure: added {} tools from skills {:?}, total tools: {} -> {}",
                                             added_count,
                                             loaded_skill_ids,
                                             before_count,
                                             mcp_schemas.len()
                                         );
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // ============================================================
-            // Interleaved Thinking 支持：添加工具调用块到交替列表
-            // ============================================================
-            let message_id = ctx.assistant_message_id.clone();
-            for tool_result in &tool_results {
-                ctx.add_tool_block(tool_result, &message_id);
-            }
-            log::debug!(
-                "[ChatV2::pipeline] Interleaved: added {} tool blocks, total blocks={}",
-                tool_results.len(),
-                ctx.interleaved_block_ids.len()
-            );
+                // ============================================================
+                // Interleaved Thinking 支持：添加工具调用块到交替列表
+                // ============================================================
+                let message_id = ctx.assistant_message_id.clone();
+                for tool_result in &tool_results {
+                    ctx.add_tool_block(tool_result, &message_id);
+                }
+                log::debug!(
+                    "[ChatV2::pipeline] Interleaved: added {} tool blocks, total blocks={}",
+                    tool_results.len(),
+                    ctx.interleaved_block_ids.len()
+                );
 
-            // 🆕 文档 29 P1-4：检测 attempt_completion 的 task_completed 标志
-            // 如果检测到任务完成，终止递归循环，不再继续调用 LLM
-            let task_completed = tool_results.iter().any(|r| {
-                r.output
-                    .get("task_completed")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false)
-            });
-
-            // 🔒 安全修复：心跳检测仅信任白名单内部工具
-            let has_continue_execution = tool_results.iter().any(|r| {
-                HEARTBEAT_TOOLS.contains(&r.tool_name.as_str())
-                    && r.output
-                        .get("continue_execution")
+                // 🆕 文档 29 P1-4：检测 attempt_completion 的 task_completed 标志
+                // 如果检测到任务完成，终止递归循环，不再继续调用 LLM
+                let task_completed = tool_results.iter().any(|r| {
+                    r.output
+                        .get("task_completed")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false)
-            });
-            // 🔧 F5 修复：记录本轮心跳，供下一轮递归入口判断（替代全量历史扫描）
-            ctx.last_round_heartbeat = has_continue_execution;
-            if has_continue_execution {
-                log::info!(
+                });
+
+                // 🔒 安全修复：心跳检测仅信任白名单内部工具
+                let has_continue_execution = tool_results.iter().any(|r| {
+                    HEARTBEAT_TOOLS.contains(&r.tool_name.as_str())
+                        && r.output
+                            .get("continue_execution")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                });
+                // 🔧 F5 修复：记录本轮心跳，供下一轮递归入口判断（替代全量历史扫描）
+                ctx.last_round_heartbeat = has_continue_execution;
+                if has_continue_execution {
+                    log::info!(
                     "[ChatV2::pipeline] Heartbeat detected from whitelisted tool, will bypass recursion limit (count: {})",
                     ctx.heartbeat_count
                 );
-            }
+                }
 
-            // 🆕 持久化 TodoList 状态（消息内继续执行支持）
-            // 检测是否有 todo 工具调用，如果有则持久化到数据库
-            for tool_result in &tool_results {
-                if tool_result.tool_name.contains("todo_") {
-                    // 从内存获取当前 TodoList 状态并持久化
-                    if let Some(todo_list) =
-                        super::super::tools::todo_executor::get_todo_list(&ctx.session_id)
-                    {
-                        if let Err(e) = super::super::tools::todo_executor::persist_todo_list(
-                            &self.db,
-                            &ctx.session_id,
-                            &ctx.assistant_message_id,
-                            None, // variant_id 暂时为 None，后续可从 ctx 获取
-                            &todo_list,
-                        ) {
-                            log::warn!("[ChatV2::pipeline] Failed to persist TodoList: {}", e);
-                        } else {
-                            log::debug!(
+                // 🆕 持久化 TodoList 状态（消息内继续执行支持）
+                // 检测是否有 todo 工具调用，如果有则持久化到数据库
+                for tool_result in &tool_results {
+                    if tool_result.tool_name.contains("todo_") {
+                        // 从内存获取当前 TodoList 状态并持久化
+                        if let Some(todo_list) =
+                            super::super::tools::todo_executor::get_todo_list(&ctx.session_id)
+                        {
+                            if let Err(e) = super::super::tools::todo_executor::persist_todo_list(
+                                &self.db,
+                                &ctx.session_id,
+                                &ctx.assistant_message_id,
+                                None, // variant_id 暂时为 None，后续可从 ctx 获取
+                                &todo_list,
+                            ) {
+                                log::warn!("[ChatV2::pipeline] Failed to persist TodoList: {}", e);
+                            } else {
+                                log::debug!(
                                 "[ChatV2::pipeline] TodoList persisted: session={}, progress={}/{}",
                                 ctx.session_id,
                                 todo_list.completed_count(),
                                 todo_list.total_count()
                             );
+                            }
                         }
+                        break; // 只需持久化一次
                     }
-                    break; // 只需持久化一次
                 }
-            }
 
-            // 将工具结果添加到上下文
-            // 🔧 思维链修复：为这一批工具结果中的第一个附加当前轮次的思维链
-            // 一轮 LLM 调用可能产生多个工具调用，但只有一个思维链
-            // 🔧 Gemini 3 修复：同时附加 thought_signature（工具调用必需）
-            let cached_thought_sig = adapter.get_thought_signature();
-            let tool_results_count = tool_results.len();
-            let pending_reasoning = ctx.pending_reasoning_for_api.clone();
-            let tool_results_with_reasoning: Vec<_> = tool_results
-                .into_iter()
-                .enumerate()
-                .map(|(i, mut result)| {
-                    if i == 0 {
-                        // 只有第一个工具结果携带这一轮的思维链
-                        result.reasoning_content = pending_reasoning.clone();
-                        // 🔧 Gemini 3：附加 thought_signature 以便后续请求回传
-                        result.thought_signature = cached_thought_sig.clone();
-                    }
-                    result
-                })
-                .collect();
-            // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
-            // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
-            // content 字段，让下一轮 LLM 能看到自己上一轮说过什么
-            if !round_content.is_empty() {
-                if let Some(first_tool_call_id) = tool_results_with_reasoning
-                    .first()
-                    .and_then(|r| r.tool_call_id.clone())
-                    .filter(|id| !id.is_empty())
-                {
-                    ctx.round_text_by_tool_call_id
-                        .insert(first_tool_call_id, round_content.clone());
-                }
-            }
-            ctx.add_tool_results(tool_results_with_reasoning);
-
-            // 🆕 P1: 检查点 B — 工具结果累加后，预估下一轮 prompt 是否会溢出
-            if !ctx.needs_compaction {
-                let cfg = self.resolve_active_api_config(ctx).await;
-                let tool_delta: u32 = ctx
-                    .tool_results
-                    .iter()
-                    .rev()
-                    .take(tool_results_count)
-                    .map(|r| {
-                        super::compaction::estimate_json_tokens(
-                            &r.output,
-                            ctx.options.model_id.as_deref(),
-                        )
+                // 将工具结果添加到上下文
+                // 🔧 思维链修复：为这一批工具结果中的第一个附加当前轮次的思维链
+                // 一轮 LLM 调用可能产生多个工具调用，但只有一个思维链
+                // 🔧 Gemini 3 修复：同时附加 thought_signature（工具调用必需）
+                let cached_thought_sig = adapter.get_thought_signature();
+                let tool_results_count = tool_results.len();
+                let pending_reasoning = ctx.pending_reasoning_for_api.clone();
+                let tool_results_with_reasoning: Vec<_> = tool_results
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, mut result)| {
+                        if i == 0 {
+                            // 只有第一个工具结果携带这一轮的思维链
+                            result.reasoning_content = pending_reasoning.clone();
+                            // 🔧 Gemini 3：附加 thought_signature 以便后续请求回传
+                            result.thought_signature = cached_thought_sig.clone();
+                        }
+                        result
                     })
-                    .sum();
-                if super::compaction::should_compact_after_tool(ctx, cfg.as_ref(), tool_delta) {
-                    ctx.needs_compaction = true;
+                    .collect();
+                // 🔧 P1-2 修复：记录本轮伴随文本（text-before-tool_use），
+                // 由 tool_results_to_messages_impl 回填到对应 assistant(tool_call) 消息的
+                // content 字段，让下一轮 LLM 能看到自己上一轮说过什么
+                if !round_content.is_empty() {
+                    if let Some(first_tool_call_id) = tool_results_with_reasoning
+                        .first()
+                        .and_then(|r| r.tool_call_id.clone())
+                        .filter(|id| !id.is_empty())
+                    {
+                        ctx.round_text_by_tool_call_id
+                            .insert(first_tool_call_id, round_content.clone());
+                    }
                 }
-            }
+                ctx.add_tool_results(tool_results_with_reasoning);
 
-            // ============================================================
-            // 🆕 P15 修复：工具执行后中间保存点
-            // 确保工具执行结果被持久化，防止后续阻塞操作（如睡眠）期间刷新丢失数据
-            // ============================================================
-            if let Err(e) = self.save_intermediate_results(ctx).await {
-                log::warn!(
+                // 🆕 P1: 检查点 B — 工具结果累加后，预估下一轮 prompt 是否会溢出
+                if !ctx.needs_compaction {
+                    let cfg = self.resolve_active_api_config(ctx).await;
+                    let tool_delta: u32 = ctx
+                        .tool_results
+                        .iter()
+                        .rev()
+                        .take(tool_results_count)
+                        .map(|r| {
+                            super::compaction::estimate_json_tokens(
+                                &r.output,
+                                ctx.options.model_id.as_deref(),
+                            )
+                        })
+                        .sum();
+                    if super::compaction::should_compact_after_tool(ctx, cfg.as_ref(), tool_delta) {
+                        ctx.needs_compaction = true;
+                    }
+                }
+
+                // ============================================================
+                // 🆕 P15 修复：工具执行后中间保存点
+                // 确保工具执行结果被持久化，防止后续阻塞操作（如睡眠）期间刷新丢失数据
+                // ============================================================
+                if let Err(e) = self.save_intermediate_results(ctx).await {
+                    log::warn!(
                     "[ChatV2::pipeline] Failed to save intermediate results after tool execution: {}",
                     e
                 );
-                // 不阻塞流程，继续执行
-            } else {
-                log::info!(
+                    // 不阻塞流程，继续执行
+                } else {
+                    log::info!(
                     "[ChatV2::pipeline] Intermediate save completed after tool round {}, blocks={}",
                     recursion_depth,
                     ctx.interleaved_block_ids.len()
                 );
-            }
+                }
 
-            // ============================================================
-            // 空闲期检测点 2：工具执行完成后检查 inbox
-            // 设计文档 30：在工具执行完成后、下一轮 LLM 调用前检查
-            // ============================================================
-            if let Some(workspace_id) = ctx.get_workspace_id() {
-                if let Some(ref coordinator) = self.workspace_coordinator {
-                    use super::super::workspace::WorkspaceInjector;
+                // ============================================================
+                // 空闲期检测点 2：工具执行完成后检查 inbox
+                // 设计文档 30：在工具执行完成后、下一轮 LLM 调用前检查
+                // ============================================================
+                if let Some(workspace_id) = ctx.get_workspace_id() {
+                    if let Some(ref coordinator) = self.workspace_coordinator {
+                        use super::super::workspace::WorkspaceInjector;
 
-                    let injector = WorkspaceInjector::new(coordinator.clone());
-                    let max_injections = 2u32; // 工具执行后最多处理 2 批消息
+                        let injector = WorkspaceInjector::new(coordinator.clone());
+                        let max_injections = 2u32; // 工具执行后最多处理 2 批消息
 
-                    if let Ok(injection_result) =
-                        injector.check_and_inject(workspace_id, &ctx.session_id, max_injections)
-                    {
-                        if !injection_result.messages.is_empty() {
-                            let formatted = WorkspaceInjector::format_injected_messages(
-                                &injection_result.messages,
-                            );
-                            ctx.inject_workspace_messages(formatted);
+                        if let Ok(injection_result) =
+                            injector.check_and_inject(workspace_id, &ctx.session_id, max_injections)
+                        {
+                            if !injection_result.messages.is_empty() {
+                                let formatted = WorkspaceInjector::format_injected_messages(
+                                    &injection_result.messages,
+                                );
+                                ctx.inject_workspace_messages(formatted);
 
-                            log::info!(
+                                log::info!(
                                 "[ChatV2::pipeline] Workspace tool-phase injection: {} messages, depth={}",
                                 injection_result.messages.len(),
                                 recursion_depth
                             );
+                            }
                         }
                     }
                 }
-            }
 
-            if task_completed {
-                log::info!(
+                if task_completed {
+                    log::info!(
                     "[ChatV2::pipeline] Task completed detected via attempt_completion, stopping recursive loop at depth={}",
                     recursion_depth
                 );
 
-                // 收集当前轮次的块（无需再次调用 LLM）
-                ctx.collect_round_blocks(
-                    adapter.get_thinking_block_id(),
-                    adapter.get_accumulated_reasoning(),
-                    adapter.get_content_block_id(),
-                    Some(ctx.final_content.clone()),
-                    &ctx.assistant_message_id.clone(),
+                    // 收集当前轮次的块（无需再次调用 LLM）
+                    ctx.collect_round_blocks(
+                        adapter.get_thinking_block_id(),
+                        adapter.get_accumulated_reasoning(),
+                        adapter.get_content_block_id(),
+                        Some(ctx.final_content.clone()),
+                        &ctx.assistant_message_id.clone(),
+                    );
+
+                    // 清除 pending_reasoning
+                    ctx.pending_reasoning_for_api = None;
+
+                    return Ok(());
+                }
+
+                // 进入下一轮 LLM 调用处理工具结果。保持同一 future，避免递归 poll 栈增长。
+                log::debug!(
+                    "[ChatV2::pipeline] Continuing tool loop, depth={}->{}",
+                    recursion_depth,
+                    recursion_depth + 1
                 );
-
-                // 清除 pending_reasoning
-                ctx.pending_reasoning_for_api = None;
-
-                return Ok(());
+                recursion_depth += 1;
+                continue;
             }
 
-            // 进入下一轮 LLM 调用处理工具结果。保持同一 future，避免递归 poll 栈增长。
-            log::debug!(
-                "[ChatV2::pipeline] Continuing tool loop, depth={}->{}",
-                recursion_depth,
-                recursion_depth + 1
+            // ============================================================
+            // 无工具调用，这是最后一轮 LLM 调用
+            // 收集最终的 thinking 和 content 块
+            // ============================================================
+            ctx.collect_round_blocks(
+                adapter.get_thinking_block_id(),
+                adapter.get_accumulated_reasoning(),
+                adapter.get_content_block_id(),
+                Some(ctx.final_content.clone()),
+                &ctx.assistant_message_id.clone(),
             );
-            recursion_depth += 1;
-            continue;
-        }
 
-        // ============================================================
-        // 无工具调用，这是最后一轮 LLM 调用
-        // 收集最终的 thinking 和 content 块
-        // ============================================================
-        ctx.collect_round_blocks(
-            adapter.get_thinking_block_id(),
-            adapter.get_accumulated_reasoning(),
-            adapter.get_content_block_id(),
-            Some(ctx.final_content.clone()),
-            &ctx.assistant_message_id.clone(),
-        );
+            // 🔧 DeepSeek Thinking Mode：清除 pending_reasoning
+            // 根据 DeepSeek API 文档，新的用户问题不需要回传之前的 reasoning_content
+            ctx.pending_reasoning_for_api = None;
 
-        // 🔧 DeepSeek Thinking Mode：清除 pending_reasoning
-        // 根据 DeepSeek API 文档，新的用户问题不需要回传之前的 reasoning_content
-        ctx.pending_reasoning_for_api = None;
-
-        log::info!(
+            log::info!(
             "[ChatV2::pipeline] LLM call completed without tool calls, recursion_depth={}, total interleaved_blocks={}",
             recursion_depth,
             ctx.interleaved_block_ids.len()
         );
 
-        return Ok(());
+            return Ok(());
         }
     }
 

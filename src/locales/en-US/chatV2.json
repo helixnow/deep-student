@@ -1522,10 +1522,13 @@
       "workspaceSwitched": "Workspace Switched",
       "historicalSnapshot": "This is a historical snapshot, the active workspace has changed",
       "idle": "Idle",
+      "queued": "Queued",
       "running": "Running",
       "completed": "Completed",
       "failed": "Failed",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted",
+      "closed": "Closed"
     },
     "skill": {
       "loading": "Loading...",
@@ -1643,10 +1646,13 @@
     "title": "Subagent",
     "status": {
       "running": "Running...",
+      "queued": "Queued",
       "completed": "Completed",
       "failed": "Failed",
       "idle": "Idle",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted",
+      "closed": "Closed"
     },
     "unknownSkill": "Subagent",
     "noSessionId": "Subagent session ID missing",

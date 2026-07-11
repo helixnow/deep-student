@@ -290,8 +290,11 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
       data-presence-status={presenceStatus || undefined}
     >
       {/* 标题行 */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border/30">
-        <div className="flex items-center gap-2 min-w-0">
+      <div
+        className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border/30"
+        data-testid="workbench-ops-header"
+      >
+        <div className="flex flex-1 items-center gap-2 min-w-0">
           <div className="p-1.5 rounded-md bg-primary/10 dark:bg-primary/20 flex-shrink-0">
             <Desktop size={16} className="text-primary" />
           </div>
@@ -314,21 +317,39 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
           </div>
         </div>
 
-        <span
-          className={cn(
-            'text-[11px] px-2 py-0.5 rounded-full flex-shrink-0',
-            statusBadgeClass
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {canOpenTarget && (
+            <NotionButton
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleOpenTarget}
+              className="h-7 gap-1.5 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
+              data-testid="workbench-ops-open"
+              aria-label={t('blocks.workbenchOps.openTarget')}
+              title={t('blocks.workbenchOps.openTarget')}
+            >
+              <ArrowSquareOut size={12} />
+              <span className="hidden sm:inline">{t('blocks.workbenchOps.openTarget')}</span>
+            </NotionButton>
           )}
-          data-testid="workbench-ops-status"
-        >
-          {statusKey === 'running' ? (
-            <TextShimmer className="text-[11px]" duration={1.5} spread={3}>
-              {t(`blocks.workbenchOps.status.${statusKey}`)}
-            </TextShimmer>
-          ) : (
-            t(`blocks.workbenchOps.status.${statusKey}`)
-          )}
-        </span>
+
+          <span
+            className={cn(
+              'text-[11px] px-2 py-0.5 rounded-full flex-shrink-0',
+              statusBadgeClass
+            )}
+            data-testid="workbench-ops-status"
+          >
+            {statusKey === 'running' ? (
+              <TextShimmer className="text-[11px]" duration={1.5} spread={3}>
+                {t(`blocks.workbenchOps.status.${statusKey}`)}
+              </TextShimmer>
+            ) : (
+              t(`blocks.workbenchOps.status.${statusKey}`)
+            )}
+          </span>
+        </div>
       </div>
 
       {/* 步骤流：running 始终展示区；终态有 content 行时保留摘要 */}
@@ -436,82 +457,69 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
         </div>
       )}
 
-      {/* 按钮栏 */}
-      {(canOpenTarget || showUndoChrome) && (
-        <div className="flex flex-wrap gap-2 px-3 py-2.5 border-t border-border/50">
-          {canOpenTarget && (
-            <NotionButton
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleOpenTarget}
-              className="text-xs sm:text-sm bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5"
-              data-testid="workbench-ops-open"
-            >
-              <ArrowSquareOut size={12} />
-              {t('blocks.workbenchOps.openTarget')}
-            </NotionButton>
-          )}
-
-          {showUndoChrome && (
-            <NotionButton
-              type="button"
-              variant="default"
-              size="sm"
-              onClick={() => void handleUndo()}
-              disabled={!canUndo}
-              className="text-xs sm:text-sm gap-1.5"
-              data-testid="workbench-ops-undo"
-              title={
-                undoExpired
-                  ? t('blocks.workbenchOps.undoExpired')
-                  : undoUnavailable
-                    ? t('blocks.workbenchOps.undoUnavailable', {
-                        defaultValue: '撤销不可用（没有可恢复的更改）',
-                      })
-                    : undoState === 'incomplete'
-                      ? ledgerAlive
-                        ? t('blocks.workbenchOps.undoRetry', {
-                            defaultValue: '部分更改未恢复，可再次尝试撤销',
-                          })
-                        : t('blocks.workbenchOps.undoIncompleteExhausted', {
-                            defaultValue: '撤销未完全完成，且没有可重试的更改',
-                          })
-                      : undefined
-              }
-            >
-              {undoState === 'reverted' ? (
-                <>
-                  <Check size={12} className="text-emerald-500" />
-                  {t('blocks.workbenchOps.undoApplied', {
-                    defaultValue: '已撤销可恢复更改',
-                  })}
-                </>
-              ) : undoState === 'incomplete' ? (
-                ledgerAlive ? (
-                  t('blocks.workbenchOps.undoRetry', {
-                    defaultValue: '部分撤销，重试',
-                  })
-                ) : (
-                  t('blocks.workbenchOps.undoIncompleteExhausted', {
-                    defaultValue: '撤销未完全完成（无法重试）',
-                  })
-                )
-              ) : undoExpired ? (
-                t('blocks.workbenchOps.undoExpired')
-              ) : undoUnavailable ? (
-                t('blocks.workbenchOps.undoUnavailable', {
-                  defaultValue: '不可撤销',
-                })
-              ) : undoState === 'loading' ? (
-                t('blocks.workbenchOps.undoing', {
-                  defaultValue: '正在撤销…',
+      {/* 撤销栏：打开目标窗已收进标题行，避免为单个按钮占据整行 */}
+      {showUndoChrome && (
+        <div
+          className="flex flex-wrap gap-2 px-3 py-2.5 border-t border-border/50"
+          data-testid="workbench-ops-footer-actions"
+        >
+          <NotionButton
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => void handleUndo()}
+            disabled={!canUndo}
+            className="text-xs sm:text-sm gap-1.5"
+            data-testid="workbench-ops-undo"
+            title={
+              undoExpired
+                ? t('blocks.workbenchOps.undoExpired')
+                : undoUnavailable
+                  ? t('blocks.workbenchOps.undoUnavailable', {
+                      defaultValue: '撤销不可用（没有可恢复的更改）',
+                    })
+                  : undoState === 'incomplete'
+                    ? ledgerAlive
+                      ? t('blocks.workbenchOps.undoRetry', {
+                          defaultValue: '部分更改未恢复，可再次尝试撤销',
+                        })
+                      : t('blocks.workbenchOps.undoIncompleteExhausted', {
+                          defaultValue: '撤销未完全完成，且没有可重试的更改',
+                        })
+                    : undefined
+            }
+          >
+            {undoState === 'reverted' ? (
+              <>
+                <Check size={12} className="text-emerald-500" />
+                {t('blocks.workbenchOps.undoApplied', {
+                  defaultValue: '已撤销可恢复更改',
+                })}
+              </>
+            ) : undoState === 'incomplete' ? (
+              ledgerAlive ? (
+                t('blocks.workbenchOps.undoRetry', {
+                  defaultValue: '部分撤销，重试',
                 })
               ) : (
-                t('blocks.workbenchOps.undo')
-              )}
-            </NotionButton>
-          )}
+                t('blocks.workbenchOps.undoIncompleteExhausted', {
+                  defaultValue: '撤销未完全完成（无法重试）',
+                })
+              )
+            ) : undoExpired ? (
+              t('blocks.workbenchOps.undoExpired')
+            ) : undoUnavailable ? (
+              t('blocks.workbenchOps.undoUnavailable', {
+                defaultValue: '不可撤销',
+              })
+            ) : undoState === 'loading' ? (
+              t('blocks.workbenchOps.undoing', {
+                defaultValue: '正在撤销…',
+              })
+            ) : (
+              t('blocks.workbenchOps.undo')
+            )}
+          </NotionButton>
         </div>
       )}
     </div>

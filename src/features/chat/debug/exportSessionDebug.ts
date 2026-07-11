@@ -187,7 +187,7 @@ export interface SubagentPreheatLogEntry {
 /** 🆕 P25: 子代理运行时事件日志 */
 export interface SubagentEventLogEntry {
   timestamp: string;
-  eventType: 'worker_ready' | 'worker_ready_dup' | 'worker_ready_retry' | 'coord_wake' | 'preheat_start' | 'preheat_done' | 'run_agent' | 'run_agent_result' | 'inbox_empty' | 'event_received' | 'error';
+  eventType: 'worker_ready' | 'worker_ready_dup' | 'worker_ready_retry' | 'coord_wake' | 'preheat_start' | 'preheat_done' | 'run_agent' | 'run_agent_result' | 'runtime_observer_ready' | 'runtime_completion' | 'inbox_empty' | 'event_received' | 'error';
   agentSessionId?: string;
   workspaceId?: string;
   details?: string;
@@ -774,6 +774,8 @@ export function formatDebugInfoAsText(info: SessionDebugInfo): string {
           preheat_done: '✅',
           run_agent: '▶️',
           run_agent_result: '📤',
+          runtime_observer_ready: '👁️',
+          runtime_completion: '✅',
           inbox_empty: '📭',
           event_received: '📨',
           error: '❌',

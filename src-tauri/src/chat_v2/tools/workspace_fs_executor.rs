@@ -12,15 +12,21 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{
     artifact_mutation_guard, create_write_backup_from_file, normalize_runtime_relative_path,
-    revalidate_runtime_root, runtime_root_by_id, temp_root, RuntimeRoot, RuntimeRootKind,
+    revalidate_runtime_root, runtime_root_by_id, temp_root, RuntimeRoot, RuntimeRootAccess,
+    RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind, MutationReceipt};
 use crate::commands::AppState;
 
 pub mod tool_names {
     pub const FILE_LIST: &str = "workspace_file_list";
     pub const FILE_READ: &str = "workspace_file_read";
     pub const ARTIFACT_WRITE: &str = "workspace_artifact_write";
+    pub const FILE_WRITE: &str = "workspace_file_write";
+    pub const FILE_MOVE: &str = "workspace_file_move";
+    pub const FILE_DELETE: &str = "workspace_file_delete";
+    pub const CHANGE_REVERT: &str = "workspace_change_revert";
 }
 
 const MAX_FILE_SOURCE_BYTES: u64 = 64 * 1024 * 1024;
@@ -159,6 +165,21 @@ impl WorkspaceFsExecutor {
             .file_name()
             .ok_or_else(|| "Artifact target has no file name".to_string())?;
         Ok(parent_canon.join(file_name))
+    }
+
+    fn ensure_writable_workspace(root: &RuntimeRoot) -> Result<(), String> {
+        if root.kind != RuntimeRootKind::Workspace || root.id != "workspace" {
+            return Err("Workspace mutation tools require root_id=workspace".to_string());
+        }
+        if root.access != RuntimeRootAccess::ReadWrite {
+            return Err(
+                "Workspace is read-only; the user must explicitly grant write access".to_string(),
+            );
+        }
+        if !root.configured {
+            return Err("Workspace write access requires a configured workspace root".to_string());
+        }
+        Ok(())
     }
 
     fn root_json(root: &RuntimeRoot) -> Value {
@@ -601,6 +622,138 @@ impl WorkspaceFsExecutor {
             }
         }))
     }
+
+    async fn execute_workspace_write(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
+        Self::ensure_writable_workspace(&root)?;
+        let path = args
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "path is required".to_string())?;
+        let content = args
+            .get("content")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "content is required".to_string())?;
+        if content.len() > MAX_ARTIFACT_WRITE_BYTES {
+            return Err(format!(
+                "Workspace content exceeds the {} MiB write limit",
+                MAX_ARTIFACT_WRITE_BYTES / (1024 * 1024)
+            ));
+        }
+        let expected = args.get("expected_current_hash").and_then(Value::as_str);
+        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        let receipt = workspace_change_set::write_text(
+            &root_canon,
+            &temp.path,
+            &root.id,
+            path,
+            content,
+            expected,
+        )?;
+        Self::workspace_change_output(&root, receipt)
+    }
+
+    async fn execute_workspace_move(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
+        Self::ensure_writable_workspace(&root)?;
+        let source = args
+            .get("source_path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "source_path is required".to_string())?;
+        let destination = args
+            .get("destination_path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "destination_path is required".to_string())?;
+        let expected = args
+            .get("expected_current_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "expected_current_hash is required".to_string())?;
+        let receipt =
+            workspace_change_set::move_file(&root_canon, &root.id, source, destination, expected)?;
+        Self::workspace_change_output(&root, receipt)
+    }
+
+    async fn execute_workspace_delete(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
+        Self::ensure_writable_workspace(&root)?;
+        let path = args
+            .get("path")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "path is required".to_string())?;
+        let expected = args
+            .get("expected_current_hash")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "expected_current_hash is required".to_string())?;
+        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        let receipt =
+            workspace_change_set::delete_file(&root_canon, &temp.path, &root.id, path, expected)?;
+        Self::workspace_change_output(&root, receipt)
+    }
+
+    async fn execute_workspace_revert(
+        &self,
+        args: &Value,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let (root, root_canon) = Self::resolve_root(Some("workspace"), ctx)?;
+        Self::ensure_writable_workspace(&root)?;
+        let receipt: MutationReceipt = serde_json::from_value(
+            args.get("receipt")
+                .cloned()
+                .ok_or_else(|| "receipt is required".to_string())?,
+        )
+        .map_err(|error| format!("Invalid workspace mutation receipt: {}", error))?;
+        if receipt.root_id != root.id {
+            return Err("Mutation receipt belongs to a different runtime root".to_string());
+        }
+        let temp = temp_root(&ctx.window.app_handle(), &ctx.session_id, true)?;
+        workspace_change_set::rollback(&root_canon, &temp.path, &receipt)?;
+        Ok(json!({
+            "reverted": true,
+            "root": Self::root_json(&root),
+            "change_id": receipt.change_id,
+            "receipt": receipt,
+        }))
+    }
+
+    fn workspace_change_output(
+        root: &RuntimeRoot,
+        receipt: MutationReceipt,
+    ) -> Result<Value, String> {
+        let created = usize::from(receipt.op == MutationKind::Created);
+        let modified = usize::from(matches!(
+            receipt.op,
+            MutationKind::Modified | MutationKind::Moved
+        ));
+        let deleted = usize::from(receipt.op == MutationKind::Deleted);
+        let bytes_written = if deleted > 0 { 0 } else { receipt.bytes };
+        let change_set = ChangeSet::single(receipt.clone());
+        Ok(json!({
+            "root": Self::root_json(root),
+            "root_id": root.id,
+            "change_set": change_set,
+            "mutation_receipt": receipt,
+            "file_change_summary": {
+                "created": created,
+                "modified": modified,
+                "deleted": deleted,
+                "bytes_written": bytes_written,
+                "changes": change_set.changes,
+            }
+        }))
+    }
 }
 
 #[async_trait]
@@ -608,7 +761,13 @@ impl ToolExecutor for WorkspaceFsExecutor {
     fn can_handle(&self, tool_name: &str) -> bool {
         matches!(
             Self::strip_namespace(tool_name),
-            tool_names::FILE_LIST | tool_names::FILE_READ | tool_names::ARTIFACT_WRITE
+            tool_names::FILE_LIST
+                | tool_names::FILE_READ
+                | tool_names::ARTIFACT_WRITE
+                | tool_names::FILE_WRITE
+                | tool_names::FILE_MOVE
+                | tool_names::FILE_DELETE
+                | tool_names::CHANGE_REVERT
         )
     }
 
@@ -626,6 +785,10 @@ impl ToolExecutor for WorkspaceFsExecutor {
             tool_names::FILE_LIST => self.execute_file_list(&call.arguments, ctx).await,
             tool_names::FILE_READ => self.execute_file_read(&call.arguments, ctx).await,
             tool_names::ARTIFACT_WRITE => self.execute_artifact_write(&call.arguments, ctx).await,
+            tool_names::FILE_WRITE => self.execute_workspace_write(&call.arguments, ctx).await,
+            tool_names::FILE_MOVE => self.execute_workspace_move(&call.arguments, ctx).await,
+            tool_names::FILE_DELETE => self.execute_workspace_delete(&call.arguments, ctx).await,
+            tool_names::CHANGE_REVERT => self.execute_workspace_revert(&call.arguments, ctx).await,
             _ => Err(format!("Unknown workspace filesystem tool: {}", tool_name)),
         };
 
@@ -669,7 +832,10 @@ impl ToolExecutor for WorkspaceFsExecutor {
 
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match Self::strip_namespace(tool_name) {
-            tool_names::ARTIFACT_WRITE => ToolSensitivity::Medium,
+            tool_names::ARTIFACT_WRITE | tool_names::FILE_WRITE => ToolSensitivity::Medium,
+            tool_names::FILE_MOVE | tool_names::FILE_DELETE | tool_names::CHANGE_REVERT => {
+                ToolSensitivity::High
+            }
             _ => ToolSensitivity::Low,
         }
     }

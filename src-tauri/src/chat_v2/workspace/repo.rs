@@ -133,6 +133,25 @@ impl WorkspaceRepo {
         Ok(())
     }
 
+    pub fn update_agent_metadata(
+        &self,
+        session_id: &str,
+        metadata: Option<&serde_json::Value>,
+    ) -> Result<(), String> {
+        let conn = self.db.get_connection()?;
+        let metadata_json = metadata.map(|value| value.to_string());
+        let changes = conn
+            .execute(
+                "UPDATE agent SET metadata_json = ?1, last_active_at = ?2 WHERE session_id = ?3",
+                rusqlite::params![metadata_json, Utc::now().to_rfc3339(), session_id],
+            )
+            .map_err(|e| e.to_string())?;
+        if changes == 0 {
+            return Err(format!("Agent not found: {session_id}"));
+        }
+        Ok(())
+    }
+
     pub fn delete_agent(&self, session_id: &str) -> Result<(), String> {
         let conn = self.db.get_connection()?;
         conn.execute("DELETE FROM agent WHERE session_id = ?1", [session_id])

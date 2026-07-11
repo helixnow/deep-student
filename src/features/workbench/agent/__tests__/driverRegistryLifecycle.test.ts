@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
     fsrs: makeRegistration(),
     qbank: makeRegistration(),
     pomodoro: makeRegistration(),
+    sandbox: makeRegistration(),
   };
 });
 
@@ -28,6 +29,7 @@ vi.mock('../drivers/finderDriver', () => ({ registerFinderDriver: mocks.finder }
 vi.mock('../drivers/fsrsDriver', () => ({ registerFsrsDriver: mocks.fsrs }));
 vi.mock('../drivers/qbankDriver', () => ({ registerQbankDriver: mocks.qbank }));
 vi.mock('../drivers/pomodoroDriver', () => ({ registerPomodoroDriver: mocks.pomodoro }));
+vi.mock('../drivers/sandboxDriver', () => ({ registerSandboxDriver: mocks.sandbox }));
 
 import { disposeAllDrivers, registerAllDrivers } from '../drivers';
 import type { StageManagerApi } from '../types';

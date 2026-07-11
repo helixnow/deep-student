@@ -3,12 +3,14 @@
 //! - `skill_workshop_propose`（Medium）：提案创建/更新/列表/拒绝，写入 pending 区
 //! - `skill_workshop_apply`（High，必审批）：校验提案完整性后写入活体技能目录 + provenance
 
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use async_trait::async_trait;
+use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -34,6 +36,9 @@ const PROPOSALS_SUBDIR: &str = "skill_proposals";
 const SKILL_FILE_NAME: &str = "SKILL.md";
 const PROPOSAL_META_FILE: &str = "PROPOSAL.json";
 const MAX_CONTENT_BYTES: usize = 40_000;
+const MAX_PACKAGE_FILES: usize = 256;
+const MAX_PACKAGE_FILE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_PACKAGE_TOTAL_BYTES: usize = 32 * 1024 * 1024;
 const MAX_PENDING_PROPOSALS: usize = 50;
 const PROVENANCE_SETTINGS_PREFIX: &str = "skill.provenance.";
 
@@ -49,6 +54,38 @@ struct ProposalMeta {
     status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    package_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    files: Vec<ProposalFileMeta>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    previous_package_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    previous_files: Vec<ProposalFileMeta>,
+    #[serde(default = "default_package_version")]
+    package_version: u64,
+}
+
+fn default_package_version() -> u64 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+struct ProposalFileMeta {
+    path: String,
+    sha256: String,
+    size: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProposalFileInput {
+    path: String,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default, alias = "content_base64")]
+    content_base64: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -57,6 +94,14 @@ struct AgentWorkshopMarker {
     source_kind: String,
     proposal_id: String,
     content_sha256: String,
+    #[serde(default)]
+    package_sha256: String,
+    #[serde(default = "default_package_version")]
+    package_version: u64,
+    #[serde(default)]
+    files: Vec<ProposalFileMeta>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_package_sha256: Option<String>,
     installed_at: String,
     session_id: String,
 }
@@ -70,6 +115,10 @@ struct SkillWorkshopProvenance {
     risk_level: String,
     installed_at: String,
     session_id: String,
+    package_version: u64,
+    files: Vec<ProposalFileMeta>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    previous_package_sha256: Option<String>,
 }
 
 pub struct SkillWorkshopExecutor;
@@ -109,20 +158,225 @@ impl SkillWorkshopExecutor {
             meta.session_id.as_str(),
             meta.status.as_str(),
             meta.previous_sha256.as_deref().unwrap_or(""),
+            meta.package_sha256.as_deref().unwrap_or(""),
+            meta.previous_package_sha256.as_deref().unwrap_or(""),
         ] {
             hasher.update((field.len() as u64).to_le_bytes());
             hasher.update(field.as_bytes());
         }
+        hasher.update(meta.package_version.to_le_bytes());
+        for file in &meta.files {
+            for field in [file.path.as_str(), file.sha256.as_str()] {
+                hasher.update((field.len() as u64).to_le_bytes());
+                hasher.update(field.as_bytes());
+            }
+            hasher.update((file.size as u64).to_le_bytes());
+        }
+        for file in &meta.previous_files {
+            for field in [file.path.as_str(), file.sha256.as_str()] {
+                hasher.update((field.len() as u64).to_le_bytes());
+                hasher.update(field.as_bytes());
+            }
+            hasher.update((file.size as u64).to_le_bytes());
+        }
         hex::encode(hasher.finalize())
     }
 
-    fn assess_content_risk(content: &[u8]) -> (String, Vec<String>) {
-        assess_skill_package_risk(&[(SKILL_FILE_NAME.to_string(), content.to_vec())])
+    fn assess_package_risk(files: &[(String, Vec<u8>)]) -> (String, Vec<String>) {
+        assess_skill_package_risk(files)
+    }
+
+    fn normalize_package_path(raw: &str) -> Result<String, String> {
+        if raw.is_empty() || raw.contains('\\') || Path::new(raw).is_absolute() {
+            return Err(format!("Invalid skill package path: {:?}", raw));
+        }
+        let mut parts = Vec::new();
+        for component in Path::new(raw).components() {
+            match component {
+                std::path::Component::Normal(part) => {
+                    let part = part
+                        .to_str()
+                        .ok_or_else(|| format!("Skill package path is not UTF-8: {:?}", raw))?;
+                    if part.is_empty() || part == "." || part == ".." {
+                        return Err(format!("Invalid skill package path: {:?}", raw));
+                    }
+                    parts.push(part);
+                }
+                _ => return Err(format!("Invalid skill package path: {:?}", raw)),
+            }
+        }
+        let normalized = parts.join("/");
+        let allowed = normalized.eq_ignore_ascii_case(SKILL_FILE_NAME)
+            || ["scripts/", "references/", "assets/"]
+                .iter()
+                .any(|prefix| normalized.to_ascii_lowercase().starts_with(prefix));
+        if !allowed {
+            return Err(format!(
+                "Skill package path '{}' is outside SKILL.md, scripts/, references/, or assets/",
+                raw
+            ));
+        }
+        if normalized.eq_ignore_ascii_case(SKILL_FILE_NAME) {
+            Ok(SKILL_FILE_NAME.to_string())
+        } else {
+            Ok(normalized)
+        }
+    }
+
+    fn package_sha256(files: &[(String, Vec<u8>)]) -> String {
+        let mut ordered: Vec<_> = files.iter().collect();
+        ordered.sort_by(|left, right| left.0.cmp(&right.0));
+        let mut hasher = Sha256::new();
+        for (path, bytes) in ordered {
+            hasher.update((path.len() as u64).to_le_bytes());
+            hasher.update(path.as_bytes());
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        }
+        hex::encode(hasher.finalize())
+    }
+
+    fn package_file_meta(files: &[(String, Vec<u8>)]) -> Vec<ProposalFileMeta> {
+        let mut result: Vec<_> = files
+            .iter()
+            .map(|(path, bytes)| ProposalFileMeta {
+                path: path.clone(),
+                sha256: Self::sha256_hex(bytes),
+                size: bytes.len(),
+            })
+            .collect();
+        result.sort_by(|left, right| left.path.cmp(&right.path));
+        result
+    }
+
+    fn validate_package_files(
+        mut files: Vec<(String, Vec<u8>)>,
+    ) -> Result<Vec<(String, Vec<u8>)>, String> {
+        if files.is_empty() {
+            return Err("files must contain SKILL.md".to_string());
+        }
+        if files.len() > MAX_PACKAGE_FILES {
+            return Err(format!(
+                "Skill package exceeds {} file limit",
+                MAX_PACKAGE_FILES
+            ));
+        }
+        let mut seen = HashSet::new();
+        let mut total = 0usize;
+        for (path, bytes) in &mut files {
+            *path = Self::normalize_package_path(path)?;
+            let folded = path.to_lowercase();
+            if !seen.insert(folded) {
+                return Err(format!("Skill package contains duplicate path: {}", path));
+            }
+            if bytes.len() > MAX_PACKAGE_FILE_BYTES {
+                return Err(format!(
+                    "Skill package file '{}' exceeds {} byte limit",
+                    path, MAX_PACKAGE_FILE_BYTES
+                ));
+            }
+            total = total
+                .checked_add(bytes.len())
+                .ok_or("Skill package total size overflow")?;
+            if total > MAX_PACKAGE_TOTAL_BYTES {
+                return Err(format!(
+                    "Skill package exceeds {} byte total limit",
+                    MAX_PACKAGE_TOTAL_BYTES
+                ));
+            }
+        }
+        let skill = files
+            .iter()
+            .find(|(path, _)| path == SKILL_FILE_NAME)
+            .ok_or("Skill package must contain SKILL.md")?;
+        let content = std::str::from_utf8(&skill.1)
+            .map_err(|e| format!("SKILL.md is not valid UTF-8: {}", e))?;
+        Self::validate_content(content)?;
+        files.sort_by(|left, right| left.0.cmp(&right.0));
+        Ok(files)
+    }
+
+    fn package_files_from_args(args: &Value) -> Result<(Vec<(String, Vec<u8>)>, bool), String> {
+        if let Some(value) = args.get("files") {
+            let inputs: Vec<ProposalFileInput> = serde_json::from_value(value.clone())
+                .map_err(|e| format!("Invalid files list: {}", e))?;
+            let mut files = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                let bytes = match (input.content, input.content_base64) {
+                    (Some(content), None) => content.into_bytes(),
+                    (None, Some(encoded)) => general_purpose::STANDARD
+                        .decode(encoded.trim())
+                        .map_err(|e| {
+                            format!("Invalid base64 content for '{}': {}", input.path, e)
+                        })?,
+                    (Some(_), Some(_)) => {
+                        return Err(format!(
+                            "File '{}' must provide exactly one of content or content_base64",
+                            input.path
+                        ))
+                    }
+                    (None, None) => {
+                        return Err(format!(
+                            "File '{}' must provide content or content_base64",
+                            input.path
+                        ))
+                    }
+                };
+                files.push((input.path, bytes));
+            }
+            return Ok((Self::validate_package_files(files)?, true));
+        }
+        let content = args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .ok_or("content or files is required")?;
+        Self::validate_content(content)?;
+        Ok((
+            vec![(SKILL_FILE_NAME.to_string(), content.as_bytes().to_vec())],
+            false,
+        ))
+    }
+
+    fn read_package_directory(root: &Path) -> Result<Vec<(String, Vec<u8>)>, String> {
+        let mut files = Vec::new();
+        if !root.exists() {
+            return Err(format!("Skill directory does not exist: {:?}", root));
+        }
+        for entry in walkdir::WalkDir::new(root).follow_links(false) {
+            let entry = entry.map_err(|e| format!("Failed to inspect skill package: {}", e))?;
+            if entry.path() == root {
+                continue;
+            }
+            if entry.file_type().is_symlink() {
+                return Err(format!(
+                    "Skill packages may not contain symlinks: {:?}",
+                    entry.path()
+                ));
+            }
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let relative = entry
+                .path()
+                .strip_prefix(root)
+                .map_err(|e| format!("Failed to resolve package path: {}", e))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            if relative == AGENT_INSTALLED_MARKER {
+                continue;
+            }
+            files.push((
+                relative,
+                fs::read(entry.path())
+                    .map_err(|e| format!("Failed to read package file: {}", e))?,
+            ));
+        }
+        Self::validate_package_files(files)
     }
 
     fn verify_approved_proposal(
         meta: &ProposalMeta,
-        proposal_bytes: &[u8],
+        proposal_files: &[(String, Vec<u8>)],
         expected_content_sha256: &str,
         expected_proposal_revision: &str,
     ) -> Result<String, String> {
@@ -139,12 +393,29 @@ impl SkillWorkshopExecutor {
                 expected_content_sha256, meta.content_sha256
             ));
         }
+        let proposal_bytes = proposal_files
+            .iter()
+            .find(|(path, _)| path == SKILL_FILE_NAME)
+            .map(|(_, bytes)| bytes.as_slice())
+            .ok_or("Proposal package is missing SKILL.md")?;
         let actual_sha256 = Self::sha256_hex(proposal_bytes);
         if actual_sha256 != expected_content_sha256 {
             return Err(format!(
                 "Proposal SKILL.md changed after approval scope was created: expected {}, got {}. Review the proposal again before applying.",
                 expected_content_sha256, actual_sha256
             ));
+        }
+        if let Some(expected_package_sha256) = meta.package_sha256.as_deref() {
+            let actual_package_sha256 = Self::package_sha256(proposal_files);
+            if actual_package_sha256 != expected_package_sha256 {
+                return Err(format!(
+                    "Proposal package changed after approval scope was created: expected {}, got {}. Review the proposal again before applying.",
+                    expected_package_sha256, actual_package_sha256
+                ));
+            }
+            if Self::package_file_meta(proposal_files) != meta.files {
+                return Err("Proposal file manifest changed after approval scope was created. Review the proposal again before applying.".to_string());
+            }
         }
         Ok(actual_sha256)
     }
@@ -296,19 +567,56 @@ impl SkillWorkshopExecutor {
     ///
     /// P1 修复：提案目录是全新目录，必须先 `create_dir_all` 再写 SKILL.md，
     /// 否则 `fs::write` 对不存在的目录直接返回 NotFound，propose_create/propose_update 必失败。
-    fn write_proposal_files(dir: &Path, content: &str, meta: &ProposalMeta) -> Result<(), String> {
+    fn write_proposal_files(
+        dir: &Path,
+        files: &[(String, Vec<u8>)],
+        meta: &ProposalMeta,
+    ) -> Result<(), String> {
         fs::create_dir_all(dir)
             .map_err(|e| format!("Failed to create proposal directory: {}", e))?;
-        let skill_path = dir.join(SKILL_FILE_NAME);
-        let mut skill_file = fs::File::create(&skill_path)
-            .map_err(|e| format!("Failed to create proposal SKILL.md: {}", e))?;
-        skill_file
-            .write_all(content.as_bytes())
-            .map_err(|e| format!("Failed to write proposal SKILL.md: {}", e))?;
-        skill_file
-            .sync_all()
-            .map_err(|e| format!("Failed to fsync proposal SKILL.md: {}", e))?;
+        for (relative, bytes) in files {
+            let target = dir.join(relative);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create proposal package directory: {}", e))?;
+            }
+            let mut file = fs::File::create(&target)
+                .map_err(|e| format!("Failed to create proposal file '{}': {}", relative, e))?;
+            file.write_all(bytes)
+                .map_err(|e| format!("Failed to write proposal file '{}': {}", relative, e))?;
+            file.sync_all()
+                .map_err(|e| format!("Failed to fsync proposal file '{}': {}", relative, e))?;
+        }
         Self::write_proposal_meta(dir, meta)
+    }
+
+    fn read_proposal_package(
+        dir: &Path,
+        meta: &ProposalMeta,
+    ) -> Result<Vec<(String, Vec<u8>)>, String> {
+        if meta.files.is_empty() {
+            let bytes = fs::read(dir.join(SKILL_FILE_NAME))
+                .map_err(|e| format!("Failed to read proposal SKILL.md: {}", e))?;
+            return Self::validate_package_files(vec![(SKILL_FILE_NAME.to_string(), bytes)]);
+        }
+        let mut by_path = HashMap::new();
+        for file in &meta.files {
+            let normalized = Self::normalize_package_path(&file.path)?;
+            let target = dir.join(&normalized);
+            let metadata = fs::symlink_metadata(&target)
+                .map_err(|e| format!("Failed to inspect proposal file '{}': {}", normalized, e))?;
+            if metadata.file_type().is_symlink() || !metadata.is_file() {
+                return Err(format!(
+                    "Proposal file '{}' must be a regular non-symlink file",
+                    normalized
+                ));
+            }
+            let bytes = fs::read(&target)
+                .map_err(|e| format!("Failed to read proposal file '{}': {}", normalized, e))?;
+            by_path.insert(normalized, bytes);
+        }
+        let files: Vec<_> = by_path.into_iter().collect();
+        Self::validate_package_files(files)
     }
 
     fn count_pending_proposals(root: &Path) -> Result<usize, String> {
@@ -355,13 +663,14 @@ impl SkillWorkshopExecutor {
             .or_else(|| args.get("skillId"))
             .and_then(|v| v.as_str())
             .ok_or("skill_id is required for propose_create")?;
-        let content = args
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or("content is required (full SKILL.md text with frontmatter)")?;
-
         Self::validate_skill_id(skill_id)?;
-        Self::validate_content(content)?;
+        let (files, is_full_package) = Self::package_files_from_args(args)?;
+        let skill_bytes = files
+            .iter()
+            .find(|(path, _)| path == SKILL_FILE_NAME)
+            .ok_or("Proposal package is missing SKILL.md")?
+            .1
+            .as_slice();
 
         if Self::count_pending_proposals(proposals_root)? >= MAX_PENDING_PROPOSALS {
             return Err(format!(
@@ -371,7 +680,9 @@ impl SkillWorkshopExecutor {
         }
 
         let proposal_id = Self::generate_proposal_id();
-        let content_sha256 = Self::sha256_hex(content.as_bytes());
+        let content_sha256 = Self::sha256_hex(skill_bytes);
+        let package_sha256 = Self::package_sha256(&files);
+        let file_manifest = Self::package_file_meta(&files);
         let dir = Self::proposal_dir(proposals_root, &proposal_id);
 
         let meta = ProposalMeta {
@@ -383,11 +694,16 @@ impl SkillWorkshopExecutor {
             session_id: ctx.session_id.clone(),
             status: "pending".to_string(),
             previous_sha256: None,
+            package_sha256: Some(package_sha256.clone()),
+            files: file_manifest.clone(),
+            previous_package_sha256: None,
+            previous_files: Vec::new(),
+            package_version: 1,
         };
         let proposal_revision = Self::proposal_revision_sha256(&meta);
-        let (risk_level, risk_signals) = Self::assess_content_risk(content.as_bytes());
+        let (risk_level, risk_signals) = Self::assess_package_risk(&files);
 
-        Self::write_proposal_files(&dir, content, &meta)?;
+        Self::write_proposal_files(&dir, &files, &meta)?;
 
         Ok(json!({
             "proposal_id": proposal_id,
@@ -395,7 +711,11 @@ impl SkillWorkshopExecutor {
             "skill_id": skill_id,
             "content_sha256": content_sha256,
             "proposal_revision": proposal_revision,
-            "content_length": content.len(),
+            "content_length": skill_bytes.len(),
+            "package_sha256": package_sha256,
+            "package_version": 1,
+            "files": file_manifest,
+            "full_package": is_full_package,
             "risk_level": risk_level,
             "risk_signals": risk_signals,
             "status": "pending",
@@ -413,13 +733,8 @@ impl SkillWorkshopExecutor {
             .or_else(|| args.get("skillId"))
             .and_then(|v| v.as_str())
             .ok_or("skill_id is required for propose_update")?;
-        let content = args
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or("content is required (full SKILL.md text with frontmatter)")?;
-
         Self::validate_skill_id(skill_id)?;
-        Self::validate_content(content)?;
+        let (mut files, is_full_package) = Self::package_files_from_args(args)?;
 
         let target = Self::skill_target_path(skill_id)?;
         if !target.exists() {
@@ -433,6 +748,35 @@ impl SkillWorkshopExecutor {
         let existing_bytes =
             fs::read(&target).map_err(|e| format!("Failed to read existing SKILL.md: {}", e))?;
         let previous_sha256 = Self::sha256_hex(&existing_bytes);
+        let existing_package =
+            Self::read_package_directory(target.parent().ok_or("Invalid skill target path")?)?;
+        let previous_package_sha256 = Self::package_sha256(&existing_package);
+        let previous_files = Self::package_file_meta(&existing_package);
+        // The legacy content-only API means "replace SKILL.md". Materialize the
+        // complete effective package in the proposal so apply remains atomic and
+        // package provenance covers resources retained from the previous version.
+        if !is_full_package {
+            let new_skill = files.pop().ok_or("Legacy proposal is missing SKILL.md")?;
+            files = existing_package.clone();
+            if let Some(slot) = files.iter_mut().find(|(path, _)| path == SKILL_FILE_NAME) {
+                *slot = new_skill;
+            } else {
+                files.push(new_skill);
+            }
+            files = Self::validate_package_files(files)?;
+        }
+        let skill_bytes = files
+            .iter()
+            .find(|(path, _)| path == SKILL_FILE_NAME)
+            .ok_or("Proposal package is missing SKILL.md")?
+            .1
+            .as_slice();
+        let previous_version =
+            fs::read_to_string(target.parent().unwrap().join(AGENT_INSTALLED_MARKER))
+                .ok()
+                .and_then(|text| serde_json::from_str::<AgentWorkshopMarker>(&text).ok())
+                .map(|marker| marker.package_version)
+                .unwrap_or(0);
 
         if Self::count_pending_proposals(proposals_root)? >= MAX_PENDING_PROPOSALS {
             return Err(format!(
@@ -442,7 +786,9 @@ impl SkillWorkshopExecutor {
         }
 
         let proposal_id = Self::generate_proposal_id();
-        let content_sha256 = Self::sha256_hex(content.as_bytes());
+        let content_sha256 = Self::sha256_hex(skill_bytes);
+        let package_sha256 = Self::package_sha256(&files);
+        let file_manifest = Self::package_file_meta(&files);
         let dir = Self::proposal_dir(proposals_root, &proposal_id);
 
         let meta = ProposalMeta {
@@ -454,11 +800,16 @@ impl SkillWorkshopExecutor {
             session_id: ctx.session_id.clone(),
             status: "pending".to_string(),
             previous_sha256: Some(previous_sha256),
+            package_sha256: Some(package_sha256.clone()),
+            files: file_manifest.clone(),
+            previous_package_sha256: Some(previous_package_sha256.clone()),
+            previous_files,
+            package_version: previous_version.saturating_add(1).max(1),
         };
         let proposal_revision = Self::proposal_revision_sha256(&meta);
-        let (risk_level, risk_signals) = Self::assess_content_risk(content.as_bytes());
+        let (risk_level, risk_signals) = Self::assess_package_risk(&files);
 
-        Self::write_proposal_files(&dir, content, &meta)?;
+        Self::write_proposal_files(&dir, &files, &meta)?;
 
         Ok(json!({
             "proposal_id": proposal_id,
@@ -467,7 +818,12 @@ impl SkillWorkshopExecutor {
             "content_sha256": content_sha256,
             "proposal_revision": proposal_revision,
             "previous_sha256": meta.previous_sha256,
-            "content_length": content.len(),
+            "content_length": skill_bytes.len(),
+            "package_sha256": package_sha256,
+            "package_version": meta.package_version,
+            "previous_package_sha256": previous_package_sha256,
+            "files": file_manifest,
+            "full_package": is_full_package,
             "risk_level": risk_level,
             "risk_signals": risk_signals,
             "status": "pending",
@@ -505,6 +861,10 @@ impl SkillWorkshopExecutor {
                 "action": meta.action,
                 "skill_id": meta.skill_id,
                 "content_sha256": meta.content_sha256,
+                "package_sha256": meta.package_sha256,
+                "package_version": meta.package_version,
+                "previous_package_sha256": meta.previous_package_sha256,
+                "files": meta.files,
                 "proposal_revision": proposal_revision,
                 "created_at": meta.created_at,
                 "content_length": content_len,
@@ -576,12 +936,20 @@ impl SkillWorkshopExecutor {
         ctx: &ExecutionContext,
         proposal_id: &str,
         content_sha256: &str,
+        package_sha256: &str,
+        package_version: u64,
+        files: &[ProposalFileMeta],
+        previous_package_sha256: Option<&str>,
         risk_level: &str,
     ) -> Result<(String, String), String> {
         let marker = AgentWorkshopMarker {
             source_kind: "agent_workshop".to_string(),
             proposal_id: proposal_id.to_string(),
             content_sha256: content_sha256.to_string(),
+            package_sha256: package_sha256.to_string(),
+            package_version,
+            files: files.to_vec(),
+            previous_package_sha256: previous_package_sha256.map(str::to_string),
             installed_at: Utc::now().to_rfc3339(),
             session_id: ctx.session_id.clone(),
         };
@@ -591,10 +959,13 @@ impl SkillWorkshopExecutor {
         let provenance = SkillWorkshopProvenance {
             source_kind: "agent_workshop".to_string(),
             source_detail: proposal_id.to_string(),
-            package_sha256: content_sha256.to_string(),
+            package_sha256: package_sha256.to_string(),
             risk_level: risk_level.to_string(),
             installed_at: marker.installed_at.clone(),
             session_id: ctx.session_id.clone(),
+            package_version,
+            files: files.to_vec(),
+            previous_package_sha256: previous_package_sha256.map(str::to_string),
         };
         let provenance_text = serde_json::to_string_pretty(&provenance)
             .map_err(|e| format!("Failed to serialize provenance: {}", e))?;
@@ -702,16 +1073,16 @@ impl SkillWorkshopExecutor {
             ));
         }
 
-        let proposal_content_path = dir.join(SKILL_FILE_NAME);
-        let proposal_bytes = fs::read(&proposal_content_path)
-            .map_err(|e| format!("Failed to read proposal SKILL.md: {}", e))?;
+        let proposal_files = Self::read_proposal_package(&dir, &meta)?;
         let actual_sha256 = Self::verify_approved_proposal(
             &meta,
-            &proposal_bytes,
+            &proposal_files,
             &expected_content_sha256,
             &expected_proposal_revision,
         )?;
-        let (risk_level, risk_signals) = Self::assess_content_risk(&proposal_bytes);
+        let package_sha256 = Self::package_sha256(&proposal_files);
+        let file_manifest = Self::package_file_meta(&proposal_files);
+        let (risk_level, risk_signals) = Self::assess_package_risk(&proposal_files);
 
         let target = Self::skill_target_path(&meta.skill_id)?;
         let skill_dir = target
@@ -739,6 +1110,16 @@ impl SkillWorkshopExecutor {
                     previous, current_sha256
                 ));
             }
+            let current_package = Self::read_package_directory(&skill_dir)?;
+            let current_package_sha256 = Self::package_sha256(&current_package);
+            let expected_previous_package =
+                meta.previous_package_sha256.as_deref().unwrap_or(previous);
+            if current_package_sha256 != expected_previous_package {
+                return Err(format!(
+                    "Target skill package changed since proposal (TOCTOU): expected {}, got {}. Create a new proposal from the current package.",
+                    expected_previous_package, current_package_sha256
+                ));
+            }
         } else if meta.action == "propose_create" {
             if skill_dir.exists() && !overwrite {
                 return Err(format!(
@@ -750,16 +1131,26 @@ impl SkillWorkshopExecutor {
             return Err(format!("Unsupported proposal action '{}'", meta.action));
         }
 
-        std::str::from_utf8(&proposal_bytes)
-            .map_err(|e| format!("Proposal SKILL.md is not valid UTF-8: {}", e))?;
-
         let commit_overwrite = meta.action == "propose_update" || overwrite;
-        let (marker_text, provenance_text) =
-            Self::provenance_payloads(ctx, proposal_id, &actual_sha256, &risk_level)?;
-        let preserve_existing = skill_dir.exists();
+        let (marker_text, provenance_text) = Self::provenance_payloads(
+            ctx,
+            proposal_id,
+            &actual_sha256,
+            &package_sha256,
+            meta.package_version,
+            &file_manifest,
+            meta.previous_package_sha256.as_deref(),
+            &risk_level,
+        )?;
+        // Legacy content-only updates preserve existing package resources. Full package
+        // proposals replace the entire package so removed files cannot survive an update.
+        let preserve_existing = skill_dir.exists() && meta.files.is_empty();
+        let staged_files = proposal_files.clone();
         let staged = tokio::task::spawn_blocking(move || {
             let staged = StagedSkillDirectory::new(skill_dir, commit_overwrite, preserve_existing)?;
-            staged.write_file(SKILL_FILE_NAME, &proposal_bytes)?;
+            for (relative, bytes) in staged_files {
+                staged.write_file(&relative, &bytes)?;
+            }
             staged.write_file(AGENT_INSTALLED_MARKER, marker_text.as_bytes())?;
             Ok::<StagedSkillDirectory, String>(staged)
         })
@@ -768,7 +1159,14 @@ impl SkillWorkshopExecutor {
 
         // Re-check update proposals while holding the shared skill commit lock, then
         // publish SKILL.md and the untrusted marker as one staged directory swap.
-        let committed = if meta.action == "propose_update" {
+        let committed = if meta.action == "propose_update" && !meta.previous_files.is_empty() {
+            let expected: Vec<_> = meta
+                .previous_files
+                .iter()
+                .map(|file| (file.path.clone(), file.sha256.clone()))
+                .collect();
+            staged.commit_if_manifest_unchanged(&expected, &[AGENT_INSTALLED_MARKER])?
+        } else if meta.action == "propose_update" {
             staged.commit_if_file_unchanged(
                 SKILL_FILE_NAME,
                 meta.previous_sha256
@@ -825,6 +1223,10 @@ impl SkillWorkshopExecutor {
             "skill_id": applied_meta.skill_id,
             "path": Self::relative_skill_display(&applied_meta.skill_id),
             "content_sha256": actual_sha256,
+            "package_sha256": package_sha256,
+            "package_version": applied_meta.package_version,
+            "previous_package_sha256": applied_meta.previous_package_sha256,
+            "files": file_manifest,
             "risk_level": risk_level,
             "risk_signals": risk_signals,
             "trust_status": "untrusted",
@@ -968,6 +1370,7 @@ mod tests {
     #[test]
     fn approved_proposal_hash_and_revision_reject_post_approval_tampering() {
         let reviewed_content = b"---\nname: reviewed\n---\nbody";
+        let reviewed_files = vec![(SKILL_FILE_NAME.to_string(), reviewed_content.to_vec())];
         let reviewed_hash = SkillWorkshopExecutor::sha256_hex(reviewed_content);
         let meta = ProposalMeta {
             proposal_id: "wp_1234567890_abcd".to_string(),
@@ -978,20 +1381,26 @@ mod tests {
             session_id: "sess_review".to_string(),
             status: "pending".to_string(),
             previous_sha256: None,
+            package_sha256: None,
+            files: Vec::new(),
+            previous_package_sha256: None,
+            previous_files: Vec::new(),
+            package_version: 1,
         };
         let reviewed_revision = SkillWorkshopExecutor::proposal_revision_sha256(&meta);
         assert!(SkillWorkshopExecutor::verify_approved_proposal(
             &meta,
-            reviewed_content,
+            &reviewed_files,
             &reviewed_hash,
             &reviewed_revision,
         )
         .is_ok());
 
         let changed_body = b"---\nname: reviewed\n---\nmalicious replacement";
+        let changed_files = vec![(SKILL_FILE_NAME.to_string(), changed_body.to_vec())];
         let body_error = SkillWorkshopExecutor::verify_approved_proposal(
             &meta,
-            changed_body,
+            &changed_files,
             &reviewed_hash,
             &reviewed_revision,
         )
@@ -1002,7 +1411,7 @@ mod tests {
         replaced_proposal.content_sha256 = SkillWorkshopExecutor::sha256_hex(changed_body);
         let replacement_error = SkillWorkshopExecutor::verify_approved_proposal(
             &replaced_proposal,
-            changed_body,
+            &changed_files,
             &reviewed_hash,
             &reviewed_revision,
         )
@@ -1013,7 +1422,7 @@ mod tests {
         retargeted.skill_id = "different-target".to_string();
         let retarget_error = SkillWorkshopExecutor::verify_approved_proposal(
             &retargeted,
-            reviewed_content,
+            &reviewed_files,
             &reviewed_hash,
             &reviewed_revision,
         )
@@ -1035,7 +1444,10 @@ mod tests {
     fn workshop_content_uses_the_package_risk_model() {
         let content =
             b"---\nallowed-tools:\n  - local_shell\n  - fetch\n---\nRun curl with an api_key";
-        let (risk_level, signals) = SkillWorkshopExecutor::assess_content_risk(content);
+        let (risk_level, signals) = SkillWorkshopExecutor::assess_package_risk(&[(
+            SKILL_FILE_NAME.to_string(),
+            content.to_vec(),
+        )]);
         assert_eq!(risk_level, "high");
         assert!(signals.contains(&"shell_tools".to_string()));
         assert!(signals.contains(&"network_tools".to_string()));
@@ -1063,10 +1475,18 @@ mod tests {
             session_id: "sess_test".to_string(),
             status: "pending".to_string(),
             previous_sha256: None,
+            package_sha256: None,
+            files: Vec::new(),
+            previous_package_sha256: None,
+            previous_files: Vec::new(),
+            package_version: 1,
         };
 
-        let result =
-            SkillWorkshopExecutor::write_proposal_files(&dir, "---\nname: t\n---\nbody", &meta);
+        let files = vec![(
+            SKILL_FILE_NAME.to_string(),
+            b"---\nname: t\n---\nbody".to_vec(),
+        )];
+        let result = SkillWorkshopExecutor::write_proposal_files(&dir, &files, &meta);
         assert!(result.is_ok(), "write_proposal_files failed: {:?}", result);
         assert!(dir.join(SKILL_FILE_NAME).exists());
         assert!(dir.join(PROPOSAL_META_FILE).exists());
@@ -1076,5 +1496,91 @@ mod tests {
         assert_eq!(read_back.status, "pending");
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn package_validation_accepts_resources_and_rejects_path_attacks() {
+        let valid = vec![
+            (
+                SKILL_FILE_NAME.to_string(),
+                b"---\nname: t\n---\nbody".to_vec(),
+            ),
+            ("scripts/run.sh".to_string(), b"echo ok".to_vec()),
+            ("references/guide.md".to_string(), b"guide".to_vec()),
+            ("assets/icon.bin".to_string(), vec![0, 1, 2]),
+        ];
+        assert!(SkillWorkshopExecutor::validate_package_files(valid).is_ok());
+        for path in [
+            "/tmp/x",
+            "../x",
+            "scripts/../x",
+            "other/file.txt",
+            "scripts\\x",
+        ] {
+            let files = vec![
+                (
+                    SKILL_FILE_NAME.to_string(),
+                    b"---\nname: t\n---\nbody".to_vec(),
+                ),
+                (path.to_string(), b"x".to_vec()),
+            ];
+            assert!(
+                SkillWorkshopExecutor::validate_package_files(files).is_err(),
+                "accepted {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn package_validation_rejects_case_folded_duplicates() {
+        let files = vec![
+            (
+                SKILL_FILE_NAME.to_string(),
+                b"---\nname: t\n---\nbody".to_vec(),
+            ),
+            ("scripts/Run.sh".to_string(), b"one".to_vec()),
+            ("scripts/run.sh".to_string(), b"two".to_vec()),
+        ];
+        assert!(SkillWorkshopExecutor::validate_package_files(files).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn proposal_reader_rejects_symlink_substitution() {
+        use std::os::unix::fs::symlink;
+        let root =
+            std::env::temp_dir().join(format!("ds_workshop_symlink_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("scripts")).unwrap();
+        fs::write(root.join(SKILL_FILE_NAME), "---\nname: t\n---\nbody").unwrap();
+        symlink(root.join(SKILL_FILE_NAME), root.join("scripts/run.sh")).unwrap();
+        let skill = fs::read(root.join(SKILL_FILE_NAME)).unwrap();
+        let meta = ProposalMeta {
+            proposal_id: "wp_1234567890_abcd".to_string(),
+            action: "propose_create".to_string(),
+            skill_id: "test-skill".to_string(),
+            content_sha256: SkillWorkshopExecutor::sha256_hex(&skill),
+            created_at: Utc::now().to_rfc3339(),
+            session_id: "sess_test".to_string(),
+            status: "pending".to_string(),
+            previous_sha256: None,
+            package_sha256: None,
+            files: vec![
+                ProposalFileMeta {
+                    path: SKILL_FILE_NAME.to_string(),
+                    sha256: SkillWorkshopExecutor::sha256_hex(&skill),
+                    size: skill.len(),
+                },
+                ProposalFileMeta {
+                    path: "scripts/run.sh".to_string(),
+                    sha256: "0".repeat(64),
+                    size: 1,
+                },
+            ],
+            previous_package_sha256: None,
+            previous_files: Vec::new(),
+            package_version: 1,
+        };
+        assert!(SkillWorkshopExecutor::read_proposal_package(&root, &meta).is_err());
+        let _ = fs::remove_dir_all(root);
     }
 }

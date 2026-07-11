@@ -18,6 +18,7 @@ import { registerMindmapDriver } from './mindmapDriver';
 import { registerNoteDriver } from './noteDriver';
 import { registerPomodoroDriver } from './pomodoroDriver';
 import { registerQbankDriver } from './qbankDriver';
+import { registerSandboxDriver } from './sandboxDriver';
 import { registerTodoDriver } from './todoDriver';
 
 /** noteBinding 退订；registerAllDrivers 幂等时先清旧订阅 */
@@ -47,6 +48,7 @@ export function registerAllDrivers(stage: StageManagerApi): void {
     registerQbankDriver(stage),
   ];
   registerPomodoroDriver(stage);
+  registerSandboxDriver(stage);
   registerUserPatchSummarizers();
 
   disposeNoteBinding = setupNoteBinding();

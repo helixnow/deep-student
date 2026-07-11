@@ -133,12 +133,17 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
     switch (subagentStatus) {
       case 'running':
         return <CircleNotch size={16} className="text-blue-500 animate-spin" />;
+      case 'queued':
+        return <Clock size={16} className="text-blue-500" />;
       case 'completed':
         return <CheckCircle size={16} className="text-green-500" />;
       case 'failed':
         return <WarningCircle size={16} className="text-red-500" />;
       case 'cancelled':
+      case 'interrupted':
         return <XCircle size={16} className="text-amber-500" />;
+      case 'closed':
+        return <XCircle size={16} className="text-muted-foreground" />;
       default:
         return <Clock size={16} className="text-muted-foreground" />;
     }
@@ -149,12 +154,18 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
     switch (subagentStatus) {
       case 'running':
         return t('subagent.status.running');
+      case 'queued':
+        return t('subagent.status.queued');
       case 'completed':
         return t('subagent.status.completed');
       case 'failed':
         return t('subagent.status.failed');
       case 'cancelled':
         return t('subagent.status.cancelled');
+      case 'interrupted':
+        return t('subagent.status.interrupted');
+      case 'closed':
+        return t('subagent.status.closed');
       default:
         return t('subagent.status.idle');
     }

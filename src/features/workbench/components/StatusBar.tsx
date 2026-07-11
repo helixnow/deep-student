@@ -5,6 +5,7 @@
  * 入口打开紧凑学习中心（2×2 瓷砖）。Windows 右侧为窗控胶囊让位。
  */
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import {
   Cards,
@@ -14,7 +15,7 @@ import {
   Timer,
 } from '@phosphor-icons/react';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
-import { isWindows } from '@/utils/platform';
+import { isMacOS, isWindows } from '@/utils/platform';
 import {
   getFlashcardsDueCount,
   subscribeFlashcardsDueCount,
@@ -92,6 +93,7 @@ const StatusBarComponent: React.FC = () => {
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const winChromeInset = isWindows();
+  const macChrome = isMacOS();
   useLiquidGlassLens(panelRef, centerOpen);
 
   const dueCount = useSyncExternalStore(
@@ -183,16 +185,36 @@ const StatusBarComponent: React.FC = () => {
     [closeCenter],
   );
 
+  const handleDragMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (!macChrome || event.button !== 0) return;
+    if ((event.target as HTMLElement).closest('[data-no-drag]')) return;
+    event.preventDefault();
+    if (event.detail === 2) {
+      void getCurrentWindow().toggleMaximize();
+      return;
+    }
+    void getCurrentWindow().startDragging();
+  }, [macChrome]);
+
   return (
     <div
       className="wb-menubar"
       data-wb-menubar
       data-testid="wb-menubar"
       data-chrome-inset={winChromeInset ? 'windows' : undefined}
+      data-macos-chrome={macChrome ? 'integrated' : undefined}
       role="banner"
       aria-label={t('menubar.label', { defaultValue: '学习状态栏' })}
     >
-      <div className="wb-menubar-trailing">
+      {macChrome ? (
+        <div
+          className="wb-menubar-drag-region"
+          data-testid="wb-menubar-drag-region"
+          aria-hidden="true"
+          onMouseDown={handleDragMouseDown}
+        />
+      ) : null}
+      <div className="wb-menubar-trailing" data-no-drag>
         <div className="wb-menubar-status-slot" data-testid="wb-menubar-status-slot">
           <StatusBarItems dueCount={dueCount} taskCount={taskCount} />
         </div>

@@ -14,9 +14,24 @@ import { appRegistry } from '../../core/appRegistry';
 import { useWindowStore } from '../../core/windowStore';
 import { RESOURCE_APP_TYPE_IDS } from '../content/typeMap';
 import { normalizeResourceInstanceKey } from '../content/resourceIdentity';
+import {
+  closeWorkspaceResource,
+  getWorkspaceOpenResources,
+} from '../notes/workspaceRegistry';
 
 const RESOURCE_RECONCILE_INTERVAL_MS = 5_000;
 const retainedDeletedWindowIds = new Set<string>();
+
+/** note / mindmap 共享窗口，删除资源时只关闭内部标签。ID 前缀并非强约束，因此双类型通知。 */
+export async function closeWorkspaceTabsForDeletedResource(resourceId: string): Promise<boolean> {
+  const normalizedResourceId = normalizeResourceInstanceKey(resourceId);
+  if (!normalizedResourceId) return false;
+  const results = await Promise.all([
+    closeWorkspaceResource({ type: 'note', id: normalizedResourceId }),
+    closeWorkspaceResource({ type: 'mindmap', id: normalizedResourceId }),
+  ]);
+  return results.some(Boolean);
+}
 
 /** 从 DSTU 事件路径提取资源 ID（路径末段，如 '/folder/note_1' → 'note_1'） */
 export function extractResourceIdFromPath(path: string | undefined): string | null {
@@ -72,6 +87,7 @@ export function closeWindowsForDeletedResource(resourceId: string): number {
   const { windows } = useWindowStore.getState();
   const normalizedResourceId = normalizeResourceInstanceKey(resourceId);
   if (!normalizedResourceId) return 0;
+  void closeWorkspaceTabsForDeletedResource(normalizedResourceId);
   let closed = 0;
   for (const win of Object.values(windows)) {
     if (
@@ -97,11 +113,12 @@ export function reconcileDeletedResourceWindows(): Promise<number> {
     for (const windowId of retainedDeletedWindowIds) {
       if (!liveWindowIds.has(windowId)) retainedDeletedWindowIds.delete(windowId);
     }
-    const resourceIds = [...new Set(
-      windows
+    const resourceIds = [...new Set([
+      ...windows
         .map((win) => normalizeResourceInstanceKey(win.instanceKey))
         .filter((id): id is string => Boolean(id)),
-    )];
+      ...getWorkspaceOpenResources().map((resource) => resource.id),
+    ])];
     const missing = await Promise.all(resourceIds.map(async (resourceId) => {
       const result = await dstu.get(`/${resourceId}`);
       if (result.ok && result.value) return null;
@@ -111,7 +128,10 @@ export function reconcileDeletedResourceWindows(): Promise<number> {
     }));
     let closed = 0;
     for (const resourceId of missing) {
-      if (resourceId) closed += closeWindowsForDeletedResource(resourceId);
+      if (resourceId) {
+        closed += closeWindowsForDeletedResource(resourceId);
+        if (await closeWorkspaceTabsForDeletedResource(resourceId)) closed += 1;
+      }
     }
     return closed;
   })().finally(() => {
@@ -159,9 +179,12 @@ export function startResourceSync(): () => void {
   });
 
   reconcileTimer = setInterval(() => {
-    if (Object.values(useWindowStore.getState().windows).some(
-      (win) => RESOURCE_APP_TYPE_IDS.has(win.typeId),
-    )) {
+    if (
+      getWorkspaceOpenResources().length > 0 ||
+      Object.values(useWindowStore.getState().windows).some(
+        (win) => RESOURCE_APP_TYPE_IDS.has(win.typeId),
+      )
+    ) {
       void reconcileDeletedResourceWindows();
     }
   }, RESOURCE_RECONCILE_INTERVAL_MS);

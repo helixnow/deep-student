@@ -161,8 +161,31 @@ function parseQuestionId(op: AgentOp): string | null {
   return null;
 }
 
-export const qbankDriver: CollabDriver = {
+export const qbankDriver: CollabDriver & {
+  queryState: () => Record<string, unknown>;
+} = {
   typeId: TYPE_ID,
+
+  queryState() {
+    const state = useQuestionBankStore.getState();
+    const current = state.currentQuestionId
+      ? state.questions.get(state.currentQuestionId)
+      : undefined;
+    return {
+      examId: state.currentExamId,
+      currentQuestionId: state.currentQuestionId,
+      questionCount: state.questionOrder.length,
+      currentQuestionStatus: current?.status ?? null,
+      currentQuestionType: current?.question_type ?? null,
+      currentQuestionFavorite: current?.is_favorite ?? false,
+      practiceMode: state.practiceMode,
+      focusMode: state.focusMode,
+      filters: state.filters,
+      loading: state.isLoading,
+      submitting: state.isSubmitting,
+      error: state.error,
+    };
+  },
 
   probe(_target: AcrTarget): AcrProbeState {
     return isQbankAnsweringOrEditing() ? 'hot' : 'clean';

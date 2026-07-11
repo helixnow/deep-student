@@ -262,4 +262,24 @@ describe('缩放键 hover 350ms 弹出', () => {
     expect(props.onZoom).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('menu')).toBeNull();
   });
+
+  it('缩放键使用 macOS 对角双三角，并按窗口状态切换方向', () => {
+    const { rerender, props } = renderBar();
+    const zoom = screen.getByRole('button', { name: '缩放窗口' });
+    const expand = zoom.querySelector('[data-wb-zoom-glyph="expand"]');
+    expect(expand).toBeInTheDocument();
+    expect(expand).toHaveAttribute('viewBox', '0 0 16 16');
+    expect(expand?.querySelector('path')).toHaveAttribute('d', 'M2 11V2h9zM14 5v9H5z');
+
+    rerender(<WindowTitleBar {...props} displayMode="maximized" />);
+    const restore = screen
+      .getByRole('button', { name: '缩放窗口' })
+      .querySelector('[data-wb-zoom-glyph="restore"]');
+    expect(restore).toBeInTheDocument();
+    expect(restore).toHaveAttribute('viewBox', '0 0 16 16');
+    expect(restore?.querySelector('path')).toHaveAttribute(
+      'd',
+      'M0 8h6.8L8 6.8V0zM16 8H9.2L8 9.2V16z',
+    );
+  });
 });

@@ -1091,6 +1091,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     >
       <WindowTitleBar
         windowId={windowId}
+        appTypeId={win.typeId}
         title={win.title}
         focused={focused}
         displayMode={win.displayMode}

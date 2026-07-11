@@ -32,6 +32,7 @@ import type {
 } from '../types';
 
 const editors = new Map<string, CrepeEditorApi>();
+const editorReadyListeners = new Map<string, Set<(api: CrepeEditorApi) => void>>();
 
 /** 活跃 run 的中止旗标 */
 const abortFlags = new Map<string, boolean>();
@@ -43,6 +44,11 @@ const FADE_CLEAR_MS = 3000;
 
 export function registerNoteEditor(resourceId: string, api: CrepeEditorApi): void {
   editors.set(resourceId, api);
+  const listeners = editorReadyListeners.get(resourceId);
+  if (listeners) {
+    editorReadyListeners.delete(resourceId);
+    for (const listener of listeners) listener(api);
+  }
 }
 
 export function unregisterNoteEditor(resourceId: string, api?: CrepeEditorApi): void {
@@ -53,6 +59,27 @@ export function unregisterNoteEditor(resourceId: string, api?: CrepeEditorApi): 
 
 export function getNoteEditor(resourceId: string): CrepeEditorApi | undefined {
   return editors.get(resourceId);
+}
+
+/** Wait for a resource editor without polling. The callback may run synchronously. */
+export function subscribeNoteEditorReady(
+  resourceId: string,
+  callback: (api: CrepeEditorApi) => void,
+): () => void {
+  const ready = editors.get(resourceId);
+  if (ready) {
+    callback(ready);
+    return () => undefined;
+  }
+  const listeners = editorReadyListeners.get(resourceId) ?? new Set();
+  listeners.add(callback);
+  editorReadyListeners.set(resourceId, listeners);
+  return () => {
+    const current = editorReadyListeners.get(resourceId);
+    if (!current) return;
+    current.delete(callback);
+    if (current.size === 0) editorReadyListeners.delete(resourceId);
+  };
 }
 
 /** R1-03 / DESIGN §5.2 锚点形状 */

@@ -328,10 +328,13 @@ impl WorkspaceToolExecutor {
                             },
                             "status": match a.status {
                                 AgentStatus::Idle => "idle",
+                                AgentStatus::Queued => "queued",
                                 AgentStatus::Running => "running",
                                 AgentStatus::Completed => "completed",
                                 AgentStatus::Failed => "failed",
                                 AgentStatus::Cancelled => "cancelled",
+                                AgentStatus::Interrupted => "interrupted",
+                                AgentStatus::Closed => "closed",
                             },
                             "skill_id": a.skill_id,
                         })

@@ -21,11 +21,19 @@ import {
 import { StatusBar } from '../StatusBar';
 import { formatStatusBarTime } from '../StatusBarItems';
 
-const { invokeMock } = vi.hoisted(() => ({
+const { invokeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async () => [] as unknown),
+  startDraggingMock: vi.fn(async () => undefined),
+  toggleMaximizeMock: vi.fn(async () => undefined),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({
+    startDragging: startDraggingMock,
+    toggleMaximize: toggleMaximizeMock,
+  }),
+}));
 
 const FLASHCARDS_DUE_LAUNCH = {
   typeId: 'flashcards',
@@ -41,6 +49,8 @@ beforeEach(async () => {
   stopAnkiTaskWatcher();
   invokeMock.mockReset();
   invokeMock.mockResolvedValue([]);
+  startDraggingMock.mockReset();
+  toggleMaximizeMock.mockReset();
   await refreshFlashcardsDueCount();
   await refreshAnkiTaskCount();
   usePomodoroStore.setState({
@@ -256,5 +266,35 @@ describe('StatusBar 学习中心 SB3', () => {
     const bar = screen.getByTestId('wb-menubar');
     // jsdom UA 多为 Windows / 默认 platform 为 windows
     expect(bar.getAttribute('data-chrome-inset')).toBe('windows');
+  });
+
+  it('macOS 下状态栏与原生交通灯共面，并由空白区接管拖拽和双击缩放', () => {
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+      configurable: true,
+    });
+
+    try {
+      render(<StatusBar />);
+      const bar = screen.getByTestId('wb-menubar');
+      expect(bar.getAttribute('data-macos-chrome')).toBe('integrated');
+      expect(bar.hasAttribute('data-tauri-drag-region')).toBe(false);
+      const dragRegion = screen.getByTestId('wb-menubar-drag-region');
+
+      fireEvent.mouseDown(dragRegion, { button: 0, detail: 1 });
+      expect(startDraggingMock).toHaveBeenCalledTimes(1);
+
+      fireEvent.mouseDown(dragRegion, { button: 0, detail: 2 });
+      expect(toggleMaximizeMock).toHaveBeenCalledTimes(1);
+
+      fireEvent.mouseDown(screen.getByTestId('wb-menubar-center'), { button: 0, detail: 1 });
+      expect(startDraggingMock).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', {
+        value: originalUserAgent,
+        configurable: true,
+      });
+    }
   });
 });

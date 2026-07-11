@@ -12,7 +12,10 @@ import type {
   WorkspaceMessage,
   WorkspaceAgent,
   WorkspaceDocument,
+  AgentCompletionEnvelope,
+  AgentStatus,
 } from './types';
+import { isLegacyFrontendWorkerStartEnabled } from './runtimeMode';
 // 🆕 P25: 导入子代理事件日志函数
 import { addSubagentEventLog } from '../debug/exportSessionDebug';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -43,6 +46,8 @@ export const WORKSPACE_EVENTS = {
   DOCUMENT_UPDATED: 'workspace_document_updated',
   WORKSPACE_CLOSED: 'workspace_closed',
   WORKER_READY: 'workspace_worker_ready',
+  /** Runtime-owned terminal envelope. This is the authoritative run result. */
+  AGENT_COMPLETION: 'workspace_agent_completion',
   /** 🆕 主代理被唤醒事件（睡眠块被唤醒后发射，触发管线恢复） */
   COORDINATOR_AWAKENED: 'workspace_coordinator_awakened',
   /** 🆕 P38: 子代理重试事件（子代理完成但没发消息） */
@@ -104,6 +109,21 @@ export interface WorkspaceWorkerReadyEvent {
   skill_id?: string;
   /** 🆕 P38: 子代理没发消息时的提醒内容 */
   reminder?: string;
+  /** False only for an explicitly legacy backend that expects UI startup. */
+  runtime_managed?: boolean;
+}
+
+export interface WorkspaceAgentCompletionEvent {
+  workspace_id: string;
+  agent_session_id: string;
+  task_id?: string;
+  run_id?: string;
+  correlation_id?: string;
+  status: string;
+  final_output?: string;
+  error?: string;
+  completed_at?: string;
+  token_usage?: Record<string, number>;
 }
 
 /** 🆕 主代理唤醒事件 payload */
@@ -261,6 +281,18 @@ export function isActiveStreamError(message: string): boolean {
   return /active stream/i.test(message);
 }
 
+const COMPLETION_STATUSES: ReadonlySet<AgentStatus> = new Set([
+  'completed',
+  'failed',
+  'cancelled',
+  'interrupted',
+  'closed',
+]);
+
+function isCompletionStatus(status: AgentStatus): status is AgentCompletionEnvelope['status'] {
+  return COMPLETION_STATUSES.has(status);
+}
+
 /**
  * 🔧 P39 优化：Worker 启动处理逻辑（独立函数，支持并行调用）
  * 
@@ -272,7 +304,7 @@ async function handleWorkerReady(
   store: ReturnType<typeof useWorkspaceStore.getState>,
   listenerGeneration: number,
 ): Promise<void> {
-  const { workspace_id, agent_session_id, skill_id, reminder } = payload;
+  const { workspace_id, agent_session_id, skill_id, reminder, runtime_managed } = payload;
   if (listenerGeneration !== workspaceEventGeneration) return;
   const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
   if (currentWorkspaceId && currentWorkspaceId !== workspace_id) {
@@ -356,21 +388,23 @@ async function handleWorkerReady(
     const listenersWaitMs = performance.now() - listenersWaitStart;
     console.log(`[Workspace Events] [T+${(performance.now() - startTime).toFixed(1)}ms] Listeners ready for agent: ${agent_session_id} (waited ${listenersWaitMs.toFixed(1)}ms)`);
     
-    // 3. 适配器就绪后，启动子代理任务
-    const runAgentStart = performance.now();
-    const { runAgent } = await import('./api');
-    if (!isWorkerStartAttemptActive(agent_session_id, startAttempt)) {
-      return;
+    // Runtime-managed workers are already running or queued. The frontend only
+    // observes their stream. Keep an explicit escape hatch during migration.
+    let runAgentMs = 0;
+    if (isLegacyFrontendWorkerStartEnabled(runtime_managed)) {
+      const runAgentStart = performance.now();
+      const { runAgent } = await import('./api');
+      if (!isWorkerStartAttemptActive(agent_session_id, startAttempt)) return;
+      addSubagentEventLog('run_agent', agent_session_id, `Legacy runAgent fallback; hasReminder=${!!reminder}`, undefined, workspace_id);
+      const result = await runAgent(workspace_id, agent_session_id, reminder);
+      runAgentMs = performance.now() - runAgentStart;
+      console.log(`[Workspace Events] Legacy worker start returned: ${result.agentSessionId}, status: ${result.status}`);
+      addSubagentEventLog('run_agent_result', agent_session_id, `status=${result.status}, took ${runAgentMs.toFixed(1)}ms`);
+    } else {
+      addSubagentEventLog('runtime_observer_ready', agent_session_id, 'Adapter ready; backend owns execution', undefined, workspace_id);
     }
-    // 🆕 P25: 记录 runAgent 调用
-    addSubagentEventLog('run_agent', agent_session_id, `Calling runAgent... hasReminder=${!!reminder}`, undefined, workspace_id);
-    // 🆕 P38: 传递 reminder 参数（如果有的话，用于子代理没发消息的重试提醒）
-    const result = await runAgent(workspace_id, agent_session_id, reminder);
-    const runAgentMs = performance.now() - runAgentStart;
     const totalMs = performance.now() - startTime;
-    console.log(`[Workspace Events] [T+${totalMs.toFixed(1)}ms] Worker auto-started: ${result.agentSessionId}, status: ${result.status} (runAgent took ${runAgentMs.toFixed(1)}ms)`);
-    // 🆕 P25: 记录 runAgent 结果
-    addSubagentEventLog('run_agent_result', agent_session_id, `status=${result.status}, took ${runAgentMs.toFixed(1)}ms`);
+    console.log(`[Workspace Events] [T+${totalMs.toFixed(1)}ms] Worker observer ready: ${agent_session_id}`);
     
     // 🔧 P30 修复：移除 P28 的 reload
     // P29 在 stream_start 时会创建助手消息占位，reload 会覆盖它导致流式失败
@@ -538,8 +572,9 @@ export async function initWorkspaceEventListeners(): Promise<void> {
 
       // 🔧 P2 修复：去重条目清理不能依赖 currentWorkspaceId 匹配，
       // 否则背景工作区的 agent 完成后条目残留，后续同 agent 的 worker_ready 被永久吞掉。
-      // agent 进入非运行状态（idle/completed/failed/cancelled）时无条件清除。
-      if (parsedStatus !== 'running') {
+      // queued/running are active runtime states. Release observer resources
+      // only after a terminal/idle transition.
+      if (parsedStatus === 'idle' || isCompletionStatus(parsedStatus)) {
         processedWorkerReadyEvents.delete(session_id);
         releaseWorkerAdapterLease(session_id, listenerGeneration, workspace_id);
       }
@@ -547,6 +582,44 @@ export async function initWorkspaceEventListeners(): Promise<void> {
       if (currentWorkspaceId === workspace_id) {
         store.updateAgentStatus(session_id, parsedStatus);
       }
+    }
+  );
+
+  await registerListener<WorkspaceAgentCompletionEvent>(
+    WORKSPACE_EVENTS.AGENT_COMPLETION,
+    (event) => {
+      if (listenerGeneration !== workspaceEventGeneration) return;
+      const payload = event.payload;
+      const status = parseAgentStatus(payload.status);
+      if (!isCompletionStatus(status)) {
+        console.warn(`[Workspace Events] Ignoring non-terminal completion status: ${payload.status}`);
+        return;
+      }
+
+      const completion: AgentCompletionEnvelope = {
+        workspaceId: payload.workspace_id,
+        agentSessionId: payload.agent_session_id,
+        taskId: payload.task_id,
+        runId: payload.run_id,
+        correlationId: payload.correlation_id,
+        status,
+        finalOutput: payload.final_output,
+        error: payload.error,
+        completedAt: payload.completed_at,
+        tokenUsage: payload.token_usage,
+      };
+      processedWorkerReadyEvents.delete(payload.agent_session_id);
+      releaseWorkerAdapterLease(payload.agent_session_id, listenerGeneration, payload.workspace_id);
+      if (useWorkspaceStore.getState().currentWorkspaceId === payload.workspace_id) {
+        store.applyAgentCompletion(completion);
+      }
+      addSubagentEventLog(
+        'runtime_completion',
+        payload.agent_session_id,
+        `status=${status}, run=${payload.run_id || 'unknown'}`,
+        payload.error,
+        payload.workspace_id,
+      );
     }
   );
 
@@ -596,9 +669,7 @@ export async function initWorkspaceEventListeners(): Promise<void> {
     }
   );
 
-  // 监听 Worker 准备启动事件（自动启动 Worker）
-  // 🔧 P20 修复：先预热子代理的适配器（设置事件监听器），再启动任务
-  // 🔧 P39 优化：改为并行启动，多个 worker_ready 事件不再串行等待
+  // Worker ready is an observer/preheat signal. Backend runtime owns execution.
   await registerListener<WorkspaceWorkerReadyEvent>(
     WORKSPACE_EVENTS.WORKER_READY,
     (event) => {

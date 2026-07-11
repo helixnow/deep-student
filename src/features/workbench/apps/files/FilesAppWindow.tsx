@@ -22,7 +22,11 @@ import { workbenchBus } from '../../core/workbenchBus';
 import { shouldPauseHeavyContent } from '../../core/shellGestureFlags';
 import type { AppWindowProps } from '../../core/types';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
-import { resourceTypeToAppTypeId } from '../content/typeMap';
+import {
+  isNotesWorkspaceResourceType,
+  resourceTypeToAppTypeId,
+} from '../content/typeMap';
+import { requestWorkspaceResource } from '../notes/workspaceRegistry';
 import { useFilesViewTransition } from './useFilesViewTransition';
 import { useFilesHoverPreview } from './useFilesHoverPreview';
 import { useResourceDragOut } from './useResourceDragOut';
@@ -35,9 +39,16 @@ import './FilesAppWindow.css';
 export function launchResourceItem(item: Pick<ResourceListItem, 'id' | 'type'>): string | null {
   const typeId = resourceTypeToAppTypeId(item.type);
   if (!typeId) return null;
+  const workspaceResourceType = isNotesWorkspaceResourceType(item.type) ? item.type : null;
+  if (workspaceResourceType) {
+    void requestWorkspaceResource({ type: workspaceResourceType, id: item.id });
+  }
   return workbenchBus.launch({
     typeId,
-    instanceKey: item.id,
+    instanceKey: workspaceResourceType ? undefined : item.id,
+    payload: workspaceResourceType
+      ? { resourceType: workspaceResourceType, resourceId: item.id }
+      : undefined,
     reason: 'files',
   });
 }

@@ -8,6 +8,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ResourceListItem } from '@/features/learning-hub/types';
 
 const sidebarProps: Array<Record<string, unknown>> = [];
+const requestWorkspaceResource = vi.hoisted(() => vi.fn(async () => 'win_notes'));
+
+vi.mock('../../notes/workspaceRegistry', () => ({ requestWorkspaceResource }));
 
 vi.mock('@/features/learning-hub', () => ({
   LearningHubSidebar: (props: Record<string, unknown>) => {
@@ -49,6 +52,7 @@ vi.mock('@/features/learning-hub/stores/finderStore', () => {
 });
 
 import FilesAppWindow, { launchResourceItem } from '../FilesAppWindow';
+import '../../notes/register';
 import {
   clearDesktopResourceDropHandler,
   handleDesktopResourceDrop,
@@ -103,6 +107,7 @@ function dispatchPointer(
 describe('desktopDragBridge', () => {
   beforeEach(() => {
     workbenchBus.setEnabled(true);
+    requestWorkspaceResource.mockClear();
     resetStore();
     clearDesktopResourceDropHandler();
   });
@@ -207,7 +212,7 @@ describe('desktopDragBridge', () => {
       }),
     ).resolves.toBe(true);
 
-    expect(Object.keys(useWindowStore.getState().windows)).toHaveLength(2);
+    expect(Object.keys(useWindowStore.getState().windows)).toHaveLength(1);
     expect(errorSpy).toHaveBeenCalledTimes(2);
     errorSpy.mockRestore();
   });
@@ -229,20 +234,25 @@ describe('desktopDragBridge', () => {
 
     clearDesktopResourceDropHandler();
     const launchSpy = vi.spyOn(workbenchBus, 'launch');
-    const launchPoint = { x: 700, y: 450, clientX: 740, clientY: 490 };
+    const launchPoint = { x: 640, y: 400, clientX: 680, clientY: 440 };
     await handleDesktopResourceDrop({
       resource: { resourceId: 'note_launch_point', resourceType: 'note', title: 'Point' },
       point: launchPoint,
     });
     expect(launchSpy).toHaveBeenCalledWith({
-      typeId: 'note',
-      instanceKey: 'note_launch_point',
-      dropPoint: { x: 700, y: 450 },
+      typeId: 'notes',
+      instanceKey: undefined,
+      payload: {
+        resourceType: 'note',
+        resourceId: 'note_launch_point',
+        title: 'Point',
+      },
+      dropPoint: { x: 640, y: 400 },
       reason: 'files',
     });
 
     const opened = Object.values(useWindowStore.getState().windows).find(
-      (win) => win.instanceKey === 'note_launch_point',
+      (win) => win.typeId === 'notes',
     );
     expect(opened).toBeDefined();
     expect(opened!.frame.x + opened!.frame.w / 2).toBe(launchPoint.x);
@@ -277,7 +287,7 @@ describe('desktopDragBridge', () => {
     });
     const windows = Object.values(useWindowStore.getState().windows);
     expect(windows).toHaveLength(1);
-    expect(windows[0].typeId).toBe('mindmap');
+    expect(windows[0].typeId).toBe('notes');
   });
 });
 

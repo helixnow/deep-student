@@ -428,7 +428,10 @@ impl SleepManager {
     ) -> Result<Vec<WakeResultInfo>, SleepError> {
         if !matches!(
             status,
-            AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+            AgentStatus::Completed
+                | AgentStatus::Failed
+                | AgentStatus::Cancelled
+                | AgentStatus::Closed
         ) {
             return Ok(Vec::new());
         }

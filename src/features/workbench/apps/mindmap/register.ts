@@ -13,7 +13,6 @@ import {
 } from '@/features/mindmap/store/mindmapStore';
 import type { MindMapViewType } from '@/features/mindmap/types';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
-import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { MINDMAP_APP_TYPE_ID } from '../content/typeMap';
 
@@ -143,5 +142,3 @@ export const MINDMAP_APP_DEFINITION: AppDefinition = {
   render: React.lazy(() => import('./MindmapAppWindow')),
   onActivation: handleMindmapActivation,
 };
-
-appRegistry.register(MINDMAP_APP_DEFINITION);

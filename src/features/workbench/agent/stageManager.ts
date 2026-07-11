@@ -7,6 +7,7 @@
  */
 import { getSetting } from '@/utils/settingsApi';
 import { isContentDirty } from '../apps/content/contentDirtyRegistry';
+import { prepareWorkspaceResource } from '../apps/notes/workspaceRegistry';
 import { appRegistry } from '../core/appRegistry';
 import { hubListen } from '../core/eventHub';
 import { subscribePerfDegrade, acquirePerfMonitor } from '../core/perfMonitor';
@@ -17,6 +18,7 @@ import {
 import { getSortedWindows } from '../core/windowListCache';
 import { useWindowStore } from '../core/windowStore';
 import { workbenchBus } from '../core/workbenchBus';
+import type { DisplayMode } from '../core/types';
 import i18n from 'i18next';
 import { createArbitrator, type Arbitrator } from './arbitration';
 import { emitAcrProgress } from './bridge';
@@ -657,6 +659,9 @@ async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeRespons
   }
   const instanceKey =
     typeof args.instanceKey === 'string' ? args.instanceKey : '';
+  if (typeId === 'workbench') {
+    return handleWindowCommand(req, action, args.payload);
+  }
   // R2-10：single（pomodoro/browser）或带 instanceKey 的 multi 可 fallbackLaunch；
   // 无 key 的 multi 不瞎开窗（避免 exam 无资源 id 时开空壳）
   const def = appRegistry.get(typeId);
@@ -701,6 +706,109 @@ async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeRespons
     handled,
     ...(detail?.code ? { code: detail.code } : {}),
     ...(detail?.hint ? { hint: detail.hint } : {}),
+  });
+}
+
+const WINDOW_DISPLAY_ACTIONS: Readonly<Record<string, DisplayMode>> = {
+  maximizeWindow: 'maximized',
+  restoreWindow: 'floating',
+  tileLeft: 'tiled-left',
+  tileRight: 'tiled-right',
+  tileTopLeft: 'tiled-tl',
+  tileTopRight: 'tiled-tr',
+  tileBottomLeft: 'tiled-bl',
+  tileBottomRight: 'tiled-br',
+};
+
+function handleWindowCommand(
+  req: AcrBridgeRequest,
+  action: string,
+  payload: unknown,
+): AcrBridgeResponse {
+  const input = asRecord(payload);
+  const store = useWindowStore.getState();
+
+  if (action === 'showDesktop') {
+    const windowIds = Object.keys(store.windows);
+    for (const id of windowIds) store.minimizeWindow(id, true);
+    return bridgeOk(req.correlationId, {
+      handled: true,
+      affectedWindowIds: windowIds,
+    });
+  }
+
+  if (action === 'tileAll') {
+    const windows = getSortedWindows(store.windows).filter((win) => !win.minimized);
+    const modes: DisplayMode[] =
+      windows.length <= 1
+        ? ['maximized']
+        : windows.length === 2
+          ? ['tiled-left', 'tiled-right']
+          : windows.length === 3
+            ? ['tiled-left', 'tiled-tr', 'tiled-br']
+            : ['tiled-tl', 'tiled-tr', 'tiled-bl', 'tiled-br'];
+    const entries = windows.slice(0, 4).map((win, index) => ({
+      id: win.id,
+      mode: modes[index]!,
+    }));
+    if (store.batchSetDisplayModes) store.batchSetDisplayModes(entries);
+    else for (const entry of entries) store.setDisplayMode(entry.id, entry.mode);
+    return bridgeOk(req.correlationId, {
+      handled: true,
+      affectedWindowIds: entries.map((entry) => entry.id),
+      overflow: Math.max(0, windows.length - entries.length),
+    });
+  }
+
+  const windowId = typeof input.windowId === 'string' ? input.windowId : '';
+  if (!windowId) {
+    return bridgeErr(
+      req.correlationId,
+      'INVALID_ARGS',
+      `${action} 缺少 payload.windowId`,
+      '请先调用 list_windows 获取 windowId',
+      false,
+    );
+  }
+
+  const before = store.windows[windowId];
+  if (!before) {
+    return bridgeErr(
+      req.correlationId,
+      ACR_ERROR_CODES.WINDOW_NOT_FOUND,
+      `窗口不存在: ${windowId}`,
+      '窗口可能已关闭；请重新调用 list_windows',
+      false,
+    );
+  }
+
+  if (action === 'focusWindow') {
+    store.focusWindow(windowId);
+  } else if (action === 'minimizeWindow') {
+    store.minimizeWindow(windowId, true);
+  } else if (action === 'unminimizeWindow') {
+    store.minimizeWindow(windowId, false);
+  } else {
+    const mode = WINDOW_DISPLAY_ACTIONS[action];
+    if (!mode) {
+      return bridgeOk(req.correlationId, {
+        handled: false,
+        code: 'UNSUPPORTED_ACTION',
+        hint: `workbench 不支持窗口指令 ${action}`,
+      });
+    }
+    store.setDisplayMode(windowId, mode);
+  }
+
+  const after = useWindowStore.getState().windows[windowId];
+  return bridgeOk(req.correlationId, {
+    handled: true,
+    windowId,
+    minimized: after?.minimized ?? before.minimized,
+    displayMode: after?.displayMode ?? before.displayMode,
+    focused:
+      useWindowStore.getState().focusStack.at(-1) === windowId &&
+      !(after?.minimized ?? before.minimized),
   });
 }
 
@@ -803,6 +911,21 @@ async function handleApplyOps(
       '请改用对应领域工具直写数据面，或等待该应用 Driver 就绪',
       false,
     );
+  }
+
+  if (
+    target.resourceId &&
+    (target.typeId === 'note' || target.typeId === 'mindmap')
+  ) {
+    const notesWindow = Object.values(useWindowStore.getState().windows).find(
+      (window) => window.typeId === 'notes',
+    );
+    if (notesWindow) {
+      await prepareWorkspaceResource(
+        { type: target.typeId, id: target.resourceId },
+        notesWindow.id,
+      );
+    }
   }
 
   // 解析目标窗：优先 probe，其次按 typeId+resourceId 查找

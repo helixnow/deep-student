@@ -9,12 +9,18 @@ import {
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { resetWindowStoreForTests, useWindowStore } from '@/features/workbench/core/windowStore';
 import { registerTestApp } from '@/features/workbench/core/__tests__/testUtils';
+import {
+  registerWorkspaceHost,
+  resetWorkspaceRegistryForTests,
+  setWorkspaceActiveResource,
+} from '@/features/workbench/apps/notes/workspaceRegistry';
 import { probeTarget } from '../probe';
 import { setAgentControlForTests, stageManager } from '../stageManager';
 import type { AcrProbeState, AcrTarget, CollabDriver } from '../types';
 
 registerTestApp('acr-probe-note', { instanceMode: 'multi' });
 registerTestApp('acr-probe-todo', { instanceMode: 'single' });
+registerTestApp('notes', { instanceMode: 'single' });
 
 function openNote(resourceId: string): string {
   return useWindowStore.getState().openWindow({
@@ -56,6 +62,7 @@ describe('probeTarget 六态矩阵', () => {
   beforeEach(() => {
     resetWindowStoreForTests({ w: 1400, h: 900 });
     __resetContentDirtyRegistry();
+    resetWorkspaceRegistryForTests();
     workbenchBus.setEnabled(true);
     setAgentControlForTests('background');
     // 清掉可能残留的 driver（stageManager 为模块单例）
@@ -72,6 +79,7 @@ describe('probeTarget 六态矩阵', () => {
     workbenchBus.setEnabled(false);
     setAgentControlForTests('background');
     __resetContentDirtyRegistry();
+    resetWorkspaceRegistryForTests();
     resetWindowStoreForTests();
   });
 
@@ -150,5 +158,18 @@ describe('probeTarget 六态矩阵', () => {
     useWindowStore.getState().setLifecycles({ [id]: 'focused' });
     const target: AcrTarget = { typeId: 'acr-probe-todo' };
     expect(probeTarget(target)).toEqual({ state: 'clean', windowId: id });
+  });
+
+  it('note 资源通过统一 notes 窗的内部标签定位', () => {
+    const id = useWindowStore.getState().openWindow({ typeId: 'notes' });
+    const resource = { type: 'note' as const, id: 'note-in-workspace' };
+    registerWorkspaceHost(id, { openResource: vi.fn() });
+    setWorkspaceActiveResource(id, resource);
+    stageManager.registerDriver(makeDriver('note', 'clean'));
+
+    expect(probeTarget({ typeId: 'note', resourceId: resource.id })).toEqual({
+      state: 'clean',
+      windowId: id,
+    });
   });
 });

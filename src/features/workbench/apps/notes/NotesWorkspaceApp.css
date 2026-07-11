@@ -1,0 +1,490 @@
+.notes-workspace {
+  --notes-explorer-width: 240px;
+
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 44px var(--notes-explorer-width) minmax(0, 1fr);
+  overflow: hidden;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0;
+}
+
+.notes-ribbon {
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 0 6px;
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 50%);
+}
+
+.notes-ribbon > div {
+  display: grid;
+  gap: 4px;
+}
+
+.notes-icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  cursor: default;
+}
+
+.notes-icon-button:hover, .notes-icon-button:focus-visible, .notes-icon-button[data-active='true'] {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+  outline: none;
+}
+
+.notes-icon-button:focus-visible {
+  box-shadow: inset 0 0 0 2px hsl(var(--ring));
+}
+
+.notes-explorer {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  min-width: 200px;
+  max-width: 360px;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 34%);
+}
+
+.notes-explorer header {
+  height: 40px;
+  padding: 0 7px 0 12px;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-explorer header > div {
+  display: flex;
+}
+
+.notes-explorer header .notes-icon-button {
+  width: 25px;
+  height: 25px;
+}
+
+.notes-search {
+  height: 30px;
+  margin: 0 8px 6px;
+  padding: 0 7px;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  align-items: center;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  background: hsl(var(--background));
+}
+
+.notes-search:focus-within {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.notes-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.notes-search .notes-icon-button {
+  width: 20px;
+  height: 20px;
+}
+
+.notes-tree {
+  flex: 1;
+  overflow: auto;
+  padding: 1px 6px 12px;
+}
+
+.notes-tree-row {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 6px;
+  color: hsl(var(--foreground));
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.notes-tree-row:hover, .notes-tree-row[data-active='true'] {
+  background: hsl(var(--accent));
+}
+
+.notes-tree-row[data-active='true'] {
+  font-weight: 500;
+}
+
+.notes-tree-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tree-folder {
+  color: hsl(var(--muted-foreground));
+  font-weight: 600;
+}
+
+.notes-tree-folder .is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.notes-tree-message {
+  padding: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-explorer-resize {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+}
+
+.notes-workspace-main {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 24px;
+}
+
+.notes-panes {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.notes-workspace-pane {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  background: hsl(var(--background));
+}
+
+.notes-tabstrip {
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: end;
+  overflow-x: auto;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 30%);
+  scrollbar-width: none;
+}
+
+.notes-titlebar-tabs {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  pointer-events: none;
+}
+
+.notes-titlebar-tabs .notes-tabstrip {
+  height: 100%;
+  flex: 1;
+  border-bottom: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.notes-titlebar-tabs .notes-tab {
+  height: 34px;
+  pointer-events: auto;
+}
+
+.notes-titlebar-tabs .notes-tab[data-active='true'] {
+  height: 38px;
+}
+
+.notes-tab {
+  height: 36px;
+  min-width: 118px;
+  max-width: 210px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-tab[data-active='true'] {
+  height: 40px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+}
+
+.notes-tab > button:first-child {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  padding: 0 3px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+
+.notes-tab > button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tab .notes-icon-button {
+  width: 24px;
+  height: 24px;
+  margin-right: 4px;
+  opacity: 0;
+}
+
+.notes-tab:hover .notes-icon-button, .notes-tab[data-active='true'] .notes-icon-button {
+  opacity: 1;
+}
+
+.notes-editor-actions {
+  height: 44px;
+  padding: 0 8px;
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) 32px;
+  align-items: center;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.notes-editor-title {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-pane-content, .notes-document-host {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.notes-document-host[hidden] {
+  display: none;
+}
+
+.notes-empty-pane {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-statusbar {
+  height: 24px;
+  padding: 0 9px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 26%);
+  font-size: 11px;
+}
+
+.notes-explorer-handle, .notes-split-indicator, .notes-explorer-scrim {
+  display: none;
+}
+
+.notes-context-menu {
+  position: fixed;
+  z-index: 50;
+  width: 148px;
+  padding: 4px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 7px;
+  background: hsl(var(--popover));
+  box-shadow: 0 8px 24px hsl(var(--foreground) / 14%);
+}
+
+.notes-context-menu button {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  color: hsl(var(--popover-foreground));
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.notes-context-menu button:hover, .notes-context-menu button:focus-visible {
+  background: hsl(var(--accent));
+  outline: 0;
+}
+
+.notes-context-menu button.is-danger {
+  color: hsl(var(--destructive));
+}
+
+.notes-dialog-scrim {
+  position: absolute;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: hsl(var(--foreground) / 18%);
+}
+
+.notes-resource-dialog {
+  width: min(360px, calc(100% - 32px));
+  padding: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--popover));
+  box-shadow: 0 16px 42px hsl(var(--foreground) / 18%);
+}
+
+.notes-resource-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.notes-resource-dialog p {
+  margin: 0 0 16px;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-resource-dialog input {
+  width: 100%;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  outline: 0;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+}
+
+.notes-resource-dialog input:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.notes-resource-dialog > div {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.notes-resource-dialog button {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+}
+
+.notes-resource-dialog button.is-primary {
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  background: hsl(var(--primary));
+}
+
+.notes-resource-dialog button.is-danger {
+  border-color: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  background: hsl(var(--destructive));
+}
+
+@media (width <= 719px) {
+  .notes-workspace {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .notes-explorer {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    bottom: 0;
+    left: 44px;
+    transform: translateX(-105%);
+    box-shadow: 8px 0 24px hsl(var(--foreground) / 12%);
+    transition: transform 140ms ease;
+  }
+
+  .notes-explorer[data-open='true'] {
+    transform: translateX(0);
+  }
+
+  .notes-workspace-main {
+    grid-column: 2;
+  }
+
+  .notes-explorer-scrim {
+    position: absolute;
+    z-index: 3;
+    inset: 0 0 0 44px;
+    display: block;
+    border: 0;
+    background: hsl(var(--foreground) / 12%);
+  }
+
+  .notes-explorer-handle {
+    position: absolute;
+    z-index: 2;
+    left: 49px;
+    top: 47px;
+    display: grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-explorer {
+    transition: none;
+  }
+}

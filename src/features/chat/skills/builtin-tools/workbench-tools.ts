@@ -25,6 +25,9 @@ const WORKBENCH_TYPE_IDS = [
   'mindmap',
   'files',
   'todo',
+  'skills',
+  'templates',
+  'taskDashboard',
   'flashcards',
   'browser',
   'settings',
@@ -174,7 +177,7 @@ export const workbenchToolsSkill: SkillDefinition = {
         '【何时用】滚动到消息/标题、浏览器导航、导图聚焦节点、开始复习、番茄钟控制等导航类操作。',
         '【何时不用】增删改笔记/导图/待办条目等内容——请用领域工具。',
         '【副作用】可能聚焦目标窗并改变其 UI 状态（滚动位置、当前列表等）；不直接改持久化业务数据（除非该 action 本身触发应用内逻辑）。',
-        '【v1 action 清单】chat: setInput/focusInput/scrollToMessage；browser: navigate/focusAddress/takeOver/showContent；mindmap: focusNode/setView；note: scrollToHeading；exam: focusQuestion；todo: showList/focusItem；files: openFolder/reveal；flashcards: startReview；pomodoro: start/pause/resume/stop；textbook/file: scrollToHeading（需 payload.page）。',
+        '【action 清单】workbench: focusWindow/minimizeWindow/unminimizeWindow/maximizeWindow/restoreWindow/tileLeft/tileRight/tileTopLeft/tileTopRight/tileBottomLeft/tileBottomRight/tileAll/showDesktop；chat: setInput/focusInput/scrollToMessage；browser: navigate/focusAddress/takeOver/showContent；mindmap: focusNode/setView；note: scrollToHeading；exam: focusQuestion/nextQuestion/previousQuestion/setFilters/resetFilters/setPracticeMode/setFocusMode/showSettings；todo: showList/focusItem/showView/search/setFilters；files: openFolder/reveal/goBack/goForward/goUp/search/setViewMode/setSorting/select/selectAll/clearSelection/refresh；flashcards: startReview/showScreen/startDueReview/flipCard/endReview；pomodoro: start/pause/resume/stop；sandbox: refresh/setViewport/setInspector/setMode/closeSession；textbook/file: scrollToHeading（需 payload.page）。',
         `【分工】${DIVISION}`,
         '【成功返回】{ handled: boolean }；未处理时看 message/hint。',
       ].join(' '),
@@ -185,7 +188,7 @@ export const workbenchToolsSkill: SkillDefinition = {
         properties: {
           typeId: {
             type: 'string',
-            enum: [...WORKBENCH_TYPE_IDS],
+            enum: ['workbench', ...WORKBENCH_TYPE_IDS],
             description: '【必填】目标应用类型 id',
           },
           instanceKey: {
@@ -195,7 +198,7 @@ export const workbenchToolsSkill: SkillDefinition = {
           action: {
             type: 'string',
             description:
-              '【必填】指令名。v1：setInput/focusInput/scrollToMessage/navigate/focusAddress/takeOver/showContent/focusNode/setView/scrollToHeading/showList/focusItem/openFolder/reveal/startReview/focusQuestion/start/pause/resume/stop',
+              '【必填】语义指令名。窗口布局使用 focusWindow/minimizeWindow/unminimizeWindow/maximizeWindow/restoreWindow/tileLeft/tileRight/tileTopLeft/tileTopRight/tileBottomLeft/tileBottomRight/tileAll/showDesktop',
           },
           payload: {
             type: 'object',

@@ -70,10 +70,13 @@ impl Default for AgentRole {
 #[serde(rename_all = "snake_case")]
 pub enum AgentStatus {
     Idle,
+    Queued,
     Running,
     Completed,
     Failed,
     Cancelled,
+    Interrupted,
+    Closed,
 }
 
 impl Default for AgentStatus {

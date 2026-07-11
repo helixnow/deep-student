@@ -22,7 +22,10 @@ vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: vi.fn(async () => ({ id: 'sess_test' })),
 }));
 
-import { WorkbenchDesktop } from '@/features/workbench/components/WorkbenchDesktop';
+import {
+  WorkbenchDesktop,
+  migrateLegacyNotesSnapshotWindows,
+} from '@/features/workbench/components/WorkbenchDesktop';
 import { getDockPinned, setDockPinned } from '@/features/workbench/components/Dock';
 import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -159,6 +162,30 @@ describe('P11 WorkbenchDesktop 总装', () => {
     expect(win.displayMode).toBe('floating');
     // 快照 dockPinned 非空 → 原样恢复（不套默认值）
     expect(getDockPinned()).toEqual(['files']);
+  });
+
+  it('升级旧快照时将多个 note/mindmap 窗口折叠成 Notes 单例', () => {
+    const makeWindow = (id: string, typeId: string, lastFocusedAt: number) => ({
+      id,
+      typeId,
+      instanceKey: `${typeId}_${id}`,
+      title: typeId,
+      frame: { x: 60, y: 40, w: 400, h: 300 },
+      restoreFrame: null,
+      displayMode: 'floating' as const,
+      minimized: false,
+      zIndex: 10,
+      createdAt: lastFocusedAt,
+      lastFocusedAt,
+    });
+    const migrated = migrateLegacyNotesSnapshotWindows([
+      makeWindow('old-note', 'note', 1),
+      makeWindow('old-map', 'mindmap', 2),
+      makeWindow('files', 'files', 3),
+    ]);
+
+    expect(migrated.map((win) => win.typeId)).toEqual(['notes', 'files']);
+    expect(migrated[0]).toMatchObject({ id: 'old-map', instanceKey: null, title: '' });
   });
 
   it('legacy 降级映射：chat / 资源 / 系统视图翻译为现有 CustomEvent', () => {

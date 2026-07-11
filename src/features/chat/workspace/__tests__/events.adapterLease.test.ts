@@ -142,7 +142,8 @@ describe('workspace worker adapter lease', () => {
         skill_id: 'skill_test',
       },
     });
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.adapterManager.waitForListenersReady).toHaveBeenCalledOnce());
+    expect(mocks.runAgent).not.toHaveBeenCalled();
 
     statusChanged({
       payload: { workspace_id: 'ws_test', session_id: 'agent_test', status: 'idle' },
@@ -250,7 +251,8 @@ describe('workspace worker adapter lease', () => {
         skill_id: 'skill_test',
       },
     });
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(mocks.adapterManager.waitForListenersReady).toHaveBeenCalledTimes(1));
+    expect(mocks.runAgent).not.toHaveBeenCalled();
 
     await cleanupWorkspaceEventListeners();
     expect(mocks.adapterManager.release).toHaveBeenCalledTimes(1);
@@ -266,7 +268,8 @@ describe('workspace worker adapter lease', () => {
         skill_id: 'skill_test',
       },
     });
-    await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(mocks.adapterManager.waitForListenersReady).toHaveBeenCalledTimes(2));
+    expect(mocks.runAgent).not.toHaveBeenCalled();
 
     oldStatusChanged({
       payload: { workspace_id: 'ws_test', session_id: 'agent_reinit', status: 'completed' },
@@ -295,7 +298,68 @@ describe('workspace worker adapter lease', () => {
 
     useWorkspaceStore.getState().setCurrentWorkspace('ws_background');
     workerReady({ payload });
+    await vi.waitFor(() => expect(mocks.adapterManager.waitForListenersReady).toHaveBeenCalledOnce());
+    expect(mocks.runAgent).not.toHaveBeenCalled();
+  });
+
+  it('uses the frontend start path only when the backend explicitly declares legacy ownership', async () => {
+    await initWorkspaceEventListeners();
+    const workerReady = mocks.callbacks.get(WORKSPACE_EVENTS.WORKER_READY)!;
+
+    workerReady({
+      payload: {
+        workspace_id: 'ws_test',
+        agent_session_id: 'agent_legacy',
+        skill_id: 'skill_test',
+        runtime_managed: false,
+      },
+    });
+
     await vi.waitFor(() => expect(mocks.runAgent).toHaveBeenCalledOnce());
+  });
+
+  it('applies a typed runtime completion and releases the observer lease', async () => {
+    useWorkspaceStore.getState().setCurrentWorkspace('ws_test');
+    useWorkspaceStore.getState().addAgent({
+      sessionId: 'agent_complete',
+      workspaceId: 'ws_test',
+      role: 'worker',
+      status: 'running',
+      joinedAt: '2026-01-01T00:00:00.000Z',
+      lastActiveAt: '2026-01-01T00:00:00.000Z',
+    });
+    await initWorkspaceEventListeners();
+    const workerReady = mocks.callbacks.get(WORKSPACE_EVENTS.WORKER_READY)!;
+    const completed = mocks.callbacks.get(WORKSPACE_EVENTS.AGENT_COMPLETION)!;
+
+    workerReady({
+      payload: {
+        workspace_id: 'ws_test',
+        agent_session_id: 'agent_complete',
+        runtime_managed: true,
+      },
+    });
+    await vi.waitFor(() => expect(mocks.adapterManager.waitForListenersReady).toHaveBeenCalledOnce());
+
+    completed({
+      payload: {
+        workspace_id: 'ws_test',
+        agent_session_id: 'agent_complete',
+        run_id: 'run_1',
+        status: 'interrupted',
+        final_output: 'partial result',
+        completed_at: '2026-01-01T00:01:00.000Z',
+      },
+    });
+
+    const agent = useWorkspaceStore.getState().agents.find((item) => item.sessionId === 'agent_complete');
+    expect(agent?.status).toBe('interrupted');
+    expect(agent?.metadata?.lastCompletion).toMatchObject({
+      runId: 'run_1',
+      finalOutput: 'partial result',
+      status: 'interrupted',
+    });
+    expect(mocks.adapterManager.release).toHaveBeenCalledOnce();
   });
 
   it('does not poison coordinator wake dedup with a background workspace event', async () => {

@@ -22,6 +22,8 @@ export const TILE_MENU_CLOSE_GRACE = 200;
 
 export interface WindowTitleBarProps {
   windowId: string;
+  /** App type enables app-specific chrome, such as Notes tabs in the title bar. */
+  appTypeId?: string;
   title: string;
   focused: boolean;
   displayMode: DisplayMode;
@@ -63,25 +65,29 @@ const GlyphMin = () => (
 /** floating：向外展开双三角；maximized / tiled：向内还原 */
 const GlyphZoom = ({ restore }: { restore: boolean }) =>
   restore ? (
-    <svg className="wb-title-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+    <svg
+      className="wb-title-glyph"
+      data-wb-zoom-glyph="restore"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path
-        d="M4.2 2.8L2.8 2.8 2.8 4.2M7.8 2.8L9.2 2.8 9.2 4.2M4.2 9.2L2.8 9.2 2.8 7.8M7.8 9.2L9.2 9.2 9.2 7.8"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M0 8h6.8L8 6.8V0zM16 8H9.2L8 9.2V16z"
+        fill="currentColor"
       />
     </svg>
   ) : (
-    <svg className="wb-title-glyph" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+    <svg
+      className="wb-title-glyph"
+      data-wb-zoom-glyph="expand"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      focusable="false"
+    >
       <path
-        d="M2.8 4.2L2.8 2.8 4.2 2.8M7.8 2.8L9.2 2.8 9.2 4.2M2.8 7.8L2.8 9.2 4.2 9.2M7.8 9.2L9.2 9.2 9.2 7.8"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        d="M2 11V2h9zM14 5v9H5z"
+        fill="currentColor"
       />
     </svg>
   );
@@ -95,6 +101,7 @@ interface RippleSpec {
 
 export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   windowId,
+  appTypeId,
   title,
   focused,
   displayMode,
@@ -283,6 +290,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   );
 
   const zoomRestore = displayMode !== 'floating';
+  const hostsAppTabs = appTypeId === 'notes';
 
   return (
     <div
@@ -386,20 +394,29 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
           />
         </div>
       </div>
+      {hostsAppTabs ? (
+        <div
+          className="wb-title-app-slot"
+          data-wb-titlebar-slot
+          data-window-id={windowId}
+        />
+      ) : null}
       {/* 标题绝对居中（不受左侧三键宽度影响）；溢出时 mask 渐隐 */}
-      <div
-        className="pointer-events-none absolute inset-x-16 top-0 flex h-full items-center justify-center"
-        aria-hidden={title === ''}
-      >
-        <span
-          ref={titleRef}
-          className="wb-title-text text-[13px] leading-none"
-          data-wb-window-title
-          data-wb-title-overflow={titleOverflow ? '' : undefined}
+      {!hostsAppTabs ? (
+        <div
+          className="pointer-events-none absolute inset-x-16 top-0 flex h-full items-center justify-center"
+          aria-hidden={title === ''}
         >
-          {title}
-        </span>
-      </div>
+          <span
+            ref={titleRef}
+            className="wb-title-text text-[13px] leading-none"
+            data-wb-window-title
+            data-wb-title-overflow={titleOverflow ? '' : undefined}
+          >
+            {title}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 };

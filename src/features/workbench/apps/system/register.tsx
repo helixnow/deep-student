@@ -30,18 +30,44 @@ import { flashcardsDueBadgeSource } from './flashcardsDueSource';
 import { pomodoroBadgeSource } from './pomodoroSource';
 import { handleTodoActivation } from './todoActivation';
 
-/**
- * flashcards onActivation — R1-15 / R2-04
- * startReview {payload} → applyLaunchPayload（ankiCardsBlock 唯一入口，禁直写 store）
- */
-function handleFlashcardsActivation(ctx: ActivationContext): void {
-  if (ctx.action !== 'startReview') {
-    console.warn(`[workbench:flashcards] unknown activation action: ${ctx.action}`);
-    return;
+/** Flashcards 语义控制；不开放代替用户评分。 */
+export async function handleFlashcardsActivation(ctx: ActivationContext) {
+  const { useFsrsReviewStore } = await import('@/features/flashcards/store/fsrsReviewStore');
+  const store = useFsrsReviewStore.getState();
+  switch (ctx.action) {
+    case 'startReview':
+      store.applyLaunchPayload(ctx.payload);
+      return { handled: true } as const;
+    case 'showScreen': {
+      const screen = ctx.payload && typeof ctx.payload === 'object'
+        ? (ctx.payload as { screen?: unknown }).screen
+        : undefined;
+      if (screen !== 'today' && screen !== 'library' && screen !== 'settings' && screen !== 'session') {
+        return { handled: false, code: 'INVALID_ARGS', hint: 'screen 值无效' } as const;
+      }
+      store.setScreen(screen);
+      return { handled: true } as const;
+    }
+    case 'startDueReview':
+      await store.loadDue();
+      useFsrsReviewStore.getState().startDueSession();
+      return { handled: true } as const;
+    case 'flipCard':
+      if (store.screen !== 'session') {
+        return { handled: false, code: 'INVALID_STATE', hint: '当前不在复习会话中' } as const;
+      }
+      store.flip();
+      return { handled: true } as const;
+    case 'endReview':
+      store.endSession();
+      return { handled: true } as const;
+    default:
+      return {
+        handled: false,
+        code: 'UNKNOWN_ACTION',
+        hint: `Flashcards 不支持指令 ${ctx.action}`,
+      } as const;
   }
-  void import('@/features/flashcards/store/fsrsReviewStore').then(({ useFsrsReviewStore }) => {
-    useFsrsReviewStore.getState().applyLaunchPayload(ctx.payload);
-  });
 }
 
 /**

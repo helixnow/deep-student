@@ -1,52 +1,104 @@
-/**
- * Files 应用 onActivation — R1-14
- *
- * openFolder {folderId} / reveal {resourceId}
- * store 动态 import，避免把 learning-hub 拉进 workbench 首包。
- * v1 reveal：仅选中 + flash，不进入父目录（父目录解析遗留 R2）。
- */
+/** Files 应用 ACR 语义导航。文件数据写入仍归 DSTU 领域工具。 */
 
-import type { ActivationContext } from '../../core/types';
+import { pathApi } from '@/dstu/api/pathApi';
+import type { SortBy, SortOrder, ViewMode } from '@/features/learning-hub/stores/finderStore';
+import type { ActivationContext, ActivationResult } from '../../core/types';
 import { agentFlash } from '../../agent/visuals/agentFlash';
 
-function payloadString(payload: unknown, key: string): string | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const v = (payload as Record<string, unknown>)[key];
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
+function payloadRecord(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : {};
 }
 
-/** 导出供单测与 AppDefinition.onActivation */
-export function handleFilesActivation(ctx: ActivationContext): void {
+function payloadString(payload: unknown, key: string): string | null {
+  const value = payloadRecord(payload)[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function invalid(hint: string): ActivationResult {
+  return { handled: false, code: 'INVALID_ARGS', hint };
+}
+
+const SORT_FIELDS = new Set<SortBy>(['name', 'updatedAt', 'createdAt', 'type']);
+const SORT_ORDERS = new Set<SortOrder>(['asc', 'desc']);
+
+/** 导出供单测与 AppDefinition.onActivation。 */
+export async function handleFilesActivation(ctx: ActivationContext): Promise<ActivationResult> {
+  const { useFinderStore } = await import('@/features/learning-hub/stores/finderStore');
+  const store = useFinderStore.getState();
+
   switch (ctx.action) {
     case 'openFolder': {
       const folderId = payloadString(ctx.payload, 'folderId');
-      if (!folderId) {
-        console.warn('[workbench:files] openFolder ignored: missing folderId');
-        return;
-      }
-      void import('@/features/learning-hub/stores/finderStore')
-        .then(({ useFinderStore }) =>
-          useFinderStore.getState().enterFolder(folderId),
-        )
-        .catch((err) => console.warn('[workbench:files] openFolder failed:', err));
-      break;
+      if (!folderId) return invalid('openFolder 需要 payload.folderId');
+      await store.enterFolder(folderId);
+      return { handled: true };
     }
     case 'reveal': {
       const resourceId = payloadString(ctx.payload, 'resourceId');
-      if (!resourceId) {
-        console.warn('[workbench:files] reveal ignored: missing resourceId');
-        return;
+      if (!resourceId) return invalid('reveal 需要 payload.resourceId');
+      const location = await pathApi.getResourceLocation(resourceId);
+      if (store.currentPath.folderId !== location.folderId) {
+        if (location.folderId) await store.enterFolder(location.folderId);
+        else await store.setCurrentPathWithoutHistory(null);
       }
-      // v1：不解析/进入父目录，仅选中并 flash（当前目录若无该行则 flash no-op）
-      void import('@/features/learning-hub/stores/finderStore')
-        .then(({ useFinderStore }) => {
-          useFinderStore.getState().setSelectedIds(new Set([resourceId]));
-          agentFlash('files', resourceId);
-        })
-        .catch((err) => console.warn('[workbench:files] reveal failed:', err));
-      break;
+      useFinderStore.getState().setSelectedIds(new Set([resourceId]));
+      agentFlash('files', resourceId);
+      return { handled: true };
     }
+    case 'goBack':
+      store.goBack();
+      return { handled: true };
+    case 'goForward':
+      store.goForward();
+      return { handled: true };
+    case 'goUp':
+      store.goUp();
+      return { handled: true };
+    case 'search': {
+      const query = payloadString(ctx.payload, 'query') ?? '';
+      store.setSearchQuery(query);
+      if (query) await useFinderStore.getState().executeSearch();
+      else await useFinderStore.getState().loadItems({ silent: true });
+      return { handled: true };
+    }
+    case 'setViewMode': {
+      const mode = payloadString(ctx.payload, 'mode') as ViewMode | null;
+      if (mode !== 'grid' && mode !== 'list') return invalid('mode 必须为 grid 或 list');
+      store.setViewMode(mode);
+      return { handled: true };
+    }
+    case 'setSorting': {
+      const payload = payloadRecord(ctx.payload);
+      const sortBy = payload.sortBy as SortBy;
+      const sortOrder = payload.sortOrder as SortOrder | undefined;
+      if (!SORT_FIELDS.has(sortBy)) return invalid('sortBy 值无效');
+      if (sortOrder && !SORT_ORDERS.has(sortOrder)) return invalid('sortOrder 值无效');
+      store.setSorting(sortBy, sortOrder);
+      return { handled: true };
+    }
+    case 'select': {
+      const resourceId = payloadString(ctx.payload, 'resourceId');
+      if (!resourceId) return invalid('select 需要 payload.resourceId');
+      store.select(resourceId, 'single');
+      agentFlash('files', resourceId);
+      return { handled: true };
+    }
+    case 'selectAll':
+      store.selectAll();
+      return { handled: true };
+    case 'clearSelection':
+      store.clearSelection();
+      return { handled: true };
+    case 'refresh':
+      await store.refresh({ silent: true });
+      return { handled: true };
     default:
-      console.warn(`[workbench:files] unknown activation action: ${ctx.action}`);
+      return {
+        handled: false,
+        code: 'UNKNOWN_ACTION',
+        hint: `Files 不支持指令 ${ctx.action}`,
+      };
   }
 }

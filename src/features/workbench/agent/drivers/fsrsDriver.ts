@@ -122,8 +122,28 @@ function emptyReceipt(
   };
 }
 
-export const fsrsDriver: CollabDriver = {
+export const fsrsDriver: CollabDriver & {
+  queryState: () => Record<string, unknown>;
+} = {
   typeId: TYPE_ID,
+
+  queryState() {
+    const state = useFsrsReviewStore.getState();
+    const current = state.queue[state.queueIndex];
+    return {
+      screen: state.screen,
+      dueCount: state.dueCards.length,
+      queueLength: state.queue.length,
+      queueIndex: state.queueIndex,
+      currentCardId: current?.id ?? null,
+      currentAnkiCardId: current?.ankiCardId ?? null,
+      flipped: state.flipped,
+      ratingBusy: state.ratingBusy,
+      loading: state.loading,
+      lastRated: state.lastRated,
+      error: state.error,
+    };
+  },
 
   probe(_target: AcrTarget): AcrProbeState {
     const { screen, queue, queueIndex, ratingBusy } = useFsrsReviewStore.getState();

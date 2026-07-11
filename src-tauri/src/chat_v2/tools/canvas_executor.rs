@@ -1444,9 +1444,7 @@ impl ToolExecutor for CanvasToolExecutor {
         match stripped {
             canvas_tool_names::NOTE_CREATE
             | canvas_tool_names::NOTE_SET
-            | canvas_tool_names::NOTE_REPLACE => {
-                ToolSensitivity::Medium
-            }
+            | canvas_tool_names::NOTE_REPLACE => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }

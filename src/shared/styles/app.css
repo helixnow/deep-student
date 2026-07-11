@@ -94,11 +94,6 @@ body {
   -webkit-backdrop-filter: blur(16px);
 }
 
-/* macOS：系统红绿灯在外，胶囊只承载拖拽空白 */
-.desktop-shell-workbench-chrome-pill--drag-only {
-  padding: 0 12px;
-}
-
 .desktop-shell-workbench-drag-strip {
   display: inline-flex;
   align-items: center;

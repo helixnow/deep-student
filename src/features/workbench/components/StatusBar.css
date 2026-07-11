@@ -29,8 +29,26 @@
   padding-right: var(--wb-menubar-chrome-inset, 148px);
 }
 
+/* macOS：状态栏与系统标题栏共面，左侧只给原生红黄绿按钮留位。 */
+.wb-menubar[data-macos-chrome='integrated'] {
+  min-height: 40px;
+  height: var(--desktop-titlebar-height, 40px);
+  padding-left: var(--wb-macos-traffic-lights-inset, 76px);
+  cursor: default;
+  pointer-events: none;
+}
+
+.wb-menubar-drag-region {
+  position: absolute;
+  inset: 0 0 0 var(--wb-macos-traffic-lights-inset, 76px);
+  z-index: 0;
+  pointer-events: auto;
+  user-select: none;
+}
+
 .wb-menubar-trailing {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 2px;

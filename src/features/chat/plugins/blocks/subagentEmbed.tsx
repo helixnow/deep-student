@@ -77,7 +77,9 @@ function readString(
   return undefined;
 }
 
-const TERMINAL_STATUSES: ReadonlySet<AgentStatus> = new Set(['completed', 'failed', 'cancelled']);
+const TERMINAL_STATUSES: ReadonlySet<AgentStatus> = new Set([
+  'completed', 'failed', 'cancelled', 'interrupted', 'closed',
+]);
 
 /**
  * 归一化后端返回的子代理状态字符串
@@ -88,10 +90,13 @@ function normalizeSubagentStatus(raw: unknown): AgentStatus | undefined {
   if (typeof raw !== 'string' || raw.length === 0) return undefined;
   switch (raw) {
     case 'idle':
+    case 'queued':
     case 'running':
     case 'completed':
     case 'failed':
     case 'cancelled':
+    case 'interrupted':
+    case 'closed':
       return raw;
     case 'auto_starting':
       return 'running';
@@ -219,12 +224,17 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     switch (status) {
       case 'running':
         return <CircleNotch size={16} className="text-blue-500 animate-spin" />;
+      case 'queued':
+        return <Clock size={16} className="text-blue-500" />;
       case 'completed':
         return <CheckCircle size={16} className="text-green-500" />;
       case 'failed':
         return <WarningCircle size={16} className="text-red-500" />;
       case 'cancelled':
+      case 'interrupted':
         return <XCircle size={16} className="text-amber-500" />;
+      case 'closed':
+        return <XCircle size={16} className="text-muted-foreground" />;
       default:
         return <Clock size={16} className="text-muted-foreground" />;
     }
@@ -235,12 +245,18 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
     switch (status) {
       case 'running':
         return t('subagent.status.running');
+      case 'queued':
+        return t('subagent.status.queued');
       case 'completed':
         return t('subagent.status.completed');
       case 'failed':
         return t('subagent.status.failed');
       case 'cancelled':
         return t('subagent.status.cancelled');
+      case 'interrupted':
+        return t('subagent.status.interrupted');
+      case 'closed':
+        return t('subagent.status.closed');
       default:
         return t('subagent.status.idle');
     }

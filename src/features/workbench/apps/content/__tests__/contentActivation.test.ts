@@ -14,7 +14,7 @@ vi.mock('../../../agent/drivers/qbankDriver', () => ({
   QBANK_FOCUS_EVENT: 'qbank:focus-question',
 }));
 
-import { CONTENT_APP_DEFINITIONS } from '../register';
+import { CONTENT_APP_DEFINITIONS, handleNoteActivation } from '../register';
 
 function def(typeId: string) {
   const d = CONTENT_APP_DEFINITIONS.find((x) => x.typeId === typeId);
@@ -28,7 +28,7 @@ describe('content onActivation R2-10', () => {
   });
 
   it('note scrollToHeading 调用编辑器', () => {
-    const result = def('note')({
+    const result = handleNoteActivation({
       windowId: 'w1',
       instanceKey: 'note_1',
       action: 'scrollToHeading',

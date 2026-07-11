@@ -115,9 +115,7 @@ pub fn is_valid_apply_receipt(value: &Value) -> bool {
     if !matches!(mode, "frontend" | "backend" | "suggestion") {
         return false;
     }
-    if mode == "suggestion"
-        && obj.get("suggestionPending").and_then(Value::as_bool) != Some(true)
-    {
+    if mode == "suggestion" && obj.get("suggestionPending").and_then(Value::as_bool) != Some(true) {
         return false;
     }
 

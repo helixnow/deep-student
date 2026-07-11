@@ -125,8 +125,23 @@ function cancelledReceipt(state: ActiveRunSnapshot): AcrReceipt {
   );
 }
 
-export const pomodoroDriver: CollabDriver = {
+export const pomodoroDriver: CollabDriver & {
+  queryState: () => Record<string, unknown>;
+} = {
   typeId: TYPE_ID,
+
+  queryState() {
+    const state = usePomodoroStore.getState();
+    return {
+      mode: state.mode,
+      status: state.status,
+      currentTaskId: state.currentTaskId,
+      currentTaskTitle: state.currentTaskTitle,
+      phaseStartedAt: state.phaseStartedAt,
+      phaseEndsAt: state.phaseEndsAt,
+      strictMode: state.settings.strictMode,
+    };
+  },
 
   probe(_target: AcrTarget) {
     // 番茄钟无脏文档概念；开窗与否由 StageManager/probe 模块判定，driver 侧恒 clean

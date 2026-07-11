@@ -2469,31 +2469,7 @@ function App() {
         >
           {workbenchActive ? (
             <>
-              {/*
-                工作台 chrome：应用 icon 拖拽区 + 控制钮共用一块圆角胶囊；
-                拖拽仅走 strip 上的 startDragging；其余顶栏不挡桌面点击。
-              */}
-              {isMacOS() ? (
-                <div className="flex h-full shrink-0 items-center pl-0 pr-2">
-                  <div
-                    className="pointer-events-none shrink-0"
-                    style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }}
-                    aria-hidden
-                  />
-                  <div
-                    className="desktop-shell-workbench-chrome-pill desktop-shell-workbench-chrome-pill--drag-only"
-                    aria-label={t('common:window_controls.drag', '拖动窗口')}
-                    title={t('common:window_controls.drag', '拖动窗口')}
-                  >
-                    <div
-                      className="desktop-shell-workbench-drag-strip"
-                      onMouseDown={handleWorkbenchChromeDragMouseDown}
-                    >
-                      <DeepStudentMark className="desktop-shell-workbench-app-icon" />
-                    </div>
-                  </div>
-                </div>
-              ) : null}
+              {/* Windows：应用图标拖拽区与自绘窗口控制按钮共用胶囊。macOS 由 StatusBar 接管。 */}
               {isWindows() ? (
                 <div className="ml-auto flex h-full items-center pr-2">
                   <div className="desktop-shell-workbench-chrome-pill">

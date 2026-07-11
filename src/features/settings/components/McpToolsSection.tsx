@@ -1652,6 +1652,7 @@ function ToolPermissionsSection({ toolsByServer }: {
   const [historyCount, setHistoryCount] = useState(0);
   const [runtimeRoots, setRuntimeRoots] = useState<RuntimeRootEntry[]>([]);
   const [newRuntimeRootPath, setNewRuntimeRootPath] = useState('');
+  const [workspaceAccess, setWorkspaceAccess] = useState<'read_only' | 'read_write'>('read_only');
   const [isSavingRuntimeRoot, setIsSavingRuntimeRoot] = useState(false);
   /** 待确认的高风险授权（两步确认：第一次点添加只显示警示，再点才真正授权） */
   const [pendingRootRisk, setPendingRootRisk] = useState<Exclude<AuthorizedRootRisk, 'safe'> | null>(null);
@@ -1817,7 +1818,10 @@ function ToolPermissionsSection({ toolsByServer }: {
     if (!path || isSavingRuntimeRoot) return;
     setIsSavingRuntimeRoot(true);
     try {
-      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_set_workspace_root', { path });
+      const roots = await invoke<RuntimeRootEntry[]>('chat_v2_set_workspace_root', {
+        path,
+        access: workspaceAccess,
+      });
       setRuntimeRoots(roots);
       setNewRuntimeRootPath('');
       showGlobalNotification('success', t('settings:tool_permissions.runtime_root_workspace_set'));
@@ -1827,7 +1831,7 @@ function ToolPermissionsSection({ toolsByServer }: {
     } finally {
       setIsSavingRuntimeRoot(false);
     }
-  }, [isSavingRuntimeRoot, newRuntimeRootPath, t]);
+  }, [isSavingRuntimeRoot, newRuntimeRootPath, t, workspaceAccess]);
 
   const handleResetWorkspaceRoot = useCallback(async () => {
     try {
@@ -2013,6 +2017,18 @@ function ToolPermissionsSection({ toolsByServer }: {
                 className="h-8 text-xs font-mono sm:flex-1"
               />
               <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={workspaceAccess}
+                  onValueChange={(value) => setWorkspaceAccess(value as 'read_only' | 'read_write')}
+                >
+                  <SelectTrigger className="h-8 w-[8.5rem] text-xs" aria-label={t('settings:tool_permissions.runtime_root_workspace_access')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="read_only">{t('settings:tool_permissions.runtime_root_read_only')}</SelectItem>
+                    <SelectItem value="read_write">{t('settings:tool_permissions.runtime_root_read_write')}</SelectItem>
+                  </SelectContent>
+                </Select>
                 <NotionButton
                   variant="ghost"
                   size="sm"
@@ -2050,6 +2066,13 @@ function ToolPermissionsSection({ toolsByServer }: {
                 </NotionButton>
               </div>
             </div>
+
+            {workspaceAccess === 'read_write' && (
+              <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+                <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                <span>{t('settings:tool_permissions.runtime_root_workspace_write_warning')}</span>
+              </div>
+            )}
 
             {pendingRootRisk && (
               <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">

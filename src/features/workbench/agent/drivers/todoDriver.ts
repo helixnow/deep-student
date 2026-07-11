@@ -6,6 +6,7 @@
  * 见 docs/dev/acr/DESIGN.md §5.3。
  */
 
+import { useTodoStore } from '@/features/todo/stores/useTodoStore';
 import type {
   AcrProbeState,
   AcrReceipt,
@@ -128,8 +129,24 @@ function markRemaining(state: ActiveRun): void {
   state.nextOpIndex = state.totalOps;
 }
 
-export const todoDriver: CollabDriver = {
+export const todoDriver: CollabDriver & {
+  queryState: () => Record<string, unknown>;
+} = {
   typeId: TYPE_ID,
+
+  queryState() {
+    const state = useTodoStore.getState();
+    return {
+      activeListId: state.activeListId,
+      selectedItemId: state.selectedItemId,
+      itemCount: state.items.length,
+      listCount: state.lists.length,
+      overdueCount: state.overdueCount,
+      filter: state.filter,
+      loading: state.isLoadingLists || state.isLoadingItems,
+      error: state.error,
+    };
+  },
 
   probe(_target: AcrTarget): AcrProbeState {
     return isTodoDetailFocused() ? 'hot' : 'clean';

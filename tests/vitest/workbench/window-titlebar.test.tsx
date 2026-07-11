@@ -21,6 +21,12 @@ function renderBar(overrides: Partial<React.ComponentProps<typeof WindowTitleBar
 }
 
 describe('WindowTitleBar 三键与双击', () => {
+  it('为 Notes 应用提供标签栏插槽并隐藏重复窗口标题', () => {
+    const { container } = renderBar({ appTypeId: 'notes', title: '笔记' });
+    expect(container.querySelector('[data-wb-titlebar-slot][data-window-id="w1"]')).not.toBeNull();
+    expect(container.querySelector('[data-wb-window-title]')).toBeNull();
+  });
+
   it('渲染三键与居中标题', () => {
     renderBar();
     expect(screen.getByRole('button', { name: '关闭窗口' })).toBeInTheDocument();

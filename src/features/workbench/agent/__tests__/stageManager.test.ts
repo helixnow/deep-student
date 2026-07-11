@@ -180,6 +180,92 @@ describe('StageManager R1-06', () => {
     });
   });
 
+  it('workbench app_command 可聚焦、最小化和布局窗口', async () => {
+    const minimize = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: {
+          typeId: 'workbench',
+          action: 'minimizeWindow',
+          payload: { windowId: 'win-a' },
+        },
+      }),
+    );
+    expect(minimize.ok).toBe(true);
+    expect(minimize.data).toMatchObject({
+      handled: true,
+      windowId: 'win-a',
+      minimized: true,
+      focused: false,
+    });
+
+    const tile = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: {
+          typeId: 'workbench',
+          action: 'tileRight',
+          payload: { windowId: 'win-a' },
+        },
+      }),
+    );
+    expect(tile.ok).toBe(true);
+    expect(useWindowStore.getState().windows['win-a'].displayMode).toBe('tiled-right');
+
+    const focus = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: {
+          typeId: 'workbench',
+          action: 'focusWindow',
+          payload: { windowId: 'win-a' },
+        },
+      }),
+    );
+    expect(focus.data).toMatchObject({ minimized: false, focused: true });
+  });
+
+  it('workbench app_command 对失效 windowId 返回可行动错误', async () => {
+    const res = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: {
+          typeId: 'workbench',
+          action: 'focusWindow',
+          payload: { windowId: 'missing' },
+        },
+      }),
+    );
+    expect(res.ok).toBe(false);
+    expect(JSON.parse(res.error!)).toMatchObject({ code: 'WINDOW_NOT_FOUND' });
+  });
+
+  it('workbench tileAll/showDesktop 支持桌面级批量布局', async () => {
+    useWindowStore.getState().openWindow({
+      typeId: 'mock-app',
+      instanceKey: 'res-2',
+      title: 'Second',
+    });
+    const tile = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: { typeId: 'workbench', action: 'tileAll' },
+      }),
+    );
+    expect(tile.data).toMatchObject({ handled: true, overflow: 0 });
+    expect(Object.values(useWindowStore.getState().windows).map((win) => win.displayMode).sort())
+      .toEqual(['tiled-left', 'tiled-right']);
+
+    const desktop = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'app_command',
+        args: { typeId: 'workbench', action: 'showDesktop' },
+      }),
+    );
+    expect(desktop.data).toMatchObject({ handled: true });
+    expect(Object.values(useWindowStore.getState().windows).every((win) => win.minimized)).toBe(true);
+  });
+
   it('同 windowId 已有活跃 run 时返回 WINDOW_BUSY', async () => {
     let release!: () => void;
     const gate = new Promise<void>((r) => {

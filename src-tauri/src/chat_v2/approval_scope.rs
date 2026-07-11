@@ -112,7 +112,9 @@ fn is_file_mutation_runtime_tool(tool_name: &str) -> bool {
             | "file_create"
             | "workspace_artifact_write"
             | "workspace_file_write"
+            | "workspace_file_move"
             | "workspace_file_delete"
+            | "workspace_change_revert"
             | "workspace_file_patch"
             | "workspace_file_append"
             | "workspace_file_create"
@@ -756,6 +758,30 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
                     .unwrap_or_else(|| "artifacts".to_string());
                 format!("{}:{}", root, path)
             }),
+        "workspace_file_write" | "workspace_file_delete" => {
+            extract_str_field(args, &["path", "file_path", "filepath"])
+                .map(|path| format!("workspace:{}", path))
+        }
+        "workspace_file_move" => {
+            let source = extract_str_field(args, &["source_path", "sourcePath"])?;
+            let destination = extract_str_field(args, &["destination_path", "destinationPath"])?;
+            Some(format!("workspace:{}->{}", source, destination))
+        }
+        "workspace_change_revert" => {
+            args.get("receipt")
+                .and_then(Value::as_object)
+                .and_then(|receipt| {
+                    let change_id = receipt.get("change_id")?.as_str()?;
+                    let root_id = receipt.get("root_id")?.as_str()?;
+                    let serialized = serde_json::to_string(receipt).ok()?;
+                    Some(format!(
+                        "{}:{}:{}",
+                        root_id,
+                        change_id,
+                        raw_hash(&serialized)
+                    ))
+                })
+        }
 
         // --- 办公文档：create / read / edit / replace 等 ---
         "docx_create" | "docx_edit" | "docx_replace_text" | "docx_replace" | "docx_patch" => {
@@ -1798,6 +1824,10 @@ mod tests {
             "builtin-workspace_artifact_write"
         ));
         assert!(!ignores_broad_approval_bypass("workspace_file_read"));
+        assert!(ignores_broad_approval_bypass("builtin-workspace_file_move"));
+        assert!(requires_precise_approval_scope(
+            "builtin-workspace_change_revert"
+        ));
 
         let args = json!({"path": "reports/a.md", "content": "v1"});
         assert_eq!(
@@ -1808,6 +1838,41 @@ mod tests {
             make_runtime_approval_scope("builtin-workspace_artifact_write", &args, "medium")
                 .is_none(),
             "file mutation tools use path-scoped approval memory, not shell runtimeScope UI"
+        );
+
+        let move_args = json!({
+            "source_path": "drafts/a.md",
+            "destination_path": "notes/a.md",
+            "expected_current_hash": "abc"
+        });
+        assert_eq!(
+            make_runtime_scope_key_v2("builtin-workspace_file_move", &move_args).as_deref(),
+            Some("builtin:workspace_file_move::workspace:drafts/a.md->notes/a.md")
+        );
+
+        let revert_args = json!({
+            "receipt": {
+                "change_id": "change-123",
+                "root_id": "workspace",
+                "op": "modified",
+                "relative_path": "notes/a.md",
+                "before_hash": "abc",
+                "after_hash": "def",
+                "bytes": 3
+            }
+        });
+        let revert_scope =
+            make_runtime_scope_key_v2("builtin-workspace_change_revert", &revert_args)
+                .expect("revert receipt should have a precise scope");
+        assert!(
+            revert_scope.starts_with("builtin:workspace_change_revert::workspace:change-123:raw:")
+        );
+        let mut changed_receipt = revert_args.clone();
+        changed_receipt["receipt"]["relative_path"] = json!("other.md");
+        assert_ne!(
+            Some(revert_scope),
+            make_runtime_scope_key_v2("builtin-workspace_change_revert", &changed_receipt),
+            "any receipt mutation must require a fresh approval"
         );
     }
 

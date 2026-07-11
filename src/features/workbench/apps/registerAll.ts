@@ -12,7 +12,7 @@
  */
 import './chat/register';
 import './content/register';
-import './mindmap/register';
+import './notes/register';
 import './files/register';
 import { registerSystemApps } from './system/register';
 import { registerSandboxApp } from './sandbox/register';

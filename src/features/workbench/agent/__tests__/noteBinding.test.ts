@@ -4,6 +4,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetWindowStoreForTests, useWindowStore } from '@/features/workbench/core/windowStore';
 import { registerTestApp } from '@/features/workbench/core/__tests__/testUtils';
+import {
+  registerWorkspaceHost,
+  resetWorkspaceRegistryForTests,
+  setWorkspaceActiveResource,
+} from '@/features/workbench/apps/notes/workspaceRegistry';
 
 const updateModeState = vi.fn();
 const getCurrentSessionId = vi.fn(() => 'sess-test');
@@ -23,10 +28,12 @@ vi.mock('@/features/chat/core/session', () => ({
 
 registerTestApp('note', { instanceMode: 'multi' });
 registerTestApp('todo', { instanceMode: 'single' });
+registerTestApp('notes', { instanceMode: 'single' });
 
 describe('setupNoteBinding', () => {
   beforeEach(() => {
     resetWindowStoreForTests({ w: 1400, h: 900 });
+    resetWorkspaceRegistryForTests();
     updateModeState.mockClear();
     getCurrentSessionId.mockClear();
     getCurrentSessionId.mockReturnValue('sess-test');
@@ -41,6 +48,7 @@ describe('setupNoteBinding', () => {
 
   afterEach(() => {
     resetWindowStoreForTests();
+    resetWorkspaceRegistryForTests();
   });
 
   it('焦点切到 note 窗时把 instanceKey 写入 canvasNoteId', async () => {
@@ -102,5 +110,33 @@ describe('setupNoteBinding', () => {
 
     expect(updateModeState).not.toHaveBeenCalled();
     unbind();
+  });
+
+  it('统一 notes 窗切换活动资源时只绑定活动 note', async () => {
+    const { setupNoteBinding } = await import('../noteBinding');
+    const notesWindowId = useWindowStore.getState().openWindow({ typeId: 'notes' });
+    let active: { type: 'note' | 'mindmap'; id: string } | null = null;
+    const unregister = registerWorkspaceHost(notesWindowId, {
+      openResource: (resource) => { active = resource; },
+      getActiveResource: () => active,
+    });
+    const unbind = setupNoteBinding();
+
+    active = { type: 'note', id: 'note-unified' };
+    setWorkspaceActiveResource(notesWindowId, active);
+    expect(updateModeState).toHaveBeenLastCalledWith({ canvasNoteId: 'note-unified' });
+
+    getSession.mockReturnValue({
+      getState: () => ({
+        modeState: { canvasNoteId: 'note-unified' },
+        updateModeState,
+      }),
+    });
+    active = { type: 'mindmap', id: 'map-unified' };
+    setWorkspaceActiveResource(notesWindowId, active);
+    expect(updateModeState).toHaveBeenLastCalledWith({ canvasNoteId: null });
+
+    unbind();
+    unregister();
   });
 });

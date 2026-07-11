@@ -40,6 +40,7 @@ pub mod user_message_builder; // 用户消息统一构建模块
 pub mod variant_context;
 pub mod vfs_resolver;
 pub mod workspace; // VFS 解引用模块 - 统一处理首次发送和历史加载的资源解引用
+pub mod workspace_change_set; // Workspace 文件变更收据、检查点与安全回滚
 
 // 测试模块（仅在测试时编译）
 #[cfg(test)]

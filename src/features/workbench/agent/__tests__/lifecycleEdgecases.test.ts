@@ -60,6 +60,7 @@ import type { AcrBridgeRequest, AcrReceipt, CollabDriver } from '../types';
 registerTestApp('acr-edge-note', { instanceMode: 'multi' });
 registerTestApp('acr-edge-chat', { instanceMode: 'multi' });
 registerTestApp('note', { instanceMode: 'multi' });
+registerTestApp('image', { instanceMode: 'multi' });
 
 function baseReq(
   partial: Partial<AcrBridgeRequest> & Pick<AcrBridgeRequest, 'command'>,
@@ -410,10 +411,10 @@ describe('R2-09 lifecycle edgecases', () => {
 
   it('closeWindowsForDeletedResource 关闭匹配资源窗', () => {
     const id = useWindowStore.getState().openWindow({
-      typeId: 'note',
-      instanceKey: 'note_gone',
+      typeId: 'image',
+      instanceKey: 'image_gone',
     });
-    expect(closeWindowsForDeletedResource('note_gone')).toBe(1);
+    expect(closeWindowsForDeletedResource('image_gone')).toBe(1);
     expect(useWindowStore.getState().windows[id]).toBeUndefined();
   });
 });

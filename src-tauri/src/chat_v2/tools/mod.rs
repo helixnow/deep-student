@@ -72,6 +72,7 @@ pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（revie
 pub mod runtime_root_request_executor; // 🆕 runtime_root_request 授权请求执行器（High，never-remember）
 pub mod self_inspect_executor; // 🆕 self_inspect 只读自查工具执行器（脱敏状态概览）
 pub mod session_executor; // 🆕 会话管理工具执行器（AI 自主管理会话/分组/标签）
+pub mod shell_sandbox;
 pub mod skill_install_executor; // 🆕 skill_scan / skill_install 技能包自装执行器
 pub mod skill_workshop_executor; // 🆕 skill_workshop_propose / skill_workshop_apply 提案式技能 workshop
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）

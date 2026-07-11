@@ -21,7 +21,11 @@ import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWindowStore } from '../core/windowStore';
-import { resourceTypeToAppTypeId } from '../apps/content/typeMap';
+import {
+  isNotesWorkspaceResourceType,
+  resourceTypeToAppTypeId,
+} from '../apps/content/typeMap';
+import { requestWorkspaceResource } from '../apps/notes/workspaceRegistry';
 import { launchNewChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
@@ -53,22 +57,30 @@ function findRecentChatSessionId(): string | null {
 }
 
 /** 资源 id 前缀 → workbench typeId（未知/附件类回退 'file'） */
-function resourceIdToAppTypeId(resourceId: string): string {
+function resourceIdToResourceType(resourceId: string): string {
   for (const [prefix, type] of Object.entries(RESOURCE_ID_PREFIX_MAP)) {
     if (resourceId.startsWith(prefix)) {
-      return resourceTypeToAppTypeId(type) ?? 'file';
+      return type;
     }
   }
   return 'file';
 }
 
 function launchResourceWindow(resourceId: string, preferredType?: string, title?: string): void {
-  const typeId =
-    (preferredType && resourceTypeToAppTypeId(preferredType)) || resourceIdToAppTypeId(resourceId);
+  const resourceType = preferredType || resourceIdToResourceType(resourceId);
+  const typeId = resourceTypeToAppTypeId(resourceType) ?? 'file';
+  const opensInWorkspace = isNotesWorkspaceResourceType(resourceType);
+  if (opensInWorkspace) {
+    void requestWorkspaceResource({ type: resourceType, id: resourceId });
+  }
   workbenchBus.launch({
     typeId,
-    instanceKey: resourceId,
-    payload: title ? { title } : undefined,
+    instanceKey: opensInWorkspace ? undefined : resourceId,
+    payload: opensInWorkspace
+      ? { resourceType, resourceId, ...(title ? { title } : {}) }
+      : title
+        ? { title }
+        : undefined,
     reason: 'api',
   });
 }

@@ -137,7 +137,7 @@ export const selfServiceToolsSkill: SkillDefinition = {
     {
       name: 'builtin-skill_workshop_propose',
       description:
-        '提案式创建/更新技能草稿（Medium）。写入 app_data/skill_proposals 待审区，不直接修改活体 SKILL.md。actions: propose_create（新 skill_id + 完整 content）、propose_update（已有技能 + content）、list（pending 列表）、reject（按 proposal_id 拒绝）。content 须含 --- frontmatter，≤40000 字节。',
+        '提案式创建/更新完整 SkillPackage 草稿（Medium）。content 旧接口继续表示单个 SKILL.md；files 可提交 SKILL.md、scripts/、references/、assets/ 的完整文件清单（文本用 content，二进制用 content_base64）。返回逐文件 SHA-256 与 package_sha256。',
       inputSchema: {
         type: 'object',
         required: ['action'],
@@ -157,6 +157,22 @@ export const selfServiceToolsSkill: SkillDefinition = {
             type: 'string',
             description:
               'propose_create / propose_update 必填：完整 SKILL.md 文本（含 YAML frontmatter，以 --- 开头）',
+          },
+          files: {
+            type: 'array',
+            maxItems: 256,
+            description:
+              'propose_create / propose_update 可选：完整包文件清单；与旧 content 二选一。必须包含 SKILL.md，只允许 scripts/、references/、assets/ 子路径。',
+            items: {
+              type: 'object',
+              required: ['path'],
+              additionalProperties: false,
+              properties: {
+                path: { type: 'string', description: '包内相对路径，使用 / 分隔' },
+                content: { type: 'string', description: 'UTF-8 文本内容' },
+                content_base64: { type: 'string', description: '二进制内容的标准 base64' },
+              },
+            },
           },
           proposal_id: {
             type: 'string',

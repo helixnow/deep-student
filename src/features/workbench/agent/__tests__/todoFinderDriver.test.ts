@@ -41,8 +41,15 @@ vi.mock('@/features/learning-hub/stores/finderStore', () => ({
       enterFolder,
       navigateTo,
       setSelectedIds,
+      setCurrentPathWithoutHistory: vi.fn(async () => undefined),
       ...finderState,
     }),
+  },
+}));
+
+vi.mock('@/dstu/api/pathApi', () => ({
+  pathApi: {
+    getResourceLocation: vi.fn(async () => ({ folderId: 'folder-parent' })),
   },
 }));
 
@@ -95,54 +102,47 @@ describe('todo / files onActivation', () => {
   });
 
   it('todo showList → setActiveList(listId)', async () => {
-    handleTodoActivation({
+    await handleTodoActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'showList',
       payload: { listId: 'list-a' },
     });
-    await vi.waitFor(() => {
-      expect(setActiveList).toHaveBeenCalledWith('list-a');
-    });
+    expect(setActiveList).toHaveBeenCalledWith('list-a');
     expect(selectItem).not.toHaveBeenCalled();
   });
 
   it('todo focusItem → selectItem + agentFlash', async () => {
-    handleTodoActivation({
+    await handleTodoActivation({
       windowId: 'w1',
       instanceKey: null,
       action: 'focusItem',
       payload: { itemId: 'item-9' },
     });
-    await vi.waitFor(() => {
-      expect(selectItem).toHaveBeenCalledWith('item-9');
-      expect(agentFlash).toHaveBeenCalledWith('todo', 'item-9');
-    });
+    expect(selectItem).toHaveBeenCalledWith('item-9');
+    expect(agentFlash).toHaveBeenCalledWith('todo', 'item-9');
   });
 
   it('files openFolder → enterFolder(folderId)', async () => {
-    handleFilesActivation({
+    await handleFilesActivation({
       windowId: 'w2',
       instanceKey: null,
       action: 'openFolder',
       payload: { folderId: 'folder-1' },
     });
-    await vi.waitFor(() => {
-      expect(enterFolder).toHaveBeenCalledWith('folder-1');
-    });
+    expect(enterFolder).toHaveBeenCalledWith('folder-1');
   });
 
-  it('files reveal → setSelectedIds + agentFlash（v1 不进父目录）', async () => {
-    handleFilesActivation({
+  it('files reveal → 进入父目录 + setSelectedIds + agentFlash', async () => {
+    await handleFilesActivation({
       windowId: 'w2',
       instanceKey: null,
       action: 'reveal',
       payload: { resourceId: 'res-42' },
     });
-    await vi.waitFor(() => {
-      expect(setSelectedIds).toHaveBeenCalled();
-      expect(agentFlash).toHaveBeenCalledWith('files', 'res-42');
-    });
+    expect(enterFolder).toHaveBeenCalledWith('folder-parent');
+    expect(setSelectedIds).toHaveBeenCalled();
+    expect(agentFlash).toHaveBeenCalledWith('files', 'res-42');
     const ids = setSelectedIds.mock.calls[0][0] as Set<string>;
     expect(ids).toBeInstanceOf(Set);
     expect([...ids]).toEqual(['res-42']);

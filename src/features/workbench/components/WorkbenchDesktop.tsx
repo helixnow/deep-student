@@ -42,6 +42,7 @@ import {
   MIN_TILING_RATIO,
 } from '../core/tiling';
 import { RESOURCE_APP_TYPE_IDS } from '../apps/content/typeMap';
+import { NOTES_APP_TYPE_ID } from '../apps/notes/register';
 import { normalizeSingletonAppWindows } from '../core/snapshotWindowPolicy';
 import type { SnapZone, WorkbenchWindow } from '../core/types';
 import { setActiveSnapZone } from '../core/snapZoneStore';
@@ -139,14 +140,36 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 
 /** 投射型应用的壳不随快照自动恢复（设计 §7：只有宿主重新投射时才恢复） */
 const PROJECTION_ONLY_TYPE_IDS = new Set(['pomodoro']);
+const LEGACY_NOTES_WINDOW_TYPE_IDS = new Set(['note', 'mindmap']);
+
+/** 将升级前的独立 note/mindmap 窗口折叠为一个统一 Notes 应用壳。 */
+export function migrateLegacyNotesSnapshotWindows(
+  windows: WorkbenchWindow[],
+): WorkbenchWindow[] {
+  const legacy = windows.filter((win) => LEGACY_NOTES_WINDOW_TYPE_IDS.has(win.typeId));
+  if (legacy.length === 0) return windows;
+  if (windows.some((win) => win.typeId === NOTES_APP_TYPE_ID)) {
+    return windows.filter((win) => !LEGACY_NOTES_WINDOW_TYPE_IDS.has(win.typeId));
+  }
+  const keeper = legacy.reduce((latest, candidate) =>
+    candidate.lastFocusedAt > latest.lastFocusedAt ? candidate : latest,
+  );
+  return windows.flatMap((win) => {
+    if (!LEGACY_NOTES_WINDOW_TYPE_IDS.has(win.typeId)) return [win];
+    return win.id === keeper.id
+      ? [{ ...win, typeId: NOTES_APP_TYPE_ID, instanceKey: null, title: '' }]
+      : [];
+  });
+}
 
 /**
  * 丢弃 instanceKey 指向已删除资源的窗口壳（设计 §7）。
  * 存在性检查失败（后端不可用等）时宁可保留，交给 resourceSync 运行时兜底。
  */
 async function pruneSnapshotWindows(windows: WorkbenchWindow[]): Promise<WorkbenchWindow[]> {
+  const migratedWindows = migrateLegacyNotesSnapshotWindows(windows);
   const survivors = await Promise.all(
-    windows.map(async (win) => {
+    migratedWindows.map(async (win) => {
       if (PROJECTION_ONLY_TYPE_IDS.has(win.typeId)) {
         console.info('[workbench] snapshot window skipped (projection-only):', win.typeId);
         return null;

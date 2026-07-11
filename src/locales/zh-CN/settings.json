@@ -1927,7 +1927,7 @@
     "bypass_enabled": "已开启全局免审批模式",
     "bypass_disabled": "已关闭全局免审批模式",
     "runtime_roots_title": "运行时根目录",
-    "runtime_roots_desc": "本地文件工具会被限制在这些根目录内。工作区只读，生成产物写入按会话隔离的应用数据目录。",
+    "runtime_roots_desc": "本地文件工具会被限制在这些根目录内。工作区默认只读；仅在你显式授权后才允许写入，生成产物写入按会话隔离的应用数据目录。",
     "runtime_roots_empty": "当前环境暂未提供运行时根目录信息。",
     "runtime_root_session_scoped": "会话隔离",
     "runtime_root_read_only": "只读",
@@ -1948,6 +1948,8 @@
       "temp": "临时"
     },
     "runtime_root_set_workspace": "设为工作区",
+    "runtime_root_workspace_access": "工作区访问权限",
+    "runtime_root_workspace_write_warning": "读写授权允许 AI 在此工作区创建、修改、移动和删除文件。每次变更仍需按具体路径审批，并会生成可审计、可回滚的变更记录。",
     "runtime_root_workspace_set": "已更新工作区根目录",
     "runtime_root_workspace_set_failed": "更新工作区根目录失败",
     "runtime_root_workspace_reset": "重置工作区根目录",

@@ -851,22 +851,34 @@ pub fn run() {
                         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
                         .unwrap_or(false);
 
-                    if standard_window_for_e2e {
-                        info!("[setup] DSTU_E2E_STANDARD_WINDOW 已启用，跳过自定义 macOS 标题栏样式以便 UI 自动化访问");
-                        #[allow(unused_unsafe)]
-                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
-                        unsafe {
-                            use cocoa::base::{id, nil, YES};
-                            use cocoa::foundation::NSString;
-                            use objc::{msg_send, sel, sel_impl};
+                    // 使用虚拟标题栏：内容延伸到窗口顶部，隐藏原生标题文字，保留左侧红黄绿按钮。
+                    // E2E 实例也必须使用相同 chrome，否则真实截图会额外出现一整行系统标题栏。
+                    #[allow(unused_unsafe)]
+                    #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
+                    unsafe {
+                        use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
+                        use cocoa::base::{id, nil, NO, YES};
+                        use objc::{msg_send, sel, sel_impl};
 
-                            if let Ok(ns_window_raw) = window.ns_window() {
-                                let ns_window = ns_window_raw as id;
+                        if let Ok(ns_window_raw) = window.ns_window() {
+                            let ns_window = ns_window_raw as id;
+                            let _: () = msg_send![ns_window, setStyleMask:
+                                NSWindowStyleMask::NSTitledWindowMask
+                                | NSWindowStyleMask::NSClosableWindowMask
+                                | NSWindowStyleMask::NSMiniaturizableWindowMask
+                                | NSWindowStyleMask::NSResizableWindowMask
+                                | NSWindowStyleMask::NSFullSizeContentViewWindowMask
+                            ];
+                            let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+                            let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
+                            let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
+
+                            if standard_window_for_e2e {
+                                use cocoa::foundation::NSString;
                                 let ax_window = NSString::alloc(nil).init_str("AXWindow");
                                 let ax_standard_window =
                                     NSString::alloc(nil).init_str("AXStandardWindow");
                                 let ax_title = NSString::alloc(nil).init_str("Deep Student");
-
                                 let _: () = msg_send![ns_window, setAccessibilityElement: YES];
                                 let _: () = msg_send![ns_window, setAccessibilityRole: ax_window];
                                 let _: () =
@@ -874,40 +886,12 @@ pub fn run() {
                                 let _: () = msg_send![ns_window, setAccessibilityTitle: ax_title];
                                 let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
                                 let _: () = msg_send![ns_window, orderFrontRegardless];
-                            } else {
-                                warn!("获取 macOS NSWindow 失败，跳过 E2E 可访问性窗口设置");
+                                info!(
+                                    "[setup] DSTU_E2E_STANDARD_WINDOW 已启用，沿用全尺寸 macOS 标题栏并补充可访问性窗口元数据"
+                                );
                             }
-                        }
-                    } else {
-                        // 设置 macOS 特定的窗口属性
-                        #[allow(unused_unsafe)]
-                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
-                        unsafe {
-                            use cocoa::base::{id, YES, NO};
-                            use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
-                            use objc::{msg_send, sel, sel_impl};
-
-                            if let Ok(ns_window_raw) = window.ns_window() {
-                                let ns_window = ns_window_raw as id;
-
-                                // 使用虚拟标题栏：全尺寸内容视图，隐藏原生标题栏但保留红绿灯按钮
-                                let _: () = msg_send![ns_window, setStyleMask:
-                                    NSWindowStyleMask::NSTitledWindowMask
-                                    | NSWindowStyleMask::NSClosableWindowMask
-                                    | NSWindowStyleMask::NSMiniaturizableWindowMask
-                                    | NSWindowStyleMask::NSResizableWindowMask
-                                    | NSWindowStyleMask::NSFullSizeContentViewWindowMask
-                                ];
-
-                                // 使用透明标题栏
-                                let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
-                                let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
-
-                                // 仅允许标注的区域拖拽：关闭整窗背景拖拽，避免任意区域拖动窗口
-                                let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
-                            } else {
-                                warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
-                            }
+                        } else {
+                            warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
                         }
                     }
                 } else {

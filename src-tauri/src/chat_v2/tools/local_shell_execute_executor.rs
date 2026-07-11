@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -19,11 +18,16 @@ use crate::chat_v2::approval_scope::{
     validate_shell_path_operands_within_root,
 };
 use crate::chat_v2::runtime_roots::{
-    normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id, RuntimeRoot,
-    RuntimeRootAccess, RuntimeRootKind,
+    normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id,
+    runtime_roots_for_session, skill_package_runtime_root, RuntimeRoot, RuntimeRootAccess,
+    RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::commands::AppState;
+
+use super::shell_sandbox::{
+    terminate_process_group, PlatformSandboxBackend, SandboxBackend, SandboxPolicy,
+};
 
 pub mod tool_names {
     pub const SHELL_EXECUTE: &str = "local_shell_execute";
@@ -164,36 +168,6 @@ impl LocalShellExecuteExecutor {
         Ok(target_canon)
     }
 
-    fn shell_command(command: &str, cwd: &Path) -> Command {
-        #[cfg(windows)]
-        let mut cmd = {
-            let mut command_process = Command::new("powershell");
-            command_process.args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                command,
-            ]);
-            command_process
-        };
-
-        #[cfg(not(windows))]
-        let mut cmd = {
-            let mut command_process = Command::new("sh");
-            command_process.args(["-lc", command]);
-            command_process
-        };
-
-        cmd.kill_on_drop(true)
-            .current_dir(cwd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        cmd
-    }
-
     fn normalize_env_key(key: &str) -> Result<String, String> {
         let trimmed = key.trim();
         if trimmed.is_empty() {
@@ -247,13 +221,89 @@ impl LocalShellExecuteExecutor {
     }
 
     fn network_policy_json(allow_network: bool, network_capable: bool) -> Value {
-        // 🔒 如实标注：网络门是首 token/关键字启发式，不是网络命名空间/防火墙级隔离。
-        // 审计消费方不得把它当作「已强制阻断出网」的依据。
         json!({
             "allow_network": allow_network,
             "network_capable_command": network_capable,
-            "enforced": false,
-            "heuristic": true,
+            "enforced": true,
+            "heuristic": false,
+        })
+    }
+
+    fn push_canonical_unique(paths: &mut Vec<PathBuf>, path: &Path) -> Result<(), String> {
+        let canonical = path
+            .canonicalize()
+            .map_err(|error| format!("Failed to canonicalize sandbox root: {error}"))?;
+        if !paths.contains(&canonical) {
+            paths.push(canonical);
+        }
+        Ok(())
+    }
+
+    fn build_sandbox_policy(
+        ctx: &ExecutionContext,
+        selected_root: &RuntimeRoot,
+        skill_dir: Option<&SkillDirInjection>,
+        allow_network: bool,
+    ) -> Result<SandboxPolicy, String> {
+        let state = ctx.window.state::<AppState>();
+        let mut readable_roots = Vec::new();
+        let mut writable_roots = Vec::new();
+        let mut protected_read_roots = Vec::new();
+        let mut protected_write_roots = Vec::new();
+
+        let mut roots = runtime_roots_for_session(
+            &ctx.window.app_handle(),
+            &state.database,
+            &ctx.session_id,
+            true,
+        )?;
+        roots.retain(|root| {
+            root.configured
+                || matches!(root.kind, RuntimeRootKind::Artifact | RuntimeRootKind::Temp)
+        });
+        if !roots.iter().any(|root| root.id == selected_root.id) {
+            roots.push(selected_root.clone());
+        }
+        if let Some(skill_roots) = ctx.skill_package_roots.as_ref() {
+            for (skill_id, path) in skill_roots {
+                roots.push(skill_package_runtime_root(skill_id, path)?);
+            }
+        }
+
+        for root in roots {
+            Self::push_canonical_unique(&mut readable_roots, &root.path)?;
+            if root.access == RuntimeRootAccess::ReadWrite {
+                Self::push_canonical_unique(&mut writable_roots, &root.path)?;
+            }
+            let git_dir = root.path.join(".git");
+            if git_dir.exists() {
+                Self::push_canonical_unique(&mut protected_write_roots, &git_dir)?;
+            }
+            if root.kind == RuntimeRootKind::SkillPackage {
+                Self::push_canonical_unique(&mut protected_write_roots, &root.path)?;
+            }
+        }
+        if let Some(skill_dir) = skill_dir {
+            Self::push_canonical_unique(&mut readable_roots, &skill_dir.path)?;
+            Self::push_canonical_unique(&mut protected_write_roots, &skill_dir.path)?;
+        }
+
+        if let Some(home) = dirs::home_dir() {
+            for relative in [".ssh", ".aws", ".gnupg", ".config", "Library/Keychains"] {
+                let sensitive = home.join(relative);
+                if sensitive.exists() {
+                    Self::push_canonical_unique(&mut protected_read_roots, &sensitive)?;
+                    Self::push_canonical_unique(&mut protected_write_roots, &sensitive)?;
+                }
+            }
+        }
+
+        Ok(SandboxPolicy {
+            readable_roots,
+            writable_roots,
+            protected_read_roots,
+            protected_write_roots,
+            allow_network,
         })
     }
 
@@ -726,6 +776,10 @@ impl LocalShellExecuteExecutor {
         let analysis = analyze_shell_command(&command);
         let env_plan = Self::build_env_plan(args)?;
         let env_policy = Self::env_policy_json(&env_plan, skill_dir_injection.as_ref());
+        let sandbox_policy =
+            Self::build_sandbox_policy(ctx, &root, skill_dir_injection.as_ref(), allow_network)?;
+        let sandbox_backend = PlatformSandboxBackend::new();
+        let sandbox_effect_report = sandbox_backend.effect_report(&sandbox_policy);
         let before_snapshot = if track_file_changes {
             Self::collect_file_snapshot(&root_abs_for_snapshot, &cwd_abs).ok()
         } else {
@@ -738,7 +792,7 @@ impl LocalShellExecuteExecutor {
         };
 
         let start = Instant::now();
-        let mut shell = Self::shell_command(&command, &cwd_abs);
+        let mut shell = sandbox_backend.command(&command, &cwd_abs, &sandbox_policy)?;
         Self::apply_env_plan(&mut shell, &env_plan);
         Self::apply_skill_dir_injection(&mut shell, skill_dir_injection.as_ref());
         let mut child = shell
@@ -769,13 +823,22 @@ impl LocalShellExecuteExecutor {
             match tokio::time::timeout(Duration::from_millis(timeout_ms), child.wait()).await {
                 Ok(Ok(status)) => (Some(status), false),
                 Ok(Err(error)) => {
+                    let _ = terminate_process_group(&mut child);
+                    let _ = child.kill().await;
+                    let _ = child.wait().await;
                     stdout_task.abort();
                     stderr_task.abort();
                     return Err(format!("Failed to wait for local shell command: {error}"));
                 }
                 Err(_) => {
+                    let group_kill_error = terminate_process_group(&mut child).err();
                     let _ = child.kill().await;
                     let _ = child.wait().await;
+                    if let Some(error) = group_kill_error {
+                        stdout_task.abort();
+                        stderr_task.abort();
+                        return Err(error);
+                    }
                     (None, true)
                 }
             };
@@ -845,6 +908,7 @@ impl LocalShellExecuteExecutor {
             "max_output_bytes": max_output_bytes,
             "env_policy": env_policy,
             "network_policy": network_policy,
+            "sandbox": sandbox_effect_report,
             "file_change_summary": file_change_summary,
             "has_shell_operators": analysis.has_shell_operators,
             "uses_script_runner": analysis.uses_script_runner,
@@ -1127,12 +1191,15 @@ mod tests {
         assert_eq!(audit.to_string().contains("example.com"), false);
     }
 
-    /// SECURITY 回归（04 号报告 P2-2）：网络门是启发式，审计不得声称 enforced。
+    /// SECURITY regression: the Seatbelt backend now enforces the network policy.
     #[test]
-    fn network_policy_audit_is_honest_about_heuristic_nature() {
+    fn network_policy_audit_reports_hard_enforcement() {
         let audit = LocalShellExecuteExecutor::network_policy_json(false, false);
-        assert_eq!(audit.get("enforced").and_then(|v| v.as_bool()), Some(false));
-        assert_eq!(audit.get("heuristic").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(audit.get("enforced").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            audit.get("heuristic").and_then(|v| v.as_bool()),
+            Some(false)
+        );
     }
 
     /// SECURITY（04 号报告 P2-2）：PowerShell 原生联网入口必须被识别为 network-capable。

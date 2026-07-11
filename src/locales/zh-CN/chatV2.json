@@ -1522,10 +1522,13 @@
       "workspaceSwitched": "工作区已切换",
       "historicalSnapshot": "此为历史快照，当前活跃工作区已变更",
       "idle": "空闲",
+      "queued": "排队中",
       "running": "运行中",
       "completed": "已完成",
       "failed": "失败",
-      "cancelled": "已取消"
+      "cancelled": "已取消",
+      "interrupted": "已中断",
+      "closed": "已关闭"
     },
     "skill": {
       "loading": "加载中...",
@@ -1643,10 +1646,13 @@
     "title": "子代理",
     "status": {
       "running": "执行中...",
+      "queued": "排队中",
       "completed": "已完成",
       "failed": "失败",
       "idle": "等待中",
-      "cancelled": "已取消"
+      "cancelled": "已取消",
+      "interrupted": "已中断",
+      "closed": "已关闭"
     },
     "unknownSkill": "子代理",
     "noSessionId": "子代理会话 ID 缺失",

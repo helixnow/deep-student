@@ -7,6 +7,7 @@ import type {
   WorkspaceDocument,
   WorkspaceState,
   AgentStatus,
+  AgentCompletionEnvelope,
 } from './types';
 
 // ============================================================
@@ -15,10 +16,13 @@ import type {
 
 const VALID_AGENT_STATUSES: ReadonlySet<string> = new Set<AgentStatus>([
   'idle',
+  'queued',
   'running',
   'completed',
   'failed',
   'cancelled',
+  'interrupted',
+  'closed',
 ]);
 
 /**
@@ -81,6 +85,7 @@ interface WorkspaceActions {
   setAgents: (agents: WorkspaceAgent[]) => void;
   addAgent: (agent: WorkspaceAgent) => void;
   updateAgentStatus: (sessionId: string, status: WorkspaceAgent['status']) => void;
+  applyAgentCompletion: (completion: AgentCompletionEnvelope) => void;
   removeAgent: (sessionId: string) => void;
   setMessages: (messages: WorkspaceMessage[]) => void;
   addMessage: (message: WorkspaceMessage) => void;
@@ -119,6 +124,23 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set)
     set((state) => ({
       agents: state.agents.map((a) =>
         a.sessionId === sessionId ? { ...a, status, lastActiveAt: new Date().toISOString() } : a
+      ),
+    })),
+
+  applyAgentCompletion: (completion) =>
+    set((state) => ({
+      agents: state.agents.map((agent) =>
+        agent.sessionId === completion.agentSessionId
+          ? {
+              ...agent,
+              status: completion.status,
+              lastActiveAt: completion.completedAt || new Date().toISOString(),
+              metadata: {
+                ...agent.metadata,
+                lastCompletion: completion,
+              },
+            }
+          : agent
       ),
     })),
 

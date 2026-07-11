@@ -10,7 +10,6 @@ import type { ResourceType } from '@/features/learning-hub/types';
 
 /** 七类内容应用的 typeId（apps/content/register.ts 注册） */
 export const CONTENT_APP_TYPE_IDS = [
-  'note',
   'textbook',
   'exam',
   'translation',
@@ -24,25 +23,35 @@ export type ContentAppTypeId = (typeof CONTENT_APP_TYPE_IDS)[number];
 /** 思维导图应用 typeId（apps/mindmap/register.ts 注册） */
 export const MINDMAP_APP_TYPE_ID = 'mindmap' as const;
 
+/** note / mindmap 共用的单例知识工作区应用。 */
+export const NOTES_APP_TYPE_ID = 'notes' as const;
+
+export type NotesWorkspaceResourceType = 'note' | 'mindmap';
+
+export function isNotesWorkspaceResourceType(
+  type: ResourceType | string,
+): type is NotesWorkspaceResourceType {
+  return type === 'note' || type === 'mindmap';
+}
+
 /**
  * instanceKey=resourceId 的全部资源应用 typeId。
  * 资源删除联动（resourceSync）按此集合关窗。
  */
 export const RESOURCE_APP_TYPE_IDS: ReadonlySet<string> = new Set([
   ...CONTENT_APP_TYPE_IDS,
-  MINDMAP_APP_TYPE_ID,
 ]);
 
 const RESOURCE_TYPE_TO_APP_TYPE_ID = Object.freeze(
   Object.assign(Object.create(null) as Record<string, string>, {
-    note: 'note',
+    note: NOTES_APP_TYPE_ID,
     textbook: 'textbook',
     exam: 'exam',
     translation: 'translation',
     essay: 'essay',
     image: 'image',
     file: 'file',
-    mindmap: MINDMAP_APP_TYPE_ID,
+    mindmap: NOTES_APP_TYPE_ID,
   } satisfies Partial<Record<ResourceType, string>>),
 );
 

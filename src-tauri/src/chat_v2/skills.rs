@@ -1490,7 +1490,7 @@ impl StagedSkillDirectory {
     }
 
     pub(crate) fn commit(self) -> Result<CommittedSkillDirectory, String> {
-        self.commit_inner(false, None)
+        self.commit_inner(false, None, None)
     }
 
     pub(crate) fn commit_if_file_unchanged(
@@ -1499,13 +1499,31 @@ impl StagedSkillDirectory {
         expected_sha256: &str,
     ) -> Result<CommittedSkillDirectory, String> {
         let relative = safe_staged_relative_path(relative)?;
-        self.commit_inner(false, Some((relative, expected_sha256.to_string())))
+        self.commit_inner(false, Some((relative, expected_sha256.to_string())), None)
+    }
+
+    /// Publish only if the complete live package manifest still matches the proposal snapshot.
+    /// Paths use forward slashes and are compared case-insensitively for cross-platform safety.
+    pub(crate) fn commit_if_manifest_unchanged(
+        self,
+        expected: &[(String, String)],
+        ignored_paths: &[&str],
+    ) -> Result<CommittedSkillDirectory, String> {
+        self.commit_inner(
+            false,
+            None,
+            Some((
+                expected.to_vec(),
+                ignored_paths.iter().map(|path| path.to_string()).collect(),
+            )),
+        )
     }
 
     fn commit_inner(
         mut self,
         inject_failure_after_backup: bool,
         expected_live_file: Option<(PathBuf, String)>,
+        expected_live_manifest: Option<(Vec<(String, String)>, Vec<String>)>,
     ) -> Result<CommittedSkillDirectory, String> {
         sync_directory_tree(&self.staging_dir)?;
         let commit_lock = skill_directory_commit_lock()
@@ -1527,6 +1545,48 @@ impl StagedSkillDirectory {
                     "Live skill changed before commit: expected SHA-256 {}, got {}",
                     expected_sha256, actual_sha256
                 ));
+            }
+        }
+
+        if let Some((mut expected, ignored_paths)) = expected_live_manifest {
+            use sha2::{Digest, Sha256};
+            let ignored: HashSet<String> = ignored_paths
+                .iter()
+                .map(|path| path.replace('\\', "/").to_lowercase())
+                .collect();
+            let mut actual = Vec::new();
+            for entry in walkdir::WalkDir::new(&self.live_dir).follow_links(false) {
+                let entry = entry.map_err(|e| format!("Failed to inspect live skill: {}", e))?;
+                if entry.path() == self.live_dir {
+                    continue;
+                }
+                if entry.file_type().is_symlink() {
+                    return Err(format!(
+                        "Live skill changed before commit: symlink found at {:?}",
+                        entry.path()
+                    ));
+                }
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let relative = entry
+                    .path()
+                    .strip_prefix(&self.live_dir)
+                    .map_err(|e| format!("Failed to resolve live skill path: {}", e))?
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if ignored.contains(&relative.to_lowercase()) {
+                    continue;
+                }
+                let bytes = std_fs::read(entry.path()).map_err(|e| {
+                    format!("Failed to read live skill file {:?}: {}", entry.path(), e)
+                })?;
+                actual.push((relative, hex::encode(Sha256::digest(&bytes))));
+            }
+            actual.sort_by(|left, right| left.0.cmp(&right.0));
+            expected.sort_by(|left, right| left.0.cmp(&right.0));
+            if actual != expected {
+                return Err("Live skill package changed before commit; create a new proposal from the current package".to_string());
             }
         }
 
@@ -2365,7 +2425,7 @@ mod tests {
             .write_file("SKILL.md", b"new")
             .expect("write staged skill");
         let error = staged
-            .commit_inner(true, None)
+            .commit_inner(true, None, None)
             .expect_err("injected failure must abort commit");
 
         assert!(error.contains("Injected failure"));

@@ -308,7 +308,15 @@ impl WorkspaceCoordinator {
         let agents = instance.repo.list_agents()?;
         let active_agents = agents
             .iter()
-            .filter(|a| matches!(a.status, AgentStatus::Idle | AgentStatus::Running))
+            .filter(|a| {
+                matches!(
+                    a.status,
+                    AgentStatus::Idle
+                        | AgentStatus::Queued
+                        | AgentStatus::Running
+                        | AgentStatus::Interrupted
+                )
+            })
             .count();
         if active_agents >= MAX_AGENTS_PER_WORKSPACE {
             return Err(format!(
@@ -360,7 +368,10 @@ impl WorkspaceCoordinator {
         // worker 进入终态时，尝试通过状态信号唤醒 coordinator，避免仅靠 timeout 恢复
         if matches!(
             status,
-            AgentStatus::Completed | AgentStatus::Failed | AgentStatus::Cancelled
+            AgentStatus::Completed
+                | AgentStatus::Failed
+                | AgentStatus::Cancelled
+                | AgentStatus::Closed
         ) {
             match instance.sleep_manager.check_and_wake_by_agent_status(
                 workspace_id,
@@ -394,6 +405,25 @@ impl WorkspaceCoordinator {
     pub fn list_agents(&self, workspace_id: &str) -> Result<Vec<WorkspaceAgent>, String> {
         let instance = self.get_instance(workspace_id)?;
         instance.repo.list_agents()
+    }
+
+    pub fn get_agent(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+    ) -> Result<Option<WorkspaceAgent>, String> {
+        self.get_instance(workspace_id)?.repo.get_agent(session_id)
+    }
+
+    pub fn update_agent_metadata(
+        &self,
+        workspace_id: &str,
+        session_id: &str,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<(), String> {
+        self.get_instance(workspace_id)?
+            .repo
+            .update_agent_metadata(session_id, metadata.as_ref())
     }
 
     /// 🆕 P38: 检查某个代理在指定时间后是否发送过消息
@@ -485,6 +515,21 @@ impl WorkspaceCoordinator {
         }
 
         Ok(message)
+    }
+
+    /// Attach protocol metadata to an already-routed message. Runtime-owned
+    /// completion delivery uses this to persist correlation identifiers alongside
+    /// the normal workspace message envelope.
+    pub fn update_message_metadata(
+        &self,
+        workspace_id: &str,
+        message_id: &str,
+        metadata: &serde_json::Value,
+    ) -> Result<(), String> {
+        let instance = self.get_instance(workspace_id)?;
+        instance
+            .repo
+            .update_message_metadata(message_id, Some(metadata))
     }
 
     pub fn drain_inbox(

@@ -16,10 +16,10 @@ vi.mock('@/dstu', () => ({
 import { appRegistry } from '../../../core/appRegistry';
 import { CONTENT_APP_DEFINITIONS } from '../register';
 import { MINDMAP_APP_DEFINITION } from '../../mindmap/register';
+import { notesAppDefinition } from '../../notes/register';
 import { FILES_APP_DEFINITION } from '../../files/register';
 
 const EXPECTED_WEIGHTS: Record<string, 1 | 2 | 3> = {
-  note: 2,
   textbook: 3,
   exam: 2,
   translation: 2,
@@ -29,13 +29,14 @@ const EXPECTED_WEIGHTS: Record<string, 1 | 2 | 3> = {
 };
 
 describe('content app registers', () => {
-  it('注册了全部七类内容应用', () => {
+  it('注册独立内容应用，但 note 由统一 Notes 应用承载', () => {
     expect(CONTENT_APP_DEFINITIONS.map((d) => d.typeId).sort()).toEqual(
       Object.keys(EXPECTED_WEIGHTS).sort(),
     );
     for (const typeId of Object.keys(EXPECTED_WEIGHTS)) {
       expect(appRegistry.get(typeId)?.typeId).toBe(typeId);
     }
+    expect(appRegistry.get('note')).toBeUndefined();
   });
 
   it('weight 与 instanceMode 符合章节规定', () => {
@@ -49,8 +50,8 @@ describe('content app registers', () => {
     }
   });
 
-  it('编辑类应用（note/translation/essay）接了 canClose 未保存拦截', () => {
-    for (const typeId of ['note', 'translation', 'essay']) {
+  it('独立编辑类应用接了 canClose 未保存拦截', () => {
+    for (const typeId of ['translation', 'essay']) {
       expect(appRegistry.get(typeId)?.canClose, `${typeId} canClose`).toBeTypeOf('function');
     }
     for (const typeId of ['textbook', 'exam', 'image', 'file']) {
@@ -60,11 +61,19 @@ describe('content app registers', () => {
 });
 
 describe('mindmap app register', () => {
-  it('mindmap：multi，weight=2', () => {
+  it('保留 mindmap 激活定义但不注册独立应用', () => {
     expect(MINDMAP_APP_DEFINITION.typeId).toBe('mindmap');
     expect(MINDMAP_APP_DEFINITION.instanceMode).toBe('multi');
     expect(MINDMAP_APP_DEFINITION.memoryWeight).toBe(2);
-    expect(appRegistry.get('mindmap')).toBe(MINDMAP_APP_DEFINITION);
+    expect(appRegistry.get('mindmap')).toBeUndefined();
+  });
+});
+
+describe('notes workspace register', () => {
+  it('notes：single，统一承载 note 与 mindmap', () => {
+    expect(notesAppDefinition.typeId).toBe('notes');
+    expect(notesAppDefinition.instanceMode).toBe('single');
+    expect(appRegistry.get('notes')).toBe(notesAppDefinition);
   });
 });
 

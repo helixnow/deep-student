@@ -20,6 +20,7 @@ import { Label } from '@/components/ui/shad/Label';
 import type { AgentStatus } from '../types';
 import { ChatContainer } from '../../components/ChatContainer';
 import { sendMessage, runAgent, cancelAgent } from '../api';
+import { isLegacyFrontendWorkerStartEnabled } from '../runtimeMode';
 import { useWorkspaceStore } from '../workspaceStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getLocalizedSkillName } from '../utils';
@@ -94,7 +95,11 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
   const runningElapsedMs = useRunningElapsedMs(status === 'running', runningStartIso);
 
   // 终态耗时：task 派发时刻 → 最后一次状态变更时刻（近似值）
-  const isTerminal = status === 'completed' || status === 'failed' || status === 'cancelled';
+  const isTerminal = status === 'completed'
+    || status === 'failed'
+    || status === 'cancelled'
+    || status === 'interrupted'
+    || status === 'closed';
   let finalElapsedMs: number | null = null;
   if (isTerminal && taskCreatedAt && agentLastActiveAt) {
     const delta = new Date(agentLastActiveAt).getTime() - new Date(taskCreatedAt).getTime();
@@ -112,19 +117,25 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
   // 状态颜色
   const statusColors: Record<AgentStatus, string> = {
     idle: 'text-gray-500',
+    queued: 'text-blue-400',
     running: 'text-blue-500',
     completed: 'text-green-500',
     failed: 'text-red-500',
     cancelled: 'text-gray-400',
+    interrupted: 'text-amber-500',
+    closed: 'text-gray-500',
   };
 
   // 状态文本
   const statusText = {
     idle: t('subagent.status.idle'),
+    queued: t('subagent.status.queued'),
     running: t('subagent.status.running'),
     completed: t('subagent.status.completed'),
     failed: t('subagent.status.failed'),
     cancelled: t('subagent.status.cancelled'),
+    interrupted: t('subagent.status.interrupted'),
+    closed: t('subagent.status.closed'),
   }[status];
 
   const skillName = getLocalizedSkillName(
@@ -159,12 +170,14 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
         target_session_id: agentSessionId,
         message_type: 'task',
       });
-      try {
-        await runAgent(workspaceId, agentSessionId, undefined, senderSessionId);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes('active stream')) {
-          throw err;
+      if (isLegacyFrontendWorkerStartEnabled()) {
+        try {
+          await runAgent(workspaceId, agentSessionId, undefined, senderSessionId);
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes('active stream')) {
+            throw err;
+          }
         }
       }
 

@@ -5,7 +5,15 @@ export type DocumentId = string;
 
 export type WorkspaceStatus = 'active' | 'completed' | 'archived';
 export type AgentRole = 'coordinator' | 'worker';
-export type AgentStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type AgentStatus =
+  | 'idle'
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted'
+  | 'closed';
 export type MessageType = 'task' | 'progress' | 'result' | 'query' | 'correction' | 'broadcast';
 export type MessageStatus = 'pending' | 'delivered' | 'processed';
 export type InboxStatus = 'unread' | 'read' | 'processed';
@@ -30,6 +38,19 @@ export interface WorkspaceAgent {
   joinedAt: string;
   lastActiveAt: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface AgentCompletionEnvelope {
+  workspaceId: WorkspaceId;
+  agentSessionId: AgentId;
+  taskId?: string;
+  runId?: string;
+  correlationId?: string;
+  status: Extract<AgentStatus, 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'closed'>;
+  finalOutput?: string;
+  error?: string;
+  completedAt?: string;
+  tokenUsage?: Record<string, number>;
 }
 
 export interface WorkspaceMessage {

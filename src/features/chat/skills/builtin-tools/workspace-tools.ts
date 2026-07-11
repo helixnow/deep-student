@@ -54,6 +54,10 @@ export const workspaceToolsSkill: SkillDefinition = {
 - **builtin-workspace_file_list**: 列出授权 runtime root 或当前 Skill package root 下的文件
 - **builtin-workspace_file_read**: 读取授权 runtime root 或当前 Skill package root 下的 UTF-8 文本文件
 - **builtin-workspace_artifact_write**: 写入会话产物目录并返回变更摘要
+- **builtin-workspace_file_write**: 在显式授权为读写的 workspace 中创建或覆盖 UTF-8 文本文件
+- **builtin-workspace_file_move**: 移动 workspace 文件，要求携带读取时取得的当前 hash
+- **builtin-workspace_file_delete**: 删除 workspace 文件，要求携带读取时取得的当前 hash
+- **builtin-workspace_change_revert**: 使用变更工具返回的完整 mutation_receipt 回滚该次变更
 - **builtin-attachment_stage**: 把聊天附件的原始字节物化到会话 temp root 的 attachments/ 子目录，返回 root_id + relative_path，供 workspace 文件工具或 local_shell_execute（cwd 选 temp）继续处理二进制/大文件
 - **builtin-local_shell_preflight**: 检查本地命令、cwd、runtime root 与风险等级，但不会执行命令
 - **builtin-local_shell_execute**: 经用户审批后执行非交互本地命令，返回 exit code、stdout/stderr 与截断状态
@@ -297,6 +301,77 @@ Skill 包目录（skill:<skillId>）是只读的，不能作为 cwd 执行命令
           },
         },
         required: ['path', 'content'],
+      },
+    },
+    {
+      name: 'builtin-workspace_file_write',
+      description:
+        '在用户显式授权为读写的 workspace 中创建或原子覆盖 UTF-8 文本文件，并返回可审计、可回滚的 mutation_receipt。修改已有文件前应先调用 workspace_file_read 获取 sha256，并作为 expected_current_hash 传入，防止覆盖并发修改。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'workspace 内的相对文件路径；禁止绝对路径、..、隐藏或敏感目录' },
+          content: { type: 'string', description: '要写入的 UTF-8 文本内容' },
+          expected_current_hash: {
+            type: 'string',
+            description: '修改已有文件时必传：最近一次 workspace_file_read 返回的 sha256；创建新文件时省略',
+          },
+        },
+        required: ['path', 'content'],
+      },
+    },
+    {
+      name: 'builtin-workspace_file_move',
+      description:
+        '在读写 workspace 内移动单个常规文件。必须携带源文件最近一次读取所得的 sha256，目标已存在时拒绝执行。返回可回滚的 mutation_receipt。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source_path: { type: 'string', description: 'workspace 内的源文件相对路径' },
+          destination_path: { type: 'string', description: 'workspace 内的目标文件相对路径' },
+          expected_current_hash: { type: 'string', description: '源文件最近一次 workspace_file_read 返回的 sha256' },
+        },
+        required: ['source_path', 'destination_path', 'expected_current_hash'],
+      },
+    },
+    {
+      name: 'builtin-workspace_file_delete',
+      description:
+        '从读写 workspace 删除单个常规文件。必须携带最近一次读取所得的 sha256；删除前会创建受保护的检查点并返回可回滚的 mutation_receipt。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'workspace 内的相对文件路径' },
+          expected_current_hash: { type: 'string', description: '文件最近一次 workspace_file_read 返回的 sha256' },
+        },
+        required: ['path', 'expected_current_hash'],
+      },
+    },
+    {
+      name: 'builtin-workspace_change_revert',
+      description:
+        '回滚一次 workspace_file_write/move/delete 变更。receipt 必须原样使用变更工具返回的 mutation_receipt；如果目标在变更后又被修改，回滚会拒绝执行。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          receipt: {
+            type: 'object',
+            description: 'workspace 变更工具返回的完整 mutation_receipt',
+            properties: {
+              change_id: { type: 'string' },
+              root_id: { type: 'string', enum: ['workspace'] },
+              op: { type: 'string', enum: ['created', 'modified', 'moved', 'deleted'] },
+              relative_path: { type: 'string' },
+              destination_path: { type: 'string' },
+              before_hash: { type: 'string' },
+              after_hash: { type: 'string' },
+              backup_ref: { type: 'string' },
+              bytes: { type: 'integer', minimum: 0 },
+            },
+            required: ['change_id', 'root_id', 'op', 'relative_path', 'bytes'],
+          },
+        },
+        required: ['receipt'],
       },
     },
     {

@@ -3,7 +3,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
@@ -109,8 +109,8 @@ impl SubagentExecutor {
             "你是工作区「{}」中的一个子代理 (Subagent)。\n\
             技能: {}\n\
             工作区 ID: {}\n\n\
-            你被分派了一个特定任务，请专注完成该任务。\n\
-            完成后请使用 workspace_send 工具发送 result 类型的消息汇报结果。",
+            你被分派了一个特定任务，请专注完成该任务。最终回答会由运行时自动交付给主代理；\n\
+            workspace_send 仅用于可选的进度、询问或中间协作。",
             workspace_name, skill_id, workspace_id
         );
 
@@ -200,28 +200,54 @@ impl SubagentExecutor {
             task_content,
         )?;
 
-        // 🔧 P0-2 修复：发射 worker_ready 事件触发子代理自动执行
-        log::info!(
-            "[SubagentExecutor] [WORKER_READY_EMIT] Preparing to emit worker_ready for subagent: {}, skill: {}, workspace: {}",
-            agent_session_id, skill_id, workspace_id
-        );
         let event_payload = json!({
             "workspace_id": workspace_id,
             "agent_session_id": agent_session_id,
             "skill_id": skill_id,
+            "runtime_managed": true,
         });
-        if let Err(e) = ctx
+        // Backend-native dispatch. The compatibility event below is observational;
+        // execution does not depend on a frontend listener being mounted.
+        let app_handle = ctx.window.app_handle();
+        let chat_v2_state = app_handle
+            .try_state::<Arc<crate::chat_v2::state::ChatV2State>>()
+            .ok_or("ChatV2State not available for subagent runtime")?
+            .inner()
+            .clone();
+        let pipeline = app_handle
+            .try_state::<Arc<crate::chat_v2::pipeline::ChatV2Pipeline>>()
+            .ok_or("ChatV2Pipeline not available for subagent runtime")?
+            .inner()
+            .clone();
+        let runtime_db = app_handle
+            .try_state::<Arc<crate::chat_v2::database::ChatV2Database>>()
+            .ok_or("ChatV2Database not available for subagent runtime")?
+            .inner()
+            .clone();
+        let run = crate::chat_v2::handlers::workspace_handlers::run_workspace_agent_backend(
+            crate::chat_v2::handlers::workspace_handlers::RunAgentRequest {
+                workspace_id: workspace_id.to_string(),
+                agent_session_id: agent_session_id.clone(),
+                requester_session_id: ctx.session_id.clone(),
+                reminder: None,
+            },
+            ctx.window.clone(),
+            self.coordinator.clone(),
+            chat_v2_state,
+            pipeline,
+            runtime_db,
+        )
+        .await?;
+
+        // Preserve the old signal for UI observation only. Emitting after backend
+        // dispatch prevents legacy listeners from winning the startup race.
+        if let Err(error) = ctx
             .window
             .emit(WORKSPACE_WORKER_READY_EVENT, &event_payload)
         {
             log::warn!(
-                "[SubagentExecutor] [WORKER_READY_EMIT] Failed to emit worker_ready event: {}",
-                e
-            );
-        } else {
-            log::info!(
-                "[SubagentExecutor] [WORKER_READY_EMIT] Successfully emitted worker_ready event for subagent: {}",
-                agent_session_id
+                "[SubagentExecutor] Failed to emit compatibility worker_ready event: {}",
+                error
             );
         }
 
@@ -230,8 +256,9 @@ impl SubagentExecutor {
             "workspace_id": workspace_id,
             "skill_id": skill_id,
             "task_message_id": message.id,
-            "status": "auto_starting",
-            "message": format!("Subagent with skill '{}' created and auto-starting. It will process the task and send results back.", skill_id)
+            "run_id": run.message_id,
+            "status": run.status,
+            "message": format!("Subagent with skill '{}' was created and dispatched by the backend runtime.", skill_id)
         }))
     }
 }

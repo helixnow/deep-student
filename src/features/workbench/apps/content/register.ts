@@ -16,7 +16,6 @@
  */
 import React from 'react';
 import {
-  NoteIcon,
   TextbookIcon,
   ExamIcon,
   TranslationIcon,
@@ -24,6 +23,11 @@ import {
   ImageFileIcon,
   GenericFileIcon,
 } from '@/features/learning-hub/icons';
+import {
+  useQuestionBankStore,
+  type PracticeMode,
+  type QuestionFilters,
+} from '@/stores/questionBankStore';
 import { QBANK_FOCUS_EVENT } from '../../agent/drivers/qbankDriver';
 import { getNoteEditor } from '../../agent/drivers/noteDriver';
 import { appRegistry } from '../../core/appRegistry';
@@ -69,7 +73,7 @@ function parseQuestionId(payload: unknown): string | null {
  * note onActivation：scrollToHeading — R1-12
  * payload: { heading: string, level?: number } | string
  */
-function handleNoteActivation(ctx: ActivationContext): ActivationResult {
+export function handleNoteActivation(ctx: ActivationContext): ActivationResult {
   if (ctx.action !== 'scrollToHeading') {
     console.warn(`[workbench:note] unknown activation action: ${ctx.action}`);
     return {
@@ -109,8 +113,23 @@ function handleNoteActivation(ctx: ActivationContext): ActivationResult {
   return { handled: true };
 }
 
-/** exam：focusQuestion → ExamContentView 监听的 qbank:focus-question */
-function handleExamActivation(ctx: ActivationContext): ActivationResult {
+function payloadRecord(payload: unknown): Record<string, unknown> {
+  return payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)
+    : {};
+}
+
+function focusCurrentQuestion(): ActivationResult {
+  const questionId = useQuestionBankStore.getState().currentQuestionId;
+  if (!questionId) {
+    return { handled: false, code: 'QUESTION_NOT_FOUND', hint: '当前题目列表为空' };
+  }
+  window.dispatchEvent(new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId } }));
+  return { handled: true };
+}
+
+/** exam：安全导航与视图控制；答题/交卷仍归 qbank 领域工具和用户。 */
+export function handleExamActivation(ctx: ActivationContext): ActivationResult {
   if (ctx.action === 'focusQuestion') {
     const questionId = parseQuestionId(ctx.payload);
     if (!questionId) {
@@ -125,6 +144,66 @@ function handleExamActivation(ctx: ActivationContext): ActivationResult {
         new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId } }),
       );
     }
+    return { handled: true };
+  }
+  const store = useQuestionBankStore.getState();
+  if (ctx.action === 'nextQuestion' || ctx.action === 'previousQuestion') {
+    const currentIndex = store.questionOrder.indexOf(store.currentQuestionId ?? '');
+    const delta = ctx.action === 'nextQuestion' ? 1 : -1;
+    const baseIndex = currentIndex >= 0 ? currentIndex : delta > 0 ? -1 : 0;
+    const nextIndex = Math.min(
+      Math.max(baseIndex + delta, 0),
+      Math.max(0, store.questionOrder.length - 1),
+    );
+    store.goToQuestion(nextIndex);
+    return focusCurrentQuestion();
+  }
+  if (ctx.action === 'setFilters') {
+    const payload = payloadRecord(ctx.payload);
+    store.setFilters(
+      payload.filters && typeof payload.filters === 'object'
+        ? (payload.filters as QuestionFilters)
+        : (payload as QuestionFilters),
+    );
+    return { handled: true };
+  }
+  if (ctx.action === 'resetFilters') {
+    store.resetFilters();
+    return { handled: true };
+  }
+  if (ctx.action === 'setPracticeMode') {
+    const mode = payloadRecord(ctx.payload).mode;
+    const allowed = new Set([
+      'sequential',
+      'random',
+      'review_first',
+      'review_only',
+      'by_tag',
+      'timed',
+      'mock_exam',
+      'daily',
+      'paper',
+    ]);
+    if (typeof mode !== 'string' || !allowed.has(mode)) {
+      return { handled: false, code: 'INVALID_ARGS', hint: 'practice mode 值无效' };
+    }
+    store.setPracticeMode(mode as PracticeMode);
+    return { handled: true };
+  }
+  if (ctx.action === 'setFocusMode') {
+    const enabled = payloadRecord(ctx.payload).enabled;
+    if (typeof enabled !== 'boolean') {
+      return { handled: false, code: 'INVALID_ARGS', hint: 'setFocusMode 需要 enabled' };
+    }
+    store.setFocusMode(enabled);
+    return { handled: true };
+  }
+  if (ctx.action === 'showSettings') {
+    const open = payloadRecord(ctx.payload).open;
+    if (typeof open !== 'boolean') {
+      return { handled: false, code: 'INVALID_ARGS', hint: 'showSettings 需要 open' };
+    }
+    if (store.showSettingsPanel !== open) store.toggleSettingsPanel();
     return { handled: true };
   }
   if (ctx.action === 'scrollToHeading') {
@@ -213,14 +292,6 @@ const icon = (Component: React.FC<{ className?: string }>): React.ReactNode =>
   React.createElement(Component, { className: 'h-full w-full' });
 
 const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
-  {
-    typeId: 'note',
-    nameKey: 'workbench:apps.note',
-    icon: icon(NoteIcon),
-    memoryWeight: 2,
-    defaultFrame: { w: 840, h: 620 },
-    confirmUnsavedOnClose: true,
-  },
   {
     typeId: 'textbook',
     nameKey: 'workbench:apps.textbook',

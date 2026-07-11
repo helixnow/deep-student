@@ -17,6 +17,11 @@ import type {
 import { appRegistry } from './appRegistry';
 import { useWindowStore } from './windowStore';
 import { confirmWindowClose } from './windowCloseGuard';
+import {
+  activateWorkspaceResource,
+  requestWorkspaceResource,
+  type NotesWorkspaceResourceRef,
+} from '../apps/notes/workspaceRegistry';
 
 export type LegacyFallbackHandler = (req: LaunchRequest | ActivateRequest, kind: 'launch' | 'activate') => void;
 
@@ -33,6 +38,12 @@ interface ActivationWaiter {
 }
 const activationWaiters = new Map<string, Set<ActivationWaiter>>();
 const ACTIVATION_READY_TIMEOUT_MS = 10_000;
+const NOTES_WORKSPACE_TYPE_ID = 'notes';
+
+function toWorkspaceResource(typeId: string, resourceId?: string): NotesWorkspaceResourceRef | null {
+  if ((typeId !== 'note' && typeId !== 'mindmap') || !resourceId?.trim()) return null;
+  return { type: typeId, id: resourceId.trim() };
+}
 
 export interface ActivationDispatchResult {
   /** false 表示目标不存在、未能挂载，或指令未送达处理器。 */
@@ -134,6 +145,22 @@ export const workbenchBus = {
       return null;
     }
     const store = useWindowStore.getState();
+    const workspaceResource = toWorkspaceResource(req.typeId, req.instanceKey);
+    if (workspaceResource && appRegistry.get(NOTES_WORKSPACE_TYPE_ID)) {
+      const windowId = store.openWindow({
+        typeId: NOTES_WORKSPACE_TYPE_ID,
+        instanceKey: null,
+        payload: {
+          resourceType: workspaceResource.type,
+          resourceId: workspaceResource.id,
+        },
+        dropPoint: req.dropPoint,
+      });
+      void requestWorkspaceResource(workspaceResource, windowId).catch((error) => {
+        console.warn('[workbench:notes] failed to open resource:', error);
+      });
+      return windowId;
+    }
     return store.openWindow({
       typeId: req.typeId,
       instanceKey: req.instanceKey ?? null,
@@ -162,6 +189,42 @@ export const workbenchBus = {
       return { delivered: false, result: lastActivationResult };
     }
     const store = useWindowStore.getState();
+    const workspaceResource = toWorkspaceResource(req.typeId, req.instanceKey);
+    if (workspaceResource && appRegistry.get(NOTES_WORKSPACE_TYPE_ID)) {
+      let workspaceWindow = Object.values(store.windows).find(
+        (window) => window.typeId === NOTES_WORKSPACE_TYPE_ID,
+      );
+      if (!workspaceWindow && req.fallbackLaunch) {
+        const windowId = workbenchBus.launch({
+          ...req.fallbackLaunch,
+          typeId: req.typeId,
+          instanceKey: req.instanceKey,
+        });
+        workspaceWindow = windowId
+          ? useWindowStore.getState().windows[windowId]
+          : undefined;
+      }
+      if (!workspaceWindow) {
+        lastActivationResult = {
+          handled: false,
+          code: 'WINDOW_NOT_FOUND',
+          hint: '笔记应用未打开；可带 fallbackLaunch 自动打开',
+        };
+        return { delivered: false, result: lastActivationResult };
+      }
+      useWindowStore.getState().focusWindow(workspaceWindow.id);
+      const activation = await activateWorkspaceResource(
+        workspaceResource,
+        req.action,
+        req.payload,
+        workspaceWindow.id,
+      );
+      lastActivationResult = activation.result;
+      return {
+        delivered: activation.windowId != null,
+        result: activation.result,
+      };
+    }
     // R2-04：single 按 typeId；multi 精确 instanceKey；空 key 回落焦点窗/同 type 首窗
     const def = appRegistry.get(req.typeId);
     let win: (typeof store.windows)[string] | undefined;
