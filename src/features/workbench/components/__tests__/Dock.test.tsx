@@ -14,6 +14,7 @@ import { Dock } from '../Dock';
 import { getDockPinned, setDockPinned } from '../DockPinnedStore';
 import { closeAppsPanel, isAppsPanelOpen } from '../appsPanelStore';
 import { resetMaterialTierForTests, setMaterialTier } from '../../core/materialTier';
+import { AGENT_CONTROL_DISCOVERY_SEEN_KEY } from '../AgentControlCenter';
 
 const NullApp: React.FC<AppWindowProps> = () => null;
 
@@ -69,6 +70,7 @@ beforeEach(() => {
   resetStore();
   setDockPinned([]);
   closeAppsPanel();
+  localStorage.removeItem(AGENT_CONTROL_DISCOVERY_SEEN_KEY);
 });
 
 afterEach(() => {
@@ -340,11 +342,12 @@ describe('分区与排序', () => {
     render(<Dock />);
 
     const dock = screen.getByTestId('wb-dock');
-    // chat + 右侧全部应用入口
-    expect(within(dock).getAllByRole('button')).toHaveLength(2);
+    // chat + 右侧全部应用入口 + 常驻 AI 操控入口
+    expect(within(dock).getAllByRole('button')).toHaveLength(3);
     expect(screen.queryByTestId('wb-dock-separator')).not.toBeInTheDocument();
     expect(screen.getByTestId('wb-dock-apps-separator')).toBeInTheDocument();
     expect(screen.getByTestId('wb-dock-apps-button')).toBeInTheDocument();
+    expect(screen.getByTestId('wb-dock-agent-control-button')).toBeInTheDocument();
   });
 
   it('Apps 按钮 toggle 面板并同步 aria-expanded', () => {
@@ -366,17 +369,19 @@ describe('分区与排序', () => {
 });
 
 describe('键盘可达（roving tabindex）', () => {
-  it('只有活动项 tabIndex=0，←/→/Home/End 移动焦点（含 Apps 入口）', () => {
+  it('只有活动项 tabIndex=0，←/→/Home/End 移动焦点（含 Apps 与 AI 操控入口）', () => {
     setDockPinned(['chat', 'files']);
     render(<Dock />);
     const dock = screen.getByTestId('wb-dock');
     const chatBtn = dockButton("chat");
     const filesBtn = dockButton("files");
     const appsBtn = screen.getByTestId('wb-dock-apps-button');
+    const agentBtn = screen.getByTestId('wb-dock-agent-control-button');
 
     expect(chatBtn).toHaveAttribute('tabindex', '0');
     expect(filesBtn).toHaveAttribute('tabindex', '-1');
     expect(appsBtn).toHaveAttribute('tabindex', '-1');
+    expect(agentBtn).toHaveAttribute('tabindex', '-1');
 
     fireEvent.keyDown(dock, { key: 'ArrowRight' });
     expect(document.activeElement).toBe(filesBtn);
@@ -386,11 +391,14 @@ describe('键盘可达（roving tabindex）', () => {
     fireEvent.keyDown(dock, { key: 'ArrowRight' }); // → Apps
     expect(document.activeElement).toBe(appsBtn);
 
+    fireEvent.keyDown(dock, { key: 'ArrowRight' }); // → AI 操控
+    expect(document.activeElement).toBe(agentBtn);
+
     fireEvent.keyDown(dock, { key: 'ArrowRight' }); // 循环回第一个
     expect(document.activeElement).toBe(chatBtn);
 
     fireEvent.keyDown(dock, { key: 'End' });
-    expect(document.activeElement).toBe(appsBtn);
+    expect(document.activeElement).toBe(agentBtn);
     fireEvent.keyDown(dock, { key: 'Home' });
     expect(document.activeElement).toBe(chatBtn);
   });

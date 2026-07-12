@@ -151,6 +151,7 @@ describe('windowStore — 打开与级联', () => {
     expect(again).toBe(a);
     expect(Object.keys(store().windows)).toHaveLength(1);
   });
+
 });
 
 describe('windowStore — focusStack / zIndex 不变量', () => {

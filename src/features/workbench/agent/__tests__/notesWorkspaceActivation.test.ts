@@ -96,6 +96,13 @@ describe('unified notes workspace ACR activation', () => {
       store,
       `${windowId}:right:mindmap:map-acr`,
     );
+    const decoyStore = createMindMapStore();
+    decoyStore.setState({ mindmapId: 'map-acr' });
+    const unregisterDecoy = registerMindMapStore(
+      'map-acr',
+      decoyStore,
+      'another-notes-window:left:mindmap:map-acr',
+    );
 
     const focused = await workbenchBus.activateDetailed({
       typeId: 'mindmap',
@@ -114,6 +121,8 @@ describe('unified notes workspace ACR activation', () => {
     });
     expect(view).toEqual({ delivered: true, result: { handled: true } });
     expect(store.getState().currentView).toBe('outline');
+    expect(decoyStore.getState().currentView).toBe('mindmap');
+    unregisterDecoy();
     unregister();
   });
 });

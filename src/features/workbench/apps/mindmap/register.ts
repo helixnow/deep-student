@@ -15,6 +15,7 @@ import type { MindMapViewType } from '@/features/mindmap/types';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { MINDMAP_APP_TYPE_ID } from '../content/typeMap';
+import { createMindmapAgentManifest } from './agentManifest';
 
 function payloadRecord(payload: unknown): Record<string, unknown> | null {
   if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
@@ -63,6 +64,20 @@ function applyMindmapActivation(
       store.setCurrentView(view as MindMapViewType);
       return { handled: true };
     }
+    case 'search': {
+      const query = typeof payload?.query === 'string' ? payload.query : '';
+      store.search(query);
+      return { handled: true };
+    }
+    case 'nextSearchResult':
+      store.nextSearchResult();
+      return { handled: true };
+    case 'previousSearchResult':
+      store.prevSearchResult();
+      return { handled: true };
+    case 'clearSearch':
+      store.clearSearch();
+      return { handled: true };
     default:
       return {
         handled: false,
@@ -115,7 +130,14 @@ export async function handleMindmapActivation(
   ) {
     return { handled: false, code: 'INVALID_ARGS' };
   }
-  if (ctx.action !== 'focusNode' && ctx.action !== 'setView') {
+  if (
+    ctx.action !== 'focusNode' &&
+    ctx.action !== 'setView' &&
+    ctx.action !== 'search' &&
+    ctx.action !== 'nextSearchResult' &&
+    ctx.action !== 'previousSearchResult' &&
+    ctx.action !== 'clearSearch'
+  ) {
     return { handled: false, code: 'UNKNOWN_ACTION' };
   }
 
@@ -141,4 +163,5 @@ export const MINDMAP_APP_DEFINITION: AppDefinition = {
   minSize: { w: 420, h: 320 },
   render: React.lazy(() => import('./MindmapAppWindow')),
   onActivation: handleMindmapActivation,
+  agentManifest: createMindmapAgentManifest(handleMindmapActivation),
 };

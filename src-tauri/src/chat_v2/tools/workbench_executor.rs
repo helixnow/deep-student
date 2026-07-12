@@ -1,11 +1,11 @@
 //! Workbench / OS 模式 Agent 工具执行器（ACR R1-02 / R2-01）
 //!
-//! 让 chat agent 通过桥层操控学习桌面窗口：列举、打开、发指令、关闭、查状态。
-//! 工具短名（strip 后）：`workbench_list_windows` / `workbench_open_app` /
-//! `workbench_app_command` / `workbench_close_window` / `workbench_query_state`。
+//! 让 chat agent 通过桥层发现、观察、操控并验证学习桌面子应用。
+//! ACR 2.0 主工具：`workbench_get_capabilities` / `workbench_observe` /
+//! `workbench_act` / `workbench_wait_for` / `workbench_undo`；旧五工具继续兼容。
 //!
 //! LLM 可见名带 `builtin-` 前缀；schema 由前端 skill `workbench-tools`（R1-08）注入。
-//! 数据修改仍走领域工具；本组只负责看见 / 导航 / 窗口指令。
+//! 笔记/导图/待办等领域内容修改仍走领域工具；本组负责窗口与 manifest 语义操作。
 //!
 //! R2-01：闸门 off 时 list/query 只读允许、写/导航拒绝（`WORKBENCH_DISABLED`）；
 //! 桥业务错误码透传；取消 → `CANCELLED` 不重试。
@@ -31,6 +31,12 @@ use crate::feature_flags::FeatureFlagManager;
 // ============================================================================
 
 pub mod tool_names {
+    pub const GET_CAPABILITIES: &str = "workbench_get_capabilities";
+    pub const OBSERVE: &str = "workbench_observe";
+    pub const ACT: &str = "workbench_act";
+    pub const ACT_HIGH: &str = "workbench_act_high";
+    pub const WAIT_FOR: &str = "workbench_wait_for";
+    pub const UNDO: &str = "workbench_undo";
     pub const LIST_WINDOWS: &str = "workbench_list_windows";
     pub const OPEN_APP: &str = "workbench_open_app";
     pub const APP_COMMAND: &str = "workbench_app_command";
@@ -45,6 +51,8 @@ const SETTING_WORKBENCH_AGENT_CONTROL: &str = "desktop.workbenchAgentControl";
 const TIMEOUT_QUERY_MS: u64 = 5_000;
 /// open_app / app_command / close_window 桥超时
 const TIMEOUT_MUTATE_MS: u64 = 15_000;
+/// wait_for 自身最多等待 30s，桥层额外留 5s 收尾。
+const TIMEOUT_WAIT_MS: u64 = 35_000;
 
 const HINT_UNAVAILABLE: &str =
     "桌面模式未开启或未就绪，导航类操作不可用；数据修改请改用对应领域工具";
@@ -130,7 +138,21 @@ fn is_workbench_agent_enabled(raw: &str) -> bool {
 
 /// 只读工具：闸门 Off 时仍允许（R2-08 定稿）
 fn is_readonly_workbench_tool(stripped: &str) -> bool {
-    matches!(stripped, tool_names::LIST_WINDOWS | tool_names::QUERY_STATE)
+    matches!(
+        stripped,
+        tool_names::GET_CAPABILITIES
+            | tool_names::OBSERVE
+            | tool_names::WAIT_FOR
+            | tool_names::LIST_WINDOWS
+            | tool_names::QUERY_STATE
+    )
+}
+
+/// setting=off 时 `act` 仍需到达前端，才能依据实时 manifest 对整批 capability
+/// 做动态只读判定。StageManager 只允许全部 mutates=false 的批次，任何写动作 fail-closed。
+fn can_dispatch_under_off_gate(stripped: &str) -> bool {
+    is_readonly_workbench_tool(stripped)
+        || matches!(stripped, tool_names::ACT | tool_names::ACT_HIGH)
 }
 
 fn structured_error(code: &str, message: &str, hint: &str, retryable: bool) -> String {
@@ -167,6 +189,26 @@ fn map_bridge_error(raw: &str) -> String {
         "WORKBENCH_DISABLED" => HINT_DISABLED,
         "CANCELLED" => HINT_CANCELLED,
         "WINDOW_BUSY" => "目标窗口正被其他 Agent run 占用；请等待或换窗",
+        "STALE_OBSERVATION" => {
+            "目标状态已变化；请重新 observe 并根据最新 revision 规划，勿原样重试"
+        }
+        "APP_AGENT_UNAVAILABLE" | "APP_NOT_REGISTERED" => {
+            "目标应用未注册 Agent 能力；请重新 get_capabilities 或改用领域工具"
+        }
+        "OBSERVE_FAILED" => "无法观察目标应用；请确认窗口就绪后重新 observe",
+        "CAPABILITY_NOT_FOUND" | "ACTION_UNAVAILABLE" => {
+            "能力不存在或当前不可用；请重新 get_capabilities 与 observe"
+        }
+        "INVALID_AGENT_REF" => "实体引用无效或已过期；请重新 observe 并使用最新 ref",
+        "INVALID_ACTION_ARGS" => "动作参数不符合 capability inputSchema；请重新 get_capabilities",
+        "CONDITION_NOT_MET" => "动作已执行但后置条件未满足；请查看最新 observation 再决定下一步",
+        "INVALID_CONDITION" => "条件格式无效；请使用工具 schema 支持的结构化 condition",
+        "FOCUS_REQUIRED" => "该能力要求目标窗口获得焦点；请使用跟随模式或先聚焦窗口",
+        "ACTION_FAILED" => "应用拒绝或未能完成动作；请查看回执与最新 observation",
+        "RISK_APPROVAL_REQUIRED" => {
+            "manifest 能力风险超过本工具的可信审批上限；高风险动作必须改用 workbench_act_high"
+        }
+        "UNDO_NOT_FOUND" => "撤销 token 不存在、已消费或已过期；不要重复调用",
         "STRICT_MODE" => "番茄钟严格模式拒绝该操作",
         "TODO_CONFLICT" | "QBANK_CONFLICT" => "版本冲突；请重新读取后再写",
         _ => HINT_UNAVAILABLE,
@@ -182,6 +224,21 @@ fn extract_error_code(raw: &str) -> Option<&'static str> {
         "WINDOW_BUSY",
         "WINDOW_NOT_FOUND",
         "DRIVER_NOT_FOUND",
+        "APP_AGENT_UNAVAILABLE",
+        "APP_NOT_REGISTERED",
+        "OBSERVE_FAILED",
+        "STALE_OBSERVATION",
+        "CAPABILITY_NOT_FOUND",
+        "ACTION_UNAVAILABLE",
+        "INVALID_AGENT_REF",
+        "INVALID_ACTION_ARGS",
+        "CONDITION_NOT_MET",
+        "INVALID_CONDITION",
+        "FOCUS_REQUIRED",
+        "ACTION_FAILED",
+        "RISK_APPROVAL_REQUIRED",
+        "UNDO_NOT_FOUND",
+        "INVALID_ARGS",
         "STRICT_MODE",
         "ANCHOR_NOT_FOUND",
         "TODO_CONFLICT",
@@ -219,6 +276,11 @@ fn normalize_bridge_args(args: &Value) -> Value {
     promote_alias(&mut out, "instance_key", "instanceKey");
     promote_alias(&mut out, "window_id", "windowId");
     promote_alias(&mut out, "resource_id", "resourceId");
+    promote_alias(&mut out, "observation_revision", "observationRevision");
+    promote_alias(&mut out, "stop_on_failure", "stopOnFailure");
+    promote_alias(&mut out, "timeout_ms", "timeoutMs");
+    promote_alias(&mut out, "interval_ms", "intervalMs");
+    promote_alias(&mut out, "undo_token", "undoToken");
 
     Value::Object(out)
 }
@@ -234,8 +296,39 @@ fn promote_alias(obj: &mut Map<String, Value>, snake: &str, camel: &str) {
     }
 }
 
+/// 审批风险上限由 Rust 根据已审批的工具名覆盖注入，绝不信任模型参数。
+fn inject_approval_risk_ceiling(args: Value, ceiling: &'static str) -> Value {
+    let mut object = args.as_object().cloned().unwrap_or_default();
+    object.insert(
+        "approvalRiskCeiling".to_string(),
+        Value::String(ceiling.to_string()),
+    );
+    Value::Object(object)
+}
+
+/// 旧 app_command 没有按 manifest risk 分工具审批。已知 high 动作必须 fail-closed，
+/// 迫使调用方重新 observe 后使用 workbench_act_high，避免 Medium 兼容接口旁路。
+fn is_legacy_high_risk_command(args: &Value) -> bool {
+    let Some(object) = args.as_object() else {
+        return false;
+    };
+    matches!(
+        (
+            object.get("typeId").and_then(Value::as_str),
+            object.get("action").and_then(Value::as_str),
+        ),
+        (Some("pomodoro"), Some("stop")) | (Some("sandbox"), Some("setMode"))
+    )
+}
+
 fn bridge_command_and_timeout(stripped: &str) -> Option<(&'static str, u64)> {
     match stripped {
+        tool_names::GET_CAPABILITIES => Some(("get_capabilities", TIMEOUT_QUERY_MS)),
+        tool_names::OBSERVE => Some(("observe", TIMEOUT_QUERY_MS)),
+        tool_names::ACT => Some(("act", TIMEOUT_MUTATE_MS)),
+        tool_names::ACT_HIGH => Some(("act", TIMEOUT_MUTATE_MS)),
+        tool_names::WAIT_FOR => Some(("wait_for", TIMEOUT_WAIT_MS)),
+        tool_names::UNDO => Some(("revert_run", TIMEOUT_MUTATE_MS)),
         tool_names::LIST_WINDOWS => Some(("list_windows", TIMEOUT_QUERY_MS)),
         tool_names::OPEN_APP => Some(("open_app", TIMEOUT_MUTATE_MS)),
         tool_names::APP_COMMAND => Some(("app_command", TIMEOUT_MUTATE_MS)),
@@ -275,7 +368,7 @@ impl WorkbenchToolExecutor {
                     "Agent 桌面硬闸未开启（tools.workbench_agent）",
                 ));
             }
-            GateMode::Off if !is_readonly_workbench_tool(stripped) => {
+            GateMode::Off if !can_dispatch_under_off_gate(stripped) => {
                 return Err(workbench_disabled(&format!(
                     "Agent 桌面操控未开启（desktop.workbenchAgentControl=off），拒绝 {stripped}"
                 )));
@@ -286,7 +379,20 @@ impl WorkbenchToolExecutor {
         let (command, timeout_ms) = bridge_command_and_timeout(stripped)
             .ok_or_else(|| workbench_unavailable(&format!("未知的 workbench 工具: {stripped}")))?;
 
-        let bridge_args = normalize_bridge_args(args);
+        let normalized_args = normalize_bridge_args(args);
+        if stripped == tool_names::APP_COMMAND && is_legacy_high_risk_command(&normalized_args) {
+            return Err(structured_error(
+                "RISK_APPROVAL_REQUIRED",
+                "manifest high 风险动作不能通过兼容 app_command 执行",
+                "请先 workbench_observe，再用 workbench_act_high 对本次动作精确审批",
+                false,
+            ));
+        }
+        let bridge_args = match stripped {
+            tool_names::ACT => inject_approval_risk_ceiling(normalized_args, "medium"),
+            tool_names::ACT_HIGH => inject_approval_risk_ceiling(normalized_args, "high"),
+            _ => normalized_args,
+        };
 
         log::debug!(
             "[WorkbenchToolExecutor] bridge command={command} timeout_ms={timeout_ms} run_id={}",
@@ -386,7 +492,10 @@ impl ToolExecutor for WorkbenchToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         match strip_tool_namespace(tool_name) {
             tool_names::CLOSE_WINDOW => ToolSensitivity::High,
-            tool_names::APP_COMMAND => ToolSensitivity::Medium,
+            tool_names::ACT_HIGH => ToolSensitivity::High,
+            // 审批接口只接收工具名：普通 act 的可信上限为 Medium；manifest high
+            // 必须使用独立 High 工具，Rust 再覆盖注入 approvalRiskCeiling。
+            tool_names::ACT | tool_names::UNDO | tool_names::APP_COMMAND => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }
@@ -422,6 +531,18 @@ mod tests {
         assert!(ex.can_handle("workbench_close_window"));
         assert!(ex.can_handle("builtin-workbench_query_state"));
         assert!(ex.can_handle("workbench_query_state"));
+        assert!(ex.can_handle("builtin-workbench_get_capabilities"));
+        assert!(ex.can_handle("workbench_get_capabilities"));
+        assert!(ex.can_handle("builtin-workbench_observe"));
+        assert!(ex.can_handle("workbench_observe"));
+        assert!(ex.can_handle("builtin-workbench_act"));
+        assert!(ex.can_handle("workbench_act"));
+        assert!(ex.can_handle("builtin-workbench_act_high"));
+        assert!(ex.can_handle("workbench_act_high"));
+        assert!(ex.can_handle("builtin-workbench_wait_for"));
+        assert!(ex.can_handle("workbench_wait_for"));
+        assert!(ex.can_handle("builtin-workbench_undo"));
+        assert!(ex.can_handle("workbench_undo"));
         assert!(!ex.can_handle("builtin-web_fetch"));
         assert!(!ex.can_handle("user_todo_list_lists"));
         assert!(!ex.can_handle("browser_open"));
@@ -450,6 +571,30 @@ mod tests {
             ex.sensitivity_level("workbench_query_state"),
             ToolSensitivity::Low
         );
+        assert_eq!(
+            ex.sensitivity_level("workbench_get_capabilities"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            ex.sensitivity_level("workbench_observe"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            ex.sensitivity_level("workbench_act"),
+            ToolSensitivity::Medium
+        );
+        assert_eq!(
+            ex.sensitivity_level("workbench_act_high"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            ex.sensitivity_level("workbench_wait_for"),
+            ToolSensitivity::Low
+        );
+        assert_eq!(
+            ex.sensitivity_level("workbench_undo"),
+            ToolSensitivity::Medium
+        );
     }
 
     #[test]
@@ -458,12 +603,22 @@ mod tests {
             "type_id": "note",
             "instance_key": "res-1",
             "window_id": "win-9",
+            "observation_revision": "rev-4",
+            "stop_on_failure": true,
+            "timeout_ms": 1200,
+            "interval_ms": 80,
+            "undo_token": "acr-undo:token-1",
             "action": "focusNode",
         });
         let normalized = normalize_bridge_args(&raw);
         assert_eq!(normalized["typeId"], "note");
         assert_eq!(normalized["instanceKey"], "res-1");
         assert_eq!(normalized["windowId"], "win-9");
+        assert_eq!(normalized["observationRevision"], "rev-4");
+        assert_eq!(normalized["stopOnFailure"], true);
+        assert_eq!(normalized["timeoutMs"], 1200);
+        assert_eq!(normalized["intervalMs"], 80);
+        assert_eq!(normalized["undoToken"], "acr-undo:token-1");
         assert_eq!(normalized["action"], "focusNode");
         assert!(normalized.get("type_id").is_none());
         assert!(normalized.get("instance_key").is_none());
@@ -484,6 +639,45 @@ mod tests {
     }
 
     #[test]
+    fn risk_ceiling_is_overwritten_by_trusted_tool_path() {
+        let model_args = json!({
+            "observationRevision": "rev-1",
+            "actions": [{"name": "stop"}],
+            "approvalRiskCeiling": "high",
+        });
+        let regular = inject_approval_risk_ceiling(normalize_bridge_args(&model_args), "medium");
+        assert_eq!(regular["approvalRiskCeiling"], "medium");
+
+        let model_args = json!({
+            "observationRevision": "rev-1",
+            "actions": [{"name": "stop"}],
+            "approvalRiskCeiling": "read",
+        });
+        let elevated = inject_approval_risk_ceiling(normalize_bridge_args(&model_args), "high");
+        assert_eq!(elevated["approvalRiskCeiling"], "high");
+    }
+
+    #[test]
+    fn legacy_high_risk_action_cannot_bypass_act_high() {
+        assert!(is_legacy_high_risk_command(&json!({
+            "typeId": "pomodoro",
+            "action": "stop",
+        })));
+        assert!(!is_legacy_high_risk_command(&json!({
+            "typeId": "pomodoro",
+            "action": "pause",
+        })));
+        assert!(is_legacy_high_risk_command(&json!({
+            "typeId": "sandbox",
+            "action": "setMode",
+        })));
+        assert!(!is_legacy_high_risk_command(&json!({
+            "typeId": "exam",
+            "action": "nextQuestion",
+        })));
+    }
+
+    #[test]
     fn gate_setting_parser() {
         assert!(is_workbench_agent_enabled("")); // 未设置 = 默认开
         assert!(!is_workbench_agent_enabled("off"));
@@ -495,11 +689,24 @@ mod tests {
 
     #[test]
     fn readonly_tools_under_off_gate() {
+        assert!(is_readonly_workbench_tool(tool_names::GET_CAPABILITIES));
+        assert!(is_readonly_workbench_tool(tool_names::OBSERVE));
+        assert!(is_readonly_workbench_tool(tool_names::WAIT_FOR));
         assert!(is_readonly_workbench_tool(tool_names::LIST_WINDOWS));
         assert!(is_readonly_workbench_tool(tool_names::QUERY_STATE));
+        assert!(!is_readonly_workbench_tool(tool_names::ACT));
+        assert!(!is_readonly_workbench_tool(tool_names::ACT_HIGH));
+        assert!(!is_readonly_workbench_tool(tool_names::UNDO));
         assert!(!is_readonly_workbench_tool(tool_names::OPEN_APP));
         assert!(!is_readonly_workbench_tool(tool_names::APP_COMMAND));
         assert!(!is_readonly_workbench_tool(tool_names::CLOSE_WINDOW));
+
+        // act 的写性由前端实时 manifest 对整批动作判定；Rust 仅允许它穿过 off 前置闸门。
+        assert!(can_dispatch_under_off_gate(tool_names::ACT));
+        assert!(can_dispatch_under_off_gate(tool_names::ACT_HIGH));
+        assert!(can_dispatch_under_off_gate(tool_names::OBSERVE));
+        assert!(!can_dispatch_under_off_gate(tool_names::UNDO));
+        assert!(!can_dispatch_under_off_gate(tool_names::APP_COMMAND));
     }
 
     #[test]
@@ -510,5 +717,11 @@ mod tests {
         let busy = map_bridge_error("WINDOW_BUSY");
         assert!(busy.contains("WINDOW_BUSY"));
         assert!(busy.contains("\"retryable\":true"));
+        let stale = map_bridge_error("STALE_OBSERVATION: expected rev-1");
+        assert!(stale.contains("STALE_OBSERVATION"));
+        assert!(stale.contains("重新 observe"));
+        let risk = map_bridge_error("RISK_APPROVAL_REQUIRED: sandbox.setMode");
+        assert!(risk.contains("RISK_APPROVAL_REQUIRED"));
+        assert!(risk.contains("workbench_act_high"));
     }
 }

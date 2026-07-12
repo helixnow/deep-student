@@ -8,11 +8,15 @@ const mocks = vi.hoisted(() => ({
   activate: vi.fn(),
   hasRun: vi.fn<(runId: string) => boolean>(),
   revertRun: vi.fn<(runId: string) => Promise<boolean>>(),
+  handleBridgeRequest: vi.fn(),
 }));
 
 vi.mock('@/features/workbench', () => ({
   workbenchBus: { activate: mocks.activate },
-  stageManager: { revertRun: mocks.revertRun },
+  stageManager: {
+    revertRun: mocks.revertRun,
+    handleBridgeRequest: mocks.handleBridgeRequest,
+  },
   usePresenceStore: (selector: (state: { byWindow: Record<string, never> }) => unknown) =>
     selector({ byWindow: {} }),
 }));
@@ -47,11 +51,43 @@ function createBlock(overrides: Partial<Block> = {}): Block {
   };
 }
 
+function createAgentActBlock(
+  undoToken: string,
+  undoDurability: 'persistent' | 'session',
+  overrides: Partial<Block> = {},
+): Block {
+  return createBlock({
+    toolName: 'workbench_act',
+    toolInput: { typeId: 'todo', windowId: 'win-todo' },
+    toolOutput: {
+      result: {
+        status: 'completed',
+        windowId: 'win-todo',
+        typeId: 'todo',
+        beforeRevision: 'rev-1',
+        afterRevision: 'rev-2',
+        results: [{ index: 0, name: 'focusItem', handled: true, verified: true }],
+        verified: true,
+        failedConditions: [],
+        undoToken,
+        undoDurability,
+        observation: { revision: 'rev-2' },
+      },
+    },
+    ...overrides,
+  });
+}
+
 describe('WorkbenchOpsBlock undo semantics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.hasRun.mockReturnValue(false);
     mocks.revertRun.mockResolvedValue(true);
+    mocks.handleBridgeRequest.mockResolvedValue({
+      correlationId: 'undo-response',
+      ok: true,
+      data: { reverted: true },
+    });
   });
 
   it('does not enable undo when the ledger has no reversible entry', () => {
@@ -162,5 +198,51 @@ describe('WorkbenchOpsBlock undo semantics', () => {
       expect(button).toHaveTextContent('撤销未完全完成（无法重试）');
       expect(button).not.toHaveTextContent('已撤销');
     });
+  });
+
+  it('shows persistent undo durability and consumes its token even after restore', async () => {
+    const block = createAgentActBlock('acr-undo:persisted-1', 'persistent', {
+      id: 'persistent-act-block',
+      toolCallId: 'persistent-act-call',
+    });
+    markWorkbenchBlockRestored(block.id);
+
+    render(<WorkbenchOpsBlock block={block} />);
+
+    expect(screen.getByTestId('workbench-agent-act-receipt')).toHaveTextContent(
+      '操作后状态已验证',
+    );
+    expect(screen.getByTestId('workbench-undo-durability')).toHaveTextContent(
+      '应用重启后仍可恢复',
+    );
+    const button = screen.getByTestId('workbench-ops-undo');
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(mocks.handleBridgeRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'revert_run',
+          args: { undoToken: 'acr-undo:persisted-1' },
+        }),
+      );
+      expect(button).toHaveTextContent('已撤销可恢复更改');
+    });
+    expect(mocks.revertRun).not.toHaveBeenCalled();
+  });
+
+  it('marks a restored session-only undo token as expired', () => {
+    const block = createAgentActBlock('acr-run:session-1', 'session', {
+      id: 'session-act-block',
+      toolCallId: 'session-act-call',
+    });
+    markWorkbenchBlockRestored(block.id);
+
+    render(<WorkbenchOpsBlock block={block} />);
+
+    const button = screen.getByTestId('workbench-ops-undo');
+    expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('blocks.workbenchOps.undoExpired');
+    expect(mocks.handleBridgeRequest).not.toHaveBeenCalled();
   });
 });

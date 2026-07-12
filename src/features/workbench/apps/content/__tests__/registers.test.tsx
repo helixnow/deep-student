@@ -42,7 +42,8 @@ describe('content app registers', () => {
   it('weight 与 instanceMode 符合章节规定', () => {
     for (const def of CONTENT_APP_DEFINITIONS) {
       expect(def.memoryWeight, `${def.typeId} weight`).toBe(EXPECTED_WEIGHTS[def.typeId]);
-      expect(def.instanceMode, `${def.typeId} instanceMode`).toBe('multi');
+      const expectedMode = def.typeId === 'exam' || def.typeId === 'essay' ? 'single' : 'multi';
+      expect(def.instanceMode, `${def.typeId} instanceMode`).toBe(expectedMode);
       expect(def.nameKey).toBe(`workbench:apps.${def.typeId}`);
       expect(def.defaultFrame.w).toBeGreaterThan(0);
       expect(def.minSize.w).toBeGreaterThan(0);

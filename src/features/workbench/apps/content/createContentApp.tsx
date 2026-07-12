@@ -3,7 +3,8 @@
  *
  * Wraps a Learning Hub resource content view as a Workbench app definition:
  * - render is lazy-loaded through ContentAppWindow;
- * - every resource uses multi-instance mode with instanceKey = resourceId;
+ * - resource-backed apps default to multi-instance mode with instanceKey = resourceId;
+ * - exam/essay opt into a single workspace that selects resources internally;
  * - editing apps can opt into an unsaved-close guard via contentDirtyRegistry.
  */
 import React from 'react';
@@ -16,6 +17,7 @@ import type {
 } from '../../core/types';
 import type { ContentAppTypeId } from './typeMap';
 import { isContentDirty } from './contentDirtyRegistry';
+import { getResourceWorkspaceActive } from './resourceWorkspaceRegistry';
 
 export interface CreateContentAppOptions {
   typeId: ContentAppTypeId;
@@ -23,6 +25,7 @@ export interface CreateContentAppOptions {
   nameKey: string;
   icon: React.ReactNode;
   memoryWeight: 1 | 2 | 3;
+  instanceMode?: 'single' | 'multi';
   defaultFrame: Size;
   minSize?: Size;
   /** Editing apps check dirty state before closing. */
@@ -47,7 +50,10 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
 
   const canClose = options.confirmUnsavedOnClose
     ? (instanceKey: string | null): boolean => {
-        if (!isContentDirty(typeId, instanceKey)) return true;
+        const dirtyResourceId = instanceKey ?? (
+          typeId === 'essay' ? getResourceWorkspaceActive('essay') : null
+        );
+        if (!isContentDirty(typeId, dirtyResourceId)) return true;
         if (typeof window === 'undefined' || typeof window.confirm !== 'function') return true;
         // eslint-disable-next-line no-alert -- canClose is a synchronous app-definition guard.
         return window.confirm(
@@ -62,7 +68,7 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
     typeId,
     nameKey: options.nameKey,
     icon: options.icon,
-    instanceMode: 'multi',
+    instanceMode: options.instanceMode ?? 'multi',
     memoryWeight: options.memoryWeight,
     defaultFrame: options.defaultFrame,
     minSize: options.minSize ?? DEFAULT_MIN_SIZE,

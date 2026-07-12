@@ -906,7 +906,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   return (
     <div className={cn('flex flex-col h-full', className)}>
       {/* 顶部工具栏 - Notion 风格 */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl">
         {/* 搜索框 */}
         <div className="flex-1 relative">
           <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
@@ -1085,7 +1085,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           {/* 画像汇总 */}
           {showProfile && (
             <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 bg-muted/20">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
                 <MemoryIcon size={14} className="text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title', '系统对我的了解')}</span>
               </div>
@@ -1113,7 +1113,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           {/* 审计日志面板 */}
           {showAuditLog && (
             <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 bg-muted/20">
+              <div className="flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
                 <ClockCounterClockwise size={14} className="text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log', '操作日志')}</span>
                 <div className="ml-auto flex items-center gap-1.5">
@@ -1185,7 +1185,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
           {/* 批量导入表单 */}
           {isBatchImporting && (
-            <div className="rounded-lg border border-border/60 bg-card/50 p-4 space-y-3">
+            <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-card/60 p-4 space-y-3 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <ListPlus size={16} />
@@ -1272,7 +1272,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
           {/* 内联创建表单 */}
           {isCreatingInline && (
-            <div className="rounded-lg border border-border/60 bg-card/50 p-4 space-y-3">
+            <div className="rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-card/60 p-4 space-y-3 shadow-sm">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MemoryIcon size={16} />
@@ -1826,7 +1826,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
   const isEditing = editingMemoryId === noteId;
 
   return (
-    <div className={cn('rounded-md border border-border/40 bg-card/50 overflow-hidden', className)}>
+    <div className={cn('rounded-xl border border-black/[0.06] dark:border-white/[0.08] bg-card/60 overflow-hidden shadow-sm', className)}>
       {isLoadingContent ? (
         <div className="flex items-center justify-center py-6">
           <CircleNotch size={16} className="animate-spin text-muted-foreground" />

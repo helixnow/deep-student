@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { getPreviewSelectionMetadata } from '../FilePreviewAppWindow';
+import { getPreviewHighlightNames, getPreviewSelectionMetadata } from '../FilePreviewAppWindow';
 
 function selectText(node: Text, start = 0, end = node.data.length): void {
   const range = document.createRange();
@@ -47,5 +47,21 @@ describe('file preview selection metadata', () => {
     selectText(text, 6, 12);
 
     expect(getPreviewSelectionMetadata(root)).toEqual({ selectedText: 'second', locator: 'line:2' });
+  });
+});
+
+describe('file preview highlight identity', () => {
+  it('accepts an empty instance key without crashing', () => {
+    expect(getPreviewHighlightNames(null)).toEqual({
+      all: 'file-preview-search-empty',
+      current: 'file-preview-search-current-empty',
+    });
+  });
+
+  it('normalizes resource paths and unsafe characters', () => {
+    expect(getPreviewHighlightNames('/folder/report 1.pdf')).toEqual({
+      all: 'file-preview-search-report-1-pdf',
+      current: 'file-preview-search-current-report-1-pdf',
+    });
   });
 });

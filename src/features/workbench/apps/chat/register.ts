@@ -20,6 +20,7 @@ import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import type { ChatStore } from '@/features/chat/core/types';
 import type { StoreApi } from 'zustand';
+import { createChatAgentManifest } from './agentManifest';
 
 export const CHAT_APP_TYPE_ID = 'chat';
 
@@ -270,6 +271,7 @@ export const chatAppDefinition: AppDefinition = {
   // 而非 WindowBody 的通用转圈；chat 核心代码仍不进 workbench 首包。
   render: React.lazy(() => import('./ChatWindowFrame')),
   onActivation: handleChatActivation,
+  agentManifest: createChatAgentManifest(handleChatActivation),
 };
 
 let registered = false;

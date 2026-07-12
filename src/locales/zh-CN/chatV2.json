@@ -504,6 +504,12 @@
       "message": "说明",
       "applied": "已应用 {{applied}}/{{total}}",
       "undoExpired": "撤销已失效（会话结束或账本已清空）",
+      "verified": "操作后状态已验证",
+      "verificationFailed": "{{count}} 个后置条件未满足",
+      "undoPersistent": "此操作可使用持久撤销，应用重启后仍可恢复。",
+      "undoSession": "此操作可在当前应用会话中撤销。",
+      "undoPersistentShort": "跨重启可撤销 · 成功后一次性失效",
+      "undoSessionShort": "仅当前会话 · 成功后一次性失效",
       "status": {
         "running": "执行中",
         "success": "已完成",

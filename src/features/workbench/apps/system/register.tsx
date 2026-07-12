@@ -29,6 +29,11 @@ import { ankiTaskBadgeSource } from './ankiTaskSource';
 import { flashcardsDueBadgeSource } from './flashcardsDueSource';
 import { pomodoroBadgeSource } from './pomodoroSource';
 import { handleTodoActivation } from './todoActivation';
+import {
+  createFlashcardsAgentManifest,
+  createPomodoroAgentManifest,
+  todoAgentManifest,
+} from './agentManifests';
 
 /** Flashcards 语义控制；不开放代替用户评分。 */
 export async function handleFlashcardsActivation(ctx: ActivationContext) {
@@ -144,6 +149,7 @@ export function registerSystemApps(): void {
     render: React.lazy(() => import('./TodoAppWindow')),
     // R1-14：showList / focusItem（store 在 handler 内动态 import）
     onActivation: handleTodoActivation,
+    agentManifest: todoAgentManifest,
   });
 
   appRegistry.register({
@@ -192,6 +198,7 @@ export function registerSystemApps(): void {
     badgeSource: flashcardsDueBadgeSource,
     // R1-15：startReview → applyLaunchPayload
     onActivation: handleFlashcardsActivation,
+    agentManifest: createFlashcardsAgentManifest(handleFlashcardsActivation),
   });
 
   appRegistry.register({
@@ -216,5 +223,6 @@ export function registerSystemApps(): void {
     render: React.lazy(() => import('./PomodoroAppWindow')),
     badgeSource: pomodoroBadgeSource,
     onActivation: handlePomodoroActivation,
+    agentManifest: createPomodoroAgentManifest(handlePomodoroActivation),
   });
 }

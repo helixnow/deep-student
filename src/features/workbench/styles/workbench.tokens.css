@@ -125,6 +125,8 @@
   /* ==== 三键（macOS 红黄绿） ======================================== */
   --wb-traffic-size: 12px;
   --wb-traffic-gap: 8px;
+  /* 红绿灯区宽度：三键 + gap + titlebar 左右 padding，供内嵌工具栏避让 */
+  --wb-macos-traffic-lights-inset: 72px;
   --wb-traffic-close: #ff5f57;
   --wb-traffic-close-border: #e0443e;
   --wb-traffic-min: #febc2e;

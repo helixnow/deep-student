@@ -3,7 +3,8 @@
  *
  * note / textbook / exam / translation / essay / image / file
  * - weight：textbook=3，note/exam/translation/essay=2，image/file=1（设计文档 §9.1）
- * - 全部 multi，instanceKey = resourceId
+ * - exam / essay 为 single 工作区，资源 ID 只用于工作区内导航
+ * - 其余资源应用为 multi，instanceKey = resourceId
  * - note/translation/essay 接未保存关窗拦截（脏状态挂点见 contentDirtyRegistry）
  *
  * 由 P11 的 apps 装配入口统一 import 本模块使注册生效。
@@ -33,6 +34,10 @@ import { getNoteEditor } from '../../agent/drivers/noteDriver';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { createContentApp, type CreateContentAppOptions } from './createContentApp';
+import {
+  createExamAgentManifest,
+  createResourceContentManifest,
+} from './agentManifests';
 
 function parseHeadingPayload(payload: unknown): { heading: string; level: number; page?: number } {
   let heading = '';
@@ -143,6 +148,9 @@ export function handleExamActivation(ctx: ActivationContext): ActivationResult {
       window.dispatchEvent(
         new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId } }),
       );
+    }
+    if (useQuestionBankStore.getState().questions.has(questionId)) {
+      useQuestionBankStore.getState().setCurrentQuestion(questionId);
     }
     return { handled: true };
   }
@@ -269,14 +277,14 @@ function createContentActivationHandler(typeId: string) {
     if (typeId === 'exam') {
       return handleExamActivation(ctx);
     }
-    if (ctx.action === 'scrollToHeading') {
+    if (ctx.action === 'scrollToHeading' || ctx.action === 'gotoPage') {
       if (typeId === 'textbook' || typeId === 'file') {
         return handlePdfLikeScroll(typeId, ctx);
       }
       return {
         handled: false,
         code: 'UNSUPPORTED_ACTION',
-        hint: `${typeId} 不支持 scrollToHeading（仅 note 支持标题；textbook/file 可用 page）`,
+        hint: `${typeId} 不支持 ${ctx.action}（仅 note 支持标题；textbook/file 可用 page）`,
       };
     }
     console.warn(`[workbench:${typeId}] unknown activation action: ${ctx.action}`);
@@ -306,6 +314,7 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
     icon: icon(ExamIcon),
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 660 },
+    instanceMode: 'single',
   },
   {
     typeId: 'translation',
@@ -322,6 +331,7 @@ const CONTENT_APP_OPTIONS: CreateContentAppOptions[] = [
     memoryWeight: 2,
     defaultFrame: { w: 880, h: 620 },
     confirmUnsavedOnClose: true,
+    instanceMode: 'single',
   },
   {
     typeId: 'image',
@@ -345,7 +355,11 @@ export const CONTENT_APP_DEFINITIONS: AppDefinition[] =
 
 // 统一挂载 onActivation（R1-16 / R2-10）
 for (const def of CONTENT_APP_DEFINITIONS) {
-  def.onActivation = createContentActivationHandler(def.typeId);
+  const activation = createContentActivationHandler(def.typeId);
+  def.onActivation = activation;
+  def.agentManifest = def.typeId === 'exam'
+    ? createExamAgentManifest(activation)
+    : createResourceContentManifest(def.typeId, activation);
 }
 
 for (const def of CONTENT_APP_DEFINITIONS) {

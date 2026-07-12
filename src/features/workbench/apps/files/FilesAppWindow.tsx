@@ -14,7 +14,7 @@
  * - hover 预览玻璃卡（useFilesHoverPreview）
  * - 拖出窗外 → 桌面开窗（useResourceDragOut + desktopDragBridge）
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem } from '@/features/learning-hub/types';
@@ -63,6 +63,7 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
   const viewportRef = useRef<HTMLDivElement>(null);
   // 不依赖 hint 刷新：起拖同步旗后下一帧关掉 hover/拖出（避免跟手中途仍跑预览）
   const [gesturePaused, setGesturePaused] = useState(() => shouldPauseHeavyContent());
+  const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const interactionEnabled = renderThrottleMs <= 0 && !gesturePaused;
 
   useEffect(() => {
@@ -70,6 +71,18 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
     // onTitleChange 由窗口壳提供，标题只需在挂载时设置一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useLayoutEffect(() => {
+    const findTarget = () => {
+      const target = Array.from(document.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      setTitlebarTarget((current) => current === target ? current : target);
+    };
+    findTarget();
+    const observer = new MutationObserver(findTarget);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [windowId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -111,6 +124,7 @@ const FilesAppWindow: React.FC<AppWindowProps> = ({
           onOpenPreview={handleOpenApp}
           className="h-full w-full"
           isCollapsed={false}
+          toolbarPortalTarget={titlebarTarget}
         />
       </div>
     </div>

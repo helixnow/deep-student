@@ -38,6 +38,54 @@
       }
     }
   },
+  "agentControlCenter": {
+    "title": "AI 桌面操控",
+    "description": "在 Chat 中直接要求助手打开学习应用、定位内容并演出已授权的操作。",
+    "tooltip": "AI 桌面操控",
+    "triggerLabel": "AI 桌面操控，当前：{{status}}",
+    "modeLabel": "操控方式",
+    "capabilitiesTitle": "可操控的学习应用",
+    "saveFailed": "未能保存操控方式，请重试。",
+    "openChat": "打开 Chat",
+    "openSettings": "操控设置",
+    "settingsTitle": "助手可以做什么",
+    "settingsDescription": "这些能力来自学习子应用主动注册的语义操作，不使用坐标盲点。实际可用动作会随当前页面和状态变化。",
+    "safety": "只使用应用注册的语义操作；不会替你答题、提交考试或给闪卡评分。破坏性操作会在执行前确认。",
+    "apps": {
+      "note": {
+        "name": "笔记",
+        "actions": "定位标题；配合笔记工具在已打开窗口中演出追加、插入与替换"
+      },
+      "mindmap": {
+        "name": "思维导图",
+        "actions": "聚焦节点、切换大纲/画布；配合导图工具演出节点编辑"
+      },
+      "todo": {
+        "name": "待办",
+        "actions": "打开清单、定位事项、切换视图、搜索与筛选"
+      },
+      "files": {
+        "name": "资源库",
+        "actions": "打开目录、揭示或选择资源、导航、搜索、切换视图与排序"
+      },
+      "exam": {
+        "name": "题库",
+        "actions": "定位或切换题目、筛选题目、切换练习/专注模式和设置面板"
+      },
+      "flashcards": {
+        "name": "闪卡",
+        "actions": "打开资料库或复习页、开始到期复习、翻面和结束复习；不代替评分"
+      },
+      "pomodoro": {
+        "name": "番茄钟",
+        "actions": "开始、暂停或继续专注计时；停止会写入中断记录并单独确认"
+      },
+      "browser": {
+        "name": "浏览器",
+        "actions": "导航网址、前进后退、刷新、聚焦地址栏和显示页面窗口"
+      }
+    }
+  },
   "menubar": {
     "label": "学习状态栏",
     "appName": "学习桌面",
@@ -114,6 +162,33 @@
     "noWindows": "暂无窗口",
     "running": "运行中",
     "apps": "全部应用"
+  },
+  "resourceHome": {
+    "newExam": "新建题目集",
+    "newEssay": "新建作文批改",
+    "search": "搜索",
+    "loadFailed": "无法加载内容",
+    "noMatches": "没有匹配的内容",
+    "tryAnotherSearch": "请尝试其他关键词",
+    "empty": "这里还没有内容",
+    "createHint": "新建后即可直接开始使用，无需先打开资源库。",
+    "open": "打开",
+    "library": "资料库",
+    "all": "全部",
+    "recent": "最近使用",
+    "name": "名称",
+    "details": "状态",
+    "updated": "修改日期",
+    "questionCount": "{{count}} 道题",
+    "emptyQuestionSet": "尚未导入题目",
+    "roundCount": "{{count}} 次批改",
+    "notGraded": "尚未批改",
+    "itemCount": "{{count}} 个项目",
+    "openHint": "双击或按 Enter 打开"
+  },
+  "resourceWorkspace": {
+    "selectTitle": "选择一个项目",
+    "selectHint": "从左侧选择，或新建后直接开始。"
   },
   "appsPanel": {
     "title": "全部应用",

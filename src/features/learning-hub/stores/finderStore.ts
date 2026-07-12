@@ -519,11 +519,9 @@ export const useFinderStore = create<FinderState>()(
       
       selectAll: () => {
         const { items } = get();
-        // 仅选择文件，排除文件夹（文件夹不支持批量操作如删除、移动等）
-        const fileIds = new Set(
-          items.filter(item => item.type !== 'folder').map(item => item.id)
-        );
-        set({ selectedIds: fileIds });
+        // 对齐访达：Cmd/Ctrl+A 全选当前视图全部项目（含文件夹）
+        // 批量操作侧再按类型过滤不可用项
+        set({ selectedIds: new Set(items.map(item => item.id)) });
       },
 
       clearSelection: () => set({ selectedIds: new Set(), lastSelectedId: null }),

@@ -506,7 +506,10 @@
       "importPartial": "导入 {{success}} 个成功，{{failed}} 个失败",
       "importFailed": "文件导入失败",
       "notAllowedHere": "当前视图不支持拖入文件",
-      "importing": "正在导入 {{done}} / {{total}}"
+      "importing": "正在导入 {{done}} / {{total}}",
+      "favoriteSuccess": "已收藏 {{count}} 项",
+      "favoriteFailed": "收藏失败",
+      "favoriteSkipped": "没有可收藏的项目（文件夹或已收藏）"
     },
     "markdownImport": {
       "selectFiles": "选择 Markdown 文件",
@@ -569,7 +572,9 @@
       "batchDeleteFailed": "批量永久删除失败"
     },
     "statusBar": {
-      "itemCount": "{{count}} 个项目"
+      "itemCount": "{{count}} 个项目",
+      "selectedCount": "已选择 {{count}} 项",
+      "selectedOfTotal": "已选择 {{selected}} 项（共 {{total}} 项）"
     },
     "viewMode": {
       "grid": "网格视图",

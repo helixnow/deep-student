@@ -188,6 +188,17 @@ describe('WorkbenchSettingsSection', () => {
     expect(screen.getByRole('radio', { name: '跟随平台' })).toHaveAttribute('aria-checked', 'true');
   });
 
+  it('explains the assistant capability surface and its explicit learning safeguards', async () => {
+    render(<WorkbenchSettingsSection />);
+    await screen.findByRole('switch', { name: '启用学习桌面' });
+
+    expect(screen.getByText('助手可以做什么')).toBeInTheDocument();
+    expect(document.querySelectorAll('.wb-agent-capability-row')).toHaveLength(8);
+    expect(
+      screen.getByText(/不会替你答题、提交考试或给闪卡评分/),
+    ).toBeInTheDocument();
+  });
+
   it('disables browser child controls when workbenchMode is off and shows the parent-gate hint', async () => {
     render(<WorkbenchSettingsSection />);
 

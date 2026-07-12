@@ -121,6 +121,23 @@ fn is_file_mutation_runtime_tool(tool_name: &str) -> bool {
     )
 }
 
+fn is_workbench_precise_action_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    matches!(
+        short,
+        "workbench_act"
+            | "workbench_act_high"
+            | "workbench_undo"
+            | "workbench_app_command"
+            | "workbench_close_window"
+    )
+}
+
+fn is_workbench_always_confirm_tool(tool_name: &str) -> bool {
+    let (_, short) = tool_source_namespace(tool_name, &Value::Null);
+    matches!(short, "workbench_act_high" | "workbench_close_window")
+}
+
 /// 权限升级类工具短名清单（ADR-B2 never-remember）。
 const PRIVILEGE_ESCALATION_TOOLS: &[&str] = &[
     "skill_install",
@@ -141,9 +158,9 @@ fn is_privilege_escalation_tool(tool_name: &str) -> bool {
     PRIVILEGE_ESCALATION_TOOLS.contains(&short)
 }
 
-/// 权限类工具审批永不进入 remember / 本会话允许 / 始终允许。
+/// 权限升级与 Workbench High 工具永不进入 remember / 本会话允许 / 始终允许。
 pub fn never_remember_approval(tool_name: &str) -> bool {
-    is_privilege_escalation_tool(tool_name)
+    is_privilege_escalation_tool(tool_name) || is_workbench_always_confirm_tool(tool_name)
 }
 
 /// Argument-aware never-remember policy. Commands that select arbitrary code,
@@ -168,12 +185,13 @@ pub fn never_remember_approval_for_args(tool_name: &str, args: &Value) -> bool {
             .unwrap_or(true)
 }
 
-/// Tools in this family can execute local commands or mutate local files. They
-/// must never be remembered only by tool name.
+/// Tools in these families execute local commands, mutate files, or perform
+/// stateful Workbench actions. They must never be remembered only by tool name.
 pub fn requires_precise_approval_scope(tool_name: &str) -> bool {
     is_shell_runtime_tool(tool_name)
         || is_file_mutation_runtime_tool(tool_name)
         || is_privilege_escalation_tool(tool_name)
+        || is_workbench_precise_action_tool(tool_name)
 }
 
 /// Broad approval bypasses are intentionally ignored for local runtime tools
@@ -1885,6 +1903,24 @@ mod tests {
             make_runtime_scope_key_v2("builtin-workspace_change_revert", &changed_receipt),
             "any receipt mutation must require a fresh approval"
         );
+    }
+
+    #[test]
+    fn workbench_actions_use_precise_scope_and_high_actions_are_single_use() {
+        for name in [
+            "builtin-workbench_act",
+            "builtin-workbench_act_high",
+            "builtin-workbench_undo",
+            "builtin-workbench_app_command",
+            "builtin-workbench_close_window",
+        ] {
+            assert!(requires_precise_approval_scope(name), "{name}");
+            assert!(ignores_broad_approval_bypass(name), "{name}");
+        }
+        assert!(never_remember_approval("builtin-workbench_act_high"));
+        assert!(never_remember_approval("workbench_close_window"));
+        assert!(!never_remember_approval("builtin-workbench_act"));
+        assert!(!never_remember_approval("builtin-workbench_undo"));
     }
 
     #[test]

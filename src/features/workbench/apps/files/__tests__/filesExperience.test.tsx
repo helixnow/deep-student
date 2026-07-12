@@ -414,7 +414,7 @@ describe('useFilesViewTransition', () => {
       );
     });
 
-    expect(viewport.getAttribute('data-wb-files-view-transition')).toBe('flip');
+    expect(viewport.getAttribute('data-wb-files-view-transition')).toBe('fade');
 
     act(() => {
       vi.advanceTimersByTime(300);

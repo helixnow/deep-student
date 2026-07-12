@@ -104,7 +104,18 @@
     "docx_get_metadata": "获取文档信息",
     "docx_extract_tables": "提取文档表格",
     "docx_replace_text": "替换文档文本",
-    "docx_to_spec": "文档转规格"
+    "docx_to_spec": "文档转规格",
+    "workbench_get_capabilities": "发现桌面应用能力",
+    "workbench_observe": "观察桌面应用",
+    "workbench_act": "执行桌面语义操作",
+    "workbench_act_high": "执行高风险桌面操作",
+    "workbench_wait_for": "等待桌面应用状态",
+    "workbench_undo": "撤销桌面操作",
+    "workbench_list_windows": "列出桌面窗口",
+    "workbench_open_app": "打开桌面应用",
+    "workbench_app_command": "发送桌面应用指令",
+    "workbench_close_window": "关闭桌面窗口",
+    "workbench_query_state": "查询桌面窗口状态"
   },
   "service": {
     "missing_websocket_url": "缺少 WebSocket URL",

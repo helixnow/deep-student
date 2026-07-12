@@ -1,4 +1,4 @@
-﻿import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { CircleNotch, FolderOpen, Plus, ArrowClockwise, WarningCircle } from '@phosphor-icons/react';
@@ -7,16 +7,14 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DndContext,
   pointerWithin,
+  DragCancelEvent,
   DragEndEvent,
+  DragOverEvent,
   DragStartEvent,
   DragOverlay,
   UniqueIdentifier,
+  useDroppable,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  rectSortingStrategy,
-} from '@dnd-kit/sortable';
 import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import type { DstuNode } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
@@ -90,12 +88,106 @@ function SelectionBoxOverlay({ rect }: { rect: SelectionBoxRect }) {
   );
 }
 
+
+/** 拖拽时顶部放置条：父级目录 / 收藏 / 回收站 */
+function FinderDropChip({
+  droppableId,
+  label,
+  data,
+  tone = 'default',
+}: {
+  droppableId: string;
+  label: string;
+  data: Record<string, unknown>;
+  tone?: 'default' | 'favorite' | 'danger';
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: droppableId,
+    data,
+  });
+  const overClass =
+    tone === 'danger'
+      ? 'bg-destructive/15 text-destructive border-destructive/40 ring-1 ring-destructive/30'
+      : tone === 'favorite'
+        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/40 ring-1 ring-amber-500/30'
+        : 'bg-primary/15 text-primary border-primary/40 ring-1 ring-primary/30';
+  const idleClass =
+    tone === 'danger'
+      ? 'bg-destructive/5 text-destructive/80'
+      : tone === 'favorite'
+        ? 'bg-amber-500/10 text-amber-700/80 dark:text-amber-300/80'
+        : 'bg-muted/60 text-muted-foreground';
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'px-2 py-0.5 rounded-md text-[11px] font-medium truncate max-w-[140px]',
+        'border border-transparent transition-colors',
+        isOver ? overClass : idleClass
+      )}
+      title={label}
+    >
+      {label}
+    </div>
+  );
+}
+
+function FinderDragDropBar({
+  parentTargets,
+  specialTargets,
+}: {
+  parentTargets?: Array<{ id: string | null; label: string }>;
+  specialTargets?: Array<{ id: 'favorites' | 'trash'; label: string }>;
+}) {
+  const hasParent = Boolean(parentTargets?.length);
+  const hasSpecial = Boolean(specialTargets?.length);
+  if (!hasParent && !hasSpecial) return null;
+
+  return (
+    <div
+      className="flex items-center gap-1.5 px-2 py-1.5 border-b bg-muted/30 shrink-0 overflow-x-auto"
+      data-finder-drag-drop-bar
+      role="toolbar"
+      aria-label="Drop targets"
+    >
+      {hasParent && (
+        <>
+          <span className="text-[10px] text-muted-foreground/80 shrink-0 whitespace-nowrap">→</span>
+          {parentTargets!.map((target) => (
+            <FinderDropChip
+              key={target.id ?? 'root'}
+              droppableId={target.id == null ? 'parent:root' : `parent:${target.id}`}
+              label={target.label}
+              data={{ kind: 'parent-folder', folderId: target.id }}
+            />
+          ))}
+        </>
+      )}
+      {hasParent && hasSpecial && (
+        <span className="w-px h-3.5 bg-border shrink-0 mx-0.5" aria-hidden />
+      )}
+      {hasSpecial &&
+        specialTargets!.map((target) => (
+          <FinderDropChip
+            key={target.id}
+            droppableId={`special:${target.id}`}
+            label={target.label}
+            data={{ kind: 'special-target', targetId: target.id }}
+            tone={target.id === 'trash' ? 'danger' : 'favorite'}
+          />
+        ))}
+    </div>
+  );
+}
+
 interface FinderFileRowProps {
   item: DstuNode;
   viewMode: ViewMode;
   isSelected: boolean;
   isActive: boolean;
   isHighlighted?: boolean;
+  isSpringLoading?: boolean;
   isEditing: boolean;
   enableDrag: boolean;
   compact: boolean;
@@ -118,6 +210,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
   isSelected,
   isActive,
   isHighlighted,
+  isSpringLoading = false,
   isEditing,
   enableDrag,
   compact,
@@ -149,6 +242,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
       isSelected={isSelected}
       isActive={isActive}
       isHighlighted={isHighlighted}
+      isSpringLoading={isSpringLoading}
       onSelect={handleSelect}
       onOpen={handleOpen}
       onContextMenu={handleContextMenu}
@@ -199,6 +293,24 @@ interface FinderFileListProps {
   highlightedIds?: Set<string>;
   /** ★ 2026-06-12（审阅问题 FE-S2）：键盘 F2 请求重命名 */
   onRequestRename?: (item: DstuNode) => void;
+  /**
+   * 可放置的父级/祖先目标（面包屑）。
+   * id: 目标文件夹 ID；null 表示根目录。
+   * 拖到这些目标上等同于移动到该文件夹。
+   */
+  parentDropTargets?: Array<{ id: string | null; label: string }>;
+  /**
+   * 快捷放置目标（收藏 / 回收站等）。
+   * action 由 onSpecialDrop 处理。
+   */
+  specialDropTargets?: Array<{
+    id: 'favorites' | 'trash';
+    label: string;
+  }>;
+  /** 拖到 specialDropTargets 时回调 */
+  onSpecialDrop?: (targetId: 'favorites' | 'trash', itemIds: string[]) => void;
+  /** Cmd/Ctrl+↑ 或列表 ←：返回上一级 */
+  onNavigateUp?: () => void;
 }
 
 export function FinderFileList({
@@ -226,6 +338,10 @@ export function FinderFileList({
   onRetry,
   highlightedIds,
   onRequestRename,
+  parentDropTargets,
+  specialDropTargets,
+  onSpecialDrop,
+  onNavigateUp,
 }: FinderFileListProps) {
   const { t } = useTranslation('learningHub');
   const { isSmallScreen } = useBreakpoint();
@@ -336,9 +452,6 @@ export function FinderFileList({
   // DnD 传感器配置（N-9/DND-1: 触屏长按激活，避免与滚动/单击打开冲突）
   const sensors = useTouchFriendlyDndSensors();
 
-  // ★ SortableContext 的 items 引用稳定化，避免每次渲染都重建数组
-  const itemIds = useMemo(() => items.map(item => item.id), [items]);
-
   // ★ 列表模式虚拟滚动配置
   const listVirtualizer = useVirtualizer({
     count: viewMode === 'list' ? items.length : 0,
@@ -360,30 +473,76 @@ export function FinderFileList({
     overscan: 2,
   });
 
-  // 拖拽开始
+  // ★ 访达 spring-load：拖拽悬停文件夹约 800ms 后自动进入
+  const SPRING_LOAD_MS = 800;
+  const springLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const springLoadTargetRef = useRef<string | null>(null);
+  const [springLoadFolderId, setSpringLoadFolderId] = useState<string | null>(null);
+
+  const clearSpringLoadTimer = useCallback(() => {
+    if (springLoadTimerRef.current) {
+      clearTimeout(springLoadTimerRef.current);
+      springLoadTimerRef.current = null;
+    }
+    springLoadTargetRef.current = null;
+  }, []);
+
+  useEffect(() => () => clearSpringLoadTimer(), [clearSpringLoadTimer]);
+
+  // 本次拖拽实际移动的 ID 集（避免 dragStart 改选区后 end 仍读到旧 selectedIds）
+  const dragIdsRef = useRef<string[]>([]);
+
+  // 拖拽开始：对齐访达 —— 拖未选中项时改为仅选中该项再拖；拖已选中项则拖整组
   const handleDragStart = useCallback((event: DragStartEvent) => {
+    const id = String(event.active.id);
     setActiveId(event.active.id);
-    debugLog.info('[FinderFileList] DragStart:', { activeId: event.active.id });
+    clearSpringLoadTimer();
+    setSpringLoadFolderId(null);
+
+    if (selectedIds.has(id) && selectedIds.size > 1) {
+      dragIdsRef.current = Array.from(selectedIds);
+    } else {
+      dragIdsRef.current = [id];
+      // 从非选中项起拖，或单选拖：规范选区为当前项
+      if (!selectedIds.has(id) || selectedIds.size !== 1) {
+        if (onSelectionChange) {
+          onSelectionChange(new Set([id]));
+        } else {
+          onSelect(id, 'single');
+        }
+      }
+    }
+
+    debugLog.info('[FinderFileList] DragStart:', {
+      activeId: event.active.id,
+      dragCount: dragIdsRef.current.length,
+    });
     if (debugMasterSwitch.isEnabled()) {
       window.dispatchEvent(new CustomEvent('finder-drag-debug', {
         detail: {
           type: 'drag_start',
           activeId: event.active.id,
+          dragCount: dragIdsRef.current.length,
           timestamp: Date.now(),
         }
       }));
     }
-  }, []);
+  }, [selectedIds, onSelectionChange, onSelect, clearSpringLoadTimer]);
 
   // 拖拽结束
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
+    const idsBeingDragged = dragIdsRef.current.length > 0
+      ? dragIdsRef.current
+      : [String(active.id)];
     setActiveId(null);
+    dragIdsRef.current = [];
 
     debugLog.info('[FinderFileList] DragEnd:', {
       activeId: active.id,
       overId: over?.id ?? null,
       hasOver: !!over,
+      dragCount: idsBeingDragged.length,
     });
     if (debugMasterSwitch.isEnabled()) {
       window.dispatchEvent(new CustomEvent('finder-drag-debug', {
@@ -391,13 +550,59 @@ export function FinderFileList({
           type: 'drag_end',
           activeId: active.id,
           overId: over?.id ?? null,
+          dragCount: idsBeingDragged.length,
           timestamp: Date.now(),
         }
       }));
     }
 
+    // 清理 spring-load 定时器
+    clearSpringLoadTimer();
+    setSpringLoadFolderId(null);
+
     if (!over || active.id === over.id) {
       debugLog.info('[FinderFileList] DragEnd: No valid drop target');
+      return;
+    }
+
+    const overId = String(over.id);
+    const overData = over.data?.current as { kind?: string; folderId?: string | null } | undefined;
+
+    // 快捷目标：收藏 / 回收站
+    if (overData?.kind === 'special-target' || overId.startsWith('special:')) {
+      const targetId = (
+        overData && 'targetId' in overData
+          ? overData.targetId
+          : overId.slice('special:'.length)
+      ) as 'favorites' | 'trash';
+      if (targetId === 'favorites' || targetId === 'trash') {
+        debugLog.info('[FinderFileList] DragEnd: Special target', {
+          targetId,
+          count: idsBeingDragged.length,
+        });
+        onSpecialDrop?.(targetId, idsBeingDragged);
+      }
+      return;
+    }
+
+    // 面包屑 / 父级 drop 目标
+    if (overData?.kind === 'parent-folder' || overId.startsWith('parent:')) {
+      const targetFolderId = overData && 'folderId' in overData
+        ? ((overData as { folderId?: string | null }).folderId ?? null)
+        : (overId === 'parent:root' ? null : overId.slice('parent:'.length));
+      const idsToMove = idsBeingDragged.filter(id => id !== targetFolderId);
+      if (idsToMove.length === 0) return;
+      debugLog.info('[FinderFileList] DragEnd: Move to parent target', {
+        targetFolderId,
+        count: idsToMove.length,
+      });
+      if (idsToMove.length > 1 && onMoveItems) {
+        onMoveItems(idsToMove, targetFolderId);
+      } else if (onMoveItem) {
+        onMoveItem(idsToMove[0], targetFolderId);
+      } else if (onMoveItems) {
+        onMoveItems(idsToMove, targetFolderId);
+      }
       return;
     }
 
@@ -412,41 +617,109 @@ export function FinderFileList({
     // 如果拖到文件夹上，则移动到该文件夹
     if (targetItem.type === 'folder') {
       debugLog.info('[FinderFileList] DragEnd: Moving to folder', { targetId: targetItem.id });
-      // 检查是否为多选拖拽（拖拽项在选中列表中）
-      const isMultiDrag = selectedIds.has(String(active.id)) && selectedIds.size > 1;
-      
-      if (isMultiDrag && onMoveItems) {
-        // 排除目标文件夹自身（不能移动到自己）
-        const idsToMove = Array.from(selectedIds).filter(id => id !== targetItem.id);
+
+      // 排除目标文件夹自身（不能移动到自己）
+      const idsToMove = idsBeingDragged.filter(id => id !== targetItem.id);
+      if (idsToMove.length === 0) {
+        debugLog.info('[FinderFileList] DragEnd: Nothing to move after filtering self');
+        return;
+      }
+
+      if (idsToMove.length > 1 && onMoveItems) {
         debugLog.info('[FinderFileList] Multi-drag move:', { count: idsToMove.length });
-        if (idsToMove.length > 0) {
-          onMoveItems(idsToMove, targetItem.id);
-        }
+        onMoveItems(idsToMove, targetItem.id);
       } else if (onMoveItem) {
-        // ★ 优化：单选拖拽时也过滤自己（文件夹拖到自己）
-        if (draggedItem.type === 'folder' && draggedItem.id === targetItem.id) {
-          debugLog.info('[FinderFileList] Single-drag: Cannot move folder to itself');
-          return;
-        }
-        debugLog.info('[FinderFileList] Single-drag move:', { from: active.id, to: targetItem.id });
-        onMoveItem(String(active.id), targetItem.id);
+        debugLog.info('[FinderFileList] Single-drag move:', { from: idsToMove[0], to: targetItem.id });
+        onMoveItem(idsToMove[0], targetItem.id);
+      } else if (onMoveItems) {
+        onMoveItems(idsToMove, targetItem.id);
       } else {
         debugLog.info('[FinderFileList] DragEnd: onMoveItem callback is not provided!');
       }
     } else {
       debugLog.info('[FinderFileList] DragEnd: Target is not a folder, type:', { type: targetItem.type });
     }
-  }, [items, selectedIds, onMoveItem, onMoveItems]);
+  }, [items, onMoveItem, onMoveItems, onSpecialDrop, clearSpringLoadTimer]);
+
+  // 拖拽取消：Esc / 无效释放时复位
+  const handleDragCancel = useCallback((_event: DragCancelEvent) => {
+    setActiveId(null);
+    dragIdsRef.current = [];
+    clearSpringLoadTimer();
+    setSpringLoadFolderId(null);
+    debugLog.info('[FinderFileList] DragCancel');
+    if (debugMasterSwitch.isEnabled()) {
+      window.dispatchEvent(new CustomEvent('finder-drag-debug', {
+        detail: {
+          type: 'drag_cancel',
+          timestamp: Date.now(),
+        }
+      }));
+    }
+  }, [clearSpringLoadTimer]);
+
+  // 拖拽悬停：文件夹 spring-load（悬停高亮 → 超时后进入文件夹）
+  // 进入会结束当前 dnd 会话；进入前把拖拽项写回选区，便于继续操作
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const overId = event.over ? String(event.over.id) : null;
+    const overData = event.over?.data?.current as { kind?: string } | undefined;
+
+    if (overData?.kind === 'parent-folder' || overData?.kind === 'special-target') {
+      if (springLoadTargetRef.current) {
+        clearSpringLoadTimer();
+        setSpringLoadFolderId(null);
+      }
+      return;
+    }
+
+    const overItem = overId ? items.find(item => item.id === overId) : null;
+    const isFolderTarget = Boolean(
+      overItem?.type === 'folder' && overId && !dragIdsRef.current.includes(overId)
+    );
+
+    if (!isFolderTarget || !overId) {
+      if (springLoadTargetRef.current) {
+        clearSpringLoadTimer();
+        setSpringLoadFolderId(null);
+      }
+      return;
+    }
+
+    if (springLoadTargetRef.current === overId) {
+      return;
+    }
+
+    clearSpringLoadTimer();
+    setSpringLoadFolderId(overId);
+    springLoadTargetRef.current = overId;
+    springLoadTimerRef.current = setTimeout(() => {
+      const folder = items.find(item => item.id === overId && item.type === 'folder');
+      if (!folder) return;
+      debugLog.info('[FinderFileList] Spring-load open folder', { id: overId });
+      const ids = dragIdsRef.current;
+      if (ids.length > 0 && onSelectionChange) {
+        onSelectionChange(new Set(ids));
+      }
+      setActiveId(null);
+      dragIdsRef.current = [];
+      springLoadTimerRef.current = null;
+      springLoadTargetRef.current = null;
+      setSpringLoadFolderId(null);
+      onOpen(folder);
+    }, SPRING_LOAD_MS);
+  }, [items, onOpen, onSelectionChange, clearSpringLoadTimer]);
 
   // 获取激活的项
   const activeItem = useMemo(() => {
     return activeId ? items.find(item => item.id === activeId) : null;
   }, [activeId, items]);
 
-  // 多选拖拽计数
+  // 多选拖拽计数（优先本次 dragIds，兼容选区尚未提交的一帧）
   const dragCount = useMemo(() => {
     if (!activeId) return 1;
-    // 如果拖拽项在选中列表中，返回选中数量
+    if (dragIdsRef.current.length > 0) {
+      return dragIdsRef.current.length;
+    }
     if (selectedIds.has(String(activeId))) {
       return selectedIds.size;
     }
@@ -591,13 +864,31 @@ export function FinderFileList({
         moveFocus(viewMode === 'grid' ? gridColumns : 1);
         break;
       case 'ArrowUp':
+        // Cmd/Ctrl+↑：返回上一级（访达）
+        if ((e.metaKey || e.ctrlKey) && onNavigateUp) {
+          e.preventDefault();
+          onNavigateUp();
+          break;
+        }
         moveFocus(viewMode === 'grid' ? -gridColumns : -1);
         break;
       case 'ArrowRight':
-        if (viewMode === 'grid') moveFocus(1);
+        if (viewMode === 'grid') {
+          moveFocus(1);
+        } else if (anchorIndex >= 0 && items[anchorIndex]?.type === 'folder' && selectedIds.size === 1) {
+          // 列表模式：右方向键进入文件夹（访达/资源管理器常见）
+          e.preventDefault();
+          onOpen(items[anchorIndex]);
+        }
         break;
       case 'ArrowLeft':
-        if (viewMode === 'grid') moveFocus(-1);
+        if (viewMode === 'grid') {
+          moveFocus(-1);
+        } else if (onNavigateUp && selectedIds.size <= 1) {
+          // 列表模式：左方向键返回上一级（无多选时）
+          e.preventDefault();
+          onNavigateUp();
+        }
         break;
       case 'Home':
         focusIndex(0);
@@ -665,18 +956,13 @@ export function FinderFileList({
         break;
       }
     }
-  }, [editingId, items, selectedIds, viewMode, gridColumns, onSelect, onSelectionChange, onOpen, onRequestRename, scrollItemIntoView]);
+  }, [editingId, items, selectedIds, viewMode, gridColumns, onSelect, onSelectionChange, onOpen, onRequestRename, onNavigateUp, scrollItemIntoView]);
 
-  // Notion 风格的加载状态
+  // Finder-style loading state
   if (isLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-background">
-        <div className="relative">
-          {/* 优雅的加载动画 */}
-          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center animate-pulse">
-            <CircleNotch size={24} className="text-primary animate-spin" />
-          </div>
-        </div>
+        <CircleNotch size={24} className="text-muted-foreground animate-spin" />
         <p className="mt-4 text-sm text-muted-foreground/70 finder-fade-in">
           {t('finder.loading.resources')}
         </p>
@@ -684,13 +970,11 @@ export function FinderFileList({
     );
   }
 
-  // Notion 风格的错误状态
+  // Finder-style error state
   if (error) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-background px-4">
-        <div className="w-14 h-14 rounded-xl bg-destructive/10 flex items-center justify-center mb-4">
-          <WarningCircle size={26} weight="duotone" className="text-destructive/80" aria-hidden />
-        </div>
+        <WarningCircle size={30} className="mb-4 text-destructive/80" aria-hidden />
         <p className="text-sm font-medium text-destructive mb-1">{t('finder.error.title', '加载失败')}</p>
         <p className="text-xs text-muted-foreground/70 text-center max-w-[280px] mb-4">{error}</p>
         {onRetry && (
@@ -707,7 +991,7 @@ export function FinderFileList({
     );
   }
 
-  // Notion 风格的空状态 - 更精致的设计
+  // Finder-style empty state
   if (items.length === 0) {
     return (
       <div 
@@ -754,15 +1038,24 @@ export function FinderFileList({
     );
   }
 
-  // 列表模式 - Notion 风格的虚拟滚动列表
+  // Finder-style virtualized list
   if (viewMode === 'list') {
     return (
       <DndContext
         sensors={sensors}
         collisionDetection={pointerWithin}
+        autoScroll={{ threshold: { x: 0.2, y: 0.2 }, acceleration: 12 }}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        onDragCancel={handleDragCancel}
       >
+        {activeId && ((parentDropTargets && parentDropTargets.length > 0) || (specialDropTargets && specialDropTargets.length > 0)) && (
+          <FinderDragDropBar
+            parentTargets={parentDropTargets}
+            specialTargets={specialDropTargets}
+          />
+        )}
         <CustomScrollArea
           ref={scrollAreaRef}
           viewportRef={viewportRef}
@@ -776,11 +1069,6 @@ export function FinderFileList({
           role="listbox"
           aria-multiselectable={true}
         >
-          <SortableContext
-            items={itemIds}
-            strategy={verticalListSortingStrategy}
-          >
-            {/* Notion 风格：添加少量内边距 */}
             {/* ★ 2026-06-12（审阅问题 FE-M3）：绑定 containerRef 使框选在列表模式可用 */}
             <div
               ref={containerRef}
@@ -813,6 +1101,7 @@ export function FinderFileList({
                       isSelected={selectedIds.has(item.id)}
                       isActive={activeFileId === item.id}
                       isHighlighted={highlightedIds?.has(item.id)}
+                        isSpringLoading={springLoadFolderId === item.id}
                       onSelect={onSelect}
                       onOpen={onOpen}
                       onContextMenu={onContextMenu}
@@ -826,36 +1115,51 @@ export function FinderFileList({
                 );
               })}
             </div>
-          </SortableContext>
         </CustomScrollArea>
 
-        {/* Notion 风格的拖拽覆盖层 */}
+        {/* 访达风格拖拽覆盖层：多选时叠层 + 数量徽标 */}
         <DragOverlay dropAnimation={{
           duration: 200,
-          easing: 'cubic-bezier(0.22, 1, 0.36, 1)', // transitions-dev 主缓动（WAAPI 不支持 var()）
+          easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
         }}>
           {activeItem && (
-            <div className="relative">
-              <FinderFileItem
-                item={activeItem}
-                viewMode={viewMode}
-                isSelected={true}
-                onSelect={() => {}}
-                onOpen={() => {}}
-                onContextMenu={() => {}}
-                isDragOverlay
-                compact={compact}
-              />
+            <div className="relative pointer-events-none">
               {dragCount > 1 && (
-                <div className={cn(
-                  "absolute -top-2 -right-2 bg-primary text-primary-foreground",
-                  "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
-                  "flex items-center justify-center shadow-notion-lg",
-                  "finder-pop-in"
-                )}>
-                  {dragCount}
-                </div>
+                <>
+                  <div
+                    className="absolute inset-0 rounded-lg bg-background border border-border/60 shadow-notion opacity-60"
+                    style={{ transform: 'translate(6px, 6px)' }}
+                    aria-hidden
+                  />
+                  <div
+                    className="absolute inset-0 rounded-lg bg-background border border-border/60 shadow-notion opacity-80"
+                    style={{ transform: 'translate(3px, 3px)' }}
+                    aria-hidden
+                  />
+                </>
               )}
+              <div className="relative">
+                <FinderFileItem
+                  item={activeItem}
+                  viewMode={viewMode}
+                  isSelected={true}
+                  onSelect={() => {}}
+                  onOpen={() => {}}
+                  onContextMenu={() => {}}
+                  isDragOverlay
+                  compact={compact}
+                />
+                {dragCount > 1 && (
+                  <div className={cn(
+                    "absolute -top-2 -right-2 bg-primary text-primary-foreground",
+                    "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
+                    "flex items-center justify-center shadow-notion-lg",
+                    "finder-pop-in"
+                  )}>
+                    {dragCount}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </DragOverlay>
@@ -873,9 +1177,18 @@ export function FinderFileList({
     <DndContext
       sensors={sensors}
       collisionDetection={pointerWithin}
+      autoScroll={{ threshold: { x: 0.2, y: 0.2 }, acceleration: 12 }}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
+      {activeId && ((parentDropTargets && parentDropTargets.length > 0) || (specialDropTargets && specialDropTargets.length > 0)) && (
+        <FinderDragDropBar
+          parentTargets={parentDropTargets}
+          specialTargets={specialDropTargets}
+        />
+      )}
       <CustomScrollArea
         ref={scrollAreaRef}
         viewportRef={viewportRef}
@@ -890,10 +1203,6 @@ export function FinderFileList({
         role="listbox"
         aria-multiselectable={true}
       >
-        <SortableContext
-          items={itemIds}
-          strategy={rectSortingStrategy}
-        >
           {/* ★ 网格模式虚拟滚动：外层容器用于 ResizeObserver */}
           <div 
             ref={gridContainerRef}
@@ -930,6 +1239,7 @@ export function FinderFileList({
                         isSelected={selectedIds.has(item.id)}
                         isActive={activeFileId === item.id}
                         isHighlighted={highlightedIds?.has(item.id)}
+                        isSpringLoading={springLoadFolderId === item.id}
                         onSelect={onSelect}
                         onOpen={onOpen}
                         onContextMenu={onContextMenu}
@@ -945,36 +1255,51 @@ export function FinderFileList({
               })}
             </div>
           </div>
-        </SortableContext>
       </CustomScrollArea>
 
-      {/* Notion 风格的拖拽覆盖层 */}
+      {/* 访达风格拖拽覆盖层：多选时叠层 + 数量徽标 */}
       <DragOverlay dropAnimation={{
         duration: 200,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)', // transitions-dev 主缓动（WAAPI 不支持 var()）
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
       }}>
         {activeItem && (
-          <div className="relative">
-            <FinderFileItem
-              item={activeItem}
-              viewMode={viewMode}
-              isSelected={true}
-              onSelect={() => {}}
-              onOpen={() => {}}
-              onContextMenu={() => {}}
-              isDragOverlay
-              compact={compact}
-            />
+          <div className="relative pointer-events-none">
             {dragCount > 1 && (
-              <div className={cn(
-                "absolute -top-2 -right-2 bg-primary text-primary-foreground",
-                "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
-                "flex items-center justify-center shadow-notion-lg",
-                "finder-pop-in"
-              )}>
-                {dragCount}
-              </div>
+              <>
+                <div
+                  className="absolute inset-0 rounded-xl bg-background border border-border/60 shadow-notion opacity-60"
+                  style={{ transform: 'translate(6px, 6px)' }}
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-0 rounded-xl bg-background border border-border/60 shadow-notion opacity-80"
+                  style={{ transform: 'translate(3px, 3px)' }}
+                  aria-hidden
+                />
+              </>
             )}
+            <div className="relative">
+              <FinderFileItem
+                item={activeItem}
+                viewMode={viewMode}
+                isSelected={true}
+                onSelect={() => {}}
+                onOpen={() => {}}
+                onContextMenu={() => {}}
+                isDragOverlay
+                compact={compact}
+              />
+              {dragCount > 1 && (
+                <div className={cn(
+                  "absolute -top-2 -right-2 bg-primary text-primary-foreground",
+                  "text-[11px] font-semibold rounded-full min-w-[20px] h-5 px-1.5",
+                  "flex items-center justify-center shadow-notion-lg",
+                  "finder-pop-in"
+                )}>
+                  {dragCount}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </DragOverlay>

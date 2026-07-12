@@ -223,16 +223,15 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         onContextMenu={handleContextMenu}
         title={tab.dstuPath}
         className={cn(
-          // 📱 触屏：标签本体加高，提升可点性（契约第 6 条）；桌面保持 28px
-          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 h-[28px] [@media(pointer:coarse)]:h-[34px] rounded-md cursor-default select-none my-[4px]',
-          'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0',
-          // ui-rise-in 用独立 translate 属性入场，与 dnd-kit 拖拽的 inline transform 可叠加
-          'ui-rise-in transition-colors duration-150',
+          // Tahoe Finder tab strip: one continuous row with a single active capsule.
+          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 h-[30px] [@media(pointer:coarse)]:h-[36px] rounded-lg cursor-default select-none my-[3px]',
+          'text-[13px] leading-none whitespace-nowrap min-w-0 max-w-[200px] shrink-0 border-r border-border/40 last:border-r-0',
+          'transition-[background-color,color,opacity] duration-150',
           isActive
-            ? 'text-[var(--foreground)] font-medium bg-[var(--foreground)]/[0.06] shadow-[0_1px_2px_rgba(0,0,0,0.02)] ring-1 ring-inset ring-[var(--foreground)]/[0.04]'
-            : 'text-[var(--foreground)]/60 hover:text-[var(--foreground)]/90 hover:bg-[var(--foreground)]/[0.04]',
+            ? 'text-[var(--foreground)] font-medium bg-[var(--interactive-selected)] border-r-transparent'
+            : 'text-[var(--foreground)]/60 hover:text-[var(--foreground)]/90 hover:bg-[var(--interactive-hover)]',
           isSplitRight && !isActive && 'text-[#2383e2] dark:text-[#3b82f6] bg-[#2383e2]/10 hover:bg-[#2383e2]/15 hover:text-[#2383e2]',
-          isDragging && 'opacity-60 shadow-lg ring-2 ring-primary/20 z-50',
+          isDragging && 'opacity-60 shadow-md z-50',
         )}
       >
         {/* 图标 */}
@@ -258,7 +257,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           aria-hidden="true"
           onClick={handleClose}
           className={cn(
-            'relative shrink-0 ml-0.5 rounded-[4px] p-[3px] transition-all duration-100',
+            'relative shrink-0 ml-0.5 rounded-md p-[3px] transition-all duration-100',
             'opacity-0 group-hover/tab:opacity-100 [@media(pointer:coarse)]:opacity-60',
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
             'before:absolute before:-inset-[5px] before:content-[""]',
@@ -498,9 +497,9 @@ export const TabBar: React.FC<TabBarProps> = ({
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex-shrink-0 relative flex items-stretch h-[36px] [@media(pointer:coarse)]:h-[42px] bg-[var(--background)] z-10"
+    <div className="flex-shrink-0 relative flex items-stretch h-[38px] [@media(pointer:coarse)]:h-[44px] bg-[color:var(--shell-toolbar-surface,var(--background))] z-10"
          data-no-screen-swipe
-         style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}>
+         style={{ borderBottom: '1px solid color-mix(in srgb, var(--foreground) 8%, transparent)' }}>
       {/* 左滚动按钮 */}
       {canScrollLeft && (
         <button
@@ -508,7 +507,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           tabIndex={-1}
           aria-hidden="true"
           onClick={() => scroll('left')}
-          className="sticky left-0 z-10 flex items-center justify-center w-8 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
+          className="sticky left-0 z-10 flex w-8 shrink-0 items-center justify-center bg-[color:var(--shell-toolbar-surface,var(--background))] transition-colors hover:bg-[var(--interactive-hover)]"
           style={{ borderRight: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
           <CaretLeft size={16} className="opacity-45" />
@@ -531,7 +530,7 @@ export const TabBar: React.FC<TabBarProps> = ({
             role="tablist"
             aria-orientation="horizontal"
             onKeyDown={handleTablistKeyDown}
-            className="flex items-center gap-[2px] flex-1 min-w-0 overflow-x-auto scrollbar-none px-2"
+            className="flex min-w-0 flex-1 items-center gap-0 overflow-x-auto px-2 scrollbar-none"
           >
             {tabs.map((tab, index) => (
               <TabItem
@@ -561,7 +560,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           tabIndex={-1}
           aria-hidden="true"
           onClick={() => scroll('right')}
-          className="sticky right-0 z-10 flex items-center justify-center w-8 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
+          className="sticky right-0 z-10 flex w-8 shrink-0 items-center justify-center bg-[color:var(--shell-toolbar-surface,var(--background))] transition-colors hover:bg-[var(--interactive-hover)]"
           style={{ borderLeft: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
           <CaretRight size={16} className="opacity-45" />

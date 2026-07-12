@@ -290,7 +290,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   );
 
   const zoomRestore = displayMode !== 'floating';
-  const hostsAppTabs = appTypeId === 'notes';
+  const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
 
   return (
     <div
@@ -301,7 +301,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       style={{ height: TITLEBAR_HEIGHT, touchAction: 'none' }}
       data-wb-titlebar
       data-wb-title-draggable=""
-      data-wb-app-tabs={hostsAppTabs ? 'notes' : undefined}
+      data-wb-app-tabs={appTypeId === 'notes' ? 'notes' : appTypeId === 'files' ? 'files' : undefined}
       data-window-id={windowId}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}

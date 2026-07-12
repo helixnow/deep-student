@@ -113,8 +113,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   return (
     <div 
       className={cn(
-        "relative -mr-px flex items-center gap-1.5 px-2 border-t text-sm h-11 shrink-0 overflow-hidden",
-        hasSelection ? "bg-accent/80 backdrop-blur-sm" : "bg-background/95 backdrop-blur-lg",
+        "relative -mr-px flex items-center gap-1.5 px-3 border-t text-sm h-10 shrink-0 overflow-hidden",
+        "bg-[color:var(--shell-toolbar-surface,var(--background))]",
         className
       )}
     >
@@ -122,7 +122,13 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
       <div className="flex items-center gap-2 min-w-0 shrink">
         {/* 项目计数 */}
         <span className="text-xs text-muted-foreground whitespace-nowrap">
-          {t('finder.statusBar.itemCount', { count: totalCount })}
+          {selectedCount > 0
+            ? t('finder.statusBar.selectedOfTotal', {
+                selected: selectedCount,
+                total: totalCount,
+                defaultValue: '{{selected}} selected of {{total}}',
+              })
+            : t('finder.statusBar.itemCount', { count: totalCount })}
         </span>
 
         {/* 视图切换按钮组 - 在有选中项时可能被隐藏 */}
@@ -205,7 +211,6 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
       {/* 选择信息（有选中项时显示）- 允许文本被截断 */}
       {hasSelection && (
         <div className="flex items-center gap-1 text-accent-foreground min-w-0 ml-2 overflow-hidden">
-          <span className="text-muted-foreground/60 shrink-0">|</span>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={allSelected ? onClearSelection : onSelectAll} className={cn(smallIconBtnClass, 'shrink-0')} title={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')} aria-label={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}>
             {allSelected ? (
               <CheckSquare size={16} />
@@ -213,7 +218,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               <Square size={16} />
             )}
           </NotionButton>
-          <span className="font-medium whitespace-nowrap text-xs truncate">
+          <span className="whitespace-nowrap text-xs truncate text-muted-foreground">
             {t('finder.multiSelect.selected', { count: selectedCount })}
           </span>
         </div>

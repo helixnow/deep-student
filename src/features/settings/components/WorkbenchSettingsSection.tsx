@@ -25,6 +25,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { setMaterialTier, type MaterialTierSetting } from '@/features/workbench/core/materialTier';
 import { WALLPAPER_PRESETS, DEFAULT_WALLPAPER, type WallpaperConfig } from '@/features/workbench/components/WallpaperLayer';
+import { AgentCapabilitySummary } from '@/features/workbench/components/AgentControlCenter';
 
 export type PerformanceProfile = 'quality' | 'balanced' | 'performance' | 'custom';
 
@@ -723,6 +724,17 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
             </p>
           )}
         </div>
+      </SettingRow>
+
+      <SettingRow
+        title={t('workbench:agentControlCenter.settingsTitle', '助手可以做什么')}
+        description={t(
+          'workbench:agentControlCenter.settingsDescription',
+          '这些能力来自学习子应用主动注册的语义操作，不使用坐标盲点。实际可用动作会随当前页面和状态变化。',
+        )}
+        className="sm:flex-col lg:flex-row"
+      >
+        <AgentCapabilitySummary variant="settings" className="max-w-full lg:max-w-[560px]" />
       </SettingRow>
 
       <SettingRow

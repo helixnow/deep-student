@@ -11,6 +11,7 @@ import { appRegistry } from '../../core/appRegistry';
 import type { AppDefinition } from '../../core/types';
 import { startResourceSync } from './resourceSync';
 import { handleFilesActivation } from './filesActivation';
+import { filesAgentManifest } from './agentManifest';
 
 /** 导出供测试断言元数据 */
 export const FILES_APP_DEFINITION: AppDefinition = {
@@ -24,6 +25,7 @@ export const FILES_APP_DEFINITION: AppDefinition = {
   render: React.lazy(() => import('./FilesAppWindow')),
   // R1-14：openFolder / reveal（store 在 handler 内动态 import）
   onActivation: handleFilesActivation,
+  agentManifest: filesAgentManifest,
 };
 
 appRegistry.register(FILES_APP_DEFINITION);

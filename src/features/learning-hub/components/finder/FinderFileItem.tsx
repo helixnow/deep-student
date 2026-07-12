@@ -17,8 +17,7 @@ import {
   type ResourceIconProps,
 } from '../../icons';
 import { cn } from '@/lib/utils';
-import { useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
@@ -37,6 +36,8 @@ export interface FinderFileItemProps {
   isDragging?: boolean;
   /** 拖拽悬停在此项上（只对文件夹有效） */
   isDropTarget?: boolean;
+  /** spring-load 预备高亮（悬停文件夹倒计时中） */
+  isSpringLoading?: boolean;
   /** 是否正在内联编辑 */
   isEditing?: boolean;
   /** 内联编辑确认回调 */
@@ -113,6 +114,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   isDragOverlay = false,
   isDragging = false,
   isDropTarget = false,
+  isSpringLoading = false,
   isEditing = false,
   onEditConfirm,
   onEditCancel,
@@ -183,14 +185,15 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     return (
       <div
         className={cn(
-          "group relative flex items-center gap-2 px-3 py-1.5 cursor-default select-none rounded-md mx-1 my-0.5",
-          "transition-[background-color,box-shadow,border-color,opacity,transform] duration-150 ease-out",
-          "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]",
-          isSelected && "bg-primary/10 dark:bg-primary/20 hover:bg-primary/15 dark:hover:bg-primary/25",
-          isActive && !isSelected && "bg-accent/40 dark:bg-accent/30",
-          isDragging && "opacity-40 scale-[0.98]",
-          isDragOverlay && "shadow-notion-lg ring-1 ring-primary/20 bg-background rounded-lg scale-[1.02]",
-          isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-[1.01]"
+          "group relative flex min-h-10 items-center gap-2 px-3 py-1.5 cursor-default select-none",
+          "transition-[background-color,opacity] duration-100 ease-out",
+          !isSelected && "hover:bg-[var(--interactive-hover)]/70",
+          isSelected && "bg-primary text-primary-foreground",
+          isActive && !isSelected && "bg-[var(--interactive-selected)]",
+          isDragging && "opacity-40",
+          isDragOverlay && "bg-primary text-primary-foreground shadow-lg",
+          isDropTarget && item.type === 'folder' && "outline outline-2 outline-primary outline-offset-[-2px] bg-primary/10",
+          isSpringLoading && item.type === 'folder' && !isDropTarget && "outline outline-2 outline-primary/50 outline-offset-[-2px] bg-primary/5 animate-pulse"
         )}
         title={rowTitle}
         onClick={handleClick}
@@ -218,7 +221,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
-            textClassName="truncate block text-[13px] font-medium text-foreground/90"
+            textClassName={cn(
+              'truncate block text-[13px] font-normal',
+              isSelected ? 'text-primary-foreground' : 'text-foreground/90'
+            )}
             inputClassName="h-6 text-[13px]"
           />
           {isFavorite && (
@@ -249,18 +255,18 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               <>
                 {/* 子项数量（文件夹）或文件大小（文件类） */}
                 {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-                  <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
+                  <span className={cn('text-[11px] tabular-nums w-12 text-right', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {childCountLabel ?? formatSize(item.size)}
                   </span>
                 )}
                 {/* 类型标签 */}
                 {typeLabel && (
-                  <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
+                  <span className={cn('text-[10px] shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {typeLabel}
                   </span>
                 )}
                 {/* 修改时间 */}
-                <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
+                <span className={cn('text-[11px] tabular-nums shrink-0', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/55')}>
                   {relativeTime}
                 </span>
               </>
@@ -279,7 +285,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
               aria-label={t('common:more')}
             >
-              <DotsThree size={isTouchPrimary ? 20 : 16} className="text-muted-foreground/60" />
+              <DotsThree size={isTouchPrimary ? 20 : 16} className={isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground/60'} />
             </NotionButton>
           </div>
         )}
@@ -287,25 +293,17 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     );
   }
 
-  // Grid View - Notion 风格的卡片
+  // Grid View - Finder-style icon layout
   return (
     <div
       className={cn(
-        // Notion 风格的网格卡片 - 更大、更精致
-        "group relative flex flex-col items-center p-3 rounded-xl cursor-default select-none",
+        "group relative flex flex-col items-center p-2 cursor-default select-none",
         "box-border w-[88px] max-w-[88px] h-[100px] shrink-0",
-        "transition-[background-color,box-shadow,border-color,opacity,transform] duration-150 ease-out",
-        "border border-transparent",
-        // 悬停效果
-        !isSelected && !isActive && "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)] hover:shadow-notion",
-        // 选中状态
-        isSelected && "bg-primary/10 dark:bg-primary/15 border-primary/30 shadow-notion",
-        // 激活状态
-        isActive && !isSelected && "bg-accent/40 border-primary/20",
-        // 拖拽状态
-        isDragging && "opacity-40 scale-95",
-        isDragOverlay && "shadow-notion-lg ring-1 ring-primary/30 bg-background scale-105",
-        isDropTarget && item.type === 'folder' && "ring-2 ring-primary bg-primary/10 scale-[1.02] border-primary"
+        "transition-opacity duration-100 ease-out",
+        isDragging && "opacity-40",
+        isDragOverlay && "drop-shadow-lg",
+        isDropTarget && item.type === 'folder' && "rounded-lg bg-primary/10 outline outline-2 outline-primary",
+        isSpringLoading && item.type === 'folder' && !isDropTarget && "rounded-lg bg-primary/5 outline outline-2 outline-primary/50 animate-pulse"
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -337,7 +335,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       
       {/* 自定义 SVG 图标：固定盒，防止被网格单元横向拉伸 */}
-      <div className="mb-2 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden">
+      <div className={cn(
+        'mb-1.5 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg',
+        isActive && !isSelected && 'bg-[var(--interactive-selected)]'
+      )}>
         <CustomIcon size={48} className="h-12 w-12 max-w-full shrink-0" />
       </div>
       
@@ -350,11 +351,15 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
-            className="text-center"
-            inputClassName="text-center !text-[11px]"
+            autoSize
+            className="mx-auto text-center"
+            inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-[11px] !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0"
           />
         ) : (
-          <span className="block w-full text-[11px] leading-tight font-medium text-foreground/85 line-clamp-2 break-words">
+          <span className={cn(
+            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-[11px] leading-tight font-normal line-clamp-2 break-words',
+            isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
+          )}>
             {item.name}
           </span>
         )}
@@ -364,45 +369,61 @@ export const FinderFileItem = React.memo(function FinderFileItem({
 });
 
 /**
- * 可排序的 FinderFileItem 包装组件
- * 
- * 使用 React.memo 优化，避免虚拟滚动列表中不必要的重渲染
+ * 可拖放的 FinderFileItem 包装组件
+ *
+ * 使用 useDraggable + useDroppable（仅文件夹可 drop），
+ * 不再使用 sortable，避免列表项在拖拽时产生排序位移。
+ * 使用 React.memo 优化虚拟滚动列表重渲染。
  */
 export const SortableFinderFileItem = React.memo(function SortableFinderFileItem({
   id,
   enableDrag = true,
   ...props
 }: SortableFinderFileItemProps) {
+  const isFolder = props.item.type === 'folder';
+
   const {
     attributes,
     listeners,
-    setNodeRef,
-    transform,
-    transition,
+    setNodeRef: setDragRef,
     isDragging,
-    isOver,
-  } = useSortable({ 
+  } = useDraggable({
     id,
     disabled: !enableDrag,
+    data: {
+      type: props.item.type,
+      itemId: id,
+    },
   });
 
-  // ★ 2025-12-11: 文件夹作为放置目标，不应用排序动画（防止"躲开"效果）
-  // 只有非文件夹项才应用 transform 动画
-  const isFolder = props.item.type === 'folder';
-  const style = {
-    // 文件夹不应用 transform，保持原位作为静态放置目标
-    transform: isFolder ? undefined : CSS.Transform.toString(transform),
-    transition: isFolder ? undefined : transition,
-  };
+  const {
+    setNodeRef: setDropRef,
+    isOver,
+  } = useDroppable({
+    id,
+    disabled: !isFolder || isDragging,
+    data: {
+      type: 'folder',
+      accepts: 'finder-item',
+      itemId: id,
+    },
+  });
 
-  // 只有文件夹可以作为拖放目标
-  const isDropTarget = isOver && isFolder;
+  // 合并 drag/drop ref（文件夹同时是拖源与放置目标）
+  const setNodeRef = useCallback(
+    (node: HTMLElement | null) => {
+      setDragRef(node);
+      setDropRef(node);
+    },
+    [setDragRef, setDropRef]
+  );
+
+  const isDropTarget = isOver && isFolder && !isDragging;
 
   return (
-    <div 
-      ref={setNodeRef} 
-      style={style} 
-      {...attributes} 
+    <div
+      ref={setNodeRef}
+      {...attributes}
       {...listeners}
       data-finder-item
       data-item-id={id}

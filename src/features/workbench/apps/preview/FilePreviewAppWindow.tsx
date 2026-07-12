@@ -36,6 +36,17 @@ export interface PreviewSelectionMetadata {
   locator?: string;
 }
 
+export function getPreviewHighlightNames(instanceKey: string | null): {
+  all: string;
+  current: string;
+} {
+  const suffix = normalizeResourceInstanceKey(instanceKey)?.replace(/[^a-zA-Z0-9_-]/g, '-') ?? 'empty';
+  return {
+    all: `file-preview-search-${suffix}`,
+    current: `file-preview-search-current-${suffix}`,
+  };
+}
+
 function closestElement(node: Node | null): Element | null {
   if (!node) return null;
   return node instanceof Element ? node : node.parentElement;
@@ -158,13 +169,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
 }) => {
   const { t } = useTranslation(['workbench', 'common', 'learningHub']);
   const resourceId = normalizeResourceInstanceKey(instanceKey);
-  const highlightNames = useMemo(() => {
-    const suffix = instanceKey.replace(/[^a-zA-Z0-9_-]/g, '-');
-    return {
-      all: `file-preview-search-${suffix}`,
-      current: `file-preview-search-current-${suffix}`,
-    };
-  }, [instanceKey]);
+  const highlightNames = useMemo(() => getPreviewHighlightNames(resourceId), [resourceId]);
   const previewRootRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [node, setNode] = useState<DstuNode | null>(null);

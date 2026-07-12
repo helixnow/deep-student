@@ -23,6 +23,19 @@ export interface InlineEditTextProps {
   maxLength?: number;
   /** 是否禁用编辑 */
   disabled?: boolean;
+  /** 输入框宽度随内容收缩（Finder 图标视图重命名） */
+  autoSize?: boolean;
+}
+
+const FULL_WIDTH_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60\uFFE0-\uFFE6]/;
+
+function getTextWidthEm(value: string): number {
+  return Math.max(
+    1,
+    Array.from(value).reduce((width, character) => (
+      width + (FULL_WIDTH_CHAR.test(character) ? 1 : 0.58)
+    ), 0),
+  );
 }
 
 /**
@@ -45,6 +58,7 @@ export const InlineEditText = React.memo(function InlineEditText({
   textClassName,
   maxLength = 255,
   disabled = false,
+  autoSize = false,
 }: InlineEditTextProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = useState(value);
@@ -179,9 +193,12 @@ export const InlineEditText = React.memo(function InlineEditText({
       onCompositionEnd={handleCompositionEnd}
       maxLength={maxLength}
       disabled={disabled}
+      style={autoSize ? {
+        width: `min(calc(${getTextWidthEm(editValue)}em + 10px), 100%)`,
+      } : undefined}
       className={cn(
         // 基础样式 - 继承父元素字体
-        "w-full px-1 py-0.5 text-[inherit] leading-[inherit]",
+        autoSize ? "min-w-6 max-w-full px-1 py-0.5 text-[inherit] leading-[inherit]" : "w-full px-1 py-0.5 text-[inherit] leading-[inherit]",
         // 边框和背景 - macOS 风格
         "bg-background border border-primary/50 rounded",
         // 选中高亮

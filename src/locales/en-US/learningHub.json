@@ -506,7 +506,10 @@
       "importPartial": "{{success}} imported, {{failed}} failed",
       "importFailed": "File import failed",
       "notAllowedHere": "Cannot drop files in this view",
-      "importing": "Importing {{done}} / {{total}}"
+      "importing": "Importing {{done}} / {{total}}",
+      "favoriteSuccess": "Favorited {{count}} item(s)",
+      "favoriteFailed": "Failed to favorite",
+      "favoriteSkipped": "Nothing to favorite (folders or already favorited)"
     },
     "markdownImport": {
       "selectFiles": "Select Markdown Files",
@@ -569,7 +572,9 @@
       "batchDeleteFailed": "Batch permanent delete failed"
     },
     "statusBar": {
-      "itemCount": "{{count}} items"
+      "itemCount": "{{count}} items",
+      "selectedCount": "{{count}} selected",
+      "selectedOfTotal": "{{selected}} selected of {{total}}"
     },
     "viewMode": {
       "grid": "Grid view",

@@ -4,8 +4,8 @@
  * 渲染桌面操控工具（workbench_*）的进度与回执：
  * - 标题 + 工具可读名 + 目标摘要
  * - running / 终态均可按行渲染 block.content 步骤流
- * - 终态解析 AcrReceipt（status / done / undone / message）
- * - 打开目标窗 / 前端平面撤销（账本过期 → 失效态）
+ * - 终态解析旧 AcrReceipt 与 ACR 2.0 AgentActReceipt
+ * - 打开目标窗 / 持久 undoToken 优先撤销 / 旧内存账本兼容
  * - data-run-id 与 presence 联动（resolveWorkbenchRunId）
  *
  * 设计见 docs/dev/acr/DESIGN.md §3 / §4.2；规范 docs/dev/acr/STANDARDS.md。
@@ -101,16 +101,24 @@ function parseReceipt(toolOutput: unknown): AcrReceipt | null {
   }
 
   const modeRaw = asString(candidate.mode);
-  const mode =
-    modeRaw === 'frontend' || modeRaw === 'backend' || modeRaw === 'suggestion'
-      ? modeRaw
-      : 'backend';
+  if (
+    (modeRaw !== 'frontend' && modeRaw !== 'backend' && modeRaw !== 'suggestion') ||
+    typeof candidate.applied !== 'number' ||
+    typeof candidate.totalOps !== 'number' ||
+    !Array.isArray(candidate.entityIds) ||
+    !Array.isArray(candidate.done) ||
+    !Array.isArray(candidate.undone)
+  ) {
+    // ACR 2.0 AgentActReceipt also has status=completed/partial/failed, but is a
+    // different contract. Requiring legacy receipt fields avoids a false 0/0 summary.
+    return null;
+  }
 
   return {
     status,
-    mode,
-    applied: typeof candidate.applied === 'number' ? candidate.applied : 0,
-    totalOps: typeof candidate.totalOps === 'number' ? candidate.totalOps : 0,
+    mode: modeRaw,
+    applied: candidate.applied,
+    totalOps: candidate.totalOps,
     entityIds: asStringArray(candidate.entityIds),
     done: asStringArray(candidate.done),
     undone: asStringArray(candidate.undone),
@@ -120,11 +128,51 @@ function parseReceipt(toolOutput: unknown): AcrReceipt | null {
   };
 }
 
+interface ParsedAgentActResult {
+  status: 'completed' | 'partial' | 'failed';
+  verified: boolean;
+  failedConditionCount: number;
+  undoToken?: string;
+  undoDurability?: 'persistent' | 'session';
+}
+
+function parseAgentActResult(toolOutput: unknown): ParsedAgentActResult | null {
+  const outer = asRecord(toolOutput);
+  if (!outer) return null;
+  const candidate = asRecord(outer.result) ?? outer;
+  const status = asString(candidate.status);
+  if (status !== 'completed' && status !== 'partial' && status !== 'failed') return null;
+  // Distinguish from legacy AcrReceipt by requiring the ACR 2.0 revision/result surface.
+  if (
+    typeof candidate.beforeRevision !== 'string' ||
+    typeof candidate.afterRevision !== 'string' ||
+    !Array.isArray(candidate.results)
+  ) {
+    return null;
+  }
+  const undoDurability = asString(candidate.undoDurability);
+  return {
+    status,
+    verified: candidate.verified === true,
+    failedConditionCount: Array.isArray(candidate.failedConditions)
+      ? candidate.failedConditions.length
+      : 0,
+    undoToken: asString(candidate.undoToken),
+    undoDurability:
+      undoDurability === 'persistent' || undoDurability === 'session'
+        ? undoDurability
+        : undefined,
+  };
+}
+
 function receiptStatusKey(
   receipt: AcrReceipt | null,
-  blockStatus: string
+  blockStatus: string,
+  actResult: ParsedAgentActResult | null,
 ): 'running' | 'success' | 'partial' | 'cancelled' | 'error' {
   if (blockStatus === 'running' || blockStatus === 'pending') return 'running';
+  if (actResult?.status === 'partial') return 'partial';
+  if (actResult?.status === 'failed') return 'error';
   if (!receipt) {
     return blockStatus === 'error' ? 'error' : blockStatus === 'success' ? 'success' : 'running';
   }
@@ -160,8 +208,9 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
 
   const target = useMemo(() => extractTarget(block.toolInput), [block.toolInput]);
   const receipt = useMemo(() => parseReceipt(block.toolOutput), [block.toolOutput]);
+  const actResult = useMemo(() => parseAgentActResult(block.toolOutput), [block.toolOutput]);
   const restoredFromPersistence = isWorkbenchBlockRestored(block.id);
-  const statusKey = receiptStatusKey(receipt, block.status);
+  const statusKey = receiptStatusKey(receipt, block.status, actResult);
 
   const runId = resolveWorkbenchRunId(
     { id: block.id, toolCallId: block.toolCallId },
@@ -199,28 +248,33 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   }, [target]);
 
   const canOpenTarget = Boolean(target.typeId);
-  const showUndoChrome =
+  const undoToken = actResult?.undoToken;
+  const persistentUndo = undoToken != null && actResult?.undoDurability === 'persistent';
+  const showLegacyUndoChrome =
     receipt?.mode === 'frontend' &&
     (receipt.status === 'completed' || receipt.status === 'partial') &&
     Boolean(runId);
+  const showUndoChrome = Boolean(undoToken) || showLegacyUndoChrome;
 
-  /** 可点撤销：账本仍持有 invert；过期/已撤 → 失效态 */
+  /** 持久 token 可跨恢复消费；session token 与旧账本只在当前前端生命周期有效。 */
   const canUndo =
     showUndoChrome &&
-    !restoredFromPersistence &&
     (undoState === 'idle' || undoState === 'incomplete') &&
-    ledgerAlive;
+    (undoToken ? persistentUndo || !restoredFromPersistence : !restoredFromPersistence && ledgerAlive);
 
   const undoExpired = showUndoChrome && (
-    restoredFromPersistence ||
     undoState === 'expired' ||
-    (undoState === 'idle' && !ledgerAlive && hadReversibleEntry.current)
+    (undoToken
+      ? restoredFromPersistence && !persistentUndo
+      : restoredFromPersistence ||
+        (undoState === 'idle' && !ledgerAlive && hadReversibleEntry.current))
   );
 
   const undoUnavailable = showUndoChrome && (
     undoState === 'unavailable' ||
-    (undoState === 'idle' && !ledgerAlive && !undoExpired)
+    (!undoToken && undoState === 'idle' && !ledgerAlive && !undoExpired)
   );
+  const undoRetryAvailable = undoToken ? !undoExpired : ledgerAlive;
 
   const showDoneUndone =
     receipt &&
@@ -247,11 +301,35 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
   };
 
   const handleUndo = async () => {
-    if (restoredFromPersistence) {
+    if (restoredFromPersistence && !persistentUndo) {
       setUndoState('expired');
       return;
     }
     if (undoState !== 'idle' && undoState !== 'incomplete') return;
+    if (undoToken) {
+      setUndoState('loading');
+      try {
+        const response = await stageManager.handleBridgeRequest({
+          correlationId: `ui-undo-${block.id}-${Date.now()}`,
+          command: 'revert_run',
+          args: { undoToken },
+          timeoutMs: 15_000,
+          runId: runId ?? block.toolCallId ?? block.id,
+          sessionId: block.messageId,
+        });
+        const data = asRecord(response.data);
+        if (response.ok && data?.reverted === true) {
+          setUndoState('reverted');
+        } else if (response.error?.includes('UNDO_NOT_FOUND')) {
+          setUndoState('expired');
+        } else {
+          setUndoState('incomplete');
+        }
+      } catch {
+        setUndoState('incomplete');
+      }
+      return;
+    }
     const currentRunId = resolveWorkbenchRunId(
       { id: block.id, toolCallId: block.toolCallId },
       (id) => runLedger.hasRun(id)
@@ -449,6 +527,37 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
         </div>
       )}
 
+      {actResult && block.status !== 'running' && block.status !== 'pending' && (
+        <div className="px-3 py-2 space-y-1.5" data-testid="workbench-agent-act-receipt">
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            {actResult.verified ? (
+              <Check size={13} className="text-success flex-shrink-0" />
+            ) : (
+              <WarningCircle size={13} className="text-amber-500 flex-shrink-0" />
+            )}
+            <span>
+              {actResult.verified
+                ? t('blocks.workbenchOps.verified', { defaultValue: '操作后状态已验证' })
+                : t('blocks.workbenchOps.verificationFailed', {
+                    count: actResult.failedConditionCount,
+                    defaultValue: `${actResult.failedConditionCount} 个后置条件未满足`,
+                  })}
+            </span>
+          </p>
+          {undoToken && (
+            <p className="text-[11px] text-muted-foreground/75" data-testid="workbench-undo-durability">
+              {persistentUndo
+                ? t('blocks.workbenchOps.undoPersistent', {
+                    defaultValue: '此操作可使用持久撤销，应用重启后仍可恢复。',
+                  })
+                : t('blocks.workbenchOps.undoSession', {
+                    defaultValue: '此操作可在当前应用会话中撤销。',
+                  })}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* 错误（无 receipt 时） */}
       {block.status === 'error' && !receipt && (
         <div className="px-3 py-2 flex items-center gap-1.5 text-xs text-destructive">
@@ -479,7 +588,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
                       defaultValue: '撤销不可用（没有可恢复的更改）',
                     })
                   : undoState === 'incomplete'
-                    ? ledgerAlive
+                    ? undoRetryAvailable
                       ? t('blocks.workbenchOps.undoRetry', {
                           defaultValue: '部分更改未恢复，可再次尝试撤销',
                         })
@@ -497,7 +606,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
                 })}
               </>
             ) : undoState === 'incomplete' ? (
-              ledgerAlive ? (
+              undoRetryAvailable ? (
                 t('blocks.workbenchOps.undoRetry', {
                   defaultValue: '部分撤销，重试',
                 })
@@ -520,6 +629,17 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block }) 
               t('blocks.workbenchOps.undo')
             )}
           </NotionButton>
+          {undoToken && undoState !== 'reverted' && (
+            <span className="self-center text-[11px] text-muted-foreground/70">
+              {persistentUndo
+                ? t('blocks.workbenchOps.undoPersistentShort', {
+                    defaultValue: '跨重启可撤销 · 成功后一次性失效',
+                  })
+                : t('blocks.workbenchOps.undoSessionShort', {
+                    defaultValue: '仅当前会话 · 成功后一次性失效',
+                  })}
+            </span>
+          )}
         </div>
       )}
     </div>

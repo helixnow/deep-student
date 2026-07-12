@@ -14,6 +14,7 @@ import {
 import type { SandboxViewportPreset, SandboxWorkbenchMode } from '@/features/sandbox/types';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult } from '../../core/types';
+import { createSandboxAgentManifest } from './agentManifest';
 
 let registered = false;
 
@@ -82,5 +83,6 @@ export function registerSandboxApp(): void {
     minSize: { w: 560, h: 420 },
     render: React.lazy(() => import('./SandboxAppWindow')),
     onActivation: handleSandboxActivation,
+    agentManifest: createSandboxAgentManifest(handleSandboxActivation),
   });
 }

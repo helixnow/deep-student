@@ -136,6 +136,8 @@ export interface LearningHubSidebarProps {
   hideToolbarAndNav?: boolean;
   /** ★ 桌面端将快捷入口渲染到外层 Shell 侧栏 */
   quickAccessPortalTarget?: HTMLElement | null;
+  /** ★ Workbench 资源库窗口：将 Finder 工具栏挂到原生窗口标题栏插槽 */
+  toolbarPortalTarget?: HTMLElement | null;
   /** ★ 高亮标记的资源 ID（如分组已关联的资源，显示勾选状态） */
   highlightedIds?: Set<string>;
 }

@@ -504,6 +504,12 @@
       "message": "Note",
       "applied": "Applied {{applied}}/{{total}}",
       "undoExpired": "Undo expired (session ended or ledger cleared)",
+      "verified": "Post-action state verified",
+      "verificationFailed": "{{count}} postcondition(s) not met",
+      "undoPersistent": "Persistent undo is available for this action, including after an app restart.",
+      "undoSession": "This action can be undone during the current app session.",
+      "undoPersistentShort": "Survives restart · one use after success",
+      "undoSessionShort": "Current session only · one use after success",
       "status": {
         "running": "Running",
         "success": "Completed",

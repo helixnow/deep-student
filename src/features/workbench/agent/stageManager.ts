@@ -18,7 +18,16 @@ import {
 import { getSortedWindows } from '../core/windowListCache';
 import { useWindowStore } from '../core/windowStore';
 import { workbenchBus } from '../core/workbenchBus';
-import type { DisplayMode } from '../core/types';
+import {
+  isAgentActRequestReadOnly,
+  isAgentRuntimeError,
+} from '../core/agentRuntime';
+import type {
+  AgentActRequest,
+  AgentWaitForRequest,
+  AgentWindowTarget,
+  DisplayMode,
+} from '../core/types';
 import i18n from 'i18next';
 import { createArbitrator, type Arbitrator } from './arbitration';
 import { emitAcrProgress } from './bridge';
@@ -29,7 +38,6 @@ import {
   gateDisabledOff,
   gateDisabledOs,
   getAgentControlMode,
-  isCommandAllowedWhenOff,
   parseAgentControlMode,
   setAgentControlMode,
   type AgentControlMode,
@@ -39,7 +47,10 @@ import { runLedger } from './ledger';
 import { createPacer, forcePacerInstant } from './pacing';
 import { isPresenceExpired, usePresenceStore } from './presenceStore';
 import { probeTarget } from './probe';
-import { registerBuiltinQueryProviders } from './queryProviders';
+import {
+  readDriverQueryState,
+  registerBuiltinQueryProviders,
+} from './queryProviders';
 import type {
   AcrBridgeRequest,
   AcrBridgeResponse,
@@ -52,7 +63,11 @@ import type {
   StageManagerApi,
   WindowSummary,
 } from './types';
-import { ACR_ERROR_CODES, ACR_EVENT_CANCEL } from './types';
+import {
+  ACR_ERROR_CODES,
+  ACR_EVENT_CANCEL,
+  getAcrCommandAccess,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // 常量与设置
@@ -292,6 +307,44 @@ function asRecord(args: unknown): Record<string, unknown> {
   return args && typeof args === 'object'
     ? (args as Record<string, unknown>)
     : {};
+}
+
+function agentRuntimeOptions(req: AcrBridgeRequest, withUndo = false) {
+  return {
+    runId: req.runId,
+    sessionId: req.sessionId,
+    resolveDirty: (typeId: string, instanceKey: string | null) =>
+      isContentDirty(typeId, instanceKey),
+    resolveBusy: (windowId: string) => leaseByWindow.has(windowId),
+    resolveLegacyState: (ctx: { windowId: string }) => {
+      const win = useWindowStore.getState().windows[ctx.windowId];
+      return win ? readDriverQueryState(stageManager, win) : {};
+    },
+    ...(withUndo
+      ? {
+          registerSessionUndo: (
+            invert: () => Promise<void> | void,
+            label: string,
+          ) => runLedger.record(req.runId, invert, label),
+        }
+      : {}),
+  };
+}
+
+function bridgeAgentRuntimeError(
+  req: AcrBridgeRequest,
+  error: unknown,
+): AcrBridgeResponse {
+  if (isAgentRuntimeError(error)) {
+    return bridgeErr(
+      req.correlationId,
+      error.code,
+      error.message,
+      error.hint,
+      error.retryable,
+    );
+  }
+  throw error;
 }
 
 // ---------------------------------------------------------------------------
@@ -566,6 +619,9 @@ function buildWindowSummaries(): {
       lifecycle,
       focused: top,
       dirty: isContentDirty(w.typeId, w.instanceKey),
+      agentReady: Boolean(appRegistry.getAgentManifest(w.typeId)),
+      availableActions: appRegistry.getAgentManifest(w.typeId)?.capabilities
+        .map((capability) => capability.name),
     };
   });
   return { windows, focused };
@@ -655,6 +711,16 @@ async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeRespons
       'INVALID_ARGS',
       'app_command 缺少 typeId/action',
       '请传入 { typeId, instanceKey?, action, payload? }',
+    );
+  }
+  const declaredCapability = appRegistry.getAgentCapability(typeId, action);
+  if (declaredCapability?.risk === 'high') {
+    return bridgeErr(
+      req.correlationId,
+      ACR_ERROR_CODES.RISK_APPROVAL_REQUIRED,
+      `${typeId}.${action} 是 high 风险动作，不能通过 legacy app_command 执行`,
+      '先 observe 获取 revision，再使用经过确认的 high-risk act 工具',
+      false,
     );
   }
   const instanceKey =
@@ -859,10 +925,82 @@ function handleQueryState(req: AcrBridgeRequest): AcrBridgeResponse {
   return bridgeOk(req.correlationId, provider(req.args));
 }
 
+function handleGetCapabilities(req: AcrBridgeRequest): AcrBridgeResponse {
+  try {
+    return bridgeOk(
+      req.correlationId,
+      workbenchBus.getAgentCapabilities(asRecord(req.args) as AgentWindowTarget),
+    );
+  } catch (error) {
+    return bridgeAgentRuntimeError(req, error);
+  }
+}
+
+async function handleObserve(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
+  try {
+    const observation = await workbenchBus.observeAgent(
+      asRecord(req.args) as AgentWindowTarget,
+      agentRuntimeOptions(req),
+    );
+    return bridgeOk(req.correlationId, observation);
+  } catch (error) {
+    return bridgeAgentRuntimeError(req, error);
+  }
+}
+
+async function handleAct(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
+  if (!isAgentActRequestReadOnly(req.args) && !workbenchBus.isEnabled()) {
+    return bridgeGateErr(req.correlationId, gateDisabledOs());
+  }
+  try {
+    const receipt = await workbenchBus.actAgent(
+      asRecord(req.args) as unknown as AgentActRequest,
+      agentRuntimeOptions(req, true),
+    );
+    if (runLedger.hasRun(req.runId)) runLedger.sealRun(req.runId);
+    return bridgeOk(req.correlationId, receipt);
+  } catch (error) {
+    return bridgeAgentRuntimeError(req, error);
+  }
+}
+
+async function handleWaitFor(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
+  try {
+    const result = await workbenchBus.waitForAgent(
+      asRecord(req.args) as unknown as AgentWaitForRequest,
+      agentRuntimeOptions(req),
+    );
+    return bridgeOk(req.correlationId, result);
+  } catch (error) {
+    return bridgeAgentRuntimeError(req, error);
+  }
+}
+
 async function handleRevertRun(
   req: AcrBridgeRequest,
 ): Promise<AcrBridgeResponse> {
   const args = asRecord(req.args);
+  const undoToken = typeof args.undoToken === 'string' ? args.undoToken : '';
+  if (undoToken.startsWith('acr-undo:')) {
+    try {
+      const result = await workbenchBus.revertAgentAction(
+        undoToken,
+        agentRuntimeOptions(req),
+      );
+      return bridgeOk(req.correlationId, result);
+    } catch (error) {
+      return bridgeAgentRuntimeError(req, error);
+    }
+  }
+  if (undoToken.startsWith('acr-run:')) {
+    const runId = undoToken.slice('acr-run:'.length);
+    const reverted = await runLedger.revertRun(runId);
+    return bridgeOk(req.correlationId, {
+      reverted,
+      undoToken,
+      durability: 'session',
+    });
+  }
   const runId = typeof args.runId === 'string' ? args.runId : req.runId;
   const reverted = await runLedger.revertRun(runId);
   return bridgeOk(req.correlationId, { reverted });
@@ -1108,10 +1246,15 @@ function handleInactiveRequest(
       return handleListWindows(req);
     case 'query_state':
       return handleQueryState(req);
+    case 'get_capabilities':
+    case 'observe':
+    case 'wait_for':
+      return null;
     case 'open_app':
     case 'app_command':
     case 'close_window':
     case 'apply_ops':
+    case 'act':
     case 'revert_run':
       return bridgeGateErr(req.correlationId, gateDisabledOs());
     default:
@@ -1145,8 +1288,11 @@ export const stageManager: StageManagerApi & {
         const inactive = handleInactiveRequest(req);
         if (inactive) return inactive;
       }
-      // R2-08：off = list/query/probe 只读允许；写与导航拒绝
-      if (agentControl === 'off' && !isCommandAllowedWhenOff(req.command)) {
+      // R2-08 / ACR 2.0：off 允许只读命令；act 按 capability.mutates 动态判定。
+      const access = getAcrCommandAccess(req.command);
+      const allowedWhenOff = access === 'read-only'
+        || (access === 'dynamic' && isAgentActRequestReadOnly(req.args));
+      if (agentControl === 'off' && !allowedWhenOff) {
         return bridgeGateErr(req.correlationId, gateDisabledOff());
       }
       switch (req.command) {
@@ -1164,6 +1310,14 @@ export const stageManager: StageManagerApi & {
           return await handleCloseWindow(req);
         case 'query_state':
           return handleQueryState(req);
+        case 'get_capabilities':
+          return handleGetCapabilities(req);
+        case 'observe':
+          return await handleObserve(req);
+        case 'act':
+          return await handleAct(req);
+        case 'wait_for':
+          return await handleWaitFor(req);
         case 'revert_run':
           return await handleRevertRun(req);
         default:

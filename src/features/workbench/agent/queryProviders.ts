@@ -76,17 +76,20 @@ export function buildWindowSummaries(): ListWindowsResult {
     lifecycle: resolveLifecycle(win, state.lifecycles, focusedId),
     focused: focusedId === win.id,
     dirty: isContentDirty(win.typeId, win.instanceKey),
+    agentReady: Boolean(appRegistry.getAgentManifest(win.typeId)),
+    availableActions: appRegistry.getAgentManifest(win.typeId)?.capabilities
+      .map((capability) => capability.name),
   }));
   return focusedId ? { windows, focused: focusedId } : { windows };
 }
 
-function mergeDriverQueryState(
+/** Safely read the legacy CollabDriver observation extension for ACR 2.0 fallback state. */
+export function readDriverQueryState(
   stage: StageManagerApi,
   win: WorkbenchWindow,
-  base: QueryStateResult,
-): QueryStateResult {
+): Record<string, unknown> {
   const driver = stage.getDriver(win.typeId) as QueryStateCapableDriver | undefined;
-  if (!driver || typeof driver.queryState !== 'function') return base;
+  if (!driver || typeof driver.queryState !== 'function') return {};
   try {
     const ext = driver.queryState({
       windowId: win.id,
@@ -94,12 +97,20 @@ function mergeDriverQueryState(
       instanceKey: win.instanceKey,
     });
     if (ext && typeof ext === 'object' && !Array.isArray(ext)) {
-      return { ...base, ...(ext as Record<string, unknown>) };
+      return ext as Record<string, unknown>;
     }
   } catch {
     /* driver 扩展失败不影响默认摘要 */
   }
-  return base;
+  return {};
+}
+
+function mergeDriverQueryState(
+  stage: StageManagerApi,
+  win: WorkbenchWindow,
+  base: QueryStateResult,
+): QueryStateResult {
+  return { ...base, ...readDriverQueryState(stage, win) };
 }
 
 function buildQueryState(
@@ -155,6 +166,9 @@ function buildQueryState(
     title: resolveWindowTitle(win),
     instanceKey: win.instanceKey,
     lifecycle: resolveLifecycle(win, state.lifecycles, focusedId),
+    agentReady: Boolean(appRegistry.getAgentManifest(win.typeId)),
+    availableActions: appRegistry.getAgentManifest(win.typeId)?.capabilities
+      .map((capability) => capability.name) ?? [],
   };
   return mergeDriverQueryState(stage, win, base);
 }

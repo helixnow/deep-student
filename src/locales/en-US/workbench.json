@@ -38,6 +38,54 @@
       }
     }
   },
+  "agentControlCenter": {
+    "title": "AI desktop control",
+    "description": "Ask Chat to open learning apps, locate content, and visibly perform authorized actions.",
+    "tooltip": "AI desktop control",
+    "triggerLabel": "AI desktop control, current mode: {{status}}",
+    "modeLabel": "Control mode",
+    "capabilitiesTitle": "Controllable learning apps",
+    "saveFailed": "Could not save the control mode. Try again.",
+    "openChat": "Open Chat",
+    "openSettings": "Control settings",
+    "settingsTitle": "What the assistant can do",
+    "settingsDescription": "These capabilities are semantic actions deliberately registered by each learning app, not blind coordinate clicks. Available actions change with the current screen and state.",
+    "safety": "Only registered semantic actions are used. The assistant cannot answer or submit exams or rate flashcards for you. Destructive actions require confirmation before execution.",
+    "apps": {
+      "note": {
+        "name": "Notes",
+        "actions": "Locate headings; pair with note tools to visibly stage append, insert, and replace operations"
+      },
+      "mindmap": {
+        "name": "Mind maps",
+        "actions": "Focus nodes, switch outline/canvas views, and visibly stage node edits with mind-map tools"
+      },
+      "todo": {
+        "name": "Todos",
+        "actions": "Open lists, focus items, switch views, search, and filter"
+      },
+      "files": {
+        "name": "Files",
+        "actions": "Open folders, reveal or select resources, navigate, search, change view, and sort"
+      },
+      "exam": {
+        "name": "Question bank",
+        "actions": "Focus or move between questions, filter, switch practice/focus modes, and open settings"
+      },
+      "flashcards": {
+        "name": "Flashcards",
+        "actions": "Open library/review screens, start due review, flip, and end review; never rate for you"
+      },
+      "pomodoro": {
+        "name": "Pomodoro",
+        "actions": "Start, pause, or resume focus; stopping writes an interruption record and asks separately"
+      },
+      "browser": {
+        "name": "Browser",
+        "actions": "Navigate, go back or forward, reload, focus the address field, and show the page window"
+      }
+    }
+  },
   "menubar": {
     "label": "Study status bar",
     "appName": "Study Desktop",
@@ -114,6 +162,33 @@
     "noWindows": "No windows",
     "running": "Running",
     "apps": "All Apps"
+  },
+  "resourceHome": {
+    "newExam": "New question set",
+    "newEssay": "New essay review",
+    "search": "Search",
+    "loadFailed": "Unable to load content",
+    "noMatches": "No matching content",
+    "tryAnotherSearch": "Try another search",
+    "empty": "Nothing here yet",
+    "createHint": "Create one and start here without opening Files first.",
+    "open": "Open",
+    "library": "Library",
+    "all": "All",
+    "recent": "Recents",
+    "name": "Name",
+    "details": "Status",
+    "updated": "Date Modified",
+    "questionCount": "{{count}} questions",
+    "emptyQuestionSet": "No questions imported",
+    "roundCount": "{{count}} reviews",
+    "notGraded": "Not reviewed yet",
+    "itemCount": "{{count}} items",
+    "openHint": "Double-click or press Enter to open"
+  },
+  "resourceWorkspace": {
+    "selectTitle": "Select an item",
+    "selectHint": "Choose one from the sidebar, or create a new item to begin."
   },
   "appsPanel": {
     "title": "All Apps",

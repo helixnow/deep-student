@@ -235,6 +235,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
   return (
     <aside
       role="navigation"
+      data-todo-shell-sidebar
       // 统一抽屉内不挂 navigation 层背景：抽屉整体是 bg-background，
       // 再叠 --shell-navigation-surface 会形成"页内工具灰底 + 应用导航白底"的割裂色带
       data-shell-layer={unifiedDrawer ? undefined : 'navigation'}

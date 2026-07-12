@@ -3,6 +3,7 @@ import { GenericFileIcon } from '@/features/learning-hub/icons';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { FILE_PREVIEW_APP_TYPE_ID } from '../content/typeMap';
+import { createResourceContentManifest } from '../content/agentManifests';
 
 const FilePreviewAppWindow = React.lazy(() => import('./FilePreviewAppWindow'));
 
@@ -16,7 +17,7 @@ function parsePage(payload: unknown): number | null {
 }
 
 export function handleFilePreviewActivation(ctx: ActivationContext): ActivationResult {
-  if (ctx.action !== 'scrollToHeading') {
+  if (ctx.action !== 'scrollToHeading' && ctx.action !== 'gotoPage') {
     return {
       handled: false,
       code: 'UNKNOWN_ACTION',
@@ -29,7 +30,7 @@ export function handleFilePreviewActivation(ctx: ActivationContext): ActivationR
     return {
       handled: false,
       code: 'INVALID_ARGS',
-      hint: 'file-preview scrollToHeading 需要 instanceKey 和 payload.page',
+      hint: `file-preview ${ctx.action} 需要 instanceKey 和 payload.page`,
     };
   }
 
@@ -55,6 +56,10 @@ export const FILE_PREVIEW_APP_DEFINITION: AppDefinition = {
   minSize: { w: 420, h: 320 },
   render: FilePreviewAppWindow,
   onActivation: handleFilePreviewActivation,
+  agentManifest: createResourceContentManifest(
+    FILE_PREVIEW_APP_TYPE_ID,
+    handleFilePreviewActivation,
+  ),
 };
 
 appRegistry.register(FILE_PREVIEW_APP_DEFINITION);

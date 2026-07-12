@@ -25,6 +25,7 @@ import { useWindowStore } from '../../core/windowStore';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
 import { ContentEmptyState } from './ContentEmptyState';
 import { ContentSkeleton, skeletonVariantForType } from './ContentSkeleton';
+import { ResourceAppWorkspace } from './ResourceAppWorkspace';
 import { useContentLoadPhase } from './useContentLoadPhase';
 import { useResizeSettle } from './useResizeSettle';
 import { normalizeResourceInstanceKey } from './resourceIdentity';
@@ -38,6 +39,7 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
   const ContentAppWindow: React.FC<AppWindowProps> = ({
     windowId,
     instanceKey,
+    launchPayload,
     isActive,
     renderThrottleMs = 0,
     onTitleChange,
@@ -49,7 +51,15 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
     const titleReadyRef = useRef(false);
 
     const resourceId = normalizeResourceInstanceKey(instanceKey);
-    const hasResource = Boolean(resourceId);
+    const payloadResourceId = launchPayload && typeof launchPayload === 'object'
+      ? normalizeResourceInstanceKey(
+          typeof (launchPayload as Record<string, unknown>).resourceId === 'string'
+            ? (launchPayload as Record<string, unknown>).resourceId as string
+            : null,
+        )
+      : null;
+    const isResourceWorkspace = type === 'exam' || type === 'essay';
+    const hasResource = Boolean(resourceId) && !isResourceWorkspace;
     const { phase, markReady } = useContentLoadPhase({
       hostRef,
       enabled: hasResource,
@@ -59,8 +69,19 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
     useDragRenderPause(hostRef, renderThrottleMs);
 
     useEffect(() => {
-      if (!resourceId) return;
       const store = useWindowStore.getState();
+      if (isResourceWorkspace) {
+        const workspaces = Object.values(store.windows)
+          .filter((win) => win.typeId === type)
+          .sort((left, right) => left.createdAt - right.createdAt);
+        const keeper = workspaces[0];
+        if (keeper && keeper.id !== windowId) {
+          store.focusWindow(keeper.id);
+          store.closeWindow(windowId);
+        }
+        return;
+      }
+      if (!resourceId) return;
       const aliases = Object.values(store.windows)
         .filter(
           (win) =>
@@ -73,7 +94,7 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
       // This component is the just-created alias of an already open resource.
       // It has not accepted edits, so removing only this duplicate is safe.
       store.closeWindow(windowId);
-    }, [resourceId, windowId]);
+    }, [isResourceWorkspace, resourceId, windowId]);
 
     const handleTitleChange = useCallback(
       (title: string) => {
@@ -85,6 +106,17 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
       },
       [onTitleChange, markReady],
     );
+
+    if (isResourceWorkspace) {
+      return (
+        <ResourceAppWorkspace
+          type={type}
+          initialResourceId={resourceId ?? payloadResourceId}
+          isActive={isActive}
+          onTitleChange={onTitleChange}
+        />
+      );
+    }
 
     if (!resourceId) {
       return (

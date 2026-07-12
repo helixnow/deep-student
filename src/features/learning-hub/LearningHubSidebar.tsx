@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
@@ -131,6 +131,7 @@ export function LearningHubSidebar({
   onCloseApp,
   hideToolbarAndNav = false,
   quickAccessPortalTarget,
+  toolbarPortalTarget,
   highlightedIds,
 }: LearningHubSidebarProps) {
   const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
@@ -160,6 +161,7 @@ export function LearningHubSidebar({
     // Actions
     goBack,
     goForward,
+    goUp,
     jumpToBreadcrumb,
     setViewMode,
     setSorting,
@@ -1648,8 +1650,128 @@ export function LearningHubSidebar({
     handleRefresh();
   }, [items, t, clearSelection, handleRefresh]);
 
+  // 拖拽时可放置的面包屑祖先（含根目录）——对齐访达「拖到路径栏」
+  const parentDropTargets = useMemo(() => {
+    if (isTrashView || mode === 'canvas') return undefined;
+    if (currentPath.viewKind !== 'folder') return undefined;
+    // 仅在子目录时显示（根目录无更上级）
+    if (!currentPath.folderId && currentPath.breadcrumbs.length === 0) return undefined;
+
+    const targets: Array<{ id: string | null; label: string }> = [
+      { id: null, label: t('learningHub:title', '资源库') },
+    ];
+    // 不含当前目录自身（最后一个 breadcrumb）
+    const ancestors = currentPath.breadcrumbs.slice(0, -1);
+    for (const crumb of ancestors) {
+      targets.push({ id: crumb.id, label: crumb.name });
+    }
+    return targets;
+  }, [isTrashView, mode, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs, t]);
+
+  // 拖拽快捷目标：收藏 / 回收站（拖拽时出现在列表顶栏）
+  const specialDropTargets = useMemo(() => {
+    if (isTrashView || mode === 'canvas') return undefined;
+    return [
+      { id: 'favorites' as const, label: t('finder.quickAccess.favorites', '收藏') },
+      { id: 'trash' as const, label: t('finder.quickAccess.trash', '回收站') },
+    ];
+  }, [isTrashView, mode, t]);
+
+  const handleSpecialDrop = useCallback(async (targetId: 'favorites' | 'trash', itemIds: string[]) => {
+    if (itemIds.length === 0) return;
+
+    if (targetId === 'favorites') {
+      // 批量收藏：跳过文件夹，仅资源
+      const limit = pLimit(3);
+      let success = 0;
+      let skipped = 0;
+      let failed = 0;
+
+      await Promise.all(itemIds.map((id) => limit(async () => {
+        const item = items.find(i => i.id === id);
+        if (!item || item.type === 'folder') {
+          skipped += 1;
+          return;
+        }
+        if (item.metadata?.isFavorite) {
+          skipped += 1;
+          return;
+        }
+        const resourcePath = item.path || `/${item.id}`;
+        const result = await dstu.setFavorite(resourcePath, true);
+        if (result.ok) success += 1;
+        else failed += 1;
+      })));
+
+      if (!isMountedRef.current) return;
+      if (success > 0) {
+        showGlobalNotification(
+          'success',
+          t('finder.dragDrop.favoriteSuccess', '已收藏 {{count}} 项', { count: success })
+        );
+        handleRefresh();
+        clearSelection();
+      } else if (failed > 0) {
+        showGlobalNotification('error', t('finder.dragDrop.favoriteFailed', '收藏失败'));
+      } else if (skipped > 0) {
+        showGlobalNotification(
+          'info',
+          t('finder.dragDrop.favoriteSkipped', '没有可收藏的项目（文件夹或已收藏）')
+        );
+      }
+      return;
+    }
+
+    // trash: 软删除（与批量删除确认一致，拖入回收站直接执行，访达也是松手即删）
+    if (targetId === 'trash') {
+      setIsBatchProcessing(true);
+      try {
+        const limit = pLimit(3);
+        const results = await Promise.all(itemIds.map((id) => limit(async () => {
+          const item = items.find(i => i.id === id);
+          if (!item) return { ok: false as const };
+          if (item.type === 'folder') {
+            const result = await folderApi.deleteFolder(id);
+            return { ok: result.ok };
+          }
+          const dstuPath = item.path || `/${item.id}`;
+          const result = await dstu.delete(dstuPath);
+          return { ok: result.ok };
+        })));
+
+        if (!isMountedRef.current) return;
+        const success = results.filter(r => r.ok).length;
+        const failed = results.length - success;
+        if (success > 0 && failed === 0) {
+          showGlobalNotification(
+            'success',
+            t('finder.batch.deleteSuccess', { count: success, defaultValue: '已删除 {{count}} 项' })
+          );
+        } else if (success > 0) {
+          showGlobalNotification(
+            'warning',
+            t('finder.batch.deletePartial', {
+              succeeded: success,
+              failed,
+              defaultValue: '成功删除 {{succeeded}} 项，{{failed}} 项失败',
+            })
+          );
+        } else {
+          showGlobalNotification('error', t('finder.batch.deleteFailed', '删除失败'));
+        }
+        if (success > 0) {
+          clearSelection();
+          handleRefresh();
+        }
+      } finally {
+        if (isMountedRef.current) setIsBatchProcessing(false);
+      }
+    }
+  }, [items, t, handleRefresh, clearSelection]);
+
   // 批量全选 - 使用 store 的 selectAll
   const handleSelectAll = useCallback(() => {
+
     selectAll();
   }, [selectAll]);
 
@@ -2182,9 +2304,22 @@ export function LearningHubSidebar({
         e.preventDefault();
         handleSelectAll();
       }
+
+      // Cmd/Ctrl + ↑：返回上一级（访达）
+      if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
+        if (currentPath.viewKind === 'folder' && (currentPath.folderId || currentPath.breadcrumbs.length > 0)) {
+          e.preventDefault();
+          goUp();
+        }
+      }
       
-      // Delete/Backspace：删除选中项
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) {
+      // Delete：删除选中项
+      // Backspace：仅 Cmd/Ctrl+Backspace 删除（避免与访达「上一级」心智及输入习惯冲突）
+      if (e.key === 'Delete' && selectedIds.size > 0) {
+        e.preventDefault();
+        handleBatchDelete();
+      }
+      if (e.key === 'Backspace' && (e.metaKey || e.ctrlKey) && selectedIds.size > 0) {
         e.preventDefault();
         handleBatchDelete();
       }
@@ -2198,7 +2333,7 @@ export function LearningHubSidebar({
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection]);
+  }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection, currentPath.viewKind, currentPath.folderId, currentPath.breadcrumbs.length, goUp]);
 
   const shouldRenderDesktopQuickAccess = !isSmallScreen && mode !== 'canvas';
   const quickAccessNode = shouldRenderDesktopQuickAccess ? (
@@ -2210,6 +2345,7 @@ export function LearningHubSidebar({
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
       searchDisabled={!canSearchInCurrentView}
+      hideSearch={Boolean(quickAccessPortalTarget)}
       onNewFolder={handleNewFolder}
       onNewNote={handleNewNote}
       onImportMarkdownNote={() => {
@@ -2513,6 +2649,38 @@ export function LearningHubSidebar({
           </div>
         )}
 
+        {!isSmallScreen && mode === 'fullscreen' && !hideToolbarAndNav && (() => {
+          const toolbar = (
+            <FinderToolbar
+            breadcrumbs={currentPath.breadcrumbs}
+            onBreadcrumbClick={jumpToBreadcrumb}
+            currentTitle={
+              currentPath.breadcrumbs[currentPath.breadcrumbs.length - 1]?.name ||
+              (currentQuickAccessType
+                ? t(`finder.quickAccess.${currentQuickAccessType}`, '资源库')
+                : t('title', '资源库'))
+            }
+            onNavigateHome={() => jumpToBreadcrumb(-1)}
+            canGoBack={historyIndex > 0}
+            canGoForward={historyIndex < history.length - 1}
+            onBack={goBack}
+            onForward={goForward}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            sortBy={sortBy}
+            sortOrder={sortOrder}
+            onSortChange={setSorting}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            searchDisabled={!canSearchInCurrentView}
+            onNewFolder={canCreateInCurrentView ? handleNewFolder : undefined}
+            onRefresh={handleRefresh}
+            titlebarMode={Boolean(toolbarPortalTarget)}
+          />
+          );
+          return toolbarPortalTarget ? createPortal(toolbar, toolbarPortalTarget) : toolbar;
+        })()}
+
         {/* ★ 2026-01-15: 向量化状态视图 */}
         {/* ★ 2026-01-19: VFS 记忆管理视图 */}
         {/* ★ 2026-01-31: 桌面视图 */}
@@ -2665,13 +2833,26 @@ export function LearningHubSidebar({
                 ? undefined
                 : (item) => startInlineEdit(item.id, item.type === 'folder' ? 'folder' : 'resource', item.name)
             }
+            parentDropTargets={mode === 'canvas' || isTrashView ? undefined : parentDropTargets}
+            specialDropTargets={mode === 'canvas' || isTrashView ? undefined : specialDropTargets}
+            onSpecialDrop={mode === 'canvas' || isTrashView ? undefined : handleSpecialDrop}
+            onNavigateUp={
+              mode === 'canvas' || isTrashView
+                ? undefined
+                : () => {
+                    if (currentPath.viewKind === 'folder' && (currentPath.folderId || currentPath.breadcrumbs.length > 0)) {
+                      goUp();
+                    }
+                  }
+            }
           />
           )}
           </>
         )}
       
-        {/* Batch Operation Toolbar + View Mode Toggle + App Close - canvas 模式用顶部工具栏 */}
-        {mode === 'canvas' ? null : (
+        {/* Batch Operation Toolbar + View Mode Toggle + App Close
+            canvas / 特殊系统视图（索引状态、记忆、桌面）不显示 Finder 底栏，避免「0 个项目」错位 */}
+        {mode === 'canvas' || currentPath.viewKind === 'indexStatus' || currentPath.viewKind === 'memory' || currentPath.viewKind === 'desktop' ? null : (
           <FinderBatchToolbar
             selectedCount={selectedIds.size}
             totalCount={items.length}
@@ -2682,7 +2863,7 @@ export function LearningHubSidebar({
             onBatchAddToChat={isTrashView ? undefined : handleBatchAddToChat}
             isProcessing={isBatchProcessing || isInjecting}
             viewMode={isCollapsed ? 'list' : viewMode}
-            onViewModeChange={isCollapsed ? undefined : setViewMode}
+            onViewModeChange={isSmallScreen && !isCollapsed ? setViewMode : undefined}
             multiSelectMode={isMultiSelectMode}
             onToggleMultiSelectMode={
               isTouchPrimary
@@ -2698,7 +2879,7 @@ export function LearningHubSidebar({
             }
             sortBy={sortBy}
             sortOrder={sortOrder}
-            onSortChange={setSorting}
+            onSortChange={isSmallScreen ? setSorting : undefined}
             hasOpenApp={!isSmallScreen && hasOpenApp}
             onCloseApp={onCloseApp}
           />

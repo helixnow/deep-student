@@ -2547,6 +2547,7 @@ const registeredStoresByInstance = new Map<
 >();
 interface MindMapStoreReadyWaiter {
   instanceId?: string;
+  windowId?: string;
   callback: (store: MindMapStoreApi) => void;
 }
 const readyWaiters = new Map<string, Set<MindMapStoreReadyWaiter>>();
@@ -2557,6 +2558,8 @@ function flushReadyWaiters(resourceId: string): void {
   for (const waiter of [...waiters]) {
     const store = waiter.instanceId
       ? getMindMapStoreForInstance(waiter.instanceId, resourceId)
+      : waiter.windowId
+        ? getMindMapStoreForWindow(waiter.windowId, resourceId)
       : getMindMapStoreForResource(resourceId);
     if (!store || store.getState().mindmapId !== resourceId) continue;
     waiters.delete(waiter);
@@ -2607,6 +2610,24 @@ export function getMindMapStoreForInstance(
   return entry.store;
 }
 
+/** Resolve a resource instance owned by a Workbench window, including nested pane ids. */
+export function getMindMapStoreForWindow(
+  windowId: string,
+  resourceId: string,
+): MindMapStoreApi | null {
+  let matched: MindMapStoreApi | null = null;
+  const panePrefix = `${windowId}:`;
+  for (const [instanceId, entry] of registeredStoresByInstance) {
+    if (
+      entry.resourceId === resourceId
+      && (instanceId === windowId || instanceId.startsWith(panePrefix))
+    ) {
+      matched = entry.store;
+    }
+  }
+  return matched;
+}
+
 /** 在指定资源的实例完成加载后执行一次；返回取消等待的清理函数。 */
 export function subscribeMindMapStoreReady(
   resourceId: string,
@@ -2623,6 +2644,30 @@ export function subscribeMindMapStoreReady(
 
   const waiters = readyWaiters.get(resourceId) ?? new Set<MindMapStoreReadyWaiter>();
   const waiter = { instanceId, callback };
+  waiters.add(waiter);
+  readyWaiters.set(resourceId, waiters);
+  return () => {
+    const current = readyWaiters.get(resourceId);
+    if (!current) return;
+    current.delete(waiter);
+    if (current.size === 0) readyWaiters.delete(resourceId);
+  };
+}
+
+/** Wait for a resource surface belonging to one Workbench window or nested pane. */
+export function subscribeMindMapStoreReadyForWindow(
+  resourceId: string,
+  windowId: string,
+  callback: (store: MindMapStoreApi) => void,
+): () => void {
+  const readyStore = getMindMapStoreForWindow(windowId, resourceId);
+  if (readyStore?.getState().mindmapId === resourceId) {
+    callback(readyStore);
+    return () => undefined;
+  }
+
+  const waiters = readyWaiters.get(resourceId) ?? new Set<MindMapStoreReadyWaiter>();
+  const waiter = { windowId, callback };
   waiters.add(waiter);
   readyWaiters.set(resourceId, waiters);
   return () => {

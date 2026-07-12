@@ -1936,7 +1936,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                       : blockRect.bottom - wrapperRect.top;
                     
                     indicator.style.top = `${indicatorY}px`;
-                    indicator.style.display = 'block';
+                    indicator.style.left = `${blockRect.left - wrapperRect.left}px`;
+                    indicator.style.width = `${blockRect.width}px`;
+                    indicator.dataset.visible = 'true';
                     
                     // 计算 ProseMirror 文档中的插入位置
                     // 获取目标块在文档中的位置
@@ -1955,7 +1957,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                       dragStateRef.current.insertBefore = insertBefore;
                     }
                   } else {
-                    indicator.style.display = 'none';
+                    delete indicator.dataset.visible;
                   }
                 } catch (err) {
                   debugLog.warn('[CrepeEditor] dragover position calc failed:', err);
@@ -1966,7 +1968,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             // 隐藏 indicator（外部文件拖入或非内部拖拽）
             const indicator = dropIndicatorRef.current;
             if (indicator) {
-              indicator.style.display = 'none';
+              delete indicator.dataset.visible;
             }
           }
         };
@@ -1979,7 +1981,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           if (wrapper && !wrapper.contains(relatedTarget)) {
             const indicator = dropIndicatorRef.current;
             if (indicator) {
-              indicator.style.display = 'none';
+              delete indicator.dataset.visible;
             }
           }
         };
@@ -1989,7 +1991,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           // 隐藏 drop indicator
           const indicator = dropIndicatorRef.current;
           if (indicator) {
-            indicator.style.display = 'none';
+            delete indicator.dataset.visible;
           }
           
           // 清理拖拽状态
@@ -2014,7 +2016,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           // 隐藏 drop indicator
           const indicator = dropIndicatorRef.current;
           if (indicator) {
-            indicator.style.display = 'none';
+            delete indicator.dataset.visible;
           }
           
           // 检测是否是内部块拖拽
@@ -3075,7 +3077,6 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       <div
         ref={dropIndicatorRef}
         className="crepe-drop-indicator"
-        style={{ display: 'none' }}
       />
     </div>
   );

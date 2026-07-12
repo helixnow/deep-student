@@ -64,6 +64,7 @@ interface FinderQuickAccessProps {
   recentCount?: number;
   trashCount?: number;
   fillContainer?: boolean;
+  hideSearch?: boolean;
 }
 
 /**
@@ -90,7 +91,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   favoriteCount,
   recentCount,
   trashCount,
-  fillContainer = false
+  fillContainer = false,
+  hideSearch = false
 }: FinderQuickAccessProps) {
   const { t } = useTranslation(['learningHub', 'common']);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -287,7 +289,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         fillContainer ? 'w-full' : collapsed ? 'w-14' : 'w-52'
       )}
     >
-        <div className={cn(
+        {!hideSearch && <div className={cn(
           'shrink-0 px-2',
           fillContainer ? 'pb-1' : 'flex items-center gap-1.5 py-2',
           collapsed ? 'justify-center' : ''
@@ -385,7 +387,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
               </AppMenuContent>
             </AppMenu>
           )}
-        </div>
+        </div>}
 
         <CustomScrollArea className="flex-1" viewportClassName={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
           <div className="space-y-0.5">

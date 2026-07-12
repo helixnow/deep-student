@@ -6,8 +6,10 @@
  * not need to treat an internal tab as a standalone workbench window.
  */
 import {
+  getMindMapStoreForWindow,
   getMindMapStoreForResource,
   subscribeMindMapStoreReady,
+  subscribeMindMapStoreReadyForWindow,
   type MindMapStoreApi,
 } from '@/features/mindmap/store/mindmapStore';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
@@ -24,12 +26,19 @@ export interface NotesWorkspaceResourceRef {
   id: string;
 }
 
+export interface NotesWorkspaceResourceDetails extends NotesWorkspaceResourceRef {
+  title?: string;
+  saveState?: 'saved' | 'saving' | 'dirty';
+}
+
 export interface NotesWorkspaceHostController {
   /** Select an existing tab or create one. Resolve after its content surface is mounted. */
   openResource: (resource: NotesWorkspaceResourceRef) => void | Promise<void>;
   closeResource?: (resource: NotesWorkspaceResourceRef) => void | Promise<void>;
   getActiveResource?: () => NotesWorkspaceResourceRef | null;
   listResources?: () => readonly NotesWorkspaceResourceRef[];
+  /** Bounded, presentation-safe tab metadata for ACR observation. */
+  listResourceDetails?: () => readonly NotesWorkspaceResourceDetails[];
 }
 
 export interface NotesWorkspaceState {
@@ -278,8 +287,13 @@ async function waitForNoteEditor(resourceId: string) {
   });
 }
 
-async function waitForMindmapStore(resourceId: string): Promise<MindMapStoreApi | null> {
-  const ready = getMindMapStoreForResource(resourceId);
+async function waitForMindmapStore(
+  resourceId: string,
+  windowId?: string,
+): Promise<MindMapStoreApi | null> {
+  const ready = windowId
+    ? getMindMapStoreForWindow(windowId, resourceId)
+    : getMindMapStoreForResource(resourceId);
   if (ready?.getState().mindmapId === resourceId) return ready;
   return new Promise((resolve) => {
     let cancel = () => undefined;
@@ -287,11 +301,14 @@ async function waitForMindmapStore(resourceId: string): Promise<MindMapStoreApi 
       cancel();
       resolve(null);
     }, RESOURCE_READY_TIMEOUT_MS);
-    cancel = subscribeMindMapStoreReady(resourceId, (store) => {
+    const onReady = (store: MindMapStoreApi) => {
       clearTimeout(timer);
       cancel();
       resolve(store);
-    });
+    };
+    cancel = windowId
+      ? subscribeMindMapStoreReadyForWindow(resourceId, windowId, onReady)
+      : subscribeMindMapStoreReady(resourceId, onReady);
   });
 }
 
@@ -304,7 +321,7 @@ export async function prepareWorkspaceResource(
   if (!windowId) return null;
   const ready = resource.type === 'note'
     ? await waitForNoteEditor(resource.id)
-    : await waitForMindmapStore(resource.id);
+    : await waitForMindmapStore(resource.id, windowId);
   return ready ? windowId : null;
 }
 
@@ -364,7 +381,7 @@ export async function activateWorkspaceResource(
     if (!nodeId) {
       return { windowId, result: { handled: false, code: 'INVALID_ARGS' } };
     }
-    const store = await waitForMindmapStore(resource.id);
+    const store = await waitForMindmapStore(resource.id, windowId);
     if (!store) {
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
@@ -380,11 +397,37 @@ export async function activateWorkspaceResource(
     if (view !== 'outline' && view !== 'mindmap') {
       return { windowId, result: { handled: false, code: 'INVALID_ARGS' } };
     }
-    const store = await waitForMindmapStore(resource.id);
+    const store = await waitForMindmapStore(resource.id, windowId);
     if (!store) {
       return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
     }
     store.getState().setCurrentView(view);
+    return { windowId, result: { handled: true } };
+  }
+  if (action === 'search') {
+    const query = typeof p?.query === 'string' ? p.query : '';
+    const store = await waitForMindmapStore(resource.id, windowId);
+    if (!store) {
+      return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
+    }
+    store.getState().search(query);
+    return { windowId, result: { handled: true } };
+  }
+  if (action === 'nextSearchResult' || action === 'previousSearchResult') {
+    const store = await waitForMindmapStore(resource.id, windowId);
+    if (!store) {
+      return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
+    }
+    if (action === 'nextSearchResult') store.getState().nextSearchResult();
+    else store.getState().prevSearchResult();
+    return { windowId, result: { handled: true } };
+  }
+  if (action === 'clearSearch') {
+    const store = await waitForMindmapStore(resource.id, windowId);
+    if (!store) {
+      return { windowId, result: { handled: false, code: 'MINDMAP_NOT_READY' } };
+    }
+    store.getState().clearSearch();
     return { windowId, result: { handled: true } };
   }
   return { windowId, result: { handled: false, code: 'UNKNOWN_ACTION' } };
@@ -419,6 +462,21 @@ export function getWorkspaceOpenResources(): readonly NotesWorkspaceResourceRef[
     }
   }
   return [...resources.values()];
+}
+
+/** Return only the tabs hosted by one Notes window; never falls back to other hosts. */
+export function getWorkspaceResourcesForWindow(
+  windowId: string,
+): readonly NotesWorkspaceResourceDetails[] {
+  const host = hosts.get(windowId);
+  if (!host) return [];
+  const detailed = host.controller.listResourceDetails?.();
+  if (detailed) {
+    return detailed
+      .map((resource) => ({ ...resource, id: resource.id.trim() }))
+      .filter((resource) => resource.id.length > 0);
+  }
+  return (host.controller.listResources?.() ?? []).map(normalizeResource);
 }
 
 /** Test-only reset for this process-global runtime registry. */

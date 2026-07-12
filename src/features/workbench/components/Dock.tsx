@@ -34,6 +34,10 @@ import {
   toggleAppsPanel,
   useAppsPanelOpen,
 } from './appsPanelStore';
+import {
+  AGENT_CONTROL_DOCK_ID,
+  AgentControlDockEntry,
+} from './AgentControlCenter';
 import './Dock.css';
 
 export {
@@ -429,10 +433,10 @@ function DockImpl({ autohide = false, className }: DockProps) {
   );
 
   const runningExtra = runningTypeIds.filter((id) => !pinned.includes(id));
-  // 应用项 + 右侧固定「全部应用」入口（伪 typeId，不进 appRegistry / DEFAULT_DOCK_PINNED）
-  const orderedIds = [...pinned, ...runningExtra, APPS_DOCK_TYPE_ID];
+  // 应用项 + 右侧固定「全部应用 / AI 操控」入口（伪 typeId，不进 appRegistry / pinned）
+  const appOrderedIds = [...pinned, ...runningExtra];
+  const orderedIds = [...appOrderedIds, APPS_DOCK_TYPE_ID, AGENT_CONTROL_DOCK_ID];
   const orderedKey = orderedIds.join('|');
-  const appOrderedIds = orderedIds.slice(0, -1);
 
   // ---- roving tabindex ----
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -714,6 +718,17 @@ function DockImpl({ autohide = false, className }: DockProps) {
             {t('workbench:dock.apps', '全部应用')}
           </span>
         </div>
+        <AgentControlDockEntry
+          tabIndex={effectiveActiveId === AGENT_CONTROL_DOCK_ID ? 0 : -1}
+          buttonRef={registerButtonRef(AGENT_CONTROL_DOCK_ID)}
+          onFocus={() => {
+            setActiveId(AGENT_CONTROL_DOCK_ID);
+            if (autohide) {
+              clearAutohideTimers();
+              setRevealed(true);
+            }
+          }}
+        />
       </div>
     </div>
   );

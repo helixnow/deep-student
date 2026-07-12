@@ -63,6 +63,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   const blockHandleRef = useRef<Element | null>(null); // 保存 block handle 引用
   const pointerIdRef = useRef<number | null>(null);
   const previewElementRef = useRef<HTMLElement | null>(null); // 克隆的预览元素
+  const previewPointerOffsetRef = useRef({ x: 0, y: 0 });
 
   /**
    * 获取 ProseMirror view
@@ -194,9 +195,11 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
         : blockRect.bottom - wrapperRect.top;
 
       indicator.style.top = `${indicatorY}px`;
-      indicator.style.display = 'block';
+      indicator.style.left = `${blockRect.left - wrapperRect.left}px`;
+      indicator.style.width = `${blockRect.width}px`;
+      indicator.dataset.visible = 'true';
     } else {
-      indicator.style.display = 'none';
+      delete indicator.dataset.visible;
     }
   }, [wrapperRef, dropIndicatorRef]);
 
@@ -206,7 +209,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   const hideDropIndicator = useCallback(() => {
     const indicator = dropIndicatorRef.current;
     if (indicator) {
-      indicator.style.display = 'none';
+      delete indicator.dataset.visible;
     }
   }, [dropIndicatorRef]);
 
@@ -250,7 +253,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   /**
    * 创建拖拽预览（克隆原始 DOM 元素，放在 wrapper 内保持样式）
    */
-  const createDragPreview = useCallback((element: HTMLElement, clientY: number) => {
+  const createDragPreview = useCallback((element: HTMLElement, clientX: number, clientY: number) => {
     // 移除之前的预览
     if (previewElementRef.current) {
       previewElementRef.current.remove();
@@ -259,33 +262,53 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
 
-    // 克隆元素
-    const clone = element.cloneNode(true) as HTMLElement;
     const rect = element.getBoundingClientRect();
-    
-    // 移除选中状态样式
-    clone.classList.remove('ProseMirror-selectednode');
-    clone.removeAttribute('data-selected');
-    
-    // 设置预览样式（使用 fixed 定位跟随鼠标）
+    previewPointerOffsetRef.current = {
+      x: clientX - rect.left,
+      y: clientY - rect.top,
+    };
+
+    // NodeSelection 只用于拖拽定位，不应成为预览外观的一部分。
+    const wasSelectedNode = element.classList.contains('ProseMirror-selectednode');
+    const selectedAttribute = element.getAttribute('data-selected');
+    element.classList.remove('ProseMirror-selectednode');
+    element.removeAttribute('data-selected');
+
+    let clone: HTMLElement;
+    try {
+      clone = element.cloneNode(true) as HTMLElement;
+      const sourceElements = [element, ...Array.from(element.querySelectorAll('*'))];
+      const clonedElements = [clone, ...Array.from(clone.querySelectorAll('*'))];
+
+      // 将每个节点的最终计算样式固化到克隆上，避免预览脱离原 DOM 层级后样式变化。
+      sourceElements.forEach((source, index) => {
+        const target = clonedElements[index] as HTMLElement | undefined;
+        if (!target) return;
+
+        const computedStyle = window.getComputedStyle(source);
+        for (const property of computedStyle) {
+          target.style.setProperty(
+            property,
+            computedStyle.getPropertyValue(property),
+            computedStyle.getPropertyPriority(property),
+          );
+        }
+      });
+    } finally {
+      if (wasSelectedNode) element.classList.add('ProseMirror-selectednode');
+      if (selectedAttribute !== null) element.setAttribute('data-selected', selectedAttribute);
+    }
+
+    // 仅覆盖拖拽层定位相关属性，视觉属性全部来自原始块。
     clone.classList.add('crepe-drag-preview-clone');
-    clone.style.cssText = `
-      position: fixed !important;
-      left: ${rect.left}px;
-      top: ${clientY - 20}px;
-      width: ${rect.width}px;
-      pointer-events: none;
-      z-index: 9999;
-      opacity: 0.92;
-      transform: scale(0.98);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-      border-radius: 6px;
-      background: hsl(var(--background));
-      overflow: hidden;
-      max-height: 200px;
-      margin: 0 !important;
-      padding: inherit;
-    `;
+    clone.style.setProperty('position', 'fixed', 'important');
+    clone.style.setProperty('left', `${clientX - previewPointerOffsetRef.current.x}px`, 'important');
+    clone.style.setProperty('top', `${clientY - previewPointerOffsetRef.current.y}px`, 'important');
+    clone.style.setProperty('width', `${rect.width}px`, 'important');
+    clone.style.setProperty('height', `${rect.height}px`, 'important');
+    clone.style.setProperty('margin', '0', 'important');
+    clone.style.setProperty('pointer-events', 'none', 'important');
+    clone.style.setProperty('z-index', '9999', 'important');
 
     // 放在 wrapper 内部以继承样式作用域
     wrapper.appendChild(clone);
@@ -299,9 +322,8 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     const preview = previewElementRef.current;
     if (!preview) return;
 
-    const rect = preview.getBoundingClientRect();
-    preview.style.left = `${clientX - rect.width / 2}px`;
-    preview.style.top = `${clientY - 20}px`;
+    preview.style.left = `${clientX - previewPointerOffsetRef.current.x}px`;
+    preview.style.top = `${clientY - previewPointerOffsetRef.current.y}px`;
   }, []);
 
   /**
@@ -317,7 +339,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
   /**
    * 开始拖拽
    */
-  const startDrag = useCallback((blockHandle: Element, clientY: number) => {
+  const startDrag = useCallback((blockHandle: Element, clientX: number, clientY: number) => {
     if (!enabled) return;
 
     const nodeInfo = findNodePosFromBlockHandle(blockHandle);
@@ -341,13 +363,12 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
       requestAnimationFrame(() => {
         const selected = container.querySelector('.ProseMirror-selectednode') as HTMLElement;
         if (selected) {
-          selected.style.opacity = '0.5';
+          // 先按原始状态创建预览，再淡化留在文档中的源块。
+          createDragPreview(selected, clientX, clientY);
+          selected.style.opacity = '0.32';
           if (dragStateRef.current) {
             dragStateRef.current.draggedElement = selected;
           }
-          
-          // 🔧 克隆元素作为拖拽预览（保持原有样式）
-          createDragPreview(selected, clientY);
         }
       });
     }
@@ -376,7 +397,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
     updateDropIndicator(clientY)
 
     console.log('[useCrepeBlockDrag] Drag started:', { sourcePos: nodeInfo.pos, nodeType: nodeInfo.node?.type?.name });
-  }, [enabled, findNodePosFromBlockHandle, getView, containerRef, updateDropIndicator]);
+  }, [enabled, findNodePosFromBlockHandle, getView, containerRef, wrapperRef, updateDropIndicator, createDragPreview]);
 
   /**
    * Pointer Down 处理器
@@ -425,7 +446,7 @@ export function useCrepeBlockDrag(options: UseCrepeBlockDragOptions): UseCrepeBl
 
     // 超过阈值才开始拖拽
     if (!isDraggingRef.current && distance >= DRAG_THRESHOLD) {
-      startDrag(blockHandleRef.current, e.clientY);
+      startDrag(blockHandleRef.current, e.clientX, e.clientY);
     }
 
     // 正在拖拽时更新位置

@@ -81,6 +81,298 @@ export interface ActivationResult {
 
 export type ActivationHandlerResult = void | boolean | ActivationResult;
 
+// ============================================================================
+// Agent-native application contract (ACR 2.0)
+// ============================================================================
+
+/** JSON-only value used by schemas, observations, and persistent inverse actions. */
+export type AgentJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | AgentJsonValue[]
+  | { [key: string]: AgentJsonValue };
+
+/** Small JSON Schema subset. Unknown standard keywords are preserved for discovery clients. */
+export interface AgentJsonSchema {
+  type?: 'null' | 'boolean' | 'number' | 'integer' | 'string' | 'array' | 'object'
+    | Array<'null' | 'boolean' | 'number' | 'integer' | 'string' | 'array' | 'object'>;
+  title?: string;
+  description?: string;
+  properties?: Record<string, AgentJsonSchema>;
+  required?: string[];
+  items?: AgentJsonSchema;
+  enum?: AgentJsonValue[];
+  const?: AgentJsonValue;
+  additionalProperties?: boolean | AgentJsonSchema;
+  minimum?: number;
+  maximum?: number;
+  minLength?: number;
+  maxLength?: number;
+  pattern?: string;
+  minItems?: number;
+  maxItems?: number;
+  oneOf?: AgentJsonSchema[];
+  anyOf?: AgentJsonSchema[];
+  [keyword: string]: unknown;
+}
+
+export type AgentCapabilityRisk = 'read' | 'low' | 'medium' | 'high';
+
+/** One semantic action an application deliberately exposes to the Agent. */
+export interface AgentCapability {
+  name: string;
+  description: string;
+  inputSchema: AgentJsonSchema;
+  outputSchema?: AgentJsonSchema;
+  risk: AgentCapabilityRisk;
+  mutates: boolean;
+  reversible: boolean;
+  idempotent: boolean;
+  requiresFocus?: boolean;
+  /** Optional affordance kinds this action can target (for example `todo-item`). */
+  targetKinds?: string[];
+  /** targetKinds normally requires targetRef; set only for genuinely global/bulk actions. */
+  targetOptional?: boolean;
+  /** Optional args path that must contain the exact same stable ref as targetRef. */
+  targetRefPath?: string;
+  /** Optional args path that must match the final id segment of targetRef. */
+  targetIdPath?: string;
+}
+
+/** Opaque, domain-stable reference such as `todo:item:123`; never a DOM selector or coordinate. */
+export type AgentStableRef = string;
+
+export interface AgentEntitySummary {
+  ref: AgentStableRef;
+  kind: string;
+  label?: string;
+  description?: string;
+  actions: string[];
+  state?: Record<string, AgentJsonValue>;
+}
+
+/** Bounded semantic UI tree. It intentionally contains no DOM nodes, selectors, or coordinates. */
+export interface AgentAffordanceNode {
+  ref: AgentStableRef;
+  kind: string;
+  label?: string;
+  description?: string;
+  actions: string[];
+  disabled?: boolean;
+  selected?: boolean;
+  value?: AgentJsonValue;
+  children?: AgentAffordanceNode[];
+}
+
+export interface AgentAffordanceTree {
+  roots: AgentAffordanceNode[];
+  nodeCount: number;
+  maxDepth: number;
+  truncated: boolean;
+}
+
+export interface AgentDialogSummary {
+  ref: AgentStableRef;
+  kind: string;
+  title?: string;
+  message?: string;
+  actions: string[];
+}
+
+/** State contributed by an app; the runtime adds authoritative window metadata and revision. */
+export interface AgentObservationPatch {
+  /** App/domain revision. The runtime folds this into the final composite revision. */
+  revision?: string;
+  route?: string;
+  mode?: string;
+  busy?: boolean;
+  selection?: AgentStableRef[];
+  availableActions?: string[];
+  entities?: AgentEntitySummary[];
+  affordances?: AgentAffordanceNode[];
+  pendingDialog?: AgentDialogSummary;
+  state?: Record<string, AgentJsonValue>;
+}
+
+export interface AgentObservation {
+  version: 1;
+  revision: string;
+  observedAt: number;
+  windowId: string;
+  typeId: string;
+  instanceKey: string | null;
+  title: string;
+  route?: string;
+  mode?: string;
+  focused: boolean;
+  dirty: boolean;
+  busy: boolean;
+  selection: AgentStableRef[];
+  availableActions: string[];
+  entities: AgentEntitySummary[];
+  affordances: AgentAffordanceTree;
+  pendingDialog?: AgentDialogSummary;
+  state: Record<string, AgentJsonValue>;
+}
+
+export type AgentObservationCondition =
+  | { kind: 'revision_changed'; from?: string }
+  | { kind: 'ref_exists'; ref: AgentStableRef }
+  | { kind: 'ref_absent'; ref: AgentStableRef }
+  | { kind: 'selection_includes'; ref: AgentStableRef }
+  | { kind: 'action_available'; action: string; ref?: AgentStableRef }
+  | { kind: 'state_equals'; path: string; value: AgentJsonValue };
+
+export interface AgentActionCall {
+  id?: string;
+  name: string;
+  args?: unknown;
+  targetRef?: AgentStableRef;
+  expect?: AgentObservationCondition[];
+}
+
+/** Serializable inverse actions can be recovered after reload and replayed by the manifest. */
+export interface AgentUndoDescriptor {
+  inverse: AgentActionCall | AgentActionCall[];
+  label?: string;
+}
+
+export interface AgentActionResult extends ActivationResult {
+  changed?: boolean;
+  entityRefs?: AgentStableRef[];
+  details?: Record<string, AgentJsonValue>;
+  /** Result-specific postconditions used when the caller did not supply expect. */
+  postconditions?: AgentObservationCondition[];
+  undo?: AgentUndoDescriptor;
+}
+
+export interface AgentAppContext {
+  windowId: string;
+  typeId: string;
+  instanceKey: string | null;
+  runId?: string;
+  sessionId?: string;
+  /** Present for act only; records a session-memory closure in the existing run ledger. */
+  registerUndo?: (invert: () => Promise<void> | void, label: string) => void;
+  /** The fresh observation against which an action was validated. */
+  observation?: AgentObservation;
+}
+
+export type AgentManifestHandlerResult =
+  | ActivationHandlerResult
+  | AgentActionResult;
+
+export interface AppAgentManifest {
+  version: string | number;
+  description?: string;
+  capabilities: readonly AgentCapability[];
+  observe?: (
+    ctx: AgentAppContext,
+  ) => AgentObservationPatch | Promise<AgentObservationPatch>;
+  execute?: (
+    ctx: AgentAppContext,
+    action: AgentActionCall,
+  ) => AgentManifestHandlerResult | Promise<AgentManifestHandlerResult>;
+}
+
+export interface AgentWindowTarget {
+  windowId?: string;
+  typeId?: string;
+  instanceKey?: string;
+}
+
+export interface AgentAppCapabilities {
+  typeId: string;
+  windowId?: string;
+  instanceKey?: string | null;
+  manifestVersion: string | number;
+  description?: string;
+  capabilities: AgentCapability[];
+}
+
+export interface AgentCapabilitiesResult {
+  apps: AgentAppCapabilities[];
+}
+
+export interface AgentActRequest extends AgentWindowTarget {
+  /** Required optimistic-concurrency token returned by observe. */
+  observationRevision: string;
+  /** Trusted bridge injection; omitted callers default to medium for compatibility. */
+  approvalRiskCeiling?: AgentCapabilityRisk;
+  actions: AgentActionCall[];
+  expect?: AgentObservationCondition[];
+  /** Defaults to true. */
+  stopOnFailure?: boolean;
+}
+
+export interface AgentConditionFailure {
+  condition: AgentObservationCondition;
+  message: string;
+}
+
+export interface AgentActionOutcome {
+  id?: string;
+  index: number;
+  name: string;
+  targetRef?: AgentStableRef;
+  handled: boolean;
+  changed?: boolean;
+  code?: string;
+  hint?: string;
+  message?: string;
+  entityRefs?: AgentStableRef[];
+  details?: Record<string, AgentJsonValue>;
+  verified: boolean;
+  verificationSource:
+    | 'caller-postcondition'
+    | 'result-postcondition'
+    | 'revision-change'
+    | 'read-only-observation'
+    | 'unverified';
+  failedConditions: AgentConditionFailure[];
+}
+
+export type AgentUndoDurability = 'persistent' | 'session';
+
+export interface AgentActReceipt {
+  status: 'completed' | 'partial' | 'failed';
+  windowId: string;
+  typeId: string;
+  beforeRevision: string;
+  afterRevision: string;
+  results: AgentActionOutcome[];
+  verified: boolean;
+  failedConditions: AgentConditionFailure[];
+  undoToken?: string;
+  undoDurability?: AgentUndoDurability;
+  observation: AgentObservation;
+}
+
+export interface AgentWaitForRequest extends AgentWindowTarget {
+  condition?: AgentObservationCondition;
+  conditions?: AgentObservationCondition[];
+  timeoutMs?: number;
+  intervalMs?: number;
+}
+
+export interface AgentWaitForResult {
+  matched: boolean;
+  timedOut: boolean;
+  elapsedMs: number;
+  failedConditions: AgentConditionFailure[];
+  observation: AgentObservation;
+}
+
+export interface AgentUndoResult {
+  reverted: boolean;
+  undoToken: string;
+  durability: AgentUndoDurability;
+  observation?: AgentObservation;
+  message?: string;
+}
+
 export interface AppBadge {
   kind: 'count' | 'dot';
   value?: number;
@@ -121,6 +413,8 @@ export interface AppDefinition {
   onActivation?: (
     ctx: ActivationContext,
   ) => ActivationHandlerResult | Promise<ActivationHandlerResult>;
+  /** Optional, self-describing semantic control surface for ACR 2.0. */
+  agentManifest?: AppAgentManifest;
   /** Dock 角标数据源（拉模式，Dock 轮询/订阅由 Dock 实现决定） */
   badgeSource?: () => AppBadge | null;
   /** 关闭拦截（未保存提示）；返回 false 阻止关闭。缺省 = 直接关 */

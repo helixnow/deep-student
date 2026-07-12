@@ -816,24 +816,6 @@
   pointer-events: none !important;
 }
 
-/* 拖拽预览克隆样式（保持原始块样式） */
-.crepe-drag-preview-clone {
-  /* 基础样式由 JS 动态设置 */
-  /* 这里添加一些增强样式 */
-  transition: none !important;
-  animation: none !important;
-}
-
-.crepe-drag-preview-clone * {
-  transition: none !important;
-  animation: none !important;
-}
-
-/* 暗色模式下的克隆预览 */
-.dark .crepe-drag-preview-clone {
-  box-shadow: 0 8px 24px hsl(var(--shadow-base) / 0.4) !important;
-}
-
 /* 兼容旧的 data-dragging 在 .milkdown 上的情况 */
 .crepe-editor-wrapper .milkdown[data-dragging="true"] {
   cursor: grabbing !important;
@@ -1509,57 +1491,49 @@
 }
 
 /* ===== 手动拖拽插入条（模仿文件树实现） ===== */
+
 /* 这是我们手动实现的 drop indicator，因为 Crepe 没有内置 dropcursor 插件 */
 .crepe-drop-indicator {
   position: absolute;
-  left: 0;
-  right: 0;
   height: 2px;
   pointer-events: none;
   z-index: 100;
-  border-radius: 1px;
-  transition: top 0.1s cubic-bezier(0.2, 0, 0, 1);
+  border-radius: 999px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-1px) scaleX(0.97);
+  transform-origin: center;
+  transition:
+    top 90ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    left 90ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    width 90ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    opacity 70ms ease-out,
+    transform 100ms cubic-bezier(0.2, 0.75, 0.25, 1),
+    visibility 0s linear 100ms;
+  will-change: top, left, width, opacity, transform;
 }
 
-/* 亮色模式：蓝色指示条 */
+.crepe-drop-indicator[data-visible='true'] {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-1px) scaleX(1);
+  transition-delay: 0s;
+}
+
 :root:not(.dark) .crepe-drop-indicator {
   background: hsl(var(--primary));
-  box-shadow: 0 0 6px hsl(var(--primary) / 0.5);
+  box-shadow: 0 1px 2px hsl(var(--primary) / 22%);
 }
 
-:root:not(.dark) .crepe-drop-indicator::before {
-  content: '';
-  position: absolute;
-  left: -2px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: hsl(var(--primary));
-  border: 2px solid hsl(var(--background));
-  box-shadow: 0 0 3px hsl(var(--primary) / 0.5);
-}
-
-/* 暗色模式：白色指示条 */
 :root.dark .crepe-drop-indicator {
-  background: var(--surface-elevated) !important;
-  box-shadow: 0 0 8px hsl(var(--background) / 0.6) !important;
+  background: hsl(var(--primary)) !important;
+  box-shadow: 0 1px 2px hsl(var(--primary) / 28%);
 }
 
-.crepe-drop-indicator::before {
-  content: '';
-  position: absolute;
-  left: -2px;
-  top: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  border: 2px solid hsl(var(--background));
-}
-
-:root.dark .crepe-drop-indicator::before {
-  background: var(--surface-elevated) !important;
-  box-shadow: 0 0 4px hsl(var(--background) / 0.6) !important;
+@media (prefers-reduced-motion: reduce) {
+  .crepe-drop-indicator {
+    transition: none;
+  }
 }
 
 /* ===== ProseMirror Drop Cursor (备用，如果 Crepe 将来支持) ===== */

@@ -41,7 +41,33 @@ export type AcrCommand =
   | 'app_command'
   | 'close_window'
   | 'query_state'
+  | 'get_capabilities'
+  | 'observe'
+  | 'act'
+  | 'wait_for'
   | 'revert_run';
+
+export type AcrCommandAccess = 'read-only' | 'mutating' | 'dynamic';
+
+/** `act` is resolved from every selected capability's `mutates` flag at runtime. */
+export const ACR_COMMAND_ACCESS: Readonly<Record<AcrCommand, AcrCommandAccess>> = {
+  probe: 'read-only',
+  list_windows: 'read-only',
+  query_state: 'read-only',
+  get_capabilities: 'read-only',
+  observe: 'read-only',
+  wait_for: 'read-only',
+  open_app: 'mutating',
+  app_command: 'mutating',
+  close_window: 'mutating',
+  apply_ops: 'mutating',
+  revert_run: 'mutating',
+  act: 'dynamic',
+};
+
+export function getAcrCommandAccess(command: string): AcrCommandAccess | undefined {
+  return ACR_COMMAND_ACCESS[command as AcrCommand];
+}
 
 export interface AcrBridgeRequest {
   correlationId: string;
@@ -90,6 +116,12 @@ export interface AcrReceipt {
   suggestionPending?: boolean;
   /** 给 LLM 的补充指引（降级/兜底必须在此说明） */
   message?: string;
+  /** ACR 2.0 semantic actions may expose a callable revert_run token. */
+  undoToken?: string;
+  /** closure ledger = session; serializable inverse journal = persistent. */
+  undoDurability?: 'session' | 'persistent';
+  /** Observation revision after a verified action. */
+  observationRevision?: string;
 }
 
 export interface WindowSummary {
@@ -100,6 +132,10 @@ export interface WindowSummary {
   lifecycle: string;
   focused: boolean;
   dirty: boolean;
+  /** Whether the app exposes a self-describing ACR 2.0 manifest. */
+  agentReady?: boolean;
+  /** Static discovery hint; observe remains authoritative for current availability. */
+  availableActions?: string[];
 }
 
 // ---------------- Pacing ----------------
@@ -221,4 +257,19 @@ export const ACR_ERROR_CODES = {
   DRIVER_NOT_FOUND: 'DRIVER_NOT_FOUND',
   STRICT_MODE: 'STRICT_MODE',
   ANCHOR_NOT_FOUND: 'ANCHOR_NOT_FOUND',
+  APP_NOT_REGISTERED: 'APP_NOT_REGISTERED',
+  APP_AGENT_UNAVAILABLE: 'APP_AGENT_UNAVAILABLE',
+  OBSERVE_FAILED: 'OBSERVE_FAILED',
+  CAPABILITY_NOT_FOUND: 'CAPABILITY_NOT_FOUND',
+  ACTION_UNAVAILABLE: 'ACTION_UNAVAILABLE',
+  INVALID_AGENT_REF: 'INVALID_AGENT_REF',
+  TARGET_REF_MISMATCH: 'TARGET_REF_MISMATCH',
+  INVALID_ACTION_ARGS: 'INVALID_ACTION_ARGS',
+  STALE_OBSERVATION: 'STALE_OBSERVATION',
+  FOCUS_REQUIRED: 'FOCUS_REQUIRED',
+  RISK_APPROVAL_REQUIRED: 'RISK_APPROVAL_REQUIRED',
+  ACTION_FAILED: 'ACTION_FAILED',
+  INVALID_CONDITION: 'INVALID_CONDITION',
+  POSTCONDITION_FAILED: 'POSTCONDITION_FAILED',
+  UNDO_NOT_FOUND: 'UNDO_NOT_FOUND',
 } as const;

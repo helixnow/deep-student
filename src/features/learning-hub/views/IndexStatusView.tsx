@@ -185,8 +185,8 @@ const ProgressRing: React.FC<ProgressRingProps> = ({
       {/* 中心文字 - 小尺寸时不显示 */}
       {size >= 50 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className={cn("font-bold tabular-nums", size < 80 ? "text-lg" : "text-2xl")}>{Math.round(percentage)}%</span>
-          <span className="text-[10px] text-muted-foreground">{indexed}/{total}</span>
+          <span className={cn("font-semibold tabular-nums tracking-tight text-foreground", size < 80 ? "text-base" : "text-xl")}>{Math.round(percentage)}%</span>
+          <span className="text-[10px] text-muted-foreground/80 tabular-nums">{indexed}/{total}</span>
         </div>
       )}
     </div>
@@ -1083,10 +1083,23 @@ export const IndexStatusView: React.FC = () => {
     const Icon = config.icon;
     
     return (
-      <NotionButton variant="ghost" size="sm" onClick={onClick} className={cn('!rounded-full !px-3 !py-1.5 text-xs font-medium', config.bgColor, config.color, isActive && 'ring-1 ring-primary/30', isActive && config.ringColor.replace('stroke-', 'ring-'))}>
-        <Icon className="h-3.5 w-3.5" />
+      <NotionButton
+        variant="ghost"
+        size="sm"
+        onClick={onClick}
+        className={cn(
+          '!h-7 !rounded-full !px-2.5 !py-0 text-[11px] font-medium gap-1.5 border border-transparent',
+          'transition-[background-color,box-shadow,border-color] duration-150',
+          config.bgColor,
+          config.color,
+          isActive
+            ? 'ring-1 ring-black/5 dark:ring-white/10 shadow-sm border-black/5 dark:border-white/10'
+            : 'hover:bg-black/[0.04] dark:hover:bg-white/[0.06]'
+        )}
+      >
+        <Icon className="h-3.5 w-3.5" weight={isActive ? 'fill' : 'regular'} />
         <span>{t(config.labelKey)}</span>
-        <span className="ml-0.5 tabular-nums font-bold">{count}</span>
+        <span className="tabular-nums opacity-80">{count}</span>
       </NotionButton>
     );
   };
@@ -1118,43 +1131,43 @@ export const IndexStatusView: React.FC = () => {
       : resource.name;
 
     return (
-      <div key={resource.resourceId} className="group border-b border-border/40 hover:bg-[var(--interactive-hover)] transition-all">
+      <div key={resource.resourceId} className="group border-b border-black/[0.04] dark:border-white/[0.06] hover:bg-[var(--interactive-hover)] transition-colors">
         {/* 主行 - 可点击展开 */}
         <div
-          className="flex items-center gap-2 md:gap-4 px-3 md:px-6 py-2.5 md:py-3 cursor-pointer"
+          className="flex items-center gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-2.5 cursor-default select-none"
           onClick={() => toggleResourceExpand(resource.resourceId)}
         >
           {/* 🆕 展开/折叠指示器 */}
-          <div className="w-5 flex-shrink-0 flex items-center justify-center text-muted-foreground/70 group-hover:text-foreground transition-colors">
+          <div className="w-4 flex-shrink-0 flex items-center justify-center text-muted-foreground/50 group-hover:text-muted-foreground transition-colors">
             {isExpanded ? (
-              <CaretDown className="h-4 w-4" />
+              <CaretDown className="h-3.5 w-3.5" />
             ) : (
-              <CaretRight className="h-4 w-4" />
+              <CaretRight className="h-3.5 w-3.5" />
             )}
           </div>
 
-          {/* 资源类型标签 */}
+          {/* 资源类型标签 — macOS 标签风格 */}
           <div className={cn(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium uppercase tracking-wide flex-shrink-0 border',
-            typeConfig.color.replace('bg-', 'border-').replace('/10', '/20').replace('text-', 'bg-').replace('500', '500/5 text-')
+            'flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium flex-shrink-0',
+            typeConfig.color
           )}>
-            <TypeIcon className="h-3 w-3" />
-            <span>{t(typeConfig.labelKey)}</span>
+            <TypeIcon className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t(typeConfig.labelKey)}</span>
           </div>
 
           {/* 资源名称 */}
           <div className="flex-1 min-w-0 grid gap-0.5">
-            <div className="font-medium truncate text-sm text-foreground/90 group-hover:text-primary transition-colors" title={resource.name}>
+            <div className="font-medium truncate text-[13px] leading-tight text-foreground/90" title={resource.name}>
               {displayName}
             </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
               {resource.textChunkCount > 0 && (
-                <span className="bg-background/80 px-1.5 rounded border border-border/50">
+                <span className="px-1.5 py-0.5 rounded bg-muted/60">
                   {t('indexStatus.detail.chunks', { count: resource.textChunkCount })}
                 </span>
               )}
               {resource.embeddingDim && (
-                <span className="font-mono opacity-80">
+                <span className="font-mono opacity-70">
                   d={resource.embeddingDim}
                 </span>
               )}
@@ -1176,7 +1189,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 状态标签 - 有 indexError 的显示错误状态 */}
           <div 
             className={cn(
-              'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border shadow-sm shrink-0 whitespace-nowrap',
+              'flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border shrink-0 whitespace-nowrap',
               isUnsupportedType && state === 'pending' && 'bg-muted/50 text-muted-foreground border-transparent',
               !isUnsupportedType && hasIndexError && !isEmptyContent && 'bg-orange-50/50 text-orange-700 border-orange-200 dark:bg-orange-900/10 dark:text-orange-400 dark:border-orange-800/30',
               !isUnsupportedType && isEmptyContent && 'bg-warning/10 text-warning border-warning/30',
@@ -1233,12 +1246,12 @@ export const IndexStatusView: React.FC = () => {
 
         {/* 🆕 展开的详情区域 */}
         {isExpanded && (
-          <div className="px-3 md:px-6 pb-4 md:pb-6 ml-7 md:ml-11 border-l border-border/40 space-y-3 md:space-y-4">
+          <div className="px-3 md:px-4 pb-3 md:pb-4 ml-6 md:ml-9 border-l border-black/[0.06] dark:border-white/[0.08] space-y-3">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 text-xs">
               {/* OCR 状态 - 只对教材和图片显示 */}
               {showOcrStatus && (
                 <div>
-                  <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">
+                  <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">
                     {resource.resourceType === 'file' ? t('indexStatus.detail.textStatus') : t('indexStatus.detail.ocrStatus')}
                   </div>
                   <div className={cn(
@@ -1263,7 +1276,7 @@ export const IndexStatusView: React.FC = () => {
               {resource.nativeTextChunkCount > 0 && resource.ocrTextChunkCount > 0 ? (
                 <>
                   <div>
-                    <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.extractedTextIndex')}</div>
+                    <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.extractedTextIndex')}</div>
                     <div className="font-semibold tabular-nums text-foreground/90">
                       <span className="text-primary">
                         {t('indexStatus.detail.chunks', { count: resource.nativeTextChunkCount })}
@@ -1272,7 +1285,7 @@ export const IndexStatusView: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.ocrTextIndex')}</div>
+                    <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.ocrTextIndex')}</div>
                     <div className="font-semibold tabular-nums text-foreground/90">
                       <span className="text-teal-600 dark:text-teal-400">
                         {t('indexStatus.detail.chunks', { count: resource.ocrTextChunkCount })}
@@ -1283,7 +1296,7 @@ export const IndexStatusView: React.FC = () => {
                 </>
               ) : (
                 <div>
-                  <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">
+                  <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">
                     {resource.ocrTextChunkCount > 0 || ['textbook', 'image'].includes(resource.resourceType)
                       ? t('indexStatus.detail.ocrTextIndex')
                       : t('indexStatus.detail.extractedTextIndex')}
@@ -1302,7 +1315,7 @@ export const IndexStatusView: React.FC = () => {
               {/* 原生多模态索引状态 - ★ 多模态索引已禁用时隐藏 */}
               {MULTIMODAL_INDEX_ENABLED && (
               <div>
-                <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.nativeMmIndex')}</div>
+                <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.nativeMmIndex')}</div>
                 <div className="flex flex-col gap-1.5">
                   {/* 状态标签 */}
                   <div className={cn(
@@ -1333,7 +1346,7 @@ export const IndexStatusView: React.FC = () => {
 
               {/* 索引模式 - ★ 多模态索引已禁用时简化显示 */}
               <div>
-                <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.indexMode')}</div>
+                <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.indexMode')}</div>
                 <div className={cn(
                   'inline-flex px-2 py-1 rounded text-xs font-medium border',
                   MULTIMODAL_INDEX_ENABLED && resource.mmIndexingMode
@@ -1352,7 +1365,7 @@ export const IndexStatusView: React.FC = () => {
               
               {/* 资源 ID */}
               <div>
-                <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.resourceId')}</div>
+                <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.resourceId')}</div>
                 <div className="font-mono text-[10px] text-muted-foreground bg-muted/50 px-2 py-1 rounded border border-border/30 truncate select-all" title={resource.resourceId}>
                   {resource.resourceId}
                 </div>
@@ -1360,7 +1373,7 @@ export const IndexStatusView: React.FC = () => {
               
               {/* 索引时间 */}
               <div>
-                <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.indexTime')}</div>
+                <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.indexTime')}</div>
                 <div className="font-medium text-foreground/90">
                   {resource.textIndexedAt 
                     ? new Date(resource.textIndexedAt).toLocaleString(undefined, {
@@ -1376,7 +1389,7 @@ export const IndexStatusView: React.FC = () => {
               
               {/* 更新时间 */}
               <div>
-                <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.updateTime')}</div>
+                <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.updateTime')}</div>
                 <div className="font-medium text-foreground/90">
                   {resource.updatedAt 
                     ? new Date(resource.updatedAt).toLocaleString(undefined, {
@@ -1392,7 +1405,7 @@ export const IndexStatusView: React.FC = () => {
               
               {/* 过时状态 */}
               <div>
-                <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.status')}</div>
+                <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.status')}</div>
                 <div className={cn(
                   'inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium border',
                   resource.isStale 
@@ -1420,7 +1433,7 @@ export const IndexStatusView: React.FC = () => {
               {/* OCR文本索引错误/不可索引原因（如果有） */}
               {resource.textIndexError && (
                 <div className="col-span-2 md:col-span-4">
-                  <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">
+                  <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">
                     {state === 'disabled' ? t('indexStatus.detail.disabledReason') : isEmptyContent ? t('indexStatus.detail.contentNote') : t('indexStatus.detail.ocrTextIndexError')}
                   </div>
                   <div className={cn(
@@ -1437,7 +1450,7 @@ export const IndexStatusView: React.FC = () => {
               {/* 原生多模态索引错误信息（如果有）- ★ 多模态索引已禁用时隐藏 */}
               {MULTIMODAL_INDEX_ENABLED && resource.mmIndexError && (
                 <div className="col-span-2 md:col-span-4">
-                  <div className="text-muted-foreground/70 font-medium mb-1.5 uppercase tracking-wider text-[10px]">{t('indexStatus.detail.nativeMmIndexError')}</div>
+                  <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.nativeMmIndexError')}</div>
                   <div className="bg-red-500/5 text-red-700 border border-red-500/20 dark:text-red-400 px-3 py-2 rounded-md text-xs">
                     {resource.mmIndexError}
                   </div>
@@ -1582,11 +1595,11 @@ export const IndexStatusView: React.FC = () => {
   const needsActionCount = summary.pendingCount + summary.failedCount + summary.staleCount;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
+    <div className="flex flex-col flex-1 min-h-0 bg-background">
       {/* 顶部概览区 */}
       {isMobile ? (
         /* ==================== 移动端紧凑布局 ==================== */
-        <div className="relative z-20 flex flex-col gap-2 px-3 py-2.5 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="relative z-20 flex flex-col gap-2 px-3 py-2.5 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
           {/* 第一行：进度环 + 关键数字 + 操作按钮 */}
           <div className="flex items-center gap-3">
             {/* 进度环 - 紧凑 */}
@@ -1688,8 +1701,8 @@ export const IndexStatusView: React.FC = () => {
           )}
         </div>
       ) : (
-        /* ==================== 桌面端布局 ==================== */
-        <div className="flex flex-row items-center gap-6 p-4 lg:p-6 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        /* ==================== 桌面端布局（macOS 风格概览） ==================== */
+        <div className="flex flex-row items-center gap-5 lg:gap-6 px-4 lg:px-5 py-3.5 lg:py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
           {/* ★ 2026-02 修复：环形进度图 - 多模态索引已禁用时只显示文本进度 */}
           <div className="flex items-center gap-4 lg:gap-6 shrink-0">
             {/* 综合进度环（当有多模态资源时显示，且多模态已启用） */}
@@ -1755,20 +1768,20 @@ export const IndexStatusView: React.FC = () => {
           {/* 中间信息区 */}
           <div className="flex-1 min-w-0 grid gap-3 lg:gap-4 content-center">
             {/* 关键指标卡片 */}
-            <div className="grid grid-cols-4 gap-2 lg:gap-3">
-              <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
-                  <Database className="h-3 w-3" />
+            <div className="grid grid-cols-4 gap-2">
+              <div className="bg-muted/40 dark:bg-muted/25 p-2.5 rounded-xl border border-black/[0.03] dark:border-white/[0.05] flex flex-col justify-between gap-1 transition-colors hover:bg-muted/55">
+                <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1.5">
+                  <Database className="h-3 w-3 opacity-70" />
                   <span className="truncate">{t('indexStatus.stats.totalVectors')}</span>
                 </span>
-                <span className="text-base lg:text-lg font-semibold tabular-nums text-foreground/90">
+                <span className="text-[15px] lg:text-base font-semibold tabular-nums tracking-tight text-foreground/90">
                   {dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}
                 </span>
               </div>
               
-              <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
-                  <FlowArrow className="h-3 w-3" />
+              <div className="bg-muted/40 dark:bg-muted/25 p-2.5 rounded-xl border border-black/[0.03] dark:border-white/[0.05] flex flex-col justify-between gap-1 transition-colors hover:bg-muted/55">
+                <span className="text-[10px] text-muted-foreground font-medium flex items-center gap-1.5">
+                  <FlowArrow className="h-3 w-3 opacity-70" />
                   <span className="truncate">{t('indexStatus.stats.dimensions')}</span>
                 </span>
                 <div className="flex items-center gap-1.5 overflow-hidden">
@@ -1848,46 +1861,81 @@ export const IndexStatusView: React.FC = () => {
                     <span className="font-medium">{batchMessage}</span>
                     <span className="font-mono tabular-nums">{batchProgress}%</span>
                   </div>
-                  <Progress value={batchProgress} className="h-2" />
+                  <Progress value={batchProgress} className="h-1.5 rounded-full" />
                 </div>
               )}
 
               {/* 原生多模态索引进度条 - ★ 多模态索引已禁用时隐藏 */}
               {MULTIMODAL_INDEX_ENABLED && (mmIndexing || mmProgress > 0) && (
-                <div className="space-y-1.5 bg-purple-500/5 p-2 rounded-md">
+                <div className="space-y-1.5 bg-purple-500/5 p-2.5 rounded-xl border border-purple-500/10">
                   <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
                     <span className="font-medium">{mmMessage}</span>
                     <span className="font-mono tabular-nums">{mmProgress}%</span>
                   </div>
-                  <Progress value={mmProgress} className="h-2 [&>div]:bg-purple-600" />
+                  <Progress value={mmProgress} className="h-1.5 rounded-full [&>div]:bg-purple-600" />
                 </div>
               )}
             </div>
           </div>
 
-          {/* 右侧操作按钮 - 纵向排列 */}
-          <div className="flex flex-col gap-1.5 lg:gap-2 shrink-0 min-w-[140px]">
-            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
+          {/* 右侧操作按钮 — macOS 工具簇 */}
+          <div className="flex flex-col gap-2 shrink-0 min-w-[148px]">
+            <NotionButton
+              variant="primary"
+              size="sm"
+              onClick={handleUnifiedIndex}
+              disabled={batchIndexing || mmIndexing}
+              className={cn(
+                '!h-8 !rounded-lg !px-3 text-[12px] font-medium shadow-sm',
+                batchIndexing || mmIndexing
+                  ? 'bg-muted text-muted-foreground shadow-none'
+                  : 'bg-foreground text-background hover:bg-foreground/90 dark:bg-foreground dark:text-background'
+              )}
+            >
               {(batchIndexing || mmIndexing) ? (
                 <CircleNotch className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Lightning className="h-3.5 w-3.5 fill-current" />
+                <Lightning className="h-3.5 w-3.5" weight="fill" />
               )}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </NotionButton>
             
-            <div className="grid grid-cols-2 gap-2">
-              <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle')}>
+            <div className="grid grid-cols-2 gap-1.5">
+              <NotionButton
+                variant="default"
+                size="sm"
+                onClick={() => { loadData(); }}
+                disabled={isLoading || batchIndexing}
+                title={t('indexStatus.action.refreshTitle')}
+                className="!h-8 !rounded-lg !px-2 text-[11px] bg-muted/60 hover:bg-muted border border-black/[0.04] dark:border-white/[0.06]"
+              >
                 <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
               </NotionButton>
-              <NotionButton variant="default" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className={cn(showTestPanel && 'bg-accent text-accent-foreground')}>
+              <NotionButton
+                variant="default"
+                size="sm"
+                onClick={() => setShowTestPanel(!showTestPanel)}
+                className={cn(
+                  '!h-8 !rounded-lg !px-2 text-[11px] border border-black/[0.04] dark:border-white/[0.06]',
+                  showTestPanel
+                    ? 'bg-primary/10 text-primary border-primary/20'
+                    : 'bg-muted/60 hover:bg-muted'
+                )}
+              >
                 <TestTube className="h-3.5 w-3.5" />
                 {t('indexStatus.action.recallTest')}
               </NotionButton>
             </div>
             
-            <NotionButton variant="ghost" size="sm" onClick={handleResetAllIndexState} disabled={resetting || batchIndexing || mmIndexing} title={t('indexStatus.action.resetStateTitle')} className="text-muted-foreground hover:text-destructive hover:bg-destructive/5">
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={handleResetAllIndexState}
+              disabled={resetting || batchIndexing || mmIndexing}
+              title={t('indexStatus.action.resetStateTitle')}
+              className="!h-8 !rounded-lg text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+            >
               {resetting ? (
                 <CircleNotch className="h-3.5 w-3.5 animate-spin" />
               ) : (
@@ -1901,7 +1949,7 @@ export const IndexStatusView: React.FC = () => {
 
       {/* 召回测试面板 */}
       {showTestPanel && (
-        <div className="border-b bg-background/50 backdrop-blur p-3 md:p-6 ui-drop-in">
+        <div className="border-b border-black/[0.06] dark:border-white/[0.08] bg-muted/20 backdrop-blur-xl p-3 md:p-4 ui-drop-in">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-primary/10 text-primary">
@@ -1927,7 +1975,7 @@ export const IndexStatusView: React.FC = () => {
                 onChange={(e) => setTestQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
                 placeholder={t('indexStatus.test.placeholder')}
-                className="w-full h-10 pl-9 pr-4 text-sm bg-muted/50 border-transparent rounded-md focus:bg-background focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground/70"
+                className="w-full h-9 pl-9 pr-4 text-[13px] bg-muted/50 border border-black/[0.04] dark:border-white/[0.06] rounded-lg focus:bg-background focus:ring-2 focus:ring-primary/15 transition-all placeholder:text-muted-foreground/60"
                 autoFocus
               />
             </div>
@@ -2000,30 +2048,44 @@ export const IndexStatusView: React.FC = () => {
         </div>
       )}
 
-      {/* 筛选栏 */}
-      <div className="flex items-center gap-2 px-3 md:px-6 py-2 md:py-3 border-b bg-background/50 backdrop-blur sticky top-0 z-10">
-        <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5 md:gap-2">
-          <span className="text-xs font-medium text-muted-foreground shrink-0 uppercase tracking-wider">{t('indexStatus.filter.typeFilter')}</span>
-          {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
-            const isActive = selectedType === type;
-            const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
-            return (
-              <NotionButton key={type} variant="ghost" size="sm" onClick={() => setSelectedType(type)} className={cn('!rounded-full !px-2.5 !py-1 text-xs font-medium border', isActive ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-transparent hover:bg-[var(--interactive-hover)] hover:text-foreground')}>
-                {label}
-              </NotionButton>
-            );
-          })}
+      {/* 筛选栏 — macOS segmented / capsule 风格 */}
+      <div className="flex items-center gap-3 px-3 md:px-4 py-2 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/70 backdrop-blur-xl sticky top-0 z-10">
+        <div className="flex-1 min-w-0 flex items-center gap-2 overflow-x-auto">
+          <span className="text-[11px] font-medium text-muted-foreground/80 shrink-0">{t('indexStatus.filter.typeFilter')}</span>
+          <div className="inline-flex items-center gap-0.5 p-0.5 rounded-lg bg-muted/50 border border-black/[0.04] dark:border-white/[0.06]">
+            {['all', 'note', 'textbook', 'exam', 'translation', 'essay', 'mindmap', 'file', 'image'].map((type) => {
+              const isActive = selectedType === type;
+              const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
+              return (
+                <NotionButton
+                  key={type}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedType(type)}
+                  className={cn(
+                    '!h-7 !rounded-md !px-2.5 !py-0 text-[11px] font-medium border border-transparent',
+                    isActive
+                      ? 'bg-background text-foreground shadow-sm ring-1 ring-black/5 dark:ring-white/10'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-black/[0.03] dark:hover:bg-white/[0.04]'
+                  )}
+                >
+                  {label}
+                </NotionButton>
+              );
+            })}
+          </div>
         </div>
         {!isMobile && (
-          <div className="text-xs font-mono text-muted-foreground shrink-0 pl-2 md:pl-4 border-l border-border/50 whitespace-nowrap">
-            <span className="font-semibold text-foreground">{summary.resources.length}</span>
-            <span className="mx-1 text-muted-foreground/50">/</span>
+          <div className="text-[11px] tabular-nums text-muted-foreground shrink-0 pl-3 border-l border-black/[0.06] dark:border-white/[0.08] whitespace-nowrap">
+            <span className="font-semibold text-foreground/90">{summary.resources.length}</span>
+            <span className="mx-1 text-muted-foreground/40">/</span>
             <span>{summary.totalResources}</span>
           </div>
         )}
       </div>
 
-      {/* 分组资源列表 */}
+      
+{/* 分组资源列表 */}
       <CustomScrollArea className="flex-1">
         {summary.resources.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
@@ -2033,7 +2095,7 @@ export const IndexStatusView: React.FC = () => {
           </div>
         ) : selectedState === 'all' ? (
           // 分组显示模式
-          <div className="divide-y divide-border/30">
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
             {(['pending', 'indexing', 'failed', 'indexed', 'disabled'] as IndexState[]).map((state) => {
               const resources = groupedResources[state] || [];
               if (resources.length === 0) return null;
@@ -2044,21 +2106,31 @@ export const IndexStatusView: React.FC = () => {
               
               return (
                 <div key={state}>
-                  {/* 分组标题 */}
-                  <NotionButton variant="ghost" size="sm" onClick={() => toggleGroup(state)} className={cn('w-full !justify-start !px-3 md:!px-4 !py-2 md:!py-2.5', config.bgColor)}>
-                    {isExpanded ? (
-                      <CaretDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <CaretRight className="h-4 w-4 text-muted-foreground" />
+                  {/* 分组标题 — Finder 分组条 */}
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleGroup(state)}
+                    className={cn(
+                      'w-full !h-8 !justify-start !gap-2 !rounded-none !px-3 md:!px-4 !py-0 text-[12px] font-medium',
+                      'border-b border-black/[0.03] dark:border-white/[0.05]',
+                      config.bgColor,
+                      'hover:brightness-[0.98] dark:hover:brightness-110'
                     )}
-                    <Icon className={cn('h-4 w-4', config.color)} />
-                    <span className={config.color}>{t(config.labelKey)}</span>
-                    <span className="text-muted-foreground font-normal">({resources.length})</span>
+                  >
+                    {isExpanded ? (
+                      <CaretDown className="h-3.5 w-3.5 text-muted-foreground/70" />
+                    ) : (
+                      <CaretRight className="h-3.5 w-3.5 text-muted-foreground/70" />
+                    )}
+                    <Icon className={cn('h-3.5 w-3.5', config.color)} weight="fill" />
+                    <span className={cn(config.color, 'tracking-tight')}>{t(config.labelKey)}</span>
+                    <span className="text-muted-foreground/70 font-normal tabular-nums">({resources.length})</span>
                   </NotionButton>
                   
                   {/* 分组内容 */}
                   {isExpanded && (
-                    <div className="bg-background/50">
+                    <div className="bg-background">
                       {resources.map(renderResourceRow)}
                     </div>
                   )}
@@ -2068,7 +2140,7 @@ export const IndexStatusView: React.FC = () => {
           </div>
         ) : (
           // 单状态筛选模式
-          <div className="divide-y divide-border/30">
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.06]">
             {summary.resources.map(renderResourceRow)}
           </div>
         )}

@@ -313,6 +313,14 @@ body {
   pointer-events: none;
 }
 
+/* 待办侧栏：选中态仅保留背景，不显示蓝色竖条指示器 */
+[data-todo-shell-sidebar] .desktop-shell-nav-row--active::before,
+[data-todo-shell-sidebar] .desktop-shell-thread-row--active::before {
+  content: none;
+  display: none;
+  animation: none;
+}
+
 @keyframes desktop-shell-nav-indicator-in {
   to {
     opacity: 1;

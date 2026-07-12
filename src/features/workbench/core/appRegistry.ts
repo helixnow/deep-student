@@ -4,7 +4,7 @@
  * 各应用子代理在 apps/<name>/register.ts 中调用 appRegistry.register()，
  * 禁止集中式巨型注册文件。register 幂等（同 typeId 覆盖并 warn）。
  */
-import type { AppDefinition } from './types';
+import type { AgentCapability, AppAgentManifest, AppDefinition } from './types';
 
 type Listener = () => void;
 
@@ -22,6 +22,24 @@ class AppRegistry {
 
   get(typeId: string): AppDefinition | undefined {
     return this.defs.get(typeId);
+  }
+
+  getAgentManifest(typeId: string): AppAgentManifest | undefined {
+    return this.defs.get(typeId)?.agentManifest;
+  }
+
+  getAgentCapability(typeId: string, action: string): AgentCapability | undefined {
+    return this.getAgentManifest(typeId)?.capabilities.find(
+      (capability) => capability.name === action,
+    );
+  }
+
+  listAgentManifests(): Array<{ typeId: string; manifest: AppAgentManifest }> {
+    const result: Array<{ typeId: string; manifest: AppAgentManifest }> = [];
+    for (const [typeId, def] of this.defs) {
+      if (def.agentManifest) result.push({ typeId, manifest: def.agentManifest });
+    }
+    return result;
   }
 
   list(): AppDefinition[] {

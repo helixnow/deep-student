@@ -506,6 +506,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       return current ? { type: current.type, id: current.id } : null;
     },
     listResources: () => tabsRef.current.map((tab) => ({ type: tab.type, id: tab.id })),
+    listResourceDetails: () => tabsRef.current.map((tab) => ({
+      type: tab.type,
+      id: tab.id,
+      title: tab.title,
+      saveState: getTabSaveState(tab, windowId),
+    })),
   }), [windowId]);
 
   useEffect(() => {

@@ -10,12 +10,20 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const panelProps: Array<Record<string, unknown>> = [];
+const workspaceProps: Array<Record<string, unknown>> = [];
 
 vi.mock('@/features/learning-hub/apps/UnifiedAppPanel', () => ({
   __esModule: true,
   default: (props: Record<string, unknown>) => {
     panelProps.push(props);
     return <div data-testid="unified-app-panel" />;
+  },
+}));
+
+vi.mock('../ResourceAppWorkspace', () => ({
+  ResourceAppWorkspace: (props: Record<string, unknown>) => {
+    workspaceProps.push(props);
+    return <div data-testid={`${props.type}-resource-workspace`} />;
   },
 }));
 
@@ -45,6 +53,7 @@ function makeWindowProps(overrides: Partial<AppWindowProps> = {}): AppWindowProp
 describe('createContentWindowComponent', () => {
   beforeEach(() => {
     panelProps.length = 0;
+    workspaceProps.length = 0;
     const store = useWindowStore.getState();
     for (const id of Object.keys(store.windows)) store.closeWindow(id);
   });
@@ -99,8 +108,9 @@ describe('createContentWindowComponent', () => {
   it('isActive=false 透传（visible 非焦点窗口不冒充活跃标签页）', () => {
     const ExamWindow = createContentWindowComponent('exam');
     render(<ExamWindow {...makeWindowProps({ isActive: false, instanceKey: 'exam_9' })} />);
-    expect(panelProps[0].type).toBe('exam');
-    expect(panelProps[0].isActive).toBe(false);
+    expect(workspaceProps[0].type).toBe('exam');
+    expect(workspaceProps[0].initialResourceId).toBe('exam_9');
+    expect(workspaceProps[0].isActive).toBe(false);
   });
 
   it('renderThrottleMs>0 时挂 data-wb-render-paused，且不翻转 isActive', () => {
@@ -125,6 +135,13 @@ describe('createContentWindowComponent', () => {
     expect(panelProps).toHaveLength(0);
     expect(container.querySelector('.wb-content-empty')).not.toBeNull();
     expect(container.textContent).toContain('缺少资源标识');
+  });
+
+  it.each(['exam', 'essay'] as const)('%s 始终渲染同一套资源工作区', (type) => {
+    const ResourceWindow = createContentWindowComponent(type);
+    render(<ResourceWindow {...makeWindowProps({ instanceKey: null })} />);
+    expect(screen.getByTestId(`${type}-resource-workspace`)).toBeTruthy();
+    expect(panelProps).toHaveLength(0);
   });
 
   it('有资源时挂载骨架宿主与 UnifiedAppPanel', () => {
@@ -155,6 +172,11 @@ describe('createContentApp', () => {
     expect(def.memoryWeight).toBe(2);
     expect(def.minSize).toEqual({ w: 360, h: 280 });
     expect(def.canClose).toBeUndefined();
+  });
+
+  it('可声明单窗口资源工作区', () => {
+    const def = createContentApp({ ...baseOptions, instanceMode: 'single' });
+    expect(def.instanceMode).toBe('single');
   });
 
   it('canClose：无脏状态直接放行', () => {

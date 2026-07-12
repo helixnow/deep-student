@@ -12,6 +12,7 @@ import { getBrowserSessionState } from '@/features/browser/sessionStore';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult } from '../../core/types';
 import { BROWSER_FOCUS_ADDRESS_EVENT } from './browserChromeEvents';
+import { createBrowserAgentManifest } from './agentManifest';
 
 export const BROWSER_APP_TYPE_ID = 'browser';
 export { BROWSER_FOCUS_ADDRESS_EVENT };
@@ -53,6 +54,15 @@ export async function handleBrowserActivation(ctx: ActivationContext): Promise<A
         await api.navigate(url, { forceUserControl: false, fromAgent: true });
         return { handled: true };
       }
+      case 'goBack':
+        await api.back();
+        return { handled: true };
+      case 'goForward':
+        await api.forward();
+        return { handled: true };
+      case 'reload':
+        await api.reload();
+        return { handled: true };
       case 'focusAddress': {
         if (typeof window === 'undefined') {
           return { handled: false, code: 'WINDOW_UNAVAILABLE' };
@@ -80,6 +90,9 @@ export async function handleBrowserActivation(ctx: ActivationContext): Promise<A
               message: '浏览器页面窗口不存在',
             };
       }
+      case 'hideContent':
+        await api.hideContent();
+        return { handled: true };
       default:
         return {
           handled: false,
@@ -121,6 +134,7 @@ export function registerBrowserApp(): void {
     minSize: { w: 480, h: 200 },
     render: React.lazy(() => import('./BrowserAppWindow')),
     onActivation: handleBrowserActivation,
+    agentManifest: createBrowserAgentManifest(handleBrowserActivation),
     canClose: canCloseBrowser,
   });
 }

@@ -216,7 +216,11 @@
 .wb-title-app-slot {
   position: absolute;
   z-index: 5;
-  inset: 0;
+  /* 从红绿灯右侧起铺满，避免应用工具栏几何上压住三键 */
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: var(--wb-macos-traffic-lights-inset, 72px);
   overflow: hidden;
   pointer-events: none;
 }

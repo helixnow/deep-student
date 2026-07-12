@@ -104,7 +104,18 @@
     "docx_get_metadata": "Get Document Info",
     "docx_extract_tables": "Extract Document Tables",
     "docx_replace_text": "Replace Document Text",
-    "docx_to_spec": "Document to Spec"
+    "docx_to_spec": "Document to Spec",
+    "workbench_get_capabilities": "Discover Desktop App Capabilities",
+    "workbench_observe": "Observe Desktop App",
+    "workbench_act": "Run Desktop Semantic Actions",
+    "workbench_act_high": "Run High-Risk Desktop Actions",
+    "workbench_wait_for": "Wait for Desktop App State",
+    "workbench_undo": "Undo Desktop Actions",
+    "workbench_list_windows": "List Desktop Windows",
+    "workbench_open_app": "Open Desktop App",
+    "workbench_app_command": "Send Desktop App Command",
+    "workbench_close_window": "Close Desktop Window",
+    "workbench_query_state": "Query Desktop Window State"
   },
   "service": {
     "missing_websocket_url": "Missing WebSocket URL",

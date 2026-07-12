@@ -11,10 +11,22 @@ import type {
   ActivateRequest,
   ActivationHandlerResult,
   ActivationResult,
+  AgentActRequest,
+  AgentAppContext,
+  AgentWaitForRequest,
+  AgentWindowTarget,
   LaunchRequest,
   ProjectRequest,
 } from './types';
 import { appRegistry } from './appRegistry';
+import {
+  actOnAgentWindow,
+  getAgentCapabilities,
+  observeAgentWindow,
+  revertAgentUndo,
+  waitForAgentCondition,
+  type AgentRuntimeOptions,
+} from './agentRuntime';
 import { useWindowStore } from './windowStore';
 import { confirmWindowClose } from './windowCloseGuard';
 import {
@@ -22,6 +34,10 @@ import {
   requestWorkspaceResource,
   type NotesWorkspaceResourceRef,
 } from '../apps/notes/workspaceRegistry';
+import {
+  requestResourceWorkspace,
+  type ResourceWorkspaceType,
+} from '../apps/content/resourceWorkspaceRegistry';
 
 export type LegacyFallbackHandler = (req: LaunchRequest | ActivateRequest, kind: 'launch' | 'activate') => void;
 
@@ -39,6 +55,7 @@ interface ActivationWaiter {
 const activationWaiters = new Map<string, Set<ActivationWaiter>>();
 const ACTIVATION_READY_TIMEOUT_MS = 10_000;
 const NOTES_WORKSPACE_TYPE_ID = 'notes';
+const RESOURCE_WORKSPACE_TYPE_IDS = new Set(['exam', 'essay']);
 
 function toWorkspaceResource(typeId: string, resourceId?: string): NotesWorkspaceResourceRef | null {
   if ((typeId !== 'note' && typeId !== 'mindmap') || !resourceId?.trim()) return null;
@@ -123,6 +140,34 @@ function normalizeActivationResult(raw: ActivationHandlerResult): ActivationResu
   return { handled: true };
 }
 
+async function executeLegacyAgentAction(
+  ctx: AgentAppContext,
+  action: { name: string; args?: unknown; targetRef?: string },
+): Promise<ActivationHandlerResult> {
+  const def = appRegistry.get(ctx.typeId);
+  if (!def?.onActivation) return false;
+  if (!(await waitForActivationTarget(ctx.windowId))) {
+    return {
+      handled: false,
+      code: 'ACTIVATION_NOT_READY',
+      hint: '目标窗口内容未能完成挂载，请稍后重试',
+    };
+  }
+  return def.onActivation({
+    windowId: ctx.windowId,
+    instanceKey: ctx.instanceKey,
+    action: action.name,
+    payload: action.args ?? (action.targetRef ? { targetRef: action.targetRef } : undefined),
+  });
+}
+
+function withLegacyAgentExecutor(options: AgentRuntimeOptions): AgentRuntimeOptions {
+  return {
+    ...options,
+    executeLegacy: options.executeLegacy ?? executeLegacyAgentAction,
+  };
+}
+
 export const workbenchBus = {
   /** 由设置层（P10）在开关变化时调用 */
   setEnabled(value: boolean): void {
@@ -161,6 +206,17 @@ export const workbenchBus = {
       });
       return windowId;
     }
+    if (RESOURCE_WORKSPACE_TYPE_IDS.has(req.typeId)) {
+      const resourceId = req.instanceKey?.trim() || null;
+      const windowId = store.openWindow({
+        typeId: req.typeId,
+        instanceKey: null,
+        payload: resourceId ? { resourceId } : req.payload,
+        dropPoint: req.dropPoint,
+      });
+      if (resourceId) requestResourceWorkspace(req.typeId as ResourceWorkspaceType, resourceId);
+      return windowId;
+    }
     return store.openWindow({
       typeId: req.typeId,
       instanceKey: req.instanceKey ?? null,
@@ -174,6 +230,43 @@ export const workbenchBus = {
     const r = lastActivationResult;
     lastActivationResult = null;
     return r;
+  },
+
+  /** Discover semantic capabilities without opening or focusing a window. */
+  getAgentCapabilities(target: AgentWindowTarget = {}) {
+    return getAgentCapabilities(target);
+  },
+
+  /** Structured, bounded observation of one internal application window. */
+  observeAgent(
+    target: AgentWindowTarget = {},
+    options: AgentRuntimeOptions = {},
+  ) {
+    return observeAgentWindow(target, options);
+  },
+
+  /** Optimistic-concurrency checked semantic action batch. */
+  actAgent(
+    request: AgentActRequest,
+    options: AgentRuntimeOptions = {},
+  ) {
+    return actOnAgentWindow(request, withLegacyAgentExecutor(options));
+  },
+
+  /** Bounded polling wait over structured observation conditions. */
+  waitForAgent(
+    request: AgentWaitForRequest,
+    options: AgentRuntimeOptions = {},
+  ) {
+    return waitForAgentCondition(request, options);
+  },
+
+  /** Replay a serializable inverse descriptor from the bounded undo journal. */
+  revertAgentAction(
+    undoToken: string,
+    options: AgentRuntimeOptions = {},
+  ) {
+    return revertAgentUndo(undoToken, withLegacyAgentExecutor(options));
   },
 
   /** 对已存在窗口发一次性指令；不存在且有 fallbackLaunch 则先 launch */

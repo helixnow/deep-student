@@ -32,6 +32,7 @@ export const TodoShellSidebar: React.FC<TodoShellSidebarProps> = ({
 
   return (
     <div
+      data-todo-shell-sidebar
       data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
       data-shell-surface={!isSmallScreen ? 'navigation' : undefined}
       className={cn(
