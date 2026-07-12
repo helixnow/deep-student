@@ -931,7 +931,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   variant="shell"
                   size="sm"
                   onClick={handleCreate}
-                  className="h-7 text-xs px-2.5"
+                  className="h-7 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create', '新建')}
@@ -941,7 +941,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
 
             <NotionButton
-              variant="utility"
+              variant="ghost"
               size="sm"
               onClick={handleImportZipClick}
               className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
@@ -951,7 +951,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             </NotionButton>
 
             <NotionButton
-              variant="utility"
+              variant="ghost"
               size="sm"
               onClick={handleImportClick}
               className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
@@ -961,7 +961,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             </NotionButton>
 
             <NotionButton
-              variant="utility"
+              variant="ghost"
               size="sm"
               onClick={handleExportAll}
               disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
@@ -982,7 +982,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
-              className="h-8 pl-8 pr-3 text-xs"
+              className="h-8 border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3 text-xs"
 />
           </div>
 
@@ -992,7 +992,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onValueChange={setLocationFilter}
             size="compact"
             className={cn(
-              'flex items-center gap-1 overflow-x-auto scrollbar-none',
+              'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
               isSmallScreen && '-mx-1 px-1',
             )}
             itemClassName="!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap"

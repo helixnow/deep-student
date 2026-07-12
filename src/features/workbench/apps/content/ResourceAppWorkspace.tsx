@@ -7,12 +7,15 @@ import {
   PenNib,
   Plus,
   Rows,
+  SidebarSimple,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createEmpty, dstu, type DstuNode } from '@/dstu';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
 import { isContentDirty } from './contentDirtyRegistry';
 import {
@@ -53,6 +56,13 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [compact, setCompact] = useState(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
 
@@ -101,8 +111,9 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     if (!canLeaveResource(type, current)) return false;
     selectedIdRef.current = resourceId;
     setSelectedId(resourceId);
+    if (resourceId && compact) setSidebarOpen(false);
     return true;
-  }, [type]);
+  }, [compact, type]);
 
   useEffect(() => {
     if (initialResourceId) selectResource(initialResourceId);
@@ -132,7 +143,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     setItems((current) => [result.value, ...current.filter((item) => item.id !== result.value.id)]);
     selectedIdRef.current = result.value.id;
     setSelectedId(result.value.id);
-  }, [creating, type]);
+    if (compact) setSidebarOpen(false);
+  }, [compact, creating, type]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -156,19 +168,98 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   }, []);
 
   const handleListKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (visibleItems.length === 0 || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+    if (visibleItems.length === 0) return;
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     const currentIndex = visibleItems.findIndex((item) => item.id === selectedIdRef.current);
     const delta = event.key === 'ArrowDown' ? 1 : -1;
-    const nextIndex = currentIndex < 0
-      ? (delta > 0 ? 0 : visibleItems.length - 1)
-      : Math.min(Math.max(currentIndex + delta, 0), visibleItems.length - 1);
+    const nextIndex = event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? visibleItems.length - 1
+        : currentIndex < 0
+          ? (delta > 0 ? 0 : visibleItems.length - 1)
+          : Math.min(Math.max(currentIndex + delta, 0), visibleItems.length - 1);
     selectResource(visibleItems[nextIndex].id);
   }, [selectResource, visibleItems]);
 
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => setCompact(entry.contentRect.width < 720));
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+    sidebar.toggleAttribute('inert', !sidebarOpen);
+    if (!sidebarOpen && sidebar.contains(document.activeElement)) {
+      window.setTimeout(() => {
+        hostRef.current
+          ?.querySelector<HTMLButtonElement>('.wb-resource-workspace-sidebar-handle')
+          ?.focus();
+      }, 0);
+    }
+  }, [sidebarOpen]);
+
+  const handleShortcut = useCallback((rawEvent: Event) => {
+    const event = rawEvent as KeyboardEvent;
+    if (!(event.metaKey || event.ctrlKey)) return;
+    const key = event.key.toLocaleLowerCase();
+    if (key === 'f') {
+      event.preventDefault();
+      setSidebarOpen(true);
+      window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    } else if (key === 'n') {
+      event.preventDefault();
+      void createResource();
+    }
+  }, [createResource]);
+
+  useEventRegistry(
+    isActive ? [{ target: 'window', type: 'keydown', listener: handleShortcut }] : [],
+    [handleShortcut, isActive],
+  );
+
+  const startSidebarResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (compact) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    sidebarResizeRef.current = { startX: event.clientX, startWidth: sidebarWidth };
+  }, [compact, sidebarWidth]);
+
+  const moveSidebarResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const resize = sidebarResizeRef.current;
+    if (!resize) return;
+    setSidebarWidth(Math.max(200, Math.min(
+      340,
+      resize.startWidth + event.clientX - resize.startX,
+    )));
+  }, []);
+
+  const stopSidebarResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    sidebarResizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
   return (
-    <div className="wb-resource-workspace" data-testid={`wb-${type}-workspace`}>
-      <aside className="wb-resource-workspace-sidebar">
+    <div
+      ref={hostRef}
+      className="wb-resource-workspace"
+      data-testid={`wb-${type}-workspace`}
+      data-compact={compact ? 'true' : 'false'}
+      data-sidebar-open={sidebarOpen ? 'true' : 'false'}
+      style={{ '--wb-resource-sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
+    >
+      <aside
+        ref={sidebarRef}
+        className="wb-resource-workspace-sidebar"
+        aria-hidden={!sidebarOpen}
+      >
         <header className="wb-resource-workspace-sidebar-title">
           <span className="wb-resource-workspace-app-icon">
             <ResourceIcon size={18} weight="duotone" aria-hidden="true" />
@@ -185,17 +276,49 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           >
             {creating ? <ArrowClockwise size={14} className="animate-spin" /> : <Plus size={14} />}
           </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => setSidebarOpen(false)}
+            title={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
+            aria-label={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
+          >
+            <SidebarSimple size={14} />
+          </NotionButton>
         </header>
 
-        <label className="wb-resource-workspace-search">
+        <div className="wb-resource-workspace-search">
           <MagnifyingGlass size={14} aria-hidden="true" />
           <input
+            ref={searchInputRef}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && query) {
+                event.preventDefault();
+                setQuery('');
+              }
+            }}
             placeholder={t('workbench:resourceHome.search', '搜索')}
             aria-label={t('workbench:resourceHome.search', '搜索')}
           />
-        </label>
+          {query && (
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={() => {
+                setQuery('');
+                searchInputRef.current?.focus();
+              }}
+              title={t('workbench:resourceWorkspace.clearSearch', '清除搜索')}
+              aria-label={t('workbench:resourceWorkspace.clearSearch', '清除搜索')}
+            >
+              <X size={12} />
+            </NotionButton>
+          )}
+        </div>
 
         <nav className="wb-resource-workspace-nav" aria-label={title}>
           <NotionButton
@@ -224,6 +347,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           role="listbox"
           tabIndex={0}
           aria-label={title}
+          aria-busy={loading}
           onKeyDown={handleListKeyDown}
         >
           {loading && items.length === 0 ? (
@@ -276,9 +400,34 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <ArrowClockwise size={13} className={cn(loading && 'animate-spin')} />
           </NotionButton>
         </footer>
+        <div
+          className="wb-resource-workspace-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-valuemin={200}
+          aria-valuemax={340}
+          aria-valuenow={sidebarWidth}
+          onPointerDown={startSidebarResize}
+          onPointerMove={moveSidebarResize}
+          onPointerUp={stopSidebarResize}
+          onPointerCancel={stopSidebarResize}
+        />
       </aside>
 
       <main className="wb-resource-workspace-main">
+        {!sidebarOpen && (
+          <NotionButton
+            variant="outline"
+            size="icon"
+            iconOnly
+            className="wb-resource-workspace-sidebar-handle"
+            onClick={() => setSidebarOpen(true)}
+            title={t('workbench:resourceWorkspace.showSidebar', '显示侧边栏')}
+            aria-label={t('workbench:resourceWorkspace.showSidebar', '显示侧边栏')}
+          >
+            <SidebarSimple size={15} />
+          </NotionButton>
+        )}
         {selectedItem ? (
           <UnifiedAppPanel
             type={type}
@@ -302,6 +451,14 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           </div>
         )}
       </main>
+      {compact && sidebarOpen && (
+        <NotionButton
+          variant="ghost"
+          className="wb-resource-workspace-scrim"
+          onClick={() => setSidebarOpen(false)}
+          aria-label={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
+        />
+      )}
     </div>
   );
 };

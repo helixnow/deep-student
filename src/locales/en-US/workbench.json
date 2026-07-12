@@ -40,16 +40,39 @@
   },
   "agentControlCenter": {
     "title": "AI desktop control",
-    "description": "Ask Chat to open learning apps, locate content, and visibly perform authorized actions.",
+    "description": "Let Chat locate content and carry out authorized actions in learning apps.",
     "tooltip": "AI desktop control",
     "triggerLabel": "AI desktop control, current mode: {{status}}",
-    "modeLabel": "Control mode",
-    "capabilitiesTitle": "Controllable learning apps",
+    "modeLabel": "Run mode",
+    "capabilitiesTitle": "What it can do",
+    "appCount": "8 apps",
+    "expandCapabilities": "All capabilities",
+    "collapseCapabilities": "Collapse",
     "saveFailed": "Could not save the control mode. Try again.",
     "openChat": "Open Chat",
     "openSettings": "Control settings",
     "settingsTitle": "What the assistant can do",
     "settingsDescription": "These capabilities are semantic actions deliberately registered by each learning app, not blind coordinate clicks. Available actions change with the current screen and state.",
+    "modeDescriptions": {
+      "off": "View status only; do not open or control windows.",
+      "background": "Work in the background without interrupting you.",
+      "follow": "Open and focus target windows while acting."
+    },
+    "groups": {
+      "organize": {
+        "title": "Organize content",
+        "actions": "Locate and edit notes, mind maps, and todos"
+      },
+      "study": {
+        "title": "Move learning forward",
+        "actions": "Navigate questions, review cards, and manage focus"
+      },
+      "browse": {
+        "title": "Find materials",
+        "actions": "Search resources, switch folders, and browse pages"
+      }
+    },
+    "safetyCompact": "Only registered actions run. Answers, submissions, and ratings stay with you; destructive actions ask first.",
     "safety": "Only registered semantic actions are used. The assistant cannot answer or submit exams or rate flashcards for you. Destructive actions require confirmation before execution.",
     "apps": {
       "note": {
@@ -188,7 +211,10 @@
   },
   "resourceWorkspace": {
     "selectTitle": "Select an item",
-    "selectHint": "Choose one from the sidebar, or create a new item to begin."
+    "selectHint": "Choose one from the sidebar, or create a new item to begin.",
+    "hideSidebar": "Hide sidebar",
+    "showSidebar": "Show sidebar",
+    "clearSearch": "Clear search"
   },
   "appsPanel": {
     "title": "All Apps",

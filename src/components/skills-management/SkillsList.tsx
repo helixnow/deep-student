@@ -176,7 +176,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
                   {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
-                  <NotionButton variant="utility" size="icon" iconOnly
+                  <NotionButton variant="ghost" size="icon" iconOnly
                     onClick={(e) => { e.stopPropagation(); toggleFavorite(skill.id); }}
                     className={cn('!h-auto !w-auto !p-0 max-lg:!h-10 max-lg:!w-10 max-lg:-my-3 max-lg:-mx-1.5 flex-shrink-0 transition-opacity duration-200', isFavorite(skill.id) ? 'opacity-100 text-[color:hsl(var(--warning))]' : cn(isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100', 'text-muted-foreground/40 hover:text-[color:hsl(var(--warning))]'))}
                     aria-label="favorite"
@@ -211,7 +211,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       // 移动端触控目标：加高 + 负 margin 抵消行高膨胀
                       "max-lg:min-h-9 max-lg:px-2.5 max-lg:-my-1.5",
                       isDefaultEnabled 
-                        ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-[color:var(--button-primary-border)]"
+                        ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-transparent"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
                     )}
                     title={isDefaultEnabled ? t('skills:management.is_default', '默认启用') : t('skills:management.set_default', '设为默认')}
@@ -237,7 +237,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 {/* 停用标记 */}
                 {isDisabledSkill && (
                   <div
-                    className="study-shell-badge text-[10px]"
+                    className="study-shell-badge study-shell-badge--borderless text-[10px]"
                     title={t('skills:package.disabled_hint', '已停用：不参与对话，可随时重新启用')}
                   >
                     {t('skills:package.disabled_badge', '已停用')}
@@ -246,7 +246,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
                 {/* 自定义标记 */}
                 {isBuiltin && isCustomized && (
-                  <div className="study-shell-badge study-shell-badge--warning text-[10px]">
+                  <div className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]">
                     {t('skills:management.customized', '已修改')}
                   </div>
                 )}
@@ -256,7 +256,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                 {/* 停用/启用开关（即时生效，无确认框） */}
                 <NotionButton
-                  variant="utility"
+                  variant="ghost"
                   size="sm"
                   className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
                   onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
@@ -271,13 +271,13 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     ? t('skills:package.enable', '启用')
                     : t('skills:package.disable', '停用')}
                 </NotionButton>
-                <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
+                <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
                   <Pencil size={14} />
                 </NotionButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
+                    <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
                       <DotsThree size={14} />
                     </NotionButton>
                   </AppMenuTrigger>

@@ -1,6 +1,6 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -36,6 +36,8 @@ describe('ResourceAppWorkspace', () => {
     mocks.list.mockReset().mockResolvedValue({ ok: true, value: [essay] });
     mocks.createEmpty.mockReset();
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('uses the same workspace to select and render existing resources', async () => {
     render(
@@ -84,5 +86,76 @@ describe('ResourceAppWorkspace', () => {
     requestResourceWorkspace('essay', 'essay-1');
 
     expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+  });
+
+  it('collapses the shared sidebar and reopens it with the search shortcut', async () => {
+    render(
+      <ResourceAppWorkspace
+        type="essay"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+    await screen.findByText('Synthetic essay');
+
+    fireEvent.click(screen.getByRole('button', { name: '隐藏侧边栏' }));
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+
+    fireEvent.keyDown(window, { key: 'f', metaKey: true });
+    await waitFor(() => expect(screen.getByRole('textbox', { name: '搜索' })).toHaveFocus());
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
+  });
+
+  it('supports Home and End navigation across resources', async () => {
+    const second = { ...essay, id: 'essay-2', sourceId: 'essay-2', name: 'Second essay' };
+    mocks.list.mockResolvedValue({ ok: true, value: [essay, second] });
+    render(
+      <ResourceAppWorkspace
+        type="essay"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+
+    const list = await screen.findByRole('listbox', { name: '作文批改' });
+    fireEvent.keyDown(list, { key: 'End' });
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-2');
+
+    fireEvent.keyDown(list, { key: 'Home' });
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+  });
+
+  it('uses an overlay sidebar in compact windows and closes it after selection', async () => {
+    let resizeCallback!: ResizeObserverCallback;
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
+    render(
+      <ResourceAppWorkspace
+        type="essay"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+    await screen.findByText('Synthetic essay');
+
+    act(() => resizeCallback(
+      [{ contentRect: { width: 600 } } as ResizeObserverEntry],
+      {} as ResizeObserver,
+    ));
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-compact', 'true');
+    expect(screen.getAllByRole('button', { name: '隐藏侧边栏' })).toHaveLength(2);
+
+    fireEvent.click(screen.getByText('Synthetic essay'));
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+    expect(screen.queryAllByRole('button', { name: '隐藏侧边栏' })).toHaveLength(0);
   });
 });

@@ -85,7 +85,7 @@ function Chip({
     <span
       title={title}
       className={cn(
-        'study-shell-badge inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-[10px]',
+        'study-shell-badge study-shell-badge--borderless inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 text-[10px]',
         tone === 'primary' && 'study-shell-badge--primary',
         tone === 'warning' && 'study-shell-badge--warning',
       )}

@@ -31,7 +31,7 @@ describe('AgentControlDockEntry', () => {
     localStorage.removeItem(AGENT_CONTROL_DISCOVERY_SEEN_KEY);
   });
 
-  it('is a permanent Dock entry and reveals concrete capabilities plus safety limits', async () => {
+  it('is a permanent Dock entry with a compact summary and expandable safety-bounded capabilities', async () => {
     settings.set(AGENT_CONTROL_SETTING_KEY, 'background');
     render(<AgentControlDockEntry tabIndex={0} />);
 
@@ -41,12 +41,19 @@ describe('AgentControlDockEntry', () => {
 
     fireEvent.click(trigger);
 
-    expect(await screen.findByRole('dialog', { name: 'AI 桌面操控' })).toBeInTheDocument();
-    expect(screen.getByText('可操控的学习应用')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: 'AI 桌面操控' });
+    expect(dialog).toHaveClass('wb-glass', 'wb-glass-highlight', 'wb-glass-lens');
+    expect(screen.getByText('能做什么')).toBeInTheDocument();
+    expect(document.querySelectorAll('.wb-agent-capability-group')).toHaveLength(3);
+    expect(document.querySelectorAll('.wb-agent-capability-row')).toHaveLength(0);
+    expect(screen.getByText('整理内容')).toBeInTheDocument();
+    expect(screen.getByText('推进学习')).toBeInTheDocument();
+    expect(screen.getByText('查找资料')).toBeInTheDocument();
+    expect(screen.getByText(/不会代答、提交或评分/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '全部能力' }));
     expect(document.querySelectorAll('.wb-agent-capability-row')).toHaveLength(8);
-    expect(
-      screen.getByText(/不会替你答题、提交考试或给闪卡评分/),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '收起' })).toHaveAttribute('aria-expanded', 'true');
     expect(localStorage.getItem(AGENT_CONTROL_DISCOVERY_SEEN_KEY)).toBe('1');
   });
 

@@ -618,6 +618,10 @@ body {
   color: var(--button-danger-foreground);
 }
 
+.study-shell-badge--borderless {
+  border-color: transparent;
+}
+
 /*
  * SegmentedControl — flat, restrained.
  *

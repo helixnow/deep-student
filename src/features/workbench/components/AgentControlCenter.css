@@ -12,10 +12,14 @@
 
 .wb-agent-control-status-dot {
   right: 4px;
-  bottom: 4px;
+  bottom: 8px;
   width: 9px;
   height: 9px;
   background: hsl(var(--muted-foreground));
+}
+
+.wb-agent-control-dock-glyph {
+  transform: translateY(-4px);
 }
 
 .wb-agent-control-status-dot[data-mode='background'] {
@@ -35,88 +39,196 @@
 }
 
 .wb-agent-control-popover {
-  width: min(390px, calc(100vw - 24px));
-  max-height: min(680px, calc(100vh - 128px));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 24px));
+  max-height: min(480px, calc(100vh - 128px));
+  overflow: visible;
+  padding: 0;
+  border-radius: 12px;
+  color: hsl(var(--foreground));
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
+}
+
+/* PopoverContent ships an opaque bg-popover utility; adapt it back to the
+ * workbench glass contract at a higher specificity. */
+.wb-agent-control-popover.wb-glass {
+  border-color: var(--wb-glass-border);
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-glass-blur-strong);
+  backdrop-filter: var(--wb-glass-blur-strong);
+}
+
+.wb-agent-control-popover.wb-glass-lens {
+  overflow: visible;
+}
+
+.wb-agent-control-popover::after {
+  content: '';
+  position: absolute;
+  right: 17px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: rotate(45deg);
+  border-right: 1px solid var(--wb-glass-border, hsl(var(--border) / 48%));
+  border-bottom: 1px solid var(--wb-glass-border, hsl(var(--border) / 48%));
+  border-radius: 2px;
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  pointer-events: none;
+}
+
+.wb-agent-control-scroll {
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding: 14px;
-  color: hsl(var(--foreground));
-  box-shadow: 0 16px 44px hsl(var(--shadow-base, 0 0% 0%) / 18%);
 }
 
 .wb-agent-control-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 2px 2px 12px;
-  border-bottom: 1px solid hsl(var(--border) / 50%);
+  gap: 10px;
+  padding: 11px 12px 9px;
+}
+
+.wb-agent-control-identity {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wb-agent-control-mark {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: hsl(var(--foreground) / 82%);
+}
+
+.wb-agent-control-mark i {
+  position: absolute;
+  right: 0;
+  bottom: 1px;
+  width: 6px;
+  height: 6px;
+  border: 1.5px solid var(--wb-glass-bg-strong, hsl(var(--background)));
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground));
+}
+
+.wb-agent-control-mark[data-mode='background'] i {
+  background: hsl(var(--warning, 38 92% 50%));
+}
+
+.wb-agent-control-mark[data-mode='follow'] i {
+  background: hsl(var(--success, 142 72% 38%));
 }
 
 .wb-agent-control-header h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.3;
   letter-spacing: 0;
 }
 
 .wb-agent-control-header p {
-  max-width: 280px;
-  margin: 4px 0 0;
-  color: hsl(var(--muted-foreground));
-  font-size: 11px;
-  line-height: 1.55;
+  max-width: 230px;
+  margin: 2px 0 0;
+  color: hsl(var(--foreground) / 68%);
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .wb-agent-control-mode-badge {
-  flex: none;
-  min-width: 42px;
-  padding: 3px 7px;
-  border: 1px solid hsl(var(--border) / 58%);
-  border-radius: 6px;
-  color: hsl(var(--muted-foreground));
-  background: hsl(var(--muted) / 50%);
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  padding: 3px 2px;
+  border-radius: 0;
+  color: hsl(var(--foreground) / 68%);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
 }
 
-.wb-agent-control-mode-badge[data-mode='background'] {
-  color: hsl(var(--warning-foreground, 32 80% 30%));
-  border-color: hsl(var(--warning, 38 92% 50%) / 35%);
+.wb-agent-control-mode-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground));
 }
 
-.wb-agent-control-mode-badge[data-mode='follow'] {
-  color: hsl(var(--success, 142 64% 32%));
-  border-color: hsl(var(--success, 142 72% 38%) / 32%);
+.wb-agent-control-mode-badge[data-mode='background'] i {
+  background: hsl(var(--warning, 38 92% 50%));
+}
+
+.wb-agent-control-mode-badge[data-mode='follow'] i {
+  background: hsl(var(--success, 142 72% 38%));
 }
 
 .wb-agent-control-mode-control {
-  display: grid;
-  gap: 7px;
-  padding: 12px 2px;
-  border-bottom: 1px solid hsl(var(--border) / 50%);
+  padding: 8px 12px 9px;
+  border-top: 1px solid hsl(var(--border) / 38%);
+  border-bottom: 0;
+  background: transparent;
 }
 
-.wb-agent-control-mode-control > span,
+.wb-agent-control-mode-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wb-agent-control-mode-heading > span,
 .wb-agent-capabilities-title {
   color: hsl(var(--foreground) / 86%);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   line-height: 1.4;
 }
 
+.wb-agent-control-segmented {
+  flex: 0 0 auto;
+  justify-self: end;
+  background: hsl(var(--foreground) / 6%);
+}
+
+.wb-agent-control-segmented .study-shell-segmented-thumb {
+  border-color: transparent;
+  box-shadow: 0 1px 3px hsl(var(--shadow-base, 0 0% 0%) / 12%);
+}
+
+.wb-agent-control-segmented .study-shell-segmented-button {
+  height: 25px;
+  padding-inline: 9px;
+  font-size: 10.5px;
+}
+
 .wb-agent-control-mode-description,
 .wb-agent-control-error {
-  margin: 0;
-  font-size: 10.5px;
-  line-height: 1.5;
+  margin: 5px 0 0;
+  font-size: 9.5px;
+  line-height: 1.45;
 }
 
 .wb-agent-control-mode-description {
-  color: hsl(var(--muted-foreground));
+  color: hsl(var(--foreground) / 66%);
 }
 
 .wb-agent-control-error {
@@ -124,55 +236,182 @@
 }
 
 .wb-agent-capabilities {
-  padding: 12px 2px 4px;
+  padding: 8px 12px 0;
+  border-top: 1px solid hsl(var(--border) / 34%);
+}
+
+.wb-agent-capabilities-header,
+.wb-agent-capabilities-heading,
+.wb-agent-capabilities-toggle {
+  display: flex;
+  align-items: center;
+}
+
+.wb-agent-capabilities-header {
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 22px;
+  margin-bottom: 4px;
+}
+
+.wb-agent-capabilities-heading {
+  gap: 6px;
 }
 
 .wb-agent-capabilities-title {
-  margin: 0 0 6px;
+  margin: 0;
   letter-spacing: 0;
 }
 
-.wb-agent-capabilities-list {
+.wb-agent-capabilities-heading > span {
+  color: hsl(var(--foreground) / 54%);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.wb-agent-capabilities-toggle {
+  gap: 3px;
+  min-height: 24px;
+  padding: 2px 3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 9.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wb-agent-capabilities-toggle:hover,
+.wb-agent-capabilities-toggle:focus-visible {
+  background: color-mix(in hsl, hsl(var(--muted-foreground)) 10%, transparent 90%);
+  color: hsl(var(--foreground));
+  outline: none;
+}
+
+.wb-agent-capabilities-toggle svg {
+  transition: transform 140ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-agent-capabilities-toggle[aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+.wb-agent-capabilities-list,
+.wb-agent-capability-groups {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.wb-agent-capability-groups {
+  display: grid;
+}
+
+.wb-agent-capability-group {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 37px;
+  padding: 4px 0;
+  border-bottom: 1px solid hsl(var(--border) / 28%);
+}
+
+.wb-agent-capability-group:last-child {
+  border-bottom: 0;
+}
+
+.wb-agent-capability-group-icon,
+.wb-agent-capability-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 0;
+  background: transparent;
+  color: hsl(var(--foreground) / 68%);
+}
+
+.wb-agent-capability-group-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.wb-agent-capability-group-copy,
+.wb-agent-capability-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.wb-agent-capability-group-copy {
+  gap: 1px;
+}
+
+.wb-agent-capability-group-copy > span {
+  color: hsl(var(--foreground) / 88%);
+  font-size: 10.5px;
+  font-weight: 550;
+  line-height: 1.35;
+}
+
+.wb-agent-capability-group-copy small {
+  overflow: hidden;
+  color: hsl(var(--foreground) / 62%);
+  font-size: 9.5px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wb-agent-capability-row {
   display: grid;
-  grid-template-columns: minmax(64px, 0.38fr) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px solid hsl(var(--border) / 35%);
+  border-bottom: 1px solid hsl(var(--border) / 28%);
 }
 
 .wb-agent-capability-row:last-child {
   border-bottom: 0;
 }
 
+.wb-agent-capability-icon {
+  width: 24px;
+  height: 24px;
+  margin-top: 1px;
+}
+
+.wb-agent-capability-copy {
+  gap: 1px;
+}
+
 .wb-agent-capability-app {
   color: hsl(var(--foreground) / 88%);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .wb-agent-capability-actions {
   min-width: 0;
-  color: hsl(var(--muted-foreground));
-  font-size: 10.5px;
-  line-height: 1.5;
+  color: hsl(var(--foreground) / 62%);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .wb-agent-capabilities-safety {
   display: flex;
   align-items: flex-start;
-  gap: 7px;
-  margin: 8px 0 0;
-  padding-top: 8px;
-  color: hsl(var(--muted-foreground));
-  font-size: 10.5px;
-  line-height: 1.5;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 8px 0 9px;
+  border-top: 1px solid hsl(var(--border) / 30%);
+  background: transparent;
+  color: hsl(var(--foreground) / 64%);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .wb-agent-capabilities-safety svg {
@@ -183,14 +422,38 @@
 
 .wb-agent-control-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  padding-top: 12px;
-  border-top: 1px solid hsl(var(--border) / 50%);
+  gap: 4px;
+  flex: 0 0 auto;
+  padding: 7px 10px 8px;
+  border-top: 1px solid hsl(var(--border) / 38%);
+  border-radius: 0 0 12px 12px;
+  background: transparent;
 }
 
 .wb-agent-control-actions button {
-  gap: 6px;
+  gap: 5px;
+}
+
+.wb-agent-control-open-chat {
+  height: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  border-radius: 7px;
+  background: hsl(var(--foreground) / 8%);
+  color: hsl(var(--foreground) / 88%);
+}
+
+.wb-agent-control-open-chat:hover {
+  background: hsl(var(--foreground) / 12%);
+}
+
+.wb-agent-control-actions button:last-child {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 8px;
 }
 
 .wb-agent-capabilities[data-variant='settings'] {
@@ -198,7 +461,7 @@
   padding: 0;
 }
 
-.wb-agent-capabilities[data-variant='settings'] .wb-agent-capabilities-title {
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capabilities-header {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -208,6 +471,31 @@
   clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-row {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+  padding: 8px 0;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-icon {
+  width: 27px;
+  height: 27px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-app {
+  font-size: 11px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capability-actions {
+  font-size: 10px;
+}
+
+.wb-agent-capabilities[data-variant='settings'] .wb-agent-capabilities-safety {
+  margin: 10px 0 0;
+  padding: 9px 0 0;
+  background: transparent;
 }
 
 @media (width >= 900px) {
@@ -220,7 +508,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wb-agent-control-trigger,
-  .wb-agent-control-popover {
+  .wb-agent-control-popover,
+  .wb-agent-capabilities-toggle svg {
     animation: none;
     transition: none;
   }
