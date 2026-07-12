@@ -18,6 +18,7 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { TodoItem, TodoList } from '@/features/todo/types';
 import { workbenchBus } from '../core/workbenchBus';
+import { useWorkbenchGestures } from '../hooks/useWorkbenchGestures';
 import {
   completeTodoAgendaItem,
   getTodoAgendaSnapshot,
@@ -38,6 +39,15 @@ export function formatLocalDateKey(date: Date): string {
 
 function addLocalDays(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}
+
+function addLocalMonths(date: Date, amount: number): Date {
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + amount + 1, 0).getDate();
+  return new Date(
+    date.getFullYear(),
+    date.getMonth() + amount,
+    Math.min(date.getDate(), lastDay),
+  );
 }
 
 export function buildCalendarDays(month: Date): Date[] {
@@ -88,6 +98,9 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
   const [selectedKey, setSelectedKey] = useState(todayKey);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const previousTodayKey = useRef(todayKey);
+  const widgetRef = useRef<HTMLElement | null>(null);
+  const pendingDayFocusRef = useRef<string | null>(null);
+  const swipeCommittedRef = useRef(false);
 
   useEffect(() => {
     const previous = previousTodayKey.current;
@@ -148,6 +161,29 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
     );
   }, [locale]);
 
+  const selectDate = useCallback((date: Date, moveFocus = false) => {
+    const key = formatLocalDateKey(date);
+    setSelectedKey(key);
+    setVisibleMonth((current) => (
+      current.getFullYear() === date.getFullYear() && current.getMonth() === date.getMonth()
+        ? current
+        : new Date(date.getFullYear(), date.getMonth(), 1)
+    ));
+    if (moveFocus) pendingDayFocusRef.current = key;
+  }, []);
+
+  useEffect(() => {
+    const key = pendingDayFocusRef.current;
+    if (!key) return undefined;
+    pendingDayFocusRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      widgetRef.current
+        ?.querySelector<HTMLButtonElement>(`.wb-agenda-day[data-date="${key}"]`)
+        ?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [selectedKey, visibleMonth]);
+
   const changeMonth = useCallback((amount: number) => {
     setVisibleMonth((current) => {
       const next = new Date(current.getFullYear(), current.getMonth() + amount, 1);
@@ -158,6 +194,25 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
       return next;
     });
   }, [today, todayKey]);
+
+  const handleDayKeyDown = useCallback((
+    event: React.KeyboardEvent<HTMLButtonElement>,
+    day: Date,
+  ) => {
+    let next: Date | null = null;
+    switch (event.key) {
+      case 'ArrowLeft': next = addLocalDays(day, -1); break;
+      case 'ArrowRight': next = addLocalDays(day, 1); break;
+      case 'ArrowUp': next = addLocalDays(day, -7); break;
+      case 'ArrowDown': next = addLocalDays(day, 7); break;
+      case 'PageUp': next = addLocalMonths(day, -1); break;
+      case 'PageDown': next = addLocalMonths(day, 1); break;
+      case 'Home': next = today; break;
+      default: return;
+    }
+    event.preventDefault();
+    selectDate(next, true);
+  }, [selectDate, today]);
 
   const openTodoView = useCallback(async () => {
     const view = selectedKey < todayKey ? 'overdue' : selectedKey === todayKey ? 'today' : 'upcoming';
@@ -215,11 +270,35 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
     }
   }, [t]);
 
+  useWorkbenchGestures({
+    target: widgetRef,
+    swipeThreshold: 36,
+    preventDefaultSwipe: true,
+    onSwipe: (gesture) => {
+      if (gesture.phase === 'start') {
+        swipeCommittedRef.current = false;
+        return;
+      }
+      if (
+        gesture.phase !== 'end' ||
+        swipeCommittedRef.current ||
+        gesture.axis !== 'x' ||
+        Math.abs(gesture.deltaX) < 52
+      ) return;
+      swipeCommittedRef.current = true;
+      changeMonth(gesture.deltaX > 0 ? 1 : -1);
+    },
+  });
+
   return (
     <section
+      ref={widgetRef}
       className="wb-agenda-widget wb-glass wb-glass-highlight"
       aria-label={t('agenda.label', { defaultValue: '日历与学习日程' })}
       data-testid="wb-agenda-widget"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) void openTodoView();
+      }}
     >
       <header className="wb-agenda-header">
         <button
@@ -231,10 +310,6 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
           }}
           title={t('agenda.backToToday', { defaultValue: '回到今天' })}
         >
-          <span className="wb-agenda-date-tile" aria-hidden="true">
-            <span>{new Intl.DateTimeFormat(locale, { month: 'short' }).format(today)}</span>
-            <strong>{today.getDate()}</strong>
-          </span>
           <span className="wb-agenda-month-copy">
             <strong>{monthLabel}</strong>
             <small>{t('agenda.pendingCount', { count: snapshot.items.length, defaultValue: `${snapshot.items.length} 项待安排` })}</small>
@@ -277,7 +352,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             <span key={`${label}-${index}`} role="columnheader">{label}</span>
           ))}
         </div>
-        <div className="wb-agenda-days">
+        <div className="wb-agenda-days" key={formatLocalDateKey(visibleMonth)}>
           {calendarDays.map((day) => {
             const key = formatLocalDateKey(day);
             const dayItems = itemsByDate.get(key) ?? [];
@@ -293,9 +368,19 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                 data-outside={!isCurrentMonth || undefined}
                 data-today={isToday || undefined}
                 data-selected={isSelected || undefined}
+                data-date={key}
+                tabIndex={isSelected ? 0 : -1}
                 aria-selected={isSelected}
-                aria-label={new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day)}
-                onClick={() => setSelectedKey(key)}
+                aria-current={isToday ? 'date' : undefined}
+                aria-label={dayItems.length > 0
+                  ? t('agenda.datePendingCount', {
+                    date: new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day),
+                    count: dayItems.length,
+                    defaultValue: `${new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day)}，${dayItems.length} 项待办`,
+                  })
+                  : new Intl.DateTimeFormat(locale, { dateStyle: 'full' }).format(day)}
+                onClick={() => selectDate(day, true)}
+                onKeyDown={(event) => handleDayKeyDown(event, day)}
               >
                 <span>{day.getDate()}</span>
                 <span className="wb-agenda-day-dots" aria-hidden="true">
@@ -334,10 +419,15 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
         {snapshot.isLoading ? (
           <div className="wb-agenda-empty">{t('agenda.loading', { defaultValue: '正在整理日程…' })}</div>
         ) : agendaItems.length === 0 ? (
-          <div className="wb-agenda-empty">
+          <button
+            type="button"
+            className="wb-agenda-empty wb-agenda-empty-action"
+            onClick={() => void openTodoView()}
+          >
             <Check size={16} weight="bold" />
             <span>{t('agenda.clear', { defaultValue: '这一天没有待完成事项' })}</span>
-          </div>
+            <ArrowRight className="wb-agenda-empty-arrow" size={13} weight="bold" />
+          </button>
         ) : (
           agendaItems.map((item) => {
             const overdue = Boolean(item.dueDate && item.dueDate < todayKey);
@@ -351,7 +441,9 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                   onClick={() => void completeItem(item)}
                   aria-label={t('agenda.completeItem', { title: item.title, defaultValue: `完成 ${item.title}` })}
                 >
-                  <span style={{ borderColor: listColor(list, item.todoListId) }} />
+                  <span style={{ borderColor: listColor(list, item.todoListId) }}>
+                    {completingId === item.id ? <Check size={9} weight="bold" /> : null}
+                  </span>
                 </button>
                 <button type="button" className="wb-agenda-item-main" onClick={() => void openTodoItem(item)}>
                   <span className="wb-agenda-item-title">{item.title}</span>

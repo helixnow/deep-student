@@ -311,6 +311,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     { value: 'audio' as AssetType, label: t('settings:data_governance.asset_types.audio'), icon: <FileAudio className="h-4 w-4" /> },
     { value: 'videos' as AssetType, label: t('settings:data_governance.asset_types.videos'), icon: <FileVideo className="h-4 w-4" /> },
     { value: 'textbooks' as AssetType, label: t('settings:data_governance.asset_types.textbooks'), icon: <Folder className="h-4 w-4" /> },
+    { value: 'pdf_ocr_sessions' as AssetType, label: t('settings:data_governance.asset_types.pdf_ocr_sessions'), icon: <FileText className="h-4 w-4" /> },
   ], [t]);
   const [actionType, setActionType] = useState<'delete' | 'restore' | 'export' | null>(null);
   // 分层备份状态

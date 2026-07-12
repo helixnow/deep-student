@@ -327,21 +327,21 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     }
 
     return (
-        <div className="flex flex-col h-full bg-background text-xs">
+        <div className="flex h-full flex-col bg-background text-xs text-foreground">
             {/* Metadata + Tags */}
-            <div className="px-3 py-3 space-y-3">
+            <div className="space-y-4 px-3 py-3">
                 {/* Dates — compact, consistent formatting */}
                 <div className="space-y-1.5">
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
                         <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span className="w-14 shrink-0 text-[11px]">{t('notes:context.created', 'Created')}</span>
+                        <span className="w-14 shrink-0 text-xs">{t('notes:context.created', 'Created')}</span>
                         <span className="text-foreground/90 tabular-nums truncate">
                             {formatPanelDate(effectiveActive.created_at, dateLocale)}
                         </span>
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
                         <Clock className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span className="w-14 shrink-0 text-[11px]">{t('notes:context.updated', 'Updated')}</span>
+                        <span className="w-14 shrink-0 text-xs">{t('notes:context.updated', 'Updated')}</span>
                         <span className="text-foreground/90 tabular-nums truncate">
                             {formatPanelDate(effectiveActive.updated_at, dateLocale)}
                         </span>
@@ -356,14 +356,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             {t('notes:context.tags', 'Tags')}
                         </h3>
                         {hasTags && (
-                            <span className="text-[9px] font-normal text-muted-foreground/50 ml-auto">
+                            <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">
                                 {tags.length}
                             </span>
                         )}
                     </div>
 
                     {!hasTags && !isAddingTag && (
-                        <p className="text-[11px] text-muted-foreground/55 leading-snug pl-0.5">
+                        <p className="pl-0.5 text-xs leading-snug text-muted-foreground/70">
                             {t('notes:context.tags_empty_hint', 'Add tags to organize')}
                         </p>
                     )}
@@ -373,7 +373,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <Badge
                                 key={tag}
                                 variant="secondary"
-                                className="h-5 rounded px-1.5 text-[11px] font-normal gap-1 hover:bg-[var(--interactive-hover)] transition-colors cursor-default group"
+                                className="group h-5 gap-1 rounded-sm px-1.5 text-[11px] font-normal transition-colors hover:bg-[var(--interactive-hover)]"
                             >
                                 {tag}
                                 <NotionButton
@@ -413,7 +413,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                             <NotionButton
                                 variant="ghost" size="sm"
                                 className={cn(
-                                    "inline-flex items-center gap-0.5 rounded text-[11px] text-muted-foreground hover:text-foreground",
+                                    "inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
                                     "px-1.5 h-6 transition-colors",
                                     "[@media(pointer:coarse)]:h-8 [@media(pointer:coarse)]:px-2.5"
                                 )}
@@ -436,7 +436,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                         <TextAlignLeft className="w-3.5 h-3.5" />
                         {t('notes:context.outline', 'Outline')}
                         {headings.length > 0 && (
-                            <span className="text-[9px] font-normal text-muted-foreground/50 ml-auto">
+                            <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">
                                 {headings.length}
                             </span>
                         )}
@@ -452,14 +452,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         key={heading.id}
                                         variant="ghost" size="sm"
                                         className={cn(
-                                            "!w-full !justify-start !text-left !py-1 !px-2 !h-auto !rounded truncate text-xs",
+                                            "!h-7 !w-full !justify-start !rounded-sm !px-2 !py-1 !text-left text-xs truncate",
                                             "[@media(pointer:coarse)]:!py-2.5",
                                             heading.level === 1 && "font-medium",
                                             heading.level === 2 && "!pl-4",
                                             heading.level === 3 && "!pl-6",
-                                            heading.level === 4 && "!pl-8 text-[10px]",
-                                            heading.level === 5 && "!pl-10 text-[10px]",
-                                            heading.level === 6 && "!pl-12 text-[10px]",
+                                            heading.level === 4 && "!pl-8",
+                                            heading.level === 5 && "!pl-10",
+                                            heading.level === 6 && "!pl-12",
                                             isActive
                                                 ? "bg-[var(--interactive-hover)] text-foreground font-medium"
                                                 : cn(

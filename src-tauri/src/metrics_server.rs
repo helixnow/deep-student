@@ -28,7 +28,7 @@ pub fn ensure_metrics_server(app_handle: &tauri::AppHandle) {
     let _ = SERVER_STARTED.set(());
 }
 
-async fn start_server(_app_handle: tauri::AppHandle) -> Result<()> {
+async fn start_server(app_handle: tauri::AppHandle) -> Result<()> {
     let mut addr: SocketAddr = std::env::var("DSTU_METRICS_ADDR")
         .unwrap_or_else(|_| DEFAULT_METRICS_ADDR.to_string())
         .parse()
@@ -46,8 +46,14 @@ async fn start_server(_app_handle: tauri::AppHandle) -> Result<()> {
         );
     }
 
-    let make_svc =
-        make_service_fn(|_conn| async { Ok::<_, hyper::Error>(service_fn(handle_request)) });
+    let make_svc = make_service_fn(move |_conn| {
+        let app_handle = app_handle.clone();
+        async move {
+            Ok::<_, hyper::Error>(service_fn(move |request| {
+                handle_request(request, app_handle.clone())
+            }))
+        }
+    });
 
     // `Server::bind` 在端口被占用时会 panic；开发期重复实例不应拖垮 Tokio worker。
     let builder = Server::try_bind(&addr)
@@ -63,7 +69,10 @@ async fn start_server(_app_handle: tauri::AppHandle) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("metrics server错误: {}", e))
 }
 
-async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+async fn handle_request(
+    req: Request<Body>,
+    app_handle: tauri::AppHandle,
+) -> Result<Response<Body>, hyper::Error> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/metrics") => {
             let _guard = METRICS_GATHER_GUARD.lock().await;
@@ -74,6 +83,46 @@ async fn handle_request(req: Request<Body>) -> Result<Response<Body>, hyper::Err
                 .body(Body::from(payload))
                 .unwrap_or_else(|_| Response::new(Body::from("metrics response build failed")));
             Ok(response)
+        }
+        (&Method::POST, "/__tauri_lab/focus")
+            if std::env::var_os("TAURI_LAB_INSTANCE_ID").is_some() =>
+        {
+            let (sender, receiver) = tokio::sync::oneshot::channel();
+            let focus_handle = app_handle.clone();
+            let dispatch_result = app_handle.run_on_main_thread(move || {
+                use tauri::Manager;
+
+                if let Some(window) = focus_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+
+                #[cfg(target_os = "macos")]
+                #[allow(unused_unsafe)]
+                unsafe {
+                    use cocoa::appkit::{NSApp, NSApplication};
+                    use cocoa::base::YES;
+
+                    let ns_app = NSApp();
+                    ns_app.activateIgnoringOtherApps_(YES);
+                }
+
+                let _ = sender.send(());
+            });
+
+            if dispatch_result.is_ok() {
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(2), receiver).await;
+            }
+
+            let status = if dispatch_result.is_ok() {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            };
+            Ok(Response::builder()
+                .status(status)
+                .body(Body::empty())
+                .unwrap_or_else(|_| Response::new(Body::empty())))
         }
         _ => {
             let response = Response::builder()

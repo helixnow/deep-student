@@ -95,14 +95,10 @@ export const REACTFLOW_CONFIG = {
   maxZoom: 2,
   fitViewPadding: 0.2,
   snapToGrid: false,
-  // ★ 对齐主流画布工具（Miro/Figma/XMind）：滚轮/触控板双指 = 平移，
-  // Cmd/Ctrl+滚轮 与 触控板捏合 = 缩放（zoomOnPinch 默认开启，
-  // zoomActivationKeyCode 默认 Meta/Ctrl）。原 zoomOnScroll 模式下
-  // 滚轮直接缩放，触控板双指滚动也被当作缩放，浏览体验差。
-  panOnScroll: true,
-  zoomOnScroll: false,
+  // 滚轮直接缩放画布；画布平移仍可通过拖拽空白区域完成。
+  panOnScroll: false,
+  zoomOnScroll: true,
   nodesDraggable: false,
   nodesConnectable: true,
   elementsSelectable: true,
 };
-

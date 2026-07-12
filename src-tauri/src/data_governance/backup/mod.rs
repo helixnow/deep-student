@@ -1033,6 +1033,7 @@ impl BackupTier {
                 "subjects",
                 "textbooks",
                 "workspaces",
+                "pdf_ocr_sessions",
             ],
             BackupTier::Rebuildable => vec!["lance"],
             BackupTier::LargeAssets => {

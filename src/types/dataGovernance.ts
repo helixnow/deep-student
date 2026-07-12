@@ -515,7 +515,9 @@ export type AssetType =
   | 'subjects'
   | 'workspaces'
   | 'audio'
-  | 'videos';
+  | 'videos'
+  | 'textbooks'
+  | 'pdf_ocr_sessions';
 
 /** 资产类型信息 */
 export interface AssetTypeInfo {
@@ -540,6 +542,8 @@ export function getAssetTypeDisplayName(type: AssetType | string, t: DataGoverna
     workspaces: 'data:governance.asset_type.workspaces',
     audio: 'data:governance.asset_type.audio',
     videos: 'data:governance.asset_type.videos',
+    textbooks: 'data:governance.asset_type.textbooks',
+    pdf_ocr_sessions: 'data:governance.asset_type.pdf_ocr_sessions',
   };
   const key = (keys as Record<string, string>)[type];
   return key ? t(key) : type;

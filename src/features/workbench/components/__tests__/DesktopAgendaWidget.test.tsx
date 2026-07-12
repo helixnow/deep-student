@@ -91,4 +91,51 @@ describe('DesktopAgendaWidget', () => {
       payload: { dueDate: formatLocalDateKey(new Date()) },
     })));
   });
+
+  it('使用单焦点月历并支持方向键与 PageDown 导航', async () => {
+    render(<DesktopAgendaWidget />);
+    const selected = screen.getByRole('gridcell', { selected: true });
+    expect(selected.getAttribute('tabindex')).toBe('0');
+    expect(document.querySelectorAll('.wb-agenda-day[tabindex="0"]')).toHaveLength(1);
+
+    const selectedDate = new Date(`${selected.getAttribute('data-date')}T00:00:00`);
+    fireEvent.keyDown(selected, { key: 'ArrowRight' });
+    await waitFor(() => {
+      const movedCell = screen.getByRole('gridcell', { selected: true });
+      expect(movedCell.getAttribute('data-date')).toBe(formatLocalDateKey(addDays(selectedDate, 1)));
+      expect(document.activeElement).toBe(movedCell);
+    });
+
+    const moved = screen.getByRole('gridcell', { selected: true });
+    fireEvent.keyDown(moved, { key: 'PageDown' });
+    await waitFor(() => {
+      const next = screen.getByRole('gridcell', { selected: true }).getAttribute('data-date');
+      expect(next?.slice(0, 7)).not.toBe(formatLocalDateKey(selectedDate).slice(0, 7));
+    });
+  });
+
+  it('支持触控板横滑切换月份', async () => {
+    render(<DesktopAgendaWidget />);
+    const widget = screen.getByTestId('wb-agenda-widget');
+    const before = screen.getByRole('gridcell', { selected: true }).getAttribute('data-date');
+    fireEvent.wheel(widget, { deltaMode: 0, deltaX: 64, deltaY: 0 });
+    await waitFor(() => {
+      const after = screen.getByRole('gridcell', { selected: true }).getAttribute('data-date');
+      expect(after?.slice(0, 7)).not.toBe(before?.slice(0, 7));
+    });
+  });
+
+  it('空日程区域点击后直达对应待办视图', async () => {
+    mocks.snapshot = { ...mocks.snapshot, items: [] };
+    render(<DesktopAgendaWidget />);
+    fireEvent.click(screen.getByRole('button', { name: '这一天没有待完成事项' }));
+    await waitFor(() => expect(mocks.activateDetailed).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'showView',
+      payload: { view: 'today' },
+    })));
+  });
 });
+
+function addDays(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount);
+}

@@ -229,11 +229,12 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         switch (saveStatus) {
             case 'failed':
             case 'conflict':
-                return 'text-destructive/70';
+                return 'text-destructive';
+            case 'saving':
             case 'unsaved':
-                return 'text-muted-foreground/55';
+                return 'text-muted-foreground';
             default:
-                return 'text-muted-foreground/40';
+                return 'text-muted-foreground/70';
         }
     })();
 
@@ -247,9 +248,9 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     if (!noteId) return null;
 
     return (
-        <div className="mt-5 mb-0 group relative">
+        <header className="notes-document-header group relative pt-7 pb-3">
             <Input
-                className="text-3xl font-bold text-foreground/90 bg-transparent border-none outline-none placeholder:text-muted-foreground/30 w-full p-0 focus-visible:ring-0"
+                className="h-auto w-full border-none bg-transparent p-0 text-[32px] font-bold leading-[1.2] text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
                 value={titleInput}
                 onChange={readOnly ? undefined : handleTitleChange}
                 onBlur={readOnly ? undefined : handleTitleSubmit}
@@ -259,7 +260,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             />
             
              {/* Meta info & Breadcrumbs */}
-             <div className="flex items-center gap-4 mt-2 min-h-[20px]">
+             <div className="mt-2 flex min-h-5 items-center gap-4">
                 {/* Breadcrumbs (Left aligned) - Only show if nested in folders */}
                 {showBreadcrumbs && (
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 overflow-hidden whitespace-nowrap mask-linear-fade select-none mr-auto">
@@ -292,13 +293,17 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                 )}
 
                 {/* Save status & word count (Right aligned) */}
-                <div className={`text-[10px] shrink-0 ${showBreadcrumbs ? 'ml-auto' : 'ml-0'} flex items-center gap-2`}>
+                <div
+                    className={`notes-document-meta shrink-0 ${showBreadcrumbs ? 'ml-auto' : 'ml-0'} flex items-center gap-2 text-[11px] ${saveStatus === 'saved' ? 'notes-document-meta-saved' : ''}`}
+                    aria-live="polite"
+                >
                     {typeof charCount === 'number' && charCount > 0 && (
-                        <span className="text-muted-foreground/40 tabular-nums">
+                        <span className="text-muted-foreground/70 tabular-nums">
                             {t('notes:common.char_count', { count: charCount })}
                         </span>
                     )}
                     <span className={`inline-flex items-center gap-1.5 ${statusClassName}`}>
+                        <span className="notes-save-status-dot" data-status={saveStatus} aria-hidden="true" />
                         <span>{statusLabel}</span>
                         {showRetry && (
                             <button
@@ -314,6 +319,6 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     </span>
                 </div>
             </div>
-        </div>
+        </header>
     );
 };

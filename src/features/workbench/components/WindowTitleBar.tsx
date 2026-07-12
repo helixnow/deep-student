@@ -301,6 +301,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       style={{ height: TITLEBAR_HEIGHT, touchAction: 'none' }}
       data-wb-titlebar
       data-wb-title-draggable=""
+      data-wb-app-tabs={hostsAppTabs ? 'notes' : undefined}
       data-window-id={windowId}
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}

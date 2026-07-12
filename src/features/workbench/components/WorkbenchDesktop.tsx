@@ -74,6 +74,7 @@ import {
   getWorkbenchDesktopOffset,
   setWorkbenchDesktopOffsetProvider,
 } from './window-shell/workbenchPointerAdapter';
+import { installImeScrollContainment } from '../core/imeScrollContainment';
 
 // ---------------------------------------------------------------------------
 // 设置读取（key 契约见 P10 WorkbenchSettingsSection；热更新走 workbench:settings-changed）
@@ -262,6 +263,12 @@ export const WorkbenchDesktop: React.FC = () => {
   const [devPanel, setDevPanel] = useState(false);
 
   const tileMargin = tileMargins.enabled ? tileMargins.px : 0;
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    return installImeScrollContainment(root);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

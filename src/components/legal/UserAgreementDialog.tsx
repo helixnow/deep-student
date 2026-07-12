@@ -174,21 +174,32 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
   const isVisible = preview ? (open ?? false) : true;
 
   // 退场动画延迟卸载：先播放 200ms 退场动画，再真正卸载
-  const [shouldRender, setShouldRender] = useState(false);
+  // 强制首次同意模式必须首帧可见；只有可关闭的预览模式需要延迟挂载。
+  const [shouldRender, setShouldRender] = useState(isVisible);
 
   // 动画状态
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = useState(isVisible && !preview);
   useEffect(() => {
     if (isVisible) {
       setShouldRender(true);
-      // 下一帧触发入场动画
-      requestAnimationFrame(() => setMounted(true));
+      if (!preview) {
+        setMounted(true);
+        return;
+      }
+      // 后台或尚未激活的桌面 WebView 可能暂停 rAF。保留下一帧入场动画，
+      // 同时用定时器保证预览弹窗不会永久停留在 opacity-0。
+      const frameId = requestAnimationFrame(() => setMounted(true));
+      const fallbackTimer = window.setTimeout(() => setMounted(true), 100);
+      return () => {
+        cancelAnimationFrame(frameId);
+        window.clearTimeout(fallbackTimer);
+      };
     } else {
       setMounted(false);
       const timer = setTimeout(() => setShouldRender(false), 200);
       return () => clearTimeout(timer);
     }
-  }, [isVisible]);
+  }, [isVisible, preview]);
 
   // ESC 关闭（仅预览模式）
   useEffect(() => {

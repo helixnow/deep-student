@@ -24,6 +24,19 @@
   z-index: var(--wb-z-window-titlebar, 10);
 }
 
+/* Notes owns the full titlebar with document tabs, so its chrome should read as
+ * one flat desktop-editor-style surface rather than a glass layer above the editor. */
+.wb-titlebar.wb-title-bar[data-wb-app-tabs='notes'] {
+  border-bottom-color: hsl(var(--border));
+  background-color: hsl(var(--muted) / 30%);
+  background-image: none;
+  backdrop-filter: none;
+}
+
+.wb-titlebar.wb-title-bar[data-wb-app-tabs='notes']::after {
+  display: none;
+}
+
 /* ==========================================================================
  * 拖拽区光标：grab / 拖动中 grabbing
  * （覆盖契约 .wb-titlebar 的 cursor:default —— O20 reconcile 事项 #1）

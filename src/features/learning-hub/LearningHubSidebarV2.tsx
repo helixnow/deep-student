@@ -20,66 +20,42 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import type { LearningHubSidebarProps } from './types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
-import { FolderOpen } from '@phosphor-icons/react';
+import {
+  Brain,
+  ClockCounterClockwise,
+  Database,
+  Desktop,
+  Files,
+  FolderOpen,
+  Star,
+  Trash,
+} from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getQuickAccessTypeFromPath } from './learningHubContracts';
-import {
-  NoteIcon,
-  TextbookIcon,
-  ExamIcon,
-  EssayIcon,
-  TranslationIcon,
-  MindmapIcon,
-  ImageFileIcon,
-  GenericFileIcon,
-  FavoriteIcon,
-  RecentIcon,
-  TrashIcon,
-  IndexStatusIcon,
-  MemoryIcon,
-  AllFilesIcon,
-  DesktopIcon,
-  type ResourceIconProps,
-} from './icons';
 
 type QuickAccessType = 'allFiles' | 'notes' | 'textbooks' | 'exams' | 'essays' | 'translations' | 'favorites' | 'recent' | 'trash' | 'images' | 'files' | 'mindmaps' | 'indexStatus' | 'memory' | 'desktop';
 
 interface QuickAccessItem {
   type: QuickAccessType;
-  CustomIcon: React.FC<ResourceIconProps>;
+  CustomIcon: Icon;
   labelKey: string;
   defaultLabel: string;
 }
 
 // ★ 快捷访问分组（与桌面端 FinderQuickAccess 保持一致）
 const QUICK_ACCESS_ITEMS: QuickAccessItem[] = [
-  { type: 'desktop', CustomIcon: DesktopIcon, labelKey: 'finder.quickAccess.desktop', defaultLabel: '桌面' },
-  { type: 'allFiles', CustomIcon: AllFilesIcon, labelKey: 'finder.quickAccess.allFiles', defaultLabel: '所有文件' },
-  { type: 'recent', CustomIcon: RecentIcon, labelKey: 'finder.quickAccess.recent', defaultLabel: '最近使用' },
-  { type: 'favorites', CustomIcon: FavoriteIcon, labelKey: 'finder.quickAccess.favorites', defaultLabel: '收藏' },
-];
-
-// ★ 资源类型分组
-const RESOURCE_TYPE_ITEMS: QuickAccessItem[] = [
-  { type: 'notes', CustomIcon: NoteIcon, labelKey: 'finder.quickAccess.notes', defaultLabel: '笔记' },
-  { type: 'textbooks', CustomIcon: TextbookIcon, labelKey: 'finder.quickAccess.textbooks', defaultLabel: '教材' },
-  { type: 'exams', CustomIcon: ExamIcon, labelKey: 'finder.quickAccess.exams', defaultLabel: '题库' },
-  { type: 'essays', CustomIcon: EssayIcon, labelKey: 'finder.quickAccess.essays', defaultLabel: '作文' },
-  { type: 'translations', CustomIcon: TranslationIcon, labelKey: 'finder.quickAccess.translations', defaultLabel: '翻译' },
-  { type: 'mindmaps', CustomIcon: MindmapIcon, labelKey: 'finder.quickAccess.mindmaps', defaultLabel: '思维导图' },
-];
-
-// ★ 媒体分组
-const MEDIA_ITEMS: QuickAccessItem[] = [
-  { type: 'images', CustomIcon: ImageFileIcon, labelKey: 'finder.quickAccess.images', defaultLabel: '图片' },
-  { type: 'files', CustomIcon: GenericFileIcon, labelKey: 'finder.quickAccess.files', defaultLabel: '文档' },
+  { type: 'desktop', CustomIcon: Desktop, labelKey: 'finder.quickAccess.desktop', defaultLabel: '桌面' },
+  { type: 'allFiles', CustomIcon: Files, labelKey: 'finder.quickAccess.allFiles', defaultLabel: '所有文件' },
+  { type: 'recent', CustomIcon: ClockCounterClockwise, labelKey: 'finder.quickAccess.recent', defaultLabel: '最近使用' },
+  { type: 'favorites', CustomIcon: Star, labelKey: 'finder.quickAccess.favorites', defaultLabel: '收藏' },
 ];
 
 // ★ 系统分组
 const SYSTEM_ITEMS: QuickAccessItem[] = [
-  { type: 'trash', CustomIcon: TrashIcon, labelKey: 'finder.quickAccess.trash', defaultLabel: '回收站' },
-  { type: 'indexStatus', CustomIcon: IndexStatusIcon, labelKey: 'finder.quickAccess.indexStatus', defaultLabel: '索引状态' },
-  { type: 'memory', CustomIcon: MemoryIcon, labelKey: 'memory.title', defaultLabel: '记忆' },
+  { type: 'trash', CustomIcon: Trash, labelKey: 'finder.quickAccess.trash', defaultLabel: '回收站' },
+  { type: 'indexStatus', CustomIcon: Database, labelKey: 'finder.quickAccess.indexStatus', defaultLabel: '索引状态' },
+  { type: 'memory', CustomIcon: Brain, labelKey: 'memory.title', defaultLabel: '记忆' },
 ];
 
 interface LearningHubSidebarV2ExtendedProps extends LearningHubSidebarProps {
@@ -196,18 +172,6 @@ export function LearningHubSidebarV2({
         {/* 快捷访问分组 */}
         <div className="space-y-0.5">
           {QUICK_ACCESS_ITEMS.map(renderNavItem)}
-        </div>
-
-        {/* 资源类型分组 */}
-        {renderSectionTitle(t('finder.quickAccess.resourceTypes'))}
-        <div className="space-y-0.5">
-          {RESOURCE_TYPE_ITEMS.map(renderNavItem)}
-        </div>
-
-        {/* 媒体分组 */}
-        {renderSectionTitle(t('finder.quickAccess.media'))}
-        <div className="space-y-0.5">
-          {MEDIA_ITEMS.map(renderNavItem)}
         </div>
 
         {/* 系统分组 */}

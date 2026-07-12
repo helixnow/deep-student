@@ -293,7 +293,7 @@ fn archive_synced_change_logs(active_dir: &std::path::Path, keep_days: i64) {
 /// 在每次同步进入文件级阶段之前调用。对每条 pending：
 /// 1. 调 `mark_blob_deleted` 写云端 tombstone 清单
 /// 2. 成功后从本地队列删除
-/// 3. 失败（如网络问题）则 `retry_count += 1`，达到阈值后放弃（保留记录供排查）
+/// 3. 失败（如网络问题）则 `retry_count += 1`，后续同步继续重试
 ///
 /// 返回成功推送的条数；云端传播失败必须上浮，避免后续行级同步在删除未发布时继续推进。
 async fn drain_blob_deletion_queue(
@@ -301,8 +301,6 @@ async fn drain_blob_deletion_queue(
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
 ) -> Result<usize, String> {
-    const MAX_RETRIES: i64 = 5;
-
     let vfs_path = active_dir.join("databases").join("vfs.db");
     if !vfs_path.exists() {
         return Ok(0);
@@ -331,14 +329,13 @@ async fn drain_blob_deletion_queue(
         let mut stmt = match conn.prepare(
             "SELECT hash, relative_path, size, deleted_at
              FROM __blob_deletion_queue
-             WHERE retry_count < ?1
-             ORDER BY deleted_at ASC
+             ORDER BY retry_count ASC, deleted_at ASC
              LIMIT 500",
         ) {
             Ok(s) => s,
             Err(e) => return Err(format!("读取 blob 删除队列失败: {}", e)),
         };
-        let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
+        let mapped = match stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
@@ -412,8 +409,6 @@ async fn drain_asset_deletion_queue(
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
 ) -> Result<usize, String> {
-    const MAX_RETRIES: i64 = 5;
-
     let vfs_path = active_dir.join("databases").join("vfs.db");
     if !vfs_path.exists() {
         return Ok(0);
@@ -444,14 +439,13 @@ async fn drain_asset_deletion_queue(
         let mut stmt = match conn.prepare(
             "SELECT key, size, deleted_at
              FROM __asset_deletion_queue
-             WHERE retry_count < ?1
-             ORDER BY deleted_at ASC
+             ORDER BY retry_count ASC, deleted_at ASC
              LIMIT 500",
         ) {
             Ok(s) => s,
             Err(e) => return Err(format!("读取 asset 删除队列失败: {}", e)),
         };
-        let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
+        let mapped = match stmt.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<i64>>(1)?,
@@ -521,8 +515,6 @@ async fn drain_workspace_deletion_queue(
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
 ) -> Result<usize, String> {
-    const MAX_RETRIES: i64 = 5;
-
     let chat_path = active_dir.join("chat_v2.db");
     if !chat_path.exists() {
         return Ok(0);
@@ -553,19 +545,17 @@ async fn drain_workspace_deletion_queue(
         let mut stmt = match conn.prepare(
             "SELECT workspace_id, deleted_at
              FROM __workspace_deletion_queue
-             WHERE retry_count < ?1
-             ORDER BY deleted_at ASC
+             ORDER BY retry_count ASC, deleted_at ASC
              LIMIT 500",
         ) {
             Ok(s) => s,
             Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
         };
-        let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
-            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-        }) {
-            Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
-            Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
-        };
+        let mapped =
+            match stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))) {
+                Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
+                Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
+            };
         mapped
     };
 
@@ -743,7 +733,7 @@ fn workspace_coordinator_from_app(
 
 async fn run_file_level_sync(
     active_dir: &std::path::Path,
-    app_data_dir: &std::path::Path,
+    _app_data_dir: &std::path::Path,
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
     direction: SyncDirection,
@@ -839,7 +829,9 @@ async fn run_file_level_sync(
         .sync_asset_directories_with_tombstones_and_progress(
             storage,
             active_dir,
-            app_data_dir,
+            // FileManager is initialized with the active A/B slot. Keep the
+            // legacy `app_data/...` cloud namespace, but map it to that slot.
+            active_dir,
             direction,
             progress.map(|progress| {
                 progress.transfer_callback(direction, 2, total_steps, "文件级传输")
@@ -4376,6 +4368,25 @@ mod tests {
         assert!(
             !production_source.contains("download_snapshot_bootstrap_changes(storage)"),
             "生产命令路径不得保留可误启用的 v1 快照 bootstrap"
+        );
+    }
+
+    #[test]
+    fn deletion_queues_never_permanently_abandon_failed_entries() {
+        let source = include_str!("commands_sync.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production source precedes tests");
+
+        assert!(
+            !production_source.contains("WHERE retry_count <"),
+            "file deletion queues must retry retained tombstones on later sync runs"
+        );
+        assert_eq!(
+            production_source.matches("ORDER BY retry_count ASC, deleted_at ASC").count(),
+            3,
+            "blob, asset, and workspace queues should prioritize fresh failures without dropping older ones"
         );
     }
 

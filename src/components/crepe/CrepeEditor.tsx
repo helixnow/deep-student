@@ -49,6 +49,7 @@ import './CrepeEditor.css';
 import { useCrepeBlockDrag } from './hooks/useCrepeBlockDrag';
 import { useSlashMenuCustomScrollbar } from './hooks/useSlashMenuCustomScrollbar';
 import { createAgentInsertTransaction } from './useCrepeEditor';
+import { scrollSelectionIntoEditorViewport } from './scrollSelectionIntoEditorViewport';
 
 /**
  * Crepe 编辑器组件
@@ -1512,6 +1513,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                       }
                     };
 
+                    const originalHandleScrollToSelection = view.props?.handleScrollToSelection;
+                    const handleScrollToSelection = (editorView: any) => {
+                      if (originalHandleScrollToSelection?.(editorView)) return true;
+                      return scrollSelectionIntoEditorViewport(editorView);
+                    };
+                    view.setProps?.({ handleScrollToSelection });
+
                     const dom = view.dom as HTMLElement | null;
                     dom?.addEventListener('compositionstart', handleCompositionStart, true);
                     dom?.addEventListener('compositionend', handleCompositionEnd, true);
@@ -1533,6 +1541,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                         }
                       } catch { /* inputCleanup 可能已被回收 */ }
                       try {
+                        if (view.props?.handleScrollToSelection === handleScrollToSelection) {
+                          view.setProps?.({ handleScrollToSelection: originalHandleScrollToSelection });
+                        }
                         dom?.removeEventListener('compositionstart', handleCompositionStart, true);
                         dom?.removeEventListener('compositionend', handleCompositionEnd, true);
                         dom?.removeEventListener('focus', handleFocus, true);

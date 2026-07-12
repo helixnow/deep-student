@@ -236,7 +236,6 @@ pub fn path_modified_after(path: &Path, timestamp: &str) -> bool {
 /// - 消费路径把"解不开"当"无 tombstone"，删除静默不传播；
 /// - `mark_*` 写入路径拿到空清单后整体覆盖云端，丢失该设备全部历史 tombstone。
 ///
-/// JSON 损坏（非密码问题）仍保留 warn + 跳过。
 fn decode_tombstone_file<T: serde::de::DeserializeOwned>(
     codec: &dyn PayloadCodec,
     bytes: &[u8],
@@ -248,13 +247,14 @@ fn decode_tombstone_file<T: serde::de::DeserializeOwned>(
             label, e
         ))
     })?;
-    match serde_json::from_slice::<T>(&decoded) {
-        Ok(v) => Ok(Some(v)),
-        Err(e) => {
-            tracing::warn!("[sync] {} tombstone 清单损坏，忽略: {}", label, e);
-            Ok(None)
-        }
-    }
+    serde_json::from_slice::<T>(&decoded)
+        .map(Some)
+        .map_err(|e| {
+            SyncError::Database(format!(
+                "{} tombstone 清单损坏，已停止同步且未推进水位: {}",
+                label, e
+            ))
+        })
 }
 
 async fn list_tombstone_keys(
@@ -308,10 +308,11 @@ fn filter_blob_tombstones_after(manifest: BlobTombstones, watermark: u64) -> (Bl
     let mut max_offset = watermark;
     for (hash, entry) in manifest.entries {
         let offset = tombstone_offset_from_deleted_at(&entry.deleted_at);
-        if offset > watermark {
-            max_offset = max_offset.max(offset);
-            filtered.entries.insert(hash, entry);
-        }
+        max_offset = max_offset.max(offset);
+        // Timestamps are not a safe cursor: two deletes can share one millisecond,
+        // and wall clocks can move backwards. Tombstones are retained and their
+        // application is idempotent, so replay the complete per-device set.
+        filtered.entries.insert(hash, entry);
     }
     (filtered, max_offset)
 }
@@ -327,10 +328,8 @@ fn filter_asset_tombstones_after(
     let mut max_offset = watermark;
     for (key, entry) in manifest.entries {
         let offset = tombstone_offset_from_deleted_at(&entry.deleted_at);
-        if offset > watermark {
-            max_offset = max_offset.max(offset);
-            filtered.entries.insert(key, entry);
-        }
+        max_offset = max_offset.max(offset);
+        filtered.entries.insert(key, entry);
     }
     (filtered, max_offset)
 }
@@ -346,10 +345,8 @@ fn filter_workspace_tombstones_after(
     let mut max_offset = watermark;
     for (ws_id, entry) in manifest.entries {
         let offset = tombstone_offset_from_deleted_at(&entry.deleted_at);
-        if offset > watermark {
-            max_offset = max_offset.max(offset);
-            filtered.entries.insert(ws_id, entry);
-        }
+        max_offset = max_offset.max(offset);
+        filtered.entries.insert(ws_id, entry);
     }
     (filtered, max_offset)
 }
@@ -922,6 +919,63 @@ mod tests {
             map.contains_key("old"),
             "离线设备可能仍需该删除记录；权威 replace snapshot 上线前不得裁剪"
         );
+    }
+
+    #[test]
+    fn watermark_never_filters_same_millisecond_or_clock_rewind_tombstones() {
+        let same_millis = "2026-05-01T00:00:00.123Z";
+        let older = "2026-04-30T23:59:59.000Z";
+        let watermark = tombstone_offset_from_deleted_at(same_millis);
+
+        let mut blobs = BlobTombstones::default();
+        for (key, deleted_at) in [("same", same_millis), ("rewind", older)] {
+            blobs.entries.insert(
+                key.to_string(),
+                BlobTombstoneEntry {
+                    deleted_at: deleted_at.to_string(),
+                    device_id: "device-a".to_string(),
+                    size: None,
+                    relative_path: None,
+                },
+            );
+        }
+        let (blobs, _) = filter_blob_tombstones_after(blobs, watermark);
+        assert_eq!(blobs.entries.len(), 2);
+
+        let mut assets = AssetTombstones::default();
+        assets.entries.insert(
+            "same".to_string(),
+            AssetTombstoneEntry {
+                deleted_at: same_millis.to_string(),
+                device_id: "device-a".to_string(),
+                size: None,
+            },
+        );
+        let (assets, _) = filter_asset_tombstones_after(assets, watermark);
+        assert!(assets.entries.contains_key("same"));
+
+        let mut workspaces = WorkspaceTombstones::default();
+        workspaces.entries.insert(
+            "rewind".to_string(),
+            WorkspaceTombstoneEntry {
+                deleted_at: older.to_string(),
+                device_id: "device-a".to_string(),
+            },
+        );
+        let (workspaces, _) = filter_workspace_tombstones_after(workspaces, watermark);
+        assert!(workspaces.entries.contains_key("rewind"));
+    }
+
+    #[test]
+    fn malformed_tombstone_manifest_fails_closed() {
+        let error = decode_tombstone_file::<BlobTombstones>(
+            &PlainCodec,
+            br#"{"entries":{"broken":]}}"#,
+            "blob",
+        )
+        .expect_err("malformed tombstone JSON must stop sync");
+
+        assert!(error.to_string().contains("未推进水位"));
     }
 
     #[test]

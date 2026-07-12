@@ -159,7 +159,7 @@
   "messages": {
     "connectionSuccess": "连接成功！",
     "configSaved": "配置已保存",
-    "configSavedButCredentialsFailed": "配置已保存（凭据存储失败）",
+    "configSavedButCredentialsFailed": "配置未保存：凭据无法写入安全存储",
     "configCleared": "配置已清除",
     "versionDeleted": "版本已删除"
   }

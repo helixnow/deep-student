@@ -40,6 +40,7 @@ const mockDataGovernanceApi = vi.hoisted(() => ({
   getBackupList: vi.fn(),
   listResumableJobs: vi.fn(),
   getSyncStatus: vi.fn(),
+  detectPruneGap: vi.fn(),
   getAuditLogs: vi.fn(),
   runBackup: vi.fn(),
   backupTiered: vi.fn(),
@@ -200,6 +201,11 @@ function setupDefaultMocks(opts?: { cloudConfigured?: boolean }) {
   mockDataGovernanceApi.getBackupList.mockResolvedValue([]);
   mockDataGovernanceApi.listResumableJobs.mockResolvedValue([]);
   mockDataGovernanceApi.getSyncStatus.mockResolvedValue(sampleSyncStatus);
+  mockDataGovernanceApi.detectPruneGap.mockResolvedValue({
+    has_gap: false,
+    since_version: 0,
+    min_available_version: null,
+  });
   mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
 
   if (opts?.cloudConfigured) {

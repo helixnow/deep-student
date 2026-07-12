@@ -878,7 +878,7 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       className={`w-full h-full overflow-hidden bg-[var(--mm-bg)] relative ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''} ${isExporting ? 'mm-exporting' : ''}`}
     >
       {breadcrumbPath.length > 1 && (
-        <div className="absolute top-2 left-2 z-20 flex items-center gap-1 px-1.5 h-7 rounded border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-xs text-[var(--mm-text-secondary)] select-none max-w-[min(480px,70vw)]">
+        <div className="mm-canvas-breadcrumb">
           <NotionButton
             variant="ghost"
             onClick={() => setViewRootId(null)}
@@ -940,14 +940,14 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       >
         <Controls
           showInteractive={false}
-          className="!shadow-none !rounded !border !border-[var(--mm-border)] !bg-[var(--mm-bg-elevated)]"
+          className="mm-canvas-controls"
         />
         <MiniMap
           nodeColor={() => 'var(--mm-text-muted)'}
           nodeStrokeWidth={3}
           maskColor="hsl(var(--foreground) / 0.08)"
-          style={{ width: 120, height: 80, backgroundColor: 'var(--mm-bg-elevated)' }}
-          className="!shadow-none !rounded !border !border-[var(--mm-border)]"
+          style={{ width: 104, height: 68, backgroundColor: 'var(--mm-bg-elevated)' }}
+          className="mm-canvas-minimap"
           pannable
           zoomable
         />

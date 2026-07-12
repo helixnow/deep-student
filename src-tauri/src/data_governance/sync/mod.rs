@@ -9124,7 +9124,9 @@ impl SyncManager {
                     Ok(_) => downloaded += 1,
                     Err(e) => {
                         tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
-                        let _ = std::fs::remove_file(&dest);
+                        // Provider downloads verify into a sibling temporary file and only
+                        // replace `dest` after checksum success. Keep an existing local file
+                        // when the remote object is corrupt or disappears mid-transfer.
                         download_failures.push(key.clone());
                     }
                 }

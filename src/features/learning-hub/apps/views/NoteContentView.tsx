@@ -85,19 +85,19 @@ async function readOccSafeNoteSnapshot(path: string) {
  */
 const NoteEditorSkeleton: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex-1 min-h-0 overflow-hidden" role="status" aria-label={label}>
-    <div className="w-full max-w-[860px] mx-auto px-5 sm:px-12 pt-8 flex flex-col">
+    <div className="flex h-9 items-center border-b border-border px-5 sm:px-12">
+      <Skeleton className="h-7 w-7" />
+      <div className="ml-auto flex gap-1">
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+        <Skeleton className="h-7 w-7" />
+      </div>
+    </div>
+    <div className="w-full max-w-[816px] mx-auto px-5 sm:px-12 pt-7 flex flex-col">
       {/* 标题行 */}
       <Skeleton className="h-9 w-1/2" />
-      {/* 工具栏行 */}
-      <div className="mt-4 flex items-center gap-1.5">
-        <Skeleton className="h-7 w-7" />
-        <Skeleton className="h-7 w-7" />
-        <Skeleton className="h-7 w-7" />
-        <Skeleton className="h-7 w-7" />
-        <Skeleton className="h-7 w-20" />
-      </div>
       {/* 正文行 */}
-      <div className="mt-8 flex flex-col gap-3">
+      <div className="mt-10 flex flex-col gap-3">
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-11/12" />
         <Skeleton className="h-4 w-4/5" />
@@ -816,20 +816,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full w-2/5 bg-primary animate-[progress-indeterminate_1.5s_ease-in-out_infinite]" />
         </div>
       )}
-      <div className="absolute right-2 top-2 z-30">
-        <CommonTooltip content={t('notes:contextPanel.title', '属性')} position="bottom">
-          <NotionButton
-            variant="ghost" iconOnly size="sm"
-            className={cn('h-7 w-7 text-muted-foreground hover:text-foreground', (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground')}
-            onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
-            aria-label={t('notes:contextPanel.title', '属性')}
-            aria-expanded={isSmallScreen ? mobilePanelOpen : rightPanelVisible}
-          >
-            <SidebarSimple size={15} aria-hidden="true" />
-          </NotionButton>
-        </CommonTooltip>
-      </div>
-
       <main className="flex-1 min-h-0 flex flex-col" data-note-content-area>
         {isContentReady ? (
           <NotesCrepeEditor
@@ -846,6 +832,24 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
+            headerActions={(
+              <CommonTooltip content={t('notes:contextPanel.title', '属性')} position="bottom">
+                <NotionButton
+                  variant="ghost"
+                  iconOnly
+                  size="sm"
+                  className={cn(
+                    'h-7 w-7 text-muted-foreground hover:text-foreground',
+                    (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground',
+                  )}
+                  onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
+                  aria-label={t('notes:contextPanel.title', '属性')}
+                  aria-expanded={isSmallScreen ? mobilePanelOpen : rightPanelVisible}
+                >
+                  <SidebarSimple size={15} aria-hidden="true" />
+                </NotionButton>
+              </CommonTooltip>
+            )}
           />
         ) : (
           <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note', 'Loading note...')} />
@@ -854,13 +858,13 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
       {!isSmallScreen && rightPanelVisible && (
         <aside
-          className="absolute bottom-2 right-2 top-10 z-30 flex flex-col overflow-hidden border border-border bg-background shadow-sm"
-          style={{ width: 'min(300px, calc(100% - 16px))' }}
+          className="notes-properties-overlay absolute bottom-3 right-3 top-12 z-30 flex flex-col overflow-hidden border border-border bg-background/98 shadow-md"
+          style={{ width: 'min(288px, calc(100% - 24px))' }}
           aria-label={t('notes:contextPanel.title', '属性')}
         >
-          <div className="flex h-8 flex-shrink-0 items-center justify-between border-b border-border px-2">
-            <span className="text-xs font-medium text-muted-foreground">{t('notes:contextPanel.title', '属性')}</span>
-            <NotionButton variant="ghost" iconOnly size="sm" className="h-6 w-6" onClick={toggleRightPanel} aria-label={t('common:close', '关闭')}>
+          <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
+            <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title', '属性')}</span>
+            <NotionButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close', '关闭')}>
               <X size={13} aria-hidden="true" />
             </NotionButton>
           </div>

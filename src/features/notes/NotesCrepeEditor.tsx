@@ -71,6 +71,8 @@ export interface NotesCrepeEditorProps {
   readOnly?: boolean;
   /** 自定义类名 */
   className?: string;
+  /** 编辑器操作栏右侧的宿主应用动作（如属性/大纲入口） */
+  headerActions?: React.ReactNode;
   /** 编辑器实例变化回调（创建/销毁） */
   onEditorReady?: (api: CrepeEditorApi | null) => void;
   /**
@@ -96,6 +98,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   noteId: dstuNoteId,
   readOnly = false,
   className,
+  headerActions,
   onEditorReady,
   onEditorApiReady,
   dirtyRegistryKey,
@@ -1228,32 +1231,20 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         </div>
       )}
 
-      {/* 悬浮头部和工具栏 - 不随正文滚动，占满整宽 */}
-      <div className="notes-editor-header-section flex-shrink-0 w-full bg-background sticky top-0 z-10">
-        {/* 内部内容居中，保持与编辑器一致的最大宽度；移动端减小内边距 */}
-        <div className="w-full max-w-[860px] mx-auto px-5 sm:px-12">
-          <NotesEditorHeader 
-            lastSaved={lastSaved} 
-            saveStatus={saveStatus}
-            onRetrySave={effectiveReadOnly ? undefined : handleManualSave}
-            charCount={charCount}
-            // DSTU 模式 props
-            initialTitle={isDstuMode ? initialTitle : undefined}
-            onTitleChange={isDstuMode && !effectiveReadOnly ? dstuOnTitleChange : undefined}
-            noteId={noteId}
-            readOnly={effectiveReadOnly}
-          />
-          <div className="flex items-center gap-1">
+      {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
+      <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background">
+        <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[816px] items-center gap-1 px-5 sm:px-12">
             <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
+          <div className="ml-auto flex items-center gap-1">
             {/* 查找替换按钮 */}
             <CommonTooltip content={t('notes:toolbar.find_replace', '查找替换')} position="bottom">
               <NotionButton
-                variant={isFindReplaceOpen ? 'primary' : 'ghost'}
+                variant="ghost"
                 iconOnly
                 size="sm"
                 className={cn(
                   'h-7 w-7 flex-shrink-0 transition-colors',
-                  isFindReplaceOpen ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                  isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 onClick={() => setIsFindReplaceOpen((prev) => !prev)}
                 aria-label={t('notes:toolbar.find_replace', '查找替换')}
@@ -1269,13 +1260,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 position="bottom"
               >
                 <NotionButton
-                  variant={readingMode ? 'primary' : 'ghost'}
+                  variant="ghost"
                   iconOnly
                   size="sm"
                   className={cn(
                     "h-7 w-7 flex-shrink-0 transition-colors",
                     readingMode
-                      ? "text-primary-foreground"
+                      ? "bg-[var(--interactive-hover)] text-foreground"
                       : "text-muted-foreground hover:text-foreground"
                   )}
                   onClick={() => {
@@ -1294,6 +1285,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 </NotionButton>
               </CommonTooltip>
             )}
+            {headerActions}
           </div>
         </div>
       </div>
@@ -1317,12 +1309,22 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       >
         {/* 编辑器内容区域 */}
         <div
-          className="notes-editor-content w-full max-w-[860px] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
+          className="notes-editor-content w-full max-w-[816px] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
           style={{
             paddingBottom: '30vh',
           }}
           ref={dropZoneRef}
         >
+          <NotesEditorHeader
+            lastSaved={lastSaved}
+            saveStatus={saveStatus}
+            onRetrySave={effectiveReadOnly ? undefined : handleManualSave}
+            charCount={charCount}
+            initialTitle={isDstuMode ? initialTitle : undefined}
+            onTitleChange={isDstuMode && !effectiveReadOnly ? dstuOnTitleChange : undefined}
+            noteId={noteId}
+            readOnly={effectiveReadOnly}
+          />
           <CrepeEditor
             key={contentVersionKey}
             noteId={noteId}

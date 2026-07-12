@@ -868,7 +868,9 @@
       "subjects": "学科资源",
       "workspaces": "工作空间",
       "audio": "音频",
-      "videos": "视频"
+      "videos": "视频",
+      "textbooks": "教材",
+      "pdf_ocr_sessions": "PDF/OCR 会话文件"
     },
     "database_name": {
       "vfs": "VFS 文件系统",

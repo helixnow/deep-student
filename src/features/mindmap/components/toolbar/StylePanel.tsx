@@ -37,16 +37,16 @@ const ColorPicker: React.FC<{
   onChange: (color: string) => void;
   label: string;
 }> = ({ colors, value, onChange, label }) => (
-  <div className="space-y-2">
-    <div className="text-xs font-medium text-muted-foreground">{label}</div>
-    <div className="flex flex-wrap gap-1.5">
+  <div className="mm-style-color-section">
+    <div className="mm-style-label">{label}</div>
+    <div className="mm-style-swatches">
       {colors.map((color) => (
         <NotionButton variant="ghost"
           key={color}
           className={cn(
-            "w-6 h-6 rounded-full border border-border transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1",
+            "mm-style-swatch",
             color === 'transparent' && "bg-transparent bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxwYXRoIGZpbGw9IiNjY2MiIGQ9Ik0wIDBoNHY0SDB6Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTQgMGg0djRINHoiLz48cGF0aCBmaWxsPSIjY2NjIiBkPSJNNSA1aDR2NEg1eiIvPjxwYXRoIGZpbGw9IiNmZmYiIGQ9Ik0wIDRoNHY0SDB6Ii8+PC9zdmc+')]",
-            value === color && "ring-2 ring-primary ring-offset-1 border-primary"
+            value === color && "is-active"
           )}
           style={{ backgroundColor: color !== 'transparent' && color !== 'inherit' ? color : undefined }}
           onClick={() => onChange(color)}
@@ -154,6 +154,17 @@ export const StyleSettings: React.FC<{
     }
   }, [isOpen, setIsOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      setIsOpen(false);
+      triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, setIsOpen]);
+
   const getPlacementStyles = () => {
     switch (placement) {
       case 'bottom-left': return 'top-full left-0 mt-2';
@@ -166,19 +177,18 @@ export const StyleSettings: React.FC<{
 
   // 面板内容（共用）
   const panelContent = (
-    <div className="space-y-4">
+    <div className="mm-style-panel">
       {/* 全局主题 */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-semibold">{t('style.globalTheme')}</h4>
-        <div className="grid grid-cols-2 gap-2">
+      <div>
+        <h4 className="mm-style-heading">{t('style.globalTheme')}</h4>
+        <div className="mm-theme-list">
           {themes.map(theme => (
             <NotionButton variant="ghost"
               key={theme.id}
               onClick={() => setStyleId(theme.id)}
               className={cn(
-                "flex items-center justify-between px-3 py-2 rounded-md text-sm border border-transparent transition-colors",
-                "hover:bg-[var(--interactive-hover)] hover:text-accent-foreground",
-                styleId === theme.id && "bg-primary/10 text-primary border-primary/20"
+                "mm-theme-option",
+                styleId === theme.id && "is-active"
               )}
             >
               {t(theme.name)}
@@ -188,29 +198,28 @@ export const StyleSettings: React.FC<{
         </div>
       </div>
 
-      <div className="h-px bg-border" />
+      <div className="mm-panel-separator" />
 
       {/* 节点样式 (仅当选中节点时显示) */}
       {focusedNode ? (
-        <div className="space-y-4">
-          <h4 className="text-sm font-semibold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary" />
+        <div className="mm-node-style-section">
+          <h4 className="mm-style-heading">
             {t('style.currentNodeStyle')}
           </h4>
           
           {/* 字号 */}
-          <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-md w-fit">
+          <div className="mm-font-size-control">
             <TextT className="w-4 h-4 text-muted-foreground ml-1" />
             <input
               type="number"
-              className="w-12 h-6 text-sm bg-transparent border-none text-center focus:ring-0"
+              className="mm-font-size-input"
               value={focusedNode.style?.fontSize || 14}
               onChange={(e) => handleNodeStyleUpdate({ fontSize: parseInt(e.target.value) })}
             />
           </div>
 
           {/* B / I / U / S */}
-          <div className="flex items-center gap-1">
+          <div className="mm-style-button-row">
             {[
               { key: 'bold', icon: TextB, prop: 'fontWeight' as const, val: 'bold', cur: focusedNode.style?.fontWeight },
               { key: 'italic', icon: TextItalic, prop: 'fontStyle' as const, val: 'italic', cur: focusedNode.style?.fontStyle },
@@ -220,10 +229,10 @@ export const StyleSettings: React.FC<{
               <NotionButton variant="ghost" key={key}
                 onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
                 className={cn(
-                  "p-1.5 rounded-md transition-colors",
+                  "mm-style-icon-button",
                   cur === val
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                    ? "is-active"
+                    : ""
                 )}
                 title={t(`contextMenu.${key}`)}
               ><Icon className="w-4 h-4" /></NotionButton>
@@ -231,17 +240,17 @@ export const StyleSettings: React.FC<{
           </div>
 
           {/* H1 / H2 / H3 / T */}
-          <div className="space-y-1">
-            <div className="text-xs font-medium text-muted-foreground">{t('contextMenu.headingLevel')}</div>
-            <div className="flex items-center gap-1">
+          <div>
+            <div className="mm-style-label">{t('contextMenu.headingLevel')}</div>
+            <div className="mm-style-button-row">
               {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
                 <NotionButton variant="ghost" key={level}
                   onClick={() => handleNodeStyleUpdate({ headingLevel: focusedNode.style?.headingLevel === level ? undefined : level })}
                   className={cn(
-                    "p-1.5 rounded-md transition-colors",
+                    "mm-style-icon-button",
                     focusedNode.style?.headingLevel === level
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                      ? "is-active"
+                      : ""
                   )}
                   title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
                 ><Icon className="w-4 h-4" /></NotionButton>
@@ -249,10 +258,10 @@ export const StyleSettings: React.FC<{
               <NotionButton variant="ghost"
                 onClick={() => handleNodeStyleUpdate({ headingLevel: undefined })}
                 className={cn(
-                  "p-1.5 rounded-md transition-colors",
+                  "mm-style-icon-button",
                   !focusedNode.style?.headingLevel
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
+                    ? "is-active"
+                    : ""
                 )}
                 title={t('contextMenu.normalText')}
               ><TextT className="w-4 h-4" /></NotionButton>
@@ -276,7 +285,7 @@ export const StyleSettings: React.FC<{
           />
         </div>
       ) : (
-        <div className="text-sm text-muted-foreground text-center py-4 bg-muted/20 rounded">
+        <div className="mm-style-empty">
           {t('style.selectNodeHint')}
         </div>
       )}
@@ -323,11 +332,12 @@ export const StyleSettings: React.FC<{
             className={cn(
               'absolute z-50',
               getPlacementStyles(),
-              'w-[280px] p-3 rounded-md shadow-[var(--mm-popover-shadow)]',
-              'bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] text-[var(--mm-text)]',
+              'mm-settings-popover mm-style-popover',
               'ui-zoom-fade-in',
               'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'
             )}
+            role="dialog"
+            aria-label={t('style.globalTheme')}
           >
             {panelContent}
           </div>

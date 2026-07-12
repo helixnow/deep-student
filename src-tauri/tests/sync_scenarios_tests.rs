@@ -1898,10 +1898,10 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 }
 
 #[tokio::test]
-async fn scenario_58_shared_state_consumes_tombstone_once() {
-    // 一个进程内的多个 SyncManager 共享同一 SyncStateStore；它们模拟的是同一
-    // app instance 的多次操作，而不是独立设备。B 消费 tombstone 后推进水位，
-    // C 在同一 state store 下不应重复消费同一条 tombstone。
+async fn scenario_58_shared_state_replays_tombstones_idempotently() {
+    // 时间戳不是可靠游标：同一毫秒可能有多条删除，设备时钟也可能回拨。
+    // 即使多个 SyncManager 共享同一 SyncStateStore，每轮也必须幂等重放完整
+    // tombstone 集，不能因另一次同步推进了诊断水位而漏删。
     let storage = MockCloudStorage::new();
     let mgr_a = SyncManager::new("dev_a".into());
     let mgr_b = SyncManager::new("dev_b".into());
@@ -1941,15 +1941,22 @@ async fn scenario_58_shared_state_consumes_tombstone_once() {
         .unwrap();
     assert!(!tmp_b.path().join(&blob.1).exists());
 
-    // C 后同步：同一 app instance 的 tombstone 水位已由 B 推进，不重复应用。
+    // C 后同步：即使共享状态中的诊断水位已由 B 推进，也必须应用同一删除。
     mgr_c
         .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(
-        tmp_c.path().join(&blob.1).exists(),
-        "同一 SyncStateStore 下 tombstone 只消费一次；真实多设备需独立 app data"
+        !tmp_c.path().join(&blob.1).exists(),
+        "共享 SyncStateStore 不能导致 tombstone 漏删"
     );
+
+    // 再次重放应保持幂等，既不报错也不复活文件。
+    mgr_c
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+    assert!(!tmp_c.path().join(&blob.1).exists());
 }
 
 #[tokio::test]

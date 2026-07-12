@@ -13,6 +13,14 @@
   box-shadow: var(--wb-shadow-idle);
   pointer-events: auto;
   color: var(--text-primary, hsl(var(--foreground)));
+  transition:
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.wb-agenda-widget:hover,
+.wb-agenda-widget:focus-within {
+  box-shadow: var(--wb-shadow-focus, var(--wb-shadow-idle));
 }
 
 .wb-agenda-header,
@@ -45,34 +53,6 @@
   cursor: pointer;
 }
 
-.wb-agenda-date-tile {
-  display: grid;
-  width: 38px;
-  height: 42px;
-  flex: 0 0 38px;
-  grid-template-rows: 15px 1fr;
-  overflow: hidden;
-  border: 1px solid hsl(var(--border) / 45%);
-  border-radius: 8px;
-  background: hsl(var(--card) / 44%);
-  box-shadow: 0 1px 5px hsl(var(--foreground) / 8%);
-  text-align: center;
-}
-
-.wb-agenda-date-tile span {
-  background: hsl(var(--destructive));
-  color: hsl(var(--destructive-foreground));
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 15px;
-  text-transform: uppercase;
-}
-
-.wb-agenda-date-tile strong {
-  font-size: 19px;
-  line-height: 26px;
-}
-
 .wb-agenda-month-copy {
   display: flex;
   min-width: 0;
@@ -97,6 +77,13 @@
 .wb-agenda-header-actions {
   flex: 0 0 auto;
   gap: 3px;
+  opacity: 0.68;
+  transition: opacity 150ms ease;
+}
+
+.wb-agenda-widget:hover .wb-agenda-header-actions,
+.wb-agenda-widget:focus-within .wb-agenda-header-actions {
+  opacity: 1;
 }
 
 .wb-agenda-icon-button {
@@ -146,6 +133,19 @@
 .wb-agenda-days {
   grid-auto-rows: 28px;
   row-gap: 1px;
+  animation: wb-agenda-month-enter 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes wb-agenda-month-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .wb-agenda-day {
@@ -175,7 +175,6 @@
 
 .wb-agenda-day[data-selected] {
   background: hsl(var(--foreground) / 10%);
-  box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 8%);
 }
 
 .wb-agenda-day:hover:not([data-selected]),
@@ -260,6 +259,9 @@
   min-height: 38px;
   gap: 7px;
   border-radius: 8px;
+  transition:
+    background-color 120ms ease,
+    transform 120ms ease;
 }
 
 .wb-agenda-item:hover {
@@ -268,9 +270,9 @@
 
 .wb-agenda-check {
   display: grid;
-  width: 24px;
-  height: 30px;
-  flex: 0 0 24px;
+  width: 28px;
+  height: 34px;
+  flex: 0 0 28px;
   place-items: center;
   padding: 0;
   border: 0;
@@ -279,17 +281,25 @@
 }
 
 .wb-agenda-check > span {
+  display: grid;
   width: 13px;
   height: 13px;
+  place-items: center;
   border: 1.5px solid;
   border-radius: 50%;
   background: hsl(var(--background) / 22%);
+  color: hsl(var(--primary-foreground));
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 120ms ease;
 }
 
 .wb-agenda-check:hover > span,
 .wb-agenda-check:focus-visible > span {
   box-shadow: inset 0 0 0 3px hsl(var(--background) / 70%);
   background: hsl(var(--primary) / 50%);
+  transform: scale(1.08);
 }
 
 .wb-agenda-item-main {
@@ -343,6 +353,36 @@
   font-size: 10px;
 }
 
+.wb-agenda-empty-action {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 120ms ease;
+}
+
+.wb-agenda-empty-action:hover,
+.wb-agenda-empty-action:focus-visible {
+  background: hsl(var(--foreground) / 4.5%);
+}
+
+.wb-agenda-empty-arrow {
+  opacity: 0;
+  transform: translateX(-3px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.wb-agenda-empty-action:hover .wb-agenda-empty-arrow,
+.wb-agenda-empty-action:focus-visible .wb-agenda-empty-arrow {
+  opacity: 0.8;
+  transform: translateX(0);
+}
+
 .wb-agenda-more,
 .wb-agenda-error {
   min-height: 18px;
@@ -390,5 +430,9 @@
   .wb-agenda-widget *::after {
     scroll-behavior: auto;
     transition-duration: 0ms;
+  }
+
+  .wb-agenda-days {
+    animation: none;
   }
 }

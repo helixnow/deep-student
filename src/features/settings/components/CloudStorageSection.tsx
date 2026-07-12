@@ -359,9 +359,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       ftp: config.ftp ? { ...config.ftp, password: '' } : undefined,
       encryptionPassword: undefined,
     };
-    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
 
-    // 保存敏感凭据到安全存储
+    // 凭据是提交前置条件。只有安全存储成功后，才发布“已配置”的非敏感配置，
+    // 避免 Keychain/Credential Manager 失败留下无法工作的半配置状态。
     try {
       await cloudApi.saveCredentials({
         webdavPassword: webdavConfig.password || undefined,
@@ -369,11 +369,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         ftpPassword: ftpConfig.password || undefined,
         encryptionPassword: encryptionPassword || undefined,
       });
-      showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     } catch (e: unknown) {
       console.error('Failed to save credentials to secure storage:', e);
-      showGlobalNotification('warning', t('cloudStorage:messages.configSavedButCredentialsFailed'));
+      showGlobalNotification('error', t('cloudStorage:messages.configSavedButCredentialsFailed'));
+      return;
     }
+
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
+    showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     onConfigChanged?.();
   }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, t, onConfigChanged]);
 

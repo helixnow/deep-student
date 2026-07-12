@@ -231,20 +231,149 @@ pub fn run() {
     };
 
     // 构建 Tauri 应用
-    let builder = tauri::Builder::default();
+    let builder = tauri::Builder::default().on_page_load(|webview, payload| {
+        if std::env::var_os("TAURI_LAB_INSTANCE_ID").is_none() {
+            return;
+        }
+
+        info!(
+            "[tauri-lab] page load event: {:?} {}",
+            payload.event(),
+            payload.url()
+        );
+
+        if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            let _ = webview.eval(
+                r#"
+                (() => {
+                  if (window.__TAURI_LAB_BOOT_DIAGNOSTICS__) return;
+                  window.__TAURI_LAB_BOOT_DIAGNOSTICS__ = true;
+                  const report = (level, message, stack) => {
+                    const invoke = window.__TAURI_INTERNALS__?.invoke;
+                    if (typeof invoke !== 'function') return;
+                    void invoke('tauri_lab_frontend_log', {
+                      level,
+                      message: '[bootstrap] ' + message,
+                      stack: stack || null,
+                    }).catch(() => {});
+                  };
+                  const serialize = value => {
+                    if (value instanceof Error) {
+                      return value.name + ': ' + value.message;
+                    }
+                    if (typeof value === 'string') return value;
+                    try {
+                      return JSON.stringify(value);
+                    } catch (_) {
+                      return String(value);
+                    }
+                  };
+                  for (const level of ['warn', 'error']) {
+                    const original = console[level]?.bind(console);
+                    console[level] = (...args) => {
+                      try { original?.(...args); } catch (_) {}
+                      const error = args.find(value => value instanceof Error);
+                      report(
+                        level,
+                        'console.' + level + ': ' + args.map(serialize).join(' '),
+                        error instanceof Error ? error.stack : null,
+                      );
+                    };
+                  }
+                  window.addEventListener('error', event => {
+                    const target = event.target;
+                    const resource = target?.src || target?.href || target?.tagName;
+                    report(
+                      'error',
+                      event.message || ('resource error: ' + (resource || 'unknown')),
+                      event.error?.stack,
+                    );
+                  }, true);
+                  window.addEventListener('unhandledrejection', event => {
+                    const reason = event.reason;
+                    report(
+                      'error',
+                      reason instanceof Error ? reason.message : String(reason),
+                      reason instanceof Error ? reason.stack : null,
+                    );
+                  }, true);
+                  window.addEventListener('securitypolicyviolation', event => {
+                    report(
+                      'error',
+                      'CSP blocked ' + event.blockedURI + ' via ' + event.violatedDirective,
+                    );
+                  }, true);
+                  report('info', 'page started: ' + location.href);
+                  const observeRoot = () => {
+                    const root = document.getElementById('root');
+                    if (!root) return;
+                    new MutationObserver(() => {
+                      report(
+                        'info',
+                        'root mutation children=' + root.childElementCount
+                          + ' html=' + root.innerHTML.slice(0, 240),
+                      );
+                    }).observe(root, { childList: true, subtree: true });
+                  };
+                  if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', observeRoot, { once: true });
+                  } else {
+                    observeRoot();
+                  }
+                  setTimeout(() => {
+                    const root = document.getElementById('root');
+                    const moduleScript = document.querySelector('script[type="module"][src]');
+                    report(
+                      'info',
+                      'ready=' + document.readyState
+                        + ' rootChildren=' + (root?.childElementCount ?? -1)
+                        + ' bodyChildren=' + document.body.childElementCount
+                        + ' moduleSrc=' + (moduleScript?.src || 'missing'),
+                    );
+                    const portal = document.querySelector('body > .fixed.inset-0');
+                    if (portal) {
+                      const style = getComputedStyle(portal);
+                      const rect = portal.getBoundingClientRect();
+                      report(
+                        'info',
+                        'portal opacity=' + style.opacity
+                          + ' display=' + style.display
+                          + ' visibility=' + style.visibility
+                          + ' rect=' + rect.width + 'x' + rect.height
+                          + ' text=' + (portal.textContent || '').slice(0, 160),
+                      );
+                    } else {
+                      report(
+                        'info',
+                        'portal missing bodyHtml=' + document.body.innerHTML.slice(0, 500),
+                      );
+                    }
+                  }, 3000);
+                })();
+                "#,
+            );
+        }
+    });
 
     // 单实例锁（审阅 34 P1-2，2026-07-08）：防止双开进程共享同一套
     // SQLite/数据空间（A/B 切换标记、周期自动化调度器、更新器均不可重入）。
     // 官方要求该插件必须最先注册；仅桌面端启用。
     // 第二个实例启动时，把已有实例的主窗口带到前台。
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.show();
-            let _ = window.unminimize();
-            let _ = window.set_focus();
-        }
-    }));
+    let builder = if std::env::var_os("TAURI_LAB_INSTANCE_ID").is_some() {
+        // tauri-lab isolates HOME, bundle id, device id, and metrics per instance.
+        // The plugin keys its lock from the compiled Tauri identifier, so it would
+        // otherwise collapse every isolated E2E instance into the production app.
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
+    };
 
     let builder = builder
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -881,7 +1010,9 @@ pub fn run() {
                     #[allow(unused_unsafe)]
                     #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
                     unsafe {
-                        use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
+                        use cocoa::appkit::{
+                            NSApp, NSApplication, NSWindowStyleMask, NSWindowTitleVisibility,
+                        };
                         use cocoa::base::{id, nil, NO, YES};
                         use objc::{msg_send, sel, sel_impl};
 
@@ -911,6 +1042,10 @@ pub fn run() {
                                 let _: () = msg_send![ns_window, setAccessibilityTitle: ax_title];
                                 let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
                                 let _: () = msg_send![ns_window, orderFrontRegardless];
+                                // tauri-lab 直接启动 bundle 内二进制，不经过 LaunchServices。
+                                // 显式激活应用，确保窗口能接收真实鼠标/键盘事件。
+                                let ns_app = NSApp();
+                                ns_app.activateIgnoringOtherApps_(YES);
                                 info!(
                                     "[setup] DSTU_E2E_STANDARD_WINDOW 已启用，沿用全尺寸 macOS 标题栏并补充可访问性窗口元数据"
                                 );
@@ -1917,10 +2052,27 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
-        .run(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
+        .run(|app_handle, event| match event {
+            tauri::RunEvent::ExitRequested { .. } => {
                 tauri::async_runtime::block_on(crate::background_tasks::shutdown());
             }
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+
+                #[cfg(target_os = "macos")]
+                #[allow(unused_unsafe)]
+                unsafe {
+                    use cocoa::appkit::{NSApp, NSApplication};
+                    use cocoa::base::YES;
+
+                    let ns_app = NSApp();
+                    ns_app.activateIgnoringOtherApps_(YES);
+                }
+            }
+            _ => {}
         });
 }
 

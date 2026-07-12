@@ -76,13 +76,11 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
   return (
     <NotionButton variant="ghost"
       className={cn(
-        'relative w-16 h-11 rounded border transition-colors duration-100',
+        'mm-structure-preset',
         'flex items-center justify-center',
-        'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1',
         isActive
-          ? 'border-primary bg-primary/10'
-          : 'border-border hover:border-primary/50',
-        !isActive && 'hover:bg-[var(--interactive-hover)]',
+          ? 'is-active'
+          : '',
         preset.locked && 'opacity-60 cursor-not-allowed'
       )}
       onClick={onClick}
@@ -105,8 +103,8 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
 
       {/* 选中标记 */}
       {isActive && (
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary rounded-full flex items-center justify-center">
-          <Check className="w-3 h-3 text-primary-foreground" strokeWidth={3} />
+        <div className="mm-structure-check">
+          <Check className="w-3 h-3" strokeWidth={2.5} />
         </div>
       )}
 
@@ -133,17 +131,17 @@ const CategorySection: React.FC<{
   if (presets.length === 0) return null;
 
   return (
-    <div className="mb-4 last:mb-0">
+    <div className="mm-structure-section">
       {/* 分类标题 */}
-      <div className="flex items-center gap-2 mb-2.5">
+      <div className="mm-panel-section-label">
         <span className="text-muted-foreground">{category.icon}</span>
-        <h4 className="text-sm font-medium text-muted-foreground">
+        <h4>
           {category.name}
         </h4>
       </div>
 
       {/* 预设网格 */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="mm-structure-grid">
         {presets.map((preset) => (
           <PresetItem
             key={preset.id}
@@ -294,12 +292,12 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     <>
       {/* 标题栏 - inline 模式下隐藏 */}
       {!isInline && (
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-foreground">
+        <div className="mm-panel-heading">
+          <h3>
             {t('selectStructure')}
           </h3>
           {activePreset && (
-            <span className="text-xs text-primary">
+            <span className="mm-panel-current">
               {t(activePreset.name)}
             </span>
           )}
@@ -314,7 +312,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       )}
 
       {/* 分类列表 */}
-      <div className="space-y-1">
+      <div>
         {categories.map((category) => (
           <CategorySection
             key={category.id}
@@ -327,8 +325,8 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
       </div>
 
       {/* 底部提示 */}
-      <div className="mt-4 pt-3 border-t border-border">
-        <p className="text-xs text-muted-foreground text-center">
+      <div className="mm-panel-hint">
+        <p>
           {t('structure.hint')}
         </p>
       </div>
@@ -390,8 +388,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
             className={cn(
               'absolute z-50',
               getPlacementStyles(),
-              'w-[304px] p-3 rounded-md shadow-[var(--mm-popover-shadow)]',
-              'bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] text-[var(--mm-text)]',
+              'mm-settings-popover mm-structure-popover',
               'ui-zoom-fade-in',
               // 移动端全宽
               'max-md:fixed max-md:left-4 max-md:right-4 max-md:top-auto max-md:bottom-4 max-md:w-auto'

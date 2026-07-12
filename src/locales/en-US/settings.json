@@ -2041,7 +2041,9 @@
       "subjects": "Subject Resources",
       "workspaces": "Workspaces",
       "audio": "Audio",
-      "videos": "Videos"
+      "videos": "Videos",
+      "textbooks": "Textbooks",
+      "pdf_ocr_sessions": "PDF/OCR Session Files"
     },
     "backup_in_progress": "Backup in progress...",
     "export_in_progress": "Export in progress...",

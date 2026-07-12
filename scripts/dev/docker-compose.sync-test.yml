@@ -53,7 +53,10 @@ services:
 
   # ============== FTP ==============
   ftp:
-    image: stilliard/pure-ftpd:latest
+    build:
+      context: ../../dstu-test/docker
+      dockerfile: Dockerfile.ftp
+    image: deep-student-sync-test-ftp:local
     container_name: ds-ftp
     ports:
       - "127.0.0.1:2121:21"     # FTP 控制端口

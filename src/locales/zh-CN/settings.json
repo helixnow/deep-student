@@ -2041,7 +2041,9 @@
       "subjects": "学科资源",
       "workspaces": "工作空间",
       "audio": "音频",
-      "videos": "视频"
+      "videos": "视频",
+      "textbooks": "教材",
+      "pdf_ocr_sessions": "PDF/OCR 会话文件"
     },
     "backup_in_progress": "备份进行中...",
     "export_in_progress": "导出进行中...",

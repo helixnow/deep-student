@@ -190,6 +190,7 @@
     "nextMonth": "Next month",
     "quickAdd": "Add schedule item",
     "pendingCount": "{{count}} to schedule",
+    "datePendingCount": "{{date}}, {{count}} todos",
     "overdueCount": "{{count}} overdue",
     "openTodo": "Todos",
     "loading": "Organizing your schedule…",

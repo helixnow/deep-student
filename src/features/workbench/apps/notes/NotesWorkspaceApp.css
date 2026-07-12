@@ -1,5 +1,6 @@
 .notes-workspace {
   --notes-explorer-width: 240px;
+  --notes-statusbar-height: 22px;
 
   position: absolute;
   inset: 0;
@@ -24,7 +25,7 @@
   align-items: center;
   padding: 7px 0 6px;
   border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 50%);
+  background: hsl(var(--muted) / 44%);
 }
 
 .notes-ribbon > div {
@@ -64,7 +65,7 @@
   flex-direction: column;
   overflow: hidden;
   border-right: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 34%);
+  background: hsl(var(--muted) / 30%);
 }
 
 .notes-workspace[data-explorer-open='false']:not([data-compact='true']) .notes-explorer {
@@ -75,7 +76,7 @@
 }
 
 .notes-explorer header {
-  height: 40px;
+  height: 38px;
   padding: 0 7px 0 12px;
   display: flex;
   flex: 0 0 auto;
@@ -83,7 +84,6 @@
   justify-content: space-between;
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
   color: hsl(var(--muted-foreground));
 }
 
@@ -147,6 +147,7 @@
   background: transparent;
   font: inherit;
   text-align: left;
+  cursor: default;
 }
 
 .notes-tree-row:hover, .notes-tree-row[data-active='true'] {
@@ -165,7 +166,7 @@
 
 .notes-tree-folder {
   color: hsl(var(--muted-foreground));
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .notes-tree-folder .is-collapsed {
@@ -173,9 +174,50 @@
 }
 
 .notes-tree-message {
-  padding: 12px;
+  min-height: 120px;
+  padding: 28px 12px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 9px;
   color: hsl(var(--muted-foreground));
+  text-align: center;
 }
+
+.notes-tree-message button {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background));
+  font: inherit;
+}
+
+.notes-tree-message button:hover,
+.notes-tree-message button:focus-visible {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+  outline: none;
+}
+
+.notes-tree-loading {
+  padding: 8px 6px;
+  display: grid;
+  gap: 5px;
+}
+
+.notes-tree-loading i {
+  width: 76%;
+  height: 23px;
+  border-radius: 5px;
+  background: hsl(var(--muted) / 64%);
+  animation: notes-loading-pulse 900ms ease-in-out infinite alternate;
+}
+
+.notes-tree-loading i:nth-child(2) { width: 58%; }
+.notes-tree-loading i:nth-child(3) { width: 84%; }
+.notes-tree-loading i:nth-child(4) { width: 66%; }
 
 .notes-explorer-resize {
   position: absolute;
@@ -191,7 +233,7 @@
   position: relative;
   min-width: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 24px;
+  grid-template-rows: minmax(0, 1fr) var(--notes-statusbar-height);
 }
 
 .notes-panes {
@@ -223,7 +265,9 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding-right: 132px;
+
+  /* Keep a reliable titlebar drag target after the final tab. */
+  padding-right: 78px;
   display: flex;
   align-items: stretch;
   pointer-events: none;
@@ -236,6 +280,8 @@
   background: transparent;
   pointer-events: none;
   align-items: stretch;
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
 }
 
 .notes-titlebar-tabs .notes-tab {
@@ -249,8 +295,10 @@
 
 .notes-tab {
   height: 36px;
-  min-width: 118px;
-  max-width: 210px;
+  width: 180px;
+  min-width: 104px;
+  max-width: 200px;
+  flex: 1 1 180px;
   display: flex;
   align-items: center;
   border-right: 1px solid hsl(var(--border));
@@ -311,9 +359,14 @@
   height: 24px;
   margin-right: 4px;
   opacity: 0;
+  transition: opacity 80ms ease;
 }
 
 .notes-tab:hover .notes-icon-button, .notes-tab[data-active='true'] .notes-icon-button {
+  opacity: 1;
+}
+
+.notes-tab:focus-within .notes-icon-button {
   opacity: 1;
 }
 
@@ -339,7 +392,8 @@
 }
 
 .notes-statusbar {
-  height: 24px;
+  min-width: 0;
+  height: var(--notes-statusbar-height);
   padding: 0 9px;
   display: flex;
   justify-content: space-between;
@@ -348,6 +402,19 @@
   color: hsl(var(--muted-foreground));
   background: hsl(var(--muted) / 26%);
   font-size: 11px;
+}
+
+.notes-statusbar span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-statusbar span:last-child {
+  padding-left: 16px;
+  flex: 0 1 auto;
+  text-align: right;
 }
 
 .notes-explorer-handle, .notes-split-indicator, .notes-explorer-scrim {
@@ -461,9 +528,19 @@
   background: hsl(var(--destructive));
 }
 
+.notes-resource-dialog button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @keyframes notes-saving-pulse {
   from { opacity: 0.35; }
   to { opacity: 1; }
+}
+
+@keyframes notes-loading-pulse {
+  from { opacity: 0.45; }
+  to { opacity: 0.9; }
 }
 
 .notes-workspace[data-compact='true'] {
@@ -471,39 +548,49 @@
 }
 
 .notes-workspace[data-compact='true'] .notes-explorer {
-    position: absolute;
-    z-index: 4;
-    top: 0;
-    bottom: 0;
-    left: 44px;
-    transform: translateX(-105%);
-    box-shadow: 8px 0 24px hsl(var(--foreground) / 12%);
-    transition: transform 140ms ease;
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  bottom: 0;
+  left: 44px;
+  width: min(var(--notes-explorer-width), calc(100% - 44px));
+  min-width: min(240px, calc(100% - 44px));
+  transform: translateX(-105%);
+  box-shadow: 8px 0 24px hsl(var(--foreground) / 12%);
+  transition: transform 140ms ease;
 }
 
 .notes-workspace[data-compact='true'] .notes-explorer[data-open='true'] {
-    transform: translateX(0);
+  transform: translateX(0);
 }
 
 .notes-workspace[data-compact='true'] .notes-workspace-main {
-    grid-column: 2;
+  grid-column: 2;
 }
 
 .notes-workspace[data-compact='true'] .notes-explorer-scrim {
-    position: absolute;
-    z-index: 3;
-    inset: 0 0 0 44px;
-    display: block;
-    border: 0;
-    background: hsl(var(--foreground) / 12%);
+  position: absolute;
+  z-index: 3;
+  inset: 0 0 0 44px;
+  display: block;
+  border: 0;
+  background: hsl(var(--foreground) / 14%);
 }
 
 .notes-workspace[data-compact='true'] .notes-explorer-handle {
-    position: absolute;
-    z-index: 2;
-    left: 49px;
-    top: 47px;
-    display: grid;
+  position: absolute;
+  z-index: 2;
+  left: 49px;
+  top: 9px;
+  display: grid;
+}
+
+.notes-workspace[data-compact='true'] .notes-statusbar span:first-child {
+  display: none;
+}
+
+.notes-workspace[data-compact='true'] .notes-statusbar {
+  justify-content: flex-end;
 }
 
 .notes-workspace[data-compact='true'] .notes-explorer-resize {
@@ -517,5 +604,13 @@
 
   .notes-tab-state {
     animation: none;
+  }
+
+  .notes-tree-loading i {
+    animation: none;
+  }
+
+  .notes-titlebar-tabs .notes-tabstrip {
+    scroll-behavior: auto;
   }
 }

@@ -190,6 +190,7 @@
     "nextMonth": "下个月",
     "quickAdd": "添加日程",
     "pendingCount": "{{count}} 项待安排",
+    "datePendingCount": "{{date}}，{{count}} 项待办",
     "overdueCount": "{{count}} 项逾期",
     "openTodo": "待办",
     "loading": "正在整理日程…",

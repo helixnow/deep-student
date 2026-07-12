@@ -140,7 +140,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   const themeStyle: React.CSSProperties = {
     background: rootTheme?.background || 'var(--mm-bg-elevated)',
     color: rootTheme?.foreground || 'var(--mm-text)',
-    border: rootTheme?.border || '1px solid var(--mm-border-strong)',
+    border: rootTheme?.border || '1px solid var(--mm-border)',
     borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '4px',
     fontSize: rootTheme?.fontSize ? `${rootTheme.fontSize}px` : '18px',
     fontWeight: rootTheme?.fontWeight || 600,

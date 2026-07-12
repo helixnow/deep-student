@@ -77,6 +77,24 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     );
   });
 
+  it("publishes the safe config only after credential storage succeeds", () => {
+    const saveStart = cloudStorageSection.indexOf(
+      "const doSaveConfig = useCallback",
+    );
+    const saveEnd = cloudStorageSection.indexOf(
+      "  // 保存配置（先检查不安全连接）",
+      saveStart,
+    );
+    const saveBlock = cloudStorageSection.slice(saveStart, saveEnd);
+
+    expect(saveBlock.indexOf("await cloudApi.saveCredentials")).toBeGreaterThan(-1);
+    expect(saveBlock.indexOf("localStorage.setItem(CONFIG_STORAGE_KEY")).toBeGreaterThan(
+      saveBlock.indexOf("await cloudApi.saveCredentials"),
+    );
+    expect(saveBlock).toContain("showGlobalNotification('error'");
+    expect(saveBlock).toContain("return;");
+  });
+
   // [P0-3A] 2026-06-12 更新：前端不再回填明文凭据，敏感字段一律传空占位，
   // 由后端 hydrate_cloud_config 从系统安全存储补全（明文不过 IPC）。
   it("sends empty FTP password placeholders instead of hydrating plaintext in the frontend", () => {

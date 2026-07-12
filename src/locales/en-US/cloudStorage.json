@@ -159,7 +159,7 @@
   "messages": {
     "connectionSuccess": "Connection successful!",
     "configSaved": "Configuration saved",
-    "configSavedButCredentialsFailed": "Configuration saved (credentials storage failed)",
+    "configSavedButCredentialsFailed": "Configuration was not saved because credentials could not be stored securely",
     "configCleared": "Configuration cleared",
     "versionDeleted": "Version deleted"
   }

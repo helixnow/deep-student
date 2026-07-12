@@ -17,7 +17,7 @@ vi.mock('@/components/shared/CommonTooltip', () => ({
 }));
 
 describe('NotesEditorToolbar', () => {
-  it('keeps primary commands keyboard reachable and moves secondary commands into overflow', () => {
+  it('keeps every formatting command keyboard reachable in one quiet menu', () => {
     const editor = {
       toggleBold: vi.fn(),
       toggleItalic: vi.fn(),
@@ -31,15 +31,17 @@ describe('NotesEditorToolbar', () => {
     render(<NotesEditorToolbar editor={editor} />);
 
     const toolbar = screen.getByRole('toolbar', { name: '格式化' });
-    const bold = screen.getByRole('button', { name: 'bold' });
-    expect(toolbar).toContainElement(bold);
-    expect(bold).not.toHaveAttribute('tabindex', '-1');
+    const formatTrigger = screen.getByRole('button', { name: '格式化' });
+    expect(toolbar).toContainElement(formatTrigger);
+    expect(formatTrigger).not.toHaveAttribute('tabindex', '-1');
 
+    fireEvent.click(formatTrigger);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    const bold = screen.getByRole('menuitem', { name: /bold/ });
     fireEvent.click(bold);
     expect(editor.toggleBold).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: '更多' }));
-    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.click(formatTrigger);
     expect(screen.getByRole('menuitem', { name: 'strikethrough' })).toBeInTheDocument();
   });
 });

@@ -41,6 +41,7 @@ vi.mock('@/features/mindmap/MindMapContentView', () => ({
   },
 }));
 
+import { dstu } from '@/dstu';
 import { __resetContentDirtyRegistry, registerContentDirtyChecker } from '../../content/contentDirtyRegistry';
 import { requestWorkspaceResource, resetWorkspaceRegistryForTests } from '../workspaceRegistry';
 import { NotesWorkspaceApp } from '../NotesWorkspaceApp';
@@ -173,5 +174,32 @@ describe('NotesWorkspaceApp', () => {
     fireEvent.keyDown(window, { key: 'w', metaKey: true });
     expect(screen.queryByRole('tab', { name: /未命名笔记|课堂笔记/ })).toBeNull();
     unregister();
+  });
+
+  it('exposes distinct retry and empty-search states in the explorer', async () => {
+    vi.mocked(dstu.list).mockResolvedValueOnce({
+      ok: false,
+      error: { toUserMessage: () => '读取失败' },
+    } as never);
+    render(<NotesWorkspaceApp {...props()} />);
+
+    expect(await screen.findByText('文件列表加载失败')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    await screen.findByText('课堂笔记');
+
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索文件' }), { target: { value: '不存在' } });
+    expect(screen.getByText('没有匹配“不存在”的文件')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '显示全部文件' }));
+    expect(screen.getByText('课堂笔记')).toBeInTheDocument();
+  });
+
+  it('closes a clean tab with the standard middle-click gesture', async () => {
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    const tab = screen.getByRole('tab', { name: /未命名笔记|课堂笔记/ });
+    fireEvent(tab.parentElement as HTMLElement, new MouseEvent('auxclick', { bubbles: true, button: 1 }));
+
+    expect(screen.queryByRole('tab', { name: /未命名笔记|课堂笔记/ })).toBeNull();
   });
 });

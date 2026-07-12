@@ -247,6 +247,13 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   leftOffset,
   saveStates,
 }) => {
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activeKey, tabs.length]);
+
   const focusTab = (event: React.KeyboardEvent, index: number) => {
     const buttons = event.currentTarget
       .closest('[data-notes-tabstrip]')
@@ -277,7 +284,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
 
   return (
   <div className="notes-titlebar-tabs" style={{ paddingLeft: leftOffset }}>
-    <div className="notes-tabstrip" data-notes-tabstrip role="tablist" aria-label="打开的文件">
+    <div ref={stripRef} className="notes-tabstrip" data-notes-tabstrip role="tablist" aria-label="打开的文件">
       {tabs.map((tab, index) => {
         const saveState = saveStates.get(tab.key) ?? 'saved';
         return (
@@ -288,6 +295,11 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
           key={tab.key}
           onPointerDown={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
+          onAuxClick={(event) => {
+            if (event.button !== 1) return;
+            event.preventDefault();
+            onClose(tab.key);
+          }}
         >
           <button
             type="button"
@@ -331,6 +343,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [compact, setCompact] = useState(false);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const [status, setStatus] = useState('就绪');
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [, refreshSaveStates] = useState(0);
   const [contextMenu, setContextMenu] = useState<{ node: DstuNode; x: number; y: number } | null>(null);
   const [resourceDialog, setResourceDialog] = useState<{ mode: 'rename' | 'delete'; node: DstuNode; value: string } | null>(null);
@@ -371,6 +384,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
 
   const loadResources = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     const result = await dstu.list('/', {
       recursive: true,
       types: ['note', 'mindmap'],
@@ -381,7 +395,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setResources(result.value.filter((node) => node.type === 'note' || node.type === 'mindmap'));
       setStatus(`${result.value.length} 个文件`);
     } else {
-      setStatus(result.error.toUserMessage());
+      const message = result.error.toUserMessage();
+      setLoadError(message);
+      setStatus(message);
     }
     setLoading(false);
   }, []);
@@ -588,13 +604,38 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           <input className="notes-search-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文件…" aria-label="搜索文件" />
           {query && <IconButton label="清除搜索" onClick={() => setQuery('')}><X size={12} /></IconButton>}
         </div>
-        <div className="notes-tree" aria-busy={loading}>
-          {loading ? <div className="notes-tree-message">正在读取文件…</div> : (
+        <div className="notes-tree" aria-busy={loading} aria-live="polite">
+          {loading ? (
+            <div className="notes-tree-loading" aria-label="正在读取文件">
+              <i /><i /><i /><i />
+            </div>
+          ) : loadError ? (
+            <div className="notes-tree-message" data-state="error">
+              <span>文件列表加载失败</span>
+              <button type="button" onClick={() => void loadResources()}>重试</button>
+            </div>
+          ) : filteredResources.length === 0 ? (
+            <div className="notes-tree-message" data-state="empty">
+              <span>{query ? `没有匹配“${query}”的文件` : '知识库中还没有文件'}</span>
+              {query ? (
+                <button type="button" onClick={() => setQuery('')}>显示全部文件</button>
+              ) : (
+                <button type="button" onClick={() => void createResource('note')}>新建笔记</button>
+              )}
+            </div>
+          ) : (
             <TreeBranch
               folder={tree}
               activeId={activeTab?.id ?? null}
               onOpen={(ref, title) => void openResource(ref, title)}
-              onContextMenu={(event, node) => { event.preventDefault(); setContextMenu({ node, x: event.clientX, y: event.clientY }); }}
+              onContextMenu={(event, node) => {
+                event.preventDefault();
+                setContextMenu({
+                  node,
+                  x: Math.min(event.clientX, window.innerWidth - 160),
+                  y: Math.min(event.clientY, window.innerHeight - 72),
+                });
+              }}
             />
           )}
         </div>
@@ -627,7 +668,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       )}
       {resourceDialog && (
         <div className="notes-dialog-scrim" role="presentation" onPointerDown={() => setResourceDialog(null)}>
-          <div className="notes-resource-dialog" role="dialog" aria-modal="true" aria-labelledby="notes-resource-dialog-title" onPointerDown={(event) => event.stopPropagation()}>
+          <div
+            className="notes-resource-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="notes-resource-dialog-title"
+            onPointerDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => { if (event.key === 'Escape') setResourceDialog(null); }}
+          >
             <h2 id="notes-resource-dialog-title">{resourceDialog.mode === 'rename' ? '重命名文件' : '删除文件'}</h2>
             {resourceDialog.mode === 'rename' ? (
               <input
@@ -643,6 +691,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               <button
                 type="button"
                 className={resourceDialog.mode === 'delete' ? 'is-danger' : 'is-primary'}
+                disabled={resourceDialog.mode === 'rename' && (!resourceDialog.value.trim() || resourceDialog.value.trim() === resourceDialog.node.name)}
                 onClick={() => void (resourceDialog.mode === 'rename' ? renameContextResource() : deleteContextResource())}
               >
                 {resourceDialog.mode === 'rename' ? '重命名' : '删除'}

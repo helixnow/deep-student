@@ -1173,13 +1173,13 @@ describe('DataGovernanceDashboard restart dialog after restore', () => {
       ).toBeInTheDocument();
     });
 
-    // 应有"立即重启"和"稍后重启"按钮
+    // 待激活槽只能通过立即重启提交，不能继续在旧槽写入。
     expect(
       screen.getByRole('button', { name: /立即重启|data:governance\.restart_now/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('button', { name: /稍后重启|data:governance\.restart_later/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole('button', { name: /稍后重启|data:governance\.restart_later/i }),
+    ).not.toBeInTheDocument();
   });
 
   it('does not show restart dialog when restore completes with requires_restart=false', async () => {
@@ -1222,7 +1222,7 @@ describe('DataGovernanceDashboard restart dialog after restore', () => {
     });
   });
 
-  it('closes dialog without restarting when clicking "restart later"', async () => {
+  it('does not allow dismissing the mandatory restart dialog', async () => {
     await startRestoreAndComplete(true);
 
     // 等待重启对话框显示
@@ -1232,19 +1232,21 @@ describe('DataGovernanceDashboard restart dialog after restore', () => {
       ).toBeInTheDocument();
     });
 
-    // 点击"稍后重启"
-    const restartLaterBtn = screen.getByRole('button', {
-      name: /稍后重启|data:governance\.restart_later/i,
-    });
+    expect(
+      screen.queryByRole('button', { name: /稍后重启|data:governance\.restart_later/i }),
+    ).not.toBeInTheDocument();
+
+    // 通用对话框关闭按钮也不能绕过恢复激活。
+    const closeBtn = screen.getByRole('button', { name: 'Close' });
     await act(async () => {
-      fireEvent.click(restartLaterBtn);
+      fireEvent.click(closeBtn);
     });
 
-    // 对话框应关闭
+    // 对话框保持打开，直到立即重启被执行。
     await waitFor(() => {
       expect(
-        screen.queryByText(/恢复完成|data:governance\.restore_complete_title/i),
-      ).not.toBeInTheDocument();
+        screen.getByText(/恢复完成|data:governance\.restore_complete_title/i),
+      ).toBeInTheDocument();
     });
 
     // restartApp 不应被调用

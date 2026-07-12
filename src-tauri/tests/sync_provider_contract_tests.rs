@@ -13,8 +13,8 @@ use deep_student_lib::cloud_storage::{
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
 use deep_student_lib::data_governance::sync::{
-    MergeStrategy, SyncChangeWithData, SyncDirection, SyncManager, SyncManifest,
-    SyncTransactionStatus,
+    AssetDirsManifest, MergeStrategy, SyncChangeWithData, SyncDirection, SyncManager, SyncManifest,
+    SyncTransactionStatus, WorkspacesManifest,
 };
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
@@ -426,6 +426,38 @@ fn assert_file_bytes(path: &Path, expected: &[u8]) {
     assert_eq!(actual, expected);
 }
 
+fn set_old_modified_time(path: &Path) {
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .unwrap_or_else(|e| panic!("open {} to set mtime: {e}", path.display()));
+    let old = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400);
+    file.set_times(std::fs::FileTimes::new().set_modified(old))
+        .unwrap_or_else(|e| panic!("set old mtime on {}: {e}", path.display()));
+}
+
+async fn read_single_file_manifest<T: serde::de::DeserializeOwned>(
+    storage: &dyn CloudStorage,
+    prefix: &str,
+) -> T {
+    let files = storage
+        .list(prefix)
+        .await
+        .unwrap_or_else(|e| panic!("list file manifests under {prefix}: {e}"));
+    assert_eq!(
+        files.len(),
+        1,
+        "isolated provider contract should publish one manifest under {prefix}: {files:?}"
+    );
+    let key = &files[0].key;
+    let bytes = storage
+        .get(key)
+        .await
+        .unwrap_or_else(|e| panic!("read file manifest {key}: {e}"))
+        .unwrap_or_else(|| panic!("listed file manifest disappeared: {key}"));
+    serde_json::from_slice(&bytes).unwrap_or_else(|e| panic!("parse file manifest {key}: {e}"))
+}
+
 async fn assert_remote_file_present(storage: &dyn CloudStorage, key: &str) {
     assert!(
         storage
@@ -775,8 +807,8 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
         .await
         .expect_err("wrong password should stop at the encrypted change file");
     assert!(
-        wrong_password_error.to_string().contains(&change_key),
-        "wrong password error should identify the encrypted change file: {wrong_password_error}"
+        wrong_password_error.to_string().contains(&manifest_key),
+        "wrong password must fail closed at the encrypted device manifest: {wrong_password_error}"
     );
 
     let plaintext_manager = SyncManager::new(plaintext_device_id);
@@ -785,8 +817,8 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
         .await
         .expect_err("missing password should stop at the encrypted change file");
     assert!(
-        plaintext_error.to_string().contains(&change_key),
-        "missing password error should identify the encrypted change file: {plaintext_error}"
+        plaintext_error.to_string().contains(&manifest_key),
+        "missing password must fail closed at the encrypted device manifest: {plaintext_error}"
     );
 }
 
@@ -969,8 +1001,8 @@ async fn run_duplicate_enriched_change_files_are_idempotent_contract(
     );
     assert_eq!(
         downloaded.changes.len(),
-        changes.len() * retry_files.len(),
-        "target should see both retry files before idempotent apply"
+        changes.len(),
+        "download should collapse identical immutable retry packages before apply"
     );
 
     let applied = SyncManager::apply_downloaded_changes(&target_vfs, &downloaded.changes, None)
@@ -1177,7 +1209,7 @@ async fn run_prune_old_changes_contract(storage: Box<dyn CloudStorage>) {
         .get(&covered_own)
         .await
         .expect("read covered own")
-        .is_none());
+        .is_some());
     assert!(storage
         .get(&covered_by_snapshot_but_not_peer)
         .await
@@ -1188,10 +1220,7 @@ async fn run_prune_old_changes_contract(storage: Box<dyn CloudStorage>) {
         .await
         .expect("read other device")
         .is_some());
-    assert_eq!(
-        deleted, 1,
-        "only own v3 changes covered by snapshot and all active peer cursors may be pruned"
-    );
+    assert_eq!(deleted, 0, "v1 snapshots are not authoritative delete sets");
 }
 
 async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage>) {
@@ -1205,7 +1234,6 @@ async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage
     let ws_id = format!("ws_{}", Uuid::new_v4().simple());
     let marker = format!("workspace-marker-{ws_id}");
     let source_db = write_workspace_database(source_active.path(), &ws_id, &marker);
-    let remote_key = format!("data_governance/workspaces/{ws_id}.db");
     let target_db = target_active
         .path()
         .join("workspaces")
@@ -1222,6 +1250,20 @@ async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage
         )
         .await
         .expect("upload source workspace database");
+    let manifest: WorkspacesManifest = read_single_file_manifest(
+        storage.as_ref(),
+        "data_governance/file_manifests/workspaces/",
+    )
+    .await;
+    let remote_key = manifest
+        .entries
+        .get(&ws_id)
+        .and_then(|entry| entry.object_key.clone())
+        .expect("workspace manifest must point to an immutable object");
+    assert!(
+        remote_key.starts_with(&format!("data_governance/workspaces/{ws_id}/")),
+        "workspace object must be scoped by workspace id: {remote_key}"
+    );
     assert_remote_file_present(storage.as_ref(), &remote_key).await;
 
     target_manager
@@ -1253,12 +1295,6 @@ async fn run_workspace_remote_same_size_corruption_rejected_contract(
     let target_active = TempDir::new().expect("create target active dir");
     let ws_id = format!("ws_{}", Uuid::new_v4().simple());
     let source_db = write_workspace_database(source_active.path(), &ws_id, "workspace-good");
-    let source_bytes = std::fs::read(&source_db).expect("read source workspace database");
-    let mut corrupted = source_bytes.clone();
-    let flip_index = corrupted.len() / 2;
-    corrupted[flip_index] ^= 0x55;
-    assert_eq!(corrupted.len(), source_bytes.len());
-    assert_ne!(sha256_hex(&corrupted), sha256_hex(&source_bytes));
 
     let source_manager = SyncManager::new(format!("device-ws-src-{}", Uuid::new_v4()));
     let target_manager = SyncManager::new(format!("device-ws-dst-{}", Uuid::new_v4()));
@@ -1271,29 +1307,48 @@ async fn run_workspace_remote_same_size_corruption_rejected_contract(
         .await
         .expect("upload source workspace database");
 
-    let remote_key = format!("data_governance/workspaces/{ws_id}.db");
+    let manifest: WorkspacesManifest = read_single_file_manifest(
+        storage.as_ref(),
+        "data_governance/file_manifests/workspaces/",
+    )
+    .await;
+    let remote_key = manifest
+        .entries
+        .get(&ws_id)
+        .and_then(|entry| entry.object_key.clone())
+        .expect("workspace manifest must point to an immutable object");
+    let remote_bytes = storage
+        .get(&remote_key)
+        .await
+        .expect("read immutable workspace object")
+        .expect("workspace object should exist");
+    let mut corrupted = remote_bytes.clone();
+    let flip_index = corrupted.len() / 2;
+    corrupted[flip_index] ^= 0x55;
+    assert_eq!(corrupted.len(), remote_bytes.len());
+    assert_ne!(sha256_hex(&corrupted), sha256_hex(&remote_bytes));
     storage
         .put(&remote_key, &corrupted)
         .await
         .expect("overwrite remote workspace database with same-size corrupted bytes");
 
-    target_manager
+    let target_db = write_workspace_database(target_active.path(), &ws_id, "workspace-local-safe");
+    set_old_modified_time(&target_db);
+
+    let error = target_manager
         .sync_workspace_databases(
             storage.as_ref(),
             target_active.path(),
             SyncDirection::Bidirectional,
         )
         .await
-        .expect("workspace sync should skip corrupted download without failing whole pass");
-    let target_db = target_active
-        .path()
-        .join("workspaces")
-        .join(format!("{ws_id}.db"));
+        .expect_err("workspace sync must fail closed on a corrupted immutable object");
     assert!(
-        !target_db.exists(),
-        "workspace checksum failure must not leave a corrupted local database at {}",
-        target_db.display()
+        error.to_string().contains(&ws_id),
+        "workspace corruption error should identify the workspace: {error}"
     );
+    assert_workspace_marker(&source_db, "workspace-good");
+    assert_workspace_marker(&target_db, "workspace-local-safe");
 }
 
 async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudStorage>) {
@@ -1456,7 +1511,6 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
 
     let active_asset_rel = Path::new("images").join("contract").join("diagram.bin");
     let active_asset_key = "active/images/contract/diagram.bin";
-    let active_remote_key = format!("data_governance/assets/{active_asset_key}");
     let active_payload = deterministic_payload(12 * 1024 + 19);
     let source_active_asset = source_active.path().join(&active_asset_rel);
     let target_active_asset = target_active.path().join(&active_asset_rel);
@@ -1468,7 +1522,6 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
         .join("contract")
         .join("page.json");
     let app_asset_key = "app_data/pdf_ocr_sessions/contract/page.json";
-    let app_remote_key = format!("data_governance/assets/{app_asset_key}");
     let app_payload = br#"{"page":1,"text":"provider contract"}"#;
     let source_app_asset = source_app_data.path().join(&app_asset_rel);
     let target_app_asset = target_app_data.path().join(&app_asset_rel);
@@ -1490,6 +1543,20 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
         .expect("upload source asset directories");
     assert_eq!(upload.uploaded, 2);
     assert!(!upload.has_failures(), "asset upload failures: {upload:?}");
+    let manifest: AssetDirsManifest =
+        read_single_file_manifest(storage.as_ref(), "data_governance/file_manifests/assets/").await;
+    let active_remote_key = manifest
+        .entries
+        .get(active_asset_key)
+        .and_then(|entry| entry.object_key.clone())
+        .expect("active asset must point to an immutable object");
+    let app_remote_key = manifest
+        .entries
+        .get(app_asset_key)
+        .and_then(|entry| entry.object_key.clone())
+        .expect("app asset must point to an immutable object");
+    assert!(active_remote_key.starts_with("data_governance/asset_objects/"));
+    assert!(app_remote_key.starts_with("data_governance/asset_objects/"));
     assert_remote_file_present(storage.as_ref(), &active_remote_key).await;
     assert_remote_file_present(storage.as_ref(), &app_remote_key).await;
 
@@ -1538,7 +1605,9 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
         !target_active_asset.exists(),
         "target active asset should be deleted after tombstone propagation"
     );
-    assert_remote_file_missing(storage.as_ref(), &active_remote_key).await;
+    // Content-addressed objects are immutable retention units. Tombstones remove
+    // logical visibility; object garbage collection is deliberately separate.
+    assert_remote_file_present(storage.as_ref(), &active_remote_key).await;
     assert_file_bytes(&target_app_asset, app_payload);
 }
 
@@ -1555,7 +1624,6 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
 
     let asset_rel = Path::new("documents").join("contract").join("corrupt.bin");
     let asset_key = "active/documents/contract/corrupt.bin";
-    let remote_key = format!("data_governance/assets/{asset_key}");
     let payload = deterministic_payload(20 * 1024 + 11);
     let source_asset = source_active.path().join(&asset_rel);
     let target_asset = target_active.path().join(&asset_rel);
@@ -1576,6 +1644,13 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
         .expect("upload source asset");
     assert_eq!(upload.uploaded, 1);
     assert!(!upload.has_failures(), "asset upload failures: {upload:?}");
+    let manifest: AssetDirsManifest =
+        read_single_file_manifest(storage.as_ref(), "data_governance/file_manifests/assets/").await;
+    let remote_key = manifest
+        .entries
+        .get(asset_key)
+        .and_then(|entry| entry.object_key.clone())
+        .expect("asset manifest must point to an immutable object");
 
     let mut corrupted = payload.clone();
     for byte in &mut corrupted {
@@ -1587,6 +1662,12 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
         .put(&remote_key, &corrupted)
         .await
         .expect("overwrite remote asset with same-size corrupted payload");
+
+    let local_safe = vec![0xA5; payload.len()];
+    std::fs::create_dir_all(target_asset.parent().expect("target asset parent"))
+        .expect("create target asset parent");
+    std::fs::write(&target_asset, &local_safe).expect("write local safe asset");
+    set_old_modified_time(&target_asset);
 
     let download = target_manager
         .sync_asset_directories(
@@ -1603,10 +1684,11 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
         "corrupted asset must be reported as failed: {download:?}"
     );
     assert!(
-        !target_asset.exists(),
-        "checksum failure must not leave a corrupted local asset at {}",
+        target_asset.exists(),
+        "checksum failure must preserve the existing local asset at {}",
         target_asset.display()
     );
+    assert_file_bytes(&target_asset, &local_safe);
 }
 
 async fn webdav_storage() -> Box<dyn CloudStorage> {

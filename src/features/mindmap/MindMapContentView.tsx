@@ -789,10 +789,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
       )}
 
       {showSearch && (
-        <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] ui-drop-in">
+        <div className="mm-search-popover ui-drop-in" role="search">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
-            className="flex-1 h-full bg-transparent border-none outline-none text-sm placeholder-[var(--mm-text-muted)]"
+            className="mm-search-input"
             placeholder={t('mindmap:toolbar.searchPlaceholder')}
             value={searchInput}
             onChange={(e) => {
@@ -800,6 +800,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               searchFn(e.target.value);
             }}
             onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setShowSearch(false);
+                clearSearch();
+                setSearchInput('');
+                return;
+              }
               if (e.key === 'Enter') {
                 if (e.shiftKey) {
                   prevSearchResult();
@@ -813,14 +820,14 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           
           {searchInput.trim() && (
             <div
-              className="flex items-center border border-[var(--mm-border)] rounded overflow-hidden text-xs shrink-0"
+              className="mm-search-mode"
               role="group"
               aria-label={t('mindmap:toolbar.searchMode')}
             >
               <NotionButton
                 variant="ghost"
                 className={cn(
-                  "px-2 py-1 h-7 rounded-none",
+                  "mm-search-mode-button",
                   searchFilterMode
                     ? "bg-[var(--mm-bg-active)] text-[var(--mm-text)]"
                     : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
@@ -831,11 +838,11 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               >
                 {t('mindmap:toolbar.searchFilter')}
               </NotionButton>
-              <div className="w-px h-4 bg-[var(--mm-border)]" />
+              <div className="mm-search-divider" />
               <NotionButton
                 variant="ghost"
                 className={cn(
-                  "px-2 py-1 h-7 rounded-none",
+                  "mm-search-mode-button",
                   !searchFilterMode
                     ? "bg-[var(--mm-bg-active)] text-[var(--mm-text)]"
                     : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
@@ -850,19 +857,18 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           )}
 
           {searchResults.length > 0 && (
-            <div className="flex items-center gap-2 text-xs text-[var(--mm-text-secondary)]">
-              <span>{currentSearchIndex + 1} / {searchResults.length}</span>
-              <div className="flex items-center border border-[var(--mm-border)] rounded overflow-hidden">
+            <div className="mm-search-results">
+              <span className="tabular-nums">{currentSearchIndex + 1}/{searchResults.length}</span>
+              <div className="mm-search-navigation">
                 <NotionButton variant="ghost" 
-                  className="p-1 hover:bg-[var(--mm-bg-hover)]"
+                  className="mm-search-nav-button"
                   onClick={prevSearchResult}
                   aria-label={t('mindmap:toolbar.prevResult')}
                 >
                   <CaretUp size={12} />
                 </NotionButton>
-                <div className="w-px h-4 bg-[var(--mm-border)]" />
                 <NotionButton variant="ghost" 
-                  className="p-1 hover:bg-[var(--mm-bg-hover)]"
+                  className="mm-search-nav-button"
                   onClick={nextSearchResult}
                   aria-label={t('mindmap:toolbar.nextResult')}
                 >
@@ -873,7 +879,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
           )}
           
           <NotionButton variant="ghost" 
-            className="p-1 hover:bg-[var(--mm-bg-hover)] rounded text-[var(--mm-text-secondary)]"
+            className="mm-search-close"
             aria-label={t('mindmap:toolbar.closeSearch')}
             onClick={() => {
               setShowSearch(false);

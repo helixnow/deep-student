@@ -11,7 +11,7 @@
 //!
 //! ## 资产优先级
 //!
-//! - P0（高优先级）：images, notes_assets, documents, vfs_blobs, subjects, workspaces, textbooks
+//! - P0（高优先级）：images, notes_assets, documents, vfs_blobs, subjects, workspaces, textbooks, pdf_ocr_sessions
 //! - P1（低优先级）：audio, videos
 
 use serde::{Deserialize, Serialize};
@@ -47,6 +47,8 @@ pub enum AssetType {
     Videos,
     /// 教材资产
     Textbooks,
+    /// PDF/OCR 原始文件与处理中间资产
+    PdfOcrSessions,
 }
 
 /// 复制文件（带重试与大小校验）
@@ -121,6 +123,7 @@ impl AssetType {
             AssetType::Audio => "audio",
             AssetType::Videos => "videos",
             AssetType::Textbooks => "textbooks",
+            AssetType::PdfOcrSessions => "pdf_ocr_sessions",
         }
     }
 
@@ -136,6 +139,7 @@ impl AssetType {
             AssetType::Audio => "音频",
             AssetType::Videos => "视频",
             AssetType::Textbooks => "教材",
+            AssetType::PdfOcrSessions => "PDF/OCR 会话文件",
         }
     }
 
@@ -151,7 +155,8 @@ impl AssetType {
             | AssetType::VfsBlobs
             | AssetType::Subjects
             | AssetType::Workspaces
-            | AssetType::Textbooks => 0,
+            | AssetType::Textbooks
+            | AssetType::PdfOcrSessions => 0,
             AssetType::Audio | AssetType::Videos => 1,
         }
     }
@@ -168,6 +173,7 @@ impl AssetType {
             AssetType::Audio,
             AssetType::Videos,
             AssetType::Textbooks,
+            AssetType::PdfOcrSessions,
         ]
     }
 
@@ -181,6 +187,7 @@ impl AssetType {
             AssetType::Subjects,
             AssetType::Workspaces,
             AssetType::Textbooks,
+            AssetType::PdfOcrSessions,
         ]
     }
 
@@ -201,6 +208,7 @@ impl AssetType {
             "audio" => Some(AssetType::Audio),
             "videos" => Some(AssetType::Videos),
             "textbooks" => Some(AssetType::Textbooks),
+            "pdf_ocr_sessions" => Some(AssetType::PdfOcrSessions),
             _ => None,
         }
     }
@@ -1407,12 +1415,17 @@ mod tests {
         assert_eq!(AssetType::Images.relative_path(), "images");
         assert_eq!(AssetType::Images.priority(), 0);
         assert_eq!(AssetType::Videos.priority(), 1);
+        assert_eq!(
+            AssetType::PdfOcrSessions.relative_path(),
+            "pdf_ocr_sessions"
+        );
+        assert_eq!(AssetType::PdfOcrSessions.priority(), 0);
 
         let all = AssetType::all();
-        assert_eq!(all.len(), 9);
+        assert_eq!(all.len(), 10);
 
         let p0 = AssetType::p0_assets();
-        assert_eq!(p0.len(), 7);
+        assert_eq!(p0.len(), 8);
 
         let p1 = AssetType::p1_assets();
         assert_eq!(p1.len(), 2);
@@ -1432,7 +1445,7 @@ mod tests {
     #[test]
     fn test_backup_config_defaults() {
         let config = AssetBackupConfig::default();
-        assert_eq!(config.asset_types.len(), 9);
+        assert_eq!(config.asset_types.len(), 10);
         assert!(config.compute_checksum);
         assert!(config.skip_symlinks);
         assert!(config.skip_sensitive_files);
@@ -1448,16 +1461,18 @@ mod tests {
         fs::create_dir_all(&images_dir).unwrap();
         create_test_file(&images_dir, "test.png", b"fake png data");
         create_test_file(&images_dir, "subdir/nested.jpg", b"fake jpg data");
+        let pdf_ocr_dir = app_data_dir.path().join("pdf_ocr_sessions");
+        create_test_file(&pdf_ocr_dir, "session-1/original.pdf", b"fake pdf data");
 
         // 执行备份
         let config = AssetBackupConfig {
-            asset_types: vec![AssetType::Images],
+            asset_types: vec![AssetType::Images, AssetType::PdfOcrSessions],
             ..Default::default()
         };
 
         let result = backup_assets(app_data_dir.path(), backup_dir.path(), &config).unwrap();
 
-        assert_eq!(result.total_files, 2);
+        assert_eq!(result.total_files, 3);
         assert!(result.total_size > 0);
         assert_eq!(result.skipped_files, 0);
 
@@ -1467,15 +1482,17 @@ mod tests {
 
         // 删除原文件
         fs::remove_dir_all(&images_dir).unwrap();
+        fs::remove_dir_all(&pdf_ocr_dir).unwrap();
 
         // 恢复
         let restored =
             restore_assets(backup_dir.path(), app_data_dir.path(), &result.files).unwrap();
-        assert_eq!(restored, 2);
+        assert_eq!(restored, 3);
 
         // 验证恢复后的文件
         assert!(images_dir.join("test.png").exists());
         assert!(images_dir.join("subdir/nested.jpg").exists());
+        assert!(pdf_ocr_dir.join("session-1/original.pdf").exists());
     }
 
     #[test]

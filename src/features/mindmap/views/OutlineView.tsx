@@ -1868,7 +1868,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
               {/* Click empty area to add node if empty */}
               {hasOnlyRoot && (
                 <div
-                  className="mt-8 text-center text-[var(--mm-text-muted)] cursor-pointer"
+                  className="outline-empty-action"
                   onClick={() => {
                     const newNodeId = addNode(document.root.id, 0);
                     if (newNodeId) {
@@ -1876,6 +1876,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                     }
                   }}
                 >
+                  <span className="outline-empty-plus" aria-hidden="true">+</span>
                   <p>{t('outline.emptyHint')}</p>
                 </div>
               )}

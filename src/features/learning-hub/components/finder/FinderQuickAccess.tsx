@@ -1,10 +1,17 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Brain,
   CaretLeft,
   CaretRight,
+  ClockCounterClockwise,
+  Database,
+  Desktop,
+  Files,
   MagnifyingGlass,
   Plus,
+  Star,
+  Trash,
   X,
 } from '@phosphor-icons/react';
 import {
@@ -15,15 +22,6 @@ import {
   TranslationIcon,
   MindmapIcon,
   FolderIcon,
-  ImageFileIcon,
-  GenericFileIcon,
-  FavoriteIcon,
-  RecentIcon,
-  TrashIcon,
-  IndexStatusIcon,
-  MemoryIcon,
-  AllFilesIcon,
-  DesktopIcon,
   type ResourceIconProps,
 } from '../../icons';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -90,11 +88,6 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   onNewMindMap,
   createDisabled = false,
   favoriteCount,
-  noteCount,
-  textbookCount,
-  examCount,
-  essayCount,
-  translationCount,
   recentCount,
   trashCount,
   fillContainer = false
@@ -103,30 +96,16 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const quickAccessItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
-    { type: 'desktop', CustomIcon: DesktopIcon, label: t('finder.quickAccess.desktop') },
-    { type: 'allFiles', CustomIcon: AllFilesIcon, label: t('finder.quickAccess.allFiles') },
-    { type: 'recent', CustomIcon: RecentIcon, label: t('finder.quickAccess.recent'), count: recentCount },
-    { type: 'favorites', CustomIcon: FavoriteIcon, label: t('finder.quickAccess.favorites'), count: favoriteCount },
-  ];
-
-  const resourceTypeItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
-    { type: 'notes', CustomIcon: NoteIcon, label: t('finder.quickAccess.notes'), count: noteCount },
-    { type: 'textbooks', CustomIcon: TextbookIcon, label: t('finder.quickAccess.textbooks'), count: textbookCount },
-    { type: 'exams', CustomIcon: ExamIcon, label: t('finder.quickAccess.exams'), count: examCount },
-    { type: 'essays', CustomIcon: EssayIcon, label: t('finder.quickAccess.essays'), count: essayCount },
-    { type: 'translations', CustomIcon: TranslationIcon, label: t('finder.quickAccess.translations'), count: translationCount },
-    { type: 'mindmaps', CustomIcon: MindmapIcon, label: t('finder.quickAccess.mindmaps') },
-  ];
-
-  const mediaItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; color?: string }[] = [
-    { type: 'images', CustomIcon: ImageFileIcon, label: t('finder.quickAccess.images') },
-    { type: 'files', CustomIcon: GenericFileIcon, label: t('finder.quickAccess.files') },
+    { type: 'desktop', icon: Desktop, label: t('finder.quickAccess.desktop') },
+    { type: 'allFiles', icon: Files, label: t('finder.quickAccess.allFiles') },
+    { type: 'recent', icon: ClockCounterClockwise, label: t('finder.quickAccess.recent'), count: recentCount },
+    { type: 'favorites', icon: Star, label: t('finder.quickAccess.favorites'), count: favoriteCount },
   ];
 
   const systemItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
-    { type: 'trash', CustomIcon: TrashIcon, label: t('finder.quickAccess.trash'), count: trashCount },
-    { type: 'indexStatus', CustomIcon: IndexStatusIcon, label: t('finder.quickAccess.indexStatus') },
-    { type: 'memory', CustomIcon: MemoryIcon, label: t('memory.title') },
+    { type: 'trash', icon: Trash, label: t('finder.quickAccess.trash'), count: trashCount },
+    { type: 'indexStatus', icon: Database, label: t('finder.quickAccess.indexStatus') },
+    { type: 'memory', icon: Brain, label: t('memory.title') },
   ];
 
   const renderNavButton = (
@@ -149,10 +128,11 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       />
     ) : Icon ? (
       <Icon className={cn(
-        'h-[18px] w-[18px] shrink-0 transition-transform duration-150',
+        'h-[18px] w-[18px] shrink-0',
+        !fillContainer && 'transition-transform duration-150',
         iconColor || 'text-muted-foreground',
-        isActive && 'scale-105',
-        !isActive && 'group-hover:scale-105'
+        !fillContainer && isActive && 'scale-105',
+        !fillContainer && !isActive && 'group-hover:scale-105'
       )} />
     ) : null;
 
@@ -161,25 +141,22 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         <NotionButton
           variant="nav"
           size="md"
+          aria-current={isActive ? 'page' : undefined}
           className={cn(
-            'desktop-shell-sidebar-row desktop-shell-nav-row group !w-full !justify-start !px-2.5 !py-1.5 text-left',
-            isActive && 'desktop-shell-nav-row--active'
+            'desktop-shell-nav-row !w-full rounded-2xl !justify-start gap-2.5 !px-2.5 !py-1.5',
+            isActive && 'desktop-shell-nav-row--active cursor-default'
           )}
-          onClick={() => onNavigate(type)}
+          onClick={isActive ? undefined : () => onNavigate(type)}
         >
-          <span className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
-              {renderedIcon}
-            </span>
-            <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
-              {label}
-            </span>
-            {count !== undefined && count > 0 && (
-              <span className="min-w-[24px] shrink-0 text-right text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
-                {count}
-              </span>
-            )}
+          {renderedIcon}
+          <span className="min-w-0 flex-1 truncate text-left text-[color:var(--shell-navigation-foreground)]">
+            {label}
           </span>
+          {count !== undefined && count > 0 && (
+            <span className="min-w-[24px] shrink-0 text-right text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
+              {count}
+            </span>
+          )}
         </NotionButton>
       );
     }
@@ -304,53 +281,72 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   return (
     <div 
       className={cn(
-        'flex flex-col transition-all duration-200 ease-out overflow-hidden',
+        'flex flex-col overflow-hidden transition-all duration-200 ease-out',
+        fillContainer && 'font-sidebar-study-ui h-full min-w-0',
         fillContainer ? 'bg-transparent text-[color:var(--shell-navigation-foreground)]' : 'bg-muted/30 border-r border-border/40',
         fillContainer ? 'w-full' : collapsed ? 'w-14' : 'w-52'
       )}
     >
         <div className={cn(
-          'flex items-center gap-1.5 shrink-0 px-2',
-          fillContainer ? 'pt-3 pb-2' : 'py-2',
+          'shrink-0 px-2',
+          fillContainer ? 'pb-1' : 'flex items-center gap-1.5 py-2',
           collapsed ? 'justify-center' : ''
         )}>
           {!collapsed ? (
             <>
               <div className="flex-1 relative group">
                 <MagnifyingGlass className={cn(
-                  "absolute left-2.5 top-1/2 -translate-y-1/2 transition-colors duration-150",
-                  isSearchFocused ? "text-primary" : "text-muted-foreground/50"
-                )} size={16} />
-                <Input
-                  type="text"
-                  placeholder={t('finder.search.placeholder')}
-                  value={searchQuery}
-                  onChange={(e) => onSearchChange?.(e.target.value)}
-                  onKeyDown={(e) => {
-                    // Esc 清空搜索词（有内容时拦截，避免误触发外层快捷键）
-                    if (e.key === 'Escape' && searchQuery) {
-                      e.stopPropagation();
-                      onSearchChange?.('');
-                    }
-                  }}
-                  onFocus={() => setIsSearchFocused(true)}
-                  onBlur={() => setIsSearchFocused(false)}
-                  disabled={searchDisabled}
-                  className={cn(
-                    'h-8 pl-8 pr-8 text-[13px] rounded-lg',
-                    'bg-muted/40 border-transparent',
-                    'placeholder:text-muted-foreground/40',
-                    'focus:bg-background focus:border-border/60 focus:ring-1 focus:ring-primary/20',
-                    'transition-all duration-150'
-                  )}
-                />
+                  "pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 transition-colors duration-150",
+                  isSearchFocused ? "text-[color:var(--sidebar-muted,var(--muted-foreground))]" : "text-[color:var(--sidebar-muted,var(--muted-foreground))] opacity-60"
+                )} size={14} />
+                {fillContainer ? (
+                  <input
+                    type="search"
+                    placeholder={t('finder.search.placeholder')}
+                    aria-label={t('finder.search.placeholder')}
+                    value={searchQuery}
+                    onChange={(e) => onSearchChange?.(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && searchQuery) {
+                        e.stopPropagation();
+                        onSearchChange?.('');
+                      }
+                    }}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    disabled={searchDisabled}
+                    className={cn(
+                      'h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60',
+                      'pl-8 pr-8 text-[13px] text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted,var(--muted-foreground))] placeholder:opacity-70',
+                      'outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background',
+                      '[&::-webkit-search-cancel-button]:hidden'
+                    )}
+                  />
+                ) : (
+                  <Input
+                    type="text"
+                    placeholder={t('finder.search.placeholder')}
+                    value={searchQuery}
+                    onChange={(e) => onSearchChange?.(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape' && searchQuery) {
+                        e.stopPropagation();
+                        onSearchChange?.('');
+                      }
+                    }}
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
+                    disabled={searchDisabled}
+                    className="h-8 rounded-lg border-transparent bg-muted/40 pl-8 pr-8 text-[13px] placeholder:text-muted-foreground/40 focus:border-border/60 focus:bg-background focus:ring-1 focus:ring-primary/20"
+                  />
+                )}
                 {searchQuery && (
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label={t('common:clear')}>
                     <X size={14} className="text-muted-foreground/60" />
                   </NotionButton>
                 )}
               </div>
-              <AppMenu>
+              {!fillContainer && <AppMenu>
                 <AppMenuTrigger asChild>
                   <NotionButton 
                     variant="ghost" 
@@ -369,7 +365,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 <AppMenuContent align="end" className="min-w-[180px]">
                   {createMenuItems}
                 </AppMenuContent>
-              </AppMenu>
+              </AppMenu>}
             </>
           ) : (
             <AppMenu>
@@ -391,29 +387,11 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           )}
         </div>
 
-        <CustomScrollArea className="flex-1" viewportClassName={fillContainer ? 'px-2 pb-2' : 'px-1.5 pb-2'}>
+        <CustomScrollArea className="flex-1" viewportClassName={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
           <div className="space-y-0.5">
             {quickAccessItems.map((item) => (
               <React.Fragment key={item.type}>
                 {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
-              </React.Fragment>
-            ))}
-          </div>
-
-          {renderSectionTitle(t('finder.quickAccess.resourceTypes'))}
-          <div className="space-y-0.5">
-            {resourceTypeItems.map((item) => (
-              <React.Fragment key={item.type}>
-                {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
-              </React.Fragment>
-            ))}
-          </div>
-
-          {renderSectionTitle(t('finder.quickAccess.media'))}
-          <div className="space-y-0.5">
-            {mediaItems.map((item) => (
-              <React.Fragment key={item.type}>
-                {renderNavButton(item.type, item.icon, item.label, undefined, item.color, item.CustomIcon)}
               </React.Fragment>
             ))}
           </div>

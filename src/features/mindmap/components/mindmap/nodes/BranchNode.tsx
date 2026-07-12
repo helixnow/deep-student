@@ -208,10 +208,10 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     };
   }, [data.nodeId, setMeasuredNodeHeight, isEmbed]);
 
-  // 根据节点是否有子节点决定使用 branch 还是 leaf 样式
-  const nodeTheme = hasChildren ? theme?.node?.branch : theme?.node?.leaf;
-  
-  // 判断是否为下划线风格节点 (Level >= 2)
+  // 节点外观只由层级决定，避免新增子节点时在 branch/leaf 样式间跳变。
+  const nodeTheme = data.level === 1 ? theme?.node?.branch : theme?.node?.leaf;
+
+  // 二级及以下使用下划线风格。
   const isUnderlineNode = data.level >= 2;
   const branchColor = data.branchColor;
   
