@@ -61,6 +61,15 @@
     var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
+/* Expand pointer hit testing without changing the 12px painted circle or layout. */
+.wb-title-key::after {
+  content: '';
+  position: absolute;
+  inset: -7px -4px;
+  background: transparent;
+  pointer-events: auto;
+}
+
 .wb-title-key:active {
   transform: scale(0.88);
 }

@@ -1,8 +1,34 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { WindowTitleBar } from '@/features/workbench/components/WindowTitleBar';
+
+const titlebarCss = readFileSync(
+  resolve(process.cwd(), 'src/features/workbench/components/WindowTitleBar.css'),
+  'utf8',
+);
+const workbenchTokensCss = readFileSync(
+  resolve(process.cwd(), 'src/features/workbench/styles/workbench.tokens.css'),
+  'utf8',
+);
+
+describe('WindowTitleBar hit target contract', () => {
+  it('expands each traffic-light hit target without changing visual geometry', () => {
+    expect(workbenchTokensCss).toMatch(/--wb-traffic-size:\s*12px;/);
+    expect(workbenchTokensCss).toMatch(/--wb-traffic-gap:\s*8px;/);
+
+    const hitTargetRule = titlebarCss.match(/\.wb-title-key::after\s*\{(?<body>[^}]*)\}/)
+      ?.groups?.body;
+    expect(hitTargetRule).toBeDefined();
+    expect(hitTargetRule).toMatch(/content:\s*'';/);
+    expect(hitTargetRule).toMatch(/inset:\s*-7px -4px;/);
+    expect(hitTargetRule).toMatch(/background:\s*transparent;/);
+    expect(hitTargetRule).toMatch(/pointer-events:\s*auto;/);
+  });
+});
 
 function renderBar(overrides: Partial<React.ComponentProps<typeof WindowTitleBar>> = {}) {
   const props = {
