@@ -396,24 +396,6 @@ export const WorkbenchDesktop: React.FC = () => {
         saveSnapshot();
       }
     });
-    let unlistenCloseRequested: (() => void) | null = null;
-    if (isTauriRuntime()) {
-      void import('@tauri-apps/api/window')
-        .then(({ getCurrentWindow }) =>
-          getCurrentWindow().onCloseRequested(async () => {
-            // Tauri 会 await handler 后再 destroy；这里是真正可等待的退出屏障。
-            await flushSnapshot();
-          }),
-        )
-        .then((unlisten) => {
-          if (disposed) unlisten();
-          else unlistenCloseRequested = unlisten;
-        })
-        .catch((error) => {
-          console.warn('[workbench] close-request snapshot hook failed:', error);
-        });
-    }
-
     void (async () => {
       const snapshot = await loadSnapshot();
       if (disposed) return;
@@ -438,7 +420,6 @@ export const WorkbenchDesktop: React.FC = () => {
       disposed = true;
       unsubscribeStore();
       unsubscribePinned();
-      unlistenCloseRequested?.();
       // 先落盘（buildSnapshot 同步采集，provider 仍在）再注销
       void flushSnapshot();
       registerDockPinnedProvider(null);

@@ -10,8 +10,18 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
 
+const tauriMocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  onCloseRequested: vi.fn(),
+}));
+
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(async () => null),
+  invoke: tauriMocks.invoke,
+}));
+vi.mock('@tauri-apps/api/window', () => ({
+  getCurrentWindow: () => ({
+    onCloseRequested: tauriMocks.onCloseRequested,
+  }),
 }));
 // 避免把 chat 重 UI / 会话核心拖进冒烟测试
 vi.mock('@/features/chat/components/AnkiPanelHost', () => ({
@@ -53,6 +63,8 @@ function ensureTestApp(): void {
 
 describe('P11 WorkbenchDesktop 总装', () => {
   beforeEach(() => {
+    tauriMocks.invoke.mockReset().mockResolvedValue(null);
+    tauriMocks.onCloseRequested.mockReset();
     localStorage.clear();
     resetWindowStoreForTests();
     setDockPinned([]);
@@ -62,6 +74,7 @@ describe('P11 WorkbenchDesktop 总装', () => {
 
   afterEach(() => {
     cleanup();
+    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     workbenchBus.setEnabled(false);
   });
 
@@ -210,5 +223,24 @@ describe('P11 WorkbenchDesktop 总装', () => {
       'settings',
     ]);
     expect((events[1].detail as { openResource: string }).openResource).toBe('/note_1');
+  });
+
+  it('不拦截 Tauri 原生关闭请求，卸载时仅尽力保存快照', async () => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    const { unmount } = render(<WorkbenchDesktop />);
+    await waitFor(() => expect(document.querySelector('.wb-empty-desktop')).toBeTruthy());
+
+    act(() => {
+      workbenchBus.launch({ typeId: TEST_TYPE_ID, instanceKey: 'close-contract', reason: 'api' });
+    });
+    unmount();
+
+    expect(tauriMocks.onCloseRequested).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(tauriMocks.invoke).toHaveBeenCalledWith(
+        'save_setting',
+        expect.objectContaining({ key: WORKBENCH_SNAPSHOT_KEY }),
+      );
+    });
   });
 });
