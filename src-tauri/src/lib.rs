@@ -2052,17 +2052,17 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("Failed to build Tauri application")
-        .run(|app_handle, event| match event {
+        .run(|_app_handle, event| match event {
             tauri::RunEvent::ExitRequested { .. } => {
                 tauri::async_runtime::block_on(crate::background_tasks::shutdown());
             }
+            #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
-                if let Some(window) = app_handle.get_webview_window("main") {
+                if let Some(window) = _app_handle.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
 
-                #[cfg(target_os = "macos")]
                 #[allow(unused_unsafe)]
                 unsafe {
                     use cocoa::appkit::{NSApp, NSApplication};

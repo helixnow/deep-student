@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -12,8 +12,8 @@ use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::runtime_roots::{
     artifact_mutation_guard, create_write_backup_from_file, normalize_runtime_relative_path,
-    revalidate_runtime_root, runtime_root_by_id, temp_root, RuntimeRoot, RuntimeRootAccess,
-    RuntimeRootKind,
+    open_regular_file_no_follow, revalidate_runtime_root, runtime_root_by_id, temp_root,
+    RuntimeRoot, RuntimeRootAccess, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind, MutationReceipt};
@@ -258,30 +258,10 @@ impl WorkspaceFsExecutor {
     }
 
     fn read_file_bounded(target: &Path, max_bytes: usize) -> Result<BoundedFileRead, String> {
-        let before = fs::symlink_metadata(target)
-            .map_err(|error| format!("Failed to inspect file: {}", error))?;
-        if before.file_type().is_symlink() || !before.is_file() {
-            return Err("workspace_file_read path must be a regular file".to_string());
-        }
-        let mut options = OpenOptions::new();
-        options.read(true);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
-        }
-        let mut file = options.open(target).map_err(|error| {
-            format!("Failed to open file without following symlinks: {}", error)
-        })?;
+        let mut file = open_regular_file_no_follow(target, "workspace_file_read path")?;
         let metadata = file
             .metadata()
             .map_err(|error| format!("Failed to read file metadata: {}", error))?;
-        if !metadata.is_file() {
-            return Err("workspace_file_read path must be a file".to_string());
-        }
-        if !Self::metadata_matches(&before, &metadata) {
-            return Err("workspace_file_read target changed while it was being opened".to_string());
-        }
         if metadata.len() > MAX_FILE_SOURCE_BYTES {
             return Err(format!(
                 "workspace_file_read refuses files larger than {} MiB",
@@ -322,26 +302,6 @@ impl WorkspaceFsExecutor {
             bytes: total,
             sha256: hex::encode(hasher.finalize()),
         })
-    }
-
-    fn metadata_matches(before: &fs::Metadata, opened: &fs::Metadata) -> bool {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            return before.dev() == opened.dev() && before.ino() == opened.ino();
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::MetadataExt;
-            return before.volume_serial_number() == opened.volume_serial_number()
-                && before.file_index() == opened.file_index();
-        }
-        #[cfg(not(any(unix, windows)))]
-        {
-            before.len() == opened.len()
-                && before.modified().ok().is_some()
-                && before.modified().ok() == opened.modified().ok()
-        }
     }
 
     fn decode_utf8_prefix(bytes: &[u8], truncated: bool) -> Result<String, String> {

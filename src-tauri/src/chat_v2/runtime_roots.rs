@@ -143,6 +143,39 @@ enum RuntimeRootIdentity {
     },
 }
 
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WindowsFileInformation {
+    attributes: u32,
+    volume_serial_number: u32,
+    file_index: u64,
+}
+
+#[cfg(windows)]
+fn windows_file_information(file: &fs::File) -> io::Result<WindowsFileInformation> {
+    use std::mem::MaybeUninit;
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+    };
+
+    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    // SAFETY: the file handle remains valid for the call, and Windows initializes
+    // the entire output structure before returning a nonzero result.
+    let result =
+        unsafe { GetFileInformationByHandle(file.as_raw_handle(), information.as_mut_ptr()) };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: a nonzero result guarantees that the output structure was initialized.
+    let information = unsafe { information.assume_init() };
+    Ok(WindowsFileInformation {
+        attributes: information.dwFileAttributes,
+        volume_serial_number: information.dwVolumeSerialNumber,
+        file_index: ((information.nFileIndexHigh as u64) << 32) | information.nFileIndexLow as u64,
+    })
+}
+
 fn lock_or_recover<T>(lock: &'static Mutex<T>, name: &str) -> MutexGuard<'static, T> {
     lock.lock().unwrap_or_else(|poisoned| {
         log::error!("[RuntimeRoots] {} mutex poisoned; recovering", name);
@@ -495,16 +528,19 @@ fn runtime_root_identity(path: &Path) -> Result<RuntimeRootIdentity, String> {
 
     #[cfg(windows)]
     {
-        use std::os::windows::fs::MetadataExt;
-        let volume_serial_number = metadata
-            .volume_serial_number()
-            .ok_or_else(|| "Failed to resolve runtime root volume serial number".to_string())?;
-        let file_index = metadata
-            .file_index()
-            .ok_or_else(|| "Failed to resolve runtime root file index".to_string())?;
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+
+        let directory = OpenOptions::new()
+            .access_mode(0)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(path)
+            .map_err(|error| format!("Failed to open runtime root identity: {}", error))?;
+        let information = windows_file_information(&directory)
+            .map_err(|error| format!("Failed to inspect runtime root identity: {}", error))?;
         return Ok(RuntimeRootIdentity::Windows {
-            volume_serial_number,
-            file_index,
+            volume_serial_number: information.volume_serial_number,
+            file_index: information.file_index,
         });
     }
 
@@ -1383,18 +1419,12 @@ fn safe_backup_file_name(name: &str) -> String {
     }
 }
 
+#[cfg(not(windows))]
 fn metadata_matches_opened_file(before: &fs::Metadata, opened: &fs::Metadata) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
         return before.dev() == opened.dev() && before.ino() == opened.ino();
-    }
-
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        return before.volume_serial_number() == opened.volume_serial_number()
-            && before.file_index() == opened.file_index();
     }
 
     #[cfg(not(any(unix, windows)))]
@@ -1405,7 +1435,7 @@ fn metadata_matches_opened_file(before: &fs::Metadata, opened: &fs::Metadata) ->
     }
 }
 
-fn open_regular_file_no_follow(path: &Path, label: &str) -> Result<fs::File, String> {
+pub(crate) fn open_regular_file_no_follow(path: &Path, label: &str) -> Result<fs::File, String> {
     let before = fs::symlink_metadata(path)
         .map_err(|error| format!("Failed to inspect {}: {}", label, error))?;
     if before.file_type().is_symlink() || !before.is_file() {
@@ -1419,14 +1449,36 @@ fn open_regular_file_no_follow(path: &Path, label: &str) -> Result<fs::File, Str
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
     let file = options
         .open(path)
         .map_err(|error| format!("Failed to open {}: {}", label, error))?;
     let opened = file
         .metadata()
         .map_err(|error| format!("Failed to inspect opened {}: {}", label, error))?;
-    if !opened.is_file() || !metadata_matches_opened_file(&before, &opened) {
+    if !opened.is_file() {
         return Err(format!("{} changed while it was being opened", label));
+    }
+    #[cfg(not(windows))]
+    if !metadata_matches_opened_file(&before, &opened) {
+        return Err(format!("{} changed while it was being opened", label));
+    }
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Storage::FileSystem::{
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_REPARSE_POINT,
+        };
+
+        let information = windows_file_information(&file)
+            .map_err(|error| format!("Failed to inspect opened {}: {}", label, error))?;
+        if information.attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+            return Err(format!("{} must be a regular file, not a symlink", label));
+        }
     }
     Ok(file)
 }
@@ -1910,6 +1962,38 @@ mod tests {
             )
             .expect("settings schema");
         database
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_runtime_root_and_file_identities_use_handle_information() {
+        use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let root = temp_dir.path().join("root");
+        fs::create_dir(&root).expect("create root");
+        let canonical = root.canonicalize().expect("canonical root");
+
+        let first = runtime_root_identity(&canonical).expect("first root identity");
+        let second = runtime_root_identity(&canonical).expect("second root identity");
+        assert_eq!(first, second);
+
+        let RuntimeRootIdentity::Windows {
+            volume_serial_number,
+            file_index: root_file_index,
+        } = first
+        else {
+            panic!("expected Windows runtime root identity");
+        };
+
+        let file_path = canonical.join("sample.txt");
+        fs::write(&file_path, "sample").expect("write sample");
+        let file = open_regular_file_no_follow(&file_path, "sample file").expect("open sample");
+        let information = windows_file_information(&file).expect("file information");
+
+        assert_eq!(information.volume_serial_number, volume_serial_number);
+        assert_ne!(information.file_index, root_file_index);
+        assert_eq!(information.attributes & FILE_ATTRIBUTE_REPARSE_POINT, 0);
     }
 
     #[test]
