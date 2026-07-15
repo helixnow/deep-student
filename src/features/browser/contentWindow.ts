@@ -6,6 +6,11 @@
  *（避免与零 capability / 独立 profile 冲突）。ensure 仅在窗已存在时聚焦。
  */
 import { BROWSER_CONTENT_LABEL } from './types';
+import {
+  getSurfaceHostMode,
+  isCommandMissingError,
+  setSurfaceVisibility,
+} from './browserApi';
 
 export { BROWSER_CONTENT_LABEL };
 
@@ -19,8 +24,23 @@ async function getContentWindow() {
 }
 
 /** 若 content 窗已存在则聚焦；不存在则返回 false（由 Rust open_session 创建） */
-export async function ensureBrowserContentWindow(): Promise<boolean> {
+export async function ensureBrowserContentWindow(sessionId?: string | null): Promise<boolean> {
   if (!isTauri()) return false;
+  if (sessionId) {
+    try {
+      const mode = await getSurfaceHostMode();
+      // Embedded content is revealed only after the React slot has sent bounds.
+      if (mode === 'embedded') return true;
+      await setSurfaceVisibility(sessionId, true, true);
+      return true;
+    } catch (error) {
+      if (!isCommandMissingError(error)) {
+        console.warn('[BrowserContent] ensure native surface failed:', error);
+        return false;
+      }
+      // Older Rust builds fall through to the legacy WebviewWindow path.
+    }
+  }
   try {
     const existing = await getContentWindow();
     if (!existing) return false;
@@ -38,8 +58,23 @@ export async function ensureBrowserContentWindow(): Promise<boolean> {
 }
 
 /** 显示并聚焦 content 浮窗（「显示页面」） */
-export async function showBrowserContentWindow(): Promise<boolean> {
+export async function showBrowserContentWindow(sessionId?: string | null): Promise<boolean> {
   if (!isTauri()) return false;
+  if (sessionId) {
+    try {
+      const mode = await getSurfaceHostMode();
+      // Embedded visibility is owned by the active BrowserAppWindow slot so
+      // imperative calls cannot reveal stale bounds or steal focus.
+      if (mode === 'embedded') return true;
+      await setSurfaceVisibility(sessionId, true, true);
+      return true;
+    } catch (error) {
+      if (!isCommandMissingError(error)) {
+        console.warn('[BrowserContent] show native surface failed:', error);
+        return false;
+      }
+    }
+  }
   try {
     const existing = await getContentWindow();
     if (!existing) return false;
@@ -57,8 +92,16 @@ export async function showBrowserContentWindow(): Promise<boolean> {
 }
 
 /** 隐藏 content 浮窗（不销毁；销毁走 close / Rust close_session） */
-export async function hideBrowserContentWindow(): Promise<void> {
+export async function hideBrowserContentWindow(sessionId?: string | null): Promise<void> {
   if (!isTauri()) return;
+  if (sessionId) {
+    try {
+      await setSurfaceVisibility(sessionId, false, false);
+      return;
+    } catch (error) {
+      if (!isCommandMissingError(error)) return;
+    }
+  }
   try {
     const existing = await getContentWindow();
     if (existing) await existing.hide();

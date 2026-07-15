@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window. NOTE(F16/S1): the http allow list keeps the https://*/* wildcard because users can configure arbitrary custom OpenAI-compatible LLM endpoints and MCP server URLs which plugin-http must reach. The plaintext http://*/* wildcard was removed (audit 16-secrets P1-2): it allowed exfiltrating data in cleartext to any host. Plaintext HTTP remains available only for loopback (127.0.0.1/localhost) self-hosted endpoints; non-loopback plaintext endpoints (e.g. LAN http://192.168.x.x) are intentionally no longer reachable via plugin-http — use https or a loopback proxy. The explicit first-party domains below are kept as documentation of known endpoints. NOTE(browser): do NOT add label browser-content here — content uses capabilities/browser-content.json with zero permissions.",
-  "windows": ["main"],
+  "description": "Capability for the main application WebView. NOTE(F16/S1): the http allow list keeps the https://*/* wildcard because users can configure arbitrary custom OpenAI-compatible LLM endpoints and MCP server URLs which plugin-http must reach. The plaintext http://*/* wildcard was removed (audit 16-secrets P1-2): it allowed exfiltrating data in cleartext to any host. Plaintext HTTP remains available only for loopback (127.0.0.1/localhost) self-hosted endpoints; non-loopback plaintext endpoints (e.g. LAN http://192.168.x.x) are intentionally no longer reachable via plugin-http — use https or a loopback proxy. The explicit first-party domains below are kept as documentation of known endpoints. NOTE(browser): keep this capability scoped to the main WebView, not the entire main window; browser-content uses capabilities/browser-content.json with only the nonce-authenticated trusted-input permission.",
+  "webviews": ["main"],
   "platforms": ["linux", "macOS", "windows"],
   "permissions": [
     "allow-application-commands",

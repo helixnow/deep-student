@@ -95,11 +95,13 @@ export function isBlockedForAgent(url: string): boolean {
 /**
  * 顶层导航预检。
  *
- * `networkMode === 'full'` 等价于 Rust `allow_insecure_http = true`。
+ * 用户手动导航允许 HTTP，并由 chrome 显示不安全状态；Agent 导航只有在
+ * `networkMode === 'full'` 时才允许公网 HTTP，且仍需额外通过私网检查。
  */
 export function allowNavigation(
   url: string,
   networkMode: BrowserNetworkMode = 'local_whitelist',
+  fromAgent = false,
 ): NavigationDecision {
   let parsed: URL;
   try {
@@ -124,7 +126,7 @@ export function allowNavigation(
     if (!parsed.hostname) {
       return { ok: false, reason: 'missing_host' };
     }
-    if (networkMode === 'full' || isLoopbackHost(parsed.hostname)) {
+    if (!fromAgent || networkMode === 'full' || isLoopbackHost(parsed.hostname)) {
       return { ok: true };
     }
     return { ok: false, reason: 'non_loopback_http' };

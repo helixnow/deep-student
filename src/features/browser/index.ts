@@ -30,6 +30,7 @@ export {
   parseBrowserSessionSnapshot,
   parseControlMode,
   reload as reloadBrowserApi,
+  releaseSurfaceFocus as releaseBrowserSurfaceFocusApi,
   takeOver as takeOverBrowserApi,
   toBrowserApiError,
 } from './browserApi';
@@ -37,8 +38,10 @@ export {
 export {
   BROWSER_CONTROL_MODE_CHANGED_EVENT,
   BROWSER_NAVIGATED_EVENT,
+  BROWSER_NAVIGATION_BLOCKED_EVENT,
   BROWSER_TITLE_CHANGED_EVENT,
   BROWSER_CLOSED_EVENT,
+  BROWSER_CONTENT_USER_INPUT_EVENT,
   ensureBrowserControlModeSync,
   type BrowserControlModeChangedPayload,
 } from './controlModeSync';

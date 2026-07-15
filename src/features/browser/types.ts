@@ -12,6 +12,35 @@ export const BROWSER_CONTENT_LABEL = 'browser-content' as const;
 
 export type BrowserControlMode = 'user' | 'agent';
 
+/** Native page host selected by Rust for the current platform. */
+export type BrowserSurfaceHostMode = 'embedded' | 'detached' | 'unsupported';
+
+/** A CSS-pixel rectangle where the native browser surface must yield to DOM UI. */
+export interface BrowserSurfaceOcclusion {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** Logical (CSS-pixel) bounds of the page slot inside the main window. */
+export interface BrowserSurfaceBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  /** Non-overlapping DOM regions that sit above this native surface. */
+  occlusions?: BrowserSurfaceOcclusion[];
+  /**
+   * Regions where pointer input must return to the DOM even if the browser
+   * remains visually visible. This preserves modal/menu outside-click
+   * behavior without hiding the whole native page.
+   */
+  inputOcclusions?: BrowserSurfaceOcclusion[];
+}
+
 /** Workbench launch / Agent open 载荷 */
 export interface BrowserLaunchPayload {
   /** 打开或导航到的 URL */
@@ -74,7 +103,11 @@ export type BrowserCommandName =
   | 'browser_reload'
   | 'browser_get_state'
   | 'browser_focus'
+  | 'browser_release_surface_focus'
   | 'browser_take_over'
+  | 'browser_set_surface_bounds'
+  | 'browser_set_surface_visibility'
+  | 'browser_get_surface_host_mode'
   | 'browser_snapshot'
   | 'browser_click'
   | 'browser_type'

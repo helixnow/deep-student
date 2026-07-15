@@ -7,11 +7,12 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::State;
+use tauri::{State, Webview};
 
+use crate::browser::service::SurfaceCssOcclusion;
 use crate::browser::{
     bridge_client, BridgeError, BrowserError, BrowserService, BrowserSessionState, HistoryEntry,
-    OpenSessionOptions,
+    OpenSessionOptions, BROWSER_CONTENT_LABEL,
 };
 
 type CmdResult<T> = Result<T, String>;
@@ -238,6 +239,91 @@ pub async fn browser_focus(
             .ok_or_else(|| "NOT_FOUND: no active browser session".to_string())?,
     };
     service.focus(&id).await.map_err(map_err)
+}
+
+/// Return keyboard focus from the native browser child to the main React WebView.
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn browser_release_surface_focus(
+    service: State<'_, Arc<BrowserService>>,
+    sessionId: String,
+) -> CmdResult<()> {
+    service.assert_gates_open().await.map_err(map_err)?;
+    service.release_surface_focus(&sessionId).map_err(map_err)
+}
+
+/// Position the native browser surface over its DOM placeholder.
+/// `sequence` is monotonic per session; stale async updates are ignored.
+#[tauri::command]
+#[allow(non_snake_case, clippy::too_many_arguments)]
+pub async fn browser_set_surface_bounds(
+    service: State<'_, Arc<BrowserService>>,
+    sessionId: String,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    viewportWidth: f64,
+    viewportHeight: f64,
+    occlusions: Option<Vec<SurfaceCssOcclusion>>,
+    inputOcclusions: Option<Vec<SurfaceCssOcclusion>>,
+    sequence: u64,
+) -> CmdResult<String> {
+    service.assert_gates_open().await.map_err(map_err)?;
+    service
+        .set_surface_bounds(
+            &sessionId,
+            x,
+            y,
+            width,
+            height,
+            viewportWidth,
+            viewportHeight,
+            occlusions.unwrap_or_default(),
+            inputOcclusions.unwrap_or_default(),
+            sequence,
+        )
+        .map(str::to_string)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn browser_set_surface_visibility(
+    service: State<'_, Arc<BrowserService>>,
+    sessionId: String,
+    visible: bool,
+    focus: Option<bool>,
+) -> CmdResult<String> {
+    service.assert_gates_open().await.map_err(map_err)?;
+    service
+        .set_surface_visibility(&sessionId, visible, focus.unwrap_or(false))
+        .map(str::to_string)
+        .map_err(map_err)
+}
+
+#[tauri::command]
+pub fn browser_get_surface_host_mode() -> CmdResult<String> {
+    Ok(BrowserService::surface_host_mode().to_string())
+}
+
+/// Private command for the document-start trusted-input listener. `webview` is
+/// injected by Tauri and cannot be supplied by page JavaScript.
+#[tauri::command]
+#[allow(non_snake_case)]
+pub fn browser_content_user_input(
+    webview: Webview,
+    service: State<'_, Arc<BrowserService>>,
+    sessionId: String,
+    nonce: String,
+    kind: String,
+) -> CmdResult<()> {
+    if webview.label() != BROWSER_CONTENT_LABEL {
+        return Err("FORBIDDEN: trusted browser input requires browser-content Webview".into());
+    }
+    service
+        .content_user_input(&sessionId, &nonce, &kind)
+        .map_err(map_err)
 }
 
 /// 用户接管：打断 agent 控制态（design §2）

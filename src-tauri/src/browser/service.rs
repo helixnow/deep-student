@@ -10,8 +10,12 @@
 
 use std::sync::{Arc, Mutex, Weak};
 
-use tauri::{AppHandle, Manager, WindowEvent};
-use tracing::{info, warn};
+use rand::{rngs::OsRng, RngCore};
+use serde::Deserialize;
+#[cfg(target_os = "linux")]
+use tauri::WindowEvent;
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Rect};
+use tracing::{debug, info, warn};
 use url::Url;
 use uuid::Uuid;
 
@@ -21,9 +25,10 @@ use crate::feature_flags::FeatureFlagManager;
 use super::database::BrowserDatabase;
 use super::error::{BrowserError, BrowserResult};
 use super::events::{
-    emit_closed, emit_control_mode_changed, emit_navigated, emit_title_changed, now_rfc3339,
-    BrowserClosedPayload, BrowserControlModeChangedPayload, BrowserNavigatedPayload,
-    BrowserTitleChangedPayload,
+    emit_closed, emit_content_user_input, emit_control_mode_changed, emit_navigated,
+    emit_navigation_blocked, emit_title_changed, now_rfc3339, BrowserClosedPayload,
+    BrowserContentUserInputPayload, BrowserControlModeChangedPayload, BrowserNavigatedPayload,
+    BrowserNavigationBlockedPayload, BrowserTitleChangedPayload,
 };
 use super::policy::{self, NavigationDenyReason};
 use super::repository::BrowserRepository;
@@ -44,13 +49,108 @@ pub const SETTING_BROWSER_NETWORK_MODE: &str = "desktop.workbenchBrowserNetworkM
 /// 硬闸 feature flag
 pub const FLAG_UI_WORKBENCH_BROWSER: &str = "ui.workbench_browser";
 
+const TRUSTED_CONTENT_INPUT_KINDS: &[&str] =
+    &["pointerdown", "keydown", "compositionstart", "wheel"];
+const MAX_SURFACE_OCCLUSIONS: usize = 64;
+
+struct TrustedContentInputCapability {
+    session_id: String,
+    nonce: [u8; 16],
+}
+
+#[derive(Debug, Clone)]
+struct BlockedNavigation {
+    url: String,
+    reason: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PendingNavigationKind {
+    Push,
+    Replace,
+}
+
+#[derive(Debug)]
+struct PendingNavigation {
+    id: u64,
+    session_id: String,
+    rollback: BrowserSession,
+    kind: PendingNavigationKind,
+    blocked: Mutex<Option<BlockedNavigation>>,
+}
+
+impl PendingNavigation {
+    fn blocked(&self) -> Option<BlockedNavigation> {
+        self.blocked
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    fn mark_blocked(&self, url: String, reason: String) {
+        let mut blocked = self
+            .blocked
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if blocked.is_none() {
+            *blocked = Some(BlockedNavigation { url, reason });
+        }
+    }
+}
+
+#[derive(Default)]
+struct NavigationRuntime {
+    sequence: u64,
+    pending: Option<Arc<PendingNavigation>>,
+}
+
+impl TrustedContentInputCapability {
+    fn generate(session_id: String) -> Self {
+        let mut nonce = [0_u8; 16];
+        OsRng.fill_bytes(&mut nonce);
+        Self { session_id, nonce }
+    }
+
+    fn encoded_nonce(&self) -> String {
+        hex::encode(self.nonce)
+    }
+
+    fn matches(&self, session_id: &str, encoded_nonce: &str) -> bool {
+        if self.session_id != session_id {
+            return false;
+        }
+        let mut candidate = [0_u8; 16];
+        if hex::decode_to_slice(encoded_nonce, &mut candidate).is_err() {
+            return false;
+        }
+        constant_time_eq(&self.nonce, &candidate)
+    }
+}
+
+fn constant_time_eq(expected: &[u8; 16], candidate: &[u8; 16]) -> bool {
+    expected
+        .iter()
+        .zip(candidate)
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (*left ^ *right)
+        })
+        == 0
+}
+
 /// 内置浏览器运行时服务（一期全局 0..1 session）
 pub struct BrowserService {
     app: AppHandle,
     /// Lazy：构造时可不打开；`open_session` 内 `ensure_open`
     db: Arc<BrowserDatabase>,
     session: Mutex<Option<BrowserSession>>,
+    /// Acquired before `session` when both are needed.
+    trusted_content_input: Mutex<Option<TrustedContentInputCapability>>,
     navigation_policy: NavigationPolicyHandle,
+    navigation_runtime: Mutex<NavigationRuntime>,
+    /// Last successfully applied surface update. Prevents async IPC responses
+    /// from moving the native surface back to stale DOM coordinates.
+    /// When both runtime locks are needed, acquire this before `session`.
+    surface_sequence: Mutex<Option<u64>>,
 }
 
 impl BrowserService {
@@ -60,7 +160,10 @@ impl BrowserService {
             app,
             db,
             session: Mutex::new(None),
+            trusted_content_input: Mutex::new(None),
             navigation_policy: NavigationPolicyHandle::new(),
+            navigation_runtime: Mutex::new(NavigationRuntime::default()),
+            surface_sequence: Mutex::new(None),
         })
     }
 
@@ -163,13 +266,22 @@ impl BrowserService {
 
     /// `desktop.workbenchBrowserNetworkMode == "full"` → 允许非 loopback http
     fn allow_insecure_http(&self) -> bool {
-        let Some(app_state) = self.app.try_state::<AppState>() else {
-            return false;
+        let allow = match self.app.try_state::<AppState>() {
+            Some(app_state) => match app_state.database.get_setting(SETTING_BROWSER_NETWORK_MODE) {
+                Ok(Some(mode)) => mode.trim().eq_ignore_ascii_case("full"),
+                _ => false,
+            },
+            None => false,
         };
-        match app_state.database.get_setting(SETTING_BROWSER_NETWORK_MODE) {
-            Ok(Some(mode)) => mode.trim().eq_ignore_ascii_case("full"),
-            _ => false,
-        }
+        self.sync_network_mode_value(if allow { "full" } else { "local_whitelist" });
+        allow
+    }
+
+    /// Keep the native navigation callback in sync with a persisted setting
+    /// without rebuilding the content Webview.
+    pub(crate) fn sync_network_mode_value(&self, mode: &str) {
+        self.navigation_policy
+            .set_agent_allow_insecure_http(mode.trim().eq_ignore_ascii_case("full"));
     }
 
     // ------------------------------------------------------------------
@@ -213,7 +325,9 @@ impl BrowserService {
                         }
                     }
                     let state = self.navigate_inner(&id, &options.url, true).await?;
-                    let _ = window::focus_content_window(&self.app);
+                    if Self::surface_host_mode() == window::SURFACE_HOST_DETACHED {
+                        let _ = self.focus(&id).await;
+                    }
                     return Ok(state);
                 }
             }
@@ -238,6 +352,10 @@ impl BrowserService {
 
         let profile_dir = window::default_profile_dir(self.db.active_dir());
         let session_id = format!("bs_{}", Uuid::new_v4());
+        let input_capability = TrustedContentInputCapability::generate(session_id.clone());
+        let initialization_script =
+            window::bridge_init_script_for_session(&session_id, &input_capability.encoded_nonce())
+                .map_err(BrowserError::Validation)?;
         let width = options.width.unwrap_or(DEFAULT_WIDTH);
         let height = options.height.unwrap_or(DEFAULT_HEIGHT);
         let focused = options.focused.unwrap_or(true);
@@ -285,10 +403,10 @@ impl BrowserService {
             warn!("[browser] push_history failed (non-fatal): {}", e);
         }
 
-        let hooks = self.make_window_hooks();
+        let hooks = self.make_window_hooks(session_id.clone());
         self.navigation_policy
             .set_agent_private_network_guard(from_agent);
-        let win = window::get_or_create_content_window(
+        let _webview = window::get_or_create_content_window(
             &self.app,
             ContentWindowOptions {
                 url: parsed,
@@ -297,20 +415,27 @@ impl BrowserService {
                 height,
                 focused,
                 profile_dir,
-                allow_insecure_http: allow_http,
                 navigation_policy: self.navigation_policy.clone(),
-                initialization_script: window::bridge_init_script(),
+                initialization_script,
             },
             Some(hooks),
         )
         .map_err(BrowserError::Validation)?;
 
-        self.attach_destroy_listener(&win, session_id.clone());
-
+        *self
+            .surface_sequence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
         {
-            let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            *guard = Some(session.clone());
+            let mut input_guard = self
+                .trusted_content_input
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            let mut session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+            *input_guard = Some(input_capability);
+            *session_guard = Some(session.clone());
         }
+        self.attach_destroy_listener(session_id.clone());
 
         let state = if from_agent {
             self.set_agent_control()?
@@ -342,14 +467,29 @@ impl BrowserService {
     async fn close_session_inner(&self, reason: &str) -> BrowserResult<()> {
         self.navigation_policy
             .set_agent_private_network_guard(false);
+        *self
+            .surface_sequence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = None;
+        self.navigation_runtime
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .pending = None;
         let session_id = {
-            let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            let Some(mut session) = guard.take() else {
-                // 仍尝试毁窗，避免孤儿
-                return window::destroy_content_window(&self.app).map_err(BrowserError::Validation);
-            };
-            session.mark_closed();
-            session.id
+            let mut input_guard = self
+                .trusted_content_input
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            let mut session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+            *input_guard = None;
+            session_guard.take().map(|mut session| {
+                session.mark_closed();
+                session.id
+            })
+        };
+        let Some(session_id) = session_id else {
+            // 仍尝试毁窗，避免孤儿
+            return window::destroy_content_window(&self.app).map_err(BrowserError::Validation);
         };
 
         if self.db.is_open() {
@@ -419,10 +559,11 @@ impl BrowserService {
 
         let win = window::content_window(&self.app)
             .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
-        let state = {
-            let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        self.cancel_pending_navigation(session_id);
+        let rollback = {
+            let guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let session = guard
-                .as_mut()
+                .as_ref()
                 .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
             if session.id != session_id {
                 return Err(BrowserError::NotFound(format!(
@@ -430,44 +571,29 @@ impl BrowserService {
                     session.id
                 )));
             }
-            // Do not commit history until the WebView accepts the navigation call.
-            win.navigate(parsed)
-                .map_err(|e| BrowserError::Validation(format!("navigate failed: {e}")))?;
-            if replace {
-                session.replace_url(url.to_string(), None);
-            } else {
-                session.push_url(url.to_string(), None);
-            }
-            session.snapshot()
+            session.clone()
         };
-
-        if self.db.is_open() {
-            let persist_result = if replace {
-                BrowserRepository::update_current_history(
-                    &self.db,
-                    session_id,
-                    state.history_index as i64,
-                    Some(url),
-                    None,
-                )
+        let attempt = self.begin_navigation(
+            rollback,
+            if replace {
+                PendingNavigationKind::Replace
             } else {
-                // Push against the previously persisted index before mirroring the new state.
-                BrowserRepository::push_history(
-                    &self.db,
-                    session_id,
-                    &BrowserHistoryPush {
-                        url: url.to_string(),
-                        title: None,
-                        transition: Some("link".into()),
-                        typed: false,
-                    },
-                )
-                .map(|_| ())
-            };
-            if let Err(error) = persist_result {
-                warn!("[browser] persist navigation failed: {}", error);
-            }
+                PendingNavigationKind::Push
+            },
+        )?;
+        if let Err(error) = win.navigate(parsed) {
+            self.clear_navigation(attempt.id);
+            return Err(BrowserError::Validation(format!(
+                "navigate failed: {error}"
+            )));
         }
+        let state = {
+            let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+            let session = self.require_session_mut(&mut guard, session_id)?;
+            apply_pending_navigation(session, &attempt, url, replace).map_err(|blocked| {
+                BrowserError::Validation(format!("navigation_blocked: {}", blocked.reason))
+            })?
+        };
 
         emit_navigated(
             &self.app,
@@ -487,6 +613,7 @@ impl BrowserService {
 
     pub async fn back(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        self.cancel_pending_navigation(session_id);
         let allow_http = self.allow_insecure_http();
         let win = window::content_window(&self.app)
             .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
@@ -514,6 +641,7 @@ impl BrowserService {
 
     pub async fn forward(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        self.cancel_pending_navigation(session_id);
         let allow_http = self.allow_insecure_http();
         let win = window::content_window(&self.app)
             .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
@@ -580,6 +708,7 @@ impl BrowserService {
 
     pub async fn reload(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
         self.assert_gates_open().await?;
+        self.cancel_pending_navigation(session_id);
         let allow_http = self.allow_insecure_http();
         let win = window::content_window(&self.app)
             .ok_or_else(|| BrowserError::NotFound(format!("window {BROWSER_CONTENT_LABEL}")))?;
@@ -615,16 +744,156 @@ impl BrowserService {
     }
 
     pub async fn focus(&self, session_id: &str) -> BrowserResult<()> {
-        {
-            let guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
-            let session = guard
-                .as_ref()
-                .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))?;
-            if session.id != session_id {
-                return Err(BrowserError::NotFound(format!("session {session_id}")));
+        let _surface_guard = self
+            .surface_sequence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        require_live_surface_session(&session_guard, session_id)?;
+        match Self::surface_host_mode() {
+            window::SURFACE_HOST_DETACHED => {
+                window::focus_content_window(&self.app).map_err(BrowserError::Validation)
             }
+            window::SURFACE_HOST_EMBEDDED => Ok(()),
+            _ => Err(BrowserError::Validation(
+                "browser content focus unsupported on this platform".into(),
+            )),
         }
-        window::focus_content_window(&self.app).map_err(BrowserError::Validation)
+    }
+
+    /// Give an embedded browser child's native first responder back to the
+    /// main React WebView so DOM modals and menus can receive keyboard input.
+    pub fn release_surface_focus(&self, session_id: &str) -> BrowserResult<()> {
+        let _surface_guard = self
+            .surface_sequence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        require_live_surface_session(&session_guard, session_id)?;
+
+        if Self::surface_host_mode() == window::SURFACE_HOST_EMBEDDED {
+            window::release_content_focus(&self.app).map_err(BrowserError::Validation)?;
+        }
+        Ok(())
+    }
+
+    pub fn surface_host_mode() -> &'static str {
+        window::surface_host_mode()
+    }
+
+    /// Synchronize the native child Webview with a DOM placeholder rectangle.
+    /// CSS viewport coordinates are converted against the main window's current
+    /// physical inner size, then committed with one `Webview::set_bounds` call.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_surface_bounds(
+        &self,
+        session_id: &str,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        viewport_width: f64,
+        viewport_height: f64,
+        occlusions: Vec<SurfaceCssOcclusion>,
+        input_occlusions: Vec<SurfaceCssOcclusion>,
+        sequence: u64,
+    ) -> BrowserResult<&'static str> {
+        let mut last_sequence = self
+            .surface_sequence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        require_live_surface_session(&session_guard, session_id)?;
+
+        if Self::surface_host_mode() == window::SURFACE_HOST_DETACHED {
+            return Ok(window::SURFACE_HOST_DETACHED);
+        }
+
+        let main_window = self
+            .app
+            .get_window(window::MAIN_WINDOW_LABEL)
+            .ok_or_else(|| {
+                BrowserError::NotFound(format!("window {}", window::MAIN_WINDOW_LABEL))
+            })?;
+        let inner_size = main_window
+            .inner_size()
+            .map_err(|e| BrowserError::Validation(format!("main window size failed: {e}")))?;
+        let bounds = physical_surface_bounds(
+            SurfaceCssBounds {
+                x,
+                y,
+                width,
+                height,
+                viewport_width,
+                viewport_height,
+            },
+            inner_size,
+        )?;
+        let physical_occlusions =
+            physical_surface_occlusions(&occlusions, viewport_width, viewport_height, inner_size)?;
+        let physical_input_occlusions = physical_surface_occlusions(
+            &input_occlusions,
+            viewport_width,
+            viewport_height,
+            inner_size,
+        )?;
+
+        if last_sequence.is_some_and(|last| sequence <= last) {
+            debug!(
+                target: "browser.surface",
+                session_id,
+                sequence,
+                last_sequence = ?*last_sequence,
+                "ignored stale browser surface bounds"
+            );
+            return Ok(window::SURFACE_HOST_EMBEDDED);
+        }
+
+        debug!(
+            target: "browser.surface",
+            session_id,
+            sequence,
+            css_x = x,
+            css_y = y,
+            css_width = width,
+            css_height = height,
+            viewport_width,
+            viewport_height,
+            occlusion_count = physical_occlusions.len(),
+            input_occlusion_count = physical_input_occlusions.len(),
+            physical_bounds = ?bounds,
+            "applying browser surface bounds"
+        );
+        window::set_content_bounds(&self.app, bounds).map_err(BrowserError::Validation)?;
+        window::set_content_occlusions(&self.app, &physical_occlusions, &physical_input_occlusions)
+            .map_err(BrowserError::Validation)?;
+        *last_sequence = Some(sequence);
+        Ok(window::SURFACE_HOST_EMBEDDED)
+    }
+
+    pub fn set_surface_visibility(
+        &self,
+        session_id: &str,
+        visible: bool,
+        focus: bool,
+    ) -> BrowserResult<&'static str> {
+        let _surface_guard = self
+            .surface_sequence
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        let session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        require_live_surface_session(&session_guard, session_id)?;
+        window::set_content_visibility(&self.app, visible, focus)
+            .map_err(BrowserError::Validation)?;
+        debug!(
+            target: "browser.surface",
+            session_id,
+            visible,
+            focus,
+            host_mode = Self::surface_host_mode(),
+            "updated browser surface visibility"
+        );
+        Ok(Self::surface_host_mode())
     }
 
     pub fn get_state(&self, session_id: &str) -> BrowserResult<BrowserSessionState> {
@@ -669,11 +938,88 @@ impl BrowserService {
             .as_mut()
             .filter(|s| s.alive)
             .ok_or_else(|| BrowserError::NotFound("no active browser session".into()))?;
+        let state = self.take_over_with_reason_locked(session, reason);
+        drop(guard);
+        self.emit_take_over(&state, reason);
+        Ok(state)
+    }
+
+    /// A document-start listener calls this only for native trusted input. The
+    /// capability lock and session lock stay held through the state transition,
+    /// so a delayed command from an old document cannot affect a replacement
+    /// `browser-content` Webview that reuses the fixed label.
+    pub fn content_user_input(
+        &self,
+        session_id: &str,
+        nonce: &str,
+        kind: &str,
+    ) -> BrowserResult<()> {
+        if !TRUSTED_CONTENT_INPUT_KINDS.contains(&kind) {
+            return Err(BrowserError::Validation(
+                "trusted_content_input: unsupported input kind".into(),
+            ));
+        }
+
+        let input_guard = self
+            .trusted_content_input
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if !input_guard
+            .as_ref()
+            .is_some_and(|capability| capability.matches(session_id, nonce))
+        {
+            return Err(BrowserError::Validation(
+                "trusted_content_input: invalid capability".into(),
+            ));
+        }
+
+        let mut session_guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        let session = session_guard
+            .as_mut()
+            .filter(|session| session.alive && session.id == session_id)
+            .ok_or_else(|| {
+                BrowserError::Validation("trusted_content_input: invalid capability".into())
+            })?;
+        let input_payload = BrowserContentUserInputPayload {
+            session_id: session.id.clone(),
+            label: session.label.clone(),
+            kind: kind.to_string(),
+            at: now_rfc3339(),
+        };
+        if session.control_mode == crate::browser::ControlMode::User {
+            self.navigation_policy
+                .set_agent_private_network_guard(false);
+            drop(session_guard);
+            drop(input_guard);
+            emit_content_user_input(&self.app, &input_payload);
+            return Ok(());
+        }
+
+        let state = self.take_over_with_reason_locked(session, "trusted_content_input");
+        drop(session_guard);
+        drop(input_guard);
+        self.emit_take_over(&state, "trusted_content_input");
+        emit_content_user_input(&self.app, &input_payload);
+        info!(
+            "[browser] trusted content input took control session={} kind={}",
+            state.id, kind
+        );
+        Ok(())
+    }
+
+    fn take_over_with_reason_locked(
+        &self,
+        session: &mut BrowserSession,
+        reason: &str,
+    ) -> BrowserSessionState {
+        debug_assert!(!reason.is_empty());
         self.navigation_policy
             .set_agent_private_network_guard(false);
         session.take_over();
-        let state = session.snapshot();
-        drop(guard);
+        session.snapshot()
+    }
+
+    fn emit_take_over(&self, state: &BrowserSessionState, reason: &str) {
         emit_control_mode_changed(
             &self.app,
             &BrowserControlModeChangedPayload {
@@ -684,12 +1030,12 @@ impl BrowserService {
                 at: now_rfc3339(),
             },
         );
-        Ok(state)
     }
 
     /// Agent 工具开始操控时切到 Agent 控制态（清除接管闩锁）并 emit 事件
     pub fn set_agent_control(&self) -> BrowserResult<BrowserSessionState> {
         self.ensure_agent_automation_supported()?;
+        self.allow_insecure_http();
         let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
         let session = guard
             .as_mut()
@@ -744,7 +1090,9 @@ impl BrowserService {
         allow_insecure_http: bool,
         from_agent: bool,
     ) -> BrowserResult<()> {
-        policy::allow_navigation_with_options(url, allow_insecure_http)
+        let effective_allow_insecure_http =
+            effective_allow_insecure_http(allow_insecure_http, from_agent);
+        policy::allow_navigation_with_options(url, effective_allow_insecure_http)
             .map_err(|e| BrowserError::Validation(format!("navigation_blocked: {e}")))?;
         if from_agent && policy::is_blocked_for_agent(url) {
             return Err(BrowserError::Validation(format!(
@@ -780,9 +1128,79 @@ impl BrowserService {
         Ok(session)
     }
 
-    fn make_window_hooks(self: &Arc<Self>) -> ContentWindowHooks {
+    fn begin_navigation(
+        &self,
+        rollback: BrowserSession,
+        kind: PendingNavigationKind,
+    ) -> BrowserResult<Arc<PendingNavigation>> {
+        let mut runtime = self
+            .navigation_runtime
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if runtime.pending.is_some() {
+            return Err(BrowserError::Validation(
+                "navigation already in progress".into(),
+            ));
+        }
+        runtime.sequence = runtime.sequence.wrapping_add(1).max(1);
+        let attempt = Arc::new(PendingNavigation {
+            id: runtime.sequence,
+            session_id: rollback.id.clone(),
+            rollback,
+            kind,
+            blocked: Mutex::new(None),
+        });
+        runtime.pending = Some(attempt.clone());
+        Ok(attempt)
+    }
+
+    fn pending_navigation(&self, session_id: &str) -> Option<Arc<PendingNavigation>> {
+        self.navigation_runtime
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .pending
+            .as_ref()
+            .filter(|pending| pending.session_id == session_id)
+            .cloned()
+    }
+
+    fn clear_navigation(&self, id: u64) -> bool {
+        let mut runtime = self
+            .navigation_runtime
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if runtime
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.id == id)
+        {
+            runtime.pending = None;
+            return true;
+        }
+        false
+    }
+
+    fn cancel_pending_navigation(&self, session_id: &str) {
+        let pending = self.pending_navigation(session_id);
+        let Some(pending) = pending else {
+            return;
+        };
+        if !self.clear_navigation(pending.id) {
+            return;
+        }
+        let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(session) = guard
+            .as_mut()
+            .filter(|session| session.alive && session.id == session_id)
+        {
+            rollback_pending_navigation(session, &pending);
+        }
+    }
+
+    fn make_window_hooks(self: &Arc<Self>, session_id: String) -> ContentWindowHooks {
         let weak: Weak<BrowserService> = Arc::downgrade(self);
         let weak_title = weak.clone();
+        let weak_blocked = weak.clone();
         ContentWindowHooks {
             on_page_finished: Arc::new(move |url| {
                 if let Some(svc) = weak.upgrade() {
@@ -794,10 +1212,105 @@ impl BrowserService {
                     svc.on_title_changed(title, url);
                 }
             }),
+            on_navigation_blocked: Arc::new(move |url, reason| {
+                if let Some(svc) = weak_blocked.upgrade() {
+                    let session_id = session_id.clone();
+                    let pending = svc.pending_navigation(&session_id);
+                    if let Some(attempt) = pending.as_ref() {
+                        attempt.mark_blocked(url.clone(), reason.clone());
+                    }
+                    // `Webview::navigate` may synchronously enter on_navigation while
+                    // its caller holds the session mutex. Defer state convergence and
+                    // event emission so the policy callback cannot deadlock the command.
+                    tauri::async_runtime::spawn(async move {
+                        svc.on_navigation_blocked(session_id, url, reason, pending);
+                    });
+                }
+            }),
         }
     }
 
+    fn on_navigation_blocked(
+        &self,
+        session_id: String,
+        url: String,
+        reason: String,
+        pending: Option<Arc<PendingNavigation>>,
+    ) {
+        if let Some(attempt) = pending.as_ref() {
+            if !self.clear_navigation(attempt.id) {
+                debug!(
+                    target: "browser.navigation",
+                    session_id,
+                    url,
+                    "ignored blocked navigation from superseded attempt"
+                );
+                return;
+            }
+        }
+        let state = {
+            let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+            match guard.as_mut() {
+                Some(session) if session.alive && session.id == session_id => {
+                    if let Some(attempt) = pending.as_ref() {
+                        rollback_pending_navigation(session, attempt);
+                    } else {
+                        session.mark_loaded(None);
+                    }
+                    Some(session.snapshot())
+                }
+                Some(_) => None,
+                // Initial navigation can be evaluated before open_session publishes
+                // its in-memory session. The captured ID still identifies this host.
+                None => None,
+            }
+        };
+        if state.is_none() && self.get_active_state().is_some() {
+            debug!(
+                target: "browser.navigation",
+                session_id,
+                url,
+                "ignored blocked navigation from stale content host"
+            );
+            return;
+        }
+
+        emit_navigation_blocked(
+            &self.app,
+            &BrowserNavigationBlockedPayload {
+                session_id,
+                label: BROWSER_CONTENT_LABEL.into(),
+                url,
+                reason,
+                current_url: state.as_ref().map(|state| state.url.clone()),
+                title: state.as_ref().map(|state| state.title.clone()),
+                can_go_back: state.as_ref().map(|state| state.can_go_back),
+                can_go_forward: state.as_ref().map(|state| state.can_go_forward),
+                history_index: state.as_ref().map(|state| state.history_index),
+                at: now_rfc3339(),
+            },
+        );
+    }
+
     fn on_page_finished(&self, url: String) {
+        let pending = {
+            let guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
+            guard
+                .as_ref()
+                .and_then(|session| self.pending_navigation(&session.id))
+        };
+        if let Some(attempt) = pending.as_ref() {
+            if let Some(blocked) = attempt.blocked() {
+                self.on_navigation_blocked(
+                    attempt.session_id.clone(),
+                    blocked.url,
+                    blocked.reason,
+                    pending,
+                );
+                return;
+            }
+            self.clear_navigation(attempt.id);
+        }
         let (state, page_initiated_navigation) = {
             let mut guard = self.session.lock().unwrap_or_else(|p| p.into_inner());
             let Some(session) = guard.as_mut() else {
@@ -815,7 +1328,28 @@ impl BrowserService {
         };
 
         if self.db.is_open() {
-            let persist_result = if page_initiated_navigation {
+            let persist_result = if let Some(attempt) = pending.as_ref() {
+                match attempt.kind {
+                    PendingNavigationKind::Push => BrowserRepository::push_history(
+                        &self.db,
+                        &state.id,
+                        &BrowserHistoryPush {
+                            url: state.url.clone(),
+                            title: Some(state.title.clone()),
+                            transition: Some("link".into()),
+                            typed: false,
+                        },
+                    )
+                    .map(|_| ()),
+                    PendingNavigationKind::Replace => BrowserRepository::update_current_history(
+                        &self.db,
+                        &state.id,
+                        state.history_index as i64,
+                        Some(&state.url),
+                        Some(&state.title),
+                    ),
+                }
+            } else if page_initiated_navigation {
                 BrowserRepository::push_history(
                     &self.db,
                     &state.id,
@@ -872,7 +1406,8 @@ impl BrowserService {
             session.set_title(title);
             (session.snapshot(), page_initiated_navigation)
         };
-        if self.db.is_open() {
+        let navigation_pending = self.pending_navigation(&state.id).is_some();
+        if self.db.is_open() && !navigation_pending {
             let persist_result = if page_initiated_navigation {
                 BrowserRepository::push_history(
                     &self.db,
@@ -925,22 +1460,48 @@ impl BrowserService {
         );
     }
 
-    fn attach_destroy_listener(&self, win: &tauri::WebviewWindow, session_id: String) {
-        let app = self.app.clone();
-        let navigation_policy = self.navigation_policy.clone();
-        win.on_window_event(move |event| {
-            if let WindowEvent::Destroyed = event {
-                navigation_policy.set_agent_private_network_guard(false);
-                // 用户点关 content 窗：清内存 session + 发 closed
-                // 通过 try_state 取服务，避免循环持有
-                if let Some(svc) = app.try_state::<Arc<BrowserService>>() {
-                    let mut guard = svc.session.lock().unwrap_or_else(|p| p.into_inner());
-                    if let Some(session) = guard.as_mut() {
-                        if session.id == session_id && session.alive {
-                            session.mark_closed();
-                            let id = session.id.clone();
-                            *guard = None;
-                            drop(guard);
+    fn attach_destroy_listener(&self, session_id: String) {
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = session_id;
+            return;
+        }
+
+        #[cfg(target_os = "linux")]
+        let Some(win) = self.app.get_webview_window(BROWSER_CONTENT_LABEL) else {
+            return;
+        };
+        #[cfg(target_os = "linux")]
+        {
+            let app = self.app.clone();
+            let navigation_policy = self.navigation_policy.clone();
+            win.on_window_event(move |event| {
+                if let WindowEvent::Destroyed = event {
+                    navigation_policy.set_agent_private_network_guard(false);
+                    // 用户点关 content 窗：清内存 session + 发 closed
+                    // 通过 try_state 取服务，避免循环持有
+                    if let Some(svc) = app.try_state::<Arc<BrowserService>>() {
+                        let closed_id = {
+                            let mut input_guard = svc
+                                .trusted_content_input
+                                .lock()
+                                .unwrap_or_else(|p| p.into_inner());
+                            let mut session_guard =
+                                svc.session.lock().unwrap_or_else(|p| p.into_inner());
+                            let should_close = session_guard
+                                .as_ref()
+                                .is_some_and(|session| session.id == session_id && session.alive);
+                            if should_close {
+                                *input_guard = None;
+                                session_guard.take().map(|mut session| {
+                                    session.mark_closed();
+                                    session.id
+                                })
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(id) = closed_id {
                             if svc.db.is_open() {
                                 let _ = BrowserRepository::close_session(&svc.db, &id);
                             }
@@ -956,9 +1517,361 @@ impl BrowserService {
                         }
                     }
                 }
-            }
-        });
+            });
+        }
     }
+}
+
+fn apply_pending_navigation(
+    session: &mut BrowserSession,
+    attempt: &PendingNavigation,
+    url: &str,
+    replace: bool,
+) -> Result<BrowserSessionState, BlockedNavigation> {
+    let blocked = attempt
+        .blocked
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(blocked) = blocked.as_ref() {
+        return Err(blocked.clone());
+    }
+    if replace {
+        session.replace_url(url.to_string(), None);
+    } else {
+        session.push_url(url.to_string(), None);
+    }
+    Ok(session.snapshot())
+}
+
+fn rollback_pending_navigation(session: &mut BrowserSession, attempt: &PendingNavigation) {
+    *session = attempt.rollback.clone();
+    session.mark_loaded(None);
+}
+
+fn require_live_surface_session<'a>(
+    active: &'a Option<BrowserSession>,
+    session_id: &str,
+) -> BrowserResult<&'a BrowserSession> {
+    active
+        .as_ref()
+        .filter(|session| session.alive && session.id == session_id)
+        .ok_or_else(|| BrowserError::NotFound(format!("session {session_id}")))
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SurfaceCssBounds {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    viewport_width: f64,
+    viewport_height: f64,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfaceCssOcclusion {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+fn physical_surface_bounds(
+    css: SurfaceCssBounds,
+    physical_viewport: PhysicalSize<u32>,
+) -> BrowserResult<Rect> {
+    for (name, value) in [
+        ("x", css.x),
+        ("y", css.y),
+        ("width", css.width),
+        ("height", css.height),
+        ("viewportWidth", css.viewport_width),
+        ("viewportHeight", css.viewport_height),
+    ] {
+        if !value.is_finite() {
+            return Err(BrowserError::Validation(format!(
+                "browser surface {name} must be finite"
+            )));
+        }
+    }
+    if css.width <= 0.0
+        || css.height <= 0.0
+        || css.viewport_width <= 0.0
+        || css.viewport_height <= 0.0
+    {
+        return Err(BrowserError::Validation(
+            "browser surface and viewport dimensions must be positive".into(),
+        ));
+    }
+    if physical_viewport.width == 0 || physical_viewport.height == 0 {
+        return Err(BrowserError::Validation(
+            "main window has an empty physical viewport".into(),
+        ));
+    }
+
+    let right_css = css.x + css.width;
+    let bottom_css = css.y + css.height;
+    if !right_css.is_finite() || !bottom_css.is_finite() {
+        return Err(BrowserError::Validation(
+            "browser surface rectangle overflowed".into(),
+        ));
+    }
+    if right_css <= 0.0
+        || css.x >= css.viewport_width
+        || bottom_css <= 0.0
+        || css.y >= css.viewport_height
+    {
+        return Err(BrowserError::Validation(
+            "browser surface rectangle must intersect the viewport".into(),
+        ));
+    }
+
+    // Preserve the complete child frame while the outer native window clips
+    // the portion beyond its viewport. This keeps the webpage viewport and
+    // content origin stable while an internal browser window is being moved.
+    let scale_x = f64::from(physical_viewport.width) / css.viewport_width;
+    let scale_y = f64::from(physical_viewport.height) / css.viewport_height;
+
+    let left = (css.x * scale_x).floor();
+    let top = (css.y * scale_y).floor();
+    let right = (right_css * scale_x).ceil();
+    let bottom = (bottom_css * scale_y).ceil();
+    for (name, value) in [
+        ("left", left),
+        ("top", top),
+        ("right", right),
+        ("bottom", bottom),
+    ] {
+        if !value.is_finite() || value < f64::from(i32::MIN) || value > f64::from(i32::MAX) {
+            return Err(BrowserError::Validation(format!(
+                "browser surface physical {name} edge is outside the supported range"
+            )));
+        }
+    }
+
+    let left = left as i64;
+    let top = top as i64;
+    let right = right as i64;
+    let bottom = bottom as i64;
+    let physical_width = right - left;
+    let physical_height = bottom - top;
+    if physical_width <= 0 || physical_height <= 0 {
+        return Err(BrowserError::Validation(
+            "browser surface collapsed after physical scaling".into(),
+        ));
+    }
+    if physical_width > i64::from(i32::MAX) || physical_height > i64::from(i32::MAX) {
+        return Err(BrowserError::Validation(
+            "browser surface physical dimensions are too large".into(),
+        ));
+    }
+
+    let x = i32::try_from(left)
+        .map_err(|_| BrowserError::Validation("browser surface x is too large".into()))?;
+    let y = i32::try_from(top)
+        .map_err(|_| BrowserError::Validation("browser surface y is too large".into()))?;
+    let width = u32::try_from(physical_width)
+        .map_err(|_| BrowserError::Validation("browser surface width is too large".into()))?;
+    let height = u32::try_from(physical_height)
+        .map_err(|_| BrowserError::Validation("browser surface height is too large".into()))?;
+
+    Ok(Rect {
+        position: PhysicalPosition::new(x, y).into(),
+        size: PhysicalSize::new(width, height).into(),
+    })
+}
+
+fn physical_surface_occlusions(
+    occlusions: &[SurfaceCssOcclusion],
+    viewport_width: f64,
+    viewport_height: f64,
+    physical_viewport: PhysicalSize<u32>,
+) -> BrowserResult<Vec<Rect>> {
+    if occlusions.len() > MAX_SURFACE_OCCLUSIONS {
+        return Err(BrowserError::Validation(format!(
+            "browser surface has too many occlusion rectangles (maximum {MAX_SURFACE_OCCLUSIONS})"
+        )));
+    }
+
+    let mut result = Vec::with_capacity(occlusions.len());
+    for (index, occlusion) in occlusions.iter().enumerate() {
+        for (name, value) in [
+            ("x", occlusion.x),
+            ("y", occlusion.y),
+            ("width", occlusion.width),
+            ("height", occlusion.height),
+        ] {
+            if !value.is_finite() {
+                return Err(BrowserError::Validation(format!(
+                    "browser surface occlusion {index} {name} must be finite"
+                )));
+            }
+        }
+        if occlusion.width <= 0.0 || occlusion.height <= 0.0 {
+            return Err(BrowserError::Validation(format!(
+                "browser surface occlusion {index} dimensions must be positive"
+            )));
+        }
+
+        let right = occlusion.x + occlusion.width;
+        let bottom = occlusion.y + occlusion.height;
+        if !right.is_finite() || !bottom.is_finite() {
+            return Err(BrowserError::Validation(format!(
+                "browser surface occlusion {index} overflowed"
+            )));
+        }
+
+        let left = occlusion.x.max(0.0);
+        let top = occlusion.y.max(0.0);
+        let right = right.min(viewport_width);
+        let bottom = bottom.min(viewport_height);
+        if right <= left || bottom <= top {
+            continue;
+        }
+        result.push(physical_surface_bounds(
+            SurfaceCssBounds {
+                x: left,
+                y: top,
+                width: right - left,
+                height: bottom - top,
+                viewport_width,
+                viewport_height,
+            },
+            physical_viewport,
+        )?);
+    }
+    union_physical_surface_occlusions(result)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PhysicalOcclusionBounds {
+    left: i64,
+    top: i64,
+    right: i64,
+    bottom: i64,
+}
+
+impl PhysicalOcclusionBounds {
+    fn from_rect(rect: Rect) -> BrowserResult<Self> {
+        let (position, size) = match (rect.position, rect.size) {
+            (tauri::Position::Physical(position), tauri::Size::Physical(size)) => (position, size),
+            _ => {
+                return Err(BrowserError::Validation(
+                    "browser surface occlusion must use physical coordinates".into(),
+                ));
+            }
+        };
+        let left = i64::from(position.x);
+        let top = i64::from(position.y);
+        let right = left + i64::from(size.width);
+        let bottom = top + i64::from(size.height);
+        if right <= left || bottom <= top {
+            return Err(BrowserError::Validation(
+                "browser surface occlusion collapsed after physical scaling".into(),
+            ));
+        }
+        Ok(Self {
+            left,
+            top,
+            right,
+            bottom,
+        })
+    }
+
+    fn into_rect(self) -> BrowserResult<Rect> {
+        let x = i32::try_from(self.left).map_err(|_| {
+            BrowserError::Validation("browser surface occlusion x is too large".into())
+        })?;
+        let y = i32::try_from(self.top).map_err(|_| {
+            BrowserError::Validation("browser surface occlusion y is too large".into())
+        })?;
+        let width = u32::try_from(self.right - self.left).map_err(|_| {
+            BrowserError::Validation("browser surface occlusion width is too large".into())
+        })?;
+        let height = u32::try_from(self.bottom - self.top).map_err(|_| {
+            BrowserError::Validation("browser surface occlusion height is too large".into())
+        })?;
+        Ok(Rect {
+            position: PhysicalPosition::new(x, y).into(),
+            size: PhysicalSize::new(width, height).into(),
+        })
+    }
+}
+
+/// Rounding each CSS occluder outward can make otherwise disjoint bands
+/// overlap by a physical pixel. macOS uses an even-odd shape mask, so merge
+/// after rounding to preserve one solid hole through every overlap.
+fn union_physical_surface_occlusions(rects: Vec<Rect>) -> BrowserResult<Vec<Rect>> {
+    if rects.len() < 2 {
+        return Ok(rects);
+    }
+
+    let rects = rects
+        .into_iter()
+        .map(PhysicalOcclusionBounds::from_rect)
+        .collect::<BrowserResult<Vec<_>>>()?;
+    let mut y_edges = rects
+        .iter()
+        .flat_map(|rect| [rect.top, rect.bottom])
+        .collect::<Vec<_>>();
+    y_edges.sort_unstable();
+    y_edges.dedup();
+
+    let mut rows = Vec::new();
+    for edges in y_edges.windows(2) {
+        let top = edges[0];
+        let bottom = edges[1];
+        if bottom <= top {
+            continue;
+        }
+        let mut intervals = rects
+            .iter()
+            .filter(|rect| rect.top < bottom && rect.bottom > top)
+            .map(|rect| (rect.left, rect.right))
+            .collect::<Vec<_>>();
+        intervals.sort_unstable();
+
+        let mut merged = Vec::<(i64, i64)>::new();
+        for (left, right) in intervals {
+            if let Some(previous) = merged.last_mut() {
+                if left <= previous.1 {
+                    previous.1 = previous.1.max(right);
+                    continue;
+                }
+            }
+            merged.push((left, right));
+        }
+        rows.extend(
+            merged
+                .into_iter()
+                .map(|(left, right)| PhysicalOcclusionBounds {
+                    left,
+                    top,
+                    right,
+                    bottom,
+                }),
+        );
+    }
+
+    let mut union = Vec::<PhysicalOcclusionBounds>::new();
+    for row in rows {
+        if let Some(previous) = union.last_mut() {
+            if previous.left == row.left
+                && previous.right == row.right
+                && previous.bottom == row.top
+            {
+                previous.bottom = row.bottom;
+                continue;
+            }
+        }
+        union.push(row);
+    }
+
+    union
+        .into_iter()
+        .map(PhysicalOcclusionBounds::into_rect)
+        .collect()
 }
 
 fn is_truthy(value: &str) -> bool {
@@ -966,6 +1879,10 @@ fn is_truthy(value: &str) -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
+}
+
+fn effective_allow_insecure_http(network_mode_full: bool, agent_control: bool) -> bool {
+    !agent_control || network_mode_full
 }
 
 #[cfg(test)]
@@ -992,5 +1909,394 @@ mod tests {
             BrowserService::agent_automation_supported(),
             cfg!(target_os = "windows")
         );
+    }
+
+    #[test]
+    fn http_allowance_depends_on_control_mode() {
+        assert!(effective_allow_insecure_http(false, false));
+        assert!(effective_allow_insecure_http(true, false));
+        assert!(!effective_allow_insecure_http(false, true));
+        assert!(effective_allow_insecure_http(true, true));
+    }
+
+    fn assert_physical_rect(rect: Rect, position: (i32, i32), size: (u32, u32)) {
+        match rect.position {
+            tauri::Position::Physical(actual) => {
+                assert_eq!((actual.x, actual.y), position);
+            }
+            other => panic!("expected physical position, got {other:?}"),
+        }
+        match rect.size {
+            tauri::Size::Physical(actual) => {
+                assert_eq!((actual.width, actual.height), size);
+            }
+            other => panic!("expected physical size, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn surface_bounds_scale_css_coordinates_to_physical_pixels() {
+        let rect = physical_surface_bounds(
+            SurfaceCssBounds {
+                x: 10.0,
+                y: 20.0,
+                width: 100.0,
+                height: 50.0,
+                viewport_width: 500.0,
+                viewport_height: 400.0,
+            },
+            PhysicalSize::new(1000, 800),
+        )
+        .unwrap();
+
+        assert_physical_rect(rect, (20, 40), (200, 100));
+    }
+
+    #[test]
+    fn surface_bounds_preserve_partially_overflowing_frames() {
+        let viewport = PhysicalSize::new(1000, 800);
+        let base = SurfaceCssBounds {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 50.0,
+            viewport_width: 500.0,
+            viewport_height: 400.0,
+        };
+
+        for (bounds, position, size) in [
+            (SurfaceCssBounds { x: -25.0, ..base }, (-50, 40), (200, 100)),
+            (SurfaceCssBounds { x: 450.0, ..base }, (900, 40), (200, 100)),
+            (SurfaceCssBounds { y: -10.0, ..base }, (20, -20), (200, 100)),
+            (SurfaceCssBounds { y: 375.0, ..base }, (20, 750), (200, 100)),
+            (
+                SurfaceCssBounds {
+                    x: -25.0,
+                    y: -10.0,
+                    width: 600.0,
+                    height: 500.0,
+                    ..base
+                },
+                (-50, -20),
+                (1200, 1000),
+            ),
+        ] {
+            let rect = physical_surface_bounds(bounds, viewport).unwrap();
+            assert_physical_rect(rect, position, size);
+        }
+    }
+
+    #[test]
+    fn surface_bounds_reject_non_finite_empty_and_offscreen_values() {
+        let viewport = PhysicalSize::new(1000, 800);
+        let valid = SurfaceCssBounds {
+            x: 10.0,
+            y: 20.0,
+            width: 100.0,
+            height: 50.0,
+            viewport_width: 500.0,
+            viewport_height: 400.0,
+        };
+
+        for bounds in [
+            SurfaceCssBounds {
+                x: f64::NAN,
+                ..valid
+            },
+            SurfaceCssBounds {
+                x: f64::MAX,
+                width: f64::MAX,
+                ..valid
+            },
+            SurfaceCssBounds {
+                width: 0.0,
+                ..valid
+            },
+            SurfaceCssBounds {
+                x: -100.0,
+                width: 100.0,
+                ..valid
+            },
+            SurfaceCssBounds {
+                x: -101.0,
+                width: 100.0,
+                ..valid
+            },
+            SurfaceCssBounds { x: 500.0, ..valid },
+            SurfaceCssBounds {
+                y: -50.0,
+                height: 50.0,
+                ..valid
+            },
+            SurfaceCssBounds {
+                y: -51.0,
+                height: 50.0,
+                ..valid
+            },
+            SurfaceCssBounds { y: 400.0, ..valid },
+        ] {
+            assert!(physical_surface_bounds(bounds, viewport).is_err());
+        }
+    }
+
+    #[test]
+    fn surface_bounds_round_outward_with_nonuniform_scale() {
+        let rect = physical_surface_bounds(
+            SurfaceCssBounds {
+                x: -0.2,
+                y: -0.2,
+                width: 100.4,
+                height: 50.4,
+                viewport_width: 400.0,
+                viewport_height: 200.0,
+            },
+            PhysicalSize::new(1000, 300),
+        )
+        .unwrap();
+
+        assert_physical_rect(rect, (-1, -1), (252, 77));
+    }
+
+    #[test]
+    fn surface_bounds_reject_unrepresentable_physical_frames() {
+        let scale_one = PhysicalSize::new(1000, 800);
+        let base = SurfaceCssBounds {
+            x: 0.0,
+            y: 0.0,
+            width: 100.0,
+            height: 100.0,
+            viewport_width: 1000.0,
+            viewport_height: 800.0,
+        };
+
+        for (bounds, viewport) in [
+            (
+                SurfaceCssBounds {
+                    x: f64::from(i32::MIN) - 1.0,
+                    width: f64::from(i32::MAX) + 3.0,
+                    ..base
+                },
+                scale_one,
+            ),
+            (
+                SurfaceCssBounds {
+                    x: 999.0,
+                    width: f64::from(i32::MAX),
+                    ..base
+                },
+                scale_one,
+            ),
+            (
+                SurfaceCssBounds {
+                    x: -1_073_741_824.0,
+                    width: 2_147_483_648.0,
+                    ..base
+                },
+                scale_one,
+            ),
+            (
+                SurfaceCssBounds {
+                    width: 1.0,
+                    height: 1.0,
+                    viewport_width: 1.0,
+                    viewport_height: 1.0,
+                    ..base
+                },
+                PhysicalSize::new(u32::MAX, 1),
+            ),
+        ] {
+            assert!(physical_surface_bounds(bounds, viewport).is_err());
+        }
+    }
+
+    #[test]
+    fn surface_occlusions_clip_to_the_native_viewport() {
+        let rects = physical_surface_occlusions(
+            &[
+                SurfaceCssOcclusion {
+                    x: -20.0,
+                    y: 375.0,
+                    width: 50.0,
+                    height: 100.0,
+                },
+                SurfaceCssOcclusion {
+                    x: 600.0,
+                    y: 20.0,
+                    width: 50.0,
+                    height: 50.0,
+                },
+            ],
+            500.0,
+            400.0,
+            PhysicalSize::new(1000, 800),
+        )
+        .unwrap();
+
+        assert_eq!(rects.len(), 1);
+        assert_physical_rect(rects[0], (0, 750), (60, 50));
+    }
+
+    #[test]
+    fn surface_occlusions_merge_after_physical_rounding() {
+        let rects = physical_surface_occlusions(
+            &[
+                SurfaceCssOcclusion {
+                    x: 0.1,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+                SurfaceCssOcclusion {
+                    x: 10.1,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                },
+            ],
+            100.0,
+            100.0,
+            PhysicalSize::new(100, 100),
+        )
+        .unwrap();
+
+        assert_eq!(rects.len(), 1);
+        assert_physical_rect(rects[0], (0, 0), (21, 10));
+    }
+
+    #[test]
+    fn surface_occlusions_reject_invalid_input_and_excessive_count() {
+        let viewport = PhysicalSize::new(1000, 800);
+        assert!(physical_surface_occlusions(
+            &[SurfaceCssOcclusion {
+                x: f64::NAN,
+                y: 0.0,
+                width: 10.0,
+                height: 10.0,
+            }],
+            500.0,
+            400.0,
+            viewport,
+        )
+        .is_err());
+
+        let repeated = SurfaceCssOcclusion {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        assert!(physical_surface_occlusions(
+            &vec![repeated; MAX_SURFACE_OCCLUSIONS + 1],
+            500.0,
+            400.0,
+            viewport,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn surface_session_guard_rejects_stale_and_closed_sessions() {
+        let mut active = BrowserSession::new(
+            "bs_active".into(),
+            "https://example.com/".into(),
+            std::path::PathBuf::from("/tmp/browser"),
+            None,
+            None,
+        );
+
+        let slot = Some(active.clone());
+        assert!(require_live_surface_session(&slot, "bs_active").is_ok());
+        assert!(require_live_surface_session(&slot, "bs_stale").is_err());
+
+        active.mark_closed();
+        assert!(require_live_surface_session(&Some(active), "bs_active").is_err());
+        assert!(require_live_surface_session(&None, "bs_active").is_err());
+    }
+
+    #[test]
+    fn trusted_input_capability_is_session_bound_and_128_bit() {
+        let capability = TrustedContentInputCapability::generate("bs_active".into());
+        let encoded = capability.encoded_nonce();
+
+        assert_eq!(encoded.len(), 32);
+        assert_eq!(hex::decode(&encoded).unwrap().len(), 16);
+        assert!(capability.matches("bs_active", &encoded));
+        assert!(!capability.matches("bs_replaced", &encoded));
+        assert!(!capability.matches("bs_active", "0000000000000000000000000000000g"));
+
+        let mut wrong = encoded.into_bytes();
+        wrong[0] = if wrong[0] == b'0' { b'1' } else { b'0' };
+        assert!(!capability.matches("bs_active", std::str::from_utf8(&wrong).unwrap()));
+    }
+
+    #[test]
+    fn trusted_input_kinds_exclude_script_chosen_values() {
+        for kind in ["pointerdown", "keydown", "compositionstart", "wheel"] {
+            assert!(TRUSTED_CONTENT_INPUT_KINDS.contains(&kind));
+        }
+        assert!(!TRUSTED_CONTENT_INPUT_KINDS.contains(&"click"));
+        assert!(!TRUSTED_CONTENT_INPUT_KINDS.contains(&"agent_claim"));
+    }
+
+    #[test]
+    fn direct_policy_rejection_never_commits_requested_url() {
+        let mut session = BrowserSession::new(
+            "bs_navigation".into(),
+            "https://allowed.example/".into(),
+            std::path::PathBuf::from("/tmp/browser"),
+            None,
+            None,
+        );
+        session.mark_loaded(None);
+        let attempt = PendingNavigation {
+            id: 1,
+            session_id: session.id.clone(),
+            rollback: session.clone(),
+            kind: PendingNavigationKind::Push,
+            blocked: Mutex::new(Some(BlockedNavigation {
+                url: "http://blocked.example/".into(),
+                reason: "blocked".into(),
+            })),
+        };
+
+        assert!(
+            apply_pending_navigation(&mut session, &attempt, "http://blocked.example/", false,)
+                .is_err()
+        );
+        assert_eq!(session.url, "https://allowed.example/");
+        assert_eq!(session.history.len(), 1);
+    }
+
+    #[test]
+    fn blocked_redirect_restores_current_url_and_forward_history() {
+        let mut session = BrowserSession::new(
+            "bs_redirect".into(),
+            "https://a.example/".into(),
+            std::path::PathBuf::from("/tmp/browser"),
+            None,
+            None,
+        );
+        session.push_url("https://b.example/".into(), None);
+        session.go_back();
+        session.mark_loaded(None);
+        let attempt = PendingNavigation {
+            id: 2,
+            session_id: session.id.clone(),
+            rollback: session.clone(),
+            kind: PendingNavigationKind::Push,
+            blocked: Mutex::new(None),
+        };
+
+        apply_pending_navigation(&mut session, &attempt, "https://c.example/", false).unwrap();
+        attempt.mark_blocked(
+            "http://blocked-redirect.example/".into(),
+            "blocked redirect".into(),
+        );
+        rollback_pending_navigation(&mut session, &attempt);
+
+        assert_eq!(session.url, "https://a.example/");
+        assert_eq!(session.history.len(), 2);
+        assert!(session.can_go_forward());
+        assert_eq!(session.history[1].url, "https://b.example/");
     }
 }

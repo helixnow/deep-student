@@ -2,17 +2,18 @@
  * BrowserAppWindow.css — 内置浏览器 chrome（wb-browser-*）
  * ---------------------------------------------------------------------------
  * 仅消费现有 workbench / theme tokens，不改 tokens 数值。
- * chrome 为约 720×280 工具条壳；内容在独立 WebviewWindow。
+ * Chrome surrounds a native page slot. The slot itself stays rectangular
+ * because child WebViews do not participate in CSS clipping/compositing.
  */
 
 .wb-browser-root {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   height: 100%;
   width: 100%;
   min-width: 0;
-  padding: 12px 14px 14px;
+  padding: 10px;
   box-sizing: border-box;
   background: var(--wb-window-bg, hsl(var(--card)));
   color: hsl(var(--foreground));
@@ -49,7 +50,7 @@
 }
 
 .wb-browser-icon-btn:hover:not(:disabled) {
-  background: hsl(var(--muted) / 0.55);
+  background: hsl(var(--muted) / 55%);
 }
 
 .wb-browser-icon-btn:disabled {
@@ -58,7 +59,7 @@
 }
 
 .wb-browser-icon-btn:focus-visible {
-  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
   outline-offset: 1px;
 }
 
@@ -71,17 +72,16 @@
   min-width: 0;
   height: 32px;
   padding: 0 10px 0 8px;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
   border-radius: var(--wb-menu-radius, 14px);
-  background-color: var(--wb-glass-bg, hsl(var(--card) / 0.2));
+  background-color: var(--wb-glass-bg, hsl(var(--card) / 20%));
   background-image: var(--wb-glass-sheen, none);
-  -webkit-backdrop-filter: var(--wb-glass-blur, none);
   backdrop-filter: var(--wb-glass-blur, none);
   box-shadow: var(--wb-glass-edge, none);
 }
 
 .wb-browser-address:focus-within {
-  border-color: var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  border-color: var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
 }
 
 .wb-browser-lock {
@@ -89,6 +89,11 @@
   color: var(--text-muted, hsl(var(--muted-foreground)));
   opacity: 0.7;
   flex: 0 0 auto;
+}
+
+.wb-browser-lock.is-insecure {
+  color: hsl(var(--destructive));
+  opacity: 1;
 }
 
 .wb-browser-address-input {
@@ -115,7 +120,7 @@
   flex: 0 0 auto;
   width: 12px;
   height: 12px;
-  border: 2px solid hsl(var(--muted-foreground) / 0.25);
+  border: 2px solid hsl(var(--muted-foreground) / 25%);
   border-top-color: hsl(var(--primary));
   border-radius: 50%;
   animation: wb-browser-spin 0.7s linear infinite;
@@ -130,7 +135,7 @@
 @media (prefers-reduced-motion: reduce) {
   .wb-browser-spinner {
     animation: none;
-    border-top-color: hsl(var(--muted-foreground) / 0.45);
+    border-top-color: hsl(var(--muted-foreground) / 45%);
   }
 }
 
@@ -142,13 +147,13 @@
   min-height: 32px;
   padding: 6px 10px;
   border-radius: var(--wb-menu-radius, 14px);
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.45));
-  background: hsl(var(--muted) / 0.35);
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 45%));
+  background: hsl(var(--muted) / 35%);
   font-size: 12px;
 }
 
 .wb-browser-agent.is-agent {
-  background: hsl(var(--primary) / 0.1);
+  background: hsl(var(--primary) / 10%);
   border-color: color-mix(in hsl, hsl(var(--primary)) 40%, transparent 60%);
 }
 
@@ -181,7 +186,7 @@
 }
 
 .wb-browser-takeover:focus-visible {
-  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
   outline-offset: 1px;
 }
 
@@ -189,20 +194,44 @@
   margin: 0;
   padding: 6px 10px;
   border-radius: 8px;
-  background: hsl(var(--destructive) / 0.12);
+  background: hsl(var(--destructive) / 12%);
   color: hsl(var(--destructive));
   font-size: 12px;
   line-height: 1.35;
 }
 
-.wb-browser-hint {
+.wb-browser-page-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
+  border-radius: 4px;
+  background: hsl(var(--background));
+}
+
+.wb-browser-page-slot {
+  position: absolute;
+  inset: 1px;
+}
+
+.wb-browser-empty,
+.wb-browser-detached {
+  position: absolute;
+  inset: 1px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  background: hsl(var(--background));
+  font-size: 13px;
+}
+
+.wb-browser-detached {
   justify-content: space-between;
   gap: 12px;
-  margin-top: auto;
-  padding: 8px 2px 0;
-  border-top: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.35));
+  padding: 16px;
 }
 
 .wb-browser-hint-text {
@@ -214,10 +243,14 @@
 
 .wb-browser-hint-action {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   height: 26px;
   padding: 0 10px;
   margin: 0;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 50%));
   border-radius: 8px;
   background: transparent;
   color: hsl(var(--foreground));
@@ -227,11 +260,22 @@
   transition: background-color 120ms var(--wb-ease, ease);
 }
 
+@media (width <= 700px) {
+  .wb-browser-root {
+    padding: 8px;
+  }
+
+  .wb-browser-detached {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
 .wb-browser-hint-action:hover {
-  background: hsl(var(--muted) / 0.45);
+  background: hsl(var(--muted) / 45%);
 }
 
 .wb-browser-hint-action:focus-visible {
-  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
   outline-offset: 1px;
 }

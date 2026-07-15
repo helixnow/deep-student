@@ -14,9 +14,6 @@ import {
   stableRevision,
 } from '../agentManifestUtils';
 
-let addressFocusSequence = 0;
-let reloadSequence = 0;
-
 export function createBrowserAgentManifest(
   activation: (ctx: ActivationContext) => ActivationHandlerResult | Promise<ActivationHandlerResult>,
 ): AppAgentManifest {
@@ -44,7 +41,7 @@ export function createBrowserAgentManifest(
         ? stableAgentRef('browser', 'page', state.currentUrl)
         : stableAgentRef('browser', 'session', state.sessionId ?? 'empty');
       return {
-        revision: stableRevision(state.sessionId, state.currentUrl, state.title, state.historyIndex, state.controlMode, state.loading, state.contentVisible, state.error, addressFocusSequence, reloadSequence),
+        revision: stableRevision(state.sessionId, state.currentUrl, state.title, state.historyIndex, state.controlMode, state.loading, state.contentVisible, state.error),
         route: state.currentUrl || 'browser/empty',
         mode: state.controlMode,
         busy: state.loading,
@@ -79,8 +76,6 @@ export function createBrowserAgentManifest(
           contentVisible: state.contentVisible,
           agentAutomationSupported: state.agentAutomationSupported,
           error: state.error,
-          addressFocusSequence,
-          reloadSequence,
         },
       };
     },
@@ -95,29 +90,25 @@ export function createBrowserAgentManifest(
       };
       const result = await executeActivation(activation, ctx, action);
       if (!result.handled) return result;
-      if (action.name === 'focusAddress') addressFocusSequence += 1;
-      if (action.name === 'reload') reloadSequence += 1;
       const after = getBrowserSessionState();
-      result.changed = action.name === 'focusAddress' || action.name === 'reload' || stableRevision(snapshot) !== stableRevision({
+      result.changed = result.acknowledged === true || stableRevision(snapshot) !== stableRevision({
         sessionId: after.sessionId,
         url: after.currentUrl,
         historyIndex: after.historyIndex,
         controlMode: after.controlMode,
         contentVisible: after.contentVisible,
       });
+      if (!result.changed) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未获得浏览器领域或表面确认`,
+        };
+      }
       const args = actionArgs(action);
       if (action.name === 'navigate' && typeof args.url === 'string') {
-        result.postconditions = [{ kind: 'state_equals', path: 'url', value: after.currentUrl }];
-        result.entityRefs = [stableAgentRef('browser', 'page', after.currentUrl)];
-      } else if (action.name === 'goBack' || action.name === 'goForward') {
-        result.postconditions = [
-          { kind: 'state_equals', path: 'historyIndex', value: after.historyIndex },
-          { kind: 'state_equals', path: 'url', value: after.currentUrl },
-        ];
-      } else if (action.name === 'reload') {
-        result.postconditions = [{ kind: 'state_equals', path: 'reloadSequence', value: reloadSequence }];
-      } else if (action.name === 'focusAddress') {
-        result.postconditions = [{ kind: 'state_equals', path: 'addressFocusSequence', value: addressFocusSequence }];
+        result.entityRefs = [stableAgentRef('browser', 'page', args.url)];
       } else if (action.name === 'takeOver') {
         result.postconditions = [{ kind: 'state_equals', path: 'controlMode', value: 'user' }];
       } else if (action.name === 'showContent' || action.name === 'hideContent') {

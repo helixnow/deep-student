@@ -3,7 +3,7 @@
  *
  * instanceMode=single：一期全局 0..1 session（design §1.1）。
  * 不钉 DEFAULT_DOCK_PINNED；发现走 AppsPanel / Agent launch。
- * chrome 壳约 720×280；真实页面在独立 WebviewWindow `browser-content`。
+ * 默认提供 920×600 的 chrome + native page surface。
  */
 import React from 'react';
 import { Globe } from '@phosphor-icons/react';
@@ -11,7 +11,10 @@ import { BrowserApiError } from '@/features/browser/browserApi';
 import { getBrowserSessionState } from '@/features/browser/sessionStore';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult } from '../../core/types';
-import { BROWSER_FOCUS_ADDRESS_EVENT } from './browserChromeEvents';
+import {
+  BROWSER_FOCUS_ADDRESS_EVENT,
+  type BrowserFocusAddressEventDetail,
+} from './browserChromeEvents';
 import { createBrowserAgentManifest } from './agentManifest';
 
 export const BROWSER_APP_TYPE_ID = 'browser';
@@ -52,38 +55,51 @@ export async function handleBrowserActivation(ctx: ActivationContext): Promise<A
         }
         // Agent app_command：不打 user_takeover 闩锁，同时必须保留来源供 Rust 私网硬拦。
         await api.navigate(url, { forceUserControl: false, fromAgent: true });
-        return { handled: true };
+        return { handled: true, acknowledged: true };
       }
       case 'goBack':
         await api.back();
-        return { handled: true };
+        return { handled: true, acknowledged: true };
       case 'goForward':
         await api.forward();
-        return { handled: true };
+        return { handled: true, acknowledged: true };
       case 'reload':
         await api.reload();
-        return { handled: true };
+        return { handled: true, acknowledged: true };
       case 'focusAddress': {
         if (typeof window === 'undefined') {
           return { handled: false, code: 'WINDOW_UNAVAILABLE' };
         }
-        const emit = () => {
-          if (typeof window === 'undefined') return;
-          window.dispatchEvent(new CustomEvent(BROWSER_FOCUS_ADDRESS_EVENT));
-        };
-        if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(emit);
-        }
-        window.setTimeout(emit, 120);
-        return { handled: true };
+        const focused = await new Promise<boolean>((resolve) => {
+          let settled = false;
+          const finish = (value: boolean) => {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            resolve(value);
+          };
+          const timeout = window.setTimeout(() => finish(false), 500);
+          const detail: BrowserFocusAddressEventDetail = {
+            windowId: ctx.windowId,
+            acknowledge: finish,
+          };
+          window.dispatchEvent(new CustomEvent(BROWSER_FOCUS_ADDRESS_EVENT, { detail }));
+        });
+        return focused
+          ? { handled: true, acknowledged: true }
+          : {
+              handled: false,
+              code: 'ACTION_UNAVAILABLE',
+              message: '浏览器地址栏未挂载或无法获得焦点',
+            };
       }
       case 'takeOver':
         await api.takeOver();
-        return { handled: true };
+        return { handled: true, acknowledged: true };
       case 'showContent': {
         const shown = await api.showContent();
         return shown
-          ? { handled: true }
+          ? { handled: true, acknowledged: true }
           : {
               handled: false,
               code: 'CONTENT_WINDOW_NOT_FOUND',
@@ -92,7 +108,7 @@ export async function handleBrowserActivation(ctx: ActivationContext): Promise<A
       }
       case 'hideContent':
         await api.hideContent();
-        return { handled: true };
+        return { handled: true, acknowledged: true };
       default:
         return {
           handled: false,
@@ -106,14 +122,8 @@ export async function handleBrowserActivation(ctx: ActivationContext): Promise<A
   }
 }
 
-/** 关 chrome 时销毁 session / content（design：禁止孤儿窗） */
+/** Native content is closed after the shell's closing animation unmounts. */
 async function canCloseBrowser(_instanceKey: string | null): Promise<boolean> {
-  try {
-    await getBrowserSessionState().closeSession();
-  } catch (err) {
-    console.warn('[workbench:browser] closeSession failed:', err);
-    return false;
-  }
   return true;
 }
 
@@ -130,8 +140,9 @@ export function registerBrowserApp(): void {
     icon: <Globe size={26} weight="duotone" />,
     instanceMode: 'single',
     memoryWeight: 2,
-    defaultFrame: { w: 720, h: 280 },
-    minSize: { w: 480, h: 200 },
+    keepAliveWhenOccluded: true,
+    defaultFrame: { w: 920, h: 600 },
+    minSize: { w: 640, h: 420 },
     render: React.lazy(() => import('./BrowserAppWindow')),
     onActivation: handleBrowserActivation,
     agentManifest: createBrowserAgentManifest(handleBrowserActivation),

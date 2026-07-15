@@ -11,6 +11,8 @@ import type {
   BrowserControlMode,
   BrowserHistoryEntry,
   BrowserSessionSnapshot,
+  BrowserSurfaceBounds,
+  BrowserSurfaceHostMode,
 } from './types';
 
 export class BrowserApiError extends Error {
@@ -109,6 +111,20 @@ export function parseControlMode(raw: unknown): BrowserControlMode {
   if (typeof raw !== 'string') return 'user';
   const normalized = raw.toLowerCase();
   return normalized === 'agent' ? 'agent' : 'user';
+}
+
+/** Fail-safe to detached for older/unknown backend payloads. */
+export function parseBrowserSurfaceHostMode(raw: unknown): BrowserSurfaceHostMode {
+  if (typeof raw === 'string') {
+    const normalized = raw.toLowerCase();
+    if (normalized === 'embedded' || normalized === 'unsupported') return normalized;
+    return 'detached';
+  }
+  const obj = asRecord(raw);
+  const mode = obj ? pickString(obj, 'hostMode', 'host_mode', 'mode') : undefined;
+  const normalized = mode?.toLowerCase();
+  if (normalized === 'embedded' || normalized === 'unsupported') return normalized;
+  return 'detached';
 }
 
 function parseHistoryEntry(raw: unknown): BrowserHistoryEntry | null {
@@ -268,6 +284,42 @@ export async function focusContent(sessionId?: string | null): Promise<void> {
   await invokeBrowser('browser_focus', args);
 }
 
+/** Return keyboard focus from the embedded native page to the React shell. */
+export async function releaseSurfaceFocus(sessionId: string): Promise<void> {
+  await invokeBrowser('browser_release_surface_focus', { sessionId });
+}
+
+export async function setSurfaceBounds(
+  sessionId: string,
+  bounds: BrowserSurfaceBounds,
+  sequence: number,
+): Promise<BrowserSurfaceHostMode> {
+  const raw = await invokeBrowser<unknown>('browser_set_surface_bounds', {
+    sessionId,
+    ...bounds,
+    sequence,
+  });
+  return parseBrowserSurfaceHostMode(raw);
+}
+
+export async function setSurfaceVisibility(
+  sessionId: string,
+  visible: boolean,
+  focus = false,
+): Promise<BrowserSurfaceHostMode> {
+  const raw = await invokeBrowser<unknown>('browser_set_surface_visibility', {
+    sessionId,
+    visible,
+    focus,
+  });
+  return parseBrowserSurfaceHostMode(raw);
+}
+
+export async function getSurfaceHostMode(): Promise<BrowserSurfaceHostMode> {
+  const raw = await invokeBrowser<unknown>('browser_get_surface_host_mode');
+  return parseBrowserSurfaceHostMode(raw);
+}
+
 /** 用户接管：打断 agent 控制态 */
 export async function takeOver(): Promise<BrowserSessionSnapshot> {
   return invokeState('browser_take_over');
@@ -282,9 +334,14 @@ export const browserApi = {
   reload,
   getState,
   focusContent,
+  releaseSurfaceFocus,
+  setSurfaceBounds,
+  setSurfaceVisibility,
+  getSurfaceHostMode,
   takeOver,
   normalizeNavigationInput,
   parseBrowserSessionSnapshot,
+  parseBrowserSurfaceHostMode,
   isCommandMissingError,
   toBrowserApiError,
   BrowserApiError,

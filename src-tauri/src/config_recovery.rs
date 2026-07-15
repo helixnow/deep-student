@@ -17,6 +17,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             vendor_name: None,
             provider_type: Some("openai".to_string()),
             provider_scope: Some("openai".to_string()),
+            auth_mode: None,
             api_protocol: Some(crate::llm_manager::resolve_preferred_protocol_for_provider(
                 Some("openai"),
                 Some("openai"),
@@ -75,6 +76,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             vendor_name: None,
             provider_type: Some("anthropic".to_string()),
             provider_scope: Some("anthropic".to_string()),
+            auth_mode: None,
             api_protocol: Some(crate::llm_manager::resolve_preferred_protocol_for_provider(
                 Some("anthropic"),
                 Some("anthropic"),

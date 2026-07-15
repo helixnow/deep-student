@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const hubListenMock = vi.hoisted(() => vi.fn());
 const getBrowserStateMock = vi.hoisted(() => vi.fn());
+const navigateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/workbench/core/eventHub', () => ({
   hubListen: hubListenMock,
@@ -15,17 +16,20 @@ vi.mock('../browserApi', async (importOriginal) => {
   return {
     ...actual,
     getState: getBrowserStateMock,
+    navigate: navigateMock,
   };
 });
 
 import {
   __applyControlModePayloadForTest,
   __applyNavigatedPayloadForTest,
+  __applyNavigationBlockedPayloadForTest,
   __applyTitlePayloadForTest,
   __applyClosedPayloadForTest,
   __resetControlModeSyncForTest,
   BROWSER_CLOSED_EVENT,
   BROWSER_NAVIGATED_EVENT,
+  BROWSER_NAVIGATION_BLOCKED_EVENT,
   BROWSER_TITLE_CHANGED_EVENT,
   ensureBrowserControlModeSync,
 } from '../controlModeSync';
@@ -40,6 +44,7 @@ describe('browser controlModeSync R2-10', () => {
     hubListenMock.mockReset();
     hubListenMock.mockReturnValue(() => {});
     getBrowserStateMock.mockReset();
+    navigateMock.mockReset();
     getBrowserStateMock.mockResolvedValue({
       sessionId: 'sess-br-1',
       currentUrl: 'https://example.com/final',
@@ -68,6 +73,7 @@ describe('browser controlModeSync R2-10', () => {
     expect(hubListenMock.mock.calls.map(([event]) => event)).toEqual([
       'browser:control-mode-changed',
       BROWSER_NAVIGATED_EVENT,
+      BROWSER_NAVIGATION_BLOCKED_EVENT,
       BROWSER_TITLE_CHANGED_EVENT,
       BROWSER_CLOSED_EVENT,
     ]);
@@ -123,6 +129,120 @@ describe('browser controlModeSync R2-10', () => {
     await vi.waitFor(() => {
       expect(useBrowserSessionStore.getState().history).toHaveLength(2);
       expect(useBrowserSessionStore.getState().historyIndex).toBe(1);
+    });
+  });
+
+  it('navigation-blocked 结束 loading 并显示明确错误', () => {
+    useBrowserSessionStore.setState({
+      loading: true,
+      lastError: null,
+      error: null,
+    });
+
+    __applyNavigationBlockedPayloadForTest({
+      sessionId: 'sess-br-1',
+      url: 'http://example.com/',
+      reason: 'http navigation is limited to loopback hosts',
+    });
+
+    expect(useBrowserSessionStore.getState()).toMatchObject({
+      sessionId: 'sess-br-1',
+      loading: false,
+      lastError: '导航被阻止：http navigation is limited to loopback hosts',
+      error: '导航被阻止：http navigation is limited to loopback hosts',
+    });
+  });
+
+  it('navigation-blocked 使迟到的成功命令回执失效并恢复权威 URL/历史', async () => {
+    let resolveNavigate!: (snapshot: ReturnType<typeof getBrowserStateMock>) => void;
+    const commandResponse = new Promise((resolve) => {
+      resolveNavigate = resolve;
+    });
+    navigateMock.mockReturnValue(commandResponse);
+    const rollbackSnapshot = {
+      sessionId: 'sess-br-1',
+      currentUrl: 'https://allowed.example/',
+      title: 'Allowed',
+      canGoBack: false,
+      canGoForward: true,
+      controlMode: 'user',
+      loading: false,
+      history: [
+        { url: 'https://allowed.example/', title: 'Allowed', visitedAt: null },
+        { url: 'https://forward.example/', title: 'Forward', visitedAt: null },
+      ],
+      historyIndex: 0,
+      agentAutomationSupported: true,
+      error: null,
+    };
+    getBrowserStateMock.mockResolvedValue(rollbackSnapshot);
+    useBrowserSessionStore.setState({
+      currentUrl: rollbackSnapshot.currentUrl,
+      addressDraft: 'http://blocked.example/',
+      title: rollbackSnapshot.title,
+      history: rollbackSnapshot.history,
+      historyIndex: rollbackSnapshot.historyIndex,
+      canGoForward: true,
+      loading: false,
+    });
+
+    const navigation = useBrowserSessionStore.getState().navigate('http://blocked.example/', {
+      forceUserControl: false,
+    });
+    __applyNavigationBlockedPayloadForTest({
+      sessionId: 'sess-br-1',
+      url: 'http://blocked.example/',
+      reason: 'blocked redirect',
+      currentUrl: rollbackSnapshot.currentUrl,
+      title: rollbackSnapshot.title,
+      canGoBack: false,
+      canGoForward: true,
+      historyIndex: 0,
+    });
+    resolveNavigate({
+      ...rollbackSnapshot,
+      currentUrl: 'http://blocked.example/',
+      history: [
+        ...rollbackSnapshot.history,
+        { url: 'http://blocked.example/', title: 'Blocked', visitedAt: null },
+      ],
+      historyIndex: 2,
+    });
+    await navigation;
+
+    await vi.waitFor(() => {
+      expect(useBrowserSessionStore.getState()).toMatchObject({
+        currentUrl: 'https://allowed.example/',
+        addressDraft: 'https://allowed.example/',
+        historyIndex: 0,
+        canGoForward: true,
+      });
+    });
+    expect(useBrowserSessionStore.getState().history).toHaveLength(2);
+  });
+
+  it('忽略异 session 与已关闭 session 的 navigation-blocked 事件', () => {
+    useBrowserSessionStore.setState({ loading: true, lastError: null, error: null });
+    __applyNavigationBlockedPayloadForTest({
+      sessionId: 'other-sess',
+      reason: 'blocked other session',
+    });
+    expect(useBrowserSessionStore.getState()).toMatchObject({
+      loading: true,
+      lastError: null,
+      error: null,
+    });
+
+    __applyClosedPayloadForTest({ sessionId: 'sess-br-1', reason: 'destroyed' });
+    __applyNavigationBlockedPayloadForTest({
+      sessionId: 'sess-br-1',
+      reason: 'late block',
+    });
+    expect(useBrowserSessionStore.getState()).toMatchObject({
+      sessionId: null,
+      loading: false,
+      lastError: null,
+      error: null,
     });
   });
 

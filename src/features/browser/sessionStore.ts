@@ -82,6 +82,11 @@ export function hasPendingBrowserNavigation(): boolean {
   return pendingNavigation !== null;
 }
 
+/** Reject stale command snapshots after a native policy callback rolls navigation back. */
+export function invalidateBrowserNavigationSnapshot(): void {
+  snapshotGeneration += 1;
+}
+
 export function __resetClosedBrowserSessionsForTest(): void {
   closedSessionIds.clear();
   closedSessionOrder.length = 0;
@@ -257,7 +262,7 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
       browserApi.openSession(url, { fromAgent: false }),
     );
     if (!applied) return;
-    const ok = await ensureBrowserContentWindow();
+    const ok = await ensureBrowserContentWindow(get().sessionId);
     if (ok) set({ contentVisible: true });
   },
 
@@ -318,7 +323,7 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
           { forceUserControl },
         );
         if (!applied) return;
-        const ok = await ensureBrowserContentWindow();
+        const ok = await ensureBrowserContentWindow(get().sessionId);
         if (ok) set({ contentVisible: true });
         return;
       }
@@ -403,25 +408,18 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
   setLoading: (loading) => set({ loading }),
 
   showContent: async () => {
-    const ok = await showBrowserContentWindow();
+    const ok = await showBrowserContentWindow(get().sessionId);
     set({ contentVisible: ok });
-    if (ok) {
-      try {
-        await browserApi.focusContent(get().sessionId);
-      } catch {
-        /* focus command optional */
-      }
-    }
     return ok;
   },
 
   hideContent: async () => {
-    await hideBrowserContentWindow();
+    await hideBrowserContentWindow(get().sessionId);
     set({ contentVisible: false });
   },
 
   ensureContent: async () => {
-    const ok = await ensureBrowserContentWindow();
+    const ok = await ensureBrowserContentWindow(get().sessionId);
     set({ contentVisible: ok });
     return ok;
   },

@@ -10,6 +10,7 @@ import { getState as getBrowserState, parseControlMode } from './browserApi';
 import {
   __resetClosedBrowserSessionsForTest,
   hasPendingBrowserNavigation,
+  invalidateBrowserNavigationSnapshot,
   isBrowserSessionClosed,
   markBrowserSessionClosed,
   useBrowserSessionStore,
@@ -18,8 +19,11 @@ import {
 /** 与 Rust `events::EVT_CONTROL_MODE_CHANGED` 对齐 */
 export const BROWSER_CONTROL_MODE_CHANGED_EVENT = 'browser:control-mode-changed';
 export const BROWSER_NAVIGATED_EVENT = 'browser:navigated';
+export const BROWSER_NAVIGATION_BLOCKED_EVENT = 'browser:navigation-blocked';
 export const BROWSER_TITLE_CHANGED_EVENT = 'browser:title-changed';
 export const BROWSER_CLOSED_EVENT = 'browser:closed';
+/** Authenticated native content input; consumed by the Workbench browser shell. */
+export const BROWSER_CONTENT_USER_INPUT_EVENT = 'browser:content-user-input';
 
 export interface BrowserControlModeChangedPayload {
   sessionId?: string;
@@ -41,6 +45,11 @@ interface BrowserRuntimePayload {
   canGoForward?: boolean;
   can_go_forward?: boolean;
   loading?: boolean;
+  reason?: string;
+  currentUrl?: string;
+  current_url?: string;
+  historyIndex?: number;
+  history_index?: number;
 }
 
 let unlisteners: Array<() => void> = [];
@@ -125,6 +134,40 @@ function applyNavigatedPayload(payload: unknown): void {
   if (sessionId) void refreshRuntimeSnapshot(sessionId);
 }
 
+function applyNavigationBlockedPayload(payload: unknown): void {
+  if (!payload || typeof payload !== 'object') return;
+  const p = payload as BrowserRuntimePayload;
+  const sessionId = payloadSessionId(p);
+  if (!sessionId && !useBrowserSessionStore.getState().sessionId) return;
+  if (isBrowserSessionClosed(sessionId)) return;
+  if (!matchesCurrentSession(sessionId)) return;
+
+  const reason = typeof p.reason === 'string' ? p.reason.trim() : '';
+  const url = typeof p.url === 'string' ? p.url.trim() : '';
+  const currentUrl = p.currentUrl ?? p.current_url;
+  const detail = reason || url || '目标不符合浏览器安全策略';
+  const message = `导航被阻止：${detail}`;
+  invalidateBrowserNavigationSnapshot();
+  refreshGeneration += 1;
+  const state = useBrowserSessionStore.getState();
+  const rollbackDraft =
+    typeof currentUrl === 'string' &&
+    (!state.addressDraft || state.addressDraft === state.currentUrl || state.addressDraft === url);
+  useBrowserSessionStore.setState({
+    ...(sessionId ? { sessionId } : {}),
+    ...(typeof currentUrl === 'string' ? { currentUrl } : {}),
+    ...(typeof p.title === 'string' ? { title: p.title } : {}),
+    canGoBack: p.canGoBack ?? p.can_go_back ?? state.canGoBack,
+    canGoForward: p.canGoForward ?? p.can_go_forward ?? state.canGoForward,
+    historyIndex: p.historyIndex ?? p.history_index ?? state.historyIndex,
+    ...(rollbackDraft ? { addressDraft: currentUrl } : {}),
+    loading: false,
+    lastError: message,
+    error: message,
+  });
+  if (sessionId) void refreshRuntimeSnapshot(sessionId);
+}
+
 function applyTitlePayload(payload: unknown): void {
   if (!payload || typeof payload !== 'object') return;
   const p = payload as BrowserRuntimePayload;
@@ -169,6 +212,7 @@ export function ensureBrowserControlModeSync(): () => void {
     unlisteners = [
       hubListen(BROWSER_CONTROL_MODE_CHANGED_EVENT, applyControlModePayload),
       hubListen(BROWSER_NAVIGATED_EVENT, applyNavigatedPayload),
+      hubListen(BROWSER_NAVIGATION_BLOCKED_EVENT, applyNavigationBlockedPayload),
       hubListen(BROWSER_TITLE_CHANGED_EVENT, applyTitlePayload),
       hubListen(BROWSER_CLOSED_EVENT, applyClosedPayload),
     ];
@@ -192,6 +236,10 @@ export function __applyControlModePayloadForTest(payload: unknown): void {
 
 export function __applyNavigatedPayloadForTest(payload: unknown): void {
   applyNavigatedPayload(payload);
+}
+
+export function __applyNavigationBlockedPayloadForTest(payload: unknown): void {
+  applyNavigationBlockedPayload(payload);
 }
 
 export function __applyTitlePayloadForTest(payload: unknown): void {

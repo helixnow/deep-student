@@ -62,8 +62,8 @@ pub use database::{
 pub use error::{BrowserError, BrowserResult};
 pub use events::{
     BrowserClosedPayload, BrowserControlModeChangedPayload, BrowserNavigatedPayload,
-    BrowserTitleChangedPayload, EVT_CLOSED, EVT_CONTROL_MODE_CHANGED, EVT_NAVIGATED,
-    EVT_TITLE_CHANGED,
+    BrowserNavigationBlockedPayload, BrowserTitleChangedPayload, EVT_CLOSED,
+    EVT_CONTROL_MODE_CHANGED, EVT_NAVIGATED, EVT_NAVIGATION_BLOCKED, EVT_TITLE_CHANGED,
 };
 pub use policy::{
     allow_navigation, allow_navigation_with_options, is_blocked_for_agent, is_internal_ip,

@@ -33,12 +33,13 @@ describe('registerBrowserApp', () => {
     registerBrowserApp();
   });
 
-  it('注册 typeId=browser、single、720×280、memoryWeight=2', () => {
+  it('注册 typeId=browser、single、920×600、memoryWeight=2', () => {
     const def = appRegistry.get(BROWSER_APP_TYPE_ID);
     expect(def).toBeTruthy();
     expect(def?.instanceMode).toBe('single');
     expect(def?.memoryWeight).toBe(2);
-    expect(def?.defaultFrame).toEqual({ w: 720, h: 280 });
+    expect(def?.defaultFrame).toEqual({ w: 920, h: 600 });
+    expect(def?.minSize).toEqual({ w: 640, h: 420 });
     expect(def?.onActivation).toBeTypeOf('function');
     expect(def?.canClose).toBeTypeOf('function');
     expect(def?.render).toBeTruthy();
@@ -91,16 +92,10 @@ describe('registerBrowserApp', () => {
     });
   });
 
-  it('canClose 调用 closeSession 并放行', async () => {
+  it('canClose 放行动画，native session 由窗口卸载后清理', async () => {
     const def = appRegistry.get(BROWSER_APP_TYPE_ID);
     const ok = await def!.canClose!(null);
     expect(ok).toBe(true);
-    expect(mockState.closeSession).toHaveBeenCalled();
-  });
-
-  it('closeSession 失败时阻止关闭 chrome，避免遗留 native window', async () => {
-    mockState.closeSession.mockRejectedValueOnce(new Error('close failed'));
-    const def = appRegistry.get(BROWSER_APP_TYPE_ID);
-    await expect(def!.canClose!(null)).resolves.toBe(false);
+    expect(mockState.closeSession).not.toHaveBeenCalled();
   });
 });

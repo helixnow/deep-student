@@ -9,7 +9,11 @@ vi.mock('@tauri-apps/api/core', () => ({
 import {
   BrowserApiError,
   openSession,
+  parseBrowserSurfaceHostMode,
   parseBrowserSessionSnapshot,
+  releaseSurfaceFocus,
+  setSurfaceBounds,
+  setSurfaceVisibility,
   toBrowserApiError,
 } from '../browserApi';
 
@@ -77,5 +81,61 @@ describe('browserApi contracts', () => {
     expect(error).toBeInstanceOf(BrowserApiError);
     expect(error.code).toBe('NAVIGATION_BLOCKED');
     expect(error.command).toBe('browser_navigate');
+  });
+
+  it('forwards logical surface bounds and visibility to Rust', async () => {
+    invokeMock.mockResolvedValueOnce('embedded').mockResolvedValueOnce('embedded');
+
+    await setSurfaceBounds(
+      'bs_1',
+      {
+        x: 10,
+        y: 20,
+        width: 800,
+        height: 600,
+        viewportWidth: 1440,
+        viewportHeight: 900,
+        occlusions: [{ x: 20, y: 30, width: 100, height: 40 }],
+        inputOcclusions: [{ x: 10, y: 20, width: 800, height: 600 }],
+      },
+      42,
+    );
+    await setSurfaceVisibility('bs_1', false);
+
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'browser_set_surface_bounds', {
+      sessionId: 'bs_1',
+      x: 10,
+      y: 20,
+      width: 800,
+      height: 600,
+      viewportWidth: 1440,
+      viewportHeight: 900,
+      occlusions: [{ x: 20, y: 30, width: 100, height: 40 }],
+      inputOcclusions: [{ x: 10, y: 20, width: 800, height: 600 }],
+      sequence: 42,
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'browser_set_surface_visibility', {
+      sessionId: 'bs_1',
+      visible: false,
+      focus: false,
+    });
+  });
+
+  it('returns native browser keyboard focus to the React shell', async () => {
+    invokeMock.mockResolvedValueOnce(null);
+
+    await releaseSurfaceFocus('bs_1');
+
+    expect(invokeMock).toHaveBeenCalledWith('browser_release_surface_focus', {
+      sessionId: 'bs_1',
+    });
+  });
+
+  it('parses host mode conservatively', () => {
+    expect(parseBrowserSurfaceHostMode('embedded')).toBe('embedded');
+    expect(parseBrowserSurfaceHostMode({ host_mode: 'embedded' })).toBe('embedded');
+    expect(parseBrowserSurfaceHostMode('unsupported')).toBe('unsupported');
+    expect(parseBrowserSurfaceHostMode('unknown')).toBe('detached');
+    expect(parseBrowserSurfaceHostMode(null)).toBe('detached');
   });
 });

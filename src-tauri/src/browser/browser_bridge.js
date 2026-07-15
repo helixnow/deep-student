@@ -5,6 +5,52 @@
  * Envelope: { ok: true|false, v: 1, epoch, data|error }
  * Host must retrieve results via with_webview platform callbacks — never poll eval globals.
  */
+(function installTrustedContentInputBridge() {
+  'use strict';
+
+  var sessionId = /*__DS_BROWSER_SESSION_ID__*/ null;
+  var nonce = /*__DS_BROWSER_INPUT_NONCE__*/ null;
+  if (typeof sessionId !== 'string' || typeof nonce !== 'string') return;
+
+  var internals = window.__TAURI_INTERNALS__;
+  if (!internals || typeof internals.invoke !== 'function') return;
+
+  // Capture native primitives before the remote page can replace them. The
+  // capability values remain lexical and are never attached to window or DOM.
+  var invoke = internals.invoke.bind(internals);
+  var now = window.performance.now.bind(window.performance);
+  var settle = Function.prototype.call.bind(Promise.prototype.then);
+  var lastSentAt = -Infinity;
+  var throttleMs = 180;
+
+  function onTrustedInput(event) {
+    if (!event || event.isTrusted !== true) return;
+    var at = now();
+    if (at - lastSentAt < throttleMs) return;
+    lastSentAt = at;
+
+    try {
+      var result = invoke('browser_content_user_input', {
+        sessionId: sessionId,
+        nonce: nonce,
+        kind: event.type,
+      });
+      if (result && typeof result.then === 'function') {
+        settle(result, undefined, function () {});
+      }
+    } catch (_) {
+      // Input delivery is best effort; the Rust command still validates the
+      // Webview label, live session, nonce, and input kind.
+    }
+  }
+
+  var listenerOptions = { capture: true, passive: true };
+  window.addEventListener('pointerdown', onTrustedInput, listenerOptions);
+  window.addEventListener('keydown', onTrustedInput, listenerOptions);
+  window.addEventListener('compositionstart', onTrustedInput, listenerOptions);
+  window.addEventListener('wheel', onTrustedInput, listenerOptions);
+})();
+
 (function () {
   'use strict';
 

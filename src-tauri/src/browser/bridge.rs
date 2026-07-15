@@ -2,7 +2,7 @@
 //!
 //! # 结果取回（硬约束）
 //!
-//! `WebviewWindow::eval` **无返回值**。禁止「写全局变量再二次 eval 轮询」。
+//! `Webview::eval` **无返回值**。禁止「写全局变量再二次 eval 轮询」。
 //! 本模块通过 [`eval_with_result`]：
 //!
 //! - **Windows**：`with_webview` → WebView2 `ExecuteScript` 完成回调（oneshot + timeout）
@@ -11,7 +11,7 @@
 //! # 嵌入方式
 //!
 //! `include_str!("browser_bridge.js")` → [`INIT_SCRIPT`]，供
-//! `WebviewWindowBuilder::initialization_script` 使用。
+//! Webview builder 的 `initialization_script` 使用。
 //!
 //! # 信封
 //!
@@ -21,12 +21,14 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, Runtime, WebviewWindow};
+use tauri::{AppHandle, Manager, Runtime, Webview};
 use thiserror::Error;
 use tracing::warn;
 
 /// 注入到 content Webview 的完整桥脚本（document 创建前执行）
 pub const INIT_SCRIPT: &str = include_str!("browser_bridge.js");
+const SESSION_ID_MARKER: &str = "/*__DS_BROWSER_SESSION_ID__*/ null";
+const INPUT_NONCE_MARKER: &str = "/*__DS_BROWSER_INPUT_NONCE__*/ null";
 
 /// 全局对象名（与 JS 一致）
 pub const BRIDGE_GLOBAL: &str = "__dsBrowserBridge";
@@ -38,6 +40,30 @@ pub const DEFAULT_ACTION_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// 一期固定 content label（与 `window::BROWSER_CONTENT_LABEL` 对齐）
 pub const DEFAULT_CONTENT_LABEL: &str = "browser-content";
+
+/// Bind the document-start trusted-input listener to one live browser session.
+/// JSON string encoding prevents script injection; the values remain lexical
+/// variables inside the listener IIFE and are not exposed on `window`.
+pub fn init_script_for_session(session_id: &str, nonce: &str) -> BridgeResult<String> {
+    if !INIT_SCRIPT.contains(SESSION_ID_MARKER) || !INIT_SCRIPT.contains(INPUT_NONCE_MARKER) {
+        return Err(BridgeError::Other(
+            "trusted input initialization markers are missing".into(),
+        ));
+    }
+    if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(BridgeError::Other(
+            "trusted input nonce must be 128-bit hex".into(),
+        ));
+    }
+
+    let session_json =
+        serde_json::to_string(session_id).map_err(|error| BridgeError::Other(error.to_string()))?;
+    let nonce_json =
+        serde_json::to_string(nonce).map_err(|error| BridgeError::Other(error.to_string()))?;
+    Ok(INIT_SCRIPT
+        .replacen(SESSION_ID_MARKER, &session_json, 1)
+        .replacen(INPUT_NONCE_MARKER, &nonce_json, 1))
+}
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -207,7 +233,7 @@ fn call_script_no_args(method: &str) -> String {
 ///
 /// 不得用二次 `eval` 轮询页面全局变量取结果。
 pub async fn eval_with_result<R: Runtime>(
-    webview: &WebviewWindow<R>,
+    webview: &Webview<R>,
     script: impl Into<String>,
     timeout: Duration,
 ) -> BridgeResult<Value> {
@@ -216,7 +242,7 @@ pub async fn eval_with_result<R: Runtime>(
 
 #[cfg(windows)]
 async fn eval_with_result_inner<R: Runtime>(
-    webview: &WebviewWindow<R>,
+    webview: &Webview<R>,
     script: String,
     timeout: Duration,
 ) -> BridgeResult<Value> {
@@ -288,7 +314,7 @@ async fn eval_with_result_inner<R: Runtime>(
 
 #[cfg(not(windows))]
 async fn eval_with_result_inner<R: Runtime>(
-    _webview: &WebviewWindow<R>,
+    _webview: &Webview<R>,
     _script: String,
     _timeout: Duration,
 ) -> BridgeResult<Value> {
@@ -302,7 +328,7 @@ async fn eval_with_result_inner<R: Runtime>(
 }
 
 /// Fire-and-forget reinject（无返回值）。用于导航后补种；结果仍须走 [`eval_with_result`]。
-pub fn inject_bridge_script<R: Runtime>(webview: &WebviewWindow<R>) -> BridgeResult<()> {
+pub fn inject_bridge_script<R: Runtime>(webview: &Webview<R>) -> BridgeResult<()> {
     webview
         .eval(INIT_SCRIPT)
         .map_err(|e| BridgeError::Eval(e.to_string()))
@@ -344,9 +370,9 @@ impl<R: Runtime> BridgeClient<R> {
         INIT_SCRIPT
     }
 
-    fn webview(&self) -> BridgeResult<WebviewWindow<R>> {
+    fn webview(&self) -> BridgeResult<Webview<R>> {
         self.app
-            .get_webview_window(&self.label)
+            .get_webview(&self.label)
             .ok_or_else(|| BridgeError::WebviewNotFound(self.label.clone()))
     }
 
@@ -486,6 +512,26 @@ mod tests {
     }
 
     #[test]
+    fn session_init_script_keeps_input_capability_lexical() {
+        let nonce = "00112233445566778899aabbccddeeff";
+        let script = init_script_for_session("bs_\"quoted", nonce).unwrap();
+
+        assert!(!script.contains(SESSION_ID_MARKER));
+        assert!(!script.contains(INPUT_NONCE_MARKER));
+        assert!(script.contains(r#"var sessionId = "bs_\"quoted""#));
+        assert!(script.contains(&format!(r#"var nonce = "{nonce}""#)));
+        assert!(script.contains("event.isTrusted !== true"));
+        assert!(script.contains("browser_content_user_input"));
+        assert!(!script.contains("window.__dsBrowserInputNonce"));
+    }
+
+    #[test]
+    fn session_init_script_rejects_malformed_nonce() {
+        assert!(init_script_for_session("bs_test", "short").is_err());
+        assert!(init_script_for_session("bs_test", "zz112233445566778899aabbccddeeff").is_err());
+    }
+
+    #[test]
     fn parse_envelope_ok() {
         let raw = r#"{"ok":true,"v":1,"epoch":2,"data":{"count":1}}"#;
         let env = parse_bridge_json(raw).expect("parse");
@@ -561,7 +607,7 @@ mod tests {
     #[tokio::test]
     async fn eval_with_result_is_unsupported_off_windows() {
         // 无真实 webview 时 with_webview 路径不会走到；非 Win 直接 Unsupported。
-        // 这里只验证错误文案契约（不构造 WebviewWindow）。
+        // 这里只验证错误文案契约（不构造 Webview）。
         let err = BridgeError::Unsupported(
             "eval_with_result requires with_webview platform callback".into(),
         );
