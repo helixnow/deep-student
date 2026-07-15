@@ -797,6 +797,8 @@
       "session_mode": "Agent session",
       "model_id": "Model configuration ID",
       "default_model": "Use default model",
+      "agent_prompt": "Agent prompt",
+      "agent_prompt_fallback": "Leave blank to use the task instructions",
       "max_retries": "Failure retries",
       "retry_backoff_seconds": "Retry delay (seconds)",
       "timeout_seconds": "Timeout (seconds)",

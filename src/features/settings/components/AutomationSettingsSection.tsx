@@ -58,6 +58,7 @@ type EditDraft = {
   intervalMinutes: string;
   timezone: string;
   prompt: string;
+  agentPrompt: string;
   sessionMode: AutomationSessionMode;
   modelId: string;
   catchUpPolicy: AutomationCatchUpPolicy;
@@ -78,6 +79,8 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   const { t, i18n } = useTranslation(['settings', 'common']);
   const promptInputId = React.useId();
   const promptCountId = `${promptInputId}-count`;
+  const agentPromptInputId = React.useId();
+  const agentPromptCountId = `${agentPromptInputId}-count`;
   const [automations, setAutomations] = useState<AutomationListItem[]>([]);
   const [count, setCount] = useState(0);
   const [max, setMax] = useState(20);
@@ -132,21 +135,28 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   }, [load]);
 
   useEffect(() => {
-    if (!listen) return undefined;
+    if (!listen) {
+      const timer = window.setInterval(() => void load(false), 30_000);
+      return () => window.clearInterval(timer);
+    }
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    let fallbackTimer: number | undefined;
     void listen('chat_v2://automations_changed', () => {
       void load(false);
     }).then((nextUnlisten) => {
       if (disposed) nextUnlisten();
       else unlisten = nextUnlisten;
     }).catch(() => {
-      // Manual refresh remains available if event subscription is unavailable.
+      if (!disposed) {
+        fallbackTimer = window.setInterval(() => void load(false), 30_000);
+      }
     });
 
     return () => {
       disposed = true;
       unlisten?.();
+      if (fallbackTimer !== undefined) window.clearInterval(fallbackTimer);
     };
   }, [listen, load]);
 
@@ -254,6 +264,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         || Intl.DateTimeFormat().resolvedOptions().timeZone
         || 'Asia/Shanghai',
       prompt: automation.prompt,
+      agentPrompt: automation.agentPrompt ?? '',
       sessionMode: automation.sessionMode ?? 'isolated',
       modelId: automation.modelId ?? '',
       catchUpPolicy: automation.catchUpPolicy,
@@ -268,6 +279,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
     if (draft.name.trim().length > 100) return t('settings:automation.errors.name_too_long');
     if (!draft.prompt.trim()) return t('settings:automation.errors.prompt_required');
     if (draft.prompt.length > 4000) return t('settings:automation.errors.prompt_too_long');
+    if (draft.agentPrompt.length > 4000) return t('settings:automation.errors.prompt_too_long');
     if (draft.kind !== 'interval') {
       if (!TIME_PATTERN.test(draft.time)) return t('settings:automation.errors.invalid_time');
       try {
@@ -338,7 +350,9 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         schedule,
         prompt: editDraft.prompt.trim(),
         actionType: editDraft.actionType,
-        agentPrompt: editDraft.actionType === 'agent_turn' ? editDraft.prompt.trim() : null,
+        agentPrompt: editDraft.actionType === 'agent_turn'
+          ? editDraft.agentPrompt.trim() || null
+          : null,
         sessionMode: editDraft.actionType === 'agent_turn' ? editDraft.sessionMode : null,
         modelId: editDraft.actionType === 'agent_turn' ? editDraft.modelId.trim() || null : null,
         catchUpPolicy: editDraft.catchUpPolicy,
@@ -538,18 +552,20 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                     >
                       <PencilSimple className="h-4 w-4" />
                     </NotionButton>
-                    <NotionButton
-                      variant="ghost"
-                      size="icon"
-                      iconOnly
-                      aria-label={t('settings:automation.actions.delete', { name: automation.name })}
-                      title={t('settings:automation.actions.delete_short')}
-                      className="text-destructive hover:text-destructive"
-                      disabled={busyKey !== null}
-                      onClick={() => setDeleteTarget(automation)}
-                    >
-                      <Trash className="h-4 w-4" />
-                    </NotionButton>
+                    {!automation.heartbeat && (
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        aria-label={t('settings:automation.actions.delete', { name: automation.name })}
+                        title={t('settings:automation.actions.delete_short')}
+                        className="text-destructive hover:text-destructive"
+                        disabled={busyKey !== null}
+                        onClick={() => setDeleteTarget(automation)}
+                      >
+                        <Trash className="h-4 w-4" />
+                      </NotionButton>
+                    )}
                   </div>
                 </div>
               </article>
@@ -746,6 +762,26 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                       disabled={busyKey?.startsWith('edit:')}
                     />
                   </label>
+                  <div className="block space-y-1.5 text-sm sm:col-span-2">
+                    <label htmlFor={agentPromptInputId} className="block font-medium text-foreground">
+                      {t('settings:automation.edit.agent_prompt')}
+                    </label>
+                    <textarea
+                      id={agentPromptInputId}
+                      aria-describedby={agentPromptCountId}
+                      className={cn(inputClassName, 'h-24 resize-y py-2 leading-5')}
+                      maxLength={4000}
+                      value={editDraft.agentPrompt}
+                      placeholder={t('settings:automation.edit.agent_prompt_fallback')}
+                      onChange={(event) => setEditDraft((current) => current
+                        ? { ...current, agentPrompt: event.target.value }
+                        : current)}
+                      disabled={busyKey?.startsWith('edit:')}
+                    />
+                    <span id={agentPromptCountId} className="block text-right text-[11px] tabular-nums text-muted-foreground">
+                      {editDraft.agentPrompt.length}/4000
+                    </span>
+                  </div>
                 </div>
               )}
 

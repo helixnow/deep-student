@@ -155,9 +155,7 @@ function normalizeAutomation(raw: unknown): AutomationListItem | null {
 
   const rawActionType = raw.actionType ?? raw.action_type;
   const actionType: AutomationActionType = rawActionType === 'agent_turn' ? 'agent_turn' : 'notify';
-  const prompt = actionType === 'agent_turn'
-    ? readString(raw, 'agentPrompt', 'agent_prompt') ?? readString(raw, 'prompt') ?? ''
-    : readString(raw, 'prompt') ?? '';
+  const prompt = readString(raw, 'prompt') ?? '';
 
   return {
     id,

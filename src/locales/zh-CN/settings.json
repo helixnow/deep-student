@@ -797,6 +797,8 @@
       "session_mode": "Agent 会话",
       "model_id": "模型配置 ID",
       "default_model": "使用默认模型",
+      "agent_prompt": "Agent 提示词",
+      "agent_prompt_fallback": "留空时使用任务说明",
       "max_retries": "失败重试次数",
       "retry_backoff_seconds": "重试退避（秒）",
       "timeout_seconds": "超时（秒）",

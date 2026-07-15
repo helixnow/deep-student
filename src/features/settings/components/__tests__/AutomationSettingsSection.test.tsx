@@ -50,6 +50,8 @@ vi.mock('react-i18next', () => {
         'settings:automation.edit.session_mode': 'Agent session',
         'settings:automation.edit.model_id': 'Model configuration ID',
         'settings:automation.edit.default_model': 'Use default model',
+        'settings:automation.edit.agent_prompt': 'Agent prompt',
+        'settings:automation.edit.agent_prompt_fallback': 'Leave blank to use task instructions',
         'settings:automation.edit.max_retries': 'Failure retries',
         'settings:automation.edit.retry_backoff_seconds': 'Retry delay (seconds)',
         'settings:automation.edit.timeout_seconds': 'Timeout (seconds)',
@@ -131,8 +133,7 @@ describe('AutomationSettingsSection', () => {
     renderSection();
 
     expect(await screen.findByText('Morning review')).toBeInTheDocument();
-    expect(screen.getByText('Review the actual due queue')).toBeInTheDocument();
-    expect(screen.queryByText('Review overdue material')).not.toBeInTheDocument();
+    expect(screen.getByText('Review overdue material')).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith('chat_v2_automation_list');
 
     fireEvent.click(screen.getByRole('switch', { name: 'Enable or disable Morning review' }));
@@ -169,7 +170,7 @@ describe('AutomationSettingsSection', () => {
           },
           prompt: 'Build a concise review plan',
           actionType: 'agent_turn',
-          agentPrompt: 'Build a concise review plan',
+          agentPrompt: 'Review the actual due queue',
           sessionMode: 'isolated',
           modelId: null,
           catchUpPolicy: 'run_once',
