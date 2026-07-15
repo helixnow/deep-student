@@ -233,6 +233,8 @@
     "calling_tool": "Calling tool"
   },
   "notifications": {
+    "repeated": "Repeated {{count}} times",
+    "copy_error": "Copy error details",
     "batch": {
       "success": "{{operation}} completed successfully. Processed {{success}} items",
       "failed": "{{operation}} failed. {{failed}} items failed",
@@ -3370,6 +3372,7 @@
     "search_events_placeholder": "Search events or payload"
   },
   "window_controls": {
+    "drag": "Drag window",
     "minimize": "Minimize",
     "maximize": "Maximize",
     "restore": "Restore",
@@ -3397,6 +3400,7 @@
   "header": {
     "refreshing_text": "Refreshing",
     "refresh": "Refresh",
+    "update": "Check for updates",
     "export": "Export"
   },
   "tag_tree": {

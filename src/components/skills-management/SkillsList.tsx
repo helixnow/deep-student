@@ -121,10 +121,10 @@ export const SkillsList: React.FC<SkillsListProps> = ({
           <Lightning size={32} className="text-muted-foreground/50" />
         </div>
         <p className="study-shell-empty-state__title">
-          {t('skills:selector.empty', '暂无可用技能')}
+          {t('skills:selector.empty')}
         </p>
         <p className="study-shell-empty-state__description">
-          {t('skills:selector.emptyHint', '点击"新建"按钮创建第一个技能')}
+          {t('skills:selector.emptyHint')}
         </p>
       </div>
     );
@@ -214,9 +214,9 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                         ? "bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] border-transparent"
                         : "bg-transparent text-muted-foreground/50 border-transparent hover:bg-[color:var(--button-utility-hover)] hover:text-muted-foreground"
                     )}
-                    title={isDefaultEnabled ? t('skills:management.is_default', '默认启用') : t('skills:management.set_default', '设为默认')}
+                    title={isDefaultEnabled ? t('skills:management.is_default') : t('skills:management.set_default')}
                  >
-                    {isDefaultEnabled ? t('skills:management.default_abbr', '默认') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.enable', '启用')}</span>}
+                    {isDefaultEnabled ? t('skills:management.default_abbr') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.enable')}</span>}
                  </div>
               </div>
             </div>
@@ -224,7 +224,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             {/* 内容描述 */}
             <div className={cn('flex-1 min-h-[3rem]', isDisabledSkill && 'opacity-60')}>
               <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-3">
-                {getLocalizedSkillDescription(skill.id, skill.description, t) || t('skills:management.no_description', '暂无描述')}
+                {getLocalizedSkillDescription(skill.id, skill.description, t) || t('skills:management.no_description')}
               </p>
             </div>
 
@@ -238,16 +238,16 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 {isDisabledSkill && (
                   <div
                     className="study-shell-badge study-shell-badge--borderless text-[10px]"
-                    title={t('skills:package.disabled_hint', '已停用：不参与对话，可随时重新启用')}
+                    title={t('skills:package.disabled_hint')}
                   >
-                    {t('skills:package.disabled_badge', '已停用')}
+                    {t('skills:package.disabled_badge')}
                   </div>
                 )}
 
                 {/* 自定义标记 */}
                 {isBuiltin && isCustomized && (
                   <div className="study-shell-badge study-shell-badge--warning study-shell-badge--borderless text-[10px]">
-                    {t('skills:management.customized', '已修改')}
+                    {t('skills:management.customized')}
                   </div>
                 )}
               </div>
@@ -262,16 +262,16 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
                   title={
                     isDisabledSkill
-                      ? t('skills:package.enable', '启用')
-                      : t('skills:package.disable', '停用')
+                      ? t('skills:package.enable')
+                      : t('skills:package.disable')
                   }
                   aria-label={isDisabledSkill ? 'enable-skill' : 'disable-skill'}
                 >
                   {isDisabledSkill
-                    ? t('skills:package.enable', '启用')
-                    : t('skills:package.disable', '停用')}
+                    ? t('skills:package.enable')
+                    : t('skills:package.disable')}
                 </NotionButton>
-                <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit', '编辑')} aria-label="edit">
+                <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label="edit">
                   <Pencil size={14} />
                 </NotionButton>
 
@@ -284,28 +284,28 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   <AppMenuContent align="end" className="min-w-[160px]">
                     <AppMenuItem onClick={() => onToggleDefault(skill)}>
                       <Check size={14} className="mr-2" />
-                      {isDefaultEnabled ? t('skills:management.unset_default', '取消默认') : t('skills:management.set_default', '设为默认')}
+                      {isDefaultEnabled ? t('skills:management.unset_default') : t('skills:management.set_default')}
                     </AppMenuItem>
                     <AppMenuItem onClick={() => toggleFavorite(skill.id)}>
                       <Star size={14} className={cn('mr-2', isFavorite(skill.id) && 'fill-current text-amber-500')} />
-                      {isFavorite(skill.id) ? t('skills:favorite.remove', '取消收藏') : t('skills:favorite.add', '收藏')}
+                      {isFavorite(skill.id) ? t('skills:favorite.remove') : t('skills:favorite.add')}
                     </AppMenuItem>
                     {onExport && (
                       <AppMenuItem onClick={() => onExport(skill)}>
                         <Download size={14} className="mr-2" />
-                        {t('skills:management.export', '导出')}
+                        {t('skills:management.export')}
                       </AppMenuItem>
                     )}
                     <AppMenuItem onClick={() => { navigator.clipboard.writeText(skill.id); }}>
                       <Copy size={14} className="mr-2" />
-                      {t('skills:management.copy_id', '复制 ID')}
+                      {t('skills:management.copy_id')}
                     </AppMenuItem>
                     {isBuiltin && isCustomized && onResetToOriginal && (
                       <>
                         <AppMenuSeparator />
                         <AppMenuItem onClick={() => onResetToOriginal(skill)}>
                           <ArrowCounterClockwise size={14} className="mr-2" />
-                          {t('skills:management.reset_to_default', '恢复默认')}
+                          {t('skills:management.reset_to_default')}
                         </AppMenuItem>
                       </>
                     )}
@@ -314,7 +314,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                         <AppMenuSeparator />
                         <AppMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(skill)}>
                           <Trash size={14} className="mr-2" />
-                          {t('common:actions.delete', '删除')}
+                          {t('common:actions.delete')}
                         </AppMenuItem>
                       </>
                     )}

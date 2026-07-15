@@ -52,16 +52,14 @@
       "id": "NativeButton",
       "label": "原生 <button>",
       "target": false,
-      "refs": 199,
-      "files": 72,
+      "refs": 191,
+      "files": 70,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/CommandPalette.tsx",
         "src/components/ModernSidebar.tsx",
         "src/components/QuestionBankEditor.tsx",
         "src/components/SecurePasswordInput.tsx",
-        "src/components/anki/cardforge/engines/TaskController.examples.ts",
-        "src/components/anki/cardforge/hooks/useCardForge.ts",
         "src/components/context-menu/TextContextMenu.tsx",
         "src/components/essay-grading/InputPanel.tsx",
         "src/components/layout/BottomTabBar.tsx",
@@ -74,9 +72,11 @@
         "src/components/style-lab/TokenInspectorTab.tsx",
         "src/components/ui/NotionButton.tsx",
         "src/components/ui/SegmentedControl.tsx",
-        "src/components/ui/app-menu/AppMenu.tsx"
+        "src/components/ui/app-menu/AppMenu.tsx",
+        "src/components/ui/app-menu/AppMenuDemo.tsx",
+        "src/components/ui/shad/Collapsible.tsx"
       ],
-      "totalFileCount": 72
+      "totalFileCount": 70
     },
     "ShadInput": {
       "id": "ShadInput",
@@ -324,17 +324,16 @@
       "id": "ShadSheet",
       "label": "shad Sheet",
       "target": false,
-      "refs": 6,
-      "files": 6,
+      "refs": 5,
+      "files": 5,
       "topFiles": [
         "src/App.tsx",
         "src/components/QuestionHistoryView.tsx",
         "src/components/ui/unified-sidebar/SidebarDrawer.tsx",
         "src/components/ui/unified-sidebar/SidebarSheet.tsx",
-        "src/features/chat/components/AnkiPanelHost.tsx",
         "src/features/chat/components/panels/UnifiedSourcePanel.tsx"
       ],
-      "totalFileCount": 6
+      "totalFileCount": 5
     },
     "AppMenu": {
       "id": "AppMenu",
@@ -673,8 +672,8 @@
       "id": "button",
       "label": "Button",
       "targetRefs": 3772,
-      "legacyRefs": 200,
-      "total": 3972,
+      "legacyRefs": 192,
+      "total": 3964,
       "percentage": 95,
       "targetIds": [
         "NotionButton"

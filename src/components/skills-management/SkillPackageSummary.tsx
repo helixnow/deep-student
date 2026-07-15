@@ -25,48 +25,48 @@ interface SkillPackageSummaryProps {
   onTrustChanged?: () => void;
 }
 
-function sourceLabel(source: SkillPackageSource | undefined, t: (key: string, fallback: string) => string): string {
+function sourceLabel(source: SkillPackageSource | undefined, t: (key: string) => string): string {
   switch (source) {
     case 'builtin':
-      return t('skills:package.source_builtin', '内置');
+      return t('skills:package.source_builtin');
     case 'global':
-      return t('skills:package.source_global', '全局');
+      return t('skills:package.source_global');
     case 'project':
-      return t('skills:package.source_project', '项目');
+      return t('skills:package.source_project');
     case 'external':
-      return t('skills:package.source_external', '外部');
+      return t('skills:package.source_external');
     default:
-      return t('skills:package.source_unknown', '未知来源');
+      return t('skills:package.source_unknown');
   }
 }
 
-function trustLabel(status: SkillTrustStatus | undefined, t: (key: string, fallback: string) => string): string {
+function trustLabel(status: SkillTrustStatus | undefined, t: (key: string) => string): string {
   switch (status) {
     case 'builtin':
-      return t('skills:package.trust_builtin', '内置可信');
+      return t('skills:package.trust_builtin');
     case 'trusted':
-      return t('skills:package.trust_trusted', '已信任');
+      return t('skills:package.trust_trusted');
     case 'untrusted':
-      return t('skills:package.trust_untrusted', '未信任');
+      return t('skills:package.trust_untrusted');
     default:
-      return t('skills:package.trust_unknown', '信任未知');
+      return t('skills:package.trust_unknown');
   }
 }
 
-function fileKindLabel(kind: SkillPackageFile['kind'], t: (key: string, fallback: string) => string): string {
+function fileKindLabel(kind: SkillPackageFile['kind'], t: (key: string) => string): string {
   switch (kind) {
     case 'entry':
-      return t('skills:package.file_entry', '入口');
+      return t('skills:package.file_entry');
     case 'reference':
-      return t('skills:package.file_reference', '引用');
+      return t('skills:package.file_reference');
     case 'script':
-      return t('skills:package.file_script', '脚本');
+      return t('skills:package.file_script');
     case 'asset':
-      return t('skills:package.file_asset', '资产');
+      return t('skills:package.file_asset');
     case 'config':
-      return t('skills:package.file_config', '配置');
+      return t('skills:package.file_config');
     default:
-      return t('skills:package.file_other', '其他');
+      return t('skills:package.file_other');
   }
 }
 
@@ -140,14 +140,14 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
           <Chip
             icon={<ShieldWarning size={10} />}
             tone="warning"
-            title={t('skills:package.trust_effect_untrusted', '未信任时：这个技能包的文件完全不会展示给 AI。')}
+            title={t('skills:package.trust_effect_untrusted')}
           >
             {trustLabel(trust, t)}
           </Chip>
         )}
         {summary.dependencies > 0 && (
           <Chip icon={<LinkSimple size={10} />}>
-            {t('skills:package.dependencies_count', '{{count}} 依赖', { count: summary.dependencies })}
+            {t('skills:package.dependencies_count', { count: summary.dependencies })}
           </Chip>
         )}
         {(summary.allowedTools > 0 || summary.embeddedTools > 0) && (
@@ -164,12 +164,12 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
           <>
             {requiresBins.length > 0 && (
               <Chip icon={<Terminal size={10} />} title={requiresBins.join(', ')}>
-                {t('skills:package.requires_bins', 'bins: {{list}}', { list: requiresBins.join(', ') })}
+                {t('skills:package.requires_bins', { list: requiresBins.join(', ') })}
               </Chip>
             )}
             {requiresEnv.length > 0 && (
               <Chip icon={<Terminal size={10} />} title={requiresEnv.join(', ')}>
-                {t('skills:package.requires_env', 'env: {{list}}', { list: requiresEnv.join(', ') })}
+                {t('skills:package.requires_env', { list: requiresEnv.join(', ') })}
               </Chip>
             )}
           </>
@@ -188,8 +188,8 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
           icon={trust === 'untrusted' ? <ShieldWarning size={11} /> : <ShieldCheck size={11} />}
           tone={trust === 'untrusted' ? 'warning' : 'default'}
           title={trust === 'untrusted'
-            ? t('skills:package.trust_effect_untrusted', '未信任时：这个技能包的文件完全不会展示给 AI。')
-            : t('skills:package.trust_effect_trusted', '信任后：AI 可以只读查看这个技能包的文件，其中的脚本可在本地命令中使用。')}
+            ? t('skills:package.trust_effect_untrusted')
+            : t('skills:package.trust_effect_trusted')}
         >
           {trustLabel(trust, t)}
         </Chip>
@@ -198,10 +198,10 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleTrustToggle}
-            title={t('skills:package.trust_effect_trusted', '信任后：AI 可以只读查看这个技能包的文件，其中的脚本可在本地命令中使用。')}
+            title={t('skills:package.trust_effect_trusted')}
             className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 text-[10px] text-primary hover:underline"
           >
-            {t('skills:package.trust_enable', '信任此技能')}
+            {t('skills:package.trust_enable')}
           </NotionButton>
         )}
         {canToggleTrust && trust === 'trusted' && source === 'external' && (
@@ -209,42 +209,42 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleTrustToggle}
-            title={t('skills:package.trust_effect_untrusted', '未信任时：这个技能包的文件完全不会展示给 AI。')}
+            title={t('skills:package.trust_effect_untrusted')}
             className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 text-[10px] text-muted-foreground hover:underline"
           >
-            {t('skills:package.trust_revoke', '撤销信任')}
+            {t('skills:package.trust_revoke')}
           </NotionButton>
         )}
         <Chip icon={<Wrench size={11} />}>
-          {t('skills:package.permission_tools', '{{count}} 工具', {
+          {t('skills:package.permission_tools', {
             count: summary.allowedTools + summary.embeddedTools,
           })}
         </Chip>
         <Chip icon={<LinkSimple size={11} />}>
-          {t('skills:package.permission_dependencies', '{{count}} 依赖', {
+          {t('skills:package.permission_dependencies', {
             count: summary.dependencies,
           })}
         </Chip>
         <Chip icon={<TreeStructure size={11} />}>
-          {t('skills:package.permission_files', '{{count}} 文件', {
+          {t('skills:package.permission_files', {
             count: summary.packageFiles,
           })}
         </Chip>
         {summary.scripts > 0 && (
           <Chip icon={<FileText size={11} />} tone="warning">
-            {t('skills:package.permission_scripts', '{{count}} 脚本', { count: summary.scripts })}
+            {t('skills:package.permission_scripts', { count: summary.scripts })}
           </Chip>
         )}
         {hasRequires && (
           <>
             {requiresBins.length > 0 && (
               <Chip icon={<Terminal size={11} />} title={requiresBins.join(', ')}>
-                {t('skills:package.requires_bins', 'bins: {{list}}', { list: requiresBins.join(', ') })}
+                {t('skills:package.requires_bins', { list: requiresBins.join(', ') })}
               </Chip>
             )}
             {requiresEnv.length > 0 && (
               <Chip icon={<Terminal size={11} />} title={requiresEnv.join(', ')}>
-                {t('skills:package.requires_env', 'env: {{list}}', { list: requiresEnv.join(', ') })}
+                {t('skills:package.requires_env', { list: requiresEnv.join(', ') })}
               </Chip>
             )}
           </>
@@ -254,7 +254,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
       {(summary.allowedTools > 0 || toolLabels.length > 0) && (
         <div className="space-y-1">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            {t('skills:package.tools_heading', '包含工具')}
+            {t('skills:package.tools_heading')}
           </div>
           <div className="flex flex-wrap gap-1">
             {toolLabels.map((label) => (
@@ -267,7 +267,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             ))}
             {summary.allowedTools > 0 && toolLabels.length === 0 && (
               <span className="text-[11px] text-muted-foreground">
-                {t('skills:package.allowed_tools_count', '{{count}} 个 allowed-tools', {
+                {t('skills:package.allowed_tools_count', {
                   count: summary.allowedTools,
                 })}
               </span>
@@ -298,7 +298,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
           ))}
           {remainingFiles > 0 && (
             <div className="text-[11px] text-muted-foreground/60">
-              {t('skills:package.more_files', '另有 {{count}} 个文件', { count: remainingFiles })}
+              {t('skills:package.more_files', { count: remainingFiles })}
             </div>
           )}
         </div>

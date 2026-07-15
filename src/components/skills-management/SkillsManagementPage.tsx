@@ -235,13 +235,13 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       await reloadSkills();
       showGlobalNotification(
         'success',
-        t('skills:management.refresh_success', '技能列表已刷新')
+        t('skills:management.refresh_success')
       );
     } catch (error) {
       console.error('[SkillsManagement] 刷新失败:', error);
       showGlobalNotification(
         'error',
-        t('skills:management.refresh_failed', '刷新失败')
+        t('skills:management.refresh_failed')
       );
     } finally {
       setIsLoading(false);
@@ -331,7 +331,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         await saveBuiltinSkillCustomization(editingSkill.id, customization);
         showGlobalNotification(
           'success',
-          t('skills:management.builtin_save_success', '内置技能自定义已保存')
+          t('skills:management.builtin_save_success')
         );
       } else {
         // 用户技能：更新文件系统
@@ -356,7 +356,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         await updateSkill({ path: skillFilePath, content });
         showGlobalNotification(
           'success',
-          t('skills:management.save_success', '技能保存成功')
+          t('skills:management.save_success')
         );
       }
     } else {
@@ -384,7 +384,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       });
       showGlobalNotification(
         'success',
-        t('skills:management.create_success', '技能创建成功')
+        t('skills:management.create_success')
       );
     }
 
@@ -400,7 +400,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       await resetBuiltinSkillCustomization(skill.id);
       showGlobalNotification(
         'success',
-        t('skills:management.reset_success', '已恢复默认设置')
+        t('skills:management.reset_success')
       );
       // 刷新列表
       await reloadSkills();
@@ -408,7 +408,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       console.error('[SkillsManagement] 恢复默认失败:', error);
       showGlobalNotification(
         'error',
-        t('skills:management.reset_failed', '恢复默认失败')
+        t('skills:management.reset_failed')
       );
     }
   }, [t]);
@@ -422,7 +422,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       console.warn('[SkillsManagement] 尝试删除内置技能，已阻止:', skillToDelete.id);
       showGlobalNotification(
         'error',
-        t('skills:management.builtin_no_delete', '内置技能不可删除')
+        t('skills:management.builtin_no_delete')
       );
       return;
     }
@@ -433,7 +433,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
     showGlobalNotification(
       'success',
-      t('skills:management.delete_success', '技能已删除')
+      t('skills:management.delete_success')
     );
 
     // 刷新列表
@@ -477,7 +477,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       if (!result.canceled) {
         showGlobalNotification(
           'success',
-          t('skills:management.export_success', '技能已导出')
+          t('skills:management.export_success')
         );
       }
     } catch (e) {
@@ -489,7 +489,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const handleExportAll = useCallback(async () => {
     const userSkills = allSkills.filter((s) => !s.isBuiltin || s.isCustomized);
     if (userSkills.length === 0) {
-      showGlobalNotification('info', t('skills:management.export_no_skills', '没有可导出的用户技能'));
+      showGlobalNotification('info', t('skills:management.export_no_skills'));
       return;
     }
 
@@ -532,7 +532,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     if (exportedCount > 0) {
       showGlobalNotification(
         'success',
-        t('skills:management.export_all_success', '已导出 {{count}} 个技能', { count: exportedCount })
+        t('skills:management.export_all_success', { count: exportedCount })
       );
     }
   }, [allSkills, t]);
@@ -556,13 +556,13 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
     const scanParts: string[] = [];
     if (result.scripts_count > 0) {
-      scanParts.push(t('skills:management.import_scan_scripts', '{{count}} 脚本', { count: result.scripts_count }));
+      scanParts.push(t('skills:management.import_scan_scripts', { count: result.scripts_count }));
     }
     if (result.allowed_tools_count > 0) {
-      scanParts.push(t('skills:management.import_scan_tools', '{{count}} allowed-tools', { count: result.allowed_tools_count }));
+      scanParts.push(t('skills:management.import_scan_tools', { count: result.allowed_tools_count }));
     }
     if (result.references_count > 0) {
-      scanParts.push(t('skills:management.import_scan_refs', '{{count}} 引用', { count: result.references_count }));
+      scanParts.push(t('skills:management.import_scan_refs', { count: result.references_count }));
     }
     if (result.package_sha256) {
       scanParts.push(`sha256:${result.package_sha256.slice(0, 12)}`);
@@ -571,10 +571,10 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     showGlobalNotification(
       'success',
       overwrite
-        ? t('skills:management.import_zip_overwrite_success', '技能包 "{{name}}" 已覆盖安装', { name: result.skill_id })
-        : t('skills:management.import_zip_success', '技能包 "{{name}}" 已安装', { name: result.skill_id }),
+        ? t('skills:management.import_zip_overwrite_success', { name: result.skill_id })
+        : t('skills:management.import_zip_success', { name: result.skill_id }),
       scanParts.length > 0
-        ? t('skills:management.import_scan_summary', '装前扫描：{{summary}}', { summary: scanParts.join(' · ') })
+        ? t('skills:management.import_scan_summary', { summary: scanParts.join(' · ') })
         : undefined,
     );
   }, [t]);
@@ -585,7 +585,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       const picked = await dialogOpen({
         multiple: false,
         filters: [{ name: 'Skill Package', extensions: ['zip'] }],
-        title: t('skills:management.import_zip_title', '导入技能包 (.zip)'),
+        title: t('skills:management.import_zip_title'),
       });
       if (!picked || typeof picked !== 'string') return;
 
@@ -609,7 +609,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     } catch (error: unknown) {
       showGlobalNotification(
         'error',
-        t('skills:management.import_zip_failed', '技能包导入失败'),
+        t('skills:management.import_zip_failed'),
         String(error),
       );
     }
@@ -637,7 +637,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       } else {
         showGlobalNotification(
           'error',
-          t('skills:management.import_zip_failed', '技能包导入失败'),
+          t('skills:management.import_zip_failed'),
           message,
         );
         setPendingZipConfirm(null);
@@ -720,12 +720,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
     if (files.length === 1) {
       if (successCount === 1) {
-        showGlobalNotification('success', t('skills:management.import_success', '技能导入成功'));
+        showGlobalNotification('success', t('skills:management.import_success'));
       } else if (errors.length > 0) {
-        showGlobalNotification('error', t('skills:management.import_failed', '导入失败: {{error}}', { error: errors[0] }));
+        showGlobalNotification('error', t('skills:management.import_failed', { error: errors[0] }));
       }
     } else {
-      const message = t('skills:management.import_batch_result', '导入完成: {{success}} 成功, {{skip}} 跳过, {{fail}} 失败', {
+      const message = t('skills:management.import_batch_result', {
         success: successCount,
         skip: skipCount,
         fail: errors.length,
@@ -757,13 +757,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
       showGlobalNotification(
         'success',
-        t('skills:management.import_overwrite_success', '技能 "{{name}}" 已覆盖', { name: pendingImport.skill.name })
+        t('skills:management.import_overwrite_success', { name: pendingImport.skill.name })
       );
       await reloadSkills();
     } catch (error) {
       showGlobalNotification(
         'error',
-        t('skills:management.import_failed', '导入失败: {{error}}', { error: String(error) })
+        t('skills:management.import_failed', { error: String(error) })
       );
     } finally {
       setPendingImport(null);
@@ -790,7 +790,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     } catch (error) {
       showGlobalNotification(
         'error',
-        t('skills:management.import_zip_failed', '技能包导入失败'),
+        t('skills:management.import_zip_failed'),
         String(error),
       );
     } finally {
@@ -807,21 +807,21 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 移动端统一顶栏配置 ==========
   const headerTitle = useMemo(() => {
     if (isSmallScreen && !(screenPosition === 'right' && (editorOpen || rightPanelOpen))) {
-      return t('skills:management.title', '技能管理');
+      return t('skills:management.title');
     }
     // 右侧面板打开时显示编辑器标题
     if (screenPosition === 'right' && (editorOpen || rightPanelOpen)) {
       return editingSkill
-        ? t('skills:management.edit', '编辑技能')
-        : t('skills:management.create', '新建技能');
+        ? t('skills:management.edit')
+        : t('skills:management.create');
     }
     if (defaultSkills.length === 0) {
-      return t('skills:management.title', '技能管理');
+      return t('skills:management.title');
     }
     if (defaultSkills.length === 1) {
       return defaultSkills[0].name;
     }
-    return t('skills:management.default_count', '{{count}} 个默认技能', { count: defaultSkills.length });
+    return t('skills:management.default_count', { count: defaultSkills.length });
   }, [defaultSkills, t, screenPosition, editorOpen, rightPanelOpen, editingSkill, isSmallScreen]);
 
   const headerSubtitle = useMemo(() => {
@@ -865,7 +865,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         ? () => setScreenPosition('center')
         : () => setScreenPosition('left'),
     rightActions: !isEditorView ? (
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label={t('skills:management.create', '新建技能')}>
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create')} aria-label={t('skills:management.create')}>
         <Plus size={20} />
       </NotionButton>
     ) : undefined,
@@ -873,10 +873,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
-    { id: 'all' as const, label: t('skills:location.all', '全部'), icon: <Lightning size={12} /> },
-    { id: 'global' as const, label: t('skills:location.global', '全局'), icon: <Globe size={12} /> },
-    { id: 'project' as const, label: t('skills:location.project', '项目'), icon: <FolderOpen size={12} /> },
-    { id: 'builtin' as const, label: t('skills:location.builtin', '内置'), icon: <Package size={12} /> },
+    { id: 'all' as const, label: t('skills:location.all'), icon: <Lightning size={12} /> },
+    { id: 'global' as const, label: t('skills:location.global'), icon: <Globe size={12} /> },
+    { id: 'project' as const, label: t('skills:location.project'), icon: <FolderOpen size={12} /> },
+    { id: 'builtin' as const, label: t('skills:location.builtin'), icon: <Package size={12} /> },
   ], [t]);
 
   const locationCounts = useMemo(() => ({
@@ -909,7 +909,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       <div className="study-shell-toolbar flex-shrink-0 px-4 sm:px-6 py-3 sticky top-0 z-10 space-y-3">
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
-            <span className="font-medium text-foreground truncate">{t('skills:management.all_skills', '所有技能')}</span>
+            <span className="font-medium text-foreground truncate">{t('skills:management.all_skills')}</span>
             <span className="text-muted-foreground/40">/</span>
             <span className="flex-shrink-0">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
           </div>
@@ -934,7 +934,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   className="h-7 border-transparent bg-[color:var(--button-tonal-bg)] px-2.5 text-xs"
                 >
                   <Plus size={14} className="mr-1.5" />
-                  {t('skills:management.create', '新建')}
+                  {t('skills:management.create')}
                 </NotionButton>
                 <div className="w-px h-4 bg-border/40 mx-1.5" />
               </>
@@ -947,7 +947,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
             >
               <Package size={14} className="mr-1" />
-              {t('skills:management.import_zip', '导入包')}
+              {t('skills:management.import_zip')}
             </NotionButton>
 
             <NotionButton
@@ -957,7 +957,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
             >
               <Upload size={14} className="mr-1" />
-              {t('skills:management.import', '导入')}
+              {t('skills:management.import')}
             </NotionButton>
 
             <NotionButton
@@ -968,7 +968,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               className="max-lg:!h-11 h-7 text-xs px-2 text-muted-foreground"
             >
               <Download size={14} className="mr-1" />
-              {t('skills:management.export_all_short', '导出')}
+              {t('skills:management.export_all_short')}
             </NotionButton>
 
           </div>
@@ -981,13 +981,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
+              placeholder={t('skills:selector.searchPlaceholder')}
               className="h-8 border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3 text-xs"
 />
           </div>
 
           <SegmentedControl<typeof locationFilter>
-            ariaLabel={t('skills:location.all', '全部')}
+            ariaLabel={t('skills:location.all')}
             value={locationFilter}
             onValueChange={setLocationFilter}
             size="compact"
@@ -1082,17 +1082,16 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         open={zipConfirmOpen}
         onOpenChange={setZipConfirmOpen}
         title={overwrite
-          ? t('skills:management.import_confirm_overwrite_title', '覆盖安装技能包')
-          : t('skills:management.import_confirm_title', '安装技能包')}
+          ? t('skills:management.import_confirm_overwrite_title')
+          : t('skills:management.import_confirm_title')}
         description={t(
           'skills:management.import_confirm_source',
-          '技能 "{{name}}"，来源文件 {{file}}',
           { name: scan.skill_id, file: fileName }
         )}
         confirmText={overwrite
-          ? t('skills:management.import_confirm_overwrite_install', '覆盖安装')
-          : t('skills:management.import_confirm_install', '安装')}
-        cancelText={t('common:actions.cancel', '取消')}
+          ? t('skills:management.import_confirm_overwrite_install')
+          : t('skills:management.import_confirm_install')}
+        cancelText={t('common:actions.cancel')}
         confirmVariant={isHighRisk ? 'danger' : overwrite ? 'warning' : 'primary'}
         loading={zipInstalling}
         onConfirm={handleConfirmZipInstall}
@@ -1104,13 +1103,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {/* 能力摘要 chips：文件 / 脚本 / allowed-tools / sha256 */}
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
-              {t('skills:package.permission_files', '{{count}} 文件', { count: scan.files_extracted })}
+              {t('skills:package.permission_files', { count: scan.files_extracted })}
             </span>
             <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
-              {t('skills:management.import_scan_scripts', '{{count}} 脚本', { count: scan.scripts_count })}
+              {t('skills:management.import_scan_scripts', { count: scan.scripts_count })}
             </span>
             <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px]">
-              {t('skills:management.import_scan_tools', '{{count}} allowed-tools', { count: scan.allowed_tools_count })}
+              {t('skills:management.import_scan_tools', { count: scan.allowed_tools_count })}
             </span>
             {scan.package_sha256 && (
               <span className="study-shell-badge inline-flex items-center gap-1 px-1.5 py-0.5 font-mono text-[10px]">
@@ -1122,7 +1121,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           {scan.requires && (scan.requires.bins.length > 0 || scan.requires.env.length > 0) && (
             <div className="space-y-1">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                {t('skills:management.requires_heading', 'Runtime dependencies')}
+                {t('skills:management.requires_heading')}
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {scan.requires.bins.map((bin) => (
@@ -1133,10 +1132,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                       !bin.found && 'study-shell-badge--warning',
                     )}
                   >
-                    {t('skills:management.requires_bin', 'bin {{name}}', { name: bin.name })}
+                    {t('skills:management.requires_bin', { name: bin.name })}
                     {!bin.found && (
                       <span className="text-amber-600 dark:text-amber-400">
-                        {t('skills:management.requires_missing', 'missing')}
+                        {t('skills:management.requires_missing')}
                       </span>
                     )}
                   </span>
@@ -1149,10 +1148,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                       !env.set && 'study-shell-badge--warning',
                     )}
                   >
-                    {t('skills:management.requires_env', 'env {{name}}', { name: env.name })}
+                    {t('skills:management.requires_env', { name: env.name })}
                     {!env.set && (
                       <span className="text-amber-600 dark:text-amber-400">
-                        {t('skills:management.requires_missing', 'missing')}
+                        {t('skills:management.requires_missing')}
                       </span>
                     )}
                   </span>
@@ -1165,7 +1164,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-muted-foreground">
-                {t('skills:management.risk_heading', '风险分级')}
+                {t('skills:management.risk_heading')}
               </span>
               <span
                 className={cn(
@@ -1187,12 +1186,12 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
             {isHighRisk && (
               <p className="text-[11px] leading-relaxed text-red-600 dark:text-red-400">
-                {t('skills:management.risk_high_warning', '该技能包存在高风险信号，请确认来源可信后再安装。')}
+                {t('skills:management.risk_high_warning')}
               </p>
             )}
             {overwrite && (
               <p className="text-[11px] leading-relaxed text-amber-600 dark:text-amber-400">
-                {t('skills:management.import_confirm_overwrite_hint', '同名技能已存在，安装将替换该技能目录的全部文件（含脚本与引用）。')}
+                {t('skills:management.import_confirm_overwrite_hint')}
               </p>
             )}
           </div>
@@ -1249,14 +1248,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <NotionAlertDialog
           open={importOverwriteOpen}
           onOpenChange={setImportOverwriteOpen}
-          title={t('skills:management.import_overwrite_title', '技能已存在')}
+          title={t('skills:management.import_overwrite_title')}
           description={t(
             'skills:management.import_overwrite_confirm',
-            '技能 "{{name}}" 已存在，是否覆盖？',
             { name: pendingImport?.skill.name }
           )}
-          confirmText={t('skills:management.import_overwrite', '覆盖')}
-          cancelText={t('common:actions.cancel', '取消')}
+          confirmText={t('skills:management.import_overwrite')}
+          cancelText={t('common:actions.cancel')}
           confirmVariant="warning"
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
@@ -1265,14 +1263,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <NotionAlertDialog
           open={zipOverwriteOpen}
           onOpenChange={setZipOverwriteOpen}
-          title={t('skills:management.import_zip_overwrite_title', '技能包已存在')}
+          title={t('skills:management.import_zip_overwrite_title')}
           description={t(
             'skills:management.import_zip_overwrite_confirm',
-            '技能 "{{name}}" 已存在，覆盖将替换该技能目录的全部文件（含脚本与引用），是否继续？',
             { name: pendingZipImport?.name }
           )}
-          confirmText={t('skills:management.import_overwrite', '覆盖')}
-          cancelText={t('common:actions.cancel', '取消')}
+          confirmText={t('skills:management.import_overwrite')}
+          cancelText={t('common:actions.cancel')}
           confirmVariant="warning"
           onConfirm={handleConfirmZipOverwrite}
           onCancel={handleCancelZipOverwrite}
@@ -1309,14 +1306,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <NotionAlertDialog
           open={importOverwriteOpen}
           onOpenChange={setImportOverwriteOpen}
-          title={t('skills:management.import_overwrite_title', '技能已存在')}
+          title={t('skills:management.import_overwrite_title')}
           description={t(
             'skills:management.import_overwrite_confirm',
-            '技能 "{{name}}" 已存在，是否覆盖？',
             { name: pendingImport?.skill.name }
           )}
-          confirmText={t('skills:management.import_overwrite', '覆盖')}
-          cancelText={t('common:actions.cancel', '取消')}
+          confirmText={t('skills:management.import_overwrite')}
+          cancelText={t('common:actions.cancel')}
           confirmVariant="warning"
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
@@ -1325,14 +1321,13 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         <NotionAlertDialog
           open={zipOverwriteOpen}
           onOpenChange={setZipOverwriteOpen}
-          title={t('skills:management.import_zip_overwrite_title', '技能包已存在')}
+          title={t('skills:management.import_zip_overwrite_title')}
           description={t(
             'skills:management.import_zip_overwrite_confirm',
-            '技能 "{{name}}" 已存在，覆盖将替换该技能目录的全部文件（含脚本与引用），是否继续？',
             { name: pendingZipImport?.name }
           )}
-          confirmText={t('skills:management.import_overwrite', '覆盖')}
-          cancelText={t('common:actions.cancel', '取消')}
+          confirmText={t('skills:management.import_overwrite')}
+          cancelText={t('common:actions.cancel')}
           confirmVariant="warning"
           onConfirm={handleConfirmZipOverwrite}
           onCancel={handleCancelZipOverwrite}

@@ -184,7 +184,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
         <div className="flex items-center gap-2">
           <Wrench size={14} className="text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-            {t('skills:editor.embedded_tools', '内嵌工具')}
+            {t('skills:editor.embedded_tools')}
           </span>
           {tools.length > 0 && (
             <span className="text-xs text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
@@ -201,16 +201,16 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
           className="max-lg:!h-11 h-7 text-xs"
         >
           <Plus size={14} className="mr-1" />
-          {t('skills:editor.add_tool', '添加工具')}
+          {t('skills:editor.add_tool')}
         </NotionButton>
       </div>
 
       {tools.length === 0 ? (
         <div className="text-center py-8 text-muted-foreground/60 text-sm border border-dashed border-border/40 rounded-lg">
           <Wrench size={24} className="mx-auto mb-2 opacity-40" />
-          <p>{t('skills:editor.no_tools', '暂无内嵌工具')}</p>
+          <p>{t('skills:editor.no_tools')}</p>
           <p className="text-xs mt-1">
-            {t('skills:editor.no_tools_hint', '点击上方按钮添加工具定义')}
+            {t('skills:editor.no_tools_hint')}
           </p>
         </div>
       ) : (
@@ -245,7 +245,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                       <CaretRight size={14} className="text-muted-foreground flex-shrink-0" />
                     )}
                     <span className="font-mono text-sm truncate">
-                      {tool.name || t('skills:editor.unnamed_tool', '未命名工具')}
+                      {tool.name || t('skills:editor.unnamed_tool')}
                     </span>
                     {hasError && (
                       <WarningCircle size={12} className="text-amber-500 flex-shrink-0" />
@@ -253,7 +253,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                   </CollapsibleTrigger>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-muted-foreground">
-                      {Object.keys(tool.inputSchema.properties).length} {t('skills:editor.params', '参数')}
+                      {Object.keys(tool.inputSchema.properties).length} {t('skills:editor.params')}
                     </span>
                     <NotionButton
                       type="button"
@@ -275,7 +275,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                   <div className="grid gap-3 pt-2 border-t border-border/20">
                     <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">
-                        {t('skills:editor.tool_name', '工具名称')} *
+                        {t('skills:editor.tool_name')} *
                       </Label>
                       <Input
                         value={tool.name}
@@ -291,12 +291,12 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
 
                     <div className="space-y-1.5">
                       <Label className="text-xs text-muted-foreground">
-                        {t('skills:editor.tool_description', '工具描述')} *
+                        {t('skills:editor.tool_description')} *
                       </Label>
                       <AutoResizeTextarea
                         value={tool.description}
                         onChange={(e) => updateTool(toolIndex, { description: (e.target as HTMLTextAreaElement).value })}
-                        placeholder={t('skills:editor.tool_description_placeholder', '描述工具的功能和使用场景...')}
+                        placeholder={t('skills:editor.tool_description_placeholder')}
                         disabled={disabled}
                         minHeight={60}
                         className={cn(
@@ -309,7 +309,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs text-muted-foreground">
-                          {t('skills:editor.input_params', '输入参数')}
+                          {t('skills:editor.input_params')}
                         </Label>
                         <NotionButton
                           type="button"
@@ -320,13 +320,13 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                           className="max-lg:!h-9 h-6 text-xs"
                         >
                           <Plus size={12} className="mr-1" />
-                          {t('skills:editor.add_param', '添加')}
+                          {t('skills:editor.add_param')}
                         </NotionButton>
                       </div>
 
                       {Object.keys(tool.inputSchema.properties).length === 0 ? (
                         <p className="text-xs text-muted-foreground/60 text-center py-2">
-                          {t('skills:editor.no_params', '暂无参数')}
+                          {t('skills:editor.no_params')}
                         </p>
                       ) : (
                         <div className="space-y-2">
@@ -341,14 +341,14 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   <Input
                                     value={propName}
                                     onChange={(e) => updateProperty(toolIndex, propName, (e.target as HTMLInputElement).value, {})}
-                                    placeholder={t('skills:editor.param_name', '参数名')}
+                                    placeholder={t('skills:editor.param_name')}
                                     disabled={disabled}
                                     className="h-7 text-xs font-mono bg-background/50"
 />
                                   <Input
                                     value={prop.description || ''}
                                     onChange={(e) => updateProperty(toolIndex, propName, propName, { description: (e.target as HTMLInputElement).value })}
-                                    placeholder={t('skills:editor.param_description', '参数描述')}
+                                    placeholder={t('skills:editor.param_description')}
                                     disabled={disabled}
                                     className="h-7 text-xs bg-background/50"
 />
@@ -377,7 +377,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   onClick={() => toggleRequired(toolIndex, propName)}
                                   disabled={disabled}
                                   className="max-lg:!h-9 h-7 text-[10px] px-2"
-                                  title={isRequired ? t('skills:editor.required', '必填') : t('skills:editor.optional', '可选')}
+                                  title={isRequired ? t('skills:editor.required') : t('skills:editor.optional')}
                                 >
                                   {isRequired ? '*' : '?'}
                                 </NotionButton>
@@ -406,7 +406,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
       )}
 
       <p className="text-[10px] text-muted-foreground/60">
-        {t('skills:editor.embedded_tools_hint', '内嵌工具会在技能激活时注入到 LLM 请求中')}
+        {t('skills:editor.embedded_tools_hint')}
       </p>
     </div>
   );

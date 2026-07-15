@@ -38,6 +38,8 @@
     "extensions": "Extensions",
     "chat_v2": "Smart Chat",
     "skills_management": "Skills Management",
+    "todo": "Todo",
+    "ui_lab": "UI Lab",
     "command_palette": "Search & Commands"
   },
   "aria": {

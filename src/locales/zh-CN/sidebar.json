@@ -38,6 +38,8 @@
     "extensions": "扩展功能",
     "chat_v2": "新会话",
     "skills_management": "技能管理",
+    "todo": "待办",
+    "ui_lab": "样式调试",
     "command_palette": "搜索与命令"
   },
   "aria": {
