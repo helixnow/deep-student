@@ -19,6 +19,10 @@ describe('chat v2 markdown typography contract', () => {
     resolve(process.cwd(), 'src/features/chat/components/renderers/BlockedMarkdownRenderer.tsx'),
     'utf-8',
   );
+  const streamingBlocksCssSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/components/renderers/streamingBlocks.css'),
+    'utf-8',
+  );
 
   it('defines shared reading-rhythm tokens for assistant markdown output', () => {
     expect(chatCssSource).toContain('--chat-md-font-size:');
@@ -110,5 +114,39 @@ describe('chat v2 markdown typography contract', () => {
     expect(blockedMarkdownRendererSource).toContain('block-type-${block.type}');
     expect(markdownCssSource).toContain('.chat-v2 .blocked-markdown > .markdown-content.block-type-table {');
     expect(markdownCssSource).toContain('.chat-v2 .blocked-markdown > .markdown-content.block-type-table + .markdown-content {');
+  });
+
+  it('restores native markdown rhythm at the streamed block boundary', () => {
+    expect(streamingBlocksCssSource).toContain('display: flow-root;');
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block[data-block-type="paragraph"],',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: var(--chat-md-paragraph-gap) 0;',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block[data-block-type="heading"] {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.stream-block[data-block-type="heading"]:has(> .markdown-content > :is(h1, h2, h3)) {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block[data-block-type="hr"] {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      'margin: calc(var(--chat-md-block-gap) * 0.675) 0;',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block:first-child {',
+    );
+    expect(streamingBlocksCssSource).toContain(
+      '.chat-v2 .streaming-blocks > .stream-block:last-child {',
+    );
   });
 });

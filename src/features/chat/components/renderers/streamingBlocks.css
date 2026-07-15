@@ -17,8 +17,9 @@
 }
 
 .streaming-blocks {
-  display: flex;
-  flex-direction: column;
+  /* A block formatting context contains the first/last margins while letting
+   * adjacent stream blocks collapse margins like one Markdown document. */
+  display: flow-root;
 }
 
 /* ─── Block base ─────────────────────────────────────────────────────────── */
@@ -26,6 +27,45 @@
 .stream-block {
   position: relative;
   opacity: 1;
+}
+
+/* Each streamed Markdown block has its own root, so the generic first/last
+ * child reset removes an inner <hr>'s margin. Keep the section gap on this
+ * stream block instead, where it cannot be reset or collapsed away. */
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="paragraph"],
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="list"],
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="html"] {
+  margin: var(--chat-md-paragraph-gap) 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="heading"] {
+  margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
+}
+
+/* Main section headings need less separation in the compact chat reading flow. */
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="heading"]:has(> .markdown-content > :is(h1, h2, h3)) {
+  margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="blockquote"],
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="math"] {
+  margin: var(--chat-md-block-gap) 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="table"] {
+  margin: calc(var(--chat-md-table-gap) * 1.15) 0 calc(var(--chat-md-table-gap) * 1.6);
+}
+
+.chat-v2 .streaming-blocks > .stream-block[data-block-type="hr"] {
+  margin: calc(var(--chat-md-block-gap) * 0.675) 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block:first-child {
+  margin-top: 0;
+}
+
+.chat-v2 .streaming-blocks > .stream-block:last-child {
+  margin-bottom: 0;
 }
 
 /* flowtoken 片段已经有自己的 token 级动效，外层不做任何入场淡入 */
