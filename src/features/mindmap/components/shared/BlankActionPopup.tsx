@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useLayoutEffect, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -31,6 +31,20 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
 }) => {
   const { t } = useTranslation('mindmap');
   const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const popup = ref.current;
+    if (!popup) return;
+    const width = popup.offsetWidth;
+    const height = popup.offsetHeight;
+    const padding = 8;
+    const maxLeft = Math.max(padding, window.innerWidth - width - padding);
+    const maxTop = Math.max(padding, window.innerHeight - height - padding);
+    const left = Math.min(Math.max(x - width / 2, padding), maxLeft);
+    const top = Math.min(Math.max(y - 36, padding), maxTop);
+    setPosition((current) => current?.left === left && current.top === top ? current : { left, top });
+  }, [x, y, mode, isAlreadyBlanked, isBold, onToggleBold, t]);
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -61,9 +75,9 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
       ref={ref}
       className="mindmap-container fixed z-[9999] flex items-center gap-0.5 rounded-md border border-[var(--mm-border)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in bg-[var(--mm-bg-elevated)] p-1"
       style={{
-        left: `${x}px`,
-        top: `${y - 36}px`,
-        transform: 'translateX(-50%)',
+        left: `${position?.left ?? -9999}px`,
+        top: `${position?.top ?? -9999}px`,
+        visibility: position ? 'visible' : 'hidden',
       }}
       // 阻止 mousedown 抢先让编辑框 blur，否则加粗/挖空点击会失效
       onMouseDown={(e) => e.preventDefault()}
