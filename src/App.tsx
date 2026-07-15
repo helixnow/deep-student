@@ -2489,7 +2489,7 @@ function App() {
             <>
               {/* Windows：应用图标拖拽区与自绘窗口控制按钮共用胶囊。macOS 由 StatusBar 接管。 */}
               {isWindows() ? (
-                <div className="ml-auto flex h-full items-center pr-2">
+                <div className="desktop-shell-workbench-chrome-host ml-auto flex h-full items-center justify-end pr-2">
                   <div className="desktop-shell-workbench-chrome-pill">
                     <div
                       className="desktop-shell-workbench-drag-strip"

@@ -26,9 +26,14 @@
   user-select: none;
 }
 
-/* Win 窗控胶囊约 140px + 边距；入口不得与其叠在同一角 */
+/* Windows 下直接收窄菜单栏边界，让快捷入口稳定停在窗控宿主左侧。 */
 .wb-menubar[data-chrome-inset='windows'] {
-  padding-right: var(--wb-menubar-chrome-inset, 148px);
+  right: var(--wb-menubar-chrome-inset, 165px);
+  padding-right: 12px;
+}
+
+.wb-menubar[data-chrome-inset='windows'] .wb-menubar-trailing {
+  flex-shrink: 0;
 }
 
 /* macOS：状态栏与系统标题栏共面，左侧只给原生红黄绿按钮留位。 */

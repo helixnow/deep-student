@@ -75,6 +75,12 @@ body {
   pointer-events: auto;
 }
 
+/* 与 Workbench 快捷栏共享宽度契约，保证 Windows 两块 chrome 永不叠放。 */
+.desktop-shell-workbench-chrome-host {
+  flex: 0 0 var(--wb-windows-chrome-width, 165px);
+  width: var(--wb-windows-chrome-width, 165px);
+}
+
 /* 工作台控制胶囊：拖拽空白 + Win 三键共用一块椭圆矩形 */
 .desktop-shell-workbench-chrome-pill {
   display: inline-flex;

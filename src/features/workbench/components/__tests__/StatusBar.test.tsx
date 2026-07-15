@@ -352,6 +352,7 @@ describe('StatusBar 学习中心 SB3', () => {
       render(<StatusBar />);
       const bar = screen.getByTestId('wb-menubar');
       expect(bar.getAttribute('data-macos-chrome')).toBe('integrated');
+      expect(bar.hasAttribute('data-chrome-inset')).toBe(false);
       expect(bar.hasAttribute('data-tauri-drag-region')).toBe(false);
       const dragRegion = screen.getByTestId('wb-menubar-drag-region');
 

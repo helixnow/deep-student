@@ -201,8 +201,10 @@
    * Workbench mode. Keep this independent so the Workbench menu bar remains
    * the single 40px layout boundary for every window arrangement. */
   --wb-menubar-height: 40px;
-  /* Win 窗控胶囊（icon+三键）约占宽，菜单栏 trailing 右让位 */
-  --wb-menubar-chrome-inset: 148px;
+
+  /* Windows 窗控宿主的完整宽度：图标拖拽区 + 三键胶囊 + 右侧外边距。 */
+  --wb-windows-chrome-width: 165px;
+  --wb-menubar-chrome-inset: var(--wb-windows-chrome-width);
   --wb-menubar-bg: transparent;
   --wb-menubar-border: transparent;
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 78%, transparent 22%);
