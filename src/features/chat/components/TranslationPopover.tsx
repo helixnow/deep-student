@@ -21,7 +21,7 @@
  * - unlisten 移除 Tauri 事件监听
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, ChatDots, X, ArrowsClockwise, ArrowRight } from '@phosphor-icons/react';
@@ -37,6 +37,7 @@ import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
 import { Z_INDEX } from '@/config/zIndex';
 import { useViewStore } from '@/stores/viewStore';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import type { SelectionRect } from '../hooks/useTextSelection';
 import type { AlignedSegment, TranslationDisplayMode } from './translationTypes';
@@ -228,7 +229,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
-  const [fixedPosition, setFixedPosition] = useState<{ top: number; left: number } | null>(null);
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number } | null>(null);
 
   const [srcLang, setSrcLang] = useState('auto');
   const [tgtLang, setTgtLang] = useState('zh-CN');
@@ -531,7 +532,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       setCopiedSource(false);
       setCopiedTranslation(false);
       setHoveredIndex(null);
-      setFixedPosition(null);
+      setPopoverPosition(null);
     }
   }, [isVisible, cancelActiveStream]);
 
@@ -551,29 +552,53 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
     }
   }, [isVisible, currentView, onClose]);
 
-  // 打开时固定位置（只计算一次）
-  useEffect(() => {
-    if (isVisible && selectionRect && !fixedPosition) {
-      const popoverWidth = 520;
-      const popoverHeight = 180;
+  const updatePopoverPosition = useCallback(() => {
+    const popover = popoverRef.current;
+    if (!isVisible || !selectionRect || !popover) return;
 
-      let top = selectionRect.top - popoverHeight - POPOVER_GAP;
-      if (top < VIEWPORT_PADDING) {
-        top = selectionRect.bottom + POPOVER_GAP;
-      }
-      // 翻转到下方后仍可能越出视口底部，钳制回可见范围
-      top = Math.max(
-        VIEWPORT_PADDING,
-        Math.min(top, window.innerHeight - popoverHeight - VIEWPORT_PADDING)
-      );
+    const width = popover.offsetWidth || 520;
+    const height = popover.offsetHeight || 180;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const above = selectionRect.top - height - POPOVER_GAP;
+    const below = selectionRect.bottom + POPOVER_GAP;
+    const fitsAbove = above >= VIEWPORT_PADDING;
+    const fitsBelow = below + height <= viewportHeight - VIEWPORT_PADDING;
+    const preferredTop = fitsAbove || !fitsBelow ? above : below;
+    const maxTop = Math.max(VIEWPORT_PADDING, viewportHeight - height - VIEWPORT_PADDING);
+    const top = Math.min(Math.max(preferredTop, VIEWPORT_PADDING), maxTop);
+    const preferredLeft = selectionRect.left + selectionRect.width / 2 - width / 2;
+    const maxLeft = Math.max(VIEWPORT_PADDING, viewportWidth - width - VIEWPORT_PADDING);
+    const left = Math.min(Math.max(preferredLeft, VIEWPORT_PADDING), maxLeft);
 
-      let left = selectionRect.left + selectionRect.width / 2 - popoverWidth / 2;
-      const maxLeft = window.innerWidth - popoverWidth - VIEWPORT_PADDING;
-      left = Math.max(VIEWPORT_PADDING, Math.min(left, maxLeft));
+    setPopoverPosition((current) => (
+      current?.top === top && current.left === left ? current : { top, left }
+    ));
+  }, [isVisible, selectionRect]);
 
-      setFixedPosition({ top, left });
+  useLayoutEffect(() => {
+    if (!isVisible) {
+      setPopoverPosition(null);
+      return;
     }
-  }, [isVisible, selectionRect, fixedPosition]);
+    updatePopoverPosition();
+  }, [isVisible, updatePopoverPosition]);
+
+  useEffect(() => {
+    if (!isVisible || !popoverRef.current) return;
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updatePopoverPosition);
+    observer?.observe(popoverRef.current);
+    return () => observer?.disconnect();
+  }, [isVisible, updatePopoverPosition]);
+
+  useEventRegistry(
+    isVisible
+      ? [{ target: 'window', type: 'resize', listener: updatePopoverPosition as EventListener, options: { passive: true } }]
+      : [],
+    [isVisible, updatePopoverPosition],
+  );
 
   const handleSrcLangChange = useCallback(
     (value: string) => {
@@ -676,9 +701,14 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               'rounded-2xl border border-border/50',
               'bg-popover/80 backdrop-blur-xl backdrop-saturate-150',
               'shadow-lg ring-1 ring-border/40',
-              'overflow-hidden'
+              'max-h-[calc(100vh-24px)] overflow-y-auto'
             )}
-            style={{ top: fixedPosition?.top ?? 0, left: fixedPosition?.left ?? 0, zIndex: Z_INDEX.popover }}
+            style={{
+              top: popoverPosition?.top ?? -9999,
+              left: popoverPosition?.left ?? -9999,
+              visibility: popoverPosition ? 'visible' : 'hidden',
+              zIndex: Z_INDEX.popover,
+            }}
             onMouseDown={(e) => e.preventDefault()}
           >
             {/* 头部：语言选择 + 模型名（只读） + 关闭 */}
