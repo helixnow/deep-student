@@ -59,6 +59,12 @@
     "timezoneInvalid": "Enter a valid IANA time zone",
     "valuesInvalid": "Check the schedule, retry, and timeout values",
     "retry": "Retry",
+    "openSession": "Open run conversation",
+    "viewSession": "View conversation",
+    "runCompletedTitle": "{{name}} completed",
+    "runFailedTitle": "{{name}} failed",
+    "runCompletedFallback": "The scheduled task completed.",
+    "runFailedFallback": "The scheduled task failed.",
     "create": "Create",
     "status": {
       "queued": "Queued",

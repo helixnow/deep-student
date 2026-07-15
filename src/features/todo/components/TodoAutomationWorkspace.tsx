@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowsClockwise,
   CalendarBlank,
+  ChatCircleDots,
   CircleNotch,
   ClockCountdown,
   Plus,
@@ -17,6 +18,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionDialog, NotionDialogBody, NotionDialogFooter, NotionDialogHeader, NotionDialogTitle } from '@/components/ui/NotionDialog';
 import { Switch } from '@/components/ui/shad/Switch';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { AutomationSettingsSection } from '@/features/settings/components/AutomationSettingsSection';
 import {
   cancelAutomationRun,
@@ -91,6 +93,14 @@ function statusTone(status: string): string {
   return 'text-destructive';
 }
 
+function openAutomationSession(sessionId: string): void {
+  workbenchBus.launch({
+    typeId: 'chat',
+    instanceKey: sessionId,
+    reason: 'api',
+  });
+}
+
 export const TodoAutomationWorkspace: React.FC = () => {
   const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
   const [summary, setSummary] = useState<AutomationSummary | null>(null);
@@ -125,14 +135,18 @@ export const TodoAutomationWorkspace: React.FC = () => {
     void refresh();
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    let fallbackTimer: number | undefined;
     void listen('chat_v2://automations_changed', () => void refresh()).then((value) => {
       if (disposed) value(); else unlisten = value;
     }).catch(() => {
-      // Manual refresh remains available if the desktop event bridge is unavailable.
+      if (!disposed) {
+        fallbackTimer = window.setInterval(() => void refresh(), 30_000);
+      }
     });
     return () => {
       disposed = true;
       unlisten?.();
+      if (fallbackTimer !== undefined) window.clearInterval(fallbackTimer);
     };
   }, [refresh]);
 
@@ -327,21 +341,22 @@ export const TodoAutomationWorkspace: React.FC = () => {
           <AutomationSettingsSection invoke={tauriInvoke} listen={tauriListen} embedded />
 
           <section className="mt-6 border-t border-border pt-4">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between text-left"
+            <NotionButton
+              variant="ghost"
+              className="h-auto w-full justify-between px-0 py-0 text-left hover:bg-transparent"
               aria-expanded={historyOpen}
               onClick={() => setHistoryOpen((value) => !value)}
             >
               <span className="text-sm font-semibold text-foreground">{t('todo:automation.history', '运行历史')}</span>
               <span className="text-xs tabular-nums text-muted-foreground">{runs.length}</span>
-            </button>
+            </NotionButton>
             {historyOpen ? (
               <div className="mt-3 divide-y divide-border border-y border-border">
                 {runs.length === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">{t('todo:automation.noHistory', '暂无运行记录')}</div> : runs.map((run) => {
                   const cancellable = run.status === 'running' || run.status === 'retrying' || run.status === 'queued';
                   const retryable = ['error', 'timeout', 'spawn_error', 'cancelled'].includes(run.status);
                   const automationName = automationNames[run.automationId] ?? run.automationId;
+                  const sessionId = run.sessionId;
                   return (
                     <div key={run.id} className="grid gap-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                       <div className="min-w-0">
@@ -361,6 +376,18 @@ export const TodoAutomationWorkspace: React.FC = () => {
                         {(run.error || run.summary) ? <p className="mt-1 line-clamp-2 text-xs text-foreground/75">{run.error || run.summary}</p> : null}
                       </div>
                       <div className="flex gap-1">
+                        {sessionId ? (
+                          <NotionButton
+                            variant="ghost"
+                            size="icon"
+                            iconOnly
+                            aria-label={t('todo:automation.openSession', '打开运行会话')}
+                            title={t('todo:automation.openSession', '打开运行会话')}
+                            onClick={() => openAutomationSession(sessionId)}
+                          >
+                            <ChatCircleDots size={16} />
+                          </NotionButton>
+                        ) : null}
                         {retryable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'retry')}>{t('todo:automation.retry', '重试')}</NotionButton> : null}
                         {cancellable ? <NotionButton variant="ghost" size="sm" disabled={busy !== null} onClick={() => void mutateRun(run, 'cancel')}>{t('common:actions.cancel')}</NotionButton> : null}
                       </div>

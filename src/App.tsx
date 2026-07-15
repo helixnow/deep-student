@@ -35,6 +35,7 @@ import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
+import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
@@ -587,6 +588,7 @@ function App() {
   
   // 🆕 监听数据治理迁移状态（启动时显示警告/错误通知）
   useMigrationStatusListener();
+  useAutomationRunNotifications();
 
   // 🆕 用户协议同意检查（合规要求）
   const { needsAgreement, checkAgreement, acceptAgreement } = useUserAgreement();

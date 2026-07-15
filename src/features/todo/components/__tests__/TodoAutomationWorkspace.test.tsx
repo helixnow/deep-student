@@ -54,6 +54,7 @@ vi.mock('react-i18next', () => {
     'todo:automation.prompt': 'Task instructions',
     'todo:automation.timeInvalid': 'Enter a valid 24-hour time',
     'todo:automation.retry': 'Retry',
+    'todo:automation.openSession': 'Open run conversation',
     'todo:automation.create': 'Create',
     'todo:automation.status.queued': 'Queued',
     'todo:automation.trigger.schedule': 'Scheduled',

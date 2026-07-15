@@ -59,6 +59,12 @@
     "timezoneInvalid": "请输入有效的 IANA 时区",
     "valuesInvalid": "请检查周期、重试和超时数值",
     "retry": "重试",
+    "openSession": "打开运行会话",
+    "viewSession": "查看会话",
+    "runCompletedTitle": "{{name}} 已完成",
+    "runFailedTitle": "{{name}} 运行失败",
+    "runCompletedFallback": "定时任务已完成。",
+    "runFailedFallback": "定时任务运行失败。",
     "create": "创建",
     "status": {
       "queued": "排队中",
