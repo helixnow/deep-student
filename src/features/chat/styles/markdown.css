@@ -57,7 +57,7 @@
 .chat-v2 .markdown-content h6 {
   /* Vertical rhythm 参考 Tailwind Typography (prose) 略收：标题前需要更
    * 多呼吸空间标记小节，标题后比段落间距略大但比标题前小。 */
-  margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
+  margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);
   font-weight: 600;
   line-height: 1.32;
   color: hsl(var(--foreground));
@@ -72,15 +72,15 @@
 
 /* 段落和文本 */
 .chat-v2 .markdown-content p {
-  margin: var(--chat-md-paragraph-gap) 0;
+  margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;
   overflow-wrap: break-word;
 }
 
 /* 空行优化 - 使空行变得非常窄 */
 .chat-v2 .markdown-content p:empty,
 .chat-v2 .markdown-content p:has(br:only-child) {
-  margin: 0.25rem 0;
-  min-height: 0.25rem;
+  margin: 0.125rem 0;
+  min-height: 0.125rem;
   line-height: 1;
   display: block;
 }
@@ -93,7 +93,7 @@
 
 /* 全局减少段落间距 */
 .chat-v2 .markdown-content p + p {
-  margin-top: var(--chat-md-paragraph-gap);
+  margin-top: calc(var(--chat-md-paragraph-gap) * 0.5);
 }
 
 .chat-v2 .markdown-content strong {
@@ -129,19 +129,19 @@
 /* 列表样式 */
 .chat-v2 .markdown-content ul,
 .chat-v2 .markdown-content ol {
-  margin: var(--chat-md-paragraph-gap) 0;
+  margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;
   padding-left: 1.625em;
 }
 
 .chat-v2 .markdown-content li {
-  margin: var(--chat-md-list-item-gap) 0;
+  margin: calc(var(--chat-md-list-item-gap) * 0.5) 0;
   line-height: var(--chat-md-line-height);
 }
 
 /* 空列表项优化 */
 .chat-v2 .markdown-content li:empty {
-  margin: 0.1em 0;
-  height: 0.1em;
+  margin: 0.05em 0;
+  height: 0.05em;
   line-height: 0.1;
   display: list-item;
 }
@@ -149,7 +149,7 @@
 /* 只包含少量内容的列表项 */
 .chat-v2 .markdown-content li:has(p:empty),
 .chat-v2 .markdown-content li:has(br:only-child) {
-  margin: 0.15em 0;
+  margin: 0.075em 0;
   line-height: 1.2;
 }
 
@@ -160,7 +160,7 @@
 
 /* 减少列表项中段落的间距 */
 .chat-v2 .markdown-content li p {
-  margin: calc(var(--chat-md-list-item-gap) * 0.5) 0 !important;
+  margin: calc(var(--chat-md-list-item-gap) * 0.25) 0 !important;
 }
 
 .chat-v2 .markdown-content li p:only-child {
@@ -192,7 +192,7 @@
  * - 正文颜色 — 引用是用户主动加亮的"重点"，淡化与意图矛盾
  */
 .chat-v2 .markdown-content blockquote {
-  margin: var(--chat-md-block-gap) 0;
+  margin: calc(var(--chat-md-block-gap) * 0.5) 0;
   padding: 0.9em 1.05em;
   border-left: 3px solid hsl(var(--border));
   background: hsl(var(--muted) / 50%);
@@ -201,7 +201,7 @@
 }
 
 .chat-v2 .markdown-content blockquote p {
-  margin: 0.5em 0;
+  margin: 0.25em 0;
 }
 
 .chat-v2 .markdown-content blockquote p:first-child {
@@ -217,7 +217,7 @@
   border: none;
   height: 1px;
   background: hsl(var(--border));
-  margin: calc(var(--chat-md-block-gap) * 1.35) 0; /* HR 是大节分隔，需要充足呼吸空间 */
+  margin: calc(var(--chat-md-block-gap) * 0.675) 0; /* HR 是大节分隔，需要充足呼吸空间 */
 }
 
 /* ============================================================================
@@ -246,7 +246,7 @@
 .chat-v2 .markdown-content .code-block-wrapper {
   position: relative;
   box-sizing: border-box;
-  margin: var(--chat-md-block-gap) 0;
+  margin: calc(var(--chat-md-block-gap) * 0.5) 0;
   border: 1px solid var(--chat-block-border);
   border-radius: var(--chat-block-radius);
   background: var(--chat-block-surface);
@@ -471,7 +471,7 @@
   color: hsl(var(--foreground));
   padding: 1.2em;
   border-radius: 8px;
-  margin: 1em 0;
+  margin: 0.5em 0;
   overflow-x: auto; /* 滚动只在最外层pre出现 */
   box-shadow: none; /* 移除阴影 */
   border: none; /* 移除边框 */
@@ -602,8 +602,8 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  margin: var(--chat-md-table-gap) 0;
-  margin-block: calc(var(--chat-md-table-gap) * 1.15) calc(var(--chat-md-table-gap) * 1.6);
+  margin: calc(var(--chat-md-table-gap) * 0.5) 0;
+  margin-block: calc(var(--chat-md-table-gap) * 0.575) calc(var(--chat-md-table-gap) * 0.8);
   overflow-x: auto;
 }
 
@@ -615,19 +615,19 @@
  *   它贴近正文/标题时按需放大。
  */
 .chat-v2 .markdown-content > :is(h1, h2, h3, h4, h5, h6):has(+ .table-wrapper) {
-  margin-bottom: calc(var(--chat-md-heading-bottom-gap) + 0.35rem);
+  margin-bottom: calc((var(--chat-md-heading-bottom-gap) + 0.35rem) * 0.5);
 }
 
 .chat-v2 .markdown-content > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6):has(+ .table-wrapper) + .table-wrapper {
-  margin-top: calc(var(--chat-md-table-gap) * 1.35);
+  margin-top: calc(var(--chat-md-table-gap) * 0.675);
 }
 
 .chat-v2 .markdown-content > .table-wrapper:has(+ :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6)) {
-  margin-bottom: calc(var(--chat-md-table-gap) * 1.6);
+  margin-bottom: calc(var(--chat-md-table-gap) * 0.8);
 }
 
 .chat-v2 .markdown-content > .table-wrapper + :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
-  margin-top: calc(var(--chat-md-paragraph-gap) + 0.3rem);
+  margin-top: calc((var(--chat-md-paragraph-gap) + 0.3rem) * 0.5);
 }
 
 /* ScrollArea wrapper for tables — ensures full-width scroll area */
@@ -639,11 +639,11 @@
 /* Blocked streaming path: each markdown block is its own .markdown-content root,
  * so table spacing must be applied at the block shell level, not only inside the table subtree. */
 .chat-v2 .blocked-markdown > .markdown-content.block-type-table {
-  margin-block: calc(var(--chat-md-table-gap) * 1.1) calc(var(--chat-md-table-gap) * 1.45);
+  margin-block: calc(var(--chat-md-table-gap) * 0.55) calc(var(--chat-md-table-gap) * 0.725);
 }
 
 .chat-v2 .blocked-markdown > .markdown-content.block-type-table + .markdown-content {
-  margin-block-start: calc(var(--chat-md-table-gap) * 0.22);
+  margin-block-start: calc(var(--chat-md-table-gap) * 0.11);
 }
 
 /* 三线表风格：顶线、底线为粗线（反线），表头分隔线为细线（正线） */
@@ -880,7 +880,7 @@
   }
   
   .chat-v2 .table-wrapper {
-    margin: calc(var(--chat-md-table-gap) * 0.78) 0;
+    margin: calc(var(--chat-md-table-gap) * 0.39) 0;
   }
   
   .chat-v2 .rag-sources-header {
@@ -919,12 +919,12 @@
   
   .chat-v2 .markdown-content blockquote {
     padding: 0.6em 1em;
-    margin: 0.8em 0;
+    margin: 0.4em 0;
   }
   
   .chat-v2 .code-block {
     padding: 0.8em;
-    margin: 0.8em 0;
+    margin: 0.4em 0;
   }
   
   .chat-v2 .chain-header {

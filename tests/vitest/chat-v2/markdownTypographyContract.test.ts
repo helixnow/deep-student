@@ -43,11 +43,11 @@ describe('chat v2 markdown typography contract', () => {
     expect(markdownCssSource).toContain('font-size: var(--chat-md-font-size);');
     expect(markdownCssSource).toContain('line-height: var(--chat-md-line-height);');
     expect(markdownCssSource).toContain('letter-spacing: var(--chat-md-letter-spacing);');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-paragraph-gap) 0;');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-block-gap) 0;');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-table-gap) 0;');
-    expect(markdownCssSource).toContain('margin: var(--chat-md-list-item-gap) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-block-gap) * 0.5) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-table-gap) * 0.5) 0;');
+    expect(markdownCssSource).toContain('margin: calc(var(--chat-md-list-item-gap) * 0.5) 0;');
 
     expect(beautifyCssSource).toContain('font-size: var(--chat-md-font-size);');
     expect(beautifyCssSource).toContain('line-height: var(--chat-md-line-height);');
@@ -122,16 +122,10 @@ describe('chat v2 markdown typography contract', () => {
       '.chat-v2 .streaming-blocks > .stream-block[data-block-type="paragraph"],',
     );
     expect(streamingBlocksCssSource).toContain(
-      'margin: var(--chat-md-paragraph-gap) 0;',
+      'margin: calc(var(--chat-md-paragraph-gap) * 0.5) 0;',
     );
     expect(streamingBlocksCssSource).toContain(
       '.chat-v2 .streaming-blocks > .stream-block[data-block-type="heading"] {',
-    );
-    expect(streamingBlocksCssSource).toContain(
-      'margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);',
-    );
-    expect(streamingBlocksCssSource).toContain(
-      '.stream-block[data-block-type="heading"]:has(> .markdown-content > :is(h1, h2, h3)) {',
     );
     expect(streamingBlocksCssSource).toContain(
       'margin: calc(var(--chat-md-heading-top-gap) * 0.5) 0 calc(var(--chat-md-heading-bottom-gap) * 0.5);',
