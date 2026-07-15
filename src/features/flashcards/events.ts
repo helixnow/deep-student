@@ -1,5 +1,6 @@
 /** Flashcards-domain events shared by the flashcards UI and Workbench adapters. */
 export const FSRS_LIBRARY_REFRESH_EVENT = 'fsrs:library-refresh';
+export const FSRS_STATS_REFRESH_EVENT = 'fsrs:stats-refresh';
 
 const dueRefreshListeners = new Set<() => void>();
 

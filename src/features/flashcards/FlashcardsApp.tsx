@@ -3,10 +3,11 @@
  */
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Books, GearSix, Lightning } from '@phosphor-icons/react';
+import { Books, ChartBar, Lightning } from '@phosphor-icons/react';
 import { TodayScreen } from './screens/TodayScreen';
 import { LibraryScreen } from './screens/LibraryScreen';
 import { ReviewSessionScreen } from './screens/ReviewSessionScreen';
+import { StatisticsScreen } from './screens/StatisticsScreen';
 import {
   useFsrsReviewStore,
   type FlashcardsScreen,
@@ -17,37 +18,11 @@ const TABS: Array<{
   id: Exclude<FlashcardsScreen, 'session'>;
   icon: React.ReactNode;
   labelKey: string;
-  fallback: string;
 }> = [
-  { id: 'today', icon: <Lightning size={16} weight="duotone" />, labelKey: 'tabs.today', fallback: '今日' },
-  { id: 'library', icon: <Books size={16} weight="duotone" />, labelKey: 'tabs.library', fallback: '库' },
-  { id: 'settings', icon: <GearSix size={16} weight="duotone" />, labelKey: 'tabs.settings', fallback: '设置' },
+  { id: 'today', icon: <Lightning size={16} weight="duotone" />, labelKey: 'tabs.today' },
+  { id: 'library', icon: <Books size={16} weight="duotone" />, labelKey: 'tabs.library' },
+  { id: 'settings', icon: <ChartBar size={16} weight="duotone" />, labelKey: 'tabs.statistics' },
 ];
-
-const SettingsScreen: React.FC = () => {
-  const { t } = useTranslation('flashcards');
-  return (
-    <div className="wb-fc-screen">
-      <header>
-        <h2 className="wb-fc-title">
-          {t('settings.title', '闪卡设置')}
-        </h2>
-        <p className="wb-fc-subtitle">
-          {t('settings.subtitle', '调度参数后续开放。')}
-        </p>
-      </header>
-      <div className="wb-fc-panel space-y-2">
-        <p>{t('settings.schedulingNote', '复习节奏由智能调度管理，高级参数将在后续版本开放调整。')}</p>
-        <p className="text-xs">
-          {t(
-            'settings.demoNote',
-            '若暂时无法加载真实复习队列，今日页会以演示模式展示示例卡片，便于预览流程。',
-          )}
-        </p>
-      </div>
-    </div>
-  );
-};
 
 export interface FlashcardsAppProps {
   launchPayload?: unknown;
@@ -73,7 +48,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
 
   return (
     <div className="wb-fc-root flex flex-col" data-flashcards-app>
-      <nav className="wb-fc-nav" aria-label={t('tabs.nav', '闪卡导航')}>
+      <nav className="wb-fc-nav" aria-label={t('tabs.nav')}>
         {TABS.map((tab) => {
           const active = screen === tab.id;
           return (
@@ -86,7 +61,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
               aria-current={active ? 'page' : undefined}
             >
               {tab.icon}
-              {t(tab.labelKey, tab.fallback)}
+              {t(tab.labelKey)}
             </button>
           );
         })}
@@ -94,7 +69,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({ launchPayload }) =
       <div className="wb-fc-body">
         {screen === 'today' ? <TodayScreen /> : null}
         {screen === 'library' ? <LibraryScreen /> : null}
-        {screen === 'settings' ? <SettingsScreen /> : null}
+        {screen === 'settings' ? <StatisticsScreen /> : null}
       </div>
     </div>
   );

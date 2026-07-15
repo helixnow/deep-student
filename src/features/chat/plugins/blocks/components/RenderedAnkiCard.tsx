@@ -1,34 +1,17 @@
-/**
- * 模板渲染卡片预览组件
- *
- * 使用 TemplateRenderService 生成 HTML，通过 ShadowDomPreview 安全渲染。
- * 支持正面/背面切换，点击翻转。
- *
- * 适用场景：
- * - ChatAnki 卡片块中的折叠态预览
- * - ChatAnki 卡片块中的展开态只读预览
- */
-
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
-import { TemplateRenderService } from '@/services/templateRenderService';
-import { ShadowDomPreview } from '@/components/ShadowDomPreview';
 
 interface RenderedAnkiCardProps {
   card: AnkiCard;
   template: CustomAnkiTemplate;
-  /** 是否允许点击翻转 */
   flippable?: boolean;
-  /** 紧凑模式（去除 ShadowDOM 容器边距） */
   compact?: boolean;
   className?: string;
-  onClick?: (e: React.MouseEvent) => void;
+  onClick?: (event: React.MouseEvent) => void;
 }
 
-/**
- * 渲染单张 Anki 卡片，使用模板的 HTML/CSS
- */
 export const RenderedAnkiCard: React.FC<RenderedAnkiCardProps> = ({
   card,
   template,
@@ -40,118 +23,69 @@ export const RenderedAnkiCard: React.FC<RenderedAnkiCardProps> = ({
   const { t } = useTranslation('anki');
   const [showBack, setShowBack] = useState(false);
 
-  const rendered = useMemo(() => {
-    try {
-      return TemplateRenderService.renderCard(card, template);
-    } catch (err: unknown) {
-      console.error('[RenderedAnkiCard] Render failed:', err);
-      return null;
+  const flip = useCallback(() => {
+    if (flippable) setShowBack((previous) => !previous);
+  }, [flippable]);
+
+  const handleClick = useCallback((event: React.MouseEvent) => {
+    if (flippable) {
+      event.stopPropagation();
+      flip();
     }
-  }, [card, template]);
+    onClick?.(event);
+  }, [flip, flippable, onClick]);
 
-  const handleClick = useCallback(
-    (e: React.MouseEvent) => {
-      if (flippable) {
-        e.stopPropagation();
-        setShowBack((prev) => !prev);
-      }
-      onClick?.(e);
-    },
-    [flippable, onClick]
-  );
+  const handleKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (!flippable || (event.key !== 'Enter' && event.key !== ' ')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    flip();
+  }, [flip, flippable]);
 
-  // 渲染失败时回退到纯文本（带提示）
-  if (!rendered) {
-    const front = card.front ?? card.fields?.Front ?? '';
-    const back = card.back ?? card.fields?.Back ?? '';
-    return (
-      <div
-        className={[
-          'p-3 border rounded-lg bg-card',
-          flippable ? 'cursor-pointer' : '',
-          className,
-        ].filter(Boolean).join(' ')}
-        onClick={handleClick}
-      >
-        <div className="text-[10px] text-amber-600/70 mb-1">⚠ {t('chatV2.noContent')}</div>
-        <div className="text-sm font-medium">{showBack ? back : front}</div>
-      </div>
-    );
-  }
-
-  const htmlContent = showBack ? rendered.back : rendered.front;
-  const isEmpty = !htmlContent || htmlContent.trim() === '';
-
-  // 渲染为空 HTML 时显示纯文本回退
-  if (isEmpty) {
-    const front = card.front ?? card.fields?.Front ?? '';
-    const back = card.back ?? card.fields?.Back ?? '';
-    const fallbackText = showBack ? back : front;
-    return (
-      <div
-        className={[
-          'p-3 border rounded-lg bg-card',
-          flippable ? 'cursor-pointer' : '',
-          className,
-        ].filter(Boolean).join(' ')}
-        onClick={handleClick}
-      >
-        {fallbackText ? (
-          <div className="text-sm font-medium">{fallbackText}</div>
-        ) : (
-          <div className="text-sm text-muted-foreground italic">{t('chatV2.noContent')}</div>
-        )}
-        {flippable && (
-          <div className="text-[10px] text-muted-foreground/60 text-right mt-1">
-            {showBack ? t('chatV2.front') : t('chatV2.back')} ↩
-          </div>
-        )}
-      </div>
-    );
-  }
-
+  const side = showBack ? 'back' : 'front';
   return (
     <div
       className={[
-        'relative overflow-hidden rounded-lg border bg-card transition-all',
+        'relative overflow-hidden rounded-lg border bg-card transition-colors',
         flippable ? 'cursor-pointer' : '',
         className,
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      ].filter(Boolean).join(' ')}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      role={flippable ? 'button' : undefined}
+      tabIndex={flippable ? 0 : undefined}
+      aria-label={flippable
+        ? (showBack ? t('chatV2.front') : t('chatV2.back'))
+        : undefined}
     >
-      <ShadowDomPreview
-        htmlContent={htmlContent}
-        cssContent={template.css_style || ''}
+      <AnkiTemplateCardFace
+        card={card}
+        template={template}
+        side={side}
         compact={compact}
-        fidelity="anki"
+        className="min-h-[7rem]"
+        emptyText={t('chatV2.noContent')}
       />
-      {/* 翻转提示 */}
-      {flippable && (
-        <div className="absolute bottom-1 right-2 text-[10px] text-muted-foreground/60 select-none pointer-events-none">
+      {flippable ? (
+        <div className="pointer-events-none absolute bottom-1 right-2 select-none text-[10px] text-muted-foreground/60">
           {showBack ? t('chatV2.front') : t('chatV2.back')} ↩
         </div>
-      )}
+      ) : null}
     </div>
   );
 };
 
-/**
- * 纯文本卡片预览（无模板时的回退组件）
- */
 export const PlainAnkiCard: React.FC<{
   card: AnkiCard;
   className?: string;
-  onClick?: (e: React.MouseEvent) => void;
+  onClick?: (event: React.MouseEvent) => void;
 }> = ({ card, className, onClick }) => {
   const front = card.front ?? card.fields?.Front ?? '';
   const back = card.back ?? card.fields?.Back ?? '';
-
   return (
     <div className={className} onClick={onClick}>
-      <div className="text-sm font-medium truncate">{front}</div>
-      <div className="text-xs text-muted-foreground truncate mt-1">{back}</div>
+      <div className="truncate text-sm font-medium">{front}</div>
+      <div className="mt-1 truncate text-xs text-muted-foreground">{back}</div>
     </div>
   );
 };

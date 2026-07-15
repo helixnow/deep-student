@@ -615,8 +615,18 @@ impl EnhancedAnkiService {
 
     /// 更新卡片
     pub fn update_anki_card(&self, card: AnkiCard) -> Result<(), AppError> {
-        AnkiCardRepository::update(self.db.as_ref(), &card)
-            .map_err(|e| AppError::database(format!("更新卡片失败: {}", e)))
+        match self.db.update_anki_card_rows(&card) {
+            Ok(1) => Ok(()),
+            Ok(0) => Err(AppError::not_found(format!(
+                "卡片不存在或已删除: {}",
+                card.id
+            ))),
+            Ok(affected) => Err(AppError::database(format!(
+                "更新卡片影响了异常数量的记录: card={}, affected={}",
+                card.id, affected
+            ))),
+            Err(error) => Err(AppError::database(format!("更新卡片失败: {}", error))),
+        }
     }
 
     /// 删除卡片
@@ -908,8 +918,10 @@ mod tests {
     use super::*;
     use crate::document_processing_service::DocumentProcessingService;
     use crate::file_manager::FileManager;
-    use crate::models::AnkiGenerationOptions;
+    use crate::models::{AnkiGenerationOptions, AppErrorType};
+    use rusqlite::params;
     use std::sync::Arc;
+    use tempfile::tempdir;
 
     impl EnhancedAnkiService {
         /// Test-only: pause without emitting events (for offline tests)
@@ -1129,5 +1141,94 @@ mod tests {
                 .all(|t| !matches!(t.status, TaskStatus::Paused)),
             "still paused tasks after resume"
         );
+    }
+
+    #[test]
+    fn user_visible_card_update_rejects_card_and_parent_tombstones() {
+        let tmp = tempdir().expect("tempdir");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator =
+                MigrationCoordinator::new(tmp.path().to_path_buf()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db = Arc::new(
+            crate::database::Database::new(&tmp.path().join("mistakes.db")).expect("database"),
+        );
+        let file_manager = Arc::new(FileManager::new(tmp.path().to_path_buf()).expect("fm"));
+        let llm = Arc::new(
+            crate::llm_manager::LLMManager::new(db.clone(), file_manager).expect("llm manager"),
+        );
+        let service = EnhancedAnkiService::new(db.clone(), llm);
+        let now = chrono::Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: "task-visible-update".to_string(),
+            document_id: "doc-visible-update".to_string(),
+            original_document_name: "visible update".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, front: &str| AnkiCard {
+            id: id.to_string(),
+            task_id: task.id.clone(),
+            front: front.to_string(),
+            back: "answer".to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        let mut card_tombstone = make_card("card-visible-tombstone", "original card");
+        let mut parent_tombstone = make_card("card-parent-tombstone", "original parent card");
+        db.save_document_task_with_cards_atomic(
+            &task,
+            &[card_tombstone.clone(), parent_tombstone.clone()],
+        )
+        .expect("seed cards");
+
+        card_tombstone.front = "live update".to_string();
+        service
+            .update_anki_card(card_tombstone.clone())
+            .expect("live card updates");
+        {
+            let conn = db.get_conn_safe().expect("connection");
+            conn.execute(
+                "UPDATE anki_cards SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &card_tombstone.id],
+            )
+            .expect("tombstone card");
+        }
+        card_tombstone.front = "must not update card tombstone".to_string();
+        let card_error = service
+            .update_anki_card(card_tombstone)
+            .expect_err("card tombstone must be reported");
+        assert!(matches!(card_error.error_type, AppErrorType::NotFound));
+
+        {
+            let conn = db.get_conn_safe().expect("connection");
+            conn.execute(
+                "UPDATE document_tasks SET deleted_at = ?1 WHERE id = ?2",
+                params![&now, &task.id],
+            )
+            .expect("tombstone parent");
+        }
+        parent_tombstone.front = "must not update parent tombstone".to_string();
+        let parent_error = service
+            .update_anki_card(parent_tombstone)
+            .expect_err("parent tombstone must be reported");
+        assert!(matches!(parent_error.error_type, AppErrorType::NotFound));
     }
 }

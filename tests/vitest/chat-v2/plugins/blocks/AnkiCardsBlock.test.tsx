@@ -5,7 +5,7 @@
  * - 确保 blockRegistry 注册正常
  * - 预览组件接收正确的 status/cards
  * - 有卡片时渲染操作按钮，并在流式时禁用
- * - 点击预览/编辑会触发打开面板事件
+ * - 点击预览/编辑会展开内联编辑器
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -24,6 +24,10 @@ vi.mock('react-i18next', () => ({
         'blocks.ankiCards.save': 'Save',
         'blocks.ankiCards.export': 'Export',
         'blocks.ankiCards.sync': 'Sync',
+        'blocks.ankiCards.reviewBatch': 'Review batch',
+        'blocks.ankiCards.reviewBatchNeedsRealIds': 'Save every card to get real IDs before reviewing',
+        'blocks.ankiCards.retryFailedSegments': 'Retry failed segments',
+        'blocks.ankiCards.progress.segments.completedWithErrors': 'Completed with some failed segments',
       };
       if (dict[key]) return dict[key];
       if (options?.defaultValue) return options.defaultValue;
@@ -34,15 +38,14 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
 
-const mockDispatchOpenAnkiPanelEvent = vi.fn();
-const mockSaveCardsToLibrary = vi.fn(async () => undefined);
+const mockSaveCardsToLibrary = vi.fn(async (..._args: unknown[]): Promise<any> => undefined);
 const mockExportCardsAsApkg = vi.fn(async () => undefined);
 const mockImportCardsViaAnkiConnect = vi.fn(async () => undefined);
 const mockLogChatAnkiEvent = vi.fn();
-const mockInvoke = vi.fn(async () => undefined);
+const mockInvoke = vi.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
+const mockWorkbenchActivate = vi.fn(async () => ({ delivered: true, result: { handled: true } }));
 
 vi.mock('@/features/chat/anki', () => ({
-  dispatchOpenAnkiPanelEvent: (...args: unknown[]) => mockDispatchOpenAnkiPanelEvent(...args),
   saveCardsToLibrary: (...args: unknown[]) => mockSaveCardsToLibrary(...args),
   exportCardsAsApkg: (...args: unknown[]) => mockExportCardsAsApkg(...args),
   importCardsViaAnkiConnect: (...args: unknown[]) => mockImportCardsViaAnkiConnect(...args),
@@ -67,8 +70,17 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
+vi.mock('@/features/workbench/core/workbenchBus', () => ({
+  workbenchBus: {
+    activate: (...args: unknown[]) => mockWorkbenchActivate(...args),
+  },
+}));
+
 // 在 mocks 之后导入（触发注册）
-import { AnkiCardsBlock } from '@/features/chat/plugins/blocks/ankiCardsBlock';
+import {
+  AnkiCardsBlock,
+  resolveZombieCompletionState,
+} from '@/features/chat/plugins/blocks/ankiCardsBlock';
 
 function createBlock(overrides?: Partial<Block>): Block {
   return {
@@ -97,12 +109,73 @@ function createData(overrides?: Partial<AnkiCardsBlockData>): AnkiCardsBlockData
 describe('AnkiCardsBlock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSaveCardsToLibrary.mockReset();
+    mockSaveCardsToLibrary.mockResolvedValue(undefined);
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(undefined);
   });
 
   it('should be registered in blockRegistry', async () => {
     await import('@/features/chat/plugins/blocks/ankiCardsBlock');
     expect(blockRegistry.has('anki_cards')).toBe(true);
     expect(blockRegistry.get('anki_cards')?.onAbort).toBe('keep-content');
+  });
+
+  it('keeps watchdog partial completion as a successful block with an error-aware final status', () => {
+    expect(resolveZombieCompletionState(['completed', 'failed', 'truncated'], [{}])).toEqual({
+      finalStatus: 'completed_with_errors',
+      blockStatus: 'success',
+    });
+    expect(resolveZombieCompletionState(['completed', 'completed'], [{}])).toEqual({
+      finalStatus: 'completed',
+      blockStatus: 'success',
+    });
+    expect(resolveZombieCompletionState(['failed', 'truncated'], [
+      {},
+      { is_error_card: true },
+    ])).toEqual({
+      finalStatus: 'completed_with_errors',
+      blockStatus: 'success',
+    });
+  });
+
+  it('keeps watchdog zero-card failure, cancellation, and unknown states as errors', () => {
+    expect(resolveZombieCompletionState(['failed', 'truncated'])).toEqual({
+      finalStatus: 'error',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogFailedWithoutCards',
+    });
+    expect(resolveZombieCompletionState(['cancelled'])).toEqual({
+      finalStatus: 'cancelled',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogCancelledWithoutCards',
+    });
+    expect(resolveZombieCompletionState(['mystery'])).toEqual({
+      finalStatus: 'error',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogUnknownWithoutCards',
+    });
+    expect(resolveZombieCompletionState(['completed'])).toEqual({
+      finalStatus: 'error',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogCompletedWithoutCards',
+    });
+    expect(resolveZombieCompletionState(['completed'], [
+      { is_error_card: true },
+      { isErrorCard: true },
+    ])).toEqual({
+      finalStatus: 'error',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogCompletedWithoutCards',
+    });
+    expect(resolveZombieCompletionState(['failed'], [
+      { is_error_card: true },
+      { isErrorCard: true },
+    ])).toEqual({
+      finalStatus: 'error',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogFailedWithoutCards',
+    });
   });
 
   it('should pass preview status "parsing" when pending', () => {
@@ -196,6 +269,239 @@ describe('AnkiCardsBlock', () => {
     expect(screen.getByRole('button', { name: 'Sync' })).toBeDisabled();
   });
 
+  it('should disable batch review when any card is missing a real id', () => {
+    const block = createBlock({ status: 'success' });
+    const data = createData({
+      cards: [
+        { id: 'card-1', front: 'Q1', back: 'A1' } as any,
+        { front: 'Q2', back: 'A2' } as any,
+      ],
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    const reviewButton = screen.getByRole('button', { name: 'Review batch' });
+    expect(reviewButton).toBeDisabled();
+    expect(reviewButton).toHaveAttribute(
+      'title',
+      'Save every card to get real IDs before reviewing',
+    );
+    fireEvent.click(reviewButton);
+    expect(mockWorkbenchActivate).not.toHaveBeenCalled();
+  });
+
+  it.each(['anki_synthetic_msg-1-0', 'chat-batch-anki-block-1-0'])(
+    'should disable batch review for non-persisted id %s',
+    (syntheticId) => {
+      const block = createBlock({ status: 'success' });
+      const data = createData({
+        cards: [{ id: syntheticId, front: 'Q1', back: 'A1' } as any],
+      });
+
+      render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+      const reviewButton = screen.getByRole('button', { name: 'Review batch' });
+      expect(reviewButton).toBeDisabled();
+      expect(reviewButton).toHaveAttribute(
+        'title',
+        'Save every card to get real IDs before reviewing',
+      );
+      fireEvent.click(reviewButton);
+      expect(mockWorkbenchActivate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('should activate batch review only with the cards real ids', () => {
+    const block = createBlock({ status: 'success' });
+    const data = createData({
+      cards: [
+        { id: 'card-1', front: 'Q1', back: 'A1' } as any,
+        { id: 'card-2', front: 'Q2', back: 'A2' } as any,
+      ],
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    const reviewButton = screen.getByRole('button', { name: 'Review batch' });
+    expect(reviewButton).toBeEnabled();
+    fireEvent.click(reviewButton);
+
+    expect(mockWorkbenchActivate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        typeId: 'flashcards',
+        action: 'startReview',
+        payload: {
+          screen: 'session',
+          mode: 'batch',
+          cardIds: ['card-1', 'card-2'],
+          cards: [
+            {
+              id: 'card-1',
+              ankiCardId: 'card-1',
+              front: 'Q1',
+              back: 'A1',
+              tags: undefined,
+            },
+            {
+              id: 'card-2',
+              ankiCardId: 'card-2',
+              front: 'Q2',
+              back: 'A2',
+              tags: undefined,
+            },
+          ],
+        },
+      }),
+    );
+    expect(JSON.stringify(mockWorkbenchActivate.mock.calls[0])).not.toContain('chat-batch-');
+  });
+
+  it('persists durable ids after save and reviews the updated batch', async () => {
+    const staleData = createData({
+      cards: [
+        { id: 'anki_synthetic_msg-1-0', front: 'Q1', back: 'A1' } as any,
+        { front: 'Q2', back: 'A2' } as any,
+      ],
+    });
+    const latestData = createData({
+      ...staleData,
+      cards: [
+        ...staleData.cards,
+        { id: 'streamed-real-id', front: 'Q3-streamed', back: 'A3-streamed' } as any,
+      ],
+      progress: { cardsGenerated: 3, stage: 'completed' } as any,
+    });
+    const block = createBlock({ status: 'success' });
+    let storeBlock: Block = { ...block, toolOutput: latestData };
+    const updateBlock = vi.fn((blockId: string, patch: Partial<Block>) => {
+      expect(blockId).toBe(block.id);
+      storeBlock = { ...storeBlock, ...patch };
+    });
+    const store = {
+      getState: () => ({
+        blocks: new Map([[block.id, storeBlock]]),
+        updateBlock,
+      }),
+    } as any;
+    mockSaveCardsToLibrary.mockResolvedValue({
+      success: true,
+      savedCount: 2,
+      savedIds: ['durable-1', 'durable-2'],
+      cardIdMappings: [
+        {
+          inputIndex: 0,
+          inputId: 'anki_synthetic_msg-1-0',
+          persistedId: 'durable-1',
+        },
+        { inputIndex: 1, inputId: null, persistedId: 'durable-2' },
+      ],
+    });
+
+    const view = render(
+      <AnkiCardsBlock block={{ ...block, toolOutput: staleData }} store={store} />,
+    );
+    expect(screen.getByRole('button', { name: 'Review batch' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(updateBlock).toHaveBeenCalledTimes(1));
+
+    const persistedData = storeBlock.toolOutput as AnkiCardsBlockData;
+    expect(persistedData.cards).toEqual([
+      expect.objectContaining({ id: 'durable-1', front: 'Q1' }),
+      expect.objectContaining({ id: 'durable-2', front: 'Q2' }),
+      expect.objectContaining({ id: 'streamed-real-id', front: 'Q3-streamed' }),
+    ]);
+    expect(persistedData.progress).toEqual(
+      expect.objectContaining({ cardsGenerated: 3, stage: 'completed' }),
+    );
+
+    const persistenceCall = mockInvoke.mock.calls.find(
+      ([command]) => command === 'chat_v2_update_block_tool_output',
+    );
+    expect(persistenceCall).toBeDefined();
+    const serialized = (persistenceCall?.[1] as { toolOutputJson: string }).toolOutputJson;
+    expect(serialized).not.toContain('anki_synthetic_');
+    expect(serialized).not.toContain('chat-batch-');
+    expect(JSON.parse(serialized).cards.map((card: { id: string }) => card.id)).toEqual([
+      'durable-1',
+      'durable-2',
+      'streamed-real-id',
+    ]);
+
+    view.rerender(<AnkiCardsBlock block={storeBlock} store={store} />);
+    const reviewButton = screen.getByRole('button', { name: 'Review batch' });
+    expect(reviewButton).toBeEnabled();
+    fireEvent.click(reviewButton);
+
+    expect(mockWorkbenchActivate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'startReview',
+        payload: expect.objectContaining({
+          cardIds: ['durable-1', 'durable-2', 'streamed-real-id'],
+        }),
+      }),
+    );
+    expect(JSON.stringify(mockWorkbenchActivate.mock.calls.at(-1))).not.toContain('anki_synthetic_');
+    expect(JSON.stringify(mockWorkbenchActivate.mock.calls.at(-1))).not.toContain('chat-batch-');
+  });
+
+  it('keeps synthetic ids and batch review disabled when durable-id persistence fails', async () => {
+    const staleData = createData({
+      cards: [{ id: 'anki_synthetic_msg-1-0', front: 'Q1', back: 'A1' } as any],
+    });
+    const block = createBlock({ status: 'success' });
+    let storeBlock: Block = { ...block, toolOutput: staleData };
+    const updateBlock = vi.fn((blockId: string, patch: Partial<Block>) => {
+      storeBlock = { ...storeBlock, ...patch };
+    });
+    const store = {
+      getState: () => ({
+        blocks: new Map([[block.id, storeBlock]]),
+        updateBlock,
+      }),
+    } as any;
+    mockSaveCardsToLibrary.mockResolvedValue({
+      success: true,
+      savedCount: 1,
+      savedIds: ['durable-1'],
+      cardIdMappings: [
+        {
+          inputIndex: 0,
+          inputId: 'anki_synthetic_msg-1-0',
+          persistedId: 'durable-1',
+        },
+      ],
+    });
+    mockInvoke.mockImplementation(async (command: unknown) => {
+      if (command === 'chat_v2_update_block_tool_output') {
+        throw new Error('synthetic persistence failure');
+      }
+      return undefined;
+    });
+
+    const view = render(
+      <AnkiCardsBlock block={{ ...block, toolOutput: staleData }} store={store} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'chat_v2_update_block_tool_output',
+        expect.objectContaining({ blockId: block.id }),
+      ),
+    );
+    expect(updateBlock).not.toHaveBeenCalled();
+    expect((storeBlock.toolOutput as AnkiCardsBlockData).cards[0].id).toBe(
+      'anki_synthetic_msg-1-0',
+    );
+
+    view.rerender(<AnkiCardsBlock block={storeBlock} store={store} />);
+    const reviewButton = screen.getByRole('button', { name: 'Review batch' });
+    expect(reviewButton).toBeDisabled();
+    fireEvent.click(reviewButton);
+    expect(mockWorkbenchActivate).not.toHaveBeenCalled();
+  });
+
   it('should expand inline editor when preview clicked', () => {
     const block = createBlock({ status: 'success' });
     const data = createData({ cards: [{ id: 'card-1', front: 'Q1', back: 'A1' } as any] });
@@ -206,7 +512,6 @@ describe('AnkiCardsBlock', () => {
 
     expect(screen.queryByTestId('anki-preview')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'blocks.ankiCards.collapse' }).length).toBeGreaterThan(0);
-    expect(mockDispatchOpenAnkiPanelEvent).not.toHaveBeenCalled();
   });
 
   it('should render progress and AnkiConnect status when provided', () => {
@@ -246,6 +551,173 @@ describe('AnkiCardsBlock', () => {
     render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
 
     expect(screen.queryByTestId('chatanki-progress')).not.toBeInTheDocument();
+  });
+
+  it('should inspect document tasks only after a document enters a terminal or error state', async () => {
+    const runningBlock = createBlock({ status: 'running' });
+    const runningData = createData({
+      cards: [],
+      documentId: 'doc-running',
+      progress: {
+        stage: 'generating',
+        counts: { total: 2, processing: 2, failed: 0, truncated: 0 },
+      },
+    });
+
+    const { unmount } = render(
+      <AnkiCardsBlock block={{ ...runningBlock, toolOutput: runningData }} />,
+    );
+
+    await waitFor(() => {
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_document_tasks', expect.anything());
+    });
+    unmount();
+
+    render(
+      <AnkiCardsBlock
+        block={{
+          ...createBlock({ status: 'error' }),
+          toolOutput: createData({ cards: [], documentId: undefined, progress: { stage: 'failed' } }),
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_document_tasks', expect.anything());
+    });
+  });
+
+  it('should not show retry when the terminal document has no failed or truncated tasks', async () => {
+    mockInvoke.mockImplementation(async (command: unknown) => {
+      if (command === 'get_document_tasks') {
+        return [{ id: 'task-completed', status: 'Completed' }];
+      }
+      return undefined;
+    });
+    const block = createBlock({ status: 'success' });
+    const data = createData({
+      cards: [],
+      documentId: 'doc-completed',
+      progress: { stage: 'completed' },
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('get_document_tasks', {
+        documentId: 'doc-completed',
+      });
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Retry failed segments' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('should retry real failed task ids once and keep completed_with_errors on the completed step', async () => {
+    let releaseRetries: () => void = () => undefined;
+    const retryGate = new Promise<void>((resolve) => {
+      releaseRetries = resolve;
+    });
+    mockInvoke.mockImplementation(async (command: unknown) => {
+      if (command === 'get_document_tasks') {
+        return [
+          { id: 'task-failed', status: 'Failed' },
+          { id: 'task-completed', status: 'Completed' },
+          { id: 'task-truncated', status: 'Truncated' },
+        ];
+      }
+      if (command === 'trigger_task_processing') {
+        return retryGate;
+      }
+      return undefined;
+    });
+    const block = createBlock({ status: 'error' });
+    const data = createData({
+      cards: [],
+      documentId: 'doc-partial',
+      finalStatus: 'error',
+      progress: {
+        stage: 'completed_with_errors',
+        completedRatio: 0.5,
+        counts: { total: 2, completed: 1, failed: 1, truncated: 1 },
+      },
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry failed segments' });
+    expect(screen.getByTestId('chatanki-progress-step-completed')).toBeInTheDocument();
+    expect(screen.queryByTestId('chatanki-progress-step-failed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chatanki-progress-completed-with-errors')).toHaveTextContent(
+      'Completed with some failed segments',
+    );
+
+    fireEvent.click(retryButton);
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      const triggerCalls = mockInvoke.mock.calls.filter(
+        ([command]) => command === 'trigger_task_processing',
+      );
+      expect(triggerCalls).toEqual([
+        ['trigger_task_processing', { taskId: 'task-failed' }],
+        ['trigger_task_processing', { taskId: 'task-truncated' }],
+      ]);
+    });
+    expect(retryButton).toBeDisabled();
+
+    releaseRetries();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('button', { name: 'Retry failed segments' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it('should keep only retry submissions that failed in an actionable error state', async () => {
+    mockInvoke.mockImplementation(async (command: unknown, args?: unknown) => {
+      if (command === 'get_document_tasks') {
+        return [
+          { id: 'task-failed', status: 'Failed' },
+          { id: 'task-truncated', status: 'Truncated' },
+        ];
+      }
+      if (command === 'trigger_task_processing') {
+        const taskId = (args as { taskId?: string } | undefined)?.taskId;
+        if (taskId === 'task-truncated') throw new Error('queue unavailable');
+      }
+      return undefined;
+    });
+    const block = createBlock({ status: 'error' });
+    const data = createData({
+      cards: [],
+      documentId: 'doc-partial-retry',
+      progress: { stage: 'completed_with_errors' },
+    });
+
+    render(<AnkiCardsBlock block={{ ...block, toolOutput: data }} />);
+
+    const retryButton = await screen.findByRole('button', { name: 'Retry failed segments' });
+    fireEvent.click(retryButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('chatanki-retry-failed-segments-error')).toHaveTextContent(
+        'queue unavailable',
+      );
+    });
+    expect(retryButton).toBeEnabled();
+
+    fireEvent.click(retryButton);
+    await waitFor(() => {
+      const retriedTaskIds = mockInvoke.mock.calls
+        .filter(([command]) => command === 'trigger_task_processing')
+        .map(([, args]) => (args as { taskId: string }).taskId);
+      expect(retriedTaskIds).toEqual([
+        'task-failed',
+        'task-truncated',
+        'task-truncated',
+      ]);
+    });
   });
 
   it('should render editable fields from card.fields and persist field edits', async () => {

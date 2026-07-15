@@ -656,16 +656,19 @@ impl StreamingAnkiService {
             "stream": true
         });
 
-        // 使用 ProviderAdapter 构建请求（支持 Gemini 中转）
+        // 使用 ProviderAdapter 构建请求（支持 Gemini 中转），并统一合并自定义头 / Codex OAuth。
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(api_config);
-        let preq = adapter
-            .build_request(
-                &api_config.base_url,
-                &api_config.api_key,
-                &api_config.model,
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                adapter.as_ref(),
+                api_config,
                 &request_body,
+                None,
+                Some(task_id),
+                "Anki 流式请求构建失败",
             )
-            .map_err(|e| AppError::llm(format!("Anki 流式请求构建失败: {}", e)))?;
+            .await?;
 
         let request_url = preq.url.clone();
         debug!(
@@ -714,22 +717,31 @@ impl StreamingAnkiService {
         );
         debug!("[ANKI_REQUEST_DEBUG] ==> 完整请求体结束 <==");
 
-        let mut req_builder = self.client
-            .post(&request_url)
-            .header("Accept", "text/event-stream, application/json, text/plain, */*")
-            .header("Accept-Encoding", "identity")
-            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-            .header("Connection", "keep-alive")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
-        for (k, v) in preq.headers {
-            req_builder = req_builder.header(k, v);
-        }
+        let response = if preq.is_codex() {
+            self.llm_manager
+                .send_codex_stream_request_with_single_refresh(
+                    &mut preq,
+                    Some(Duration::from_secs(600)),
+                )
+                .await?
+        } else {
+            let mut req_builder = self.client
+                .post(&request_url)
+                .header("Accept", "text/event-stream, application/json, text/plain, */*")
+                .header("Accept-Encoding", "identity")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .header("Connection", "keep-alive")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+            for (k, v) in &preq.headers {
+                req_builder = req_builder.header(k, v);
+            }
 
-        let response = req_builder
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("AI请求失败: {}", e)))?;
+            req_builder
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("AI请求失败: {}", e)))?
+        };
 
         if !response.status().is_success() {
             let status_code = response.status().as_u16();
@@ -760,11 +772,7 @@ impl StreamingAnkiService {
         let mut _last_activity = std::time::Instant::now(); // Prefixed to silence warning
         const IDLE_TIMEOUT: Duration = Duration::from_secs(180); // 180秒无响应超时
         const LOG_STREAM_CHUNKS: bool = false; // 禁用逐chunk日志
-                                               // 初始化SSE行缓冲器
-        let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
-        // 🔧 P1-1 修复：增量 UTF-8 解码器，保留跨 chunk 边界的不完整多字节字符，
-        // 避免中文字符被 from_utf8_lossy 替换为 U+FFFD 污染卡片内容/破坏 JSON
-        let mut utf8_decoder = crate::llm_manager::utf8_stream::Utf8StreamDecoder::new();
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut chunk_counter: u32 = 0;
         let mut reached_card_limit = false;
 
@@ -787,12 +795,9 @@ impl StreamingAnkiService {
             let chunk =
                 chunk_result.map_err(|e| AppError::network(format!("读取AI响应流失败: {}", e)))?;
             _last_activity = std::time::Instant::now(); // Prefixed to silence warning
-            let chunk_str = utf8_decoder.decode(&chunk);
-            // 处理SSE格式 - 使用SSE缓冲器处理chunk，获取完整的行
-            let complete_lines = sse_buffer.process_chunk(&chunk_str);
-            for line in complete_lines {
+            for line in sse_buffer.process_bytes(&chunk) {
                 // 检查是否是结束标记
-                if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
                     debug!("📍 检测到SSE结束标记: [DONE]");
                     break;
                 }
@@ -933,15 +938,8 @@ impl StreamingAnkiService {
         }
 
         if !reached_card_limit {
-            // 冲刷 UTF-8 解码器残留（流恰好在多字节字符中间截断时产生一个 U+FFFD）
-            {
-                let tail = utf8_decoder.flush();
-                if !tail.is_empty() {
-                    let _ = sse_buffer.process_chunk(&tail);
-                }
-            }
-            // 处理SSE缓冲器中剩余的不完整行
-            if let Some(remaining_line) = sse_buffer.flush() {
+            // 处理自然关闭且没有空行分隔符的最后一个 SSE 事件。
+            for remaining_line in sse_buffer.flush() {
                 if !remaining_line.trim().is_empty() {
                     debug!(
                         "📥 处理SSE缓冲器中的剩余数据: {} 字符",

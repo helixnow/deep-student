@@ -22,10 +22,17 @@ export type SaveAnkiCardFailure = {
   error: string;
 };
 
+export type SaveAnkiCardIdMapping = {
+  inputIndex: number;
+  inputId?: string | null;
+  persistedId: string;
+};
+
 /** 后端 save_anki_cards 诚实语义响应（serde camelCase；新字段带默认兼容旧前端） */
 export type SaveAnkiCardsResponse = {
   savedIds: string[];
   taskId: string;
+  cardIdMappings?: SaveAnkiCardIdMapping[];
   skippedIds?: string[];
   duplicatedIds?: string[];
   failed?: SaveAnkiCardFailure[];

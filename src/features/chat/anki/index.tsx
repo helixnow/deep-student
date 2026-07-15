@@ -4,8 +4,8 @@
  * 提供 Anki 卡片管理相关的功能和组件
  * 已集成 CardForge 2.0 真实 API
  *
- * ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器
- * 工具定义见 src/mcp/builtinMcpServer.ts（builtin-anki_* 格式）
+ * 当前生产工具链由 ChatAnki skill 与 builtin-chatanki_* 工具统一提供。
+ * 本模块仅保留卡片管理与预览组件，不负责向 LLM 注册工具。
  */
 
 import React, { useRef, useLayoutEffect, useState, useCallback } from 'react';
@@ -14,7 +14,10 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { save as dialogSave } from '@tauri-apps/plugin-dialog';
 import type { AnkiCard, AnkiGenerationOptions, CustomAnkiTemplate } from '@/types';
-import { ankiApiAdapter } from '@/services/ankiApiAdapter';
+import {
+  ankiApiAdapter,
+  type SaveAnkiCardIdMapping,
+} from '@/services/ankiApiAdapter';
 import { Card3DPreview } from '@/components/Card3DPreview';
 
 // ============================================================================
@@ -107,6 +110,7 @@ export async function saveCardsToLibrary(
   success: boolean;
   savedCount: number;
   savedIds?: string[];
+  cardIdMappings?: SaveAnkiCardIdMapping[];
   duplicatedIds?: string[];
   skippedIds?: string[];
   failed?: Array<{ id: string; error: string }>;
@@ -117,7 +121,7 @@ export async function saveCardsToLibrary(
   const { cards, context } = params;
 
   if (cards.length === 0) {
-    return { success: true, savedCount: 0 };
+    return { success: true, savedCount: 0, cardIdMappings: [] };
   }
 
   try {
@@ -132,6 +136,7 @@ export async function saveCardsToLibrary(
     });
 
     const savedIds = result.savedIds ?? [];
+    const cardIdMappings = result.cardIdMappings ?? [];
     const duplicatedIds = result.duplicatedIds ?? [];
     const skippedIds = result.skippedIds ?? [];
     const failed = result.failed ?? [];
@@ -148,6 +153,7 @@ export async function saveCardsToLibrary(
         success: false,
         savedCount: 0,
         savedIds,
+        cardIdMappings,
         duplicatedIds,
         skippedIds,
         failed,
@@ -188,6 +194,7 @@ export async function saveCardsToLibrary(
       success: true,
       savedCount,
       savedIds,
+      cardIdMappings,
       duplicatedIds,
       skippedIds,
       failed,
@@ -364,25 +371,6 @@ export async function importCardsViaAnkiConnect(
 export function logChatAnkiEvent(event: string, data?: unknown, _context?: AnkiActionContext): void {
   console.log('[anki]', event, data);
   // 可以在这里添加更多的日志记录逻辑，如发送到后端分析
-}
-
-// ============================================================================
-// 事件派发
-// ============================================================================
-
-interface OpenAnkiPanelParams {
-  blockId?: string;
-  messageId?: string;
-  businessSessionId?: string;
-  cards?: AnkiCard[];
-}
-
-/**
- * 派发打开 Anki 面板的事件
- */
-export function dispatchOpenAnkiPanelEvent(params: OpenAnkiPanelParams): void {
-  const event = new CustomEvent('open-anki-panel', { detail: params });
-  window.dispatchEvent(event);
 }
 
 // ============================================================================
@@ -645,11 +633,3 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
     </div>
   );
 };
-
-// ============================================================================
-// Chat V2 面板桥接组件（CardForge 2.0 集成）
-// ============================================================================
-
-export { useAnkiPanelV2Bridge } from '../hooks/useAnkiPanelV2Bridge';
-export { AnkiPanelHost } from '../components/AnkiPanelHost';
-export type { OpenAnkiPanelParams, AnkiPanelState } from '../hooks/useAnkiPanelV2Bridge';

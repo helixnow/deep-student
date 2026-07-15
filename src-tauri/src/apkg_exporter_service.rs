@@ -3,7 +3,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, Result as SqliteResult};
 use serde::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self};
 use std::io::Write;
 use std::path::PathBuf;
@@ -25,6 +25,9 @@ static ALIAS_MAP: LazyLock<HashMap<&'static str, &'static [&'static str]>> = Laz
     m
 });
 
+const DEEP_STUDENT_TEMPLATE_ID_KEY: &str = "deepStudentTemplateId";
+const DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY: &str = "deepStudentCollapseClozeOrds";
+
 /// 清理卡片内容中的无效模板占位符
 fn clean_template_placeholders(content: &str) -> String {
     content.trim().to_string()
@@ -33,6 +36,8 @@ fn clean_template_placeholders(content: &str) -> String {
 // F9（round2）：全局单调 note_id 生成器，确保跨导出 / 同毫秒多次导出都不碰撞。
 // 旧实现用「秒*1000+序号」，同秒多次导出可产生相同 id（虽有 guid 去重，仍属脆弱）。
 static APKG_NOTE_ID_GEN: LazyLock<std::sync::atomic::AtomicI64> =
+    LazyLock::new(|| std::sync::atomic::AtomicI64::new(Utc::now().timestamp_millis()));
+static APKG_CARD_ID_GEN: LazyLock<std::sync::atomic::AtomicI64> =
     LazyLock::new(|| std::sync::atomic::AtomicI64::new(Utc::now().timestamp_millis()));
 
 /// 返回严格单调递增的 note_id；尽量贴近毫秒时间戳习惯，但绝不回退或重复。
@@ -49,6 +54,103 @@ fn next_apkg_note_id() -> i64 {
             return next;
         }
     }
+}
+
+fn next_apkg_card_id() -> i64 {
+    use std::sync::atomic::Ordering;
+    let now_ms = Utc::now().timestamp_millis();
+    loop {
+        let prev = APKG_CARD_ID_GEN.load(Ordering::Relaxed);
+        let next = std::cmp::max(prev + 1, now_ms);
+        if APKG_CARD_ID_GEN
+            .compare_exchange_weak(prev, next, Ordering::SeqCst, Ordering::Relaxed)
+            .is_ok()
+        {
+            return next;
+        }
+    }
+}
+
+/// Extract the Anki card ordinals represented by valid Cloze markers.
+/// `{{cN::answer}}` and `{{cN::answer::hint}}` map to `ord = N - 1`.
+fn cloze_card_ords(text: &str) -> Vec<i64> {
+    let mut ords = BTreeSet::new();
+    let mut search_from = 0usize;
+
+    while let Some(relative_start) = text[search_from..].find("{{c") {
+        let marker_start = search_from + relative_start;
+        let number_start = marker_start + 3;
+        let digit_count = text[number_start..]
+            .bytes()
+            .take_while(u8::is_ascii_digit)
+            .count();
+        if digit_count == 0 {
+            search_from = number_start;
+            continue;
+        }
+
+        let number_end = number_start + digit_count;
+        if !text[number_end..].starts_with("::") {
+            search_from = number_end;
+            continue;
+        }
+
+        let answer_start = number_end + 2;
+        let remainder = &text[answer_start..];
+        let Some(relative_close) = remainder.find("}}") else {
+            break;
+        };
+        if let Some(relative_nested) = remainder.find("{{c") {
+            if relative_nested < relative_close {
+                search_from = answer_start + relative_nested;
+                continue;
+            }
+        }
+
+        let marker_end = answer_start + relative_close;
+        let body = &text[answer_start..marker_end];
+        let answer = body.split_once("::").map_or(body, |(answer, _)| answer);
+        if !answer.trim().is_empty() {
+            if let Ok(number) = text[number_start..number_end].parse::<u64>() {
+                if let Some(ord) = number
+                    .checked_sub(1)
+                    .and_then(|value| i64::try_from(value).ok())
+                {
+                    ords.insert(ord);
+                }
+            }
+        }
+        search_from = marker_end + 2;
+    }
+
+    if ords.is_empty() {
+        vec![0]
+    } else {
+        ords.into_iter().collect()
+    }
+}
+
+fn insert_anki_card_rows(
+    conn: &Connection,
+    note_id: i64,
+    deck_id: i64,
+    now: i64,
+    card_ords: &[i64],
+    next_due: &mut i64,
+) -> Result<(), String> {
+    for ord in card_ords {
+        let card_id = next_apkg_card_id();
+        let due = *next_due;
+        *next_due = next_due
+            .checked_add(1)
+            .ok_or_else(|| "Anki card due position overflow".to_string())?;
+        conn.execute(
+            "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, ?, ?, -1, 0, 0, ?, 0, 2500, 0, 0, 0, 0, 0, 0, '')",
+            params![card_id, note_id, deck_id, ord, now, due],
+        )
+        .map_err(|error| format!("插入卡片失败: {}", error))?;
+    }
+    Ok(())
 }
 
 /// 粗略剥离 HTML 标签（仅用于校验和计算）。
@@ -426,7 +528,7 @@ fn initialize_anki_database(
     deck_name: &str,
     model_name: &str,
 ) -> SqliteResult<(i64, i64)> {
-    initialize_anki_database_with_template(conn, deck_name, model_name, None)
+    initialize_anki_database_with_template(conn, deck_name, model_name, None, None)
 }
 
 fn initialize_anki_database_with_template(
@@ -434,6 +536,7 @@ fn initialize_anki_database_with_template(
     deck_name: &str,
     model_name: &str,
     template_config: Option<(String, Vec<String>, String, String, String)>,
+    template_id: Option<&str>,
 ) -> SqliteResult<(i64, i64)> {
     // 创建基本表结构
     conn.execute_batch(
@@ -579,8 +682,15 @@ fn initialize_anki_database_with_template(
     };
 
     let model_id_clone = model.id.clone();
+    let mut model_value = serde_json::to_value(model)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))?;
+    model_value[DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY] = serde_json::Value::Bool(true);
+    if let Some(template_id) = template_id.map(str::trim).filter(|id| !id.is_empty()) {
+        model_value[DEEP_STUDENT_TEMPLATE_ID_KEY] =
+            serde_json::Value::String(template_id.to_string());
+    }
     let models = serde_json::json!({
-        model_id_clone: model
+        model_id_clone: model_value
     });
 
     // 创建牌组配置
@@ -653,12 +763,14 @@ fn field_checksum(text: &str) -> i64 {
 }
 
 /// 将AnkiCard转换为Anki数据库记录
+type AnkiNoteRecord = (String, String, String, String, i64, String, Vec<i64>);
+
 fn convert_cards_to_anki_records(
     cards: Vec<AnkiCard>,
     _deck_id: i64,
     _model_id: i64,
     model_name: &str,
-) -> Result<Vec<(String, String, String, String, i64, String)>, String> {
+) -> Result<Vec<AnkiNoteRecord>, String> {
     // 🎯 SOTA 修复：废弃旧的Cloze特殊处理，统一使用字段驱动
     convert_cards_to_anki_records_with_fields(cards, _deck_id, _model_id, model_name, None, None)
 }
@@ -667,11 +779,12 @@ fn convert_cards_to_anki_records_with_fields(
     cards: Vec<AnkiCard>,
     _deck_id: i64,
     _model_id: i64,
-    _model_name: &str,
+    model_name: &str,
     template_fields: Option<&[String]>,
     _template: Option<&CustomAnkiTemplate>, // 新增参数：完整的模板对象
-) -> Result<Vec<(String, String, String, String, i64, String)>, String> {
+) -> Result<Vec<AnkiNoteRecord>, String> {
     let mut records = Vec::new();
+    let is_cloze_model = model_name.eq_ignore_ascii_case("Cloze");
 
     for card in &cards {
         // F9（round2）：全局单调 note_id，避免同秒多次导出碰撞
@@ -733,8 +846,21 @@ fn convert_cards_to_anki_records_with_fields(
             .collect();
         let tags = cleaned_tags.join(" ");
         let csum = field_checksum(&sort_field);
+        let card_ords = if is_cloze_model {
+            cloze_card_ords(&resolve_card_field_value(card, "Text"))
+        } else {
+            vec![0]
+        };
 
-        records.push((note_id.to_string(), guid, fields, sort_field, csum, tags));
+        records.push((
+            note_id.to_string(),
+            guid,
+            fields,
+            sort_field,
+            csum,
+            tags,
+            card_ords,
+        ));
     }
 
     Ok(records)
@@ -878,6 +1004,7 @@ pub async fn export_cards_to_apkg_with_full_template(
             &deck_name,
             &note_type,
             Some(template_config_for_model.clone()),
+            full_template.as_ref().map(|template| template.id.as_str()),
         )
             .map_err(|e| format!("初始化数据库失败: {}", e))?;
 
@@ -894,12 +1021,16 @@ pub async fn export_cards_to_apkg_with_full_template(
         let now = Utc::now().timestamp();
 
         // 插入笔记和卡片
-        for (i, (note_id, guid, fields, sort_field, csum, tags)) in records.iter().enumerate() {
+        let mut next_due = 1i64;
+        for (note_id, guid, fields, sort_field, csum, tags, card_ords) in &records {
+            let note_id = note_id
+                .parse::<i64>()
+                .map_err(|error| format!("无效的 note id: {}", error))?;
             // 插入笔记
             conn.execute(
                 "INSERT INTO notes (id, guid, mid, mod, usn, tags, flds, sfld, csum, flags, data) VALUES (?, ?, ?, ?, -1, ?, ?, ?, ?, 0, '')",
                 params![
-                    note_id.parse::<i64>().unwrap(),
+                    note_id,
                     guid,
                     model_id,
                     now,
@@ -910,18 +1041,7 @@ pub async fn export_cards_to_apkg_with_full_template(
                 ]
             ).map_err(|e| format!("插入笔记失败: {}", e))?;
 
-            // 为每个笔记创建卡片（Basic类型通常只有一张卡片）
-            let card_id = note_id.parse::<i64>().unwrap() * 100 + i as i64;
-            conn.execute(
-                "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, 0, ?, -1, 0, 0, ?, 0, 2500, 0, 0, 0, 0, 0, 0, '')",
-                params![
-                    card_id,
-                    note_id.parse::<i64>().unwrap(),
-                    deck_id,
-                    now,
-                    i as i64 + 1 // due date
-                ]
-            ).map_err(|e| format!("插入卡片失败: {}", e))?;
+            insert_anki_card_rows(&conn, note_id, deck_id, now, card_ords, &mut next_due)?;
         }
 
         conn.close().map_err(|e| format!("关闭数据库失败: {:?}", e))?;
@@ -1158,7 +1278,13 @@ pub async fn export_multi_template_apkg(
                     model_type,
                 );
                 model_fields_map.insert(tid.clone(), fields);
-                models_json.insert(model_id.to_string(), serde_json::to_value(&model).map_err(|e| e.to_string())?);
+                let mut model_value =
+                    serde_json::to_value(&model).map_err(|e| e.to_string())?;
+                model_value[DEEP_STUDENT_TEMPLATE_ID_KEY] =
+                    serde_json::Value::String(tid.clone());
+                model_value[DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY] =
+                    serde_json::Value::Bool(true);
+                models_json.insert(model_id.to_string(), model_value);
             } else {
                 // 模板不在 map 中，退化为 Basic
                 let fields = vec!["Front".to_string(), "Back".to_string()];
@@ -1207,10 +1333,15 @@ pub async fn export_multi_template_apkg(
         ).map_err(|e| format!("插入 col 失败: {}", e))?;
 
         // 插入 notes 和 cards
-        let mut note_idx = 0i64;
-        let insert_note = |conn: &Connection, card: &AnkiCard, mid: i64, field_names: &[String], note_idx: &mut i64| -> Result<(), String> {
+        let mut next_due = 1i64;
+        let insert_note = |conn: &Connection,
+                           card: &AnkiCard,
+                           mid: i64,
+                           field_names: &[String],
+                           is_cloze: bool,
+                           next_due: &mut i64|
+         -> Result<(), String> {
             let note_id = next_apkg_note_id(); // F9（round2）：全局单调 id
-            *note_idx += 1;
             let guid = uuid::Uuid::new_v4().to_string().replace("-", "");
 
             let mut field_values: Vec<String> = Vec::new();
@@ -1234,11 +1365,12 @@ pub async fn export_multi_template_apkg(
                 params![note_id, guid, mid, now, tags_str, fields_str, clean_template_placeholders(&sort_field), csum]
             ).map_err(|e| format!("插入 note 失败: {}", e))?;
 
-            let card_id = note_id * 100;
-            conn.execute(
-                "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, 0, ?, -1, 0, 0, ?, 0, 2500, 0, 0, 0, 0, 0, 0, '')",
-                params![card_id, note_id, deck_id, now, *note_idx]
-            ).map_err(|e| format!("插入 card 失败: {}", e))?;
+            let card_ords = if is_cloze {
+                cloze_card_ords(&resolve_card_field_value(card, "Text"))
+            } else {
+                vec![0]
+            };
+            insert_anki_card_rows(conn, note_id, deck_id, now, &card_ords, next_due)?;
 
             Ok(())
         };
@@ -1247,15 +1379,32 @@ pub async fn export_multi_template_apkg(
         for (tid, group_cards) in &groups {
             let mid = model_id_map.get(tid).copied().unwrap_or(fallback_model_id);
             let field_names = model_fields_map.get(tid).cloned().unwrap_or_else(|| vec!["Front".to_string(), "Back".to_string()]);
+            let is_cloze = template_map
+                .get(tid)
+                .is_some_and(|template| template.note_type.eq_ignore_ascii_case("Cloze"));
             for card in group_cards {
-                insert_note(&conn, card, mid, &field_names, &mut note_idx)?;
+                insert_note(
+                    &conn,
+                    card,
+                    mid,
+                    &field_names,
+                    is_cloze,
+                    &mut next_due,
+                )?;
             }
         }
 
         // 插入无 template_id 的卡片
         for card in &no_template_cards {
             let field_names = vec!["Front".to_string(), "Back".to_string()];
-            insert_note(&conn, card, fallback_model_id, &field_names, &mut note_idx)?;
+            insert_note(
+                &conn,
+                card,
+                fallback_model_id,
+                &field_names,
+                false,
+                &mut next_due,
+            )?;
         }
 
         conn.close().map_err(|e| format!("关闭数据库失败: {:?}", e))?;
@@ -1325,6 +1474,101 @@ mod tests {
     use rusqlite::Connection;
     use std::collections::HashMap;
     use std::io::Read;
+
+    fn test_card(id: &str, front: &str, back: &str) -> AnkiCard {
+        let now = chrono::Utc::now().to_rfc3339();
+        AnkiCard {
+            id: id.to_string(),
+            task_id: String::new(),
+            front: front.to_string(),
+            back: back.to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: false,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now,
+            extra_fields: HashMap::new(),
+            template_id: None,
+        }
+    }
+
+    fn test_template(id: &str, note_type: &str, fields: &[&str]) -> CustomAnkiTemplate {
+        let now = chrono::Utc::now();
+        let is_cloze = note_type.eq_ignore_ascii_case("Cloze");
+        CustomAnkiTemplate {
+            id: id.to_string(),
+            name: format!("Test {id}"),
+            description: String::new(),
+            author: None,
+            version: "1.0.0".to_string(),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: note_type.to_string(),
+            fields: fields.iter().map(|field| (*field).to_string()).collect(),
+            generation_prompt: String::new(),
+            front_template: if is_cloze {
+                "{{cloze:Text}}".to_string()
+            } else {
+                "{{Front}}".to_string()
+            },
+            back_template: if is_cloze {
+                "{{cloze:Text}}<br>{{Extra}}".to_string()
+            } else {
+                "{{FrontSide}}<hr>{{Back}}".to_string()
+            },
+            css_style: ".card { font-family: sans-serif; }".to_string(),
+            field_extraction_rules: HashMap::new(),
+            created_at: now,
+            updated_at: now,
+            is_active: true,
+            is_built_in: false,
+            preview_data_json: None,
+        }
+    }
+
+    fn extract_collection(apkg_path: &std::path::Path, db_path: &std::path::Path) {
+        let file = std::fs::File::open(apkg_path).expect("open apkg");
+        let mut zip = zip::ZipArchive::new(file).expect("open apkg zip");
+        let mut collection = zip.by_name("collection.anki2").expect("collection.anki2");
+        let mut bytes = Vec::new();
+        collection.read_to_end(&mut bytes).expect("read collection");
+        std::fs::write(db_path, bytes).expect("write collection");
+    }
+
+    #[test]
+    fn cloze_card_ords_extracts_sorted_unique_positive_numbers() {
+        assert_eq!(
+            cloze_card_ords("{{c3::three}} {{c1::one::hint}} {{c2::two}} {{c2::duplicate}}"),
+            vec![0, 1, 2]
+        );
+    }
+
+    #[test]
+    fn cloze_card_ords_ignores_invalid_markers_and_falls_back_to_zero() {
+        assert_eq!(
+            cloze_card_ords("{{c0::zero}} {{c1::   }} {{c2::::hint}} plain text"),
+            vec![0]
+        );
+    }
+
+    #[test]
+    fn single_template_record_conversion_carries_all_cloze_ords() {
+        let mut card = test_card("cloze", "front", "back");
+        card.text = Some("{{c1::one}} {{c2::two}} {{c3::three}}".to_string());
+        let fields = vec!["Text".to_string(), "Extra".to_string()];
+        let records = convert_cards_to_anki_records_with_fields(
+            vec![card],
+            1,
+            1,
+            "Cloze",
+            Some(&fields),
+            None,
+        )
+        .expect("convert Cloze record");
+        assert_eq!(records[0].6, vec![0, 1, 2]);
+    }
 
     #[test]
     fn test_clean_template_placeholders_control_tags() {
@@ -1426,6 +1670,79 @@ mod tests {
         let note_field_count = note_flds.split('\x1f').count();
 
         assert_eq!(note_field_count, model_field_count);
+        let card_ords = conn
+            .prepare("SELECT ord FROM cards ORDER BY ord")
+            .expect("prepare card ords")
+            .query_map([], |row| row.get::<_, i64>(0))
+            .expect("query card ords")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect card ords");
+        assert_eq!(card_ords, vec![0], "Basic notes must create one card");
+    }
+
+    #[tokio::test]
+    async fn multi_template_export_writes_each_cloze_ord_once_and_basic_once() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("multi-cloze.apkg");
+
+        let mut cloze = test_card("cloze", "cloze front", "cloze back");
+        cloze.template_id = Some("cloze-template".to_string());
+        cloze.text = Some(
+            "{{c3::three}} {{c1::one}} {{c2::two}} {{c2::duplicate}} \
+             {{c0::zero}} {{c4::   }} {{c5::::hint}}"
+                .to_string(),
+        );
+        let mut basic = test_card("basic", "Basic {{c9::literal}}", "answer");
+        basic.template_id = Some("basic-template".to_string());
+
+        export_multi_template_apkg(
+            vec![cloze, basic],
+            "Cloze ords".to_string(),
+            out.clone(),
+            HashMap::from([
+                (
+                    "cloze-template".to_string(),
+                    test_template("cloze-template", "Cloze", &["Text", "Extra"]),
+                ),
+                (
+                    "basic-template".to_string(),
+                    test_template("basic-template", "Basic", &["Front", "Back"]),
+                ),
+            ]),
+        )
+        .await
+        .expect("export multi-template APKG");
+
+        let db_path = tmp.path().join("multi-cloze.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(db_path).expect("open collection");
+        let note_rows = conn
+            .prepare(
+                "SELECT n.flds, c.ord
+                 FROM notes n
+                 INNER JOIN cards c ON c.nid = n.id
+                 ORDER BY n.flds, c.ord",
+            )
+            .expect("prepare note card rows")
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .expect("query note card rows")
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .expect("collect note card rows");
+
+        let cloze_ords = note_rows
+            .iter()
+            .filter(|(fields, _)| fields.contains("{{c3::three}}"))
+            .map(|(_, ord)| *ord)
+            .collect::<Vec<_>>();
+        let basic_ords = note_rows
+            .iter()
+            .filter(|(fields, _)| fields.contains("Basic {{c9::literal}}"))
+            .map(|(_, ord)| *ord)
+            .collect::<Vec<_>>();
+        assert_eq!(cloze_ords, vec![0, 1, 2]);
+        assert_eq!(basic_ords, vec![0]);
     }
 
     #[tokio::test]

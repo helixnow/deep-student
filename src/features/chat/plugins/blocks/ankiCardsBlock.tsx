@@ -32,6 +32,7 @@ import {
   Play,
   Stop,
   Stack,
+  ArrowClockwise,
 } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { controlDocumentTask } from '@/features/anki/taskControl';
@@ -50,6 +51,7 @@ import {
   type AnkiCardStackPreviewStatus,
 } from '../../anki';
 import type { AnkiCard, AnkiGenerationOptions, CustomAnkiTemplate } from '@/types';
+import type { SaveAnkiCardIdMapping } from '@/services/ankiApiAdapter';
 import { ChatAnkiProgressCompact } from './components/ChatAnkiProgressCompact';
 import { RenderedAnkiCard } from './components/RenderedAnkiCard';
 import { useTemplateLoader } from '../../hooks/useTemplateLoader';
@@ -73,6 +75,8 @@ export interface AnkiCardsWarning {
 export interface AnkiCardsBlockData {
   /** 卡片列表 */
   cards: AnkiCard[];
+  /** Agent 删除墓碑：阻止迟到/重放的生成结果复活已删除卡片。 */
+  deletedCardIds?: string[];
   /** 后端 documentId（用于 status 查询/调试） */
   documentId?: string;
   /** 生成进度（后台流水线 patch 更新） */
@@ -115,6 +119,23 @@ export interface AnkiCardsBlockData {
   finalError?: string;
   /** 后端警告信息（用于 UI 显示） */
   warnings?: AnkiCardsWarning[];
+}
+
+interface DocumentTaskSummary {
+  id?: unknown;
+  status?: unknown;
+}
+
+function getRetryableTaskIds(tasks: unknown): string[] {
+  if (!Array.isArray(tasks)) return [];
+
+  const ids = tasks.flatMap((task: DocumentTaskSummary) => {
+    const status = typeof task?.status === 'string' ? task.status.trim().toLowerCase() : '';
+    const id = typeof task?.id === 'string' ? task.id.trim() : '';
+    return id && (status === 'failed' || status === 'truncated') ? [id] : [];
+  });
+
+  return Array.from(new Set(ids));
 }
 
 function hasValue(value: unknown): boolean {
@@ -627,9 +648,29 @@ const ActionButtons: React.FC<{
   isStreaming?: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  retryableTaskCount: number;
+  retryStatus: ActionStatus;
+  retryError: string | null;
+  onRetryFailedSegments: () => Promise<void>;
   /** 同步成功/失败后回写块 toolOutput.syncStatus（消灭 syncStatus 空转） */
   onSyncStatusChange?: (status: 'synced' | 'error' | 'syncing', error?: string) => void;
-}> = ({ cards, data, blockId, blockStatus, isStreaming, isExpanded, onToggleExpand, onSyncStatusChange }) => {
+  /** 保存成功后用后端返回的真实 ID 更新并持久化当前块。 */
+  onCardsPersisted?: (mappings: SaveAnkiCardIdMapping[]) => Promise<void>;
+}> = ({
+  cards,
+  data,
+  blockId,
+  blockStatus,
+  isStreaming,
+  isExpanded,
+  onToggleExpand,
+  retryableTaskCount,
+  retryStatus,
+  retryError,
+  onRetryFailedSegments,
+  onSyncStatusChange,
+  onCardsPersisted,
+}) => {
   const { t } = useTranslation('chatV2');
   const [saveStatus, setSaveStatus] = useState<ActionStatus>('idle');
   const [exportStatus, setExportStatus] = useState<ActionStatus>('idle');
@@ -726,6 +767,7 @@ const ActionButtons: React.FC<{
           t('blocks.ankiCards.action.saveFailed');
         throw new Error(failDetail);
       }
+      await onCardsPersisted?.(result.cardIdMappings ?? []);
       logChatAnkiEvent('chat_anki_action_performed', { action: 'save', cardCount: cards.length }, context);
       setSaveStatus('success');
       if (result.warning?.code === 'anki_save_partial') {
@@ -766,7 +808,7 @@ const ActionButtons: React.FC<{
     }
     actionLockRef.current.delete('save');
     resetStatusAfterDelay(setSaveStatus);
-  }, [cards, context, saveStatus, resetStatusAfterDelay, t]);
+  }, [cards, context, saveStatus, resetStatusAfterDelay, t, onCardsPersisted]);
 
   const handleExport = useCallback(async () => {
     if (cards.length === 0 || exportStatus === 'loading' || actionLockRef.current.has('export')) return;
@@ -821,15 +863,40 @@ const ActionButtons: React.FC<{
     resetStatusAfterDelay(setExportStatus);
   }, [cards, context, exportStatus, resetStatusAfterDelay, t]);
 
+  const reviewCardIds = useMemo(
+    () => cards.map((card) => (typeof card.id === 'string' ? card.id.trim() : '')),
+    [cards],
+  );
+  const reviewCards = useMemo(
+    () =>
+      cards.map((card, index) => ({
+        id: reviewCardIds[index],
+        ankiCardId: reviewCardIds[index],
+        front: card.front || card.text || '',
+        back: card.back || card.text || '',
+        tags: card.tags,
+      })),
+    [cards, reviewCardIds],
+  );
+  const canReviewBatch =
+    cards.length > 0 &&
+    reviewCards.every((card) => {
+      const id = card.ankiCardId;
+      return (
+        (card.front.trim().length > 0 || card.back.trim().length > 0) &&
+        id.length > 0 &&
+        !id.startsWith('anki_synthetic_') &&
+        !id.startsWith('chat-batch-')
+      );
+    });
+
   const handleReviewBatch = useCallback(() => {
-    if (cards.length === 0) return;
-    const cardIds = cards
-      .map((c) => c.id)
-      .filter((id): id is string => typeof id === 'string' && id.length > 0);
+    if (!canReviewBatch) return;
     const payload = {
       screen: 'session' as const,
       mode: 'batch' as const,
-      cardIds: cardIds.length > 0 ? cardIds : cards.map((_, i) => `chat-batch-${blockId}-${i}`),
+      cardIds: reviewCardIds,
+      cards: reviewCards,
     };
     // R2-04：收编双路径——统一走 onActivation startReview（已开窗 activate；未开窗 fallbackLaunch）
     void workbenchBus.activate({
@@ -844,7 +911,7 @@ const ActionButtons: React.FC<{
       },
     });
     logChatAnkiEvent('chat_anki_action_performed', { action: 'review_batch', cardCount: cards.length }, context);
-  }, [blockId, cards, context]);
+  }, [canReviewBatch, cards.length, context, reviewCardIds, reviewCards]);
 
   const handleSync = useCallback(async () => {
     if (cards.length === 0 || syncStatus === 'loading' || actionLockRef.current.has('sync')) return;
@@ -891,6 +958,7 @@ const ActionButtons: React.FC<{
   }, [cards, context, syncStatus, resetStatusAfterDelay, onSyncStatusChange, t]);
 
   const isDisabled = cards.length === 0 || isStreaming || (isBlockBusy && !isPaused);
+  const showRetryFailedSegments = retryableTaskCount > 0;
   const isAnkiConnectAvailable = data?.ankiConnect?.available === true;
   const syncDisabledReason = !isAnkiConnectAvailable
     ? t(
@@ -913,8 +981,43 @@ const ActionButtons: React.FC<{
     }
   };
 
+  const retryAction = showRetryFailedSegments ? (
+    <div className="col-span-2 flex min-w-0 flex-col items-start gap-1 sm:col-span-1">
+      <NotionButton
+        type="button"
+        onClick={() => void onRetryFailedSegments()}
+        disabled={retryStatus === 'loading'}
+        aria-busy={retryStatus === 'loading'}
+        variant={retryStatus === 'error' ? 'danger' : 'default'}
+        className="w-full text-xs sm:w-auto sm:text-sm"
+      >
+        {renderIcon(retryStatus, ArrowClockwise)}
+        {t('blocks.ankiCards.retryFailedSegments')}
+      </NotionButton>
+      {retryStatus === 'error' && retryError && (
+        <span
+          role="alert"
+          className="max-w-full text-[11px] leading-snug text-destructive"
+          data-testid="chatanki-retry-failed-segments-error"
+        >
+          {retryError}
+        </span>
+      )}
+    </div>
+  ) : null;
+
+  if (!showTaskControls && cards.length === 0) {
+    return retryAction ? (
+      <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/50">
+        {retryAction}
+      </div>
+    ) : null;
+  }
+
   return (
     <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 mt-3 pt-3 border-t border-border/50">
+      {retryAction}
+
       {/* 运行中：暂停 / 继续 / 取消（有 documentId 时） */}
       {showTaskControls && (
         <>
@@ -1019,7 +1122,8 @@ const ActionButtons: React.FC<{
       <NotionButton
         type="button"
         onClick={handleReviewBatch}
-        disabled={isDisabled || cards.length === 0}
+        disabled={isDisabled || !canReviewBatch}
+        title={!canReviewBatch ? t('blocks.ankiCards.reviewBatchNeedsRealIds') : undefined}
         variant="default"
         className="text-xs sm:text-sm"
       >
@@ -1036,6 +1140,76 @@ const ActionButtons: React.FC<{
 
 /** Zombie block watchdog 阈值：running 状态超过该时长无更新则做后端核实/标错 */
 const ZOMBIE_TIMEOUT_MS = 5 * 60 * 1000;
+
+export type ZombieCompletionState =
+  | {
+      finalStatus: 'completed' | 'completed_with_errors';
+      blockStatus: 'success';
+    }
+  | {
+      finalStatus: 'error' | 'cancelled';
+      blockStatus: 'error';
+      errorKey:
+        | 'blocks.ankiCards.errors.watchdogFailedWithoutCards'
+        | 'blocks.ankiCards.errors.watchdogCancelledWithoutCards'
+        | 'blocks.ankiCards.errors.watchdogCompletedWithoutCards'
+        | 'blocks.ankiCards.errors.watchdogUnknownWithoutCards';
+    };
+
+interface ZombieCardLike {
+  is_error_card?: unknown;
+  isErrorCard?: unknown;
+}
+
+export function resolveZombieCompletionState(
+  statuses: string[],
+  cards: readonly ZombieCardLike[] = [],
+): ZombieCompletionState {
+  const normalized = statuses.map((status) => status.trim().toLowerCase());
+  const hasCompleted = normalized.includes('completed');
+  const hasFailures = normalized.some((status) => ['failed', 'truncated'].includes(status));
+  const hasCancelled = normalized.some((status) => ['cancelled', 'canceled'].includes(status));
+  const hasUnknown = normalized.some((status) => ![
+    'completed',
+    'failed',
+    'truncated',
+    'cancelled',
+    'canceled',
+  ].includes(status));
+  const hasUsableCards = cards.some((card) => (
+    card.is_error_card !== true && card.isErrorCard !== true
+  ));
+
+  if (hasUsableCards) {
+    return {
+      finalStatus: hasFailures || hasCancelled || hasUnknown
+        ? 'completed_with_errors'
+        : 'completed',
+      blockStatus: 'success',
+    };
+  }
+  if (hasCancelled) {
+    return {
+      finalStatus: 'cancelled',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogCancelledWithoutCards',
+    };
+  }
+  if (hasCompleted && !hasFailures && !hasUnknown) {
+    return {
+      finalStatus: 'error',
+      blockStatus: 'error',
+      errorKey: 'blocks.ankiCards.errors.watchdogCompletedWithoutCards',
+    };
+  }
+  return {
+    finalStatus: 'error',
+    blockStatus: 'error',
+    errorKey: hasFailures
+      ? 'blocks.ankiCards.errors.watchdogFailedWithoutCards'
+      : 'blocks.ankiCards.errors.watchdogUnknownWithoutCards',
+  };
+}
 
 /**
  * Anki 卡片块组件
@@ -1056,6 +1230,142 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   const cards = useMemo(() => data?.cards ?? [], [data?.cards]);
   const isBlockBusy = block.status === 'pending' || block.status === 'running';
   const isActionDisabled = isBlockBusy || Boolean(isStreaming);
+  const documentId = typeof data?.documentId === 'string' ? data.documentId.trim() : '';
+  const [retryableTaskIds, setRetryableTaskIds] = useState<string[]>([]);
+  const [retryStatus, setRetryStatus] = useState<ActionStatus>('idle');
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryActionLockRef = useRef(false);
+  const retryScopeRef = useRef(0);
+  const retryableCountHint = useMemo((): { failed: number; truncated: number } => {
+    const counts = data?.progress?.counts;
+    if (!counts || typeof counts !== 'object' || Array.isArray(counts)) {
+      return { failed: 0, truncated: 0 };
+    }
+    const record = counts as Record<string, unknown>;
+    return {
+      failed: typeof record.failed === 'number' ? record.failed : 0,
+      truncated: typeof record.truncated === 'number' ? record.truncated : 0,
+    };
+  }, [data?.progress?.counts]);
+  const retryInspectionKey = useMemo(() => {
+    const progressStage = data?.progress?.stage?.trim().toLowerCase() ?? '';
+    const finalStatus = data?.finalStatus?.trim().toLowerCase() ?? '';
+    const terminalStatuses = new Set([
+      'completed',
+      'completed_with_errors',
+      'success',
+      'error',
+      'failed',
+      'cancelled',
+      'canceled',
+    ]);
+    const blockIsTerminal = block.status === 'success' || block.status === 'error';
+    const statusIsTerminal = terminalStatuses.has(finalStatus) || terminalStatuses.has(progressStage);
+    const hasFailureCount = retryableCountHint.failed > 0 || retryableCountHint.truncated > 0;
+    return blockIsTerminal || statusIsTerminal || hasFailureCount
+      ? `${block.status}:${finalStatus}:${progressStage}:${retryableCountHint.failed}:${retryableCountHint.truncated}`
+      : '';
+  }, [
+    block.status,
+    data?.finalStatus,
+    data?.progress?.stage,
+    retryableCountHint.failed,
+    retryableCountHint.truncated,
+  ]);
+
+  useEffect(() => {
+    retryScopeRef.current += 1;
+    retryActionLockRef.current = false;
+    setRetryableTaskIds([]);
+    setRetryStatus('idle');
+    setRetryError(null);
+  }, [documentId]);
+
+  useEffect(() => {
+    if (!documentId || !retryInspectionKey) {
+      setRetryableTaskIds([]);
+      return;
+    }
+
+    let cancelled = false;
+    void invoke<DocumentTaskSummary[]>('get_document_tasks', { documentId })
+      .then((tasks) => {
+        if (!cancelled) {
+          setRetryableTaskIds(getRetryableTaskIds(tasks));
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setRetryableTaskIds([]);
+          console.warn('[AnkiCardsBlock] Failed to inspect retryable document tasks:', error);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, retryInspectionKey]);
+
+  const handleRetryFailedSegments = useCallback(async () => {
+    if (!documentId || retryableTaskIds.length === 0 || retryActionLockRef.current) return;
+
+    const attemptedTaskIds = [...retryableTaskIds];
+    const attemptedTaskIdSet = new Set(attemptedTaskIds);
+    const scope = retryScopeRef.current;
+    retryActionLockRef.current = true;
+    setRetryStatus('loading');
+    setRetryError(null);
+
+    try {
+      const results = await Promise.allSettled(
+        attemptedTaskIds.map((taskId) => controlDocumentTask({ action: 'retry', taskId })),
+      );
+      if (scope !== retryScopeRef.current) return;
+
+      const failedTaskIds = results.flatMap((result, index) =>
+        result.status === 'rejected' ? [attemptedTaskIds[index]] : [],
+      );
+      const firstFailure = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected',
+      );
+
+      setRetryableTaskIds((current) => {
+        const unattempted = current.filter((taskId) => !attemptedTaskIdSet.has(taskId));
+        return Array.from(new Set([...unattempted, ...failedTaskIds]));
+      });
+
+      if (failedTaskIds.length === 0) {
+        setRetryStatus('success');
+        showGlobalNotification(
+          'success',
+          t('blocks.ankiCards.action.retrySegmentsStarted', { count: attemptedTaskIds.length }),
+        );
+        return;
+      }
+
+      const messageKey =
+        failedTaskIds.length === attemptedTaskIds.length
+          ? 'blocks.ankiCards.action.retrySegmentsFailed'
+          : 'blocks.ankiCards.action.retrySegmentsPartial';
+      const summary = t(messageKey, {
+        failed: failedTaskIds.length,
+        total: attemptedTaskIds.length,
+      });
+      const detail = firstFailure ? getErrorMessage(firstFailure.reason) : '';
+      const errorMessage = detail ? `${summary}: ${detail}` : summary;
+      setRetryStatus('error');
+      setRetryError(errorMessage);
+      showGlobalNotification(
+        failedTaskIds.length === attemptedTaskIds.length ? 'error' : 'warning',
+        summary,
+        detail || undefined,
+      );
+    } finally {
+      if (scope === retryScopeRef.current) {
+        retryActionLockRef.current = false;
+      }
+    }
+  }, [documentId, retryableTaskIds, t]);
 
   // ChatAnki Workflow Debug: 记录 block 状态变化
   const prevStatusRef = useRef(block.status);
@@ -1239,7 +1549,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       const currentDocumentId = (store?.getState().blocks.get(block.id)?.toolOutput as AnkiCardsBlockData | undefined)?.documentId;
       if (!currentDocumentId) {
         console.warn('[AnkiCardsBlock] Zombie block detected without documentId, forcing error state:', block.id);
-        store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
+        store?.getState().setBlockError(block.id, t('blocks.ankiCards.errors.pipelineTimeout'));
         clearInterval(timer);
         return;
       }
@@ -1260,37 +1570,39 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
           if (tasks.length > 0) {
             const cards = await invoke<Array<Record<string, unknown>>>('get_document_cards', { documentId: currentDocumentId });
             const latestData = latestBlock.toolOutput as AnkiCardsBlockData | undefined;
-            const hasFailures = statuses.some((status) => ['failed', 'truncated'].includes(status));
+            const finalCards = cards.length > 0 ? cards : (latestData?.cards ?? []);
+            const completion = resolveZombieCompletionState(statuses, finalCards);
             store?.getState().updateBlock(block.id, {
               toolOutput: {
                 ...latestData,
-                cards: cards.length > 0 ? (cards as unknown as AnkiCard[]) : (latestData?.cards ?? []),
+                cards: finalCards as AnkiCard[],
+                finalStatus: completion.finalStatus,
                 progress: {
                   ...latestData?.progress,
-                  stage: hasFailures ? 'completed_with_errors' : 'completed',
-                  cardsGenerated: cards.length > 0 ? cards.length : latestData?.cards?.length ?? 0,
+                  stage: completion.finalStatus,
+                  cardsGenerated: finalCards.length,
                   lastUpdatedAt: new Date().toISOString(),
                 },
               } as AnkiCardsBlockData,
-              status: hasFailures ? 'error' : 'success',
-              ...(hasFailures ? { error: 'Generation completed with errors. Please review the generated cards.' } : {}),
+              status: completion.blockStatus,
+              error: completion.blockStatus === 'error' ? t(completion.errorKey) : undefined,
             });
             clearInterval(timer);
             return;
           }
 
           console.warn('[AnkiCardsBlock] Zombie block detected, forcing error state after backend check:', block.id);
-          store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
+          store?.getState().setBlockError(block.id, t('blocks.ankiCards.errors.pipelineTimeout'));
           clearInterval(timer);
         } catch (err) {
           console.warn('[AnkiCardsBlock] Zombie block backend verification failed, forcing error state:', err);
-          store?.getState().setBlockError(block.id, 'Generation timed out — no updates received for 5 minutes.');
+          store?.getState().setBlockError(block.id, t('blocks.ankiCards.errors.pipelineTimeout'));
           clearInterval(timer);
         }
       })();
     }, 30_000); // check every 30s
     return () => clearInterval(timer);
-  }, [block.status, block.id, store]);
+  }, [block.status, block.id, store, t]);
 
   // 展开态：新卡片到来时自动滚动到底部（仅在卡片数量增长时触发）
   useEffect(() => {
@@ -1315,19 +1627,69 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   // 🔧 场景8修复：将编辑后的 toolOutput 持久化到数据库
   // 防止后续 pipeline 重保存消息时丢失用户编辑
   const persistToolOutput = useCallback(
-    (newData: AnkiCardsBlockData) => {
-      invoke('chat_v2_update_block_tool_output', {
-        blockId: block.id,
-        toolOutputJson: JSON.stringify(newData),
-      }).catch((err) => {
+    async (newData: AnkiCardsBlockData, propagateError = false) => {
+      try {
+        await invoke('chat_v2_update_block_tool_output', {
+          blockId: block.id,
+          toolOutputJson: JSON.stringify(newData),
+        });
+      } catch (err) {
         console.warn('[AnkiCardsBlock] Failed to persist tool_output:', err);
         showGlobalNotification(
           'warning',
           t('blocks.ankiCards.action.persistFailed'),
         );
-      });
+        if (propagateError) throw err;
+      }
     },
     [block.id, t]
+  );
+
+  const handleCardsPersisted = useCallback(
+    async (mappings: SaveAnkiCardIdMapping[]) => {
+      if (!store || mappings.length === 0) return;
+      const latestBlock = store.getState().blocks.get(block.id);
+      const latestData = (latestBlock?.toolOutput as AnkiCardsBlockData | undefined) ?? data;
+      if (!latestData) return;
+
+      const nextCards = [...(latestData.cards ?? [])];
+      let changed = false;
+      for (const mapping of mappings) {
+        const persistedId = mapping.persistedId?.trim();
+        if (
+          !persistedId ||
+          persistedId.startsWith('anki_synthetic_') ||
+          persistedId.startsWith('chat-batch-') ||
+          !Number.isInteger(mapping.inputIndex) ||
+          mapping.inputIndex < 0
+        ) {
+          continue;
+        }
+
+        const expectedInputId = mapping.inputId ?? undefined;
+        let targetIndex = mapping.inputIndex;
+        const indexedCard = nextCards[targetIndex];
+        if (
+          expectedInputId !== undefined &&
+          indexedCard?.id !== expectedInputId &&
+          indexedCard?.id !== persistedId
+        ) {
+          targetIndex = nextCards.findIndex((card) => card.id === expectedInputId);
+        }
+        const target = nextCards[targetIndex];
+        if (!target || target.id === persistedId) continue;
+        if (expectedInputId !== undefined && target.id !== expectedInputId) continue;
+
+        nextCards[targetIndex] = { ...target, id: persistedId };
+        changed = true;
+      }
+
+      if (!changed) return;
+      const newData: AnkiCardsBlockData = { ...latestData, cards: nextCards };
+      await persistToolOutput(newData, true);
+      store.getState().updateBlock(block.id, { toolOutput: newData });
+    },
+    [store, block.id, data, persistToolOutput]
   );
 
   // M4：Sync 成功后写块 syncStatus（store + DB tool_output）
@@ -1345,7 +1707,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       store.getState().updateBlock(block.id, { toolOutput: newData });
       // syncing 为瞬时态，不必落库；synced/error 持久化以免刷新后空转
       if (status === 'synced' || status === 'error') {
-        persistToolOutput(newData);
+        void persistToolOutput(newData);
       }
     },
     [store, block.id, data, persistToolOutput]
@@ -1407,7 +1769,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       newCards[targetIndex] = updated;
       const newData = { ...latestData, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
-      persistToolOutput(newData);
+      void persistToolOutput(newData);
       setEditingIndex(-1);
       logChatAnkiEvent('chat_anki_card_edited', { index: targetIndex, blockId: block.id });
     },
@@ -1442,7 +1804,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       const newCards = afterCards.filter((_, i) => i !== removeIndex);
       const newData = { ...afterData, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
-      persistToolOutput(newData);
+      void persistToolOutput(newData);
       setEditingIndex((prev) => {
         if (prev === removeIndex) return -1;
         if (prev > removeIndex) return prev - 1;
@@ -1574,6 +1936,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       {/* 底部操作区：移动端全宽，桌面端保持原布局 */}
       {(shouldShowChatAnkiProgress ||
         cards.length > 0 ||
+        retryableTaskIds.length > 0 ||
         (Boolean(data?.documentId) &&
           (isBlockBusy ||
             data?.progress?.stage?.toLowerCase() === 'paused' ||
@@ -1593,6 +1956,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
 
           {/* 操作按钮组：有卡片，或运行中/暂停且有 documentId（暂停/继续/取消） */}
           {(cards.length > 0 ||
+            retryableTaskIds.length > 0 ||
             (Boolean(data?.documentId) &&
               (isBlockBusy ||
                 data?.progress?.stage?.toLowerCase() === 'paused' ||
@@ -1605,7 +1969,12 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               isStreaming={isStreaming}
               isExpanded={isExpanded}
               onToggleExpand={handleToggleExpand}
+              retryableTaskCount={retryableTaskIds.length}
+              retryStatus={retryStatus}
+              retryError={retryError}
+              onRetryFailedSegments={handleRetryFailedSegments}
               onSyncStatusChange={handleSyncStatusChange}
+              onCardsPersisted={handleCardsPersisted}
             />
           )}
         </FullWidthCardWrapper>

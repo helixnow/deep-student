@@ -43,6 +43,10 @@ import {
   normalizeTaskCardsForExport,
   selectTaskExportCards,
 } from '@/components/anki/utils/normalizeTaskCardsForExport';
+import {
+  registerTaskDashboardAgentSurface,
+  type TaskDashboardAgentSnapshot,
+} from '@/features/workbench/apps/system/agentSurfaceRegistry';
 
 // ============================================================================
 // 类型 & 常量
@@ -855,12 +859,14 @@ interface TaskDashboardPageProps {
   onOpenTemplateManagement?: () => void;
   /** Workbench visibility overrides the legacy route visibility when provided. */
   isVisible?: boolean;
+  workbenchWindowId?: string;
 }
 
 export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   onNavigateToChat,
   onOpenTemplateManagement,
   isVisible,
+  workbenchWindowId,
 }) => {
   const { t } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
@@ -873,6 +879,54 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   const [filter, setFilter] = useState<FilterTab>('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('time');
+  const agentSessionsRef = useRef<DocumentSession[]>([]);
+  const agentSnapshotRef = useRef<TaskDashboardAgentSnapshot>({
+    filter: 'all',
+    searchQuery: '',
+    focusedSessionId: null,
+    loading: true,
+    sessions: [],
+    totalSessions: 0,
+  });
+
+  agentSessionsRef.current = sessions;
+  agentSnapshotRef.current = {
+    filter,
+    searchQuery: search,
+    focusedSessionId: expandedId,
+    loading,
+    sessions: sessions.slice(0, 80).map((session) => ({
+      id: session.documentId,
+      name: session.documentName || session.documentId,
+      status: classify(session),
+      sourceSessionId: session.sourceSessionId,
+      updatedAt: session.lastUpdated,
+    })),
+    totalSessions: sessions.length,
+  };
+
+  useEffect(() => {
+    if (!workbenchWindowId) return undefined;
+    return registerTaskDashboardAgentSurface(workbenchWindowId, {
+      snapshot: () => agentSnapshotRef.current,
+      focusSession: (sessionId) => {
+        if (!agentSessionsRef.current.some((session) => session.documentId === sessionId)) {
+          return false;
+        }
+        agentSnapshotRef.current = {
+          ...agentSnapshotRef.current,
+          focusedSessionId: sessionId,
+        };
+        setExpandedId(sessionId);
+        return true;
+      },
+      filter: (nextFilter) => {
+        agentSnapshotRef.current = { ...agentSnapshotRef.current, filter: nextFilter };
+        setFilter(nextFilter);
+        return true;
+      },
+    });
+  }, [workbenchWindowId]);
 
   // P2: 智能轮询 —— 通过 ref 跟踪是否有活跃任务
   const hasActiveRef = useRef(false);

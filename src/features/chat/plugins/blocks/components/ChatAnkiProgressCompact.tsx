@@ -27,6 +27,7 @@ function normalizeStageToStep(stage: string | undefined): StepId {
     case 'paused':
       return 'generating';
     case 'completed':
+    case 'completed_with_errors':
     case 'success':
       return 'completed';
     case 'cancelled':
@@ -108,17 +109,22 @@ export const ChatAnkiProgressCompact: React.FC<{
   const normalizedStage =
     typeof stage === 'string' ? stage.toLowerCase() : undefined;
   const statusHint =
-    normalizedFinalStatus ??
-    normalizedStage ??
-    (blockStatus === 'error' ? 'failed' : blockStatus === 'success' ? 'completed' : undefined);
+    normalizedStage === 'completed_with_errors'
+      ? normalizedStage
+      : normalizedFinalStatus ??
+        normalizedStage ??
+        (blockStatus === 'error' ? 'failed' : blockStatus === 'success' ? 'completed' : undefined);
 
   const isCancelled = statusHint === 'cancelled' || statusHint === 'canceled';
+  const isCompletedWithErrors = statusHint === 'completed_with_errors';
   const isError =
-    blockStatus === 'error' || statusHint === 'error' || statusHint === 'failed';
+    !isCompletedWithErrors &&
+    (blockStatus === 'error' || statusHint === 'error' || statusHint === 'failed');
   const isCompleted =
     !isCancelled &&
     !isError &&
-    (blockStatus === 'success' ||
+    (isCompletedWithErrors ||
+      blockStatus === 'success' ||
       statusHint === 'completed' ||
       statusHint === 'success');
 
@@ -234,6 +240,7 @@ export const ChatAnkiProgressCompact: React.FC<{
       className={cn(
         'mt-2 rounded-xl border border-border/50 bg-muted/10 px-3 py-2 overflow-hidden',
         isError && 'border-destructive/40 bg-destructive/5',
+        isCompletedWithErrors && 'border-amber-500/40 bg-amber-500/5',
         isCancelled && 'border-amber-500/40 bg-amber-100/30'
       )}
       aria-live="polite"
@@ -351,34 +358,43 @@ export const ChatAnkiProgressCompact: React.FC<{
         )}
       </div>
 
-      {segCounts && (
+      {(segCounts || isCompletedWithErrors) && (
         <div className="mt-1 flex flex-wrap items-center gap-1" data-testid="chatanki-progress-segment-badges">
-          {typeof segCounts.pending === 'number' && segCounts.pending > 0 && (
+          {isCompletedWithErrors && (
+            <Badge
+              variant="destructive"
+              className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]"
+              data-testid="chatanki-progress-completed-with-errors"
+            >
+              {t('blocks.ankiCards.progress.segments.completedWithErrors')}
+            </Badge>
+          )}
+          {typeof segCounts?.pending === 'number' && segCounts.pending > 0 && (
             <Badge variant="secondary" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
               {t('blocks.ankiCards.progress.segments.pending')}: {segCounts.pending}
             </Badge>
           )}
-          {typeof segCounts.processing === 'number' && segCounts.processing > 0 && (
+          {typeof segCounts?.processing === 'number' && segCounts.processing > 0 && (
             <Badge variant="secondary" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
               {t('blocks.ankiCards.progress.segments.processing')}: {segCounts.processing}
             </Badge>
           )}
-          {typeof segCounts.paused === 'number' && segCounts.paused > 0 && (
+          {typeof segCounts?.paused === 'number' && segCounts.paused > 0 && (
             <Badge variant="outline" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
               {t('blocks.ankiCards.progress.segments.paused')}: {segCounts.paused}
             </Badge>
           )}
-          {typeof segCounts.failed === 'number' && segCounts.failed > 0 && (
+          {typeof segCounts?.failed === 'number' && segCounts.failed > 0 && (
             <Badge variant="destructive" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
               {t('blocks.ankiCards.progress.segments.failed')}: {segCounts.failed}
             </Badge>
           )}
-          {typeof segCounts.truncated === 'number' && segCounts.truncated > 0 && (
+          {typeof segCounts?.truncated === 'number' && segCounts.truncated > 0 && (
             <Badge variant="destructive" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
               {t('blocks.ankiCards.progress.segments.truncated')}: {segCounts.truncated}
             </Badge>
           )}
-          {typeof segCounts.cancelled === 'number' && segCounts.cancelled > 0 && (
+          {typeof segCounts?.cancelled === 'number' && segCounts.cancelled > 0 && (
             <Badge variant="outline" className="rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px]">
               {t('blocks.ankiCards.progress.segments.cancelled')}: {segCounts.cancelled}
             </Badge>
