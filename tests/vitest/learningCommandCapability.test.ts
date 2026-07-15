@@ -6,6 +6,7 @@ import type { DependencyResolver } from '@/command-palette/registry/types';
 const deps: DependencyResolver = {
   navigate: () => undefined,
   getCurrentView: () => 'learning-hub',
+  getFocusedWorkbenchAppTypeId: () => null,
   t: ((key: string) => key) as any,
   showNotification: () => undefined,
   toggleTheme: () => undefined,

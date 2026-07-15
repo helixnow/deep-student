@@ -43,7 +43,8 @@
   "queue": {
     "title": "复习队列",
     "sortedByDue": "按到期时间排序",
-    "andMore": "还有 {{count}} 个..."
+    "andMore": "还有 {{count}} 个...",
+    "questionUnavailable": "题目内容暂不可用，请刷新后重试"
   },
 
   "empty": {
@@ -52,7 +53,12 @@
   },
 
   "session": {
-    "noItems": "没有需要复习的内容"
+    "noItems": "没有需要复习的内容",
+    "submitFailed": "保存复习记录失败，请重试",
+    "submitFailedTitle": "无法保存复习记录",
+    "exitTitle": "结束复习会话？",
+    "exitDescription": "已提交的评分会保留，剩余题目可稍后重新开始复习。",
+    "exitConfirm": "结束复习"
   },
 
   "card": {
@@ -132,6 +138,7 @@
     "weeksAgo": "{{count}}周前",
     "monthsAgo": "{{count}}月前",
     "noContent": "暂无内容",
+    "selectQuestion": "选择 {{label}}",
     "selectAll": "全选",
     "cancel": "取消",
     "reset": "重置",

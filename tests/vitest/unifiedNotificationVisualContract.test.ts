@@ -69,7 +69,7 @@ describe('UnifiedNotification visual contract', () => {
     expect(componentSource).not.toContain('unified-notification-title');
     expect(componentSource).not.toContain('unified-notification-message');
     expect(componentSource).toContain('unified-notification-close');
-    expect(componentSource).toContain('aria-label="关闭通知"');
+    expect(componentSource).toContain("aria-label={t('close_notification')}");
     expect(componentSource).toContain('<X className="unified-notification-close-icon"');
     expect(componentSource).toContain('unified-notification-text');
     expect(componentSource).toContain("info: 'unified-notification-neutral'");

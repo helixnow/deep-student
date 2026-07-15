@@ -160,11 +160,8 @@ export interface ChatMessage {
 
 /**
  * @deprecated 2026-01 清理：错题功能已废弃，保留以兼容旧数据。
- * ⚠️ 仍有以下文件引用（2026-02-08 确认）：
- *   - src/utils/testApi.ts（废弃函数 getMistakeDetails / updateMistake / runtimeAutosaveCommit，仅供 dev 面板）
- *   - src/utils/ankiSourceBuilder.ts（buildContentFromMistake）
- *   - src/stores/anki/types.ts（MistakeSummary 别名）
- * 待上述调用方迁移后再删除此类型。
+ * 仍由 src/stores/anki/types.ts 的 MistakeSummary 兼容别名引用；
+ * 待旧数据兼容层迁移后再删除此类型。
  */
 export interface MistakeItem {
   id: string;
@@ -283,6 +280,8 @@ export interface ApiConfig {
   vendorId?: string;
   vendorName?: string;
   providerType?: string;
+  /** 供应商鉴权方式；未知值由后端供应商实现解释。 */
+  authMode?: 'api_key' | 'none' | 'openai_codex_oauth' | string;
   providerScope?: string;
   apiProtocol?: ApiProtocol;
   supportsOpenAIResponses?: boolean;
@@ -329,6 +328,8 @@ export interface VendorConfig {
   id: string;
   name: string;
   providerType: string;
+  /** 供应商鉴权方式；OAuth 凭据始终由后端安全存储管理。 */
+  authMode?: 'api_key' | 'none' | 'openai_codex_oauth' | string;
   apiProtocol?: ApiProtocol;
   supportsOpenAIResponses?: boolean;
   baseUrl: string;
@@ -755,20 +756,44 @@ export interface AnkiCard {
 export interface AnkiLibraryCard extends AnkiCard {
   id: string;
   task_id: string;
-  source_type?: string | null;
-  source_id?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
   template_id?: string | null;
   extra_fields?: Record<string, string>;
   tags: string[];
   images: string[];
   created_at: string;
   updated_at: string;
+  stateId?: string | null;
+  state?: number | null;
+  dueMs?: number | null;
+  suspended: boolean;
+  enqueued: boolean;
+  isDue: boolean;
+  /** Stable document identity/version used by library-scoped Agent mutations. */
+  documentId?: string | null;
+  version?: string;
+  /** fsrs_card_states.local_version; null means the card has not been enqueued. */
+  reviewVersion?: number | null;
+  latestReview?: {
+    logId: string;
+    reviewedAt?: string | null;
+    rating?: number | null;
+    undoable: boolean;
+  } | null;
+}
+
+export interface AnkiLibraryCardPatch {
+  front?: string;
+  back?: string;
+  text?: string;
+  tags?: string[];
 }
 
 export interface AnkiLibraryListResponse {
   items: AnkiLibraryCard[];
   page: number;
-  page_size: number;
+  pageSize: number;
   total: number;
 }
 
@@ -777,6 +802,22 @@ export interface ListAnkiCardsParams {
   search?: string;
   page?: number;
   page_size?: number;
+}
+
+export interface FsrsStats {
+  total: number;
+  due: number;
+  newCount: number;
+  learning: number;
+  review: number;
+  relearning: number;
+  suspended: number;
+  reviewsToday: number;
+}
+
+export interface FsrsCardMutationResult {
+  state: Record<string, unknown>;
+  changed: boolean;
 }
 
 export interface ExportAnkiCardsResult {

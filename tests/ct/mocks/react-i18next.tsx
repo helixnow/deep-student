@@ -3,7 +3,13 @@ export const t = (key: string, options?: any) => {
   // - t(key, { defaultValue })
   // - t(key, defaultValueString)
   if (typeof options === 'string') return options;
-  return options?.defaultValue ?? key;
+  const value = options?.defaultValue ?? key;
+  if (typeof value !== 'string' || !options) return value;
+
+  return value.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (placeholder, name) => {
+    const replacement = options[name];
+    return replacement == null ? placeholder : String(replacement);
+  });
 };
 
 export const i18n = {
@@ -25,7 +31,6 @@ export default {
   useTranslation,
   initReactI18next,
 };
-
 
 
 

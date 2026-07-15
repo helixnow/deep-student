@@ -10,6 +10,7 @@
       "stopped": "Stopped",
       "cancelled": "Cancelled",
       "revert": "Undo",
+      "reverting": "Reverting",
       "acting": "Working",
       "reviewing": "Awaiting confirmation",
       "done": "Done",
@@ -114,10 +115,15 @@
     "appName": "Study Desktop",
     "flashcardsDue": "{{count}} flashcards due",
     "tasksRunning": "{{count}} card tasks running",
+    "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
+    "automationsTitle": "Scheduled tasks",
     "pomodoroFocus": "Focus remaining {{time}}",
     "pomodoroIdle": "Not started",
     "pomodoroWork": "Focusing",
     "pomodoroBreak": "On break",
+    "openApps": "Open all apps",
+    "openCommandPalette": "Open command palette",
+    "openSettings": "Open settings",
     "openCenter": "Open Study Center",
     "centerShort": "Center",
     "centerTitle": "Study Center",
@@ -141,7 +147,8 @@
       "preparing": "Preparing session…",
       "createFailed": "Failed to create session",
       "retry": "Retry",
-      "loading": "Loading session…"
+      "loading": "Loading session…",
+      "sessionNav": "Session navigation"
     },
     "system": {
       "todoNav": "Todo navigation",
@@ -376,6 +383,7 @@
     }
   },
   "a11y": {
+    "desktop": "Workbench desktop",
     "windowRole": "Window",
     "close": "Close window",
     "minimize": "Minimize window",
@@ -477,11 +485,12 @@
       "needWorkbench": "Enable Study Desktop first to change built-in browser options."
     },
     "browserNetworkMode": {
-      "title": "Network Scope",
-      "desc": "Limit which addresses the browser may open.",
-      "local_whitelist": "Local & whitelist",
-      "full": "Full internet (confirm)",
-      "fullConfirm": "Full internet access allows public URLs. Continue only if you understand the risk."
+      "title": "Assistant HTTP Scope",
+      "desc": "Control whether the assistant may use public HTTP. Manual browsing is not restricted by this setting.",
+      "local_whitelist": "HTTPS public only",
+      "full": "Allow public HTTP (confirm)",
+      "fullConfirmTitle": "Allow assistant access to public HTTP?",
+      "fullConfirm": "Allowing the assistant to use public HTTP creates an unencrypted connection whose pages and traffic may be modified. Continue?"
     },
     "browserAgentControl": {
       "title": "Allow assistant browser control",
@@ -517,7 +526,15 @@
     "forward": "Forward",
     "reload": "Reload",
     "stop": "Stop",
+    "secureConnection": "Secure connection",
+    "insecureConnection": "Insecure HTTP connection",
+    "connectionUnknown": "No connection yet",
     "agentActive": "Assistant is controlling this page",
+    "userControl": "You are in control",
+    "takeOver": "Take over",
+    "detachedHint": "The page is open in a separate window",
+    "showContent": "Show page",
+    "emptyHint": "Enter a URL to start browsing",
     "blockedScheme": "This link cannot be opened for security reasons",
     "needWorkbench": "Enable Study Desktop first",
     "needBrowserEnabled": "Enable the built-in browser in Settings",
@@ -558,5 +575,171 @@
     "distribution": "Lifecycle distribution",
     "minimizedTag": "Minimized",
     "close": "Close panel"
-  }
+  },
+  "notesWorkspace": {
+    "title": "Notes",
+    "emptyPane": "Select a note or mind map",
+    "untitledNote": "Untitled note",
+    "untitledMindmap": "Untitled mind map",
+    "confirmCloseUnsaved": "This tab has unsaved changes. Close it anyway?",
+    "confirmCloseSaving": "This tab is still saving. Close it anyway?",
+    "ribbon": {
+      "aria": "Notes navigation",
+      "explorer": "File explorer",
+      "search": "Search notes",
+      "backlinks": "Linked notes",
+      "trash": "Trash"
+    },
+    "explorer": {
+      "title": "Files",
+      "newNote": "New note",
+      "newFolder": "New folder",
+      "newMindmap": "New mind map",
+      "refresh": "Refresh",
+      "open": "Open file explorer",
+      "close": "Close file explorer"
+    },
+    "search": {
+      "placeholder": "Search files...",
+      "aria": "Search files",
+      "clear": "Clear search"
+    },
+    "searchOverlay": {
+      "title": "Search notes",
+      "quickOpen": "Quick open",
+      "fullText": "Search content",
+      "quickOpenPlaceholder": "Filter openable files...",
+      "fullTextPlaceholder": "Search note contents...",
+      "close": "Close search",
+      "clear": "Clear search",
+      "modeLabel": "Search mode",
+      "searching": "Searching...",
+      "enterQuery": "Enter text to search note contents.",
+      "searchFailed": "Could not search notes.",
+      "openFailed": "Could not open this resource.",
+      "retry": "Retry",
+      "mindmap": "Mind map",
+      "note": "Note",
+      "empty": "No matching notes or mind maps.",
+      "keyboardHint": "Up/Down to select, Enter to open, Esc to close"
+    },
+    "backlinks": {
+      "title": "Links",
+      "refresh": "Refresh links",
+      "close": "Close links",
+      "noActiveNote": "Select a note to inspect its links.",
+      "loading": "Loading links...",
+      "loadFailed": "Could not load note links.",
+      "retry": "Retry",
+      "outgoing": "Outgoing links",
+      "noOutgoing": "No outgoing wiki links.",
+      "incoming": "Backlinks",
+      "noIncoming": "No notes link here yet.",
+      "incomingLimited": "Showing backlinks from the {{count}} most recently updated matching notes. Older backlinks may be omitted.",
+      "unresolved": "Unresolved links",
+      "noUnresolved": "No unresolved links.",
+      "openLinkedNote": "Open {{title}}",
+      "openFailed": "Could not open linked note."
+    },
+    "tree": {
+      "aria": "File tree",
+      "root": "Library root",
+      "folder": "Folder: {{name}}",
+      "loading": "Loading files",
+      "loadFailed": "Could not load files",
+      "retry": "Retry",
+      "noMatches": "No files match \"{{query}}\"",
+      "empty": "No files in this library yet",
+      "showAll": "Show all files"
+    },
+    "tabs": {
+      "aria": "Open files",
+      "close": "Close {{title}}",
+      "closeOthers": "Close other tabs",
+      "closeTabsToRight": "Close tabs to the right",
+      "pin": "Pin {{title}}",
+      "unpin": "Unpin {{title}}",
+      "pinned": "Pinned",
+      "openInRightSplit": "Open {{title}} in right split",
+      "closeRightSplit": "Close {{title}} from right split"
+    },
+    "panes": {
+      "main": "Main editor",
+      "right": "Right editor",
+      "resize": "Resize split panes"
+    },
+    "saveState": {
+      "saved": "Saved",
+      "saving": "Saving",
+      "dirty": "Unsaved"
+    },
+    "status": {
+      "ready": "Ready",
+      "fileCount": "{{count}} files",
+      "creatingNote": "Creating note...",
+      "creatingMindmap": "Creating mind map...",
+      "splitNeedsAnotherTab": "Open another tab to split the workspace.",
+      "movedToTrash": "{{name}} moved to trash",
+      "restored": "Restored {{name}}",
+      "noteType": "Markdown",
+      "mindmapType": "Mind map",
+      "library": "Local library"
+    },
+    "actions": {
+      "undo": "Undo"
+    },
+    "context": {
+      "rename": "Rename",
+      "delete": "Delete"
+    },
+    "dialog": {
+      "renameTitle": "Rename",
+      "createFolderTitle": "New folder",
+      "deleteTitle": "Move to trash",
+      "deleteDescription": "Move \"{{name}}\" to the trash?",
+      "nameLabel": "Name",
+      "nameRequired": "Enter a name.",
+      "cancel": "Cancel",
+      "rename": "Rename",
+      "create": "Create",
+      "delete": "Delete"
+    },
+    "trash": {
+      "title": "Trash",
+      "close": "Close trash",
+      "loading": "Loading trash",
+      "empty": "Trash is empty",
+      "restore": "Restore {{name}}"
+    }
+  },
+  "sandbox": {
+    "title": "Sandbox Workbench",
+    "refresh": "Refresh",
+    "openInspector": "Open inspector",
+    "closeInspector": "Close inspector",
+    "close": "Close",
+    "preview": "Preview",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "inspector": "Inspector",
+    "source": "Source",
+    "codeBlock": "Code block",
+    "safePreview": "Safe preview",
+    "running": "Running",
+    "view": "Viewport",
+    "desktop": "Desktop",
+    "tablet": "Tablet",
+    "mobile": "Mobile",
+    "stats": "Statistics",
+    "language": "Language",
+    "lines": "Lines",
+    "characters": "Characters",
+    "iframeNotice": "Restricted iframe; scripts are disabled.",
+    "emptyHint": "Open a code block in chat to preview it.",
+    "mobileHint": "Mobile focuses on preview; use the desktop app for the full workbench.",
+    "closed": "Closed",
+    "open": "Open sandbox workbench",
+    "clearSession": "Clear session"
+  },
+  "tagTreeMarkdownPlaceholder": "# Root tag\n### Subtopic A\n#### Concept 1\n##### Method A\n###### Question type I"
 }

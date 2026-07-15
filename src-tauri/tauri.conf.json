@@ -57,7 +57,16 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "category": "Education",
-    "resources": {},
+    "resources": {
+      "../LICENSE": "licenses/DeepStudent-AGPL-3.0.txt",
+      "../public/legal/THIRD_PARTY_NOTICES.txt": "licenses/THIRD_PARTY_NOTICES.txt",
+      "vendor/lancedb/LICENSE": "licenses/lancedb-Apache-2.0.txt",
+      "vendor/object_store/LICENSE.txt": "licenses/object_store-LICENSE.txt",
+      "vendor/object_store/NOTICE.txt": "licenses/object_store-NOTICE.txt",
+      "vendor/rs-fsrs/LICENSE": "licenses/rs-fsrs-MIT.txt",
+      "resources/pdfium/LICENSE.pdfium-binaries": "licenses/pdfium-binaries-MIT.txt",
+      "resources/pdfium/licenses/": "licenses/pdfium/"
+    },
     "copyright": "",
     "shortDescription": "AI驱动的智能学习助手",
     "longDescription": "Deep Student 是一款专为学生设计的AI驱动的智能学习助手。它利用先进的人工智能技术，帮助用户进行错题分析、知识点梳理和个性化学习，从而实现深度理解和高效学习。",

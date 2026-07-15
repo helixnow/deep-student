@@ -12,6 +12,10 @@
       "label": "Review First",
       "desc": "Practice wrong answers first"
     },
+    "reviewOnly": {
+      "label": "Wrong Answers Only",
+      "desc": "Practice only questions answered incorrectly"
+    },
     "byTag": {
       "label": "By Tag",
       "desc": "Practice by knowledge tags"
@@ -33,6 +37,12 @@
       "desc": "Generate custom practice papers"
     }
   },
+  "tagPicker": {
+    "title": "Choose a knowledge point",
+    "description": "Choose a tag to start practicing",
+    "untagged": "Untagged",
+    "questionCount": "{{count}} questions"
+  },
   "timed": {
     "title": "Timed Practice",
     "duration": "Duration (minutes)",
@@ -49,7 +59,10 @@
     "resume": "Resume",
     "pause": "Pause",
     "submit": "Submit",
-    "warning": "Less than 1 minute remaining!"
+    "warning": "Less than 1 minute remaining!",
+    "timeoutMessage": "Timed practice has ended",
+    "timeoutTitle": "Time's up",
+    "startError": "Failed to start timed practice"
   },
   "questionType": {
     "single_choice": "Single Choice",
@@ -85,6 +98,10 @@
     "confirmWarning": "You have {{count}} unanswered questions. Are you sure you want to submit?",
     "cancel": "Cancel",
     "confirmSubmit": "Confirm Submit",
+    "startError": "Failed to generate exam",
+    "submitError": "Failed to submit exam",
+    "remaining": "Time Remaining",
+    "timeWarning": "Less than 1 minute left in the exam!",
     "scoreCard": "Score Card",
     "total": "Total",
     "correct": "Correct",
@@ -127,7 +144,9 @@
     "questionsCount": "{{count}}q",
     "monthDays": "Days This Month",
     "monthQuestions": "Total Questions",
-    "streak": "Streak"
+    "streak": "Streak",
+    "calendarLoadFailed": "Failed to load the check-in calendar",
+    "startError": "Failed to load daily practice"
   },
   "paper": {
     "title": "Paper Generator",
@@ -155,7 +174,12 @@
     "back": "Back to Config",
     "export": "Export",
     "answer": "Answer",
-    "explanation": "Explanation"
+    "explanation": "Explanation",
+    "generateFailed": "Failed to generate paper: {{error}}",
+    "exportComingSoon": "PDF / Word export is coming soon. Use Markdown export or preview for now.",
+    "exportTitle": "Export Paper",
+    "exportSuccess": "Paper exported",
+    "exportFailed": "Export failed. Please try again."
   },
   "tagNav": {
     "knowledgePoints": "Knowledge Points",
@@ -179,6 +203,16 @@
     "emptyDesc2": "Add tags when editing questions to practice by knowledge points."
   },
   "questionBank": {
+    "practice": {
+      "noQuestions": "No questions yet",
+      "addFirst": "Add questions first",
+      "chooseMode": "Choose Practice Mode"
+    },
+    "stats": {
+      "mastered": "Mastered",
+      "toReview": "To review",
+      "correctRate": "Accuracy"
+    },
     "statusShort": {
       "new": "New",
       "inProgress": "Learning",

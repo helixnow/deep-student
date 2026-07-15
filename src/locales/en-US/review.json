@@ -43,7 +43,8 @@
   "queue": {
     "title": "Review Queue",
     "sortedByDue": "Sorted by due date",
-    "andMore": "{{count}} more..."
+    "andMore": "{{count}} more...",
+    "questionUnavailable": "Question content is unavailable. Refresh and try again."
   },
 
   "empty": {
@@ -52,7 +53,12 @@
   },
 
   "session": {
-    "noItems": "No items to review"
+    "noItems": "No items to review",
+    "submitFailed": "Could not save the review. Please try again.",
+    "submitFailedTitle": "Could not save review",
+    "exitTitle": "End this review session?",
+    "exitDescription": "Submitted ratings will be kept. You can start the remaining items again later.",
+    "exitConfirm": "End review"
   },
 
   "card": {
@@ -132,6 +138,7 @@
     "weeksAgo": "{{count}}w ago",
     "monthsAgo": "{{count}}mo ago",
     "noContent": "No content",
+    "selectQuestion": "Select {{label}}",
     "selectAll": "Select All",
     "cancel": "Cancel",
     "reset": "Reset",

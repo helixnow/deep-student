@@ -12,6 +12,10 @@
       "label": "错题优先",
       "desc": "优先练习答错的题目"
     },
+    "reviewOnly": {
+      "label": "仅练错题",
+      "desc": "只练习已经答错的题目"
+    },
     "byTag": {
       "label": "按标签",
       "desc": "按知识点标签分类练习"
@@ -33,6 +37,12 @@
       "desc": "自定义生成练习试卷"
     }
   },
+  "tagPicker": {
+    "title": "选择知识点",
+    "description": "选择一个标签开始练习",
+    "untagged": "未分类",
+    "questionCount": "{{count}} 题"
+  },
   "timed": {
     "title": "限时练习",
     "duration": "时长（分钟）",
@@ -49,7 +59,10 @@
     "resume": "继续",
     "pause": "暂停",
     "submit": "交卷",
-    "warning": "时间不足1分钟！"
+    "warning": "时间不足1分钟！",
+    "timeoutMessage": "限时练习时间已到",
+    "timeoutTitle": "时间到",
+    "startError": "启动限时练习失败"
   },
   "questionType": {
     "single_choice": "单选题",
@@ -85,6 +98,10 @@
     "confirmWarning": "您还有 {{count}} 道题未作答，确定要交卷吗？",
     "cancel": "取消",
     "confirmSubmit": "确认交卷",
+    "startError": "生成考试失败",
+    "submitError": "交卷失败",
+    "remaining": "剩余时间",
+    "timeWarning": "考试时间不足 1 分钟！",
     "scoreCard": "成绩单",
     "total": "总题数",
     "correct": "正确",
@@ -127,7 +144,9 @@
     "questionsCount": "{{count}}题",
     "monthDays": "本月打卡",
     "monthQuestions": "做题总数",
-    "streak": "连续打卡"
+    "streak": "连续打卡",
+    "calendarLoadFailed": "打卡日历加载失败，请重试",
+    "startError": "获取每日练习失败"
   },
   "paper": {
     "title": "组卷生成器",
@@ -155,7 +174,12 @@
     "back": "返回配置",
     "export": "导出",
     "answer": "答案",
-    "explanation": "解析"
+    "explanation": "解析",
+    "generateFailed": "生成试卷失败：{{error}}",
+    "exportComingSoon": "PDF / Word 导出即将推出，可先用 Markdown 导出或预览",
+    "exportTitle": "导出试卷",
+    "exportSuccess": "试卷已导出",
+    "exportFailed": "导出失败，请重试"
   },
   "tagNav": {
     "knowledgePoints": "知识点",
@@ -179,6 +203,16 @@
     "emptyDesc2": "在编辑题目时添加标签，可以按知识点分类练习。"
   },
   "questionBank": {
+    "practice": {
+      "noQuestions": "暂无题目",
+      "addFirst": "请先添加题目",
+      "chooseMode": "选择练习模式"
+    },
+    "stats": {
+      "mastered": "已掌握",
+      "toReview": "待复习",
+      "correctRate": "正确率"
+    },
     "statusShort": {
       "new": "新",
       "inProgress": "学习中",

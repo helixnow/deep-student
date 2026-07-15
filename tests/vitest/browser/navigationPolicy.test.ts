@@ -41,19 +41,23 @@ describe('allowNavigation', () => {
     expect(allowNavigation('https://127.0.0.1/')).toEqual({ ok: true });
   });
 
-  it('allows http only for loopback in local_whitelist', () => {
+  it('allows manual http navigation and restricts agent http in local_whitelist', () => {
     expect(allowNavigation('http://127.0.0.1:8080/')).toEqual({ ok: true });
     expect(allowNavigation('http://localhost/')).toEqual({ ok: true });
     expect(allowNavigation('http://app.localhost/')).toEqual({ ok: true });
     expect(allowNavigation('http://[::1]/')).toEqual({ ok: true });
+    expect(allowNavigation('http://example.com/')).toEqual({ ok: true });
 
-    expect(allowNavigation('http://example.com/')).toEqual({
+    expect(allowNavigation('http://example.com/', 'local_whitelist', true)).toEqual({
       ok: false,
       reason: 'non_loopback_http',
     });
-    expect(allowNavigation('http://192.168.1.1/')).toEqual({
+    expect(allowNavigation('http://192.168.1.1/', 'local_whitelist', true)).toEqual({
       ok: false,
       reason: 'non_loopback_http',
+    });
+    expect(allowNavigation('http://localhost/', 'local_whitelist', true)).toEqual({
+      ok: true,
     });
   });
 

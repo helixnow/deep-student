@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from './errorUtils';
 import { invokeWithDebug } from './shared';
-import type { DatabaseInfo, TestDatabaseSwitchResponse, MistakeItem } from './types';
+import type { DatabaseInfo, TestDatabaseSwitchResponse } from './types';
 
 // 合并相邻的assistant消息：
 // - 如果出现 [assistant(无内容但含工具/来源)] + [assistant(有内容)]，
@@ -181,19 +181,3 @@ export async function ocrExtractText(options: {
 
 // ★ 白板库 API 已移除（白板模块废弃，2026-01 清理）
 */
-
-/** @deprecated 错题库功能已废弃（2026-01 清理），仅保留存根供 dev test panels 使用 */
-export async function getMistakeDetails(_id: string): Promise<MistakeItem | null> {
-  console.warn('[DEPRECATED] getMistakeDetails is deprecated, migrate callers (2026-01 cleanup)');
-  return null;
-}
-
-/** @deprecated 后端 command 已移除，仅 dev/ChatSaveTestPanel 诊断包装使用 */
-export async function updateMistake(_item: MistakeItem): Promise<MistakeItem> {
-  throw new Error('updateMistake is deprecated: backend command removed');
-}
-
-/** @deprecated 后端 command 已移除，仅 dev/ChatSaveTestPanel 诊断包装使用 */
-export async function runtimeAutosaveCommit(_params: unknown): Promise<unknown> {
-  throw new Error('runtimeAutosaveCommit is deprecated: backend command removed');
-}
