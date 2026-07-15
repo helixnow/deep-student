@@ -38,6 +38,8 @@ describe('AgentControlDockEntry', () => {
     const trigger = screen.getByTestId('wb-dock-agent-control-button');
     await waitFor(() => expect(trigger).toHaveAttribute('data-mode', 'background'));
     expect(trigger).toHaveAttribute('data-unseen', 'true');
+    expect(trigger.querySelectorAll('.wb-agent-control-status-dot')).toHaveLength(1);
+    expect(trigger.querySelector('.wb-agent-control-new-dot')).not.toBeInTheDocument();
 
     fireEvent.click(trigger);
 

@@ -340,10 +340,9 @@ export function AgentControlDockEntry({
                   aria-hidden="true"
                   className="wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center"
                 >
-                  <Robot className="wb-agent-control-dock-glyph" size={27} weight="duotone" />
+                  <Robot size={27} weight="duotone" />
                 </span>
                 <span className="wb-agent-control-status-dot" data-mode={mode} aria-hidden="true" />
-                {!seen && <span className="wb-agent-control-new-dot" aria-hidden="true" />}
               </NotionButton>
             </PopoverTrigger>
 
