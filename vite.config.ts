@@ -105,6 +105,7 @@ export default defineConfig(({ command, mode }) => ({
         { src: cMapsDir, dest: '' },
         { src: standardFontsDir, dest: '' },
         { src: wasmDir, dest: '' },
+        { src: normalizePath(path.join(process.cwd(), 'LICENSE')), dest: 'legal', rename: 'DEEPSTUDENT_LICENSE.txt' },
       ],
     }),
     process.env.ANALYZE === '1' && visualizer({
