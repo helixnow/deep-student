@@ -370,7 +370,7 @@ export function CommandPalette() {
             <MagnifyingGlass className="command-palette-search-icon" size={16} />
             <input
               ref={inputRef}
-              type="text"
+              type="search"
               className="command-palette-input"
               placeholder={t('command_palette:search_placeholder')}
               value={query}

@@ -978,7 +978,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
             <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
             <Input
-              type="text"
+              type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder')}

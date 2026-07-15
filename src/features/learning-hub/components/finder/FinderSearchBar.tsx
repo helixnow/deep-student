@@ -33,7 +33,7 @@ export function FinderSearchBar({ value, onChange, onSearch, isLoading }: Finder
           <MagnifyingGlass size={16} className="absolute left-2.5 top-2.5 text-muted-foreground" />
         )}
         <Input
-          type="text"
+          type="search"
           placeholder={t('finder.search.placeholder')}
           className="pl-9 pr-8 h-9 bg-muted/30 focus-visible:bg-background transition-colors"
           value={value}

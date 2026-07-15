@@ -86,8 +86,8 @@
 }
 
 .wb-resource-workspace-search:focus-within {
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 1px hsl(var(--ring));
+  border-color: hsl(var(--border));
+  box-shadow: none;
 }
 
 .wb-resource-workspace-search input {

@@ -1678,7 +1678,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           <MagnifyingGlass size={16} className="ds-search-icon" />
           <Input
             ref={searchInputRef}
-            type="text"
+            type="search"
             className="ds-search-input"
             placeholder={t('pdf:toolbar.search_placeholder')}
             value={searchQuery}

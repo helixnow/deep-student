@@ -106,7 +106,8 @@ export const NotesSidebarSearch: React.FC = () => {
                 <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
                 <Input
                     ref={inputRef}
-                    className={`h-8 pl-8 pr-8 text-xs bg-background/50 border-transparent hover:bg-background focus:bg-background focus:border-border/50 focus:ring-0 transition-all placeholder:text-muted-foreground/40 shadow-sm ${highlight ? 'ring-2 ring-primary/60 ring-offset-1' : ''}`}
+                    type="search"
+                    className={`h-8 pl-8 pr-8 text-xs bg-background/50 border-transparent hover:bg-background focus:bg-background focus:border-border/50 focus:ring-0 transition-all placeholder:text-muted-foreground/40 shadow-sm ${highlight ? 'border-[color:var(--border)] bg-background' : ''}`}
                     data-highlight={highlight ? "true" : "false"}
                     placeholder={t('notes:sidebar.search.search_placeholder')}
                     value={localTerm}

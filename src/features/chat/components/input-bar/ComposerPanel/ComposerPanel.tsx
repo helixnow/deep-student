@@ -185,7 +185,7 @@ const Search: React.FC<ComposerPanelSearchProps> = ({
         aria-hidden="true"
       />
       <Input
-        type="text"
+        type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}

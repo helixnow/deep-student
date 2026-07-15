@@ -105,6 +105,7 @@ export function Combobox({
               </span>
               <Input
                 autoFocus
+                type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={resolvedSearchPlaceholder}

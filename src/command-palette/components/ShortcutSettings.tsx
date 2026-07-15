@@ -233,6 +233,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
             <div className="relative flex-1 w-full sm:max-w-xs">
               <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
               <Input
+                type="search"
                 placeholder={t('command_palette:search_shortcuts')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

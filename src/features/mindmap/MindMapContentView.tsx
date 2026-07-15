@@ -816,6 +816,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
         <div className="mm-search-popover ui-drop-in" role="search">
           <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
+            type="search"
             className="mm-search-input"
             placeholder={t('mindmap:toolbar.searchPlaceholder')}
             value={searchInput}

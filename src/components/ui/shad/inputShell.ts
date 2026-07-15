@@ -28,11 +28,10 @@ export const inputShellClass = [
   'placeholder:text-muted-foreground/50',
   // hover
   'hover:bg-[color:var(--surface-panel-strong)]',
-  // focus-visible
-  'focus-visible:border-[color:var(--input-shell-focus)]',
-  'focus-visible:bg-[color:var(--surface-panel-strong)]',
-  'focus-visible:outline-none',
-  'focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]',
+  // Focus matches the settings search field: a quiet border and surface change, no glow.
+  'focus:border-[color:var(--border)] focus:bg-background focus:outline-none focus:ring-0',
+  'focus-visible:border-[color:var(--border)] focus-visible:bg-background',
+  'focus-visible:outline-none focus-visible:ring-0',
   // disabled
   'disabled:cursor-not-allowed disabled:opacity-50',
 ].join(' ');

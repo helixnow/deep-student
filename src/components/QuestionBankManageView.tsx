@@ -322,6 +322,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           <div className="relative flex-1">
             <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
+              type="search"
               placeholder={t('exam_sheet:questionBank.search')}
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}

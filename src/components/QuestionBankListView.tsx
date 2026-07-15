@@ -707,6 +707,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           <div className="relative flex-1 min-w-0">
             <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
+              type="search"
               value={searchQuery}
               onChange={(e) => handleSearchChange(e.target.value)}
               placeholder={t('practice:questionBank.searchPlaceholder')}

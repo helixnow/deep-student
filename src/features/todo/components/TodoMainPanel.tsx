@@ -1733,7 +1733,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             <div className="relative">
               <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
               <Input
-                type="text"
+                type="search"
                 value={filter.search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('todo:actions.search')}

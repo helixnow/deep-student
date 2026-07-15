@@ -326,7 +326,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   />
                 ) : (
                   <Input
-                    type="text"
+                    type="search"
                     placeholder={t('finder.search.placeholder')}
                     value={searchQuery}
                     onChange={(e) => onSearchChange?.(e.target.value)}

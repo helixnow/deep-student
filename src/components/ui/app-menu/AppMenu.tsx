@@ -498,8 +498,8 @@ export function AppMenuContent({
           <MagnifyingGlass className="app-menu-search-icon" />
           <input
             ref={searchInputRef}
-            type="text"
-            className="app-menu-search-input"
+            type="search"
+            className="app-menu-search-input ds-search-input"
             placeholder={resolvedSearchPlaceholder}
             value={actualSearchValue}
             onChange={(e) => handleSearchChange(e.target.value)}

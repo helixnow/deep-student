@@ -308,6 +308,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
           <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-background">
             <MagnifyingGlass size={14} className="text-muted-foreground" />
             <Input
+              type="search"
               placeholder={t('chatV2:documentViewer.search')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}

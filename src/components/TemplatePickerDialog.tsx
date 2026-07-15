@@ -58,7 +58,7 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
             <p className="text-sm text-muted-foreground mt-1">{t('select_template_description')}</p>
           </div>
           <div className="flex items-center gap-2 mb-4">
-            <Input value={search} onChange={(e)=> setSearch(e.target.value)} placeholder={t('search_template_placeholder')} className="flex-1" />
+            <Input type="search" value={search} onChange={(e)=> setSearch(e.target.value)} placeholder={t('search_template_placeholder')} className="flex-1" />
             <NotionButton variant="ghost" size="sm" onClick={load} disabled={loading}>{loading ? t('loading') : t('refresh')}</NotionButton>
           </div>
           <div className="grid gap-3 grid-cols-1 md:grid-cols-2">

@@ -370,7 +370,7 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
         </NotionButton>
         {searchOpen && (
           <div className="wb-file-preview-search">
-            <input ref={searchInputRef} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('common:search', '搜索')} aria-label={t('common:search', '搜索')} />
+            <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('common:search', '搜索')} aria-label={t('common:search', '搜索')} />
             <span>{searchState.ranges.length ? `${searchState.current + 1}/${searchState.ranges.length}` : '0/0'}</span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(-1)} disabled={!searchState.ranges.length} aria-label={t('common:previous', '上一个')}><ArrowUp size={14} /></NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => navigateSearch(1)} disabled={!searchState.ranges.length} aria-label={t('common:next', '下一个')}><ArrowDown size={14} /></NotionButton>

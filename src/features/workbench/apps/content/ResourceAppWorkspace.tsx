@@ -386,6 +386,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           <MagnifyingGlass size={14} aria-hidden="true" />
           <input
             ref={searchInputRef}
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {

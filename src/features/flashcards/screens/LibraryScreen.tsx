@@ -154,6 +154,7 @@ export const LibraryScreen: React.FC = () => {
           />
           <Input
             aria-label={t('library.searchLabel')}
+            type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => {

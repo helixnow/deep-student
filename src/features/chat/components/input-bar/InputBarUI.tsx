@@ -2702,8 +2702,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                                 <div className="app-menu-search">
                                   <MagnifyingGlass className="app-menu-search-icon" />
                                   <input
-                                    type="text"
-                                    className="app-menu-search-input"
+                                    type="search"
+                                    className="app-menu-search-input ds-search-input"
                                     placeholder={runtimeModelSearchPlaceholder}
                                     value={runtimeModelSearch}
                                     onChange={(event) => setRuntimeModelSearch(event.target.value)}

@@ -40,12 +40,6 @@
   color: hsl(var(--foreground));
 }
 
-.search-input:focus {
-  outline: none;
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
-}
-
 .clear-search {
   position: absolute;
   right: 8px;

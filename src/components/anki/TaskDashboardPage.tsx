@@ -1449,6 +1449,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             <div className="relative max-w-[220px] flex-shrink-0">
               <MagnifyingGlass size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/30" />
               <Input
+                type="search"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}

@@ -88,8 +88,8 @@
 }
 
 .notes-search-overlay-input-wrap:focus-within {
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 1px hsl(var(--ring));
+  border-color: hsl(var(--border));
+  box-shadow: none;
 }
 
 .notes-search-overlay-input-wrap input {

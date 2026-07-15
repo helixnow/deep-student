@@ -280,7 +280,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           size={embedded ? 16 : 18}
         />
         <Input
-          type="text"
+          type="search"
           placeholder={t('learningHub:finder.search.placeholder')}
           value={searchQuery}
           onChange={(e) => onSearchChange?.(e.target.value)}

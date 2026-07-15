@@ -706,7 +706,7 @@ export function LearningHubSidebar({
       setMobileSearchExpanded(true);
     }
     window.setTimeout(() => {
-      const input = (quickAccessPortalTarget ?? containerRef.current)?.querySelector<HTMLInputElement>('input[type="text"]');
+      const input = (quickAccessPortalTarget ?? containerRef.current)?.querySelector<HTMLInputElement>('input[type="search"]');
       if (input) {
         input.focus();
         input.select();
@@ -2395,7 +2395,7 @@ export function LearningHubSidebar({
               // 搜索框展开态
               <div className="flex-1 flex items-center gap-1">
                 <Input
-                  type="text"
+                  type="search"
                   placeholder={t('finder.search.placeholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}

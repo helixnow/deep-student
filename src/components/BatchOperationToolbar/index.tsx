@@ -280,7 +280,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           <div className="search-box">
             <MagnifyingGlass size={18} />
             <input
-              type="text"
+              type="search"
               placeholder={t('search_cards_placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

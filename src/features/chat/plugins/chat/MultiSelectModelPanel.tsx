@@ -503,7 +503,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
         <Input
-          type="text"
+          type="search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('chat_host:model_panel.search_placeholder')}

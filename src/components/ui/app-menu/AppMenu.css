@@ -106,8 +106,7 @@
 }
 
 .app-menu-search:focus-within {
-  border-color: hsl(var(--primary) / 0.55);
-  background-color: var(--menu-shell-surface);
+  border-color: hsl(var(--border));
 }
 
 .app-menu-search-icon {
@@ -119,11 +118,20 @@
 
 .app-menu-search-input {
   flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
   border: none;
   background: transparent;
   font-size: var(--menu-shell-font-size);
   color: var(--menu-shell-foreground);
   outline: none;
+  box-shadow: none;
+}
+
+.app-menu-search-input:focus,
+.app-menu-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
 .app-menu-search-input::placeholder {

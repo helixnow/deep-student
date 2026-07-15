@@ -179,6 +179,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
           <MagnifyingGlass className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
             ref={inputRef}
+            type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t('refs.searchPlaceholder')}

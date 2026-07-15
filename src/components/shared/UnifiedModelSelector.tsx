@@ -395,6 +395,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
           <div className="relative mb-1.5 px-0.5 pt-0.5">
             <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
+              type="search"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('chat_host:model_panel.search_placeholder', '搜索...')}

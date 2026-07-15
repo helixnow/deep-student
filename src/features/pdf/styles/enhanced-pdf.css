@@ -398,12 +398,6 @@
   color: hsl(var(--foreground));
 }
 
-.ds-search-input:focus {
-  outline: none;
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 1px hsl(var(--ring));
-}
-
 .ds-search-info {
   font-size: 12px;
   color: hsl(var(--muted-foreground));

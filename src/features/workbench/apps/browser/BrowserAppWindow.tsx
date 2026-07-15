@@ -143,7 +143,7 @@ const AddressBar: React.FC<{
       </span>
       <input
         ref={inputRef}
-        className="wb-browser-address-input"
+        className="wb-browser-address-input ds-search-input"
         type="text"
         value={draft}
         onChange={(e) => onDraftChange(e.target.value)}

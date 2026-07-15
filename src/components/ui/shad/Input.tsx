@@ -10,6 +10,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type,
       type={type}
       className={cn(
         inputShellClass,
+        type === 'search' && 'ds-search-input',
         // 单行输入独有：触达目标高度 + file input 样式
         'flex w-full min-h-[var(--touch-target-size)] lg:min-h-[var(--button-height)]',
         'file:border-0 file:bg-transparent file:text-sm file:font-medium',

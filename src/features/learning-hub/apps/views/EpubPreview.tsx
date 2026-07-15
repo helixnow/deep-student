@@ -382,7 +382,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
               <div className="epub-preview-search">
                 <label className="epub-preview-search-input">
                   <MagnifyingGlass size={15} aria-hidden="true" />
-                  <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('learningHub:epubPreview.searchPlaceholder')} autoFocus />
+                  <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('learningHub:epubPreview.searchPlaceholder')} autoFocus />
                 </label>
                 <div className="epub-preview-search-summary">
                   {searching

@@ -1938,6 +1938,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           <MagnifyingGlass size={14} aria-hidden />
           <input
             className="notes-search-input"
+            type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t('notesWorkspace.search.placeholder', 'Search files...')}

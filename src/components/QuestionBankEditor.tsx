@@ -2628,6 +2628,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <div className="relative mb-3">
                   <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
+                    type="search"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={t('editor.searchPlaceholder')}

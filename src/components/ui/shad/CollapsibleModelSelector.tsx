@@ -127,6 +127,7 @@ export function CollapsibleModelSelector({
                 </span>
                 <Input
                   autoFocus={expanded}
+                  type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={resolvedSearchPlaceholder}

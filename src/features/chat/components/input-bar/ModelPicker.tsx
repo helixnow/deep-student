@@ -560,7 +560,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             'relative flex items-center gap-1.5 rounded-[var(--menu-shell-row-radius)] border',
             'bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)]',
             'border-[color:var(--menu-shell-border)] px-2 py-1.5 transition-colors',
-            'focus-within:border-[hsl(var(--primary)/0.55)] focus-within:bg-[color:var(--menu-shell-surface)]'
+            'focus-within:border-[color:var(--border)] focus-within:bg-[color:var(--menu-shell-surface)]'
           )}
         >
         <MagnifyingGlass
@@ -568,7 +568,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           className="pointer-events-none shrink-0 text-[color:var(--menu-shell-muted-foreground)]"
         />
         <Input
-          type="text"
+          type="search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...')}

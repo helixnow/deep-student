@@ -400,7 +400,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
             <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
-              type="text"
+              type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('context.searchFolder', '搜索文件夹...')}

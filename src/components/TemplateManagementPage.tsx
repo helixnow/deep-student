@@ -955,7 +955,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               <div className="group relative min-w-0 flex-1">
                 <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" size={16} />
                 <ShadInput
-                  type="text"
+                  type="search"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder={t('search_placeholder')}
