@@ -943,6 +943,7 @@ impl CanvasToolExecutor {
                         .unwrap_or(false)
                 })
                 .map(|(id, title, snippet)| {
+                    let snippet = snippet.unwrap_or_default();
                     json!({
                         "id": id,
                         "title": title,

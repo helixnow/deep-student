@@ -3190,7 +3190,7 @@ impl QBankExecutor {
                     "user_note": question.user_note,
                     "images": question.images,
                 }))
-                .collect();
+                .collect::<Vec<Value>>();
             (name, questions, "questions_table", false)
         } else {
             let db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
@@ -3218,7 +3218,7 @@ impl QBankExecutor {
                     "correct_count": card.correct_count,
                     "user_note": card.user_note,
                 }))
-            }).collect();
+            }).collect::<Vec<Value>>();
             (name, questions, "preview_json", true)
         };
 
