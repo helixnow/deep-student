@@ -1,7 +1,7 @@
 /**
  * StatusBar / StatusBarItems（SB1 壳 + SB2 信号项 + SB3 学习中心）
  * ---------------------------------------------------------------------------
- * 透明字层；无实心顶条。根 pointer-events:none，子项 auto。
+ * 紧凑玻璃顶条：左侧品牌，右侧状态与工具。根 pointer-events:none，子项 auto。
  * Windows：右侧为窗控胶囊让位（data-chrome-inset=windows）。
  * 学习中心：2×2 瓷砖，非整页堆叠列表。
  */
@@ -11,16 +11,18 @@
   top: 0;
   left: 0;
   right: 0;
-  height: var(--wb-menubar-height, 28px);
+  height: var(--wb-menubar-height, 40px);
   z-index: var(--wb-z-menubar, 9050);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   padding: 0 12px;
+  box-sizing: border-box;
   pointer-events: none;
   color: var(--wb-menubar-fg, hsl(var(--foreground)));
-  background: transparent;
+  background-color: var(--wb-menubar-bg, transparent);
+  border-bottom: 1px solid var(--wb-menubar-border, transparent);
   user-select: none;
 }
 
@@ -32,7 +34,7 @@
 /* macOS：状态栏与系统标题栏共面，左侧只给原生红黄绿按钮留位。 */
 .wb-menubar[data-macos-chrome='integrated'] {
   min-height: 40px;
-  height: var(--desktop-titlebar-height, 40px);
+  height: var(--wb-menubar-height, 40px);
   padding-left: var(--wb-macos-traffic-lights-inset, 76px);
   cursor: default;
   pointer-events: none;
@@ -46,15 +48,23 @@
   user-select: none;
 }
 
+.wb-menubar-leading,
 .wb-menubar-trailing {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
   /* 空隙穿透，避免吃掉最大化窗口顶栏右侧拖拽；仅子按钮/弹层 auto */
   pointer-events: none;
+}
+
+.wb-menubar-leading {
+  min-width: 0;
+}
+
+.wb-menubar-trailing {
+  margin-left: auto;
 }
 
 .wb-menubar-status-slot {
@@ -69,8 +79,8 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-height: 22px;
-  height: 24px;
+  min-height: 24px;
+  height: 26px;
   padding: 0 7px;
   margin: 0;
   border: none;
@@ -96,6 +106,18 @@
   outline-offset: 1px;
 }
 
+.wb-menubar-item[data-wb-status-item='automations'][data-status='running'] {
+  color: hsl(var(--primary));
+}
+
+.wb-menubar-item[data-wb-status-item='automations'][data-status='error'] {
+  color: hsl(var(--destructive));
+}
+
+.wb-menubar-item[data-wb-status-item='automations'] .wb-menubar-item-icon {
+  color: currentColor;
+}
+
 .wb-menubar-item-icon {
   display: inline-flex;
   flex-shrink: 0;
@@ -108,8 +130,27 @@
 }
 
 .wb-menubar-item-icon-only {
-  width: 24px;
+  width: 26px;
   padding: 0;
+}
+
+.wb-menubar-brand {
+  min-width: 0;
+  max-width: 196px;
+  padding-left: 3px;
+  padding-right: 8px;
+  font-weight: 600;
+}
+
+.wb-menubar-brand-mark {
+  width: 16px;
+  height: 16px;
+}
+
+.wb-menubar-brand-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==== 学习中心弹层（紧凑 2×2） ======================================== */
@@ -266,5 +307,25 @@
   .wb-menubar-item,
   .wb-menubar-tile {
     transition: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .wb-menubar {
+    gap: 6px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .wb-menubar-brand-label,
+  .wb-menubar-status-slot .wb-menubar-item-value {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .wb-menubar-command,
+  .wb-menubar-settings {
+    display: none;
   }
 }

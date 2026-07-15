@@ -14,7 +14,7 @@
  * - pdf-ref:open             → launch textbook/file 窗 + 延迟派发 pdf-ref:focus
  * - navigateToNote / navigateToTranslation / navigateToEssay → launch 内容窗
  *
- * 注：AnkiPanelHost（open-anki-panel）已拆除——dispatchOpenAnkiPanelEvent 无业务调用。
+ * 注：旧版 Anki 面板事件桥接已拆除。
  */
 import React, { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';

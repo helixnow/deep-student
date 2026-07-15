@@ -16,6 +16,7 @@
  * - 其余：scrollToHeading 返回 handled:false + hint（禁止假成功）
  */
 import React from 'react';
+import i18next from 'i18next';
 import {
   TextbookIcon,
   ExamIcon,
@@ -26,18 +27,35 @@ import {
 } from '@/features/learning-hub/icons';
 import {
   useQuestionBankStore,
+  validateQbankPracticeHandoff,
   type PracticeMode,
   type QuestionFilters,
 } from '@/stores/questionBankStore';
-import { QBANK_FOCUS_EVENT } from '../../agent/drivers/qbankDriver';
+import { useReviewPlanStore } from '@/stores/reviewPlanStore';
+import {
+  QBANK_CONTROL_EVENT,
+  QBANK_FOCUS_EVENT,
+  type QbankControlAction,
+  type QbankControlEventDetail,
+  type QbankControlResult,
+  type QbankFocusEventDetail,
+} from '../../agent/drivers/qbankDriver';
 import { getNoteEditor } from '../../agent/drivers/noteDriver';
 import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { createContentApp, type CreateContentAppOptions } from './createContentApp';
+import { requestContentCloseConfirmation } from './ContentCloseConfirmation';
+import { isContentDirty } from './contentDirtyRegistry';
+import {
+  getResourceWorkspaceActive,
+  requestResourceWorkspace,
+  waitForResourceWorkspaceActive,
+} from './resourceWorkspaceRegistry';
 import {
   createExamAgentManifest,
   createResourceContentManifest,
 } from './agentManifests';
+import { requestPdfPageFocus } from './pdfFocusAck';
 
 function parseHeadingPayload(payload: unknown): { heading: string; level: number; page?: number } {
   let heading = '';
@@ -96,7 +114,7 @@ export function handleNoteActivation(ctx: ActivationContext): ActivationResult {
     };
   }
 
-  const api = getNoteEditor(resourceId);
+  const api = getNoteEditor(resourceId, ctx.windowId);
   if (!api) {
     console.warn('[workbench:note] scrollToHeading ignored: editor not registered');
     return {
@@ -124,17 +142,176 @@ function payloadRecord(payload: unknown): Record<string, unknown> {
     : {};
 }
 
-function focusCurrentQuestion(): ActivationResult {
-  const questionId = useQuestionBankStore.getState().currentQuestionId;
-  if (!questionId) {
-    return { handled: false, code: 'QUESTION_NOT_FOUND', hint: '当前题目列表为空' };
+/** Keep an unfinished SM-2 queue scoped to its exam and ask before the OS shell closes it. */
+async function canCloseExamWorkspace(instanceKey: string | null): Promise<boolean> {
+  const store = useReviewPlanStore.getState();
+  const { session } = store;
+  const hasRemainingItems =
+    session.isActive && session.currentIndex < session.queue.length;
+  const examId = instanceKey ?? getResourceWorkspaceActive('exam');
+  // The OS exam app is a single resource workspace. When it closes (no
+  // instanceKey), any active queue belongs to that window even if the user
+  // switched its visible resource after starting the queue.
+  const ownsReviewSession = instanceKey === null
+    || !session.examId
+    || instanceKey === session.examId;
+
+  if (hasRemainingItems && ownsReviewSession) {
+    const confirmed = await requestContentCloseConfirmation({
+      description: i18next.t('review:session.exitDescription', {
+        defaultValue: '已提交的评分会保留，剩余题目可稍后重新开始复习。',
+      }),
+    });
+    if (!confirmed) return false;
+    store.endSession();
   }
-  window.dispatchEvent(new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId } }));
+
+  if (!isContentDirty('exam', examId)) return true;
+  return requestContentCloseConfirmation({
+    description: i18next.t('workbench:content.confirmCloseUnsaved', {
+      defaultValue: '当前内容有未保存的修改，确定要关闭窗口吗？',
+    }),
+  });
+}
+
+function resolveExamTarget(ctx: ActivationContext): string | null {
+  return ctx.instanceKey ?? getResourceWorkspaceActive('exam');
+}
+
+function dispatchExamFocus(targetResourceId: string, questionId: string): ActivationResult {
+  if (typeof window === 'undefined') {
+    return {
+      handled: false,
+      code: 'WINDOW_NOT_FOUND',
+      hint: '题目集视图未就绪，无法定位题目',
+    };
+  }
+
+  let acknowledgement: { handled: boolean; previousQuestionId: string | null } | null = null;
+  window.dispatchEvent(
+    new CustomEvent<QbankFocusEventDetail>(QBANK_FOCUS_EVENT, {
+      detail: {
+        targetResourceId,
+        questionId,
+        acknowledge: (result) => {
+          acknowledgement = result;
+        },
+      },
+    }),
+  );
+
+  if (!acknowledgement) {
+    return {
+      handled: false,
+      code: 'WINDOW_NOT_FOUND',
+      hint: '题目集视图未就绪，无法定位题目',
+    };
+  }
+  if (!acknowledgement.handled) {
+    return { handled: false, code: 'QUESTION_NOT_FOUND', hint: '当前题目集不存在该题目' };
+  }
   return { handled: true };
 }
 
+function dispatchExamControl(
+  targetResourceId: string,
+  action: QbankControlAction,
+  payload?: unknown,
+): QbankControlResult {
+  if (typeof window === 'undefined') {
+    return {
+      handled: false,
+      code: 'WINDOW_NOT_FOUND',
+      hint: '题目集视图未就绪，无法执行该操作',
+    };
+  }
+
+  let acknowledgement: QbankControlResult | null = null;
+  window.dispatchEvent(
+    new CustomEvent<QbankControlEventDetail>(QBANK_CONTROL_EVENT, {
+      detail: {
+        targetResourceId,
+        action,
+        payload,
+        acknowledge: (result) => {
+          acknowledgement = result;
+        },
+      },
+    }),
+  );
+  return acknowledgement ?? {
+    handled: false,
+    code: 'WINDOW_NOT_FOUND',
+    hint: '题目集视图未就绪，无法执行该操作',
+  };
+}
+
+async function hydrateExamPracticeSession(
+  ctx: ActivationContext,
+  targetResourceId: string,
+): Promise<ActivationResult> {
+  const payload = payloadRecord(ctx.payload);
+  const rawHandoff = payload.handoff ?? ctx.payload;
+  const validated = validateQbankPracticeHandoff(rawHandoff, targetResourceId);
+  if ('ok' in validated) {
+    return { handled: false, code: validated.code, hint: validated.hint };
+  }
+
+  if (getResourceWorkspaceActive('exam') !== targetResourceId) {
+    requestResourceWorkspace('exam', targetResourceId);
+    if (!(await waitForResourceWorkspaceActive('exam', targetResourceId))) {
+      return {
+        handled: false,
+        code: 'CONFIRMATION_REQUIRED',
+        hint: '题目集尚未切换；请先处理当前草稿/复习会话确认，再重试交接',
+      };
+    }
+  }
+
+  const result = dispatchExamControl(
+    targetResourceId,
+    'hydratePracticeSession',
+    { handoff: validated },
+  );
+  if (!result.handled || result.acknowledged !== true) {
+    return {
+      handled: false,
+      code: result.code ?? 'ACTION_UNVERIFIED',
+      hint: result.hint ?? '题库 UI 未确认练习会话已注入',
+    };
+  }
+  return { handled: true, acknowledged: true };
+}
+
 /** exam：安全导航与视图控制；答题/交卷仍归 qbank 领域工具和用户。 */
-export function handleExamActivation(ctx: ActivationContext): ActivationResult {
+export function handleExamActivation(
+  ctx: ActivationContext,
+): ActivationResult | Promise<ActivationResult> {
+  if (ctx.action === 'hydratePracticeSession') {
+    const payload = payloadRecord(ctx.payload);
+    const handoff = payloadRecord(payload.handoff ?? ctx.payload);
+    const handoffExamId = typeof handoff?.exam_id === 'string' && handoff.exam_id.trim()
+      ? handoff.exam_id.trim()
+      : null;
+    const requestedExamId = ctx.instanceKey ?? handoffExamId;
+    if (!requestedExamId) {
+      return {
+        handled: false,
+        code: 'INVALID_PRACTICE_HANDOFF',
+        hint: 'hydratePracticeSession 缺少目标题目集或 handoff.exam_id',
+      };
+    }
+    return hydrateExamPracticeSession(ctx, requestedExamId);
+  }
+  const targetResourceId = resolveExamTarget(ctx);
+  if (!targetResourceId) {
+    return {
+      handled: false,
+      code: 'WINDOW_NOT_FOUND',
+      hint: '当前题目集尚未就绪',
+    };
+  }
+
   if (ctx.action === 'focusQuestion') {
     const questionId = parseQuestionId(ctx.payload);
     if (!questionId) {
@@ -144,43 +321,38 @@ export function handleExamActivation(ctx: ActivationContext): ActivationResult {
         hint: 'focusQuestion 需要 payload.questionId',
       };
     }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(
-        new CustomEvent(QBANK_FOCUS_EVENT, { detail: { questionId } }),
-      );
-    }
-    if (useQuestionBankStore.getState().questions.has(questionId)) {
+    const result = dispatchExamFocus(targetResourceId, questionId);
+    if (result.handled) {
+      // The global store is an agent-observation mirror; the mounted view owns
+      // the actual per-resource session and acknowledged the navigation above.
       useQuestionBankStore.getState().setCurrentQuestion(questionId);
     }
-    return { handled: true };
+    return result;
   }
-  const store = useQuestionBankStore.getState();
   if (ctx.action === 'nextQuestion' || ctx.action === 'previousQuestion') {
-    const currentIndex = store.questionOrder.indexOf(store.currentQuestionId ?? '');
-    const delta = ctx.action === 'nextQuestion' ? 1 : -1;
-    const baseIndex = currentIndex >= 0 ? currentIndex : delta > 0 ? -1 : 0;
-    const nextIndex = Math.min(
-      Math.max(baseIndex + delta, 0),
-      Math.max(0, store.questionOrder.length - 1),
-    );
-    store.goToQuestion(nextIndex);
-    return focusCurrentQuestion();
+    const result = dispatchExamControl(targetResourceId, ctx.action);
+    if (result.handled && result.currentQuestionId) {
+      useQuestionBankStore.getState().setCurrentQuestion(result.currentQuestionId);
+    }
+    return result;
   }
   if (ctx.action === 'setFilters') {
     const payload = payloadRecord(ctx.payload);
-    store.setFilters(
-      payload.filters && typeof payload.filters === 'object'
-        ? (payload.filters as QuestionFilters)
-        : (payload as QuestionFilters),
-    );
-    return { handled: true };
+    const filters = payload.filters && typeof payload.filters === 'object'
+      ? (payload.filters as QuestionFilters)
+      : (payload as QuestionFilters);
+    const result = dispatchExamControl(targetResourceId, 'setFilters', { filters });
+    if (result.handled) useQuestionBankStore.getState().setFilters(filters);
+    return result;
   }
   if (ctx.action === 'resetFilters') {
-    store.resetFilters();
-    return { handled: true };
+    const result = dispatchExamControl(targetResourceId, 'resetFilters');
+    if (result.handled) useQuestionBankStore.getState().resetFilters();
+    return result;
   }
   if (ctx.action === 'setPracticeMode') {
-    const mode = payloadRecord(ctx.payload).mode;
+    const payload = payloadRecord(ctx.payload);
+    const mode = payload.mode;
     const allowed = new Set([
       'sequential',
       'random',
@@ -195,15 +367,27 @@ export function handleExamActivation(ctx: ActivationContext): ActivationResult {
     if (typeof mode !== 'string' || !allowed.has(mode)) {
       return { handled: false, code: 'INVALID_ARGS', hint: 'practice mode 值无效' };
     }
-    store.setPracticeMode(mode as PracticeMode);
-    return { handled: true };
+    const tag = payload.tag;
+    if (mode === 'by_tag' && (typeof tag !== 'string' || !tag.trim())) {
+      return {
+        handled: false,
+        code: 'INVALID_ARGS',
+        hint: 'by_tag 需要 payload.tag；请先选择要练习的标签',
+      };
+    }
+    const result = dispatchExamControl(targetResourceId, 'setPracticeMode', {
+      mode: mode as PracticeMode,
+      tag: typeof tag === 'string' ? tag : undefined,
+    });
+    if (result.handled) useQuestionBankStore.getState().setPracticeMode(mode as PracticeMode);
+    return result;
   }
   if (ctx.action === 'setFocusMode') {
     const enabled = payloadRecord(ctx.payload).enabled;
     if (typeof enabled !== 'boolean') {
       return { handled: false, code: 'INVALID_ARGS', hint: 'setFocusMode 需要 enabled' };
     }
-    store.setFocusMode(enabled);
+    useQuestionBankStore.getState().setFocusMode(enabled);
     return { handled: true };
   }
   if (ctx.action === 'showSettings') {
@@ -211,8 +395,30 @@ export function handleExamActivation(ctx: ActivationContext): ActivationResult {
     if (typeof open !== 'boolean') {
       return { handled: false, code: 'INVALID_ARGS', hint: 'showSettings 需要 open' };
     }
-    if (store.showSettingsPanel !== open) store.toggleSettingsPanel();
-    return { handled: true };
+    if (typeof window === 'undefined') {
+      return {
+        handled: false,
+        code: 'WINDOW_NOT_FOUND',
+        hint: '当前题目集尚未就绪，无法打开设置面板',
+      };
+    }
+    let acknowledgement: ActivationResult | null = null;
+    window.dispatchEvent(
+      new CustomEvent('exam:openSettings', {
+        detail: {
+          targetResourceId,
+          open,
+          acknowledge: (result: ActivationResult) => {
+            acknowledgement = result;
+          },
+        },
+      }),
+    );
+    return acknowledgement ?? {
+      handled: false,
+      code: 'WINDOW_NOT_FOUND',
+      hint: '题目集视图未就绪，无法打开设置面板',
+    };
   }
   if (ctx.action === 'scrollToHeading') {
     return {
@@ -233,7 +439,7 @@ export function handleExamActivation(ctx: ActivationContext): ActivationResult {
  * textbook/file：若 payload 含 page/pageNumber，经 pdf-ref:focus 跳页（既有 PDF 监听）。
  * 纯标题锚点无大纲 API → 可行动回执，禁止假成功。
  */
-function handlePdfLikeScroll(typeId: string, ctx: ActivationContext): ActivationResult {
+async function handlePdfLikeScroll(typeId: string, ctx: ActivationContext): Promise<ActivationResult> {
   const resourceId = ctx.instanceKey;
   if (!resourceId) {
     return {
@@ -244,18 +450,7 @@ function handlePdfLikeScroll(typeId: string, ctx: ActivationContext): Activation
   }
   const { heading, page } = parseHeadingPayload(ctx.payload);
   if (page != null) {
-    if (typeof document !== 'undefined') {
-      document.dispatchEvent(
-        new CustomEvent('pdf-ref:focus', {
-          detail: {
-            sourceId: resourceId,
-            pageNumber: page,
-            path: resourceId.startsWith('/') ? resourceId : `/${resourceId}`,
-          },
-        }),
-      );
-    }
-    return { handled: true };
+    return requestPdfPageFocus(resourceId, page);
   }
   return {
     handled: false,
@@ -270,7 +465,7 @@ function handlePdfLikeScroll(typeId: string, ctx: ActivationContext): Activation
  * 内容类统一 onActivation — R1-16 / R2-10
  */
 function createContentActivationHandler(typeId: string) {
-  return (ctx: ActivationContext): ActivationResult => {
+  return async (ctx: ActivationContext): Promise<ActivationResult> => {
     if (typeId === 'note') {
       return handleNoteActivation(ctx);
     }
@@ -360,6 +555,9 @@ for (const def of CONTENT_APP_DEFINITIONS) {
   def.agentManifest = def.typeId === 'exam'
     ? createExamAgentManifest(activation)
     : createResourceContentManifest(def.typeId, activation);
+  if (def.typeId === 'exam') {
+    def.canClose = canCloseExamWorkspace;
+  }
 }
 
 for (const def of CONTENT_APP_DEFINITIONS) {

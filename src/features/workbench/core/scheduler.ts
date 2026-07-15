@@ -118,6 +118,10 @@ function memoryWeightOf(win: WorkbenchWindow): number {
   return appRegistry.get(win.typeId)?.memoryWeight ?? 1;
 }
 
+function keepsAliveWhenOccluded(win: WorkbenchWindow): boolean {
+  return appRegistry.get(win.typeId)?.keepAliveWhenOccluded === true;
+}
+
 function sameLifecycles(
   a: Record<string, WindowLifecycle>,
   b: Record<string, WindowLifecycle>,
@@ -521,7 +525,9 @@ export function recomputeLifecycles(): void {
     for (const win of wins) {
       if (win.minimized) next[win.id] = 'background';
       else if (win.id === topId) next[win.id] = 'focused';
-      else if (lastOcclusionDetail[win.id]?.occluded) next[win.id] = 'background';
+      else if (lastOcclusionDetail[win.id]?.occluded && !keepsAliveWhenOccluded(win)) {
+        next[win.id] = 'background';
+      }
       else next[win.id] = 'visible';
     }
 

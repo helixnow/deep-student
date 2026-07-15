@@ -301,7 +301,7 @@ describe('ACR mock driver — pause/resume/abort + partial', () => {
       );
     });
 
-    stageManager.stopRun('run-partial');
+    stageManager.stopRun(JSON.stringify(['sess-partial', 'run-partial']));
     releaseFirst();
 
     const res = await pending;

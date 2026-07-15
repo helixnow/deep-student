@@ -306,7 +306,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
     return (
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label="expand">
+          <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label={expandTitle || t('expand')}>
             <CaretRight size={16} weight="regular" />
           </NotionButton>
         </div>
@@ -370,13 +370,13 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label="refresh">
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label={refreshTitle || t('refresh')}>
               <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
             </NotionButton>
           )}
 
           {showCreate && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label="create">
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label={createTitle || t('create')}>
               <Plus className={styles.button.iconSize} weight="regular" />
             </NotionButton>
           )}
@@ -385,7 +385,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label="collapse">
+            <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label={collapseTitle || t('collapse')}>
               <CaretLeft size={16} weight="regular" />
             </NotionButton>
           )}
@@ -521,6 +521,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
   className,
   children,
 }) => {
+  const { t } = useTranslation('common');
   const { displayMode, isMobileSlidingMode, closeMobile } = useUnifiedSidebar();
   // 是否为移动端模式（drawer/sheet 或 移动滑动模式）
   const isMobileMode = displayMode === 'sheet' || displayMode === 'drawer' || isMobileSlidingMode;
@@ -652,12 +653,12 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
         <div className={cn('flex transition-opacity', styles.actions.gap, styles.actions.opacity)}>
           {extraActions}
           {showEdit && onEditClick && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onEditClick} className={styles.actions.btnPadding} aria-label="edit">
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onEditClick} className={styles.actions.btnPadding} aria-label={t('actions.edit')}>
               <PencilSimple className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}
           {showDelete && onDeleteClick && (
-            <NotionButton variant="utility" size="icon" iconOnly onClick={onDeleteClick} className={styles.actions.btnPadding} aria-label="delete">
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onDeleteClick} className={styles.actions.btnPadding} aria-label={t('actions.delete')}>
               <Trash className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}

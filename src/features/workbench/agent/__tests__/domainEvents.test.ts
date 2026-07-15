@@ -67,11 +67,13 @@ describe('domainEvents (R1-18)', () => {
     hubHandlers.clear();
   });
 
-  it('KNOWN_DOMAIN_EVENTS 含四类域事件', () => {
+  it('KNOWN_DOMAIN_EVENTS 含六类域事件', () => {
     expect(KNOWN_DOMAIN_EVENTS).toEqual([
       'todo://changed',
       'qbank://changed',
+      'review://changed',
       'fsrs://changed',
+      'memory://changed',
       'dstu:change',
     ]);
   });

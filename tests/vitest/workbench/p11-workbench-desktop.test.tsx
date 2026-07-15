@@ -23,11 +23,6 @@ vi.mock('@tauri-apps/api/window', () => ({
     onCloseRequested: tauriMocks.onCloseRequested,
   }),
 }));
-// 避免把 chat 重 UI / 会话核心拖进冒烟测试
-vi.mock('@/features/chat/components/AnkiPanelHost', () => ({
-  AnkiPanelHost: () => null,
-  default: () => null,
-}));
 vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: vi.fn(async () => ({ id: 'sess_test' })),
 }));
@@ -37,6 +32,7 @@ import {
   migrateLegacyNotesSnapshotWindows,
 } from '@/features/workbench/components/WorkbenchDesktop';
 import { getDockPinned, setDockPinned } from '@/features/workbench/components/Dock';
+import { closeAppsPanel, openAppsPanel } from '@/features/workbench/components/appsPanelStore';
 import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { useWindowStore, resetWindowStoreForTests } from '@/features/workbench/core/windowStore';
@@ -68,12 +64,14 @@ describe('P11 WorkbenchDesktop 总装', () => {
     localStorage.clear();
     resetWindowStoreForTests();
     setDockPinned([]);
+    closeAppsPanel();
     workbenchBus.setEnabled(true);
     ensureTestApp();
   });
 
   afterEach(() => {
     cleanup();
+    closeAppsPanel();
     delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
     workbenchBus.setEnabled(false);
   });
@@ -113,6 +111,41 @@ describe('P11 WorkbenchDesktop 总装', () => {
       expect(el).toBeTruthy();
     });
     expect(document.querySelector('.wb-empty-desktop')).toBeNull();
+  });
+
+  it('窗口工作区从顶栏下缘开始，最大化只占用工作区', async () => {
+    render(<WorkbenchDesktop />);
+    await waitFor(() => expect(document.querySelector('[data-wb-workarea]')).toBeTruthy());
+
+    const workArea = document.querySelector<HTMLElement>('[data-wb-workarea]')!;
+    const windowLayer = document.querySelector<HTMLElement>('[data-wb-window-layer]')!;
+    expect(workArea.style.top).toBe('var(--wb-workarea-top)');
+    expect(windowLayer.parentElement).toBe(workArea);
+
+    let windowId: string | null = null;
+    act(() => {
+      useWindowStore.getState().setDesktopSize({ w: 1600, h: 860 });
+      windowId = workbenchBus.launch({ typeId: TEST_TYPE_ID, reason: 'api' });
+      useWindowStore.getState().setDisplayMode(windowId!, 'maximized');
+    });
+
+    await waitFor(() => {
+      const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${windowId}"]`);
+      expect(shell).toBeTruthy();
+      expect(shell?.style.top).toBe('0px');
+      expect(shell?.style.height).toBe('860px');
+    });
+  });
+
+  it('全部应用面板也约束在顶栏下方的工作区内', async () => {
+    render(<WorkbenchDesktop />);
+    await waitFor(() => expect(document.querySelector('[data-wb-workarea]')).toBeTruthy());
+
+    act(() => openAppsPanel());
+    await waitFor(() => expect(screen.getByTestId('wb-apps-panel')).toBeTruthy());
+
+    const workArea = document.querySelector<HTMLElement>('[data-wb-workarea]')!;
+    expect(screen.getByTestId('wb-apps-panel').parentElement).toBe(workArea);
   });
 
   it('快照落盘：flushSnapshot 写 localStorage 并派发 workbench:snapshot-saved', async () => {

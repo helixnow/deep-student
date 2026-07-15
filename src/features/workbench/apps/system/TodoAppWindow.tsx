@@ -36,6 +36,11 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
     typeof (launchPayload as { todoListId?: unknown }).todoListId === 'string'
       ? (launchPayload as { todoListId: string }).todoListId
       : undefined;
+  const initialView =
+    launchPayload && typeof launchPayload === 'object' &&
+    (launchPayload as { todoView?: unknown }).todoView === 'automations'
+      ? 'automations' as const
+      : undefined;
 
   return (
     <div
@@ -51,7 +56,7 @@ const TodoAppWindow: React.FC<AppWindowProps> = ({ launchPayload, onTitleChange 
             navLabel={t('workbench:apps.system.todoNav', '待办导航')}
             sidebar={<TodoShellSidebar isSmallScreen={false} globalLeftPanelCollapsed={false} />}
           >
-            <TodoContentView todoListId={todoListId} className="h-full" />
+            <TodoContentView todoListId={todoListId} initialView={initialView} className="h-full" />
           </WbSysSidebarLayout>
         </WbSysFade>
       </Suspense>

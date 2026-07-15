@@ -170,8 +170,9 @@ describe('content dirty integration', () => {
     fireEvent.change(screen.getByLabelText('translation-source'), { target: { value: 'unsaved' } });
     expect(isContentDirty('translation', 'translation_1')).toBe(true);
 
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    expect(guardedDefinition('translation').canClose?.('/folder/translation_1')).toBe(false);
+    const nativeConfirm = vi.spyOn(window, 'confirm');
+    await expect(guardedDefinition('translation').canClose?.('/folder/translation_1')).resolves.toBe(false);
+    expect(nativeConfirm).not.toHaveBeenCalled();
   });
 
   it('Essay 正文和题目元数据都参与真实 dirty 状态', async () => {
@@ -199,8 +200,9 @@ describe('content dirty integration', () => {
     fireEvent.change(screen.getByLabelText('essay-topic'), { target: { value: 'Topic metadata' } });
     expect(isContentDirty('essay', '/folder/essay_1')).toBe(true);
 
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    expect(guardedDefinition('essay').canClose?.('essay_1')).toBe(false);
+    const nativeConfirm = vi.spyOn(window, 'confirm');
+    await expect(guardedDefinition('essay').canClose?.('essay_1')).resolves.toBe(false);
+    expect(nativeConfirm).not.toHaveBeenCalled();
   });
 
   it('Note 标题 checker 与正文 checker 聚合', async () => {
@@ -218,8 +220,9 @@ describe('content dirty integration', () => {
     fireEvent.change(input, { target: { value: 'Unsaved title' } });
     expect(isContentDirty('note', '/folder/note_1')).toBe(true);
 
-    vi.spyOn(window, 'confirm').mockReturnValue(false);
-    expect(guardedDefinition('note').canClose?.('/note_1')).toBe(false);
+    const nativeConfirm = vi.spyOn(window, 'confirm');
+    await expect(guardedDefinition('note').canClose?.('/note_1')).resolves.toBe(false);
+    expect(nativeConfirm).not.toHaveBeenCalled();
     unregisterBody();
   });
 });

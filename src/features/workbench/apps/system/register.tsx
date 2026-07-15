@@ -32,6 +32,9 @@ import { handleTodoActivation } from './todoActivation';
 import {
   createFlashcardsAgentManifest,
   createPomodoroAgentManifest,
+  settingsAgentManifest,
+  taskDashboardAgentManifest,
+  templatesAgentManifest,
   todoAgentManifest,
 } from './agentManifests';
 
@@ -39,10 +42,42 @@ import {
 export async function handleFlashcardsActivation(ctx: ActivationContext) {
   const { useFsrsReviewStore } = await import('@/features/flashcards/store/fsrsReviewStore');
   const store = useFsrsReviewStore.getState();
+  const startDueReview = async () => {
+    if (!(await store.loadDue())) {
+      return {
+        handled: false,
+        code: 'LOAD_FAILED',
+        hint: useFsrsReviewStore.getState().error ?? '到期卡加载失败',
+      } as const;
+    }
+    useFsrsReviewStore.getState().startDueSession();
+    return { handled: true } as const;
+  };
   switch (ctx.action) {
-    case 'startReview':
+    case 'startReview': {
+      const payload = ctx.payload && typeof ctx.payload === 'object'
+        ? ctx.payload as { screen?: unknown; mode?: unknown; cardIds?: unknown; cards?: unknown }
+        : null;
+      if (payload?.screen === 'session' && payload.mode === 'due') {
+        return startDueReview();
+      }
+      if (payload?.screen === 'session' && payload.mode === 'batch' && Array.isArray(payload.cardIds)) {
+        const ids = payload.cardIds.filter((id): id is string => typeof id === 'string');
+        const cards = Array.isArray(payload.cards)
+          ? payload.cards as Parameters<typeof store.startBatchSession>[1]
+          : undefined;
+        if (!(await store.startBatchSession(ids, cards))) {
+          return {
+            handled: false,
+            code: 'ENQUEUE_FAILED',
+            hint: useFsrsReviewStore.getState().error ?? '复习批次准备失败',
+          } as const;
+        }
+        return { handled: true } as const;
+      }
       store.applyLaunchPayload(ctx.payload);
       return { handled: true } as const;
+    }
     case 'showScreen': {
       const screen = ctx.payload && typeof ctx.payload === 'object'
         ? (ctx.payload as { screen?: unknown }).screen
@@ -54,9 +89,7 @@ export async function handleFlashcardsActivation(ctx: ActivationContext) {
       return { handled: true } as const;
     }
     case 'startDueReview':
-      await store.loadDue();
-      useFsrsReviewStore.getState().startDueSession();
-      return { handled: true } as const;
+      return startDueReview();
     case 'flipCard':
       if (store.screen !== 'session') {
         return { handled: false, code: 'INVALID_STATE', hint: '当前不在复习会话中' } as const;
@@ -172,6 +205,7 @@ export function registerSystemApps(): void {
     defaultFrame: { w: 980, h: 680 },
     minSize: { w: 640, h: 460 },
     render: React.lazy(() => import('./TemplatesAppWindow')),
+    agentManifest: templatesAgentManifest,
   });
 
   appRegistry.register({
@@ -184,6 +218,7 @@ export function registerSystemApps(): void {
     minSize: { w: 600, h: 440 },
     render: React.lazy(() => import('./TaskDashboardAppWindow')),
     badgeSource: ankiTaskBadgeSource,
+    agentManifest: taskDashboardAgentManifest,
   });
 
   appRegistry.register({
@@ -210,6 +245,7 @@ export function registerSystemApps(): void {
     defaultFrame: { w: 1020, h: 700 },
     minSize: { w: 720, h: 520 },
     render: React.lazy(() => import('./SettingsAppWindow')),
+    agentManifest: settingsAgentManifest,
   });
 
   appRegistry.register({

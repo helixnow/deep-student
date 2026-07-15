@@ -211,7 +211,10 @@ describe('R3-01 cross scenarios', () => {
     expect(presence?.runId).toBe('run-hold');
     expect(runLedger.hasRun('run-hold')).toBe(true);
 
-    const ok = await stageManager.revertRun('run-hold');
+    expect(await stageManager.revertRun('run-hold')).toBe(false);
+    expect(usePresenceStore.getState().byWindow['win-cross']?.status).toBe('done');
+
+    const ok = await stageManager.revertRun('run-hold', 'sess-a');
     expect(ok).toBe(true);
     expect(inverted).toBe(true);
     expect(usePresenceStore.getState().byWindow['win-cross']).toBeUndefined();

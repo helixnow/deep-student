@@ -99,7 +99,7 @@ describe('workbench chat register', () => {
       payload: { content: 'hello from window A' },
     });
 
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(storeA.getState().setInputValue).toHaveBeenCalledWith('hello from window A');
     expect(storeB.getState().setInputValue).not.toHaveBeenCalled();
   });
@@ -112,7 +112,7 @@ describe('workbench chat register', () => {
       action: 'setInput',
       payload: 'plain text',
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(store.getState().setInputValue).toHaveBeenCalledWith('plain text');
   });
 
@@ -130,7 +130,7 @@ describe('workbench chat register', () => {
         instanceKey: 'sess_focus',
         action: 'focusInput',
       });
-      expect(result).toEqual({ handled: true });
+      expect(result).toEqual({ handled: true, acknowledged: true });
       expect(received.length).toBeGreaterThan(0);
       expect(received.every((sid) => sid === 'sess_focus')).toBe(true);
       expect(input).toHaveFocus();
@@ -159,7 +159,7 @@ describe('workbench chat register', () => {
 
       const input = mountSessionInput('sess_cold');
       await vi.runAllTimersAsync();
-      await expect(pending).resolves.toEqual({ handled: true });
+      await expect(pending).resolves.toEqual({ handled: true, acknowledged: true });
       expect(input).toHaveFocus();
     } finally {
       vi.useRealTimers();

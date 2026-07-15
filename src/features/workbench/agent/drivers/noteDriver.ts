@@ -31,8 +31,18 @@ import type {
   StageManagerApi,
 } from '../types';
 
-const editors = new Map<string, CrepeEditorApi>();
-const editorReadyListeners = new Map<string, Set<(api: CrepeEditorApi) => void>>();
+type NoteEditorRegistration = {
+  api: CrepeEditorApi;
+  windowId?: string;
+};
+
+type NoteEditorReadyListener = {
+  windowId?: string;
+  callback: (api: CrepeEditorApi) => void;
+};
+
+const editors = new Map<string, NoteEditorRegistration[]>();
+const editorReadyListeners = new Map<string, Set<NoteEditorReadyListener>>();
 
 /** 活跃 run 的中止旗标 */
 const abortFlags = new Map<string, boolean>();
@@ -42,42 +52,73 @@ const fadeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const FADE_CLEAR_MS = 3000;
 
-export function registerNoteEditor(resourceId: string, api: CrepeEditorApi): void {
-  editors.set(resourceId, api);
+export function registerNoteEditor(
+  resourceId: string,
+  api: CrepeEditorApi,
+  windowId?: string,
+): void {
+  const current = editors.get(resourceId) ?? [];
+  const next = current.filter((entry) => entry.windowId !== windowId && entry.api !== api);
+  next.push({ api, windowId });
+  editors.set(resourceId, next);
   const listeners = editorReadyListeners.get(resourceId);
   if (listeners) {
-    editorReadyListeners.delete(resourceId);
-    for (const listener of listeners) listener(api);
+    for (const listener of [...listeners]) {
+      if (listener.windowId && listener.windowId !== windowId) continue;
+      listeners.delete(listener);
+      listener.callback(api);
+    }
+    if (listeners.size === 0) editorReadyListeners.delete(resourceId);
   }
 }
 
-export function unregisterNoteEditor(resourceId: string, api?: CrepeEditorApi): void {
-  if (!api || editors.get(resourceId) === api) {
-    editors.delete(resourceId);
-  }
+export function unregisterNoteEditor(
+  resourceId: string,
+  api?: CrepeEditorApi,
+  windowId?: string,
+): void {
+  const current = editors.get(resourceId);
+  if (!current) return;
+  const next = current.filter((entry) => {
+    if (windowId !== undefined && entry.windowId !== windowId) return true;
+    if (api !== undefined && entry.api !== api) return true;
+    return false;
+  });
+  if (next.length > 0) editors.set(resourceId, next);
+  else editors.delete(resourceId);
 }
 
-export function getNoteEditor(resourceId: string): CrepeEditorApi | undefined {
-  return editors.get(resourceId);
+export function getNoteEditor(resourceId: string, windowId?: string): CrepeEditorApi | undefined {
+  const current = editors.get(resourceId);
+  if (!current || current.length === 0) return undefined;
+  if (windowId !== undefined) {
+    for (let index = current.length - 1; index >= 0; index -= 1) {
+      if (current[index]?.windowId === windowId) return current[index]?.api;
+    }
+    return undefined;
+  }
+  return current[current.length - 1]?.api;
 }
 
 /** Wait for a resource editor without polling. The callback may run synchronously. */
 export function subscribeNoteEditorReady(
   resourceId: string,
   callback: (api: CrepeEditorApi) => void,
+  windowId?: string,
 ): () => void {
-  const ready = editors.get(resourceId);
+  const ready = getNoteEditor(resourceId, windowId);
   if (ready) {
     callback(ready);
     return () => undefined;
   }
   const listeners = editorReadyListeners.get(resourceId) ?? new Set();
-  listeners.add(callback);
+  const listener = { callback, windowId };
+  listeners.add(listener);
   editorReadyListeners.set(resourceId, listeners);
   return () => {
     const current = editorReadyListeners.get(resourceId);
     if (!current) return;
-    current.delete(callback);
+    current.delete(listener);
     if (current.size === 0) editorReadyListeners.delete(resourceId);
   };
 }
@@ -240,18 +281,35 @@ function scheduleFadeClear(runId: string, api: CrepeEditorApi): void {
   fadeTimers.set(runId, timer);
 }
 
+type SuggestionDisposition = { accepted: true } | { accepted: false; reason: string };
+
 function dispatchSuggestionEvent(detail: {
   requestId: string;
   noteId: string;
+  targetWindowId?: string;
   operation: 'append' | 'replace' | 'set';
   content?: string;
   search?: string;
   replace?: string;
   isRegex?: boolean;
   section?: string;
-}): void {
-  if (typeof window === 'undefined') return;
-  window.dispatchEvent(new CustomEvent('canvas:ai-edit-request', { detail }));
+}): SuggestionDisposition {
+  if (typeof window === 'undefined') {
+    return { accepted: false, reason: '当前环境没有可用的建议面板' };
+  }
+  let disposition: SuggestionDisposition = {
+    accepted: false,
+    reason: '没有匹配的笔记编辑器认领建议',
+  };
+  window.dispatchEvent(new CustomEvent('canvas:ai-edit-request', {
+    detail: {
+      ...detail,
+      onLocalDisposition: (next: SuggestionDisposition) => {
+        disposition = next;
+      },
+    },
+  }));
+  return disposition;
 }
 
 /** 从 agentHighlight 插件读取当前 caret / 插入区间（供批次重映射与账本） */
@@ -436,39 +494,68 @@ export function remapInsertPos(
   return Math.max(0, Math.min(fallbackPos, end));
 }
 
-function deleteRangeViaEditor(api: CrepeEditorApi, from: number, to: number): void {
-  const crepe = api.getCrepe();
-  if (!crepe || from >= to) return;
-  try {
-    crepe.editor.action((ctx) => {
-      let view: {
-        state: {
-          tr: { delete: (a: number, b: number) => { setMeta: (k: string, v: unknown) => unknown } };
-          doc: { content: { size: number } };
-        };
-        dispatch: (tr: unknown) => void;
-      } | null = null;
-      try {
-        view = ctx.get('editorView' as never);
-      } catch {
-        try {
-          view = ctx.get(editorViewCtx as never);
-        } catch {
-          return;
-        }
-      }
-      if (!view) return;
-      const max = view.state.doc.content.size;
-      const a = Math.max(0, Math.min(from, max));
-      const b = Math.max(a, Math.min(to, max));
-      if (a >= b) return;
-      const tr = view.state.tr.delete(a, b);
-      tr.setMeta('addToHistory', false);
-      view.dispatch(tr);
-    });
-  } catch (err) {
-    console.warn('[ACR noteDriver] revert delete failed:', err);
+function readCompleteMarkdown(api: CrepeEditorApi): string {
+  return api.getFullMarkdown?.() ?? api.getMarkdown();
+}
+
+async function flushRequired(api: CrepeEditorApi): Promise<void> {
+  if (!api.flushPendingSave) {
+    throw new Error('编辑器未提供持久化确认能力');
   }
+  await api.flushPendingSave();
+}
+
+async function replaceCompleteMarkdown(
+  api: CrepeEditorApi,
+  markdown: string,
+  expectedMarkdown: string,
+): Promise<void> {
+  if (readCompleteMarkdown(api) !== expectedMarkdown) {
+    throw new Error('笔记正文已变化，OCC 校验失败');
+  }
+
+  if (api.replaceFullMarkdown) {
+    const changed = await api.replaceFullMarkdown(markdown, { expectedMarkdown });
+    if (!changed) throw new Error('全文替换被编辑器拒绝');
+  } else {
+    if (!api.setMarkdown(markdown)) {
+      throw new Error('编辑器拒绝 setMarkdown');
+    }
+    if (api.getMarkdown() !== markdown) {
+      throw new Error('setMarkdown 后正文验证失败');
+    }
+    await flushRequired(api);
+  }
+
+  if (readCompleteMarkdown(api) !== markdown) {
+    throw new Error('全文替换后的内容验证失败');
+  }
+}
+
+function recordMarkdownInverse(
+  run: AcrRunContext,
+  api: CrepeEditorApi,
+  before: string,
+  after: string,
+  label: string,
+): void {
+  run.ledger.record(
+    run.runId,
+    async () => {
+      const current = readCompleteMarkdown(api);
+      if (current === before) {
+        // A previous attempt changed the editor but failed while saving. Retrying must
+        // persist the already-restored content instead of applying the inverse twice.
+        await flushRequired(api);
+        return;
+      }
+      if (current !== after) {
+        throw new Error('撤销冲突：笔记在 Agent 操作后又被用户或其他窗口修改');
+      }
+      await replaceCompleteMarkdown(api, before, after);
+    },
+    `撤销：${label}`,
+  );
 }
 
 async function applyNoteInsert(
@@ -570,9 +657,17 @@ async function applyNoteInsert(
     pos = remapInsertPos(api, pos);
 
     const chunk = batches[bi]!;
-    const before = pos;
-    pos = api.agentInsert(chunk, pos);
-    if (ledgerFrom == null) ledgerFrom = before;
+    const insertedRange = api.agentInsert(chunk, pos);
+    if (!insertedRange || insertedRange.to <= insertedRange.from) {
+      return {
+        ok: false,
+        reason: '编辑器未确认文本插入',
+        startPos: ledgerFrom ?? startPos,
+        endPos: pos,
+      };
+    }
+    pos = insertedRange.cursor;
+    if (ledgerFrom == null) ledgerFrom = insertedRange.from;
     inserted += chunk.length;
 
     run.reportProgress(
@@ -606,15 +701,17 @@ function handleDestructiveSuggestion(
   const anchor = parseAnchor(op.anchor);
   const section = anchor?.heading ?? anchor?.section;
 
+  let disposition: SuggestionDisposition;
   if (op.kind === 'note_replace') {
     const payload = (op.payload ?? {}) as {
       search?: string;
       replace?: string;
       isRegex?: boolean;
     };
-    dispatchSuggestionEvent({
+    disposition = dispatchSuggestionEvent({
       requestId,
       noteId,
+      targetWindowId: run.windowId ?? undefined,
       operation: 'replace',
       search: payload.search,
       replace: payload.replace,
@@ -624,12 +721,24 @@ function handleDestructiveSuggestion(
   } else {
     // note_set
     const payload = (op.payload ?? {}) as { content?: string };
-    dispatchSuggestionEvent({
+    disposition = dispatchSuggestionEvent({
       requestId,
       noteId,
+      targetWindowId: run.windowId ?? undefined,
       operation: 'set',
       content: payload.content,
       section,
+    });
+  }
+
+  if (!disposition.accepted) {
+    return emptyReceipt({
+      status: 'failed',
+      mode: 'suggestion',
+      totalOps: 1,
+      entityIds: noteId ? [noteId] : [],
+      undone: [op.label],
+      message: `编辑建议未建立：${'reason' in disposition ? disposition.reason : '未知原因'}`,
     });
   }
 
@@ -646,17 +755,93 @@ function handleDestructiveSuggestion(
   });
 }
 
-/**
- * clean 窗破坏类：直接 setMarkdown（触发 onChange→autosave），记账本为整篇还原。
- */
-function applyDestructiveDirect(
+function computeWindowedInsertion(
+  original: string,
+  text: string,
+  anchor: NoteAnchor | undefined,
+): { content: string; error?: string } {
+  const position = anchor?.position ?? 'end';
+  if (position === 'end') return { content: original + text };
+  if (position === 'offset') {
+    return {
+      content: original,
+      error: '窗口化长笔记不支持 ProseMirror offset 锚点，请使用 end 或 afterHeading',
+    };
+  }
+
+  const heading = (anchor?.heading ?? anchor?.section ?? '').trim();
+  if (!heading) return { content: original, error: 'afterHeading 缺少标题' };
+
+  let offset = 0;
+  for (const line of original.split('\n')) {
+    const match = line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (match?.[1]?.trim() === heading) {
+      const lineEnd = offset + line.length;
+      const insertAt = lineEnd < original.length ? lineEnd + 1 : lineEnd;
+      const suffix = original.slice(insertAt);
+      const separator = suffix.length > 0 && !text.endsWith('\n') ? '\n' : '';
+      return {
+        content: original.slice(0, insertAt) + text + separator + suffix,
+      };
+    }
+    offset += line.length + 1;
+  }
+  return { content: original, error: `未找到标题「${heading}」` };
+}
+
+async function applyWindowedNoteInsert(
   run: AcrRunContext,
   op: AgentOp,
   api: CrepeEditorApi,
-): { ok: boolean; reason?: string; previousMarkdown?: string } {
+): Promise<{ ok: boolean; reason?: string; before?: string; after?: string }> {
+  const text = extractInsertText(op.payload);
+  if (!text) return { ok: false, reason: '插入内容为空' };
+
+  const before = readCompleteMarkdown(api);
+  const computed = computeWindowedInsertion(before, text, parseAnchor(op.anchor));
+  if (computed.error) return { ok: false, reason: computed.error };
+  if (!api.replaceFullMarkdown) {
+    return { ok: false, reason: '长笔记编辑器未提供安全的全文写入 API' };
+  }
+
+  try {
+    await run.pacing.tick(run.pacing.profile.instant ? 0 : 1);
+    await replaceCompleteMarkdown(api, computed.content, before);
+    return { ok: true, before, after: computed.content };
+  } catch (error) {
+    const current = readCompleteMarkdown(api);
+    if (current === computed.content) {
+      return {
+        ok: true,
+        before,
+        after: computed.content,
+        reason: error instanceof Error ? error.message : String(error),
+      };
+    }
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * clean 窗破坏类：直接 setMarkdown（触发 onChange→autosave），记账本为整篇还原。
+ */
+async function applyDestructiveDirect(
+  run: AcrRunContext,
+  op: AgentOp,
+  api: CrepeEditorApi,
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  previousMarkdown?: string;
+  nextMarkdown?: string;
+  persistenceError?: string;
+}> {
   let previous = '';
   try {
-    previous = api.getMarkdown();
+    previous = readCompleteMarkdown(api);
   } catch {
     return { ok: false, reason: '无法读取当前笔记正文' };
   }
@@ -665,27 +850,26 @@ function applyDestructiveDirect(
     return { ok: false, reason: computed.error };
   }
   try {
-    api.setMarkdown(computed.content);
+    await replaceCompleteMarkdown(api, computed.content, previous);
   } catch (err) {
+    const reason = err instanceof Error ? err.message : 'setMarkdown 失败';
+    if (readCompleteMarkdown(api) !== computed.content) {
+      return { ok: false, reason };
+    }
+    recordMarkdownInverse(run, api, previous, computed.content, op.label);
     return {
-      ok: false,
-      reason: err instanceof Error ? err.message : 'setMarkdown 失败',
+      ok: true,
+      previousMarkdown: previous,
+      nextMarkdown: computed.content,
+      persistenceError: reason,
     };
   }
-  const snapshot = previous;
-  run.ledger.record(
-    run.runId,
-    async () => {
-      try {
-        api.setMarkdown(snapshot);
-        await api.flushPendingSave?.();
-      } catch (e) {
-        console.warn('[ACR noteDriver] revert setMarkdown failed:', e);
-      }
-    },
-    `撤销：${op.label}`,
-  );
-  return { ok: true, previousMarkdown: previous };
+  recordMarkdownInverse(run, api, previous, computed.content, op.label);
+  return {
+    ok: true,
+    previousMarkdown: previous,
+    nextMarkdown: computed.content,
+  };
 }
 
 export const noteDriver: CollabDriver = {
@@ -693,11 +877,11 @@ export const noteDriver: CollabDriver = {
 
   probe(target: AcrTarget): AcrProbeState {
     const id = target.resourceId;
-    if (!id || !editors.has(id)) {
+    if (!id || !getNoteEditor(id)) {
       // 无注册 editor → closed，让 Rust 回落后端
       return 'closed';
     }
-    const api = editors.get(id);
+    const api = getNoteEditor(id);
     // S-SUG-04 / DESIGN §1.1：编辑器真实持焦 → hot（dirty 仍由 probe.ts 优先）
     if (api && isNoteEditorHot(api)) {
       return 'hot';
@@ -720,7 +904,7 @@ export const noteDriver: CollabDriver = {
       });
     }
 
-    const api = getNoteEditor(resourceId);
+    const api = getNoteEditor(resourceId, run.windowId ?? undefined);
     if (!api) {
       return emptyReceipt({
         status: 'failed',
@@ -740,6 +924,7 @@ export const noteDriver: CollabDriver = {
     let lastInsertEnd: number | null = null;
     let persistenceError: string | null = null;
     let pendingSuggestion: AcrReceipt | null = null;
+    let suggestionError: string | null = null;
 
     for (let i = 0; i < ops.length; i++) {
       if (abortFlags.get(run.runId)) {
@@ -766,8 +951,14 @@ export const noteDriver: CollabDriver = {
       if (op.kind === 'note_replace' || op.kind === 'note_set') {
         // R2-03 / DESIGN §1.1：dirty → 建议模式；clean → 直写 setMarkdown
         if (shouldUseSuggestionMode(resourceId, api)) {
-          pendingSuggestion = handleDestructiveSuggestion(run, op);
-          done.push(...pendingSuggestion.done);
+          const suggestion = handleDestructiveSuggestion(run, op);
+          if (suggestion.suggestionPending) {
+            pendingSuggestion = suggestion;
+            done.push(...suggestion.done);
+          } else {
+            suggestionError = suggestion.message ?? '编辑建议未建立';
+            undone.push(op.label);
+          }
           // suggestion 未改文档：applied 保持 0（与 mindmapDriver 一致）
           // 建议需要用户作出决定，后续 op 不能越过这个决策点继续执行。
           for (let j = i + 1; j < ops.length; j++) {
@@ -776,10 +967,15 @@ export const noteDriver: CollabDriver = {
           break;
         }
 
-        const direct = applyDestructiveDirect(run, op, api);
+        const direct = await applyDestructiveDirect(run, op, api);
         if (direct.ok) {
           applied += 1;
           done.push(op.label);
+          if (direct.persistenceError) {
+            persistenceError = direct.persistenceError;
+            for (let j = i + 1; j < ops.length; j++) undone.push(ops[j]!.label);
+            break;
+          }
         } else {
           undone.push(op.label);
           run.reportProgress(
@@ -809,37 +1005,63 @@ export const noteDriver: CollabDriver = {
         break;
       }
 
+      if (api.isDocumentWindowed?.()) {
+        const result = await applyWindowedNoteInsert(run, op, api);
+        if (result.ok && result.before !== undefined && result.after !== undefined) {
+          applied += 1;
+          done.push(op.label);
+          recordMarkdownInverse(run, api, result.before, result.after, op.label);
+          if (result.reason) {
+            persistenceError = result.reason;
+            for (let j = i + 1; j < ops.length; j++) undone.push(ops[j]!.label);
+            break;
+          }
+        } else {
+          undone.push(op.label);
+          run.reportProgress(
+            i + 1,
+            ops.length,
+            result.reason ?? '长笔记全文写入失败',
+            resourceId,
+          );
+        }
+        continue;
+      }
+
+      const beforeInsert = readCompleteMarkdown(api);
       const result = await applyNoteInsert(run, op, api, i + 1, ops.length);
       if (result.ok && result.startPos != null && result.endPos != null) {
-        const from = result.startPos;
-        const to = result.endPos;
-        lastInsertEnd = to;
+        const afterInsert = readCompleteMarkdown(api);
+        if (afterInsert === beforeInsert) {
+          undone.push(op.label);
+          run.reportProgress(i + 1, ops.length, '编辑器未确认正文发生变化', resourceId);
+          continue;
+        }
+        lastInsertEnd = result.endPos;
         applied += 1;
         done.push(op.label);
-
-        run.ledger.record(
-          run.runId,
-          async () => {
-            deleteRangeViaEditor(api, from, to);
-            await api.flushPendingSave?.();
-          },
-          `撤销：${op.label}`,
-        );
+        recordMarkdownInverse(run, api, beforeInsert, afterInsert, op.label);
+        try {
+          await flushRequired(api);
+        } catch (error) {
+          persistenceError = error instanceof Error ? error.message : String(error);
+          for (let j = i + 1; j < ops.length; j++) undone.push(ops[j]!.label);
+          break;
+        }
       } else if (result.reason === 'aborted') {
         aborted = true;
         if (result.startPos != null && result.endPos != null && result.endPos > result.startPos) {
-          const from = result.startPos;
-          const to = result.endPos;
-          applied += 1;
-          done.push(`${op.label}（部分）`);
-          run.ledger.record(
-            run.runId,
-            async () => {
-              deleteRangeViaEditor(api, from, to);
-              await api.flushPendingSave?.();
-            },
-            `撤销：${op.label}（部分）`,
-          );
+          const afterInsert = readCompleteMarkdown(api);
+          if (afterInsert !== beforeInsert) {
+            applied += 1;
+            done.push(`${op.label}（部分）`);
+            recordMarkdownInverse(run, api, beforeInsert, afterInsert, `${op.label}（部分）`);
+            try {
+              await flushRequired(api);
+            } catch (error) {
+              persistenceError = error instanceof Error ? error.message : String(error);
+            }
+          }
         }
         undone.push(op.label);
         for (let j = i + 1; j < ops.length; j++) {
@@ -857,18 +1079,13 @@ export const noteDriver: CollabDriver = {
       }
     }
 
-    if (applied > 0 && api.flushPendingSave) {
-      try {
-        await api.flushPendingSave();
-      } catch (error) {
-        persistenceError = error instanceof Error ? error.message : String(error);
-        run.reportProgress(
-          Math.max(1, done.length),
-          ops.length,
-          `内容已应用，但自动保存失败：${persistenceError}`,
-          resourceId,
-        );
-      }
+    if (persistenceError) {
+      run.reportProgress(
+        Math.max(1, done.length),
+        ops.length,
+        `内容已应用，但自动保存失败：${persistenceError}`,
+        resourceId,
+      );
     }
 
     // 结束演出：fadeRun → 3s 后 clearAll
@@ -899,7 +1116,7 @@ export const noteDriver: CollabDriver = {
 
     const receipt = emptyReceipt({
       status,
-      mode: pendingSuggestion ? 'suggestion' : 'frontend',
+      mode: pendingSuggestion || suggestionError ? 'suggestion' : 'frontend',
       applied,
       totalOps: ops.length,
       entityIds,
@@ -910,6 +1127,8 @@ export const noteDriver: CollabDriver = {
         ? '操作已中断，已返回部分结果'
         : persistenceError
           ? `内容已在窗口中应用，但自动保存失败：${persistenceError}`
+          : suggestionError
+            ? suggestionError
           : pendingSuggestion
             ? undone.length > 0
               ? `已提交编辑建议；建议后的步骤尚未执行：${undone.join('；')}`

@@ -3,6 +3,12 @@ export type ResourceWorkspaceType = 'exam' | 'essay';
 const activeResources = new Map<ResourceWorkspaceType, string | null>();
 const openHandlers = new Map<ResourceWorkspaceType, Set<(resourceId: string) => void>>();
 const pendingResources = new Map<ResourceWorkspaceType, string>();
+interface ActiveResourceWaiter {
+  resourceId: string;
+  resolve: (active: boolean) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+const activeWaiters = new Map<ResourceWorkspaceType, Set<ActiveResourceWaiter>>();
 
 export function registerResourceWorkspace(
   type: ResourceWorkspaceType,
@@ -39,10 +45,51 @@ export function setResourceWorkspaceActive(
   resourceId: string | null,
 ): void {
   activeResources.set(type, resourceId);
+  if (!resourceId) return;
+  const waiters = activeWaiters.get(type);
+  if (!waiters) return;
+  for (const waiter of [...waiters]) {
+    if (waiter.resourceId !== resourceId) continue;
+    clearTimeout(waiter.timer);
+    waiters.delete(waiter);
+    waiter.resolve(true);
+  }
+  if (waiters.size === 0) activeWaiters.delete(type);
 }
 
 export function getResourceWorkspaceActive(type: ResourceWorkspaceType): string | null {
   return activeResources.get(type) ?? null;
+}
+
+/** Wait until a single-resource workspace has actually committed the requested resource. */
+export function waitForResourceWorkspaceActive(
+  type: ResourceWorkspaceType,
+  resourceId: string,
+  timeoutMs = 5_000,
+): Promise<boolean> {
+  if (activeResources.get(type) === resourceId) return Promise.resolve(true);
+  return new Promise<boolean>((resolve) => {
+    const waiters = activeWaiters.get(type) ?? new Set<ActiveResourceWaiter>();
+    let waiter: ActiveResourceWaiter;
+    const timer = setTimeout(() => {
+      waiters.delete(waiter);
+      if (waiters.size === 0) activeWaiters.delete(type);
+      resolve(false);
+    }, timeoutMs);
+    waiter = {
+      resourceId,
+      resolve,
+      timer,
+    };
+    waiters.add(waiter);
+    activeWaiters.set(type, waiters);
+    if (activeResources.get(type) === resourceId) {
+      clearTimeout(waiter.timer);
+      waiters.delete(waiter);
+      if (waiters.size === 0) activeWaiters.delete(type);
+      resolve(true);
+    }
+  });
 }
 
 export function clearResourceWorkspaceActive(

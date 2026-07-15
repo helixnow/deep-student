@@ -9,6 +9,7 @@ import { getSetting } from '@/utils/settingsApi';
 import { isContentDirty } from '../apps/content/contentDirtyRegistry';
 import { prepareWorkspaceResource } from '../apps/notes/workspaceRegistry';
 import { appRegistry } from '../core/appRegistry';
+import { getAgentUndo } from '../core/agentUndoJournal';
 import { hubListen } from '../core/eventHub';
 import { subscribePerfDegrade, acquirePerfMonitor } from '../core/perfMonitor';
 import {
@@ -24,6 +25,7 @@ import {
 } from '../core/agentRuntime';
 import type {
   AgentActRequest,
+  AgentCapabilityRisk,
   AgentWaitForRequest,
   AgentWindowTarget,
   DisplayMode,
@@ -43,7 +45,14 @@ import {
   type AgentControlMode,
   type GateErrorParts,
 } from './gates';
-import { runLedger } from './ledger';
+import {
+  bindRunLedgerMetadata,
+  discardEmptyRunLedger,
+  elevateRunLedgerRisk,
+  findRunLedgerKeyByExternalId,
+  getRunLedgerMetadata,
+  runLedger,
+} from './ledger';
 import { createPacer, forcePacerInstant } from './pacing';
 import { isPresenceExpired, usePresenceStore } from './presenceStore';
 import { probeTarget } from './probe';
@@ -54,12 +63,14 @@ import {
 import type {
   AcrBridgeRequest,
   AcrBridgeResponse,
+  AcrDiagnosticsSnapshot,
   AcrReceipt,
   AcrTarget,
   AgentOp,
   CollabDriver,
   Pacer,
   PacingProfileName,
+  RunLedger,
   StageManagerApi,
   WindowSummary,
 } from './types';
@@ -98,6 +109,9 @@ const RESOURCE_KEY_REQUIRED_TYPE_IDS = new Set([
 /** 本地镜像；真相源在 gates.getAgentControlMode() */
 let agentControl: AgentControlMode = 'off';
 let agentPacing: PacingProfileName = 'normal';
+let lifecycleGeneration = 0;
+let controlSettingRevision = 0;
+let pacingSettingRevision = 0;
 
 function parsePacing(raw: string | null | undefined): PacingProfileName {
   if (raw === 'fast' || raw === 'normal' || raw === 'demo') return raw;
@@ -109,14 +123,23 @@ function syncAgentControl(mode: AgentControlMode): void {
   setAgentControlMode(mode);
 }
 
-async function refreshSettings(): Promise<void> {
+async function refreshSettings(
+  generation: number,
+  controlRevision: number,
+  pacingRevision: number,
+): Promise<void> {
   try {
     const [control, pacing] = await Promise.all([
       getSetting(SETTING_AGENT_CONTROL),
       getSetting(SETTING_AGENT_PACING),
     ]);
-    syncAgentControl(parseAgentControlMode(control));
-    agentPacing = parsePacing(pacing);
+    if (!started || lifecycleGeneration !== generation) return;
+    if (controlSettingRevision === controlRevision) {
+      syncAgentControl(parseAgentControlMode(control));
+    }
+    if (pacingSettingRevision === pacingRevision) {
+      agentPacing = parsePacing(pacing);
+    }
   } catch {
     /* 读设置失败保持当前缓存 */
   }
@@ -130,8 +153,12 @@ const drivers = new Map<string, CollabDriver>();
 const queryProviders = new Map<string, (args: unknown) => unknown>();
 
 interface ActiveRun {
+  /** Session-isolated internal identity; never expose in tool cards. */
+  key: string;
   runId: string;
+  sessionId: string;
   correlationId: string;
+  bridgeToken?: string;
   windowId: string | null;
   typeId: string;
   arbitrator: Arbitrator;
@@ -147,14 +174,89 @@ interface ActiveRun {
   abortRequested: boolean;
   abortFallbackReceipt: AcrReceipt | null;
   orphanTimer: ReturnType<typeof setTimeout> | null;
+  /** Drain deadline elapsed but the underlying driver has not actually settled. */
+  orphaned: boolean;
 }
 
-/** runId → 活跃 run */
+type ManagedOperationKind = AcrDiagnosticsSnapshot['transactions'][number]['kind'];
+
+interface ManagedOperation {
+  key: string;
+  runId: string;
+  sessionId: string;
+  correlationId: string;
+  bridgeToken?: string;
+  kind: ManagedOperationKind;
+  windowId: string | null;
+  controller: AbortController;
+  timeoutTimer: ReturnType<typeof setTimeout> | null;
+  orphanTimer: ReturnType<typeof setTimeout> | null;
+  /** Keep the write lease quarantined until the underlying promise settles. */
+  orphaned: boolean;
+  ownsLease: boolean;
+}
+
+function makeRunKey(sessionId: string, runId: string): string {
+  return JSON.stringify([sessionId, runId]);
+}
+
+interface TerminalRunRecord {
+  command: AcrBridgeRequest['command'];
+  fingerprint: string;
+  response: AcrBridgeResponse;
+}
+
+const MAX_TERMINAL_RUNS = 100;
+const terminalRuns = new Map<string, TerminalRunRecord>();
+const terminalRunOrder: string[] = [];
+/** Forward operation ids stay consumed for the desktop session even after response LRU eviction. */
+const seenForwardRuns = new Map<string, Set<string>>();
+
+function stableRequestValue(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value) ?? 'undefined';
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableRequestValue(item)).join(',')}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map(
+    (key) => `${JSON.stringify(key)}:${stableRequestValue(record[key])}`,
+  ).join(',')}}`;
+}
+
+function requestFingerprint(req: AcrBridgeRequest): string {
+  return stableRequestValue(req.args);
+}
+
+function isTransactionalCommand(command: AcrBridgeRequest['command']): boolean {
+  return command === 'apply_ops'
+    || command === 'act'
+    || command === 'wait_for'
+    || command === 'revert_run'
+    || command === 'open_app'
+    || command === 'app_command'
+    || command === 'close_window';
+}
+
+function terminalRunKey(req: AcrBridgeRequest): string {
+  const phase = req.command === 'apply_ops' || req.command === 'act'
+    ? 'forward'
+    : req.command;
+  return JSON.stringify([req.sessionId, req.runId, phase]);
+}
+
+/** session-scoped run key → active apply_ops */
 const activeByRun = new Map<string, ActiveRun>();
-/** windowId → runId（租约；仅非空 windowId） */
+/** session-scoped run key → active ACR 2/3 semantic operation */
+const managedOperations = new Map<string, ManagedOperation>();
+/** windowId → session-scoped run key（租约；仅非空 windowId） */
 const leaseByWindow = new Map<string, string>();
-/** correlationId → runId（取消传播） */
-const runByCorrelation = new Map<string, string>();
+/** correlationId → one or more run keys（legacy cancel lacks session identity） */
+const runByCorrelation = new Map<string, Set<string>>();
+/** UI-triggered session-ledger undo flights (persistent undo uses managedOperations). */
+const uiUndoFlights = new Map<string, Promise<boolean>>();
+let uiUndoSequence = 0;
 
 let started = false;
 let unlistenCancel: (() => void) | null = null;
@@ -168,8 +270,111 @@ let unlistenPerfDegrade: (() => void) | null = null;
  */
 let releasePerfMonitorOwner: (() => void) | null = null;
 
+function registerCorrelation(correlationId: string, runKey: string): void {
+  const keys = runByCorrelation.get(correlationId) ?? new Set<string>();
+  keys.add(runKey);
+  runByCorrelation.set(correlationId, keys);
+}
+
+function unregisterCorrelation(correlationId: string, runKey: string): void {
+  const keys = runByCorrelation.get(correlationId);
+  if (!keys) return;
+  keys.delete(runKey);
+  if (keys.size === 0) runByCorrelation.delete(correlationId);
+}
+
+function hasActiveRunKey(runKey: string): boolean {
+  return activeByRun.has(runKey) || managedOperations.has(runKey);
+}
+
+function resolveLedgerKey(runId: string, sessionId?: string): string | null {
+  if (sessionId) {
+    const exact = makeRunKey(sessionId, runId);
+    return runLedger.hasRun(exact) || getRunLedgerMetadata(exact) ? exact : null;
+  }
+  // ACR3 callers must supply session identity. Bare IDs are accepted only for
+  // metadata-free legacy buckets, never by searching current ACR3 transactions.
+  if (findRunLedgerKeyByExternalId(runId)) return null;
+  return runLedger.hasRun(runId) && !getRunLedgerMetadata(runId) ? runId : null;
+}
+
+function identityFromRunKey(key: string): { sessionId: string; runId: string } {
+  try {
+    const parsed = JSON.parse(key) as unknown;
+    if (
+      Array.isArray(parsed)
+      && typeof parsed[0] === 'string'
+      && typeof parsed[1] === 'string'
+    ) {
+      return { sessionId: parsed[0], runId: parsed[1] };
+    }
+  } catch {
+    /* legacy key */
+  }
+  return { sessionId: '', runId: key };
+}
+
+function getDiagnosticsSnapshot(): AcrDiagnosticsSnapshot {
+  const transactions: AcrDiagnosticsSnapshot['transactions'] = [];
+  for (const run of activeByRun.values()) {
+    const state = run.orphaned
+      ? 'orphan-draining'
+      : run.abortRequested
+        ? 'cancelling'
+        : 'active';
+    transactions.push({
+      runId: run.runId,
+      sessionId: run.sessionId,
+      correlationId: run.correlationId,
+      kind: 'apply_ops',
+      windowId: run.windowId,
+      state,
+      ownsLease: Boolean(run.windowId && leaseByWindow.get(run.windowId) === run.key),
+    });
+  }
+  for (const operation of managedOperations.values()) {
+    const state = operation.orphaned
+      ? 'orphan-draining'
+      : operation.controller.signal.aborted
+        ? 'cancelling'
+        : 'active';
+    transactions.push({
+      runId: operation.runId,
+      sessionId: operation.sessionId,
+      correlationId: operation.correlationId,
+      kind: operation.kind,
+      windowId: operation.windowId,
+      state,
+      ownsLease: Boolean(
+        operation.ownsLease
+        && operation.windowId
+        && leaseByWindow.get(operation.windowId) === operation.key
+      ),
+    });
+  }
+  const leases = [...leaseByWindow.entries()].map(([windowId, key]) => {
+    const active = activeByRun.get(key);
+    const managed = managedOperations.get(key);
+    const identity = active ?? managed ?? identityFromRunKey(key);
+    return {
+      windowId,
+      runId: identity.runId,
+      sessionId: identity.sessionId,
+    };
+  });
+  return {
+    transactions,
+    leases,
+    cancelling: transactions.filter((item) => item.state === 'cancelling').length,
+    orphanDraining: transactions.filter((item) => item.state === 'orphan-draining').length,
+    undoInFlight:
+      uiUndoFlights.size
+      + transactions.filter((item) => item.kind === 'revert_run').length,
+  };
+}
+
 function syncPerfMonitorForActiveRuns(): void {
-  if (activeByRun.size > 0) {
+  if (activeByRun.size > 0 || managedOperations.size > 0) {
     if (releasePerfMonitorOwner) return;
     try {
       releasePerfMonitorOwner = acquirePerfMonitor();
@@ -243,6 +448,89 @@ function bridgeErr(
   };
 }
 
+function cloneBridgeResponse(
+  response: AcrBridgeResponse,
+  correlationId: string,
+): AcrBridgeResponse {
+  let data = response.data;
+  if (data !== undefined) {
+    try {
+      data = JSON.parse(JSON.stringify(data)) as unknown;
+    } catch {
+      // Bridge payloads are serializable; retain the original only for legacy local callers.
+    }
+  }
+  return { ...response, correlationId, ...(data !== undefined ? { data } : {}) };
+}
+
+function rememberTerminalRun(
+  req: AcrBridgeRequest,
+  response: AcrBridgeResponse,
+): void {
+  // Preflight/gate errors did not start a transaction and may be retried with the
+  // same identity after their condition changes. Only authoritative successes replay.
+  if (!isTransactionalCommand(req.command) || !response.ok) return;
+  const key = terminalRunKey(req);
+  if (terminalRuns.has(key)) return;
+  terminalRuns.set(key, {
+    command: req.command,
+    fingerprint: requestFingerprint(req),
+    response: cloneBridgeResponse(response, req.correlationId),
+  });
+  if (req.command === 'apply_ops' || req.command === 'act') {
+    const seen = seenForwardRuns.get(req.sessionId) ?? new Set<string>();
+    seen.add(req.runId);
+    seenForwardRuns.set(req.sessionId, seen);
+  }
+  terminalRunOrder.push(key);
+  while (terminalRunOrder.length > MAX_TERMINAL_RUNS) {
+    const oldest = terminalRunOrder.shift();
+    if (oldest) terminalRuns.delete(oldest);
+  }
+}
+
+function replayTerminalRun(req: AcrBridgeRequest): AcrBridgeResponse | null {
+  if (!isTransactionalCommand(req.command)) return null;
+  const record = terminalRuns.get(terminalRunKey(req));
+  if (!record) {
+    if (
+      (req.command === 'apply_ops' || req.command === 'act')
+      && seenForwardRuns.get(req.sessionId)?.has(req.runId)
+    ) {
+      return bridgeErr(
+        req.correlationId,
+        'RUN_ID_EXPIRED',
+        `runId ${req.runId} 已完成，但终态正文已从缓存淘汰`,
+        '不要重新执行旧事务；重新 observe 后使用新的 toolCallId 规划后续动作',
+        false,
+      );
+    }
+    return null;
+  }
+  if (
+    record.command !== req.command
+    || record.fingerprint !== requestFingerprint(req)
+  ) {
+    return bridgeErr(
+      req.correlationId,
+      'RUN_ID_REUSE',
+      `runId ${req.runId} 已绑定到另一个终态事务`,
+      '为不同 command/args 生成新的 toolCallId；不要复用已完成事务身份',
+      false,
+    );
+  }
+  return cloneBridgeResponse(record.response, req.correlationId);
+}
+
+async function runTransactionalRequest(
+  req: AcrBridgeRequest,
+  task: () => Promise<AcrBridgeResponse>,
+): Promise<AcrBridgeResponse> {
+  const response = await task();
+  rememberTerminalRun(req, response);
+  return response;
+}
+
 function bridgeGateErr(
   correlationId: string,
   parts: GateErrorParts,
@@ -262,6 +550,9 @@ function abortAllActiveRuns(reasonLabel: string): void {
     const run = activeByRun.get(runId);
     if (!run) continue;
     requestAbort(run, reasonLabel);
+  }
+  for (const operation of managedOperations.values()) {
+    abortManagedOperation(operation, reasonLabel);
   }
 }
 
@@ -309,23 +600,41 @@ function asRecord(args: unknown): Record<string, unknown> {
     : {};
 }
 
-function agentRuntimeOptions(req: AcrBridgeRequest, withUndo = false) {
+function agentRuntimeOptions(
+  req: AcrBridgeRequest,
+  opts: {
+    withUndo?: boolean;
+    runKey?: string;
+    signal?: AbortSignal;
+    approvalRiskCeiling?: AgentCapabilityRisk;
+  } = {},
+) {
+  const runKey = opts.runKey ?? makeRunKey(req.sessionId, req.runId);
   return {
     runId: req.runId,
     sessionId: req.sessionId,
     resolveDirty: (typeId: string, instanceKey: string | null) =>
       isContentDirty(typeId, instanceKey),
-    resolveBusy: (windowId: string) => leaseByWindow.has(windowId),
+    resolveBusy: (windowId: string) => {
+      const owner = leaseByWindow.get(windowId);
+      return Boolean(owner && owner !== runKey);
+    },
     resolveLegacyState: (ctx: { windowId: string }) => {
       const win = useWindowStore.getState().windows[ctx.windowId];
       return win ? readDriverQueryState(stageManager, win) : {};
     },
-    ...(withUndo
+    signal: opts.signal,
+    approvalRiskCeiling: opts.approvalRiskCeiling,
+    ...(opts.withUndo
       ? {
           registerSessionUndo: (
             invert: () => Promise<void> | void,
             label: string,
-          ) => runLedger.record(req.runId, invert, label),
+            risk: AgentCapabilityRisk = 'medium',
+          ) => {
+            elevateRunLedgerRisk(runKey, risk);
+            runLedger.record(runKey, invert, label);
+          },
         }
       : {}),
   };
@@ -347,6 +656,239 @@ function bridgeAgentRuntimeError(
   throw error;
 }
 
+function resolveAgentRequestWindowId(target: AgentWindowTarget): string | null {
+  const state = useWindowStore.getState();
+  if (target.windowId) return state.windows[target.windowId]?.id ?? null;
+  if (target.typeId) {
+    const candidates = Object.values(state.windows).filter(
+      (window) => window.typeId === target.typeId,
+    );
+    if (target.instanceKey) {
+      return candidates.find((window) => window.instanceKey === target.instanceKey)?.id ?? null;
+    }
+    if (appRegistry.get(target.typeId)?.instanceMode === 'single') {
+      return candidates[0]?.id ?? null;
+    }
+    const focusedId = state.focusStack.at(-1);
+    return candidates.find((window) => window.id === focusedId)?.id
+      ?? candidates[0]?.id
+      ?? null;
+  }
+  const focusedId = state.focusStack.at(-1);
+  return focusedId && state.windows[focusedId] ? focusedId : null;
+}
+
+function beginManagedOperation(
+  req: AcrBridgeRequest,
+  kind: ManagedOperationKind,
+  windowId: string | null,
+  ownsLease: boolean,
+): { operation?: ManagedOperation; error?: AcrBridgeResponse } {
+  const key = makeRunKey(req.sessionId, req.runId);
+  if (hasActiveRunKey(key)) {
+    return {
+      error: bridgeErr(
+        req.correlationId,
+        'DUPLICATE_RUN_ID',
+        `runId ${req.runId} 已在当前会话执行`,
+        '请为新的桥请求生成唯一 runId',
+        false,
+      ),
+    };
+  }
+  if (runByCorrelation.has(req.correlationId)) {
+    return {
+      error: bridgeErr(
+        req.correlationId,
+        'DUPLICATE_CORRELATION_ID',
+        `correlationId ${req.correlationId} 已在执行`,
+        '请为新的桥请求生成唯一 correlationId',
+        false,
+      ),
+    };
+  }
+  if (ownsLease && windowId && leaseByWindow.has(windowId)) {
+    return {
+      error: bridgeErr(
+        req.correlationId,
+        ACR_ERROR_CODES.WINDOW_BUSY,
+        `窗口 ${windowId} 已有活跃 agent run`,
+        '请等待当前操作完成，或先取消/停止后再试',
+        true,
+      ),
+    };
+  }
+
+  const operation: ManagedOperation = {
+    key,
+    runId: req.runId,
+    sessionId: req.sessionId,
+    correlationId: req.correlationId,
+    bridgeToken: req.bridgeToken,
+    kind,
+    windowId,
+    controller: new AbortController(),
+    timeoutTimer: null,
+    orphanTimer: null,
+    orphaned: false,
+    ownsLease,
+  };
+  managedOperations.set(key, operation);
+  registerCorrelation(req.correlationId, key);
+  if (ownsLease && windowId) leaseByWindow.set(windowId, key);
+  if (Number.isFinite(req.timeoutMs) && req.timeoutMs > 0) {
+    operation.timeoutTimer = setTimeout(() => {
+      operation.timeoutTimer = null;
+      abortManagedOperation(operation, 'bridge timeout');
+    }, req.timeoutMs);
+  }
+  syncPerfMonitorForActiveRuns();
+  return { operation };
+}
+
+function finishManagedOperation(operation: ManagedOperation): void {
+  if (managedOperations.get(operation.key) !== operation) return;
+  if (operation.timeoutTimer != null) clearTimeout(operation.timeoutTimer);
+  if (operation.orphanTimer != null) clearTimeout(operation.orphanTimer);
+  operation.timeoutTimer = null;
+  operation.orphanTimer = null;
+  operation.orphaned = false;
+  if (
+    operation.ownsLease
+    && operation.windowId
+    && leaseByWindow.get(operation.windowId) === operation.key
+  ) {
+    leaseByWindow.delete(operation.windowId);
+  }
+  unregisterCorrelation(operation.correlationId, operation.key);
+  managedOperations.delete(operation.key);
+  syncPerfMonitorForActiveRuns();
+}
+
+function abortManagedOperation(
+  operation: ManagedOperation,
+  reason: string,
+): void {
+  if (!operation.controller.signal.aborted) operation.controller.abort(reason);
+  if (operation.orphanTimer != null || operation.orphaned) return;
+  operation.orphanTimer = setTimeout(() => {
+    operation.orphanTimer = null;
+    if (managedOperations.get(operation.key) === operation) {
+      operation.orphaned = true;
+    }
+  }, ORPHAN_DRAIN_MS);
+}
+
+function rebindManagedOperationLease(
+  operation: ManagedOperation,
+  windowId: string | null,
+): AcrBridgeResponse | null {
+  if (operation.windowId === windowId && operation.ownsLease === Boolean(windowId)) {
+    return null;
+  }
+  const owner = windowId ? leaseByWindow.get(windowId) : undefined;
+  if (owner && owner !== operation.key) {
+    return bridgeErr(
+      operation.correlationId,
+      ACR_ERROR_CODES.WINDOW_BUSY,
+      `窗口 ${windowId} 已有活跃 agent run`,
+      '请等待当前操作完成，或先取消/停止后再试',
+      true,
+    );
+  }
+  if (
+    operation.ownsLease
+    && operation.windowId
+    && leaseByWindow.get(operation.windowId) === operation.key
+  ) {
+    leaseByWindow.delete(operation.windowId);
+  }
+  operation.windowId = windowId;
+  operation.ownsLease = Boolean(windowId);
+  if (windowId) leaseByWindow.set(windowId, operation.key);
+  return null;
+}
+
+function promoteManagedApply(
+  operation: ManagedOperation,
+  run: ActiveRun,
+): void {
+  if (operation.timeoutTimer != null) clearTimeout(operation.timeoutTimer);
+  if (operation.orphanTimer != null) clearTimeout(operation.orphanTimer);
+  operation.timeoutTimer = null;
+  operation.orphanTimer = null;
+  operation.orphaned = false;
+  activeByRun.set(run.key, run);
+  managedOperations.delete(operation.key);
+  // Correlation registration and the window lease keep the same run key, so the
+  // preparing -> active transition is atomic from cancel/lease observers' view.
+  syncPerfMonitorForActiveRuns();
+}
+
+function cancelledBeforeApplyReceipt(
+  correlationId: string,
+  ops: AgentOp[],
+  message = '操作在准备阶段已取消，未开始执行',
+): AcrBridgeResponse {
+  return bridgeOk(correlationId, {
+    status: 'cancelled',
+    mode: 'frontend',
+    applied: 0,
+    totalOps: ops.length,
+    entityIds: [],
+    done: [],
+    undone: ops.map((op) => op.label || op.kind),
+    message,
+  } satisfies AcrReceipt);
+}
+
+function resolveLegacyMutationWindowId(req: AcrBridgeRequest): string | null {
+  const args = asRecord(req.args);
+  if (req.command === 'close_window') {
+    const windowId = typeof args.windowId === 'string' ? args.windowId : '';
+    return windowId && useWindowStore.getState().windows[windowId] ? windowId : null;
+  }
+  if (req.command !== 'app_command') return null;
+  const payload = asRecord(args.payload);
+  const explicitWindowId = typeof payload.windowId === 'string' ? payload.windowId : '';
+  if (explicitWindowId && useWindowStore.getState().windows[explicitWindowId]) {
+    return explicitWindowId;
+  }
+  const typeId = typeof args.typeId === 'string' ? args.typeId : '';
+  const instanceKey = typeof args.instanceKey === 'string' ? args.instanceKey : null;
+  const candidates = Object.values(useWindowStore.getState().windows).filter(
+    (window) => window.typeId === typeId,
+  );
+  return (
+    instanceKey
+      ? candidates.find((window) => window.instanceKey === instanceKey)
+      : candidates[0]
+  )?.id ?? null;
+}
+
+async function runLegacyMutation(
+  req: AcrBridgeRequest,
+  task: () => Promise<AcrBridgeResponse> | AcrBridgeResponse,
+): Promise<AcrBridgeResponse> {
+  const windowId = resolveLegacyMutationWindowId(req);
+  // Closing is the lifecycle escape hatch for an active apply. It must wait for
+  // canClose and then abort that run, rather than deadlocking on the run's lease.
+  const ownsLease = req.command !== 'close_window' && Boolean(windowId);
+  const started = beginManagedOperation(
+    req,
+    req.command as 'open_app' | 'app_command' | 'close_window',
+    windowId,
+    ownsLease,
+  );
+  if (started.error) return started.error;
+  const operation = started.operation!;
+  try {
+    return await task();
+  } finally {
+    finishManagedOperation(operation);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // presence / 心跳
 // ---------------------------------------------------------------------------
@@ -356,7 +898,7 @@ function startHeartbeat(run: ActiveRun): void {
   if (!run.windowId) return;
   const windowId = run.windowId;
   run.heartbeat = setInterval(() => {
-    usePresenceStore.getState().renew(run.runId);
+    usePresenceStore.getState().renew(run.key);
     requestWakePrefetch(windowId);
     reportSchedulerActivity('stream');
   }, HEARTBEAT_MS);
@@ -373,11 +915,11 @@ function stopHeartbeat(run: ActiveRun): void {
 const DONE_PRESENCE_HOLD_MS = 4000;
 const doneHoldTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-function clearDoneHoldTimer(runId: string): void {
-  const t = doneHoldTimers.get(runId);
+function clearDoneHoldTimer(runKey: string): void {
+  const t = doneHoldTimers.get(runKey);
   if (t != null) {
     clearTimeout(t);
-    doneHoldTimers.delete(runId);
+    doneHoldTimers.delete(runKey);
   }
 }
 
@@ -393,37 +935,36 @@ function clearOrphanTimer(run: ActiveRun): void {
     clearTimeout(run.orphanTimer);
     run.orphanTimer = null;
   }
+  run.orphaned = false;
 }
 
 function clearActiveRun(
-  runId: string,
+  runKey: string,
   opts?: { retainPresenceMs?: number; expectedRun?: ActiveRun },
 ): void {
-  const run = activeByRun.get(runId);
+  const run = activeByRun.get(runKey);
   if (!run || (opts?.expectedRun && run !== opts.expectedRun)) return;
   stopHeartbeat(run);
   clearOrphanTimer(run);
   run.arbitrator.dispose();
-  if (run.windowId && leaseByWindow.get(run.windowId) === runId) {
+  if (run.windowId && leaseByWindow.get(run.windowId) === runKey) {
     leaseByWindow.delete(run.windowId);
   }
-  if (runByCorrelation.get(run.correlationId) === runId) {
-    runByCorrelation.delete(run.correlationId);
-  }
-  activeByRun.delete(runId);
+  unregisterCorrelation(run.correlationId, runKey);
+  activeByRun.delete(runKey);
   syncPerfMonitorForActiveRuns();
 
   const retainMs = opts?.retainPresenceMs ?? 0;
-  clearDoneHoldTimer(runId);
+  clearDoneHoldTimer(run.key);
   if (retainMs > 0) {
     // 租约已释放，仅保留光环/Strip 供撤销；TTL 心跳已停，用短时定时器清
     const timer = setTimeout(() => {
-      doneHoldTimers.delete(runId);
-      usePresenceStore.getState().clearByRun(runId);
+      doneHoldTimers.delete(run.key);
+      usePresenceStore.getState().clearByRun(run.key);
     }, retainMs);
-    doneHoldTimers.set(runId, timer);
+    doneHoldTimers.set(run.key, timer);
   } else {
-    usePresenceStore.getState().clearByRun(runId);
+    usePresenceStore.getState().clearByRun(run.key);
   }
 }
 
@@ -431,9 +972,9 @@ function finalizeRun(run: ActiveRun, receipt: AcrReceipt): AcrReceipt {
   if (!run.terminalReceipt) run.terminalReceipt = receipt;
   const authoritative = run.terminalReceipt;
   recordTerminalReceipt(run, authoritative);
-  runLedger.sealRun(run.runId);
+  runLedger.sealRun(run.key);
 
-  if (activeByRun.get(run.runId) === run) {
+  if (activeByRun.get(run.key) === run) {
     const status = run.windowId
       ? usePresenceStore.getState().byWindow[run.windowId]?.status
       : undefined;
@@ -445,13 +986,13 @@ function finalizeRun(run: ActiveRun, receipt: AcrReceipt): AcrReceipt {
     ) {
       usePresenceStore
         .getState()
-        .updateStatus(run.runId, terminalAborted ? 'aborted' : 'done');
+        .updateStatus(run.key, terminalAborted ? 'aborted' : 'done');
     }
     const retainPresenceMs =
       authoritative.status === 'completed' || authoritative.status === 'partial'
         ? DONE_PRESENCE_HOLD_MS
         : 0;
-    clearActiveRun(run.runId, { retainPresenceMs, expectedRun: run });
+    clearActiveRun(run.key, { retainPresenceMs, expectedRun: run });
   }
   return authoritative;
 }
@@ -461,35 +1002,37 @@ function requestAbort(run: ActiveRun, reasonLabel: string): AcrReceipt | null {
   run.abortRequested = true;
   run.arbitrator.stop();
   try {
-    run.abortFallbackReceipt = run.driver.abort(run.runId);
+    run.abortFallbackReceipt = run.driver.abort(run.key);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     run.abortFallbackReceipt = failedReceipt(0, `abort 异常: ${message}`);
   }
-  usePresenceStore.getState().updateStatus(run.runId, 'aborted', reasonLabel);
+  // Cancellation stops renewal immediately. The driver still gets a bounded
+  // drain window to publish its authoritative partial receipt.
+  stopHeartbeat(run);
+  usePresenceStore.getState().updateStatus(run.key, 'aborted', reasonLabel);
+  scheduleOrphanDeadline(run);
   return run.abortFallbackReceipt;
 }
 
 function scheduleOrphanDeadline(run: ActiveRun): void {
-  if (run.orphanTimer != null || run.terminalReceipt) return;
+  if (run.orphanTimer != null || run.orphaned || run.terminalReceipt) return;
   run.orphanTimer = setTimeout(() => {
     run.orphanTimer = null;
-    if (activeByRun.get(run.runId) !== run || run.terminalReceipt) return;
-    const snapshot = run.abortFallbackReceipt;
-    finalizeRun(run, {
-      status: 'partial',
-      mode: snapshot?.mode ?? 'frontend',
-      applied: snapshot?.applied ?? 0,
-      totalOps: snapshot?.totalOps ?? 0,
-      entityIds: snapshot?.entityIds ?? [],
-      done: snapshot?.done ?? [],
-      undone: snapshot?.undone?.length
-        ? snapshot.undone
-        : ['StageManager 停止后当前操作未在期限内结算'],
-      message:
-        'StageManager 停止后 15 秒仍未结算，已按 orphan partial 封账并释放租约',
-    });
+    if (activeByRun.get(run.key) !== run || run.terminalReceipt) return;
+    // Rust has already surfaced RESULT_UNKNOWN after its bounded drain. A handler
+    // that ignored cancellation may still write, so quarantine the window until
+    // the underlying promise actually settles instead of releasing its lease.
+    run.orphaned = true;
   }, ORPHAN_DRAIN_MS);
+}
+
+function findActiveApplyRun(
+  runIdentity: string,
+  windowId?: string,
+): ActiveRun | undefined {
+  const exact = activeByRun.get(runIdentity);
+  return exact && (!windowId || exact.windowId === windowId) ? exact : undefined;
 }
 
 /**
@@ -501,14 +1044,15 @@ function healStalePresence(now = Date.now()): void {
   const entries = Object.values(usePresenceStore.getState().byWindow);
   for (const p of entries) {
     if (!isPresenceExpired(p, now)) continue;
-    const run = activeByRun.get(p.runId);
+    const run = activeByRun.get(p.runKey);
     if (run) {
       stopHeartbeat(run);
       requestAbort(run, '操作心跳超时，已中止');
     } else {
-      usePresenceStore.getState().clearByRun(p.runId);
-      if (p.windowId && leaseByWindow.get(p.windowId) === p.runId) {
-        leaseByWindow.delete(p.windowId);
+      usePresenceStore.getState().clearByRun(p.runKey);
+      if (p.windowId) {
+        const owner = leaseByWindow.get(p.windowId);
+        if (owner && !hasActiveRunKey(owner)) leaseByWindow.delete(p.windowId);
       }
     }
   }
@@ -538,11 +1082,15 @@ export function __healStalePresenceForTests(now?: number): void {
  * 不在此处 clearActiveRun：等 apply 的 finally 统一清理，避免竞态双清。
  */
 function abortRunForWindow(windowId: string, reason: string): void {
-  const runId = leaseByWindow.get(windowId);
-  if (!runId) return;
-  const run = activeByRun.get(runId);
-  if (!run) return;
-  requestAbort(run, reason);
+  const runKey = leaseByWindow.get(windowId);
+  if (!runKey) return;
+  const run = activeByRun.get(runKey);
+  if (run) {
+    requestAbort(run, reason);
+    return;
+  }
+  const operation = managedOperations.get(runKey);
+  if (operation) abortManagedOperation(operation, reason);
 }
 
 /** DESIGN §4.3：仅 focused/visible 演出；minimized / background / frozen 直落终态 */
@@ -768,8 +1316,17 @@ async function handleAppCommand(req: AcrBridgeRequest): Promise<AcrBridgeRespons
       message: detail.message ?? detail.hint,
     });
   }
+  if (!handled || detail?.acknowledged !== true) {
+    return bridgeOk(req.correlationId, {
+      handled: false,
+      code: 'ACTION_UNVERIFIED',
+      hint: '目标应用未返回持久化或领域状态 ACK，操作结果按失败处理',
+      message: detail?.message ?? '动作已派发但未获得 authoritative ACK',
+    });
+  }
   return bridgeOk(req.correlationId, {
-    handled,
+    handled: true,
+    acknowledged: true,
     ...(detail?.code ? { code: detail.code } : {}),
     ...(detail?.hint ? { hint: detail.hint } : {}),
   });
@@ -797,8 +1354,13 @@ function handleWindowCommand(
   if (action === 'showDesktop') {
     const windowIds = Object.keys(store.windows);
     for (const id of windowIds) store.minimizeWindow(id, true);
+    const acknowledged = Object.values(useWindowStore.getState().windows)
+      .every((window) => window.minimized);
     return bridgeOk(req.correlationId, {
-      handled: true,
+      handled: acknowledged,
+      ...(acknowledged
+        ? { acknowledged: true }
+        : { code: 'ACTION_UNAVAILABLE', hint: '部分窗口未能最小化' }),
       affectedWindowIds: windowIds,
     });
   }
@@ -819,8 +1381,14 @@ function handleWindowCommand(
     }));
     if (store.batchSetDisplayModes) store.batchSetDisplayModes(entries);
     else for (const entry of entries) store.setDisplayMode(entry.id, entry.mode);
+    const acknowledged = entries.every(
+      (entry) => useWindowStore.getState().windows[entry.id]?.displayMode === entry.mode,
+    );
     return bridgeOk(req.correlationId, {
-      handled: true,
+      handled: acknowledged,
+      ...(acknowledged
+        ? { acknowledged: true }
+        : { code: 'ACTION_UNAVAILABLE', hint: '部分窗口未达到目标布局' }),
       affectedWindowIds: entries.map((entry) => entry.id),
       overflow: Math.max(0, windows.length - entries.length),
     });
@@ -867,14 +1435,29 @@ function handleWindowCommand(
   }
 
   const after = useWindowStore.getState().windows[windowId];
+  const focused = useWindowStore.getState().focusStack.at(-1) === windowId
+    && !(after?.minimized ?? before.minimized);
+  const acknowledged = action === 'focusWindow'
+    ? focused
+    : action === 'minimizeWindow'
+      ? after?.minimized === true
+      : action === 'unminimizeWindow'
+        ? after?.minimized === false
+        : after?.displayMode === WINDOW_DISPLAY_ACTIONS[action];
+  if (!acknowledged) {
+    return bridgeOk(req.correlationId, {
+      handled: false,
+      code: 'ACTION_UNAVAILABLE',
+      hint: `${action} 未达到请求后的窗口状态`,
+    });
+  }
   return bridgeOk(req.correlationId, {
     handled: true,
+    acknowledged: true,
     windowId,
     minimized: after?.minimized ?? before.minimized,
     displayMode: after?.displayMode ?? before.displayMode,
-    focused:
-      useWindowStore.getState().focusStack.at(-1) === windowId &&
-      !(after?.minimized ?? before.minimized),
+    focused,
   });
 }
 
@@ -952,28 +1535,70 @@ async function handleAct(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
   if (!isAgentActRequestReadOnly(req.args) && !workbenchBus.isEnabled()) {
     return bridgeGateErr(req.correlationId, gateDisabledOs());
   }
+  const request = asRecord(req.args) as unknown as AgentActRequest;
+  const windowId = resolveAgentRequestWindowId(request);
+  const startedOperation = beginManagedOperation(req, 'act', windowId, true);
+  if (startedOperation.error) return startedOperation.error;
+  const operation = startedOperation.operation!;
+  bindRunLedgerMetadata(operation.key, {
+    sessionId: req.sessionId,
+    externalRunId: req.runId,
+    windowId,
+    requiredRisk: 'read',
+  });
   try {
     const receipt = await workbenchBus.actAgent(
-      asRecord(req.args) as unknown as AgentActRequest,
-      agentRuntimeOptions(req, true),
+      request,
+      agentRuntimeOptions(req, {
+        withUndo: true,
+        runKey: operation.key,
+        signal: operation.controller.signal,
+      }),
     );
-    if (runLedger.hasRun(req.runId)) runLedger.sealRun(req.runId);
+    if (runLedger.hasRun(operation.key)) runLedger.sealRun(operation.key);
+    else discardEmptyRunLedger(operation.key);
     return bridgeOk(req.correlationId, receipt);
   } catch (error) {
+    discardEmptyRunLedger(operation.key);
     return bridgeAgentRuntimeError(req, error);
+  } finally {
+    finishManagedOperation(operation);
   }
 }
 
 async function handleWaitFor(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
+  const request = asRecord(req.args) as unknown as AgentWaitForRequest;
+  const windowId = resolveAgentRequestWindowId(request);
+  const startedOperation = beginManagedOperation(req, 'wait_for', windowId, false);
+  if (startedOperation.error) return startedOperation.error;
+  const operation = startedOperation.operation!;
   try {
     const result = await workbenchBus.waitForAgent(
-      asRecord(req.args) as unknown as AgentWaitForRequest,
-      agentRuntimeOptions(req),
+      request,
+      agentRuntimeOptions(req, {
+        runKey: operation.key,
+        signal: operation.controller.signal,
+      }),
     );
     return bridgeOk(req.correlationId, result);
   } catch (error) {
     return bridgeAgentRuntimeError(req, error);
+  } finally {
+    finishManagedOperation(operation);
   }
+}
+
+const STAGE_RISK_RANK: Record<AgentCapabilityRisk, number> = {
+  read: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+};
+
+function parseApprovalRiskCeiling(value: unknown): AgentCapabilityRisk {
+  return value === 'read' || value === 'low' || value === 'medium' || value === 'high'
+    ? value
+    : 'medium';
 }
 
 async function handleRevertRun(
@@ -981,34 +1606,112 @@ async function handleRevertRun(
 ): Promise<AcrBridgeResponse> {
   const args = asRecord(req.args);
   const undoToken = typeof args.undoToken === 'string' ? args.undoToken : '';
+  const approvalRiskCeiling = parseApprovalRiskCeiling(args.approvalRiskCeiling);
   if (undoToken.startsWith('acr-undo:')) {
+    const entry = getAgentUndo(undoToken);
+    const windowId = entry
+      ? resolveAgentRequestWindowId({
+          windowId: entry.windowId,
+          typeId: entry.typeId,
+          instanceKey: entry.instanceKey ?? undefined,
+        })
+      : null;
+    const startedOperation = beginManagedOperation(
+      req,
+      'revert_run',
+      windowId,
+      true,
+    );
+    if (startedOperation.error) return startedOperation.error;
+    const operation = startedOperation.operation!;
     try {
       const result = await workbenchBus.revertAgentAction(
         undoToken,
-        agentRuntimeOptions(req),
+        agentRuntimeOptions(req, {
+          runKey: operation.key,
+          signal: operation.controller.signal,
+          approvalRiskCeiling,
+        }),
       );
       return bridgeOk(req.correlationId, result);
     } catch (error) {
       return bridgeAgentRuntimeError(req, error);
+    } finally {
+      finishManagedOperation(operation);
     }
   }
   if (undoToken.startsWith('acr-run:')) {
-    const runId = undoToken.slice('acr-run:'.length);
-    const reverted = await runLedger.revertRun(runId);
-    return bridgeOk(req.correlationId, {
-      reverted,
-      undoToken,
-      durability: 'session',
-    });
+    const externalRunId = undoToken.slice('acr-run:'.length);
+    const ledgerKey = makeRunKey(req.sessionId, externalRunId);
+    const metadata = getRunLedgerMetadata(ledgerKey);
+    if (!metadata || metadata.sessionId !== req.sessionId) {
+      return bridgeOk(req.correlationId, {
+        reverted: false,
+        undoToken,
+        durability: 'session',
+        message: '撤销令牌不属于当前会话或已失效',
+      });
+    }
+    if (
+      STAGE_RISK_RANK[metadata.requiredRisk]
+      > STAGE_RISK_RANK[approvalRiskCeiling]
+    ) {
+      return bridgeOk(req.correlationId, {
+        reverted: false,
+        undoToken,
+        durability: 'session',
+        message: `撤销需要 ${metadata.requiredRisk} 风险授权，当前上限为 ${approvalRiskCeiling}`,
+      });
+    }
+    const startedOperation = beginManagedOperation(
+      req,
+      'revert_run',
+      metadata.windowId,
+      true,
+    );
+    if (startedOperation.error) return startedOperation.error;
+    const operation = startedOperation.operation!;
+    try {
+      const reverted = await runLedger.revertRun(ledgerKey);
+      if (reverted) usePresenceStore.getState().clearByRun(ledgerKey);
+      return bridgeOk(req.correlationId, {
+        reverted,
+        undoToken,
+        durability: 'session',
+      });
+    } finally {
+      finishManagedOperation(operation);
+    }
   }
-  const runId = typeof args.runId === 'string' ? args.runId : req.runId;
-  const reverted = await runLedger.revertRun(runId);
-  return bridgeOk(req.correlationId, { reverted });
+  const externalRunId = typeof args.runId === 'string' ? args.runId : req.runId;
+  let ledgerKey = makeRunKey(req.sessionId, externalRunId);
+  let metadata = getRunLedgerMetadata(ledgerKey);
+  // Compatibility for local callers/tests that recorded directly before ACR3
+  // session keys existed. ACR3 session tokens never use this fallback.
+  if (!metadata && !runLedger.hasRun(ledgerKey) && runLedger.hasRun(externalRunId)) {
+    ledgerKey = externalRunId;
+    metadata = getRunLedgerMetadata(ledgerKey);
+  }
+  const startedOperation = beginManagedOperation(
+    req,
+    'revert_run',
+    metadata?.windowId ?? null,
+    Boolean(metadata?.windowId),
+  );
+  if (startedOperation.error) return startedOperation.error;
+  const operation = startedOperation.operation!;
+  try {
+    const reverted = await runLedger.revertRun(ledgerKey);
+    return bridgeOk(req.correlationId, { reverted });
+  } finally {
+    finishManagedOperation(operation);
+  }
 }
 
 async function handleApplyOps(
   req: AcrBridgeRequest,
 ): Promise<AcrBridgeResponse> {
+  const runKey = makeRunKey(req.sessionId, req.runId);
   const args = asRecord(req.args);
   const target = args.target as AcrTarget | undefined;
   const ops = Array.isArray(args.ops) ? (args.ops as AgentOp[]) : [];
@@ -1018,25 +1721,6 @@ async function handleApplyOps(
       'INVALID_ARGS',
       'apply_ops 缺少 target.typeId',
       '请传入 { target, ops, pacing?, destructive }',
-    );
-  }
-
-  if (activeByRun.has(req.runId)) {
-    return bridgeErr(
-      req.correlationId,
-      'DUPLICATE_RUN_ID',
-      `runId ${req.runId} 已在执行`,
-      '请为新的 apply_ops 请求生成唯一 runId',
-      false,
-    );
-  }
-  if (runByCorrelation.has(req.correlationId)) {
-    return bridgeErr(
-      req.correlationId,
-      'DUPLICATE_CORRELATION_ID',
-      `correlationId ${req.correlationId} 已在执行`,
-      '请为新的桥请求生成唯一 correlationId',
-      false,
     );
   }
 
@@ -1051,189 +1735,258 @@ async function handleApplyOps(
     );
   }
 
-  if (
-    target.resourceId &&
-    (target.typeId === 'note' || target.typeId === 'mindmap')
-  ) {
-    const notesWindow = Object.values(useWindowStore.getState().windows).find(
-      (window) => window.typeId === 'notes',
+  const initialProbe = probeTarget(target);
+  if (target.windowId && initialProbe.windowId !== target.windowId) {
+    return bridgeErr(
+      req.correlationId,
+      'STALE_TARGET_WINDOW',
+      `精确目标窗口 ${target.windowId} 已关闭、切换资源或不再匹配`,
+      '重新 probe，并使用新回执的 windowId 提交 apply_ops',
+      false,
     );
-    if (notesWindow) {
+  }
+
+  const notesWindow = !target.windowId
+    && target.resourceId
+    && (target.typeId === 'note' || target.typeId === 'mindmap')
+    ? Object.values(useWindowStore.getState().windows).find(
+        (window) => window.typeId === 'notes',
+      )
+    : undefined;
+  let preparingWindowId = notesWindow?.id ?? initialProbe.windowId;
+  if (!preparingWindowId && target.resourceId) {
+    preparingWindowId = Object.values(useWindowStore.getState().windows).find(
+      (window) => window.typeId === target.typeId
+        && window.instanceKey === target.resourceId,
+    )?.id ?? null;
+  }
+
+  const startedOperation = beginManagedOperation(
+    req,
+    'apply_ops',
+    preparingWindowId,
+    Boolean(preparingWindowId),
+  );
+  if (startedOperation.error) return startedOperation.error;
+  const preparation = startedOperation.operation!;
+  let promoted = false;
+
+  try {
+    if (notesWindow && target.resourceId) {
       await prepareWorkspaceResource(
-        { type: target.typeId, id: target.resourceId },
+        { type: target.typeId as 'note' | 'mindmap', id: target.resourceId },
         notesWindow.id,
       );
     }
-  }
-
-  // 解析目标窗：优先 probe，其次按 typeId+resourceId 查找
-  const probed = probeTarget(target);
-  let windowId = probed.windowId;
-  if (!windowId && target.resourceId) {
-    const found = Object.values(useWindowStore.getState().windows).find(
-      (w) => w.typeId === target.typeId && w.instanceKey === target.resourceId,
-    );
-    windowId = found?.id ?? null;
-  }
-
-  // R2-09 / DESIGN §6：follow 档对 frozen 先 focus 唤醒再委托
-  windowId = wakeFrozenIfFollow(target, windowId);
-
-  // 快照恢复后旧 windowId 可能已失效：以当前 store 为准再校验一次
-  if (windowId && !useWindowStore.getState().windows[windowId]) {
-    windowId = null;
-  }
-
-  // follow：自动聚焦目标窗（background 不抢焦点）
-  if (windowId && agentControl === 'follow') {
-    useWindowStore.getState().focusWindow(windowId);
-  }
-
-  if (windowId && leaseByWindow.has(windowId)) {
-    return bridgeErr(
-      req.correlationId,
-      ACR_ERROR_CODES.WINDOW_BUSY,
-      `窗口 ${windowId} 已有活跃 agent run`,
-      '请等待当前操作完成，或先取消/停止后再试',
-      true,
-    );
-  }
-
-  // DESIGN §4.3：最小化 / background / frozen 直落；同时演出 ≤2，超限亦直落
-  const pacingName = shouldInstantDrop(windowId)
-    ? 'fast'
-    : parsePacing(typeof args.pacing === 'string' ? args.pacing : agentPacing);
-  const pacer = createPacer(pacingName);
-  const gate = applyStagingGates(pacer, windowId);
-
-  const arbitrator = createArbitrator({
-    onPauseChange: (paused) => {
-      // R3-03：勿覆盖 presence.label（AgentStrip 用 pausedLabel 模板包一层）
-      usePresenceStore
-        .getState()
-        .updateStatus(req.runId, paused ? 'pausedByUser' : 'acting');
-      if (paused) {
-        emitAcrProgress(
-          req.correlationId,
-          0,
-          ops.length,
-          i18n.t('workbench:agent.core.progressPaused', {
-            defaultValue: '已暂停：检测到用户输入',
-          }),
-        );
-      }
-    },
-  });
-
-  const run: ActiveRun = {
-    runId: req.runId,
-    correlationId: req.correlationId,
-    windowId,
-    typeId: target.typeId,
-    arbitrator,
-    driver,
-    heartbeat: null,
-    pacer,
-    staging: gate.staging,
-    terminalReceipt: null,
-    receiptRecorded: false,
-    abortRequested: false,
-    abortFallbackReceipt: null,
-    orphanTimer: null,
-  };
-
-  clearDoneHoldTimer(req.runId);
-  activeByRun.set(req.runId, run);
-  runByCorrelation.set(req.correlationId, req.runId);
-  if (windowId) leaseByWindow.set(windowId, req.runId);
-  syncPerfMonitorForActiveRuns();
-
-  if (windowId) {
-    // 同一窗口只能展示一个 terminal presence；新 run 覆盖旧展示时同步取消旧计时器，
-    // 避免高频串行 run 在 4 秒保留窗内堆积大量无效 timer。
-    const previousPresence = usePresenceStore.getState().byWindow[windowId];
-    if (previousPresence && previousPresence.runId !== req.runId) {
-      clearDoneHoldTimer(previousPresence.runId);
+    if (preparation.controller.signal.aborted) {
+      return cancelledBeforeApplyReceipt(req.correlationId, ops);
     }
-    const labelExtra =
-      gate.reason === 'max-staged'
+
+    // Resolve again after resource activation; probe is authoritative for the
+    // exact editor/window that will receive side effects.
+    const probed = probeTarget(target);
+    let windowId = probed.windowId;
+    if (!target.windowId && !windowId && target.resourceId) {
+      const found = Object.values(useWindowStore.getState().windows).find(
+        (window) => window.typeId === target.typeId
+          && window.instanceKey === target.resourceId,
+      );
+      windowId = found?.id ?? null;
+    }
+    if (windowId && !useWindowStore.getState().windows[windowId]) {
+      windowId = null;
+    }
+
+    const leaseError = rebindManagedOperationLease(preparation, windowId);
+    if (leaseError) return leaseError;
+    if (preparation.controller.signal.aborted) {
+      return cancelledBeforeApplyReceipt(req.correlationId, ops);
+    }
+
+    // The lease is now held, so follow-mode focus/wake cannot perturb a winner.
+    const wokenWindowId = wakeFrozenIfFollow(target, windowId);
+    if (wokenWindowId !== windowId) {
+      const wakeLeaseError = rebindManagedOperationLease(preparation, wokenWindowId);
+      if (wakeLeaseError) return wakeLeaseError;
+      windowId = wokenWindowId;
+    }
+    if (preparation.controller.signal.aborted) {
+      return cancelledBeforeApplyReceipt(req.correlationId, ops);
+    }
+    if (windowId && agentControl === 'follow') {
+      useWindowStore.getState().focusWindow(windowId);
+    }
+
+    const pacingName = shouldInstantDrop(windowId)
+      ? 'fast'
+      : parsePacing(typeof args.pacing === 'string' ? args.pacing : agentPacing);
+    const pacer = createPacer(pacingName);
+    const gate = applyStagingGates(pacer, windowId);
+
+    const arbitrator = createArbitrator({
+      onPauseChange: (paused) => {
+        usePresenceStore
+          .getState()
+          .updateStatus(runKey, paused ? 'pausedByUser' : 'acting');
+        if (paused) {
+          emitAcrProgress(
+            req.correlationId,
+            0,
+            ops.length,
+            i18n.t('workbench:agent.core.progressPaused', {
+              defaultValue: '已暂停：检测到用户输入',
+            }),
+            undefined,
+            req.bridgeToken,
+          );
+        }
+      },
+    });
+
+    const run: ActiveRun = {
+      key: runKey,
+      runId: req.runId,
+      sessionId: req.sessionId,
+      correlationId: req.correlationId,
+      bridgeToken: req.bridgeToken,
+      windowId,
+      typeId: target.typeId,
+      arbitrator,
+      driver,
+      heartbeat: null,
+      pacer,
+      staging: gate.staging,
+      terminalReceipt: null,
+      receiptRecorded: false,
+      abortRequested: false,
+      abortFallbackReceipt: null,
+      orphanTimer: null,
+      orphaned: false,
+    };
+
+    clearDoneHoldTimer(runKey);
+    promoteManagedApply(preparation, run);
+    promoted = true;
+    bindRunLedgerMetadata(runKey, {
+      sessionId: req.sessionId,
+      externalRunId: req.runId,
+      windowId,
+      requiredRisk: 'medium',
+    });
+
+    if (windowId) {
+      const previousPresence = usePresenceStore.getState().byWindow[windowId];
+      if (previousPresence && previousPresence.runKey !== runKey) {
+        clearDoneHoldTimer(previousPresence.runKey);
+      }
+      const labelExtra = gate.reason === 'max-staged'
         ? '（演出槽满，直落）'
         : pacer.profile.instant && shouldInstantDrop(windowId)
           ? '（后台直落）'
           : '';
-    usePresenceStore.getState().setPresence({
-      runId: req.runId,
+      usePresenceStore.getState().setPresence({
+        runKey,
+        runId: req.runId,
+        sessionId: req.sessionId,
+        windowId,
+        typeId: target.typeId,
+        status: 'acting',
+        label: `${ops[0]?.label ?? 'AI 正在操作'}${labelExtra}`,
+        startedAt: Date.now(),
+        ttlMs: PRESENCE_TTL_MS,
+      });
+      requestWakePrefetch(windowId);
+      reportSchedulerActivity('stream');
+      startHeartbeat(run);
+    }
+
+    const runContext = {
+      runId: runKey,
+      externalRunId: req.runId,
+      sessionId: req.sessionId,
+      target: { ...target, ...(windowId ? { windowId } : {}) },
       windowId,
-      typeId: target.typeId,
-      status: 'acting',
-      label: `${ops[0]?.label ?? 'AI 正在操作'}${labelExtra}`,
-      startedAt: Date.now(),
-      ttlMs: PRESENCE_TTL_MS,
-    });
-    requestWakePrefetch(windowId);
-    reportSchedulerActivity('stream');
-    startHeartbeat(run);
-  }
+      pacing: pacer,
+      reportProgress(
+        step: number,
+        total: number,
+        message: string,
+        entityId?: string,
+      ) {
+        emitAcrProgress(
+          req.correlationId,
+          step,
+          total,
+          message,
+          entityId,
+          req.bridgeToken,
+        );
+        if (message) {
+          usePresenceStore.getState().updateStatus(runKey, 'acting', message);
+        }
+      },
+      checkPaused: () => arbitrator.checkPaused(),
+      ledger: {
+        record(_runId, invert, label) {
+          runLedger.record(runKey, invert, label);
+        },
+        revertRun: () => runLedger.revertRun(runKey),
+        hasRun: () => runLedger.hasRun(runKey),
+        sealRun: () => runLedger.sealRun(runKey),
+      } satisfies RunLedger,
+    };
 
-  const runContext = {
-    runId: req.runId,
-    sessionId: req.sessionId,
-    target,
-    windowId,
-    pacing: pacer,
-    reportProgress(
-      step: number,
-      total: number,
-      message: string,
-      entityId?: string,
-    ) {
-      emitAcrProgress(req.correlationId, step, total, message, entityId);
-      if (message) {
-        usePresenceStore.getState().updateStatus(req.runId, 'acting', message);
+    let receipt: AcrReceipt;
+    try {
+      receipt = await driver.apply(runContext, ops);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      try {
+        driver.abort(runKey);
+      } catch {
+        /* abort 失败仍返回 failed */
       }
-    },
-    checkPaused: () => arbitrator.checkPaused(),
-    ledger: runLedger,
-  };
-
-  let receipt: AcrReceipt;
-  try {
-    receipt = await driver.apply(runContext, ops);
-  } catch (err) {
-    // R3-04：apply 抛异常必须收敛为 failed（勿沿用 abort 的 cancelled），并 best-effort 停驱动
-    const msg = err instanceof Error ? err.message : String(err);
-    try {
-      driver.abort(req.runId);
-    } catch {
-      /* abort 失败仍返回 failed */
+      receipt = failedReceipt(ops.length, `apply 异常: ${msg}`);
+    } finally {
+      try {
+        pacer.dispose();
+      } catch {
+        /* ignore */
+      }
+      receipt = finalizeRun(run, receipt!);
     }
-    receipt = failedReceipt(ops.length, `apply 异常: ${msg}`);
+
+    return bridgeOk(req.correlationId, receipt!);
   } finally {
-    try {
-      pacer.dispose();
-    } catch {
-      /* ignore */
-    }
-    receipt = finalizeRun(run, receipt!);
+    if (!promoted) finishManagedOperation(preparation);
   }
-
-  return bridgeOk(req.correlationId, receipt!);
 }
 
 function handleCancel(payload: unknown): void {
-  const corr =
-    payload && typeof payload === 'object' && 'correlationId' in payload
-      ? String((payload as { correlationId: unknown }).correlationId)
-      : '';
+  const record = asRecord(payload);
+  const corr = typeof record.correlationId === 'string' ? record.correlationId : '';
   if (!corr) return;
-  const runId = runByCorrelation.get(corr);
-  if (!runId) return;
-  const run = activeByRun.get(runId);
-  if (!run) return;
-  requestAbort(
-    run,
-    i18n.t('workbench:agent.core.cancelled', { defaultValue: '已取消' }),
-  );
+  const exactKey = typeof record.sessionId === 'string' && typeof record.runId === 'string'
+    ? makeRunKey(record.sessionId, record.runId)
+    : null;
+  const keys = runByCorrelation.get(corr);
+  if (!keys) return;
+  for (const key of keys) {
+    if (exactKey && key !== exactKey) continue;
+    const run = activeByRun.get(key);
+    if (run) {
+      if (run.bridgeToken && record.bridgeToken !== run.bridgeToken) continue;
+      requestAbort(
+        run,
+        i18n.t('workbench:agent.core.cancelled', { defaultValue: '已取消' }),
+      );
+      continue;
+    }
+    const operation = managedOperations.get(key);
+    if (!operation) continue;
+    if (operation.bridgeToken && record.bridgeToken !== operation.bridgeToken) continue;
+    abortManagedOperation(operation, 'bridge cancelled');
+  }
 }
 
 function handleInactiveRequest(
@@ -1284,6 +2037,8 @@ export const stageManager: StageManagerApi & {
 
   async handleBridgeRequest(req: AcrBridgeRequest): Promise<AcrBridgeResponse> {
     try {
+      const terminal = replayTerminalRun(req);
+      if (terminal) return terminal;
       if (!started) {
         const inactive = handleInactiveRequest(req);
         if (inactive) return inactive;
@@ -1299,15 +2054,24 @@ export const stageManager: StageManagerApi & {
         case 'probe':
           return handleProbe(req);
         case 'apply_ops':
-          return await handleApplyOps(req);
+          return await runTransactionalRequest(req, () => handleApplyOps(req));
         case 'list_windows':
           return handleListWindows(req);
         case 'open_app':
-          return handleOpenApp(req);
+          return await runTransactionalRequest(
+            req,
+            () => runLegacyMutation(req, () => handleOpenApp(req)),
+          );
         case 'app_command':
-          return await handleAppCommand(req);
+          return await runTransactionalRequest(
+            req,
+            () => runLegacyMutation(req, () => handleAppCommand(req)),
+          );
         case 'close_window':
-          return await handleCloseWindow(req);
+          return await runTransactionalRequest(
+            req,
+            () => runLegacyMutation(req, () => handleCloseWindow(req)),
+          );
         case 'query_state':
           return handleQueryState(req);
         case 'get_capabilities':
@@ -1315,11 +2079,11 @@ export const stageManager: StageManagerApi & {
         case 'observe':
           return await handleObserve(req);
         case 'act':
-          return await handleAct(req);
+          return await runTransactionalRequest(req, () => handleAct(req));
         case 'wait_for':
-          return await handleWaitFor(req);
+          return await runTransactionalRequest(req, () => handleWaitFor(req));
         case 'revert_run':
-          return await handleRevertRun(req);
+          return await runTransactionalRequest(req, () => handleRevertRun(req));
         default:
           return bridgeErr(
             req.correlationId,
@@ -1340,13 +2104,53 @@ export const stageManager: StageManagerApi & {
     }
   },
 
-  async revertRun(runId) {
-    clearDoneHoldTimer(runId);
-    const ok = await runLedger.revertRun(runId);
-    if (ok) {
-      usePresenceStore.getState().clearByRun(runId);
-    }
-    return ok;
+  async revertRun(runId, sessionId) {
+    const ledgerKey = resolveLedgerKey(runId, sessionId);
+    if (!ledgerKey) return false;
+    const existing = uiUndoFlights.get(ledgerKey);
+    if (existing) return existing;
+    const flight = (async () => {
+      const metadata = getRunLedgerMetadata(ledgerKey);
+      const request: AcrBridgeRequest = {
+        correlationId: `ui-undo:${++uiUndoSequence}`,
+        command: 'revert_run',
+        args: { runId },
+        timeoutMs: 0,
+        runId: `ui-undo:${uiUndoSequence}:${runId}`,
+        sessionId: sessionId ?? metadata?.sessionId ?? 'local-ui',
+      };
+      const started = beginManagedOperation(
+        request,
+        'revert_run',
+        metadata?.windowId ?? null,
+        Boolean(metadata?.windowId),
+      );
+      if (started.error) return false;
+      const operation = started.operation!;
+      clearDoneHoldTimer(ledgerKey);
+      try {
+        const ok = await runLedger.revertRun(ledgerKey);
+        if (ok) {
+          usePresenceStore.getState().clearByRun(ledgerKey);
+        }
+        return ok;
+      } finally {
+        finishManagedOperation(operation);
+      }
+    })().finally(() => {
+      if (uiUndoFlights.get(ledgerKey) === flight) uiUndoFlights.delete(ledgerKey);
+    });
+    uiUndoFlights.set(ledgerKey, flight);
+    return flight;
+  },
+
+  hasReversibleRun(runId, sessionId) {
+    const ledgerKey = resolveLedgerKey(runId, sessionId);
+    return Boolean(ledgerKey && runLedger.hasRun(ledgerKey));
+  },
+
+  getDiagnostics() {
+    return getDiagnosticsSnapshot();
   },
 
   notifyUserInput(windowId) {
@@ -1358,34 +2162,45 @@ export const stageManager: StageManagerApi & {
   },
 
   pauseRun(runId) {
-    const run = activeByRun.get(runId);
+    const run = findActiveApplyRun(runId);
     if (!run) return;
     run.arbitrator.pause();
     // 保留步骤 label；Strip 用 pausedLabel 文案
-    usePresenceStore.getState().updateStatus(runId, 'pausedByUser');
+    usePresenceStore.getState().updateStatus(run.key, 'pausedByUser');
   },
 
   /** R3-01：显式续放（note hot 等待结束）；不在 StageManagerApi 冻结面，旁路扩展 */
   resumeRun(runId: string) {
-    const run = activeByRun.get(runId);
+    const run = findActiveApplyRun(runId);
     if (!run) return;
     run.arbitrator.resume();
-    usePresenceStore.getState().updateStatus(runId, 'acting');
+    usePresenceStore.getState().updateStatus(run.key, 'acting');
   },
 
   stopRun(runId) {
-    const run = activeByRun.get(runId);
-    if (!run) return;
-    requestAbort(
-      run,
-      i18n.t('workbench:agent.core.stopped', { defaultValue: '已停止' }),
-    );
+    const reason = i18n.t('workbench:agent.core.stopped', { defaultValue: '已停止' });
+    const run = findActiveApplyRun(runId);
+    if (run) {
+      requestAbort(run, reason);
+      return;
+    }
+    for (const operation of managedOperations.values()) {
+      if (operation.key === runId) {
+        abortManagedOperation(operation, reason);
+      }
+    }
   },
 
   start() {
     if (started) return;
     started = true;
-    void refreshSettings();
+    lifecycleGeneration += 1;
+    const generation = lifecycleGeneration;
+    void refreshSettings(
+      generation,
+      controlSettingRevision,
+      pacingSettingRevision,
+    );
     registerAllDrivers(stageManager);
     registerBuiltinQueryProviders(stageManager);
     unlistenCancel = hubListen(ACR_EVENT_CANCEL, handleCancel);
@@ -1412,6 +2227,7 @@ export const stageManager: StageManagerApi & {
           .detail;
         if (!detail?.key) return;
         if (detail.key === SETTING_AGENT_CONTROL) {
+          controlSettingRevision += 1;
           applyAgentControlChange(
             parseAgentControlMode(
               typeof detail.value === 'string'
@@ -1420,6 +2236,7 @@ export const stageManager: StageManagerApi & {
             ),
           );
         } else if (detail.key === SETTING_AGENT_PACING) {
+          pacingSettingRevision += 1;
           agentPacing = parsePacing(
             typeof detail.value === 'string'
               ? detail.value
@@ -1453,6 +2270,7 @@ export const stageManager: StageManagerApi & {
   stop() {
     if (!started) return;
     started = false;
+    lifecycleGeneration += 1;
     unlistenCancel?.();
     unlistenCancel = null;
     unlistenSettings?.();
@@ -1474,6 +2292,9 @@ export const stageManager: StageManagerApi & {
         scheduleOrphanDeadline(run);
       }
     }
+    for (const operation of managedOperations.values()) {
+      abortManagedOperation(operation, 'StageManager 已停止，操作中断');
+    }
     clearAllDoneHoldTimers();
     usePresenceStore.getState().clearAll();
     disposeAllDrivers();
@@ -1487,10 +2308,17 @@ export function resetStageManagerForTests(): void {
   for (const runId of [...activeByRun.keys()]) {
     clearActiveRun(runId);
   }
+  for (const operation of [...managedOperations.values()]) {
+    finishManagedOperation(operation);
+  }
   clearAllDoneHoldTimers();
+  terminalRuns.clear();
+  terminalRunOrder.length = 0;
+  seenForwardRuns.clear();
   drivers.clear();
   queryProviders.clear();
   started = false;
+  lifecycleGeneration += 1;
   unlistenCancel?.();
   unlistenCancel = null;
   unlistenSettings?.();

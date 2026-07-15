@@ -27,6 +27,22 @@ import type { AcrProbeState, AcrTarget, ProbeResult } from './types';
  */
 function findTargetWindow(target: AcrTarget): { id: string; instanceKey: string | null } | null {
   const { windows } = useWindowStore.getState();
+  const exactWindowId = target.windowId?.trim();
+  if (exactWindowId) {
+    const exact = windows[exactWindowId];
+    if (!exact) return null;
+    if (target.typeId === 'note' || target.typeId === 'mindmap') {
+      if (exact.typeId !== 'notes') return null;
+      const active = getWorkspaceActiveResource(exactWindowId);
+      const resourceId = target.resourceId?.trim();
+      if (active?.type !== target.typeId) return null;
+      if (resourceId && active.id !== resourceId) return null;
+      return { id: exact.id, instanceKey: resourceId ?? active.id };
+    }
+    if (exact.typeId !== target.typeId) return null;
+    if (target.resourceId?.trim() && exact.instanceKey !== target.resourceId.trim()) return null;
+    return { id: exact.id, instanceKey: exact.instanceKey };
+  }
   if (target.typeId === 'note' || target.typeId === 'mindmap') {
     const resourceId = target.resourceId?.trim();
     let windowId: string | null = null;
@@ -101,12 +117,14 @@ export function probeTarget(target: AcrTarget): ProbeResult {
   }
 
   let driverState: AcrProbeState | null = null;
+  let driverProbeFailed = false;
   const driver = stageManager.getDriver(target.typeId);
   if (driver) {
     try {
       driverState = driver.probe(target);
     } catch (err) {
       console.warn('[ACR] driver.probe failed:', err);
+      driverProbeFailed = true;
     }
   }
 
@@ -115,8 +133,25 @@ export function probeTarget(target: AcrTarget): ProbeResult {
     target.resourceId != null && target.resourceId !== ''
       ? target.resourceId
       : win.instanceKey;
-  if (driverState === 'dirty' || isContentDirty(target.typeId, instanceKey)) {
+  if (
+    driverProbeFailed ||
+    driverState === 'dirty' ||
+    isContentDirty(target.typeId, instanceKey)
+  ) {
     return { state: 'dirty', windowId: win.id };
+  }
+
+  // A mounted shell does not imply that its domain surface is usable. Drivers
+  // may report closed while an editor/store is unmounted so Rust can safely use
+  // the backend plane. Dirty state above always wins to prevent stale overwrite.
+  if (driverState === 'closed') {
+    return { state: 'closed', windowId: null };
+  }
+  if (driverState === 'frozen') {
+    return { state: 'frozen', windowId: win.id };
+  }
+  if (driverState === 'disabled') {
+    return { state: 'disabled', windowId: null };
   }
 
   // hot：仅焦点窗且 driver 报 hot

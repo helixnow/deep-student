@@ -196,10 +196,15 @@
   --wb-z-window-resize: 5; /* 窗口内局部层级：缩放把手（窗口自身 stacking context 内） */
   --wb-z-window-titlebar: 10; /* 窗口内局部层级：标题栏及其菜单，高于内容与缩放把手 */
 
-  /* ==== 学习状态菜单栏（SB1；透明字层，无实心顶条） ================== */
-  --wb-menubar-height: 28px;
+  /* ==== 学习状态菜单栏（SB1；应用级玻璃顶条） ======================== */
+  /* The outer app shell deliberately collapses its legacy titlebar to 0 in
+   * Workbench mode. Keep this independent so the Workbench menu bar remains
+   * the single 40px layout boundary for every window arrangement. */
+  --wb-menubar-height: 40px;
   /* Win 窗控胶囊（icon+三键）约占宽，菜单栏 trailing 右让位 */
   --wb-menubar-chrome-inset: 148px;
+  --wb-menubar-bg: transparent;
+  --wb-menubar-border: transparent;
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 78%, transparent 22%);
   --wb-menubar-fg-strong: hsl(var(--foreground));
   --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(0, 0, 0, 0.08));

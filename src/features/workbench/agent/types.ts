@@ -11,6 +11,8 @@
 export interface AcrTarget {
   typeId: string;
   resourceId?: string;
+  /** ACR 3.0 exact host window. When present, type/resource must match this window. */
+  windowId?: string;
 }
 
 /** probe 六态（DESIGN §1.1 路由表） */
@@ -71,16 +73,28 @@ export function getAcrCommandAccess(command: string): AcrCommandAccess | undefin
 
 export interface AcrBridgeRequest {
   correlationId: string;
+  /** ACR 3.0 unguessable per-request echo token. Legacy local callers may omit it. */
+  bridgeToken?: string;
   command: AcrCommand;
   args: unknown;
   timeoutMs: number;
   /** = toolCallId，贯穿工具卡 / presence / 账本 */
   runId: string;
+  /** Original tool call identity retained for the tool card. */
+  toolCallId?: string;
   sessionId: string;
+}
+
+/** Must stay byte-for-byte aligned with Rust `session_scoped_run_id`. */
+export function makeAcrSessionRunId(sessionId: string, toolCallId: string): string {
+  const byteLength = new TextEncoder().encode(sessionId).byteLength;
+  return `acr3:${byteLength}:${sessionId}:${toolCallId}`;
 }
 
 export interface AcrBridgeResponse {
   correlationId: string;
+  /** Must echo the request token on the Tauri transport. */
+  bridgeToken?: string;
   /** 桥层是否成功（业务失败也 ok:true，失败语义进 data.status / error 码） */
   ok: boolean;
   data?: unknown;
@@ -89,6 +103,8 @@ export interface AcrBridgeResponse {
 
 export interface AcrProgressEvent {
   correlationId: string;
+  /** Must echo the request token on the Tauri transport. */
+  bridgeToken?: string;
   step: number;
   total?: number;
   message: string;
@@ -122,6 +138,10 @@ export interface AcrReceipt {
   undoDurability?: 'session' | 'persistent';
   /** Observation revision after a verified action. */
   observationRevision?: string;
+  /** Bridge terminal state could not be observed; caller must re-read before planning. */
+  resultUnknown?: boolean;
+  code?: string;
+  retryable?: boolean;
 }
 
 export interface WindowSummary {
@@ -167,7 +187,11 @@ export interface Pacer {
 export type AcrRunStatus = 'acting' | 'pausedByUser' | 'reviewing' | 'done' | 'aborted';
 
 export interface PresenceState {
+  /** Session-isolated runtime identity used for control and cleanup. */
+  runKey: string;
+  /** External tool-call identity retained for UI/tool-card correlation. */
   runId: string;
+  sessionId: string;
   windowId: string;
   typeId: string;
   status: AcrRunStatus;
@@ -188,7 +212,10 @@ export interface RunLedger {
 }
 
 export interface AcrRunContext {
+  /** Session-isolated runtime identity. Drivers must use this for maps/abort/ledger. */
   runId: string;
+  /** External tool-call identity for domain events or user-visible correlation only. */
+  externalRunId?: string;
   sessionId: string;
   target: AcrTarget;
   windowId: string | null;
@@ -220,7 +247,11 @@ export interface StageManagerApi {
   registerQueryProvider(scope: string, fn: (args: unknown) => unknown): void;
   /** AgentBridge 收到桥请求后调用 */
   handleBridgeRequest(req: AcrBridgeRequest): Promise<AcrBridgeResponse>;
-  revertRun(runId: string): Promise<boolean>;
+  revertRun(runId: string, sessionId?: string): Promise<boolean>;
+  /** Session-aware UI lookup; never probe the ledger with a bare toolCallId. */
+  hasReversibleRun(runId: string, sessionId?: string): boolean;
+  /** Read-only ACR transaction snapshot for DevPanel/tool-card diagnostics. */
+  getDiagnostics(): AcrDiagnosticsSnapshot;
   /** WindowShell / 驱动层的用户输入探测入口（pointerdown/keydown 命中窗口内容区） */
   notifyUserInput(windowId: string): void;
   /** AgentStrip 显式按钮 */
@@ -229,6 +260,39 @@ export interface StageManagerApi {
   /** 生命周期（WorkbenchDesktop 挂载/卸载） */
   start(): void;
   stop(): void;
+}
+
+export type AcrTransactionState = 'active' | 'cancelling' | 'orphan-draining';
+
+export interface AcrTransactionDiagnostic {
+  runId: string;
+  sessionId: string;
+  correlationId: string;
+  kind:
+    | 'apply_ops'
+    | 'act'
+    | 'wait_for'
+    | 'revert_run'
+    | 'open_app'
+    | 'app_command'
+    | 'close_window';
+  windowId: string | null;
+  state: AcrTransactionState;
+  ownsLease: boolean;
+}
+
+export interface AcrLeaseDiagnostic {
+  windowId: string;
+  runId: string;
+  sessionId: string;
+}
+
+export interface AcrDiagnosticsSnapshot {
+  transactions: AcrTransactionDiagnostic[];
+  leases: AcrLeaseDiagnostic[];
+  cancelling: number;
+  orphanDraining: number;
+  undoInFlight: number;
 }
 
 // ---------------- 域事件（DESIGN §5.6） ----------------

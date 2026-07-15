@@ -1,11 +1,28 @@
 import React from 'react';
 import { NotePencil } from '@phosphor-icons/react';
+import i18next from 'i18next';
 import { appRegistry } from '../../core/appRegistry';
 import type { AppDefinition } from '../../core/types';
 import { handleNotesActivation } from './notesActivation';
 import { createNotesAgentManifest } from './agentManifest';
+import { requestContentCloseConfirmation } from '../content/ContentCloseConfirmation';
+import { hasUnsavedNotesWorkspaceChanges } from './workspaceRegistry';
 
 export const NOTES_APP_TYPE_ID = 'notes';
+
+async function canCloseNotesWorkspace(_instanceKey: string | null): Promise<boolean> {
+  if (!hasUnsavedNotesWorkspaceChanges()) return true;
+  try {
+    return await requestContentCloseConfirmation({
+      description: i18next.t('workbench:content.confirmCloseUnsaved', {
+        defaultValue: '当前内容有未保存的修改，确定要关闭窗口吗？',
+      }),
+    });
+  } catch {
+    // If the confirmation host cannot respond, retain the window and edits.
+    return false;
+  }
+}
 
 export const notesAppDefinition: AppDefinition = {
   typeId: NOTES_APP_TYPE_ID,
@@ -18,6 +35,8 @@ export const notesAppDefinition: AppDefinition = {
   render: React.lazy(() => import('./NotesWorkspaceApp')),
   onActivation: handleNotesActivation,
   agentManifest: createNotesAgentManifest(handleNotesActivation),
+  canClose: canCloseNotesWorkspace,
+  handlesCloseShortcut: true,
 };
 
 let registered = false;

@@ -24,9 +24,11 @@ import { useTodoStore } from '../stores/useTodoStore';
 import { TodoSidebar } from './TodoSidebar';
 import { TodoMainPanel, MobileDetailOverlay, type PomodoroSubView } from './TodoMainPanel';
 import { TodoTrashScreen } from './TodoTrashDialog';
+import { TodoAutomationWorkspace } from './TodoAutomationWorkspace';
 
 interface TodoContentViewProps {
   todoListId?: string;
+  initialView?: 'todos' | 'automations';
   className?: string;
 }
 
@@ -60,6 +62,7 @@ function scheduleTodoReload(signal: { cancelled: boolean }): void {
 
 export const TodoContentView: React.FC<TodoContentViewProps> = ({
   todoListId,
+  initialView,
   className,
 }) => {
   const { t } = useTranslation(['todo']);
@@ -74,6 +77,8 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     items,
     selectedItemId,
     selectItem,
+    workspaceView,
+    setWorkspaceView,
   } = useTodoStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // 移动端 inline 子屏（全屏替换中屏内容，返回走顶栏箭头 / Android 返回键）
@@ -84,6 +89,10 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  useEffect(() => {
+    if (initialView) setWorkspaceView(initialView);
+  }, [initialView, setWorkspaceView]);
 
   // AI / agent 写库后 todo://changed：经 domainEvents 统一订阅（去重复 listen）
   // 详情面板编辑中（焦点在 data-todo-detail-panel）则延迟到 blur 再 reload
@@ -113,6 +122,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   // 计算当前视图标题（移动端顶栏用）
   const activeList = lists.find((l) => l.id === activeListId);
   const headerTitle = (() => {
+    if (workspaceView === 'automations') return t('todo:automation.title', '定时任务');
     switch (filter.view) {
       case 'today': return t('todo:views.today');
       case 'upcoming': return t('todo:views.upcoming');
@@ -123,7 +133,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   })();
 
   // 移动端详情子屏是否打开（与 TodoMainPanel 内的覆盖层同一判定）
-  const mobileDetailOpen = isSmallScreen && items.some((i) => i.id === selectedItemId);
+  const mobileDetailOpen = workspaceView === 'todos' && isSmallScreen && items.some((i) => i.id === selectedItemId);
 
   // 子层级打开时统一顶栏切返回箭头（契约 1）；层级优先级与视觉堆叠一致
   const headerConfig = (() => {
@@ -199,7 +209,9 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
           showContentOverlay
           className="flex-1"
         >
-          <TodoMainPanel onOpenPomodoroSubView={setPomodoroSubView} />
+          {workspaceView === 'automations'
+            ? <TodoAutomationWorkspace />
+            : <TodoMainPanel onOpenPomodoroSubView={setPomodoroSubView} />}
         </MobileSlidingLayout>
 
         {/* 回收站 inline 子屏（全屏覆盖 + 系统返回键 + 顶栏返回箭头） */}
@@ -237,7 +249,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         className,
       )}
     >
-      <TodoMainPanel />
+      {workspaceView === 'automations' ? <TodoAutomationWorkspace /> : <TodoMainPanel />}
     </div>
   );
 };

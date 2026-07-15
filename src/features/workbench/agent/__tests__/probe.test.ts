@@ -145,12 +145,64 @@ describe('probeTarget 六态矩阵', () => {
     expect(r).toEqual({ state: 'dirty', windowId: id });
   });
 
+  it('closed：窗口存在但领域 surface 未就绪时尊重 driver 回落', () => {
+    openNote('n-editor-closed');
+    stageManager.registerDriver(makeDriver('acr-probe-note', 'closed'));
+
+    expect(probeTarget({
+      typeId: 'acr-probe-note',
+      resourceId: 'n-editor-closed',
+    })).toEqual({ state: 'closed', windowId: null });
+  });
+
+  it('dirty 优先于 driver closed，禁止未知 surface 覆盖未保存内容', () => {
+    const id = openNote('n-editor-closed-dirty');
+    stageManager.registerDriver(makeDriver('acr-probe-note', 'closed'));
+    registerContentDirtyChecker('acr-probe-note', 'n-editor-closed-dirty', () => true);
+
+    expect(probeTarget({
+      typeId: 'acr-probe-note',
+      resourceId: 'n-editor-closed-dirty',
+    })).toEqual({ state: 'dirty', windowId: id });
+  });
+
+  it('driver probe 异常时 fail closed 为 dirty', () => {
+    const id = openNote('n-probe-error');
+    const driver = makeDriver('acr-probe-note', 'clean');
+    vi.mocked(driver.probe).mockImplementation(() => {
+      throw new Error('surface unavailable');
+    });
+    stageManager.registerDriver(driver);
+
+    expect(probeTarget({
+      typeId: 'acr-probe-note',
+      resourceId: 'n-probe-error',
+    })).toEqual({ state: 'dirty', windowId: id });
+  });
+
   it('clean：开窗、非 frozen、无脏', () => {
     const id = openNote('n-clean');
     useWindowStore.getState().setLifecycles({ [id]: 'focused' });
     stageManager.registerDriver(makeDriver('acr-probe-note', 'clean'));
     const r = probeTarget({ typeId: 'acr-probe-note', resourceId: 'n-clean' });
     expect(r).toEqual({ state: 'clean', windowId: id });
+  });
+
+  it('精确 windowId 不会在目标资源失配时回落到同 type 的其他窗口', () => {
+    const first = openNote('n-exact-a');
+    const second = openNote('n-exact-b');
+    stageManager.registerDriver(makeDriver('acr-probe-note', 'clean'));
+
+    expect(probeTarget({
+      typeId: 'acr-probe-note',
+      resourceId: 'n-exact-b',
+      windowId: first,
+    })).toEqual({ state: 'closed', windowId: null });
+    expect(probeTarget({
+      typeId: 'acr-probe-note',
+      resourceId: 'n-exact-b',
+      windowId: second,
+    })).toEqual({ state: 'clean', windowId: second });
   });
 
   it('无 resourceId 时匹配同 typeId 任意窗（单例）', () => {

@@ -13,7 +13,7 @@ import { useWbSysSize } from './useWbSysSize';
 
 const TemplateManagementPage = React.lazy(() => import('@/components/TemplateManagementPage'));
 
-const TemplatesAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
+const TemplatesAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleChange }) => {
   const { t } = useTranslation('workbench');
   const { ref } = useWbSysSize();
 
@@ -29,7 +29,7 @@ const TemplatesAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
     >
       <Suspense fallback={<WbSysSkeleton variant="list" />}>
         <WbSysFade>
-          <TemplateManagementPage />
+          <TemplateManagementPage workbenchWindowId={windowId} />
         </WbSysFade>
       </Suspense>
     </div>

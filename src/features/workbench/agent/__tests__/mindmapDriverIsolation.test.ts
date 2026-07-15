@@ -51,7 +51,11 @@ function createSeededStore(
     agentFitViewNonce: 0,
   });
   stores.push(store);
-  unregister.push(registerMindMapStore(resourceId, store));
+  unregister.push(registerMindMapStore(
+    resourceId,
+    store,
+    `window_${resourceId}:mindmap:${resourceId}`,
+  ));
   return store;
 }
 

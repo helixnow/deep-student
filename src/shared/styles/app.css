@@ -65,6 +65,9 @@ body {
   background: transparent;
   border-bottom: none;
   pointer-events: none;
+  /* The Workbench menu bar owns the same top 40px. Keep the Windows control
+   * pill above its translucent surface while leaving the rest click-through. */
+  z-index: calc(var(--wb-z-menubar, 9050) + 1);
 }
 
 .desktop-shell-titlebar.desktop-shell-titlebar--workbench-chrome > *,
@@ -295,37 +298,6 @@ body {
   background: var(--interactive-selected) !important;
   color: var(--shell-navigation-foreground) !important;
   font-weight: 400 !important;
-}
-
-.desktop-shell-nav-row--active::before,
-.desktop-shell-thread-row--active::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 50%;
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
-  background: hsl(var(--primary));
-  transform: translateY(-50%) scaleY(0.6);
-  opacity: 0;
-  animation: desktop-shell-nav-indicator-in var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) forwards;
-  pointer-events: none;
-}
-
-/* 待办侧栏：选中态仅保留背景，不显示蓝色竖条指示器 */
-[data-todo-shell-sidebar] .desktop-shell-nav-row--active::before,
-[data-todo-shell-sidebar] .desktop-shell-thread-row--active::before {
-  content: none;
-  display: none;
-  animation: none;
-}
-
-@keyframes desktop-shell-nav-indicator-in {
-  to {
-    opacity: 1;
-    transform: translateY(-50%) scaleY(1);
-  }
 }
 
 .desktop-shell-sidebar-row--active,
@@ -1315,12 +1287,5 @@ main {
 
   .desktop-shell-content-enter {
     animation: none;
-  }
-
-  .desktop-shell-nav-row--active::before,
-  .desktop-shell-thread-row--active::before {
-    animation: none;
-    opacity: 1;
-    transform: translateY(-50%) scaleY(1);
   }
 }

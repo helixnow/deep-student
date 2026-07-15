@@ -3,6 +3,7 @@ import {
   closeWorkspaceResource,
   findWorkspaceHostForResource,
   forgetWorkspaceResource,
+  hasUnsavedNotesWorkspaceChanges,
   getWorkspaceOpenResources,
   registerWorkspaceHost,
   requestWorkspaceResource,
@@ -54,5 +55,27 @@ describe('notes workspace registry', () => {
     await expect(closeWorkspaceResource(resource)).resolves.toBe(true);
     expect(closeResource).toHaveBeenCalledWith(resource);
     expect(findWorkspaceHostForResource(resource)).toBeNull();
+  });
+
+  it('aggregates unsaved state from every mounted workspace host', () => {
+    const clean = vi.fn(() => false);
+    const dirty = vi.fn(() => true);
+    registerWorkspaceHost('notes-one', { openResource: vi.fn(), hasUnsavedChanges: clean });
+    registerWorkspaceHost('notes-two', { openResource: vi.fn(), hasUnsavedChanges: dirty });
+
+    expect(hasUnsavedNotesWorkspaceChanges()).toBe(true);
+    expect(clean).toHaveBeenCalledTimes(1);
+    expect(dirty).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails safe when an unsaved-state checker throws', () => {
+    registerWorkspaceHost('notes-one', {
+      openResource: vi.fn(),
+      hasUnsavedChanges: () => {
+        throw new Error('editor state unavailable');
+      },
+    });
+
+    expect(hasUnsavedNotesWorkspaceChanges()).toBe(true);
   });
 });

@@ -74,6 +74,8 @@ export interface ActivationContext {
  */
 export interface ActivationResult {
   handled: boolean;
+  /** Set only after an activation receives an authoritative domain/UI acknowledgement. */
+  acknowledged?: boolean;
   code?: string;
   hint?: string;
   message?: string;
@@ -241,6 +243,8 @@ export interface AgentUndoDescriptor {
 
 export interface AgentActionResult extends ActivationResult {
   changed?: boolean;
+  /** True only after the handler awaited an authoritative domain/UI acknowledgement. */
+  acknowledged?: boolean;
   entityRefs?: AgentStableRef[];
   details?: Record<string, AgentJsonValue>;
   /** Result-specific postconditions used when the caller did not supply expect. */
@@ -254,6 +258,8 @@ export interface AgentAppContext {
   instanceKey: string | null;
   runId?: string;
   sessionId?: string;
+  /** Cooperative bridge cancellation for handlers that can stop in-flight work. */
+  signal?: AbortSignal;
   /** Present for act only; records a session-memory closure in the existing run ledger. */
   registerUndo?: (invert: () => Promise<void> | void, label: string) => void;
   /** The fresh observation against which an action was validated. */
@@ -328,6 +334,7 @@ export interface AgentActionOutcome {
   verificationSource:
     | 'caller-postcondition'
     | 'result-postcondition'
+    | 'handler-ack'
     | 'revision-change'
     | 'read-only-observation'
     | 'unverified';
@@ -370,6 +377,8 @@ export interface AgentUndoResult {
   undoToken: string;
   durability: AgentUndoDurability;
   observation?: AgentObservation;
+  code?: string;
+  retryable?: boolean;
   message?: string;
 }
 
@@ -406,6 +415,12 @@ export interface AppDefinition {
   instanceMode: 'single' | 'multi';
   /** 调度器内存预算权重：PDF/教材=3，编辑器/Chat/思维导图=2，纯展示=1 */
   memoryWeight: 1 | 2 | 3;
+  /**
+   * Keep the app mounted and visually present while another internal window
+   * covers it. Native child surfaces need this so the platform clip host can
+   * yield only the covered pixels instead of hiding the entire surface.
+   */
+  keepAliveWhenOccluded?: boolean;
   defaultFrame: Size;
   minSize: Size;
   render: React.LazyExoticComponent<React.FC<AppWindowProps>>;
@@ -419,6 +434,11 @@ export interface AppDefinition {
   badgeSource?: () => AppBadge | null;
   /** 关闭拦截（未保存提示）；返回 false 阻止关闭。缺省 = 直接关 */
   canClose?: (instanceKey: string | null) => boolean | Promise<boolean>;
+  /**
+   * Ctrl+W is normally owned by the workbench window manager. Tabbed apps can
+   * opt in to receive it themselves, for example to close their active tab.
+   */
+  handlesCloseShortcut?: boolean;
 }
 
 // ============================================================================

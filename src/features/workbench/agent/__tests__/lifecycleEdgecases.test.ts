@@ -174,11 +174,14 @@ describe('R2-09 lifecycle edgecases', () => {
       baseReq({
         command: 'close_window',
         correlationId: 'corr-close-win',
+        runId: 'run-close-window',
         args: { windowId: winId },
       }),
     );
     expect(closeRes.ok).toBe(true);
-    expect(driver.abort).toHaveBeenCalledWith('run-close');
+    expect(driver.abort).toHaveBeenCalledWith(
+      JSON.stringify(['sess-edge', 'run-close']),
+    );
     expect(driver.abortFlag.value).toBe(true);
 
     release();
@@ -237,7 +240,9 @@ describe('R2-09 lifecycle edgecases', () => {
     expect(useWindowStore.getState().windows[winId]).toBeUndefined();
 
     await vi.waitFor(() => {
-      expect(driver.abort).toHaveBeenCalledWith('run-resdel');
+      expect(driver.abort).toHaveBeenCalledWith(
+        JSON.stringify(['sess-edge', 'run-resdel']),
+      );
     });
 
     release();

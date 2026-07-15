@@ -60,7 +60,7 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
     },
     // ★ 待办事项放在学习资源后面
     {
-      name: t('sidebar:navigation.todo', '待办'),
+      name: t('sidebar:navigation.todo'),
       view: 'todo',
       icon: StudyTodoIcon,
     },
@@ -83,7 +83,7 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
     ...(includeUILab
       ? [
           {
-            name: t('sidebar:navigation.ui_lab', '样式调试'),
+            name: t('sidebar:navigation.ui_lab'),
             view: 'ui-lab' as NavViewType,
             icon: StudyBlocksIcon,
           },

@@ -11,6 +11,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { search as dstuSearch } from '@/dstu/api';
 import { openResource, getOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { resourceTypeToAppTypeId } from '@/features/workbench/apps/content/typeMap';
 import type { DependencyResolver } from '../registry/types';
 
 const DEBOUNCE_MS = 250;
@@ -125,6 +127,27 @@ async function waitFor(check: () => boolean, timeoutMs: number, intervalMs: numb
  * Learning Hub 的 OpenResourceHandler 在页面挂载后才注册，因此需要等待。
  */
 export async function openFileFromPalette(deps: DependencyResolver, node: DstuNode): Promise<void> {
+  if (deps.getCurrentView() === 'workbench') {
+    // Notes and mind maps are routed through the shared Notes workspace by
+    // workbenchBus when their resource type is used as the launch type. The
+    // remaining resource types use the public app mapping.
+    const typeId = node.type === 'note' || node.type === 'mindmap'
+      ? node.type
+      : resourceTypeToAppTypeId(node.type);
+    if (!typeId) {
+      deps.showNotification(
+        'warning',
+        deps.t(
+          'command_palette:resource_not_openable_in_workbench',
+          'This resource cannot be opened in the desktop.',
+        ),
+      );
+      return;
+    }
+    workbenchBus.launch({ typeId, instanceKey: node.id, reason: 'command' });
+    return;
+  }
+
   deps.navigate('learning-hub');
   const ready = await waitFor(() => !!getOpenResourceHandler('learning-hub'), 4000, 80);
   if (!ready) {

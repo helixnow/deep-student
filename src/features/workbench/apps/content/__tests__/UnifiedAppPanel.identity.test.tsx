@@ -16,6 +16,13 @@ vi.mock('@/shared/result', async (importOriginal) => {
   return { ...actual, reportError: vi.fn() };
 });
 
+vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+  useTranslation: () => ({
+    t: (key: string) => key === 'error.resourceTypeMismatch' ? '资源类型不匹配' : key,
+  }),
+}));
+
 vi.mock('@/features/learning-hub/apps/views/NoteContentView', () => ({
   __esModule: true,
   default: ({ node }: { node: DstuNode }) => <div data-testid="note-view">{node.name}</div>,

@@ -38,6 +38,7 @@ import {
 } from '../../core/windowStore';
 import { workbenchBus } from '../../core/workbenchBus';
 import { registerTestApp } from '../../core/__tests__/testUtils';
+import * as workspaceRegistry from '../../apps/notes/workspaceRegistry';
 import { probeTarget } from '../probe';
 import { resetRunLedgerForTests, runLedger } from '../ledger';
 import {
@@ -63,6 +64,7 @@ registerTestApp('command-reject-app', {
   },
 });
 registerTestApp('chat');
+registerTestApp('notes');
 
 function baseReq(
   partial: Partial<AcrBridgeRequest> & Pick<AcrBridgeRequest, 'command'>,
@@ -202,6 +204,8 @@ describe('StageManager R1-06', () => {
     const tile = await stageManager.handleBridgeRequest(
       baseReq({
         command: 'app_command',
+        correlationId: 'corr-tile-right',
+        runId: 'run-tile-right',
         args: {
           typeId: 'workbench',
           action: 'tileRight',
@@ -215,6 +219,8 @@ describe('StageManager R1-06', () => {
     const focus = await stageManager.handleBridgeRequest(
       baseReq({
         command: 'app_command',
+        correlationId: 'corr-focus-window',
+        runId: 'run-focus-window',
         args: {
           typeId: 'workbench',
           action: 'focusWindow',
@@ -249,6 +255,8 @@ describe('StageManager R1-06', () => {
     const tile = await stageManager.handleBridgeRequest(
       baseReq({
         command: 'app_command',
+        correlationId: 'corr-tile-all',
+        runId: 'run-tile-all',
         args: { typeId: 'workbench', action: 'tileAll' },
       }),
     );
@@ -259,6 +267,8 @@ describe('StageManager R1-06', () => {
     const desktop = await stageManager.handleBridgeRequest(
       baseReq({
         command: 'app_command',
+        correlationId: 'corr-show-desktop',
+        runId: 'run-show-desktop',
         args: { typeId: 'workbench', action: 'showDesktop' },
       }),
     );
@@ -307,6 +317,18 @@ describe('StageManager R1-06', () => {
       );
     });
 
+    const winA = useWindowStore.getState().windows['win-a'];
+    useWindowStore.setState((state) => ({
+      windows: {
+        ...state.windows,
+        'win-b': { ...winA, id: 'win-b', instanceKey: 'res-2', title: 'B' },
+      },
+      focusStack: [...state.focusStack, 'win-b'],
+      lifecycles: { ...state.lifecycles, 'win-b': 'focused' },
+    }));
+    setAgentControlForTests('follow');
+    useWindowStore.getState().focusWindow('win-b');
+
     const second = await stageManager.handleBridgeRequest(
       baseReq({
         command: 'apply_ops',
@@ -323,6 +345,7 @@ describe('StageManager R1-06', () => {
     const parsed = JSON.parse(second.error!);
     expect(parsed.code).toBe(ACR_ERROR_CODES.WINDOW_BUSY);
     expect(parsed.retryable).toBe(true);
+    expect(useWindowStore.getState().focusStack.at(-1)).toBe('win-b');
 
     release();
     const firstRes = await first;
@@ -330,7 +353,272 @@ describe('StageManager R1-06', () => {
     expect((firstRes.data as AcrReceipt).status).toBe('completed');
   });
 
-  it('revert_run 经账本逆序 invert，二次调用幂等返回 false', async () => {
+  it('准备资源期间取消会阻止 driver.apply', async () => {
+    const winA = useWindowStore.getState().windows['win-a'];
+    useWindowStore.setState((state) => ({
+      windows: {
+        ...state.windows,
+        'win-notes': {
+          ...winA,
+          id: 'win-notes',
+          typeId: 'notes',
+          instanceKey: null,
+          title: 'Notes',
+        },
+      },
+      focusStack: [...state.focusStack, 'win-notes'],
+      lifecycles: { ...state.lifecycles, 'win-notes': 'focused' },
+    }));
+    vi.mocked(probeTarget).mockReturnValue({
+      state: 'clean',
+      windowId: 'win-notes',
+    });
+    let releasePreparation!: () => void;
+    const preparationGate = new Promise<void>((resolve) => {
+      releasePreparation = resolve;
+    });
+    const prepare = vi
+      .spyOn(workspaceRegistry, 'prepareWorkspaceResource')
+      .mockImplementation(async () => preparationGate);
+    const driver = makeDriver({ typeId: 'note' });
+    stageManager.registerDriver(driver);
+
+    try {
+      const pending = stageManager.handleBridgeRequest(
+        baseReq({
+          command: 'apply_ops',
+          runId: 'run-preparing',
+          correlationId: 'corr-preparing',
+          args: {
+            target: { typeId: 'note', resourceId: 'note-preparing' },
+            ops: [{ kind: 'append', destructive: false, label: 'append' }],
+          },
+        }),
+      );
+      await vi.waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+      expect(stageManager.getDiagnostics().transactions).toEqual([
+        expect.objectContaining({
+          runId: 'run-preparing',
+          kind: 'apply_ops',
+          ownsLease: true,
+        }),
+      ]);
+
+      stageManager.stopRun(JSON.stringify(['sess-1', 'run-preparing']));
+      releasePreparation();
+      const result = await pending;
+      expect(result.data).toMatchObject({
+        status: 'cancelled',
+        applied: 0,
+        undone: ['append'],
+      });
+      expect(driver.apply).not.toHaveBeenCalled();
+      expect(stageManager.getDiagnostics().transactions).toEqual([]);
+    } finally {
+      prepare.mockRestore();
+    }
+  });
+
+  it('不同会话复用外部 runId 时驱动取消与 presence 保持隔离', async () => {
+    const winA = useWindowStore.getState().windows['win-a'];
+    useWindowStore.setState((state) => ({
+      windows: {
+        ...state.windows,
+        'win-b': {
+          ...winA,
+          id: 'win-b',
+          instanceKey: 'res-2',
+          title: 'Mock B',
+          zIndex: 11,
+        },
+      },
+      focusStack: ['win-a', 'win-b'],
+      lifecycles: { ...state.lifecycles, 'win-b': 'focused' },
+    }));
+    vi.mocked(probeTarget).mockImplementation((target) => ({
+      state: 'clean',
+      windowId: target.resourceId === 'res-2' ? 'win-b' : 'win-a',
+    }));
+
+    let failFirst!: () => void;
+    let finishSecond!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      failFirst = resolve;
+    });
+    const secondGate = new Promise<void>((resolve) => {
+      finishSecond = resolve;
+    });
+    const states = new Map<string, { aborted: boolean }>();
+    const seenRunIds: string[] = [];
+    const driver = makeDriver({
+      apply: vi.fn(async (run) => {
+        const state = { aborted: false };
+        states.set(run.runId, state);
+        seenRunIds.push(run.runId);
+        if (run.sessionId === 'sess-a') {
+          await firstGate;
+          throw new Error('first session failed');
+        }
+        await secondGate;
+        return {
+          status: state.aborted ? 'cancelled' : 'completed',
+          mode: 'frontend',
+          applied: state.aborted ? 0 : 1,
+          totalOps: 1,
+          entityIds: [],
+          done: state.aborted ? [] : ['second done'],
+          undone: state.aborted ? ['second aborted'] : [],
+        };
+      }),
+      abort: vi.fn((runId): AcrReceipt => {
+        const state = states.get(runId);
+        if (state) state.aborted = true;
+        return {
+          status: 'cancelled',
+          mode: 'frontend',
+          applied: 0,
+          totalOps: 1,
+          entityIds: [],
+          done: [],
+          undone: ['aborted'],
+        };
+      }),
+    });
+    stageManager.registerDriver(driver);
+
+    const externalRunId = 'shared-tool-call';
+    const first = stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        sessionId: 'sess-a',
+        runId: externalRunId,
+        correlationId: 'corr-a',
+        args: {
+          target: { typeId: 'mock-app', resourceId: 'res-1' },
+          ops: [{ kind: 'set', destructive: false, label: 'first' }],
+        },
+      }),
+    );
+    const second = stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        sessionId: 'sess-b',
+        runId: externalRunId,
+        correlationId: 'corr-b',
+        args: {
+          target: { typeId: 'mock-app', resourceId: 'res-2' },
+          ops: [{ kind: 'set', destructive: false, label: 'second' }],
+        },
+      }),
+    );
+
+    await vi.waitFor(() => expect(seenRunIds).toHaveLength(2));
+    expect(new Set(seenRunIds).size).toBe(2);
+    expect(seenRunIds).toContain(JSON.stringify(['sess-a', externalRunId]));
+    expect(seenRunIds).toContain(JSON.stringify(['sess-b', externalRunId]));
+
+    failFirst();
+    const firstResult = await first;
+    expect(firstResult.data).toMatchObject({ status: 'failed' });
+    expect(driver.abort).toHaveBeenCalledWith(
+      JSON.stringify(['sess-a', externalRunId]),
+    );
+    expect(states.get(JSON.stringify(['sess-b', externalRunId]))?.aborted).toBe(
+      false,
+    );
+    expect(usePresenceStore.getState().byWindow['win-b']).toMatchObject({
+      runId: externalRunId,
+      sessionId: 'sess-b',
+      status: 'acting',
+    });
+
+    finishSecond();
+    const secondResult = await second;
+    expect(secondResult.data).toMatchObject({ status: 'completed' });
+  });
+
+  it('终态事务按 session/runId 重放，且拒绝同 ID 更换 payload', async () => {
+    const driver = makeDriver();
+    stageManager.registerDriver(driver);
+    const args = {
+      target: { typeId: 'mock-app', resourceId: 'res-1' },
+      ops: [{ kind: 'set', destructive: false, label: 'set once' }],
+    };
+    const first = await stageManager.handleBridgeRequest(
+      baseReq({ command: 'apply_ops', runId: 'run-terminal', args }),
+    );
+    const replay = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        runId: 'run-terminal',
+        correlationId: 'corr-terminal-replay',
+        args,
+      }),
+    );
+
+    expect(replay).toEqual({ ...first, correlationId: 'corr-terminal-replay' });
+    expect(driver.apply).toHaveBeenCalledTimes(1);
+
+    const reused = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        runId: 'run-terminal',
+        correlationId: 'corr-terminal-reuse',
+        args: {
+          ...args,
+          ops: [{ kind: 'set', destructive: false, label: 'different payload' }],
+        },
+      }),
+    );
+    expect(reused.ok).toBe(false);
+    expect(JSON.parse(reused.error!)).toMatchObject({
+      code: 'RUN_ID_REUSE',
+      retryable: false,
+    });
+    expect(driver.apply).toHaveBeenCalledTimes(1);
+  });
+
+  it('终态正文被 LRU 淘汰后仍拒绝重新执行已见 forward runId', async () => {
+    const driver = makeDriver();
+    stageManager.registerDriver(driver);
+    const firstArgs = {
+      target: { typeId: 'mock-app', resourceId: 'res-1' },
+      ops: [{ kind: 'set', destructive: false, label: 'first' }],
+    };
+    await stageManager.handleBridgeRequest(
+      baseReq({ command: 'apply_ops', runId: 'run-evicted', args: firstArgs }),
+    );
+    for (let index = 0; index < 101; index += 1) {
+      await stageManager.handleBridgeRequest(
+        baseReq({
+          command: 'apply_ops',
+          runId: `run-fill-${index}`,
+          correlationId: `corr-fill-${index}`,
+          args: {
+            target: { typeId: 'mock-app', resourceId: 'res-1' },
+            ops: [{ kind: 'set', destructive: false, label: `fill ${index}` }],
+          },
+        }),
+      );
+    }
+    const callsBeforeReplay = vi.mocked(driver.apply).mock.calls.length;
+    const replay = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        runId: 'run-evicted',
+        correlationId: 'corr-evicted-replay',
+        args: firstArgs,
+      }),
+    );
+    expect(replay.ok).toBe(false);
+    expect(JSON.parse(replay.error!)).toMatchObject({
+      code: 'RUN_ID_EXPIRED',
+      retryable: false,
+    });
+    expect(driver.apply).toHaveBeenCalledTimes(callsBeforeReplay);
+  });
+
+  it('revert_run 经账本逆序 invert，同事务重放终态且新事务返回 false', async () => {
     const order: string[] = [];
     runLedger.record(
       'run-rev',
@@ -367,7 +655,17 @@ describe('StageManager R1-06', () => {
         args: { runId: 'run-rev' },
       }),
     );
-    expect(res2.data).toEqual({ reverted: false });
+    expect(res2.data).toEqual({ reverted: true });
+
+    const res3 = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'revert_run',
+        runId: 'run-new-revert-call',
+        correlationId: 'corr-3',
+        args: { runId: 'run-rev' },
+      }),
+    );
+    expect(res3.data).toEqual({ reverted: false });
 
     // stageManager.revertRun 同步路径
     expect(await stageManager.revertRun('run-rev')).toBe(false);
@@ -401,8 +699,83 @@ describe('StageManager R1-06', () => {
     );
     expect(res.ok).toBe(true);
     expect(runLedger.hasRun('run-1')).toBe(true);
-    expect(await stageManager.revertRun('run-1')).toBe(true);
-    expect(await stageManager.revertRun('run-1')).toBe(false);
+    expect(await stageManager.revertRun('run-1', 'sess-1')).toBe(true);
+    expect(await stageManager.revertRun('run-1', 'sess-1')).toBe(false);
+  });
+
+  it('UI undo 与 apply_ops 共用窗口租约', async () => {
+    let inverseStarted!: () => void;
+    let releaseInverse!: () => void;
+    const started = new Promise<void>((resolve) => {
+      inverseStarted = resolve;
+    });
+    const inverseGate = new Promise<void>((resolve) => {
+      releaseInverse = resolve;
+    });
+    const driver = makeDriver({
+      apply: vi.fn(async (run) => {
+        run.ledger.record(
+          run.runId,
+          async () => {
+            inverseStarted();
+            await inverseGate;
+          },
+          'undo set',
+        );
+        return {
+          status: 'completed',
+          mode: 'frontend',
+          applied: 1,
+          totalOps: 1,
+          entityIds: [],
+          done: ['set'],
+          undone: [],
+        };
+      }),
+    });
+    stageManager.registerDriver(driver);
+    await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        runId: 'run-ui-undo',
+        args: {
+          target: { typeId: 'mock-app', resourceId: 'res-1' },
+          ops: [{ kind: 'set', destructive: false, label: 'set' }],
+        },
+      }),
+    );
+
+    const undo = stageManager.revertRun('run-ui-undo', 'sess-1');
+    await started;
+    const blocked = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        runId: 'run-during-ui-undo',
+        correlationId: 'corr-during-ui-undo',
+        args: {
+          target: { typeId: 'mock-app', resourceId: 'res-1' },
+          ops: [],
+        },
+      }),
+    );
+    expect(JSON.parse(blocked.error!)).toMatchObject({
+      code: ACR_ERROR_CODES.WINDOW_BUSY,
+    });
+
+    releaseInverse();
+    expect(await undo).toBe(true);
+    const after = await stageManager.handleBridgeRequest(
+      baseReq({
+        command: 'apply_ops',
+        runId: 'run-during-ui-undo',
+        correlationId: 'corr-after-ui-undo',
+        args: {
+          target: { typeId: 'mock-app', resourceId: 'res-1' },
+          ops: [],
+        },
+      }),
+    );
+    expect(after.ok).toBe(true);
   });
 
   it('R2-07：第三路演出超限时 pacer 直落 instant（不拒）', async () => {
@@ -482,11 +855,11 @@ describe('StageManager R1-06', () => {
     stageManager.registerDriver(driver);
 
     const windows = ['win-a', 'win-b', 'win-c'] as const;
-    const promises = windows.map((wid, i) => {
-      vi.mocked(probeTarget).mockReturnValueOnce({
-        state: 'clean',
-        windowId: wid,
-      });
+    vi.mocked(probeTarget).mockImplementation((target) => ({
+      state: 'clean',
+      windowId: windows[Number(target.resourceId?.split('-').at(-1)) - 1] ?? null,
+    }));
+    const promises = windows.map((_wid, i) => {
       return stageManager.handleBridgeRequest(
         baseReq({
           command: 'apply_ops',
@@ -624,7 +997,10 @@ describe('StageManager R1-06', () => {
       );
 
       expect((res.data as AcrReceipt).status).toBe('failed');
-      expect(updateStatus).toHaveBeenCalledWith('run-1', 'aborted');
+      expect(updateStatus).toHaveBeenCalledWith(
+        JSON.stringify(['sess-1', 'run-1']),
+        'aborted',
+      );
       expect(getRecentReceiptSummariesForTests()).toEqual([
         expect.objectContaining({
           runId: 'run-1',
@@ -681,7 +1057,7 @@ describe('StageManager R1-06', () => {
         expect(usePresenceStore.getState().byWindow['win-a']).toBeTruthy(),
       );
 
-      stageManager.stopRun('run-1');
+      stageManager.stopRun(JSON.stringify(['sess-1', 'run-1']));
       expect(runLedger.hasRun('run-1')).toBe(false);
       release();
       const res = await pending;
@@ -817,7 +1193,7 @@ describe('StageManager R1-06', () => {
       expect(next.ok).toBe(true);
     });
 
-    it('orphan deadline 产出明确 partial 并释放租约，迟到 finally 不覆盖回执', async () => {
+    it('orphan deadline 隔离窗口直到底层任务真正结算', async () => {
       vi.useFakeTimers();
       try {
         let release!: () => void;
@@ -855,18 +1231,19 @@ describe('StageManager R1-06', () => {
         expect(usePresenceStore.getState().byWindow['win-a']).toBeTruthy();
         stageManager.stop();
         await vi.advanceTimersByTimeAsync(ORPHAN_DRAIN_MS + 1);
-        expect(getRecentReceiptSummariesForTests()).toEqual([
-          expect.objectContaining({
-            runId: 'run-orphan',
-            status: 'partial',
-            message: expect.stringContaining('orphan partial'),
-          }),
-        ]);
+        expect(getRecentReceiptSummariesForTests()).toEqual([]);
         expect(runLedger.hasRun('run-orphan')).toBe(true);
         stageManager.start();
         setAgentControlForTests('background');
         stageManager.registerDriver(makeDriver());
-        const next = await stageManager.handleBridgeRequest(
+        expect(stageManager.getDiagnostics().transactions).toEqual([
+          expect.objectContaining({
+            runId: 'run-orphan',
+            state: 'orphan-draining',
+            ownsLease: true,
+          }),
+        ]);
+        const blocked = await stageManager.handleBridgeRequest(
           baseReq({
             command: 'apply_ops',
             runId: 'run-after-orphan',
@@ -877,15 +1254,29 @@ describe('StageManager R1-06', () => {
             },
           }),
         );
-        expect(next.ok).toBe(true);
+        expect(JSON.parse(blocked.error!)).toMatchObject({
+          code: ACR_ERROR_CODES.WINDOW_BUSY,
+        });
         release();
         const oldResult = await oldPending;
-        expect(oldResult.data).toMatchObject({ status: 'partial' });
+        expect(oldResult.data).toMatchObject({ status: 'completed' });
         expect(
           getRecentReceiptSummariesForTests().filter(
             (item) => item.runId === 'run-orphan',
           ),
         ).toHaveLength(1);
+        const next = await stageManager.handleBridgeRequest(
+          baseReq({
+            command: 'apply_ops',
+            runId: 'run-after-orphan',
+            correlationId: 'corr-after-orphan-retry',
+            args: {
+              target: { typeId: 'mock-app', resourceId: 'res-1' },
+              ops: [],
+            },
+          }),
+        );
+        expect(next.ok).toBe(true);
       } finally {
         vi.useRealTimers();
       }
@@ -1054,6 +1445,7 @@ describe('StageManager R1-06', () => {
         baseReq({
           command: 'close_window',
           correlationId: 'corr-close-guard',
+          runId: 'run-close-guard',
           args: { windowId },
         }),
       );
@@ -1108,6 +1500,8 @@ describe('StageManager R1-06', () => {
       await stageManager.handleBridgeRequest(
         baseReq({
           command: 'app_command',
+          correlationId: 'corr-background-command',
+          runId: 'run-background-command',
           args: {
             typeId: 'command-app',
             instanceKey: 'target',
@@ -1122,6 +1516,7 @@ describe('StageManager R1-06', () => {
         baseReq({
           command: 'app_command',
           correlationId: 'corr-follow-command',
+          runId: 'run-follow-command',
           args: {
             typeId: 'command-app',
             instanceKey: 'target',

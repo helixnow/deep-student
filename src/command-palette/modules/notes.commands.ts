@@ -1,6 +1,5 @@
 /**
- * 笔记模块命令
- * P1-16: 笔记功能已整合到 Learning Hub，在 learning-hub 视图可用
+ * Notes commands shared by the legacy Learning Hub and the Workbench Notes app.
  */
 
 import i18next from 'i18next';
@@ -12,18 +11,97 @@ import {
   SidebarSimple,
   List,
   FileArrowDown,
-  MagicWand,
   Calculator,
   Table,
   Code,
   Link,
   Image,
 } from '@phosphor-icons/react';
-import type { Command } from '../registry/types';
+import { getWorkspaceActiveResource } from '@/features/workbench/apps/notes/workspaceRegistry';
+import type { Command, CommandView, DependencyResolver } from '../registry/types';
 
-/** Helper: get localized keywords array for a given command key */
+export const NOTES_WORKSPACE_COMMAND_EVENT = 'notes:workspace-command' as const;
+
+export type NotesWorkspaceCommandAction =
+  | 'create-note'
+  | 'create-folder'
+  | 'quick-switch'
+  | 'search-content'
+  | 'focus-search'
+  | 'force-save'
+  | 'toggle-sidebar'
+  | 'toggle-backlinks'
+  | 'toggle-outline'
+  | 'export-current'
+  | 'insert-math'
+  | 'insert-table'
+  | 'insert-codeblock'
+  | 'insert-link'
+  | 'insert-image';
+
+export interface NotesWorkspaceCommandDetail {
+  action: NotesWorkspaceCommandAction;
+}
+
+const NOTES_COMMAND_VIEWS: CommandView[] = ['learning-hub', 'workbench'];
+
+/** Helper: get localized keywords array for a given command key. */
 const kw = (key: string): string[] =>
   i18next.t(`command_palette:keywords.${key}`, { returnObjects: true, defaultValue: [] }) as string[];
+
+function isNotesCommandEnabled(deps: DependencyResolver): boolean {
+  const view = deps.getCurrentView();
+  return view === 'learning-hub'
+    || (view === 'workbench' && deps.getFocusedWorkbenchAppTypeId() === 'notes');
+}
+
+/** Commands that operate on the Markdown editor must not appear actionable for a mind map tab. */
+function isNoteEditorCommandEnabled(deps: DependencyResolver): boolean {
+  if (!isNotesCommandEnabled(deps)) return false;
+  if (deps.getCurrentView() !== 'workbench') return true;
+  return getWorkspaceActiveResource()?.type === 'note';
+}
+
+function isWorkbenchNotesCommandEnabled(deps: DependencyResolver): boolean {
+  return deps.getCurrentView() === 'workbench'
+    && deps.getFocusedWorkbenchAppTypeId() === 'notes';
+}
+
+function dispatchNotesCommand(
+  deps: DependencyResolver,
+  legacyEvent: string,
+  action: NotesWorkspaceCommandAction,
+): void {
+  const view = deps.getCurrentView();
+  if (view === 'workbench') {
+    if (deps.getFocusedWorkbenchAppTypeId() !== 'notes') return;
+    window.dispatchEvent(
+      new CustomEvent<NotesWorkspaceCommandDetail>(NOTES_WORKSPACE_COMMAND_EVENT, {
+        detail: { action },
+      }),
+    );
+    return;
+  }
+
+  if (view === 'learning-hub' && legacyEvent) {
+    window.dispatchEvent(new CustomEvent(legacyEvent));
+  }
+}
+
+const notesCommandScope = {
+  visibleInViews: NOTES_COMMAND_VIEWS,
+  isEnabled: isNotesCommandEnabled,
+};
+
+const noteEditorCommandScope = {
+  visibleInViews: NOTES_COMMAND_VIEWS,
+  isEnabled: isNoteEditorCommandEnabled,
+};
+
+const workbenchNotesCommandScope = {
+  visibleInViews: ['workbench'] satisfies CommandView[],
+  isEnabled: isWorkbenchNotesCommandEnabled,
+};
 
 export const notesCommands: Command[] = [
   {
@@ -35,10 +113,8 @@ export const notesCommands: Command[] = [
     icon: FilePlus,
     get keywords() { return kw('notes.new'); },
     priority: 100,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_CREATE_NEW'));
-    },
+    ...notesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_CREATE_NEW', 'create-note'),
   },
   {
     id: 'notes.new-folder',
@@ -49,24 +125,32 @@ export const notesCommands: Command[] = [
     icon: FolderPlus,
     get keywords() { return kw('notes.new-folder'); },
     priority: 99,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_CREATE_FOLDER'));
-    },
+    ...notesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_CREATE_FOLDER', 'create-folder'),
+  },
+  {
+    id: 'notes.quick-switch',
+    get name() { return i18next.t('command_palette:commands.notes.quick-switch', 'Quick switcher'); },
+    get description() { return i18next.t('command_palette:descriptions.notes.quick-switch', 'Quickly open a note or mind map'); },
+    category: 'notes',
+    shortcut: 'mod+o',
+    icon: MagnifyingGlass,
+    get keywords() { return kw('notes.quick-switch'); },
+    priority: 99,
+    ...workbenchNotesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, '', 'quick-switch'),
   },
   {
     id: 'notes.search',
     get name() { return i18next.t('command_palette:commands.notes.search', 'Search Notes'); },
-    get description() { return i18next.t('command_palette:descriptions.notes.search', 'Focus sidebar search box'); },
+    get description() { return i18next.t('command_palette:descriptions.notes.search', 'Search notes or filter files'); },
     category: 'notes',
     shortcut: 'mod+shift+f',
     icon: MagnifyingGlass,
     get keywords() { return kw('notes.search'); },
     priority: 98,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_FOCUS_SEARCH'));
-    },
+    ...notesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_FOCUS_SEARCH', 'search-content'),
   },
   {
     id: 'notes.save',
@@ -77,10 +161,8 @@ export const notesCommands: Command[] = [
     icon: FloppyDisk,
     get keywords() { return kw('notes.save'); },
     priority: 97,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_FORCE_SAVE'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_FORCE_SAVE', 'force-save'),
   },
   {
     id: 'notes.toggle-sidebar',
@@ -91,10 +173,19 @@ export const notesCommands: Command[] = [
     icon: SidebarSimple,
     get keywords() { return kw('notes.toggle-sidebar'); },
     priority: 90,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_TOGGLE_SIDEBAR'));
-    },
+    ...notesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_TOGGLE_SIDEBAR', 'toggle-sidebar'),
+  },
+  {
+    id: 'notes.toggle-backlinks',
+    get name() { return i18next.t('command_palette:commands.notes.toggle-backlinks', 'Toggle backlinks'); },
+    get description() { return i18next.t('command_palette:descriptions.notes.toggle-backlinks', 'Show or hide linked notes'); },
+    category: 'notes',
+    icon: Link,
+    get keywords() { return kw('notes.toggle-backlinks'); },
+    priority: 89,
+    ...workbenchNotesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, '', 'toggle-backlinks'),
   },
   {
     id: 'notes.toggle-outline',
@@ -105,10 +196,8 @@ export const notesCommands: Command[] = [
     icon: List,
     get keywords() { return kw('notes.toggle-outline'); },
     priority: 89,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_TOGGLE_OUTLINE'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_TOGGLE_OUTLINE', 'toggle-outline'),
   },
   {
     id: 'notes.export-current',
@@ -118,26 +207,10 @@ export const notesCommands: Command[] = [
     icon: FileArrowDown,
     get keywords() { return kw('notes.export-current'); },
     priority: 80,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_EXPORT_CURRENT'));
-    },
+    ...notesCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_EXPORT_CURRENT', 'export-current'),
   },
-  // notes.export-all 未实现：不注册可点命令。遗留 NOTES_EXPORT_ALL 事件由 LearningHubPage 降级为导出当前。
-  {
-    id: 'notes.ai-continue',
-    get name() { return i18next.t('command_palette:commands.notes.ai-continue', 'AI Continue Writing'); },
-    get description() { return i18next.t('command_palette:descriptions.notes.ai-continue', 'Let AI continue writing'); },
-    category: 'notes',
-    shortcut: 'mod+j',
-    icon: MagicWand,
-    get keywords() { return kw('notes.ai-continue'); },
-    priority: 85,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('AI_CONTINUE_WRITING'));
-    },
-  },
+  // notes.export-all is not implemented; do not register an actionable command.
   {
     id: 'notes.insert-math',
     get name() { return i18next.t('command_palette:commands.notes.insert-math', 'Insert Math Formula'); },
@@ -147,24 +220,20 @@ export const notesCommands: Command[] = [
     icon: Calculator,
     get keywords() { return kw('notes.insert-math'); },
     priority: 70,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_INSERT_MATH'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_INSERT_MATH', 'insert-math'),
   },
   {
     id: 'notes.insert-table',
     get name() { return i18next.t('command_palette:commands.notes.insert-table', 'Insert Table'); },
     get description() { return i18next.t('command_palette:descriptions.notes.insert-table', 'Insert a table'); },
     category: 'notes',
-    shortcut: 'mod+shift+e', // 修改为 mod+shift+e，避免与全局 mod+shift+t (切换主题) 冲突
+    shortcut: 'mod+shift+e',
     icon: Table,
     get keywords() { return kw('notes.insert-table'); },
     priority: 69,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_INSERT_TABLE'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_INSERT_TABLE', 'insert-table'),
   },
   {
     id: 'notes.insert-codeblock',
@@ -175,10 +244,8 @@ export const notesCommands: Command[] = [
     icon: Code,
     get keywords() { return kw('notes.insert-codeblock'); },
     priority: 68,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_INSERT_CODEBLOCK'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_INSERT_CODEBLOCK', 'insert-codeblock'),
   },
   {
     id: 'notes.insert-link',
@@ -188,10 +255,8 @@ export const notesCommands: Command[] = [
     icon: Link,
     get keywords() { return kw('notes.insert-link'); },
     priority: 67,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_INSERT_LINK'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_INSERT_LINK', 'insert-link'),
   },
   {
     id: 'notes.insert-image',
@@ -201,9 +266,7 @@ export const notesCommands: Command[] = [
     icon: Image,
     get keywords() { return kw('notes.insert-image'); },
     priority: 66,
-    visibleInViews: ['learning-hub'],
-    execute: () => {
-      window.dispatchEvent(new CustomEvent('NOTES_INSERT_IMAGE'));
-    },
+    ...noteEditorCommandScope,
+    execute: (deps) => dispatchNotesCommand(deps, 'NOTES_INSERT_IMAGE', 'insert-image'),
   },
 ];

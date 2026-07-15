@@ -122,6 +122,7 @@ appRegistry.register({
       return {
         handled: true,
         changed: true,
+        acknowledged: true,
         entityRefs: ['counter:item:main'],
         undo: { inverse, label: 'Restore fixture value' },
       };
@@ -242,7 +243,7 @@ describe('ACR 2.0 core runtime', () => {
       results: [{
         handled: true,
         verified: true,
-        verificationSource: 'revision-change',
+        verificationSource: 'handler-ack',
       }],
     });
     expect(receipt.undoToken).toMatch(/^acr-undo:/);
@@ -252,7 +253,6 @@ describe('ACR 2.0 core runtime', () => {
     resetWindowStoreForTests({ w: 1200, h: 800 });
     openFixture();
     refAvailable = false;
-    appRevision += 1;
     const deferred = await revertAgentUndo(receipt.undoToken!);
     expect(deferred).toMatchObject({
       reverted: false,
@@ -262,7 +262,6 @@ describe('ACR 2.0 core runtime', () => {
     expect(value).toBe(42);
 
     refAvailable = true;
-    appRevision += 1;
     const reverted = await revertAgentUndo(receipt.undoToken!);
     expect(reverted).toMatchObject({
       reverted: true,
@@ -271,6 +270,36 @@ describe('ACR 2.0 core runtime', () => {
     });
     expect(value).toBe(0);
     await expect(revertAgentUndo(receipt.undoToken!)).rejects.toBeInstanceOf(AgentRuntimeError);
+  });
+
+  it('binds persistent undo tokens to the originating chat session', async () => {
+    const windowId = openFixture();
+    const before = await observeAgentWindow({ windowId });
+    const receipt = await actOnAgentWindow({
+      windowId,
+      observationRevision: before.revision,
+      actions: [{
+        name: 'setValue',
+        args: { value: 17 },
+        targetRef: 'counter:item:main',
+      }],
+    }, { sessionId: 'session-a' });
+    expect(value).toBe(17);
+
+    await expect(revertAgentUndo(receipt.undoToken!, {
+      sessionId: 'session-b',
+      approvalRiskCeiling: 'high',
+    })).resolves.toMatchObject({
+      reverted: false,
+      message: expect.stringContaining('不属于当前会话'),
+    });
+    expect(value).toBe(17);
+
+    await expect(revertAgentUndo(receipt.undoToken!, {
+      sessionId: 'session-a',
+      approvalRiskCeiling: 'high',
+    })).resolves.toMatchObject({ reverted: true });
+    expect(value).toBe(0);
   });
 
   it('marks read-only actions verified and bounds wait_for success/timeout', async () => {
@@ -414,5 +443,122 @@ describe('ACR 2.0 core runtime', () => {
       else delete properties.entityId;
       encodedTargetId = null;
     }
+  });
+
+  it('persistent undo refuses user state drift and preserves the token', async () => {
+    const windowId = openFixture();
+    const before = await observeAgentWindow({ windowId });
+    const acted = await actOnAgentWindow({
+      windowId,
+      observationRevision: before.revision,
+      actions: [{ name: 'setValue', args: { value: 42 }, targetRef: currentCounterRef() }],
+    });
+    value = 99;
+    appRevision += 1;
+    const first = await revertAgentUndo(acted.undoToken!);
+    const second = await revertAgentUndo(acted.undoToken!);
+    expect(first).toMatchObject({
+      reverted: false,
+      undoToken: acted.undoToken,
+      code: 'UNDO_CONFLICT',
+    });
+    expect(second).toMatchObject({
+      reverted: false,
+      undoToken: acted.undoToken,
+      code: 'UNDO_CONFLICT',
+    });
+    expect(first.message).toContain('状态已变化');
+    expect(value).toBe(99);
+  });
+
+  it('returns UNDO_IN_PROGRESS instead of joining a concurrent token replay', async () => {
+    const windowId = openFixture();
+    const before = await observeAgentWindow({ windowId });
+    const acted = await actOnAgentWindow({
+      windowId,
+      observationRevision: before.revision,
+      actions: [{ name: 'setValue', args: { value: 5 }, targetRef: currentCounterRef() }],
+    });
+    const manifest = appRegistry.getAgentManifest(TYPE_ID)!;
+    const originalExecute = manifest.execute!;
+    let releaseInverse!: () => void;
+    let markStarted!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseInverse = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    manifest.execute = async (ctx, action) => {
+      if (
+        action.name === 'setValue'
+        && Number((action.args as { value: number }).value) === 0
+      ) {
+        markStarted();
+        await gate;
+      }
+      return originalExecute(ctx, action);
+    };
+    try {
+      const first = revertAgentUndo(acted.undoToken!);
+      await started;
+      const concurrent = await revertAgentUndo(acted.undoToken!);
+      expect(concurrent).toMatchObject({
+        reverted: false,
+        code: 'UNDO_IN_PROGRESS',
+        retryable: true,
+      });
+      releaseInverse();
+      expect(await first).toMatchObject({ reverted: true });
+    } finally {
+      manifest.execute = originalExecute;
+    }
+  });
+
+  it('ordinary undo cannot replay a High-risk forward action', async () => {
+    const windowId = openFixture();
+    const capability = appRegistry.getAgentCapability(TYPE_ID, 'setValue')!;
+    const previousRisk = capability.risk;
+    try {
+      capability.risk = 'high';
+      const before = await observeAgentWindow({ windowId });
+      const acted = await actOnAgentWindow({
+        windowId,
+        observationRevision: before.revision,
+        approvalRiskCeiling: 'high',
+        actions: [{ name: 'setValue', args: { value: 7 }, targetRef: currentCounterRef() }],
+      });
+      const blocked = await revertAgentUndo(acted.undoToken!);
+      expect(blocked).toMatchObject({ reverted: false, undoToken: acted.undoToken });
+      expect(blocked.message).toContain('high 风险授权');
+      expect(value).toBe(7);
+      const elevated = await revertAgentUndo(acted.undoToken!, {
+        approvalRiskCeiling: 'high',
+      });
+      expect(elevated.reverted).toBe(true);
+      expect(value).toBe(0);
+    } finally {
+      capability.risk = previousRisk;
+    }
+  });
+
+  it('wait_for aborts promptly and object schemas without properties reject extras', async () => {
+    const windowId = openFixture();
+    const before = await observeAgentWindow({ windowId });
+    await expect(actOnAgentWindow({
+      windowId,
+      observationRevision: before.revision,
+      actions: [{ name: 'readValue', args: { unexpected: true } }],
+    })).rejects.toMatchObject({ code: 'INVALID_ACTION_ARGS' });
+
+    const controller = new AbortController();
+    const waiting = waitForAgentCondition({
+      windowId,
+      condition: { kind: 'state_equals', path: 'value', value: 999 },
+      timeoutMs: 5_000,
+      intervalMs: 25,
+    }, { signal: controller.signal });
+    controller.abort();
+    await expect(waiting).rejects.toMatchObject({ code: 'CANCELLED' });
   });
 });

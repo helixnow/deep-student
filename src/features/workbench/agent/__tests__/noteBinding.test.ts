@@ -12,6 +12,7 @@ import {
 
 const updateModeState = vi.fn();
 const getCurrentSessionId = vi.fn(() => 'sess-test');
+let sessionListener: ((event: { type: string; sessionId: string }) => void) | null = null;
 const getSession = vi.fn(() => ({
   getState: () => ({
     modeState: {} as Record<string, unknown> | null,
@@ -23,6 +24,12 @@ vi.mock('@/features/chat/core/session', () => ({
   sessionManager: {
     getCurrentSessionId: () => getCurrentSessionId(),
     get: (id: string) => getSession(id),
+    subscribe: (listener: (event: { type: string; sessionId: string }) => void) => {
+      sessionListener = listener;
+      return () => {
+        if (sessionListener === listener) sessionListener = null;
+      };
+    },
   },
 }));
 
@@ -38,6 +45,7 @@ describe('setupNoteBinding', () => {
     getCurrentSessionId.mockClear();
     getCurrentSessionId.mockReturnValue('sess-test');
     getSession.mockClear();
+    sessionListener = null;
     getSession.mockReturnValue({
       getState: () => ({
         modeState: {} as Record<string, unknown> | null,
@@ -138,5 +146,32 @@ describe('setupNoteBinding', () => {
 
     unbind();
     unregister();
+  });
+
+  it('焦点笔记不变时把新 current session 绑定到同一 note', async () => {
+    const firstUpdate = vi.fn();
+    const secondUpdate = vi.fn();
+    let currentSession = 'sess-one';
+    getCurrentSessionId.mockImplementation(() => currentSession);
+    getSession.mockImplementation((id: string) => ({
+      getState: () => ({
+        modeState: {},
+        updateModeState: id === 'sess-one' ? firstUpdate : secondUpdate,
+      }),
+    }));
+
+    const { setupNoteBinding } = await import('../noteBinding');
+    const noteWinId = useWindowStore.getState().openWindow({
+      typeId: 'note',
+      instanceKey: 'note-stable',
+    });
+    useWindowStore.getState().focusWindow(noteWinId);
+    const unbind = setupNoteBinding();
+    expect(firstUpdate).toHaveBeenCalledWith({ canvasNoteId: 'note-stable' });
+
+    currentSession = 'sess-two';
+    sessionListener?.({ type: 'current-session-changed', sessionId: currentSession });
+    expect(secondUpdate).toHaveBeenCalledWith({ canvasNoteId: 'note-stable' });
+    unbind();
   });
 });

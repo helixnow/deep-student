@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useEventRegistry } from './useEventRegistry';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -307,18 +308,25 @@ export const useTheme = () => {
     };
   }, []);
 
-  useEffect(() => {
-    const handleThemeModeChanged = (event: Event) => {
-      const mode = (event as CustomEvent<{ mode?: ThemeMode }>).detail?.mode;
-      if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
-      setThemeState(prev => ({ ...prev, mode }));
-    };
-
-    window.addEventListener('dstu-theme-mode-changed', handleThemeModeChanged as EventListener);
-    return () => {
-      window.removeEventListener('dstu-theme-mode-changed', handleThemeModeChanged as EventListener);
-    };
+  const handleThemeModeChanged = useCallback((event: Event) => {
+    const mode = (event as CustomEvent<{ mode?: ThemeMode }>).detail?.mode;
+    if (mode !== 'light' && mode !== 'dark' && mode !== 'auto') return;
+    setThemeState(prev => ({ ...prev, mode }));
   }, []);
+
+  const handleThemePaletteChanged = useCallback((event: Event) => {
+    const palette = (event as CustomEvent<{ palette?: string }>).detail?.palette;
+    if (!isValidPalette(palette ?? null)) return;
+    setThemeState(prev => ({ ...prev, palette: palette as ThemePalette }));
+  }, []);
+
+  useEventRegistry(
+    [
+      { target: 'window', type: 'dstu-theme-mode-changed', listener: handleThemeModeChanged },
+      { target: 'window', type: 'dstu-theme-palette-changed', listener: handleThemePaletteChanged },
+    ],
+    [handleThemeModeChanged, handleThemePaletteChanged],
+  );
 
   useEffect(() => {
     applyThemeToDom(resolvedIsDark, themeState.palette, themeState.customColor);

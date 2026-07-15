@@ -13,16 +13,19 @@ describe('file preview app registration', () => {
     expect(React.isValidElement(FILE_PREVIEW_APP_DEFINITION.icon)).toBe(true);
   });
 
-  it('routes page activation to the shared PDF focus contract', () => {
-    const listener = vi.fn();
+  it('routes page activation and waits for the shared PDF focus ACK', async () => {
+    const listener = vi.fn((event: Event) => {
+      (event as CustomEvent<{ acknowledge?: (handled: boolean) => void }>).detail
+        ?.acknowledge?.(true);
+    });
     document.addEventListener('pdf-ref:focus', listener);
-    const result = handleFilePreviewActivation({
+    const result = await handleFilePreviewActivation({
       action: 'scrollToHeading',
       instanceKey: 'tb_1',
       payload: { page: 7 },
     } as ActivationContext);
 
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     expect(listener).toHaveBeenCalledTimes(1);
     const event = listener.mock.calls[0][0] as CustomEvent;
     expect(event.detail).toMatchObject({ sourceId: 'tb_1', pageNumber: 7, path: '/tb_1' });

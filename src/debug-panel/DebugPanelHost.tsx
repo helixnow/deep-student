@@ -48,8 +48,7 @@ import DstuDebugPlugin from './plugins/DstuDebugPlugin';
 import AttachmentInjectionDebugPlugin from './plugins/AttachmentInjectionDebugPlugin';
 import AttachmentOcrRequestAuditPlugin from './plugins/AttachmentOcrRequestAuditPlugin';
 import MediaProcessingDebugPlugin from './plugins/MediaProcessingDebugPlugin';
-// ★ 多模态索引已禁用，暂时隐藏调试插件入口。恢复时取消注释即可。
-// import PdfMultimodalDebugPlugin from './plugins/PdfMultimodalDebugPlugin';
+import PdfMultimodalDebugPlugin from './plugins/PdfMultimodalDebugPlugin';
 import FinderDragDropDebugPlugin from './plugins/FinderDragDropDebugPlugin';
 import SelectionBoxDebugPlugin from './plugins/SelectionBoxDebugPlugin';
 // ★ 图谱模块已废弃 - GraphSidebarDebugPlugin 已移除
@@ -237,16 +236,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     descriptionDefault: '监听 PDF/图片上传、OCR 流水线、注入模式选择，以及前端构造和后端接收的请求体摘要，校验多模态/文本模型是否收到预期内容。',
     groupId: 'chat-timeline',
   },
-  // ★ 多模态索引已禁用，暂时隐藏 PDF 多模态调试插件。恢复时取消注释即可。
-  // {
-  //   id: 'pdf-multimodal-debug',
-  //   labelKey: 'debug_panel.plugin_pdf_multimodal',
-  //   descriptionKey: 'debug_panel.plugin_pdf_multimodal_desc',
-  //   Component: PdfMultimodalDebugPlugin,
-  //   labelDefault: 'PDF 多模态调试',
-  //   descriptionDefault: '专门调试 PDF 图片模式注入问题，追踪 isMultimodal、includeImage、multimodalBlocks 等关键状态。',
-  //   groupId: 'chat-timeline',
-  // },
+  {
+    id: 'pdf-multimodal-debug',
+    labelKey: 'debug_panel.plugin_pdf_multimodal',
+    descriptionKey: 'debug_panel.plugin_pdf_multimodal_desc',
+    Component: PdfMultimodalDebugPlugin,
+    labelDefault: 'PDF 多模态调试',
+    descriptionDefault: '专门调试 PDF 图片模式注入问题，追踪 isMultimodal、includeImage、multimodalBlocks 等关键状态。',
+    groupId: 'chat-timeline',
+  },
   {
     id: 'media-processing-debug',
     labelKey: 'debug_panel.plugin_media_processing',

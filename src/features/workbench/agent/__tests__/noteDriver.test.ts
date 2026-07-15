@@ -24,6 +24,13 @@ import {
   type NoteAnchor,
 } from '../drivers/noteDriver';
 
+function acknowledgeSuggestion(event: Event): void {
+  const detail = (event as CustomEvent<{
+    onLocalDisposition?: (value: { accepted: true }) => void;
+  }>).detail;
+  detail?.onLocalDisposition?.({ accepted: true });
+}
+
 describe('splitTextIntoBatches', () => {
   it('空串返回空数组', () => {
     expect(splitTextIntoBatches('', 8, 40)).toEqual([]);
@@ -243,7 +250,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
       runId: 'run-1',
       sessionId: 'sess-1',
       target: { typeId: 'note', resourceId: NOTE_ID },
-      windowId: 'win-1',
+      windowId: null,
       pacing: {
         profile: PACING_PROFILES.fast,
         tick: vi.fn(async () => {}),
@@ -260,14 +267,21 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     markdown?: string;
     focused?: boolean;
     saveError?: Error;
+    windowedFullMarkdown?: string;
   }) {
     let markdown = opts?.markdown ?? 'base content';
+    let fullMarkdown = opts?.windowedFullMarkdown ?? markdown;
     let focused = opts?.focused ?? false;
+    let nextSaveError = opts?.saveError;
     const insertCalls: Array<{ text: string; pos: number }> = [];
     const markdownInsertCalls: Array<{ markdown: string; pos: number }> = [];
     const signals: Array<{ type: string; pos?: number }> = [];
     const flushPendingSave = vi.fn(async () => {
-      if (opts?.saveError) throw opts.saveError;
+      if (nextSaveError) {
+        const error = nextSaveError;
+        nextSaveError = undefined;
+        throw error;
+      }
     });
 
     const api = {
@@ -278,10 +292,28 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
       setFocused: (next: boolean) => {
         focused = next;
       },
+      failNextSave: (error: Error) => {
+        nextSaveError = error;
+      },
       getMarkdown: () => markdown,
       setMarkdown: (md: string) => {
         markdown = md;
+        if (opts?.windowedFullMarkdown === undefined) fullMarkdown = md;
+        return true;
       },
+      getFullMarkdown: () => fullMarkdown,
+      isDocumentWindowed: () => opts?.windowedFullMarkdown !== undefined && markdown !== fullMarkdown,
+      replaceFullMarkdown: opts?.windowedFullMarkdown !== undefined
+        ? async (md: string, replaceOpts: { expectedMarkdown: string }) => {
+            if (fullMarkdown !== replaceOpts.expectedMarkdown) {
+              throw new Error('OCC conflict');
+            }
+            fullMarkdown = md;
+            markdown = md;
+            await flushPendingSave();
+            return true;
+          }
+        : undefined,
       getDocEndPos: () => Math.max(2, markdown.length + 2),
       resolveHeadingPos: () => null as number | null,
       agentSignal: (meta: { type: string; pos?: number }) => {
@@ -289,10 +321,14 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
       },
       agentInsert: (text: string, pos: number) => {
         insertCalls.push({ text, pos });
-        return pos + text.length;
+        markdown += text;
+        fullMarkdown = markdown;
+        return { from: pos, to: pos + text.length, cursor: pos + text.length };
       },
       agentInsertMarkdown: (source: string, pos: number) => {
         markdownInsertCalls.push({ markdown: source, pos });
+        markdown += source;
+        fullMarkdown = markdown;
         return { from: pos, to: pos + source.length, cursor: pos + source.length };
       },
       getCrepe: () => null,
@@ -305,12 +341,14 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     __resetContentDirtyRegistry();
     unregisterNoteEditor(NOTE_ID);
     bindNoteHotPauseHooks(null);
+    window.addEventListener('canvas:ai-edit-request', acknowledgeSuggestion);
   });
 
   afterEach(() => {
     __resetContentDirtyRegistry();
     unregisterNoteEditor(NOTE_ID);
     bindNoteHotPauseHooks(null);
+    window.removeEventListener('canvas:ai-edit-request', acknowledgeSuggestion);
   });
 
   it('dirty + note_replace → canvas:ai-edit-request + suggestionPending', async () => {
@@ -471,6 +509,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     const api = makeEditorApi();
     registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
     const markdown = '## 小结\n\n- **要点一**\n- $F=ma$';
+    const expectedPos = api.getDocEndPos();
 
     const receipt = await noteDriver.apply(makeRun(), [
       {
@@ -484,7 +523,7 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
 
     expect(receipt.status).toBe('completed');
     expect(api.markdownInsertCalls).toEqual([
-      { markdown, pos: api.getDocEndPos() },
+      { markdown, pos: expectedPos },
     ]);
     expect(api.insertCalls).toHaveLength(0);
     expect(api.flushPendingSave).toHaveBeenCalledTimes(1);
@@ -572,5 +611,119 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(api.insertCalls.length).toBeGreaterThan(0);
 
     bindNoteHotPauseHooks(null);
+  });
+
+  it('窗口化长笔记 append 使用全文末尾，不把可见前缀当全文', async () => {
+    const visible = Array.from({ length: 600 }, (_, index) => `line-${index}`).join('\n');
+    const hidden = '\nhidden-601\nhidden-602';
+    const api = makeEditorApi({ markdown: visible, windowedFullMarkdown: visible + hidden });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+
+    const receipt = await noteDriver.apply(makeRun(), [{
+      kind: 'note_append',
+      destructive: false,
+      label: '长笔记追加',
+      anchor: { position: 'end' },
+      payload: { content: '\ntrue-end' },
+    }]);
+
+    expect(receipt.status).toBe('completed');
+    expect(api.getFullMarkdown()).toBe(`${visible}${hidden}\ntrue-end`);
+    expect(api.getFullMarkdown()).toContain('hidden-602');
+  });
+
+  it('用户在 Agent 写入后继续编辑时，inverse 以 OCC 冲突拒绝且不覆盖用户内容', async () => {
+    const api = makeEditorApi({ markdown: 'before' });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const record = vi.fn();
+    const receipt = await noteDriver.apply(makeRun({ ledger: { record } }), [{
+      kind: 'note_set',
+      destructive: true,
+      label: 'Agent 设置',
+      payload: { content: 'agent-after' },
+    }]);
+    expect(receipt.status).toBe('completed');
+    const inverse = record.mock.calls[0]![1] as () => Promise<void>;
+
+    api.setMarkdown('user-after');
+    await expect(inverse()).rejects.toThrow(/撤销冲突/);
+    expect(api.getMarkdown()).toBe('user-after');
+  });
+
+  it('inverse 保存失败后保留幂等状态，重试只保存而不再次修改正文', async () => {
+    const api = makeEditorApi({ markdown: 'before' });
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const record = vi.fn();
+    await noteDriver.apply(makeRun({ ledger: { record } }), [{
+      kind: 'note_set',
+      destructive: true,
+      label: 'Agent 设置',
+      payload: { content: 'agent-after' },
+    }]);
+    const inverse = record.mock.calls[0]![1] as () => Promise<void>;
+    api.failNextSave(new Error('disk unavailable'));
+
+    await expect(inverse()).rejects.toThrow('disk unavailable');
+    expect(api.getMarkdown()).toBe('before');
+    await expect(inverse()).resolves.toBeUndefined();
+    expect(api.getMarkdown()).toBe('before');
+  });
+
+  it('按 windowId 精确选择同资源编辑器', async () => {
+    const first = makeEditorApi({ markdown: 'first' });
+    const second = makeEditorApi({ markdown: 'second' });
+    registerNoteEditor(NOTE_ID, first as unknown as CrepeEditorApi, 'win-first');
+    registerNoteEditor(NOTE_ID, second as unknown as CrepeEditorApi, 'win-second');
+
+    const receipt = await noteDriver.apply(makeRun({ windowId: 'win-second' }), [{
+      kind: 'note_append',
+      destructive: false,
+      label: '只写第二窗',
+      payload: { content: '-changed' },
+    }]);
+
+    expect(receipt.status).toBe('completed');
+    expect(first.getMarkdown()).toBe('first');
+    expect(second.getMarkdown()).toBe('second-changed');
+    unregisterNoteEditor(NOTE_ID, first as unknown as CrepeEditorApi, 'win-first');
+    unregisterNoteEditor(NOTE_ID, second as unknown as CrepeEditorApi, 'win-second');
+  });
+
+  it('旧实例卸载不会注销同窗口后来注册的新 editor API', () => {
+    const oldApi = makeEditorApi({ markdown: 'old-instance' });
+    const newApi = makeEditorApi({ markdown: 'new-instance' });
+    registerNoteEditor(NOTE_ID, oldApi as unknown as CrepeEditorApi, 'win-same');
+    registerNoteEditor(NOTE_ID, newApi as unknown as CrepeEditorApi, 'win-same');
+
+    unregisterNoteEditor(NOTE_ID, oldApi as unknown as CrepeEditorApi, 'win-same');
+    expect(noteDriver.probe({ typeId: 'note', resourceId: NOTE_ID })).toBe('clean');
+    unregisterNoteEditor(NOTE_ID, newApi as unknown as CrepeEditorApi, 'win-same');
+  });
+
+  it('已有 diff 拒绝新建议时返回 failed，不伪造 suggestionPending', async () => {
+    registerContentDirtyChecker('note', NOTE_ID, () => true);
+    const api = makeEditorApi();
+    registerNoteEditor(NOTE_ID, api as unknown as CrepeEditorApi);
+    const rejectSuggestion = (event: Event) => {
+      (event as CustomEvent<{
+        onLocalDisposition?: (value: { accepted: false; reason: string }) => void;
+      }>).detail.onLocalDisposition?.({
+        accepted: false,
+        reason: '已有一条笔记编辑建议等待确认',
+      });
+    };
+    window.addEventListener('canvas:ai-edit-request', rejectSuggestion);
+
+    const receipt = await noteDriver.apply(makeRun(), [{
+      kind: 'note_set',
+      destructive: true,
+      label: '第二条建议',
+      payload: { content: 'next' },
+    }]);
+    window.removeEventListener('canvas:ai-edit-request', rejectSuggestion);
+
+    expect(receipt.status).toBe('failed');
+    expect(receipt.suggestionPending).toBeFalsy();
+    expect(receipt.message).toContain('已有一条');
   });
 });

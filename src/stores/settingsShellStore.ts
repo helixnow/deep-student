@@ -33,6 +33,8 @@ const SETTINGS_TAB_MAPPING: Record<string, string> = {
   app: 'general',
   general: 'general',
   appearance: 'appearance',
+  automation: 'automation',
+  automations: 'automation',
   api: 'apis',
   apis: 'apis',
   search: 'search',

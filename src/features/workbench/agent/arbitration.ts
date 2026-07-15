@@ -114,7 +114,9 @@ export function createArbitrator(opts: {
 
     onUserInput() {
       if (disposed) return;
-      enterPaused(false);
+      // A user gesture must not downgrade an explicit operator hold into the
+      // 2-second auto-resume path. Only resume() may release an explicit pause.
+      enterPaused(explicitHold);
     },
 
     pause() {

@@ -4,6 +4,7 @@ import { appRegistry } from '../../core/appRegistry';
 import type { ActivationContext, ActivationResult, AppDefinition } from '../../core/types';
 import { FILE_PREVIEW_APP_TYPE_ID } from '../content/typeMap';
 import { createResourceContentManifest } from '../content/agentManifests';
+import { requestPdfPageFocus } from '../content/pdfFocusAck';
 
 const FilePreviewAppWindow = React.lazy(() => import('./FilePreviewAppWindow'));
 
@@ -16,7 +17,7 @@ function parsePage(payload: unknown): number | null {
     : null;
 }
 
-export function handleFilePreviewActivation(ctx: ActivationContext): ActivationResult {
+export async function handleFilePreviewActivation(ctx: ActivationContext): Promise<ActivationResult> {
   if (ctx.action !== 'scrollToHeading' && ctx.action !== 'gotoPage') {
     return {
       handled: false,
@@ -34,16 +35,7 @@ export function handleFilePreviewActivation(ctx: ActivationContext): ActivationR
     };
   }
 
-  if (typeof document !== 'undefined') {
-    document.dispatchEvent(new CustomEvent('pdf-ref:focus', {
-      detail: {
-        sourceId: ctx.instanceKey,
-        pageNumber: page,
-        path: ctx.instanceKey.startsWith('/') ? ctx.instanceKey : `/${ctx.instanceKey}`,
-      },
-    }));
-  }
-  return { handled: true };
+  return requestPdfPageFocus(ctx.instanceKey, page);
 }
 
 export const FILE_PREVIEW_APP_DEFINITION: AppDefinition = {

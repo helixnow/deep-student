@@ -127,4 +127,30 @@ describe('ACR ledger — RunLedger 契约', () => {
     }
     expect(runLedger.hasRun('active-keep')).toBe(true);
   });
+
+  it('并发 revert 共享同一 flight，inverse 只执行一次', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let calls = 0;
+    runLedger.record('single-flight', async () => {
+      calls += 1;
+      await gate;
+    }, 'once');
+    const first = runLedger.revertRun('single-flight');
+    const second = runLedger.revertRun('single-flight');
+    release();
+    await expect(Promise.all([first, second])).resolves.toEqual([true, true]);
+    expect(calls).toBe(1);
+    expect(await runLedger.revertRun('single-flight')).toBe(false);
+  });
+
+  it('成功后的 tombstone 拒绝迟到 record 复活旧 run', async () => {
+    const calls: string[] = [];
+    runLedger.record('tombstone', () => { calls.push('first'); }, 'first');
+    expect(await runLedger.revertRun('tombstone')).toBe(true);
+    runLedger.record('tombstone', () => { calls.push('late'); }, 'late');
+    expect(runLedger.hasRun('tombstone')).toBe(false);
+    expect(await runLedger.revertRun('tombstone')).toBe(false);
+    expect(calls).toEqual(['first']);
+  });
 });

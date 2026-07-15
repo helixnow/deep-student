@@ -13,9 +13,6 @@ import {
   stableRevision,
 } from '../agentManifestUtils';
 
-const inputFocusSequence = new Map<string, number>();
-const lastScrolledMessage = new Map<string, { messageId: string; sequence: number }>();
-
 async function resolveSession(sessionId: string | null) {
   const { sessionManager } = await import('@/features/chat/core/session/sessionManager');
   const resolvedId = sessionId ?? sessionManager.getCurrentSessionId();
@@ -57,10 +54,8 @@ export function createChatAgentManifest(
       }
       const messageIds = state.messageOrder.slice(-50);
       const draftRevision = stableRevision(state.inputValue);
-      const focusSequence = inputFocusSequence.get(state.sessionId) ?? 0;
-      const lastScroll = lastScrolledMessage.get(state.sessionId) ?? null;
       return {
-        revision: stableRevision(state.sessionId, state.sessionStatus, state.messageOrder, state.currentStreamingMessageId, draftRevision, Boolean(state.pendingBlockingInteraction), focusSequence, lastScroll),
+        revision: stableRevision(state.sessionId, state.sessionStatus, state.messageOrder, state.currentStreamingMessageId, draftRevision, Boolean(state.pendingBlockingInteraction)),
         route: `chat/${state.sessionId}`,
         mode: state.mode,
         busy: Boolean(state.currentStreamingMessageId),
@@ -106,9 +101,6 @@ export function createChatAgentManifest(
           queuedMessageCount: state.queuedMessages.length,
           pendingApproval: Boolean(state.pendingApprovalRequest),
           agentCanSend: false,
-          inputFocusSequence: focusSequence,
-          lastScrolledMessageId: lastScroll?.messageId ?? null,
-          scrollSequence: lastScroll?.sequence ?? 0,
         },
       };
     },
@@ -131,27 +123,24 @@ export function createChatAgentManifest(
       const afterResolved = await resolveSession(requestedSession);
       const after = afterResolved.store?.getState();
       const afterInput = after?.inputValue ?? '';
-      if (action.name === 'focusInput' && afterResolved.sessionId) {
-        inputFocusSequence.set(
-          afterResolved.sessionId,
-          (inputFocusSequence.get(afterResolved.sessionId) ?? 0) + 1,
-        );
-      }
-      if (
-        action.name === 'scrollToMessage' &&
-        afterResolved.sessionId &&
-        typeof args.messageId === 'string'
-      ) {
-        lastScrolledMessage.set(afterResolved.sessionId, {
-          messageId: args.messageId,
-          sequence: (lastScrolledMessage.get(afterResolved.sessionId)?.sequence ?? 0) + 1,
-        });
-      }
       result.changed = action.name === 'focusInput' || action.name === 'scrollToMessage'
-        || (action.name === 'setInput' && beforeRevision !== stableRevision(afterInput));
+        ? result.acknowledged === true
+        : action.name === 'setInput' && beforeRevision !== stableRevision(afterInput);
+      if (!result.changed || result.acknowledged !== true) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未改变 Chat 表面状态`,
+        };
+      }
       if (action.name === 'setInput' && after) {
-        const afterRevision = stableRevision(afterInput);
-        result.postconditions = [{ kind: 'state_equals', path: 'inputValueRevision', value: afterRevision }];
+        const requestedContent = typeof args.content === 'string' ? args.content : '';
+        result.postconditions = [{
+          kind: 'state_equals',
+          path: 'inputValueRevision',
+          value: stableRevision(requestedContent),
+        }];
         if (result.changed) {
           result.undo = {
             inverse: {
@@ -164,13 +153,6 @@ export function createChatAgentManifest(
         }
       } else if (action.name === 'scrollToMessage' && typeof args.messageId === 'string') {
         result.entityRefs = [stableAgentRef('chat', 'message', args.messageId)];
-        result.postconditions = [{ kind: 'state_equals', path: 'lastScrolledMessageId', value: args.messageId }];
-      } else if (action.name === 'focusInput' && afterResolved.sessionId) {
-        result.postconditions = [{
-          kind: 'state_equals',
-          path: 'inputFocusSequence',
-          value: inputFocusSequence.get(afterResolved.sessionId) ?? 0,
-        }];
       }
       return result;
     },

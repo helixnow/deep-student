@@ -10,6 +10,7 @@ import type {
   AgentAppCapabilities,
   AgentAppContext,
   AgentCapabilitiesResult,
+  AgentCapabilityRisk,
   AgentCapability,
   AgentConditionFailure,
   AgentEntitySummary,
@@ -33,7 +34,9 @@ import { useWindowStore } from './windowStore';
 import {
   consumeAgentUndo,
   getAgentUndo,
+  hasAgentUndoFlight,
   recordAgentUndo,
+  runAgentUndoExclusive,
   updateAgentUndo,
 } from './agentUndoJournal';
 
@@ -78,11 +81,45 @@ export interface AgentRuntimeOptions {
   registerSessionUndo?: (
     invert: () => Promise<void> | void,
     label: string,
+    risk?: AgentCapabilityRisk,
   ) => void;
+  /** Cooperative cancellation propagated from the Rust bridge correlation. */
+  signal?: AbortSignal;
+  /** Revert defaults to medium; High inverses require an explicitly elevated tool. */
+  approvalRiskCeiling?: AgentCapabilityRisk;
   executeLegacy?: (
     ctx: AgentAppContext,
     action: AgentActionCall,
   ) => AgentManifestHandlerResult | Promise<AgentManifestHandlerResult>;
+}
+
+function throwIfAgentOperationAborted(options: AgentRuntimeOptions): void {
+  if (!options.signal?.aborted) return;
+  runtimeError(
+    'CANCELLED',
+    'Agent 操作已取消',
+    '重新 observe 当前状态；动作可能已部分完成，请依据权威回执决定是否重试',
+    true,
+  );
+}
+
+function normalizeRiskCeiling(
+  risk: AgentCapabilityRisk | undefined,
+): AgentCapabilityRisk {
+  return risk && Object.prototype.hasOwnProperty.call(AGENT_RISK_RANK, risk)
+    ? risk
+    : 'medium';
+}
+
+function maxAgentRisk(risks: Array<AgentCapabilityRisk | undefined>): AgentCapabilityRisk {
+  let result: AgentCapabilityRisk = 'read';
+  for (const risk of risks) {
+    const normalized = risk && Object.prototype.hasOwnProperty.call(AGENT_RISK_RANK, risk)
+      ? risk
+      : 'high';
+    if (AGENT_RISK_RANK[normalized] > AGENT_RISK_RANK[result]) result = normalized;
+  }
+  return result;
 }
 
 interface ResolvedAgentWindow {
@@ -420,6 +457,7 @@ export async function observeAgentWindow(
     instanceKey: win.instanceKey,
     runId: options.runId,
     sessionId: options.sessionId,
+    signal: options.signal,
   };
   if (manifest?.observe) {
     try {
@@ -571,9 +609,10 @@ function validateSchema(value: unknown, schema: AgentJsonSchema, path = 'args'):
     for (const [key, child] of Object.entries(schema.properties ?? {})) {
       if (key in record) errors.push(...validateSchema(record[key], child, `${path}.${key}`));
     }
-    if (schema.additionalProperties === false && schema.properties) {
+    if (schema.additionalProperties === false) {
+      const allowedProperties = schema.properties ?? {};
       for (const key of Object.keys(record)) {
-        if (!(key in schema.properties)) errors.push(`${path}.${key} 不是允许字段`);
+        if (!(key in allowedProperties)) errors.push(`${path}.${key} 不是允许字段`);
       }
     } else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
       for (const [key, item] of Object.entries(record)) {
@@ -596,6 +635,9 @@ function normalizeActionResult(raw: AgentManifestHandlerResult): AgentActionResu
     message: typeof raw.message === 'string' ? raw.message : undefined,
     ...('changed' in raw && typeof raw.changed === 'boolean'
       ? { changed: raw.changed }
+      : {}),
+    ...('acknowledged' in raw && typeof raw.acknowledged === 'boolean'
+      ? { acknowledged: raw.acknowledged }
       : {}),
     ...('entityRefs' in raw && Array.isArray(raw.entityRefs)
       ? { entityRefs: raw.entityRefs.filter((ref): ref is string => typeof ref === 'string') }
@@ -868,9 +910,9 @@ function verifyExecutedAction(
   } else if (result.postconditions?.length) {
     verificationSource = 'result-postcondition';
     postconditions = result.postconditions;
-  } else if (capability.mutates && result.changed === true) {
-    verificationSource = 'revision-change';
-    postconditions = [{ kind: 'revision_changed', from: before.revision }];
+  } else if (capability.mutates && result.acknowledged === true) {
+    verificationSource = 'handler-ack';
+    postconditions = [];
   } else if (!capability.mutates) {
     verificationSource = 'read-only-observation';
     postconditions = [];
@@ -886,7 +928,7 @@ function verifyExecutedAction(
   if (result.handled && verificationSource === 'unverified') {
     failedConditions.push({
       condition: { kind: 'revision_changed', from: before.revision },
-      message: 'mutating action 未提供 caller/result postcondition，且未声明 changed=true',
+      message: 'mutating action 未提供 caller/result postcondition，且未返回 authoritative acknowledged=true',
     });
   }
   return {
@@ -939,6 +981,7 @@ export async function actOnAgentWindow(
   request: AgentActRequest,
   options: AgentRuntimeOptions = {},
 ): Promise<AgentActReceipt> {
+  throwIfAgentOperationAborted(options);
   if (!request.observationRevision?.trim()) {
     runtimeError(
       'INVALID_ARGS',
@@ -987,10 +1030,7 @@ export async function actOnAgentWindow(
   const capabilities = new Map(
     cloneCapabilities(manifest).map((capability) => [capability.name, capability]),
   );
-  const approvalRiskCeiling = request.approvalRiskCeiling
-    && Object.prototype.hasOwnProperty.call(AGENT_RISK_RANK, request.approvalRiskCeiling)
-    ? request.approvalRiskCeiling
-    : 'medium';
+  const approvalRiskCeiling = normalizeRiskCeiling(request.approvalRiskCeiling);
   for (const action of request.actions) {
     const capability = capabilities.get(action.name);
     if (!capability) {
@@ -1021,6 +1061,7 @@ export async function actOnAgentWindow(
   }
 
   let current = await observeAgentWindow(request, options);
+  throwIfAgentOperationAborted(options);
   const before = current;
   if (current.revision !== request.observationRevision) {
     runtimeError(
@@ -1032,12 +1073,17 @@ export async function actOnAgentWindow(
   }
 
   const outcomes: AgentActionOutcome[] = [];
-  const persistentUndos: Array<{ inverse: AgentActionCall[]; label?: string }> = [];
+  const persistentUndos: Array<{
+    inverse: AgentActionCall[];
+    label?: string;
+    sourceRisk: AgentCapabilityRisk;
+  }> = [];
   let sessionUndoRegistrations = 0;
+  let currentActionRisk: AgentCapabilityRisk = 'read';
   const registerUndo = options.registerSessionUndo
     ? (invert: () => Promise<void> | void, label: string) => {
         sessionUndoRegistrations += 1;
-        options.registerSessionUndo!(invert, label);
+        options.registerSessionUndo!(invert, label, currentActionRisk);
       }
     : undefined;
   const stopOnFailure = request.stopOnFailure !== false;
@@ -1045,6 +1091,7 @@ export async function actOnAgentWindow(
   for (let index = 0; index < request.actions.length; index += 1) {
     const action = request.actions[index];
     const capability = capabilities.get(action.name)!;
+    currentActionRisk = capability.risk;
     const validationError = validateActionAgainstObservation(action, capability, current);
     if (validationError) {
       outcomes.push(failedOutcome(action, index, validationError));
@@ -1055,6 +1102,7 @@ export async function actOnAgentWindow(
     const actionBefore = current;
     const sessionUndoBeforeAction = sessionUndoRegistrations;
     try {
+      throwIfAgentOperationAborted(options);
       const result = await executeManifestAction(
         manifest,
         {
@@ -1063,6 +1111,7 @@ export async function actOnAgentWindow(
           instanceKey: resolved.win.instanceKey,
           runId: options.runId,
           sessionId: options.sessionId,
+          signal: options.signal,
           registerUndo,
           observation: current,
         },
@@ -1075,7 +1124,11 @@ export async function actOnAgentWindow(
         const inverse = Array.isArray(result.undo.inverse)
           ? result.undo.inverse
           : [result.undo.inverse];
-        persistentUndos.push({ inverse, label: result.undo.label });
+        persistentUndos.push({
+          inverse,
+          label: result.undo.label,
+          sourceRisk: capability.risk,
+        });
       }
       current = await observeAgentWindow(request, options);
       const verification = verifyExecutedAction(
@@ -1101,6 +1154,9 @@ export async function actOnAgentWindow(
         verificationSource: verification.verificationSource,
         failedConditions: verification.failedConditions,
       });
+      // A non-cooperative handler can finish after cancellation and still mutate.
+      // Record that authoritative outcome, then stop before another action begins.
+      if (options.signal?.aborted) break;
       if ((!result.handled || verification.failedConditions.length > 0) && stopOnFailure) break;
     } catch (error) {
       const failure = isAgentRuntimeError(error)
@@ -1153,16 +1209,24 @@ export async function actOnAgentWindow(
     .map((entry) => entry.label)
     .filter(Boolean)
     .join(' / ') || 'Revert semantic actions';
+  const requiredUndoRisk = maxAgentRisk([
+    ...persistentUndos.map((entry) => entry.sourceRisk),
+    ...inverseCapabilities.map((capability) => capability?.risk),
+  ]);
 
   // Closure inverses are process-local. Descriptor-only actions in a mixed batch are
   // attached to that same run ledger so one session token reverts the complete batch.
   if (sessionUndoRegistrations > 0 && options.runId) {
     if (validInverse && options.registerSessionUndo) {
       const descriptorUndo = recordAgentUndo({
+        sessionId: options.sessionId ?? '',
         typeId: resolved.win.typeId,
         windowId: resolved.win.id,
         instanceKey: resolved.win.instanceKey,
         inverse,
+        expectedRevision: current.revision,
+        expectedState: current.state,
+        requiredRisk: requiredUndoRisk,
         label: undoLabel,
         persist: false,
       });
@@ -1171,19 +1235,25 @@ export async function actOnAgentWindow(
           const result = await revertAgentUndo(descriptorUndo.token, {
             ...options,
             registerSessionUndo: undefined,
+            signal: undefined,
+            approvalRiskCeiling: requiredUndoRisk,
           });
           if (!result.reverted) throw new Error(result.message ?? 'descriptor undo failed');
-        }, undoLabel);
+        }, undoLabel, requiredUndoRisk);
       }
     }
     receipt.undoToken = `acr-run:${options.runId}`;
     receipt.undoDurability = 'session';
   } else if (validInverse) {
     const recorded = recordAgentUndo({
+      sessionId: options.sessionId ?? '',
       typeId: resolved.win.typeId,
       windowId: resolved.win.id,
       instanceKey: resolved.win.instanceKey,
       inverse,
+      expectedRevision: current.revision,
+      expectedState: current.state,
+      requiredRisk: requiredUndoRisk,
       label: undoLabel,
       persist: inverseCapabilities.every((capability) => capability?.idempotent === true),
     });
@@ -1195,14 +1265,38 @@ export async function actOnAgentWindow(
   return receipt;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) return Promise.reject(new AgentRuntimeError(
+    'CANCELLED',
+    'Agent 等待已取消',
+    '重新 observe 后再决定是否等待',
+    true,
+  ));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(new AgentRuntimeError(
+        'CANCELLED',
+        'Agent 等待已取消',
+        '重新 observe 后再决定是否等待',
+        true,
+      ));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 export async function waitForAgentCondition(
   request: AgentWaitForRequest,
   options: AgentRuntimeOptions = {},
 ): Promise<AgentWaitForResult> {
+  throwIfAgentOperationAborted(options);
   const conditions = [
     ...validateAgentConditions(
       request.condition === undefined ? [] : [request.condition],
@@ -1231,12 +1325,26 @@ export async function waitForAgentCondition(
   const startedAt = Date.now();
   let observation = await observeAgentWindow(request, options);
   const baselineRevision = observation.revision;
+  let previousRevision = observation.revision;
+  let currentIntervalMs = intervalMs;
   let failures = evaluateAgentConditions(observation, conditions, baselineRevision);
   while (failures.length > 0 && Date.now() - startedAt < timeoutMs) {
     const remaining = timeoutMs - (Date.now() - startedAt);
-    await delay(Math.min(intervalMs, Math.max(0, remaining)));
+    await delay(Math.min(currentIntervalMs, Math.max(0, remaining)), options.signal);
+    throwIfAgentOperationAborted(options);
     observation = await observeAgentWindow(request, options);
     failures = evaluateAgentConditions(observation, conditions, baselineRevision);
+    if (observation.revision === previousRevision) {
+      // Expensive manifests (notably large notes) should not repeatedly hash the
+      // complete document at 25/100ms when no state transition is occurring.
+      currentIntervalMs = Math.min(
+        AGENT_WAIT_INTERVAL_MAX_MS,
+        Math.max(intervalMs, Math.ceil(currentIntervalMs * 1.5)),
+      );
+    } else {
+      currentIntervalMs = intervalMs;
+      previousRevision = observation.revision;
+    }
   }
   const elapsedMs = Math.max(0, Date.now() - startedAt);
   return {
@@ -1248,10 +1356,11 @@ export async function waitForAgentCondition(
   };
 }
 
-export async function revertAgentUndo(
+async function revertAgentUndoLocked(
   undoToken: string,
   options: AgentRuntimeOptions = {},
 ): Promise<AgentUndoResult> {
+  throwIfAgentOperationAborted(options);
   const entry = getAgentUndo(undoToken);
   if (!entry) {
     runtimeError(
@@ -1259,6 +1368,14 @@ export async function revertAgentUndo(
       `撤销令牌不存在或已使用: ${undoToken}`,
       'session 令牌仅在当前运行期间有效；persistent 令牌也可能已被 LRU 淘汰',
     );
+  }
+  if (entry.sessionId && entry.sessionId !== options.sessionId) {
+    return {
+      reverted: false,
+      undoToken,
+      durability: entry.durability,
+      message: '撤销令牌不属于当前会话；令牌已保留',
+    };
   }
   const storedWindow = entry.windowId
     ? useWindowStore.getState().windows[entry.windowId]
@@ -1277,10 +1394,36 @@ export async function revertAgentUndo(
       '恢复该应用的 manifest/execute 后重试，令牌仍会保留',
     );
   }
+  const approvalRiskCeiling = normalizeRiskCeiling(options.approvalRiskCeiling);
+  if (AGENT_RISK_RANK[entry.requiredRisk] > AGENT_RISK_RANK[approvalRiskCeiling]) {
+    return {
+      reverted: false,
+      undoToken,
+      durability: entry.durability,
+      message: `撤销需要 ${entry.requiredRisk} 风险授权，当前上限为 ${approvalRiskCeiling}；令牌已保留`,
+    };
+  }
   const remaining = [...entry.inverse];
   let durability = entry.durability;
   let observation = await observeAgentWindow({ windowId: resolved.win.id }, options);
+  const revisionMismatch = storedWindowStillMatches
+    && observation.revision !== entry.expectedRevision;
+  if (
+    revisionMismatch
+    || stableSerialize(observation.state) !== stableSerialize(entry.expectedState)
+  ) {
+    return {
+      reverted: false,
+      undoToken,
+      durability,
+      code: 'UNDO_CONFLICT',
+      retryable: false,
+      observation,
+      message: `撤销前状态已变化（期望 revision ${entry.expectedRevision}，当前 ${observation.revision}）；为避免覆盖用户新编辑，令牌已保留`,
+    };
+  }
   while (remaining.length > 0) {
+    throwIfAgentOperationAborted(options);
     const action = remaining[0];
     const capability = resolved.manifest.capabilities.find(
       (candidate) => candidate.name === action.name,
@@ -1292,6 +1435,15 @@ export async function revertAgentUndo(
         durability,
         observation,
         message: `inverse 动作已不存在: ${action.name}；恢复兼容 capability 后可用同一令牌重试`,
+      };
+    }
+    if (AGENT_RISK_RANK[capability.risk] > AGENT_RISK_RANK[approvalRiskCeiling]) {
+      return {
+        reverted: false,
+        undoToken,
+        durability,
+        observation,
+        message: `inverse ${action.name} 需要 ${capability.risk} 风险授权；令牌已保留`,
       };
     }
     const args = action.args ?? (capability.inputSchema.type === 'object' ? {} : undefined);
@@ -1330,6 +1482,7 @@ export async function revertAgentUndo(
           instanceKey: resolved.win.instanceKey,
           runId: options.runId,
           sessionId: options.sessionId,
+          signal: options.signal,
           observation: before,
         },
         action,
@@ -1365,7 +1518,10 @@ export async function revertAgentUndo(
       };
     }
     remaining.shift();
-    const updated = updateAgentUndo(undoToken, remaining);
+    const updated = updateAgentUndo(undoToken, remaining, {
+      revision: observation.revision,
+      state: observation.state,
+    });
     if (!updated) {
       return {
         reverted: false,
@@ -1384,6 +1540,35 @@ export async function revertAgentUndo(
     durability,
     observation,
   };
+}
+
+export function revertAgentUndo(
+  undoToken: string,
+  options: AgentRuntimeOptions = {},
+): Promise<AgentUndoResult> {
+  const entry = getAgentUndo(undoToken);
+  if (entry?.sessionId && entry.sessionId !== options.sessionId) {
+    return Promise.resolve({
+      reverted: false,
+      undoToken,
+      durability: entry.durability,
+      message: '撤销令牌不属于当前会话；令牌已保留',
+    });
+  }
+  if (entry && hasAgentUndoFlight(undoToken)) {
+    return Promise.resolve({
+      reverted: false,
+      undoToken,
+      durability: entry.durability,
+      code: 'UNDO_IN_PROGRESS',
+      retryable: true,
+      message: '同一撤销令牌正在执行；请等待当前 attempt 结束',
+    });
+  }
+  return runAgentUndoExclusive(
+    undoToken,
+    () => revertAgentUndoLocked(undoToken, options),
+  );
 }
 
 /** Returns false only when a declared action is mutating; unknown actions stay fail-closed. */

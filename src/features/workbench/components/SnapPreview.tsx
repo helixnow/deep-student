@@ -99,33 +99,38 @@ function cancelSettle(windowId: string): void {
   }
 }
 
-function runTileSettle(windowId: string, el: HTMLElement, from: Frame, to: Frame): void {
+function runTileSettle(windowId: string, el: HTMLElement, from: Frame, to: Frame): boolean {
   // 时长为 0：瞬时落位，无「放下」FLIP
-  if (TILE_SETTLE_DURATION_MS <= 0 || prefersInstantMotion()) return;
+  if (TILE_SETTLE_DURATION_MS <= 0 || prefersInstantMotion()) return false;
   // 微位移：跳过动画，避免无意义 WAAPI + 采样噪声
   const dx = Math.abs(from.x - to.x);
   const dy = Math.abs(from.y - to.y);
   const dw = Math.abs(from.w - to.w);
   const dh = Math.abs(from.h - to.h);
-  if (dx + dy + dw + dh < 2) return;
+  if (dx + dy + dw + dh < 2) return false;
 
   const keyframes = buildTileSettleKeyframes(from, to);
-  if (!keyframes) return;
+  if (!keyframes) return false;
 
   cancelSettle(windowId);
-
-  beginShellSettling();
-  beginInteraction({ kind: 'snap.settle', windowId });
 
   // FLIP 的 scale 分量按左上角锚定；结束后恢复原 transform-origin
   const prevOrigin = el.style.transformOrigin;
   el.style.transformOrigin = '0 0';
 
-  const anim = el.animate(keyframes as Keyframe[], {
-    duration: TILE_SETTLE_DURATION_MS,
-    easing: 'linear', // spring 已烘焙进采样 keyframes
-    fill: 'none',
-  });
+  let anim: Animation;
+  try {
+    anim = el.animate(keyframes as Keyframe[], {
+      duration: TILE_SETTLE_DURATION_MS,
+      easing: 'linear', // spring 已烘焙进采样 keyframes
+      fill: 'none',
+    });
+  } catch (error) {
+    el.style.transformOrigin = prevOrigin;
+    console.warn('[SnapPreview] tile settle animation failed:', error);
+    return false;
+  }
+  beginInteraction({ kind: 'snap.settle', windowId });
   settleAnimations.set(windowId, anim);
 
   // 用户中途抓取窗口 → 立刻取消，让位给指针引擎的直写 transform
@@ -144,6 +149,7 @@ function runTileSettle(windowId: string, el: HTMLElement, from: Frame, to: Frame
   };
   anim.addEventListener('finish', () => cleanup(false));
   anim.addEventListener('cancel', () => cleanup(true));
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,11 +272,21 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
     let pending: PendingSettle[] = [];
     let flushRaf1 = 0;
     let flushRaf2 = 0;
+    let pendingSettling = false;
+
+    const releasePendingSettling = () => {
+      if (!pendingSettling) return;
+      pendingSettling = false;
+      endShellSettling();
+    };
 
     const flushSettles = () => {
       flushRaf1 = 0;
       flushRaf2 = 0;
-      if (pending.length === 0) return;
+      if (pending.length === 0) {
+        releasePendingSettling();
+        return;
+      }
       // 同帧多窗：只动画最近聚焦的一扇，其余瞬时落位（避免并发 WAAPI 叠帧）
       pending.sort((a, b) => b.focusAt - a.focusAt);
       const [primary, ...rest] = pending;
@@ -278,12 +294,24 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
       for (const extra of rest) {
         cancelSettle(extra.id);
       }
-      if (!primary || !primary.el.isConnected) return;
-      runTileSettle(primary.id, primary.el, primary.from, primary.to);
+      if (!primary || !primary.el.isConnected) {
+        releasePendingSettling();
+        return;
+      }
+      if (runTileSettle(primary.id, primary.el, primary.from, primary.to)) {
+        // The animation cleanup now owns this beginShellSettling call.
+        pendingSettling = false;
+      } else {
+        releasePendingSettling();
+      }
     };
 
     const scheduleFlush = () => {
       if (flushRaf1 || flushRaf2) return;
+      // Mark the handoff before React commits the tiled frame. Native child
+      // surfaces must be hidden before the two-rAF FLIP measurement window.
+      beginShellSettling();
+      pendingSettling = true;
       // 等 React 提交新布局后再 FLIP
       flushRaf1 = requestAnimationFrame(() => {
         flushRaf1 = 0;
@@ -339,6 +367,7 @@ const SnapPreviewComponent: React.FC<SnapPreviewProps> = ({
       unsubscribe();
       if (flushRaf1) cancelAnimationFrame(flushRaf1);
       if (flushRaf2) cancelAnimationFrame(flushRaf2);
+      releasePendingSettling();
     };
   }, []);
 

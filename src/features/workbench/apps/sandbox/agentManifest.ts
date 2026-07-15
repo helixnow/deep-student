@@ -88,6 +88,14 @@ export function createSandboxAgentManifest(
       if (!result.handled) return result;
       const after = stateSnapshot();
       result.changed = stableRevision(snapshot) !== stableRevision({ sessionId: after.activeSession?.id ?? null, updatedAt: after.activeSession?.updatedAt ?? null, mode: after.activeSession?.mode ?? null, viewport: after.viewportPreset, inspectorOpen: after.inspectorOpen, open: after.isOpen });
+      if (!result.changed || result.acknowledged !== true) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未获得 Sandbox 表面确认`,
+        };
+      }
       const args = actionArgs(action);
       if (action.name === 'setViewport' && typeof args.viewport === 'string') {
         result.postconditions = [{ kind: 'state_equals', path: 'viewport', value: args.viewport }];
@@ -100,12 +108,6 @@ export function createSandboxAgentManifest(
         if (result.changed) result.undo = { inverse: { name: 'setMode', args: { mode: snapshot.mode }, expect: [{ kind: 'state_equals', path: 'mode', value: snapshot.mode }] }, label: '恢复 Sandbox 模式' };
       } else if (action.name === 'closeSession') {
         result.postconditions = [{ kind: 'state_equals', path: 'sessionId', value: null }];
-      } else if (action.name === 'refresh') {
-        result.postconditions = [{
-          kind: 'state_equals',
-          path: 'updatedAt',
-          value: after.activeSession?.updatedAt ?? null,
-        }];
       }
       return result;
     },

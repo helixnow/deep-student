@@ -251,7 +251,7 @@ export async function handleChatActivation(ctx: ActivationContext): Promise<Acti
       return { handled: false, code: 'UNKNOWN_ACTION', hint: `Chat 不支持指令 ${ctx.action}` };
   }
   return delivered
-    ? { handled: true }
+    ? { handled: true, acknowledged: true }
     : { handled: false, code: 'DELIVERY_FAILED', hint: 'Chat 指令未投递到目标会话' };
 }
 

@@ -1,7 +1,7 @@
 .wb-agenda-widget {
   position: absolute;
   z-index: var(--wb-z-desktop-ui);
-  top: calc(var(--wb-menubar-height, 28px) + 18px);
+  top: 18px;
   right: 24px;
   display: flex;
   width: min(340px, calc(100% - 48px));
@@ -411,7 +411,7 @@
 
 @media (height <= 720px) {
   .wb-agenda-widget {
-    top: calc(var(--wb-menubar-height, 28px) + 10px);
+    top: 10px;
     height: 398px;
   }
 

@@ -11,7 +11,7 @@
 /* ==== 卡片（单主 CTA，不必为三卡加宽） ==== */
 .wb-empty-card.wb-empty-card-pro {
   position: absolute;
-  top: calc(var(--wb-menubar-height, 28px) + 18px);
+  top: 18px;
   left: 24px;
   width: 292px;
   max-width: calc(100% - 412px);

@@ -1,8 +1,9 @@
 /**
  * StatusBar — 学习状态菜单栏（docs/research/macos-2026/07）
  *
- * 透明顶栏字层：右侧信号项 + 图标入口（无时钟）。
- * 入口打开紧凑学习中心（2×2 瓷砖）。Windows 右侧为窗控胶囊让位。
+ * OS 桌面的应用级顶栏：左侧品牌，右侧命令、学习信号、设置与学习中心。
+ * macOS 原生 File/Edit/View/Window/Help 仍由 Tauri 菜单栏提供，避免在这里重复。
+ * 学习中心入口打开紧凑 2×2 瓷砖。Windows 右侧为窗控胶囊让位。
  */
 import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -10,10 +11,14 @@ import { useTranslation } from 'react-i18next';
 import {
   Cards,
   CirclesFour,
+  GearSix,
   Lightning,
+  MagnifyingGlass,
   SquaresFour,
   Timer,
 } from '@phosphor-icons/react';
+import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
+import { useCommandPaletteSafe } from '@/command-palette/CommandPaletteProvider';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { isMacOS, isWindows } from '@/utils/platform';
 import {
@@ -88,6 +93,7 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 
 const StatusBarComponent: React.FC = () => {
   const { t } = useTranslation('workbench');
+  const commandPalette = useCommandPaletteSafe();
   const [centerOpen, setCenterOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const backdropRef = useRef<HTMLDivElement | null>(null);
@@ -114,6 +120,7 @@ const StatusBarComponent: React.FC = () => {
 
   const closeCenter = useCallback(() => setCenterOpen(false), []);
   const toggleCenter = useCallback(() => setCenterOpen((v) => !v), []);
+  const openCommandPalette = useCallback(() => commandPalette?.open(), [commandPalette]);
 
   useEffect(() => {
     if (exposeOpen) setCenterOpen(false);
@@ -214,10 +221,46 @@ const StatusBarComponent: React.FC = () => {
           onMouseDown={handleDragMouseDown}
         />
       ) : null}
+      <div className="wb-menubar-leading" data-no-drag>
+        <button
+          type="button"
+          className="wb-menubar-item wb-menubar-brand"
+          data-testid="wb-menubar-brand"
+          aria-label={t('menubar.openApps', { defaultValue: '打开全部应用' })}
+          title={t('menubar.appName', { defaultValue: '学习桌面' })}
+          onClick={openAppsPanel}
+        >
+          <DeepStudentMark className="wb-menubar-brand-mark" title="" />
+          <span className="wb-menubar-brand-label">
+            {t('menubar.appName', { defaultValue: '学习桌面' })}
+          </span>
+        </button>
+      </div>
       <div className="wb-menubar-trailing" data-no-drag>
+        <button
+          type="button"
+          className="wb-menubar-item wb-menubar-item-icon-only wb-menubar-command"
+          data-testid="wb-menubar-command"
+          aria-label={t('menubar.openCommandPalette', { defaultValue: '打开命令面板' })}
+          title={t('menubar.openCommandPalette', { defaultValue: '打开命令面板' })}
+          onClick={openCommandPalette}
+        >
+          <MagnifyingGlass size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
+        </button>
         <div className="wb-menubar-status-slot" data-testid="wb-menubar-status-slot">
           <StatusBarItems dueCount={dueCount} taskCount={taskCount} />
         </div>
+
+        <button
+          type="button"
+          className="wb-menubar-item wb-menubar-item-icon-only wb-menubar-settings"
+          data-testid="wb-menubar-settings"
+          aria-label={t('menubar.openSettings', { defaultValue: '打开设置' })}
+          title={t('menubar.openSettings', { defaultValue: '打开设置' })}
+          onClick={() => launchApp('settings')}
+        >
+          <GearSix size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
+        </button>
 
         <button
           type="button"

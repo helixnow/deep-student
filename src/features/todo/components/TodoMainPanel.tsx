@@ -1183,7 +1183,7 @@ const TodoItemDetail: React.FC<{
           <div className="flex items-center gap-3 py-1">
             <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
               <Brain size={14} />
-              {t('todo:fields.pomodoros', '番茄')}
+                  {t('todo:fields.pomodoros')}
             </span>
             <div className="flex flex-1 items-center gap-2">
               <Input

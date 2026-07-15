@@ -635,8 +635,8 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
   }
 
   const sidebarToggleLabel = sidebarCollapsed
-    ? t('sidebar:expand', '展开侧边栏')
-    : t('sidebar:collapse', '收起侧边栏');
+    ? t('sidebar:expand')
+    : t('sidebar:collapse');
 
   // 桌面模式：显示虚拟标题栏
   const content = (

@@ -24,6 +24,10 @@ function payloadRecord(payload: unknown): Record<string, unknown> {
     : {};
 }
 
+function unavailable(hint: string): ActivationResult {
+  return { handled: false, code: 'ACTION_UNAVAILABLE', hint };
+}
+
 export function handleSandboxActivation(ctx: ActivationContext): ActivationResult {
   const store = useSandboxWorkbenchStore.getState();
   const current = selectSandboxWorkbenchOwnerState(store, LEGACY_SANDBOX_OWNER_KEY);
@@ -33,22 +37,31 @@ export function handleSandboxActivation(ctx: ActivationContext): ActivationResul
       if (!current.activeSession) {
         return { handled: false, code: 'INVALID_STATE', hint: 'Sandbox 当前没有活动会话' };
       }
+      const beforeUpdatedAt = current.activeSession.updatedAt;
       store.refreshSession(LEGACY_SANDBOX_OWNER_KEY);
-      return { handled: true };
+      const refreshed = selectSandboxWorkbenchOwnerState(
+        useSandboxWorkbenchStore.getState(),
+        LEGACY_SANDBOX_OWNER_KEY,
+      ).activeSession;
+      return refreshed?.updatedAt !== beforeUpdatedAt
+        ? { handled: true, acknowledged: true }
+        : unavailable('Sandbox 刷新未产生新的表面版本');
     case 'setViewport': {
       const viewport = payload.viewport as SandboxViewportPreset;
       if (viewport !== 'desktop' && viewport !== 'tablet' && viewport !== 'mobile') {
         return { handled: false, code: 'INVALID_ARGS', hint: 'viewport 值无效' };
       }
+      if (current.viewportPreset === viewport) return unavailable('Sandbox 已处于目标视口');
       store.setViewportPreset(viewport, LEGACY_SANDBOX_OWNER_KEY);
-      return { handled: true };
+      return { handled: true, acknowledged: true };
     }
     case 'setInspector':
       if (typeof payload.open !== 'boolean') {
         return { handled: false, code: 'INVALID_ARGS', hint: 'setInspector 需要 open' };
       }
+      if (current.inspectorOpen === payload.open) return unavailable('Sandbox 检查器已处于目标状态');
       store.setInspectorOpen(payload.open, LEGACY_SANDBOX_OWNER_KEY);
-      return { handled: true };
+      return { handled: true, acknowledged: true };
     case 'setMode': {
       const mode = payload.mode as SandboxWorkbenchMode;
       if (mode !== 'safe-preview' && mode !== 'sandbox-run') {
@@ -57,12 +70,14 @@ export function handleSandboxActivation(ctx: ActivationContext): ActivationResul
       if (!current.activeSession) {
         return { handled: false, code: 'INVALID_STATE', hint: 'Sandbox 当前没有活动会话' };
       }
+      if (current.activeSession.mode === mode) return unavailable('Sandbox 已处于目标运行模式');
       store.setWorkbenchMode(mode, LEGACY_SANDBOX_OWNER_KEY);
-      return { handled: true };
+      return { handled: true, acknowledged: true };
     }
     case 'closeSession':
+      if (!current.activeSession) return unavailable('Sandbox 当前没有活动会话');
       store.closeSession(LEGACY_SANDBOX_OWNER_KEY);
-      return { handled: true };
+      return { handled: true, acknowledged: true };
     default:
       return { handled: false, code: 'UNKNOWN_ACTION', hint: `Sandbox 不支持指令 ${ctx.action}` };
   }

@@ -75,6 +75,7 @@ import {
   setWorkbenchDesktopOffsetProvider,
 } from './window-shell/workbenchPointerAdapter';
 import { installImeScrollContainment } from '../core/imeScrollContainment';
+import { ContentCloseConfirmationHost } from '../apps/content/ContentCloseConfirmation';
 
 // ---------------------------------------------------------------------------
 // 设置读取（key 契约见 P10 WorkbenchSettingsSection；热更新走 workbench:settings-changed）
@@ -250,7 +251,10 @@ const TilingDivider: React.FC<{ leftId: string; rightId: string; margin: number 
 
 export const WorkbenchDesktop: React.FC = () => {
   const { t } = useTranslation('workbench');
+  /** 全桌面根：Windows 合成器自愈需要覆盖完整客户区。 */
   const rootRef = useRef<HTMLDivElement | null>(null);
+  /** 应用窗口的可用工作区：从顶栏下缘开始。 */
+  const workAreaRef = useRef<HTMLDivElement | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [desktopOffset, setDesktopOffset] = useState({ x: 0, y: 0 });
   /** 吸附引擎读取 ref 快照；拖拽热路径绝不能重新测量 DOMRect。 */
@@ -265,7 +269,7 @@ export const WorkbenchDesktop: React.FC = () => {
   const tileMargin = tileMargins.enabled ? tileMargins.px : 0;
 
   useEffect(() => {
-    const root = rootRef.current;
+    const root = workAreaRef.current;
     if (!root) return;
     return installImeScrollContainment(root);
   }, []);
@@ -341,7 +345,7 @@ export const WorkbenchDesktop: React.FC = () => {
   // 布局稳定后 160ms 再校一次最终 rect；等值短路避免无效重渲染。
   // floating 窗口的钳回可视区自适应发生在 store.setDesktopSize 内（O11 职责）。
   useEffect(() => {
-    const el = rootRef.current;
+    const el = workAreaRef.current;
     if (!el) return undefined;
     let raf = 0;
     let settleTimer = 0;
@@ -436,7 +440,7 @@ export const WorkbenchDesktop: React.FC = () => {
 
   // ---- O17/O19：桌面资源拖放落点（files → 桌面开窗）----
   useDesktopDrop({
-    target: rootRef,
+    target: workAreaRef,
     accept: (info) => info.hasResource,
     onDrop: (payload, point) => {
       if (payload.kind !== 'resource') return;
@@ -445,7 +449,7 @@ export const WorkbenchDesktop: React.FC = () => {
   });
 
   // ---- O13：桌面手势（空白区右键菜单 / 双击 show desktop）----
-  const gestures = useDesktopGestures(rootRef);
+  const gestures = useDesktopGestures(workAreaRef);
   useMaterialTier();
   useWallpaperCoveragePause();
 
@@ -477,71 +481,80 @@ export const WorkbenchDesktop: React.FC = () => {
   return (
     <div
       ref={rootRef}
-      data-wb-desktop
+      data-wb-workbench-root
       // absolute inset-0：不依赖百分比高度链，避免父级 flex/contain 抖动时桌面只占半屏
       className="absolute inset-0 overflow-hidden"
-      tabIndex={0}
-      aria-label={t('a11y.desktop', '工作台桌面')}
-      onContextMenu={gestures.onDesktopContextMenu}
-      onKeyDown={gestures.onDesktopKeyDown}
-      onDoubleClick={gestures.onDesktopDoubleClick}
     >
-      <div className="wb-wallpaper-frame" aria-hidden="true">
-        <WallpaperLayer wallpaper={wallpaper} />
-      </div>
-
-      {hydrated && <DesktopAgendaWidget />}
-      {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}
-
-      {/* 窗口层：自成 stacking context（COORDINATION 裁决），内部 zIndex 与 overlay 定值互不干扰。
-          层本身指针穿透（空桌面引导可点），窗口壳 / 中缝各自恢复 pointer-events */}
-      <div
-        data-wb-window-layer
-        className="absolute inset-0"
-        style={{ isolation: 'isolate', zIndex: 'var(--wb-z-window-layer)', pointerEvents: 'none' }}
-      >
-        {orderedWindows.map((win) => (
-          <WindowShell
-            key={win.id}
-            windowId={win.id}
-            tileMargin={tileMargin}
-            onSnapZoneChange={handleSnapZoneChange}
-          />
-        ))}
-        {tilingPair && (
-          <TilingDivider
-            leftId={tilingPair.leftId}
-            rightId={tilingPair.rightId}
-            margin={tileMargin}
-          />
-        )}
-      </div>
-
-      <SnapPreview margin={tileMargin} desktopOffset={desktopOffset} />
-
-      <ExposeOverlay />
-      <WindowSwitcher />
-      <ShortcutCheatsheet />
-
-      <Dock autohide={dockAutohide} />
-
-      {/* SB1：学习状态菜单栏（z 介于 Dock 与 Dock 飞出层；透明字层） */}
       <StatusBar />
 
-      {/* L4：全部应用面板（Dock / 桌面右键共用 openAppsPanel） */}
-      <AppsPanel />
+      <div
+        ref={workAreaRef}
+        data-wb-desktop
+        data-wb-workarea
+        className="absolute inset-x-0 bottom-0 overflow-hidden"
+        style={{ top: 'var(--wb-workarea-top)' }}
+        tabIndex={0}
+        aria-label={t('a11y.desktop', '工作台桌面')}
+        onContextMenu={gestures.onDesktopContextMenu}
+        onKeyDown={gestures.onDesktopKeyDown}
+        onDoubleClick={gestures.onDesktopDoubleClick}
+      >
+        <div className="wb-wallpaper-frame" aria-hidden="true">
+          <WallpaperLayer wallpaper={wallpaper} />
+        </div>
+
+        {hydrated && <DesktopAgendaWidget />}
+        {hydrated && orderedWindows.length === 0 && <EmptyDesktop />}
+
+        {/* 窗口层：自成 stacking context（COORDINATION 裁决），内部 zIndex 与 overlay 定值互不干扰。
+            层本身指针穿透（空桌面引导可点），窗口壳 / 中缝各自恢复 pointer-events */}
+        <div
+          data-wb-window-layer
+          className="absolute inset-0"
+          style={{ isolation: 'isolate', zIndex: 'var(--wb-z-window-layer)', pointerEvents: 'none' }}
+        >
+          {orderedWindows.map((win) => (
+            <WindowShell
+              key={win.id}
+              windowId={win.id}
+              tileMargin={tileMargin}
+              onSnapZoneChange={handleSnapZoneChange}
+            />
+          ))}
+          {tilingPair && (
+            <TilingDivider
+              leftId={tilingPair.leftId}
+              rightId={tilingPair.rightId}
+              margin={tileMargin}
+            />
+          )}
+        </div>
+
+        <ExposeOverlay />
+        <WindowSwitcher />
+        <ShortcutCheatsheet />
+
+        <Dock autohide={dockAutohide} />
+
+        {/* 全部应用是工作台内的启动器，不覆盖常驻顶栏。 */}
+        <AppsPanel />
+
+        {/* O13：桌面空白区右键菜单（z 见 DesktopContextMenu.css，介于 snap 与 DevPanel 之间） */}
+        <DesktopContextMenu
+          anchor={gestures.menuAnchor}
+          wallpaper={wallpaper}
+          onClose={gestures.closeMenu}
+          onShowDesktop={gestures.toggleShowDesktop}
+        />
+
+        <WorkbenchEventBridge />
+      </div>
+
+      {/* SnapPreview 使用工作区测得的物理偏移，固定层也不会碰到顶栏。 */}
+      <SnapPreview margin={tileMargin} desktopOffset={desktopOffset} />
 
       {devPanel && <WorkbenchDevPanel />}
-
-      {/* O13：桌面空白区右键菜单（z 见 DesktopContextMenu.css，介于 snap 与 DevPanel 之间） */}
-      <DesktopContextMenu
-        anchor={gestures.menuAnchor}
-        wallpaper={wallpaper}
-        onClose={gestures.closeMenu}
-        onShowDesktop={gestures.toggleShowDesktop}
-      />
-
-      <WorkbenchEventBridge />
+      <ContentCloseConfirmationHost />
     </div>
   );
 };

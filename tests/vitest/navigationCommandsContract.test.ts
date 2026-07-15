@@ -25,6 +25,7 @@ describe('navigation commands contract', () => {
         navigatedViews.push(view);
       },
       getCurrentView: () => 'chat-v2',
+      getFocusedWorkbenchAppTypeId: () => null,
       t: ((key: string) => key) as any,
       showNotification: () => undefined,
       toggleTheme: () => undefined,

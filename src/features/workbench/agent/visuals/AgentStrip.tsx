@@ -8,11 +8,10 @@
  * - aria-live 经 announceWorkbench 通告开始/暂停/完成
  * - 状态点 aria-hidden；文案本身区分 acting/paused（不唯颜色）
  */
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { announceWorkbench } from '@/features/workbench/hooks/useWorkbenchA11y';
-import { runLedger } from '../ledger';
 import { useWindowPresence } from '../presenceStore';
 import { stageManager } from '../stageManager';
 import type { AcrRunStatus } from '../types';
@@ -34,6 +33,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
   const { t } = useTranslation('workbench');
   const presence = useWindowPresence(windowId);
   const prevAnnounceKey = useRef<string | null>(null);
+  const [reverting, setReverting] = useState(false);
 
   useEffect(() => {
     if (!presence) {
@@ -92,18 +92,23 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
 
   const handlePause = useCallback(() => {
     if (!presence || presence.status === 'pausedByUser') return;
-    stageManager.pauseRun(presence.runId);
+    stageManager.pauseRun(presence.runKey);
   }, [presence]);
 
   const handleStop = useCallback(() => {
     if (!presence) return;
-    stageManager.stopRun(presence.runId);
+    stageManager.stopRun(presence.runKey);
   }, [presence]);
 
-  const handleRevert = useCallback(() => {
-    if (!presence) return;
-    void stageManager.revertRun(presence.runId);
-  }, [presence]);
+  const handleRevert = useCallback(async () => {
+    if (!presence || reverting) return;
+    setReverting(true);
+    try {
+      await stageManager.revertRun(presence.runId, presence.sessionId);
+    } finally {
+      setReverting(false);
+    }
+  }, [presence, reverting]);
 
   if (!presence) return null;
 
@@ -111,7 +116,7 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
   // S-REV-02：done/aborted 短时保留 presence（stageManager DONE_PRESENCE_HOLD）；账本仍在则可撤
   const canRevert =
     (presence.status === 'done' || presence.status === 'aborted') &&
-    runLedger.hasRun(presence.runId);
+    stageManager.hasReversibleRun(presence.runId, presence.sessionId);
   const canPause = presence.status === 'acting' || presence.status === 'reviewing';
   const canStop =
     presence.status === 'acting' ||
@@ -200,11 +205,13 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
           size="sm"
           variant="ghost"
           className="acr-agent-strip-btn"
-          disabled={!canRevert}
-          onClick={handleRevert}
+          disabled={!canRevert || reverting}
+          onClick={() => void handleRevert()}
           aria-label={t('agent.core.revert', { defaultValue: '撤销' })}
         >
-          {t('agent.core.revert', { defaultValue: '撤销' })}
+          {reverting
+            ? t('agent.core.reverting')
+            : t('agent.core.revert')}
         </NotionButton>
       </span>
     </div>

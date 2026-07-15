@@ -35,7 +35,8 @@ import {
   useRecentReceiptSummaries,
 } from '../agent/domainEvents';
 import { runLedger } from '../agent/ledger';
-import type { PresenceState } from '../agent/types';
+import { stageManager } from '../agent/stageManager';
+import type { AcrDiagnosticsSnapshot, PresenceState } from '../agent/types';
 import {
   acquireInteractionTrace,
   clearInteractionTrace,
@@ -91,6 +92,33 @@ function formatReceiptLine(r: {
       : '';
   const shortId = r.runId.length > 10 ? `${r.runId.slice(0, 8)}…` : r.runId;
   return `${r.status}${ops} · ${shortId}`;
+}
+
+const EMPTY_ACR_DIAGNOSTICS: AcrDiagnosticsSnapshot = {
+  transactions: [],
+  leases: [],
+  cancelling: 0,
+  orphanDraining: 0,
+  undoInFlight: 0,
+};
+
+/** ACR 3.0 只读诊断采样；与 HUD 其他汇总保持同一 500ms 刷新节拍。 */
+function useAcrDiagnostics(): AcrDiagnosticsSnapshot {
+  const readSnapshot = useCallback((): AcrDiagnosticsSnapshot => {
+    try {
+      return stageManager.getDiagnostics();
+    } catch {
+      return EMPTY_ACR_DIAGNOSTICS;
+    }
+  }, []);
+  const [snapshot, setSnapshot] = useState<AcrDiagnosticsSnapshot>(readSnapshot);
+
+  useEffect(() => {
+    const timer = setInterval(() => setSnapshot(readSnapshot()), FLUSH_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [readSnapshot]);
+
+  return snapshot;
 }
 
 const LIFECYCLE_ORDER: readonly WindowLifecycle[] = ['focused', 'visible', 'background', 'frozen'];
@@ -546,6 +574,7 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
   const presenceByWindow = usePresenceStore((s) => s.byWindow);
   const recentDomainEvents = useRecentDomainEvents();
   const recentReceipts = useRecentReceiptSummaries();
+  const acrDiagnostics = useAcrDiagnostics();
   const [acrCollapsed, setAcrCollapsed] = useState(false);
   /** 账本无订阅面：每次渲染鸭子探测；不可枚举则 n/a */
   const ledgerRunCount = probeLedgerRunCount();
@@ -1052,18 +1081,85 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                 <span className="wb-hud-muted">
                   {presenceList.length} run · ledger{' '}
                   {ledgerRunCount == null ? 'n/a' : ledgerRunCount}
+                  {' · '}{acrDiagnostics.transactions.length} tx
+                  {' · '}{acrDiagnostics.leases.length} lease
                   {lastReceipt ? ` · ${lastReceipt.status}` : ''}
                 </span>
               </div>
               {!acrCollapsed && (
                 <div className="wb-hud-acr-body">
                   <div className="wb-hud-chips">
+                    <span className="wb-hud-chip" data-testid="wb-hud-acr-transactions">
+                      transactions {acrDiagnostics.transactions.length}
+                    </span>
+                    <span
+                      className="wb-hud-chip"
+                      data-testid="wb-hud-acr-leases"
+                      title={acrDiagnostics.leases
+                        .map((lease) => `${lease.windowId} · ${lease.sessionId}/${lease.runId}`)
+                        .join('\n') || undefined}
+                    >
+                      leases {acrDiagnostics.leases.length}
+                    </span>
+                    <span
+                      className="wb-hud-chip"
+                      data-alert={acrDiagnostics.cancelling > 0 ? 'true' : undefined}
+                      data-testid="wb-hud-acr-cancelling"
+                    >
+                      cancelling {acrDiagnostics.cancelling}
+                    </span>
+                    <span
+                      className="wb-hud-chip"
+                      data-alert={acrDiagnostics.orphanDraining > 0 ? 'true' : undefined}
+                      data-testid="wb-hud-acr-orphans"
+                    >
+                      orphan-draining {acrDiagnostics.orphanDraining}
+                    </span>
+                    <span
+                      className="wb-hud-chip"
+                      data-alert={acrDiagnostics.undoInFlight > 0 ? 'true' : undefined}
+                      data-testid="wb-hud-acr-undo-in-flight"
+                    >
+                      undo-in-flight {acrDiagnostics.undoInFlight}
+                    </span>
                     {KNOWN_DOMAIN_EVENTS.map((name) => (
                       <span key={name} className="wb-hud-chip" title={name}>
                         {name.includes('://') ? name.split('://')[0] : name}
                       </span>
                     ))}
                   </div>
+
+                  <div className="wb-hud-label" style={{ marginTop: 6 }}>
+                    <span>transactions</span>
+                    <span className="wb-hud-muted">{acrDiagnostics.transactions.length}</span>
+                  </div>
+                  {acrDiagnostics.transactions.length === 0 ? (
+                    <div className="wb-hud-empty">（无活跃 transaction）</div>
+                  ) : (
+                    <ul className="wb-hud-winlist" data-testid="wb-hud-acr-transaction-list">
+                      {acrDiagnostics.transactions.map((transaction) => (
+                        <li
+                          key={`${transaction.sessionId}:${transaction.correlationId}:${transaction.kind}`}
+                          className="wb-hud-winrow"
+                          data-acr-transaction-state={transaction.state}
+                          title={`${transaction.sessionId} · ${transaction.runId} · ${transaction.correlationId}`}
+                        >
+                          <span
+                            className="wb-hud-dot"
+                            data-acr={transaction.state === 'active' ? 'acting' : 'paused'}
+                            aria-hidden="true"
+                          />
+                          <span className="wb-hud-winrow-title">
+                            {transaction.kind}/{transaction.state}
+                          </span>
+                          <span className="wb-hud-winrow-meta">
+                            {transaction.windowId ?? 'no-window'}
+                            {transaction.ownsLease ? ' · lease' : ''}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   <div className="wb-hud-label" style={{ marginTop: 6 }}>
                     <span>presence</span>

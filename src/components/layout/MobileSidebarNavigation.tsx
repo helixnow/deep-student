@@ -80,10 +80,10 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
           className,
         )}
       >
-        <nav aria-label={t('common:navigation_label', 'Navigation')} className="space-y-0.5">
+        <nav aria-label={t('common:navigation_label')} className="space-y-0.5">
           {commandPalette && renderRow(
             'command-palette',
-            t('sidebar:navigation.command_palette', '搜索与命令'),
+            t('sidebar:navigation.command_palette'),
             MagnifyingGlass,
             handleOpenCommandPalette,
           )}
@@ -107,12 +107,12 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       className={cn('mt-3 space-y-0.5 pb-1', className)}
     >
       <span className={mobileDrawerSectionLabelClassName}>
-        {t('sidebar:mobile_drawer.section_app', '应用')}
+        {t('sidebar:mobile_drawer.section_app')}
       </span>
-      <nav aria-label={t('common:navigation_label', 'Navigation')} className="space-y-0.5">
+      <nav aria-label={t('common:navigation_label')} className="space-y-0.5">
         {commandPalette && renderRow(
           'command-palette',
-          t('sidebar:navigation.command_palette', '搜索与命令'),
+          t('sidebar:navigation.command_palette'),
           MagnifyingGlass,
           handleOpenCommandPalette,
         )}

@@ -20,7 +20,6 @@ const ALL_ACTIONS = [
   'openFolder', 'reveal', 'goBack', 'goForward', 'goUp', 'search',
   'setViewMode', 'setSorting', 'select', 'selectAll', 'clearSelection', 'refresh',
 ] as const;
-let refreshSequence = 0;
 
 function itemRef(type: string, id: string): string {
   return stableAgentRef('files', type === 'folder' ? 'folder' : 'resource', id);
@@ -28,7 +27,7 @@ function itemRef(type: string, id: string): string {
 
 export const filesAgentManifest: AppAgentManifest = {
   version: 2,
-  description: '观察文件夹、资源与选择状态并进行安全导航；资源写入仍走 DSTU 领域工具。',
+  description: '观察文件夹、资源与选择状态并进行安全导航。资源写入不走 UI 自动化：先用 learning-resource 只读工具定位，再用 dstu-tools 完成创建、重命名、移动、软删除/恢复、收藏与上传。',
   capabilities: [
     {
       name: 'openFolder', description: '进入指定文件夹。',
@@ -117,7 +116,6 @@ export const filesAgentManifest: AppAgentManifest = {
         state.searchQuery,
         [...state.selectedIds].sort(),
         visibleItems.map((item) => [item.id, item.updatedAt]),
-        refreshSequence,
       ),
       route: state.currentPath.folderId ? `files/folder/${state.currentPath.folderId}` : 'files/root',
       mode: state.viewMode,
@@ -125,7 +123,16 @@ export const filesAgentManifest: AppAgentManifest = {
       selection: visibleItems
         .filter((item) => state.selectedIds.has(item.id))
         .map((item) => itemRef(item.type, item.id)),
-      availableActions: [...ALL_ACTIONS],
+      availableActions: ALL_ACTIONS.filter((action) => {
+        if (action === 'goBack') return state.historyIndex > 0;
+        if (action === 'goForward') return state.historyIndex < state.history.length - 1;
+        if (action === 'goUp') return state.currentPath.breadcrumbs.length > 0;
+        if (action === 'selectAll') {
+          return state.items.length > 0 && state.selectedIds.size < state.items.length;
+        }
+        if (action === 'clearSelection') return state.selectedIds.size > 0;
+        return true;
+      }),
       entities,
       affordances: [
         {
@@ -156,7 +163,6 @@ export const filesAgentManifest: AppAgentManifest = {
         canGoBack: state.historyIndex > 0,
         canGoForward: state.historyIndex < state.history.length - 1,
         error: state.error,
-        refreshSequence,
       },
     };
   },
@@ -189,7 +195,6 @@ export const filesAgentManifest: AppAgentManifest = {
     };
     const result = await executeActivation(handleFilesActivation, ctx, action);
     if (!result.handled) return result;
-    if (action.name === 'refresh') refreshSequence += 1;
     const after = useFinderStore.getState();
     const args = requestedArgs;
     result.changed = action.name === 'refresh' || stableRevision(beforeSnapshot) !== stableRevision({
@@ -201,6 +206,17 @@ export const filesAgentManifest: AppAgentManifest = {
       sortOrder: after.sortOrder,
       selectedIds: [...after.selectedIds].sort(),
     });
+    if (!result.changed) {
+      return {
+        handled: false,
+        changed: false,
+        code: 'ACTION_UNAVAILABLE',
+        hint: `${action.name} 未改变当前文件视图`,
+      };
+    }
+    // refresh awaits the store's complete load; synchronous store actions are
+    // acknowledged only after the requested state transition is observed.
+    result.acknowledged = true;
     if ((action.name === 'select' || action.name === 'reveal') && typeof args.resourceId === 'string') {
       const item = after.items.find((candidate) => candidate.id === args.resourceId);
       result.entityRefs = [itemRef(item?.type ?? 'resource', args.resourceId)];
@@ -208,20 +224,18 @@ export const filesAgentManifest: AppAgentManifest = {
     }
     if (action.name === 'openFolder' && typeof args.folderId === 'string') {
       result.postconditions = [{ kind: 'state_equals', path: 'folderId', value: args.folderId }];
-    } else if (action.name === 'goBack' || action.name === 'goForward' || action.name === 'goUp') {
-      result.postconditions = [{ kind: 'state_equals', path: 'folderId', value: after.currentPath.folderId }];
     } else if (action.name === 'selectAll') {
-      result.postconditions = [{ kind: 'state_equals', path: 'selectedCount', value: after.selectedIds.size }];
+      result.postconditions = [{ kind: 'state_equals', path: 'selectedCount', value: before.items.length }];
     } else if (action.name === 'clearSelection') {
       result.postconditions = [{ kind: 'state_equals', path: 'selectedCount', value: 0 }];
-    } else if (action.name === 'refresh') {
-      result.postconditions = [{ kind: 'state_equals', path: 'refreshSequence', value: refreshSequence }];
     } else if (action.name === 'setViewMode' && typeof args.mode === 'string') {
       result.postconditions = [{ kind: 'state_equals', path: 'viewMode', value: args.mode }];
-    } else if (action.name === 'setSorting') {
+    } else if (action.name === 'setSorting' && typeof args.sortBy === 'string') {
       result.postconditions = [
-        { kind: 'state_equals', path: 'sortBy', value: after.sortBy },
-        { kind: 'state_equals', path: 'sortOrder', value: after.sortOrder },
+        { kind: 'state_equals', path: 'sortBy', value: args.sortBy },
+        ...(typeof args.sortOrder === 'string'
+          ? [{ kind: 'state_equals' as const, path: 'sortOrder', value: args.sortOrder }]
+          : []),
       ];
     } else if (action.name === 'search') {
       result.postconditions = [{ kind: 'state_equals', path: 'searchQuery', value: String(args.query ?? '') }];

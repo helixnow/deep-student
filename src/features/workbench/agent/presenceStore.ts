@@ -11,14 +11,14 @@ interface PresenceStoreState {
   byWindow: Record<string, PresenceState>;
   setPresence: (p: PresenceState) => void;
   /** 更新状态；传入 label 时同步覆盖（AgentStrip 文案） */
-  updateStatus: (runId: string, status: AcrRunStatus, label?: string) => void;
+  updateStatus: (runKey: string, status: AcrRunStatus, label?: string) => void;
   /** 心跳续期：刷新 startedAt，使 ttl 从现在起重新计时 */
-  renew: (runId: string) => void;
-  clearByRun: (runId: string) => void;
+  renew: (runKey: string) => void;
+  clearByRun: (runKey: string) => void;
   clearAll: () => void;
   /**
    * R2-06：清除 TTL 过期条目（无心跳续期的泄漏 presence）。
-   * 返回被清除的 runId 列表（去重）。
+   * 返回被清除的 session-scoped runKey 列表（去重）。
    */
   sweepExpired: (now?: number) => string[];
 }
@@ -32,47 +32,47 @@ export const usePresenceStore = create<PresenceStoreState>((set, get) => ({
   byWindow: {},
   setPresence: (p) =>
     set((s) => ({ byWindow: { ...s.byWindow, [p.windowId]: p } })),
-  updateStatus: (runId, status, label) =>
+  updateStatus: (runKey, status, label) =>
     set((s) => {
       const next: Record<string, PresenceState> = {};
       for (const [wid, p] of Object.entries(s.byWindow)) {
         next[wid] =
-          p.runId === runId
+          p.runKey === runKey
             ? { ...p, status, label: label !== undefined ? label : p.label }
             : p;
       }
       return { byWindow: next };
     }),
-  renew: (runId) =>
+  renew: (runKey) =>
     set((s) => {
       const next: Record<string, PresenceState> = {};
       const now = Date.now();
       for (const [wid, p] of Object.entries(s.byWindow)) {
-        next[wid] = p.runId === runId ? { ...p, startedAt: now } : p;
+        next[wid] = p.runKey === runKey ? { ...p, startedAt: now } : p;
       }
       return { byWindow: next };
     }),
-  clearByRun: (runId) =>
+  clearByRun: (runKey) =>
     set((s) => {
       const next: Record<string, PresenceState> = {};
       for (const [wid, p] of Object.entries(s.byWindow)) {
-        if (p.runId !== runId) next[wid] = p;
+        if (p.runKey !== runKey) next[wid] = p;
       }
       return { byWindow: next };
     }),
   clearAll: () => set({ byWindow: {} }),
   sweepExpired: (now = Date.now()) => {
-    const expiredRunIds: string[] = [];
+    const expiredRunKeys: string[] = [];
     const next: Record<string, PresenceState> = {};
     for (const [wid, p] of Object.entries(get().byWindow)) {
       if (isPresenceExpired(p, now)) {
-        if (!expiredRunIds.includes(p.runId)) expiredRunIds.push(p.runId);
+        if (!expiredRunKeys.includes(p.runKey)) expiredRunKeys.push(p.runKey);
       } else {
         next[wid] = p;
       }
     }
-    if (expiredRunIds.length > 0) set({ byWindow: next });
-    return expiredRunIds;
+    if (expiredRunKeys.length > 0) set({ byWindow: next });
+    return expiredRunKeys;
   },
 }));
 

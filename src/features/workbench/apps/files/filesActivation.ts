@@ -20,6 +20,10 @@ function invalid(hint: string): ActivationResult {
   return { handled: false, code: 'INVALID_ARGS', hint };
 }
 
+function unavailable(hint: string): ActivationResult {
+  return { handled: false, code: 'ACTION_UNAVAILABLE', hint };
+}
+
 const SORT_FIELDS = new Set<SortBy>(['name', 'updatedAt', 'createdAt', 'type']);
 const SORT_ORDERS = new Set<SortOrder>(['asc', 'desc']);
 
@@ -27,12 +31,20 @@ const SORT_ORDERS = new Set<SortOrder>(['asc', 'desc']);
 export async function handleFilesActivation(ctx: ActivationContext): Promise<ActivationResult> {
   const { useFinderStore } = await import('@/features/learning-hub/stores/finderStore');
   const store = useFinderStore.getState();
+  const finderError = (): ActivationResult | null => {
+    const error = useFinderStore.getState().error;
+    return error
+      ? { handled: false, code: 'FILES_LOAD_FAILED', hint: error }
+      : null;
+  };
 
   switch (ctx.action) {
     case 'openFolder': {
       const folderId = payloadString(ctx.payload, 'folderId');
       if (!folderId) return invalid('openFolder 需要 payload.folderId');
       await store.enterFolder(folderId);
+      const failed = finderError();
+      if (failed) return failed;
       return { handled: true };
     }
     case 'reveal': {
@@ -42,18 +54,27 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       if (store.currentPath.folderId !== location.folderId) {
         if (location.folderId) await store.enterFolder(location.folderId);
         else await store.setCurrentPathWithoutHistory(null);
+        const failed = finderError();
+        if (failed) return failed;
       }
       useFinderStore.getState().setSelectedIds(new Set([resourceId]));
       agentFlash('files', resourceId);
       return { handled: true };
     }
     case 'goBack':
+      if (store.historyIndex <= 0) return unavailable('当前没有可返回的浏览位置');
       store.goBack();
       return { handled: true };
     case 'goForward':
+      if (store.historyIndex >= store.history.length - 1) {
+        return unavailable('当前没有可前进的浏览位置');
+      }
       store.goForward();
       return { handled: true };
     case 'goUp':
+      if (store.currentPath.breadcrumbs.length === 0) {
+        return unavailable('当前已在文件根位置');
+      }
       store.goUp();
       return { handled: true };
     case 'search': {
@@ -61,6 +82,8 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       store.setSearchQuery(query);
       if (query) await useFinderStore.getState().executeSearch();
       else await useFinderStore.getState().loadItems({ silent: true });
+      const failed = finderError();
+      if (failed) return failed;
       return { handled: true };
     }
     case 'setViewMode': {
@@ -86,13 +109,19 @@ export async function handleFilesActivation(ctx: ActivationContext): Promise<Act
       return { handled: true };
     }
     case 'selectAll':
+      if (store.items.length === 0 || store.selectedIds.size === store.items.length) {
+        return unavailable(store.items.length === 0 ? '当前没有可选择的资源' : '当前资源已全部选中');
+      }
       store.selectAll();
       return { handled: true };
     case 'clearSelection':
+      if (store.selectedIds.size === 0) return unavailable('当前没有资源选择');
       store.clearSelection();
       return { handled: true };
     case 'refresh':
       await store.refresh({ silent: true });
+      const failed = finderError();
+      if (failed) return failed;
       return { handled: true };
     default:
       return {

@@ -132,6 +132,9 @@ function normalizeActivationResult(raw: ActivationHandlerResult): ActivationResu
   if (raw && typeof raw === 'object' && 'handled' in raw) {
     return {
       handled: Boolean(raw.handled),
+      ...('acknowledged' in raw && typeof raw.acknowledged === 'boolean'
+        ? { acknowledged: raw.acknowledged }
+        : {}),
       code: typeof raw.code === 'string' ? raw.code : undefined,
       hint: typeof raw.hint === 'string' ? raw.hint : undefined,
       message: typeof raw.message === 'string' ? raw.message : undefined,
@@ -360,7 +363,9 @@ export const workbenchBus = {
     }
     const raw = await def?.onActivation?.({
       windowId: win.id,
-      instanceKey: win.instanceKey,
+      // Single resource workspaces keep a null window instanceKey. Preserve the
+      // caller's exact resource target so activation can switch/validate it.
+      instanceKey: req.instanceKey ?? win.instanceKey,
       action: req.action,
       payload: req.payload,
     });

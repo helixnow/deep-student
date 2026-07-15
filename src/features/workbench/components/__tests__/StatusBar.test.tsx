@@ -7,6 +7,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 
 import { workbenchBus } from '../../core/workbenchBus';
 import { useWorkbenchOverlay } from '../../core/shortcuts';
+import { CommandPaletteProvider, useCommandPalette } from '@/command-palette';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import {
   getFlashcardsDueCount,
@@ -28,6 +29,9 @@ const { invokeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => (
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async () => () => undefined),
+}));
 vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: () => ({
     startDragging: startDraggingMock,
@@ -42,9 +46,16 @@ const FLASHCARDS_DUE_LAUNCH = {
 } as const;
 
 let launchSpy: ReturnType<typeof vi.spyOn>;
+let activateSpy: ReturnType<typeof vi.spyOn>;
+
+const CommandPaletteStateProbe: React.FC = () => {
+  const { isOpen } = useCommandPalette();
+  return <output data-testid="command-palette-state">{String(isOpen)}</output>;
+};
 
 beforeEach(async () => {
   launchSpy = vi.spyOn(workbenchBus, 'launch').mockReturnValue(null);
+  activateSpy = vi.spyOn(workbenchBus, 'activate').mockResolvedValue(true);
   stopFlashcardsDueWatcher();
   stopAnkiTaskWatcher();
   invokeMock.mockReset();
@@ -63,6 +74,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   launchSpy.mockRestore();
+  activateSpy.mockRestore();
   stopFlashcardsDueWatcher();
   stopAnkiTaskWatcher();
   usePomodoroStore.setState({
@@ -82,15 +94,76 @@ describe('formatStatusBarTime', () => {
 });
 
 describe('StatusBar 信号项可见性', () => {
-  it('无信号时不渲染番茄 / 闪卡 / 制卡项，仍显示学习中心图标入口', () => {
+  it('无信号时不渲染番茄 / 闪卡 / 制卡项，仍显示应用和全局入口', () => {
     render(<StatusBar />);
-    expect(screen.queryByTestId('wb-menubar-brand')).toBeNull();
-    expect(screen.queryByText('学习桌面')).toBeNull();
+    expect(screen.getByTestId('wb-menubar-brand')).toBeTruthy();
+    expect(screen.getByText('学习桌面')).toBeTruthy();
+    expect(screen.getByTestId('wb-menubar-command')).toBeTruthy();
+    expect(screen.getByTestId('wb-menubar-settings')).toBeTruthy();
     expect(screen.queryByTestId('wb-menubar-pomodoro')).toBeNull();
     expect(screen.queryByTestId('wb-menubar-flashcards')).toBeNull();
     expect(screen.queryByTestId('wb-menubar-anki-tasks')).toBeNull();
+    expect(screen.getByTestId('wb-menubar-automations')).toBeTruthy();
     expect(screen.getByTestId('wb-menubar-center')).toBeTruthy();
     expect(screen.queryByTestId('wb-menubar-clock')).toBeNull();
+  });
+
+  it('设置入口打开 settings 应用', () => {
+    render(<StatusBar />);
+    fireEvent.click(screen.getByTestId('wb-menubar-settings'));
+    expect(launchSpy).toHaveBeenCalledWith({ typeId: 'settings', reason: 'api' });
+  });
+
+  it('定时任务入口常驻并打开待办自动化视图', () => {
+    render(<StatusBar />);
+    fireEvent.click(screen.getByTestId('wb-menubar-automations'));
+    expect(activateSpy).toHaveBeenCalledWith({
+      typeId: 'todo',
+      instanceKey: '',
+      action: 'showAutomations',
+      fallbackLaunch: {
+        typeId: 'todo',
+        reason: 'api',
+        payload: { todoView: 'automations' },
+      },
+    });
+  });
+
+  it('同时有运行和失败时优先显示运行数量与运行状态', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'chat_v2_automation_summary') {
+        return {
+          enabledCount: 4,
+          runningCount: 2,
+          failedCount: 1,
+          backgroundEnabled: true,
+        };
+      }
+      return [];
+    });
+    render(<StatusBar />);
+    const entry = await screen.findByTestId('wb-menubar-automations');
+    await waitFor(() => expect(entry).toHaveTextContent('2'));
+    expect(entry).toHaveAttribute('data-status', 'running');
+  });
+
+  it('命令入口打开命令面板', () => {
+    render(
+      <CommandPaletteProvider
+        currentView="chat-v2"
+        navigate={() => undefined}
+        toggleTheme={() => undefined}
+        isDarkMode={false}
+        switchLanguage={() => undefined}
+      >
+        <StatusBar />
+        <CommandPaletteStateProbe />
+      </CommandPaletteProvider>,
+    );
+
+    expect(screen.getByTestId('command-palette-state')).toHaveTextContent('false');
+    fireEvent.click(screen.getByTestId('wb-menubar-command'));
+    expect(screen.getByTestId('command-palette-state')).toHaveTextContent('true');
   });
 
   it('番茄 mode≠idle 时显示 m:ss，点击 launch pomodoro', () => {

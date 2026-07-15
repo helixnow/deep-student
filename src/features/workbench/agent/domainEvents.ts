@@ -20,7 +20,9 @@ import type { AcrReceiptStatus, DomainChangePayload } from './types';
 export const KNOWN_DOMAIN_EVENTS = [
   'todo://changed',
   'qbank://changed',
+  'review://changed',
   'fsrs://changed',
+  'memory://changed',
   'dstu:change',
 ] as const;
 

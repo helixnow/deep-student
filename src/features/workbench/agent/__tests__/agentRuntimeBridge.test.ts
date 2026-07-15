@@ -39,6 +39,7 @@ import { getAcrCommandAccess } from '../types';
 const TYPE_ID = 'acr2-stage-bridge-test';
 let count = 0;
 let revision = 0;
+let executionGate: Promise<void> | null = null;
 
 appRegistry.register({
   typeId: TYPE_ID,
@@ -101,19 +102,21 @@ appRegistry.register({
         actions: ['setCount'],
       }],
     }),
-    execute: (_ctx, action) => {
+    execute: async (_ctx, action) => {
       if (action.name === 'inspect') {
         return { handled: true, changed: false, details: { count } };
       }
       if (action.name !== 'setCount' && action.name !== 'dangerousSet') {
         return { handled: false };
       }
+      if (executionGate) await executionGate;
       const previous = count;
       count = Number((action.args as { value: number }).value);
       revision += 1;
       return {
         handled: true,
         changed: true,
+        acknowledged: true,
         ...(action.name === 'setCount'
           ? {
               undo: {
@@ -157,6 +160,7 @@ describe('ACR 2.0 Stage bridge', () => {
     workbenchBus.setEnabled(true);
     count = 0;
     revision = 0;
+    executionGate = null;
     windowId = useWindowStore.getState().openWindow({
       typeId: TYPE_ID,
       instanceKey: 'bridge-1',
@@ -298,5 +302,74 @@ describe('ACR 2.0 Stage bridge', () => {
       data: { reverted: true, undoToken, durability: 'persistent' },
     });
     expect(count).toBe(0);
+  });
+
+  it('replays a completed act transaction without executing its handler twice', async () => {
+    const observed = await stageManager.handleBridgeRequest(
+      request('observe', { windowId }, 'terminal-observe'),
+    );
+    const observationRevision = (observed.data as { revision: string }).revision;
+    const actRequest = request('act', {
+      windowId,
+      observationRevision,
+      actions: [{
+        name: 'setCount',
+        args: { value: 7 },
+        targetRef: 'bridge:counter:main',
+      }],
+    }, 'terminal-act');
+    const first = await stageManager.handleBridgeRequest(actRequest);
+    const replay = await stageManager.handleBridgeRequest({
+      ...actRequest,
+      correlationId: 'corr-terminal-act-replay',
+    });
+
+    expect(first.data).toMatchObject({ status: 'completed' });
+    expect(replay.data).toEqual(first.data);
+    expect(count).toBe(7);
+    expect(revision).toBe(1);
+
+    const reused = await stageManager.handleBridgeRequest({
+      ...actRequest,
+      correlationId: 'corr-terminal-act-reuse',
+      args: {
+        ...actRequest.args as Record<string, unknown>,
+        actions: [{
+          name: 'setCount',
+          args: { value: 8 },
+          targetRef: 'bridge:counter:main',
+        }],
+      },
+    });
+    expect(reused.ok).toBe(false);
+    expect(JSON.parse(reused.error!)).toMatchObject({ code: 'RUN_ID_REUSE' });
+    expect(count).toBe(7);
+  });
+
+  it('serializes semantic act with the same window lease and cancels by run', async () => {
+    let release!: () => void;
+    executionGate = new Promise<void>((resolve) => { release = resolve; });
+    const observed = await stageManager.handleBridgeRequest(request('observe', { windowId }));
+    const observationRevision = (observed.data as { revision: string }).revision;
+    const first = stageManager.handleBridgeRequest(request('act', {
+      windowId,
+      observationRevision,
+      actions: [{ name: 'setCount', args: { value: 1 }, targetRef: 'bridge:counter:main' }],
+    }, 'lease-first'));
+    const second = await stageManager.handleBridgeRequest(request('act', {
+      windowId,
+      observationRevision,
+      actions: [{ name: 'setCount', args: { value: 2 }, targetRef: 'bridge:counter:main' }],
+    }, 'lease-second'));
+    expect(second.ok).toBe(false);
+    expect(JSON.parse(second.error!)).toMatchObject({ code: 'WINDOW_BUSY' });
+
+    stageManager.stopRun(JSON.stringify(['sess-acr2', 'run-lease-first']));
+    release();
+    const cancelled = await first;
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.data).toMatchObject({ status: 'completed', verified: true });
+    expect(count).toBe(1);
+    executionGate = null;
   });
 });

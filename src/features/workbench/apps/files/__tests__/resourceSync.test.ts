@@ -45,6 +45,7 @@ import {
   __resetContentDirtyRegistry,
   registerContentDirtyChecker,
 } from '../../content/contentDirtyRegistry';
+import { registerContentCloseConfirmationHandler } from '../../content/ContentCloseConfirmation';
 import {
   closeWindowsForDeletedResource,
   closeWorkspaceTabsForDeletedResource,
@@ -183,7 +184,7 @@ describe('resourceSync', () => {
     expect(useWindowStore.getState().windows[noteWin]).toBeUndefined();
   });
 
-  it('dirty checker 取消关闭时保留窗口与内存草稿', () => {
+  it('dirty checker 在应用内取消关闭时保留窗口与内存草稿', async () => {
     const store = useWindowStore.getState();
     const noteWin = store.openWindow({ typeId: 'translation', instanceKey: 'note_dirty' });
     const definition = createContentApp({
@@ -198,11 +199,14 @@ describe('resourceSync', () => {
       typeId === 'translation' ? definition : undefined,
     );
     registerContentDirtyChecker('translation', '/folder/note_dirty', () => true);
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const confirmClose = vi.fn(async () => false);
+    const unregisterConfirmation = registerContentCloseConfirmationHandler(confirmClose);
 
     expect(closeWindowsForDeletedResource('/note_dirty')).toBe(0);
     expect(useWindowStore.getState().windows[noteWin]).toBeDefined();
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(confirmClose).toHaveBeenCalledTimes(1));
+    expect(useWindowStore.getState().windows[noteWin]).toBeDefined();
+    unregisterConfirmation();
   });
 
   it('文件夹或批量事件通过存活性复核关闭后代资源窗', async () => {

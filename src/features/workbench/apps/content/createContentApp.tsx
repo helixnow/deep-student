@@ -17,6 +17,7 @@ import type {
 } from '../../core/types';
 import type { ContentAppTypeId } from './typeMap';
 import { isContentDirty } from './contentDirtyRegistry';
+import { requestContentCloseConfirmation } from './ContentCloseConfirmation';
 import { getResourceWorkspaceActive } from './resourceWorkspaceRegistry';
 
 export interface CreateContentAppOptions {
@@ -49,18 +50,16 @@ export function createContentApp(options: CreateContentAppOptions): AppDefinitio
   );
 
   const canClose = options.confirmUnsavedOnClose
-    ? (instanceKey: string | null): boolean => {
+    ? async (instanceKey: string | null): Promise<boolean> => {
         const dirtyResourceId = instanceKey ?? (
           typeId === 'essay' ? getResourceWorkspaceActive('essay') : null
         );
         if (!isContentDirty(typeId, dirtyResourceId)) return true;
-        if (typeof window === 'undefined' || typeof window.confirm !== 'function') return true;
-        // eslint-disable-next-line no-alert -- canClose is a synchronous app-definition guard.
-        return window.confirm(
-          i18next.t('workbench:content.confirmCloseUnsaved', {
+        return requestContentCloseConfirmation({
+          description: i18next.t('workbench:content.confirmCloseUnsaved', {
             defaultValue: '当前内容有未保存的修改，确定要关闭窗口吗？',
           }),
-        );
+        });
       }
     : undefined;
 

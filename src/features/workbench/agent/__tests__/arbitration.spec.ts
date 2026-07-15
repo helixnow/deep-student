@@ -150,4 +150,19 @@ describe('ACR arbitration — DESIGN §4.1', () => {
     expect(onPauseChange).toHaveBeenCalledWith(false);
     arb.dispose();
   });
+
+  it('显式 pause 后的用户输入不会降级为 2s 自动续放', async () => {
+    const arb = createArbitrator({});
+    arb.pause();
+    const pending = arb.checkPaused();
+    arb.onUserInput();
+    await vi.advanceTimersByTimeAsync(2000);
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    arb.resume();
+    await expect(pending).resolves.toBe('resume');
+    arb.dispose();
+  });
 });

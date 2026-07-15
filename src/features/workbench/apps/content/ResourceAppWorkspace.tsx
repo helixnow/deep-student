@@ -13,11 +13,13 @@ import {
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { createEmpty, dstu, type DstuNode } from '@/dstu';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
 import { isContentDirty } from './contentDirtyRegistry';
+import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import {
   clearResourceWorkspaceActive,
   registerResourceWorkspace,
@@ -28,18 +30,21 @@ import './ResourceAppWorkspace.css';
 
 type LibraryView = 'all' | 'recent';
 
+type PendingNavigation =
+  | {
+      kind: 'select';
+      resourceId: string | null;
+      confirmation: 'unsaved' | 'review';
+      /** Latest list response held until a dirty resource is safely unmounted. */
+      itemsAfter?: DstuNode[];
+    }
+  | { kind: 'create'; confirmation: 'unsaved' | 'review' };
+
 interface ResourceAppWorkspaceProps {
   type: ResourceWorkspaceType;
   initialResourceId?: string | null;
   isActive: boolean;
   onTitleChange: (title: string) => void;
-}
-
-function canLeaveResource(type: ResourceWorkspaceType, resourceId: string | null): boolean {
-  if (type !== 'essay' || !resourceId || !isContentDirty(type, resourceId)) return true;
-  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return true;
-  // eslint-disable-next-line no-alert -- switching resources must not discard an edited essay silently.
-  return window.confirm('当前作文有未保存的修改，确定要切换吗？');
 }
 
 export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
@@ -48,7 +53,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   isActive,
   onTitleChange,
 }) => {
-  const { t } = useTranslation(['workbench', 'common']);
+  const { t } = useTranslation(['workbench', 'common', 'review']);
   const [items, setItems] = useState<DstuNode[]>([]);
   const [query, setQuery] = useState('');
   const [libraryView, setLibraryView] = useState<LibraryView>('all');
@@ -59,6 +64,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(240);
   const [compact, setCompact] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -87,11 +93,40 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
       limit: 500,
     });
     if (result.ok) {
-      setItems(result.value);
       const activeId = selectedIdRef.current;
       if (activeId && !result.value.some((item) => item.id === activeId)) {
-        selectedIdRef.current = null;
-        setSelectedId(null);
+        const reviewSession = useReviewPlanStore.getState().session;
+        const confirmation = (
+          type === 'exam'
+          && reviewSession.isActive
+          && reviewSession.examId === activeId
+          && reviewSession.currentIndex < reviewSession.queue.length
+        )
+          ? 'review'
+          : ((type === 'essay' || type === 'exam') && isContentDirty(type, activeId))
+            ? 'unsaved'
+            : null;
+
+        if (confirmation) {
+          // Do not replace `items` yet: selectedItem would become null and
+          // unmount the dirty editor before the user can decide what to do.
+          setPendingNavigation((current) => (
+            current?.kind === 'select' && current.resourceId === null
+              ? { ...current, itemsAfter: result.value }
+              : {
+                  kind: 'select',
+                  resourceId: null,
+                  confirmation,
+                  itemsAfter: result.value,
+                }
+          ));
+        } else {
+          setItems(result.value);
+          selectedIdRef.current = null;
+          setSelectedId(null);
+        }
+      } else {
+        setItems(result.value);
       }
     } else {
       setError(result.error.toUserMessage());
@@ -105,15 +140,43 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     return () => unwatch();
   }, [loadItems]);
 
-  const selectResource = useCallback((resourceId: string | null): boolean => {
-    const current = selectedIdRef.current;
-    if (resourceId === current) return true;
-    if (!canLeaveResource(type, current)) return false;
+  const commitResourceSelection = useCallback((resourceId: string | null) => {
     selectedIdRef.current = resourceId;
     setSelectedId(resourceId);
     if (resourceId && compact) setSidebarOpen(false);
+  }, [compact]);
+
+  const getLeaveConfirmation = useCallback((): 'unsaved' | 'review' | null => {
+    const resourceId = selectedIdRef.current;
+    if (!resourceId) return null;
+
+    const reviewSession = useReviewPlanStore.getState().session;
+    if (
+      type === 'exam'
+      && reviewSession.isActive
+      && reviewSession.examId === resourceId
+      && reviewSession.currentIndex < reviewSession.queue.length
+    ) {
+      return 'review';
+    }
+    if ((type === 'essay' || type === 'exam') && isContentDirty(type, resourceId)) {
+      return 'unsaved';
+    }
+    return null;
+  }, [type]);
+
+  const selectResource = useCallback((resourceId: string | null, itemsAfter?: DstuNode[]): boolean => {
+    const current = selectedIdRef.current;
+    if (resourceId === current) return true;
+    const confirmation = getLeaveConfirmation();
+    if (confirmation) {
+      setPendingNavigation({ kind: 'select', resourceId, confirmation, itemsAfter });
+      return false;
+    }
+    if (itemsAfter) setItems(itemsAfter);
+    commitResourceSelection(resourceId);
     return true;
-  }, [compact, type]);
+  }, [commitResourceSelection, getLeaveConfirmation]);
 
   useEffect(() => {
     if (initialResourceId) selectResource(initialResourceId);
@@ -130,8 +193,8 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     return () => clearResourceWorkspaceActive(type, selectedId);
   }, [selectedId, type]);
 
-  const createResource = useCallback(async () => {
-    if (creating || !canLeaveResource(type, selectedIdRef.current)) return;
+  const createResourceNow = useCallback(async () => {
+    if (creating) return;
     setCreating(true);
     setError(null);
     const result = await createEmpty({ type });
@@ -141,10 +204,41 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
       return;
     }
     setItems((current) => [result.value, ...current.filter((item) => item.id !== result.value.id)]);
-    selectedIdRef.current = result.value.id;
-    setSelectedId(result.value.id);
-    if (compact) setSidebarOpen(false);
-  }, [compact, creating, type]);
+    commitResourceSelection(result.value.id);
+  }, [commitResourceSelection, creating, type]);
+
+  const createResource = useCallback(() => {
+    if (creating) return;
+    const confirmation = getLeaveConfirmation();
+    if (confirmation) {
+      setPendingNavigation({ kind: 'create', confirmation });
+      return;
+    }
+    void createResourceNow();
+  }, [createResourceNow, creating, getLeaveConfirmation]);
+
+  const confirmPendingNavigation = useCallback(() => {
+    const action = pendingNavigation;
+    setPendingNavigation(null);
+    if (!action) return;
+    if (action.confirmation === 'review') {
+      useReviewPlanStore.getState().endSession();
+      // Re-enter the normal navigation path after ending review. It may still
+      // need to confirm an unsaved exam draft before the current view unmounts.
+      if (action.kind === 'select') {
+        selectResource(action.resourceId, action.itemsAfter);
+        return;
+      }
+      createResource();
+      return;
+    }
+    if (action.kind === 'select') {
+      if (action.itemsAfter) setItems(action.itemsAfter);
+      commitResourceSelection(action.resourceId);
+      return;
+    }
+    void createResourceNow();
+  }, [commitResourceSelection, createResource, createResourceNow, pendingNavigation, selectResource]);
 
   const visibleItems = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase();
@@ -214,7 +308,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
       window.setTimeout(() => searchInputRef.current?.focus(), 0);
     } else if (key === 'n') {
       event.preventDefault();
-      void createResource();
+      createResource();
     }
   }, [createResource]);
 
@@ -269,7 +363,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             variant="ghost"
             size="icon"
             iconOnly
-            onClick={() => void createResource()}
+            onClick={createResource}
             disabled={creating}
             title={newLabel}
             aria-label={newLabel}
@@ -444,7 +538,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
             <ResourceIcon size={38} weight="thin" />
             <strong>{t('workbench:resourceWorkspace.selectTitle', '选择一个项目')}</strong>
             <span>{t('workbench:resourceWorkspace.selectHint', '从左侧选择，或新建后直接开始。')}</span>
-            <NotionButton size="sm" onClick={() => void createResource()} disabled={creating}>
+            <NotionButton size="sm" onClick={createResource} disabled={creating}>
               <Plus size={15} />
               {newLabel}
             </NotionButton>
@@ -459,6 +553,25 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
           aria-label={t('workbench:resourceWorkspace.hideSidebar', '隐藏侧边栏')}
         />
       )}
+      <NotionAlertDialog
+        open={pendingNavigation !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingNavigation(null);
+        }}
+        icon={<WarningCircle size={20} className="text-warning" />}
+        title={pendingNavigation?.confirmation === 'review'
+          ? t('review:session.exitTitle', '结束复习会话？')
+          : t('common:confirmMessages.unsaved_changes', '有未保存的更改，确定要离开吗？')}
+        description={pendingNavigation?.confirmation === 'review'
+          ? t('review:session.exitDescription', '已提交的评分会保留，剩余题目可稍后重新开始复习。')
+          : t('content.confirmCloseUnsaved')}
+        confirmText={pendingNavigation?.confirmation === 'review'
+          ? t('review:session.exitConfirm', '结束复习')
+          : t('common:discard', '丢弃')}
+        cancelText={t('common:cancel', '取消')}
+        confirmVariant="danger"
+        onConfirm={confirmPendingNavigation}
+      />
     </div>
   );
 };

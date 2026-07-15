@@ -106,10 +106,12 @@ import { dstuDebugLog } from './debug-panel/plugins/DstuDebugPlugin';
 import { debugMasterSwitch, debugLog } from './debug-panel/debugMasterSwitch';
 // ★ 平台检测初始化（为 Android WebView 兼容性添加 CSS 类）
 import { initPlatformClasses } from './utils/platform';
+import { installChatV2DomainEventBridge } from './utils/chatV2DomainEventBridge';
 import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
+void installChatV2DomainEventBridge();
 
 // Dev-only：UI 自动化桥（本地 UI 审查用，生产构建不包含）
 if (import.meta.env.DEV && import.meta.env.VITE_DS_UI_BRIDGE === '1') {

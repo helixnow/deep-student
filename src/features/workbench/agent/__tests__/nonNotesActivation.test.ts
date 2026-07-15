@@ -4,6 +4,8 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async () => []),
 }));
 
+import { invoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
 import { useFsrsReviewStore } from '@/features/flashcards/store/fsrsReviewStore';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import {
@@ -11,14 +13,23 @@ import {
   useSandboxWorkbenchStore,
 } from '@/features/sandbox/store/useSandboxWorkbenchStore';
 import { handleExamActivation } from '../../apps/content/register';
+import {
+  clearResourceWorkspaceActive,
+  setResourceWorkspaceActive,
+} from '../../apps/content/resourceWorkspaceRegistry';
 import { handleSandboxActivation } from '../../apps/sandbox/register';
 import { handleFlashcardsActivation } from '../../apps/system/register';
+import { createFlashcardsAgentManifest } from '../../apps/system/agentManifests';
 import { fsrsDriver } from '../drivers/fsrsDriver';
 import { qbankDriver } from '../drivers/qbankDriver';
 import { sandboxDriver } from '../drivers/sandboxDriver';
 
+const invokeMock = vi.mocked(invoke);
+
 describe('ACR 非 Notes 应用 activation', () => {
   beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue([]);
     useQuestionBankStore.setState({
       questions: new Map([
         ['q1', { id: 'q1', status: 'new', question_type: 'single_choice' } as never],
@@ -29,7 +40,6 @@ describe('ACR 非 Notes 应用 activation', () => {
       filters: {},
       practiceMode: 'sequential',
       focusMode: false,
-      showSettingsPanel: false,
     });
     useFsrsReviewStore.setState({
       screen: 'today',
@@ -50,40 +60,168 @@ describe('ACR 非 Notes 应用 activation', () => {
       ownerStates: {},
       activeOwnerKey: LEGACY_SANDBOX_OWNER_KEY,
     });
+    clearResourceWorkspaceActive('exam');
+  });
+
+  it('exam 水合后端练习 handoff，并拒绝任何 Agent 预填答案', async () => {
+    setResourceWorkspaceActive('exam', 'exam-1');
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        action: string;
+        payload?: { handoff?: unknown };
+        acknowledge?: (result: Record<string, unknown>) => void;
+      }>).detail;
+      if (detail.action !== 'hydratePracticeSession') return;
+      const hydration = useQuestionBankStore
+        .getState()
+        .hydratePracticeHandoff(detail.payload?.handoff, 'exam-1');
+      detail.acknowledge?.(hydration.ok
+        ? {
+            handled: true,
+            acknowledged: true,
+            hydratedSessionId: hydration.handoffId,
+            practiceMode: hydration.mode,
+          }
+        : { handled: false, code: hydration.code, hint: hydration.hint });
+    };
+    window.addEventListener('qbank:control', listener);
+
+    const handoff = {
+      version: 1,
+      kind: 'qbank_practice_session',
+      handoff_id: 'mock-1',
+      exam_id: 'exam-1',
+      mode: 'mock_exam',
+      agentCanAnswer: false,
+      session: {
+        id: 'mock-1',
+        exam_id: 'exam-1',
+        config: {
+          duration_minutes: 60,
+          type_distribution: {},
+          difficulty_distribution: {},
+          total_count: 2,
+          shuffle: true,
+          include_mistakes: true,
+        },
+        question_ids: ['q1', 'q2'],
+        started_at: '2026-07-14T08:00:00.000Z',
+        ended_at: null,
+        answers: {},
+        results: {},
+        is_submitted: false,
+        score: null,
+        correct_rate: null,
+      },
+    };
+
+    await expect(handleExamActivation({
+      windowId: 'exam-win',
+      instanceKey: 'exam-1',
+      action: 'hydratePracticeSession',
+      payload: { handoff },
+    })).resolves.toEqual({ handled: true, acknowledged: true });
+    expect(useQuestionBankStore.getState()).toMatchObject({
+      practiceMode: 'mock_exam',
+      mockExamSession: { id: 'mock-1', answers: {}, results: {} },
+    });
+
+    const prefilled = structuredClone(handoff);
+    prefilled.handoff_id = 'mock-agent-answer';
+    prefilled.session.id = 'mock-agent-answer';
+    prefilled.session.answers = { q1: 'A' };
+    prefilled.session.results = { q1: true };
+    await expect(handleExamActivation({
+      windowId: 'exam-win',
+      instanceKey: 'exam-1',
+      action: 'hydratePracticeSession',
+      payload: { handoff: prefilled },
+    })).resolves.toMatchObject({
+      handled: false,
+      code: 'INVALID_PRACTICE_HANDOFF',
+    });
+    expect(useQuestionBankStore.getState().mockExamSession?.id).toBe('mock-1');
+
+    window.removeEventListener('qbank:control', listener);
   });
 
   it('exam 支持前后题、练习模式、专注模式和筛选', () => {
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        action: string;
+        acknowledge?: (result: { handled: boolean; currentQuestionId?: string }) => void;
+      }>).detail;
+      detail.acknowledge?.({
+        handled: true,
+        currentQuestionId: detail.action === 'nextQuestion' ? 'q2' : undefined,
+      });
+    };
+    window.addEventListener('qbank:control', listener);
+    try {
+      expect(handleExamActivation({
+        windowId: 'exam-win',
+        instanceKey: 'exam-1',
+        action: 'nextQuestion',
+      })).toEqual({ handled: true, currentQuestionId: 'q2' });
+      expect(useQuestionBankStore.getState().currentQuestionId).toBe('q2');
+
+      handleExamActivation({
+        windowId: 'exam-win',
+        instanceKey: 'exam-1',
+        action: 'setPracticeMode',
+        payload: { mode: 'review_only' },
+      });
+      handleExamActivation({
+        windowId: 'exam-win',
+        instanceKey: 'exam-1',
+        action: 'setFocusMode',
+        payload: { enabled: true },
+      });
+      handleExamActivation({
+        windowId: 'exam-win',
+        instanceKey: 'exam-1',
+        action: 'setFilters',
+        payload: { filters: { is_favorite: true } },
+      });
+
+      expect(useQuestionBankStore.getState()).toMatchObject({
+        practiceMode: 'review_only',
+        focusMode: true,
+        filters: { is_favorite: true },
+      });
+    } finally {
+      window.removeEventListener('qbank:control', listener);
+    }
+  });
+
+  it('exam 设置 action 仅在目标视图确认接收后返回 handled', () => {
+    const received: { targetResourceId?: string; open?: boolean }[] = [];
+    const listener = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        targetResourceId?: string;
+        open?: boolean;
+        acknowledge?: (result: { handled: boolean }) => void;
+      }>).detail;
+      received.push(detail);
+      detail.acknowledge?.({ handled: true });
+    };
+    window.addEventListener('exam:openSettings', listener);
+
     expect(handleExamActivation({
       windowId: 'exam-win',
       instanceKey: 'exam-1',
-      action: 'nextQuestion',
+      action: 'showSettings',
+      payload: { open: true },
     })).toEqual({ handled: true });
-    expect(useQuestionBankStore.getState().currentQuestionId).toBe('q2');
+    expect(received).toEqual([{ targetResourceId: 'exam-1', open: true, acknowledge: expect.any(Function) }]);
 
-    handleExamActivation({
+    window.removeEventListener('exam:openSettings', listener);
+    expect(handleExamActivation({
       windowId: 'exam-win',
       instanceKey: 'exam-1',
-      action: 'setPracticeMode',
-      payload: { mode: 'review_only' },
-    });
-    handleExamActivation({
-      windowId: 'exam-win',
-      instanceKey: 'exam-1',
-      action: 'setFocusMode',
-      payload: { enabled: true },
-    });
-    handleExamActivation({
-      windowId: 'exam-win',
-      instanceKey: 'exam-1',
-      action: 'setFilters',
-      payload: { filters: { is_favorite: true } },
-    });
-
-    expect(useQuestionBankStore.getState()).toMatchObject({
-      practiceMode: 'review_only',
-      focusMode: true,
-      filters: { is_favorite: true },
-    });
+      action: 'showSettings',
+      payload: { open: false },
+    })).toMatchObject({ handled: false, code: 'WINDOW_NOT_FOUND' });
   });
 
   it('flashcards 支持页面切换、翻面和结束会话，但不提供评分 action', async () => {
@@ -118,6 +256,93 @@ describe('ACR 非 Notes 应用 activation', () => {
       payload: { rating: 4 },
     });
     expect(rate).toMatchObject({ handled: false, code: 'UNKNOWN_ACTION' });
+  });
+
+  it('flashcards due 加载失败时所有 Workbench 入口都不会进入空会话', async () => {
+    invokeMock.mockRejectedValueOnce(new Error('due activation unavailable'));
+
+    const activationResult = await handleFlashcardsActivation({
+      windowId: 'fc-win',
+      instanceKey: null,
+      action: 'startDueReview',
+    });
+
+    expect(activationResult).toMatchObject({
+      handled: false,
+      code: 'LOAD_FAILED',
+      hint: 'due activation unavailable',
+    });
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      screen: 'today',
+      queue: [],
+      error: 'due activation unavailable',
+    });
+
+    useFsrsReviewStore.setState({ screen: 'today', queue: [], error: null });
+    invokeMock.mockRejectedValueOnce(new Error('due manifest unavailable'));
+    const manifest = createFlashcardsAgentManifest(handleFlashcardsActivation);
+    const manifestResult = await manifest.execute!(
+      { windowId: 'fc-win', typeId: 'flashcards', instanceKey: null },
+      { name: 'startReview', args: { screen: 'session', mode: 'due' } },
+    );
+
+    expect(manifestResult).toMatchObject({
+      handled: false,
+      changed: false,
+      code: 'LOAD_FAILED',
+      hint: 'due manifest unavailable',
+    });
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      screen: 'today',
+      queue: [],
+      error: 'due manifest unavailable',
+    });
+  });
+
+  it('flashcards agent batch 依据完整 reviewCards 返回真实成功或失败回执', async () => {
+    invokeMock.mockResolvedValueOnce({
+      enqueued: 0,
+      skipped: 1,
+      states: [{ id: 'state-existing', ankiCardId: 'anki-1' }],
+      reviewCards: [
+        {
+          id: 'state-existing',
+          ankiCardId: 'anki-1',
+          front: 'Question',
+          back: 'Answer',
+        },
+      ],
+    });
+    const manifest = createFlashcardsAgentManifest(handleFlashcardsActivation);
+
+    const success = await manifest.execute!(
+      { windowId: 'fc-win', typeId: 'flashcards', instanceKey: null },
+      { name: 'startReview', args: { screen: 'session', mode: 'batch', cardIds: ['anki-1'] } },
+    );
+
+    expect(success).toMatchObject({ handled: true, changed: true });
+    expect(useFsrsReviewStore.getState().queue[0]).toMatchObject({
+      id: 'state-existing',
+      ankiCardId: 'anki-1',
+      front: 'Question',
+      back: 'Answer',
+    });
+
+    useFsrsReviewStore.setState({ screen: 'today', queue: [], error: null });
+    invokeMock.mockResolvedValueOnce({ states: [{ id: 'state-2', ankiCardId: 'anki-2' }] });
+    const failure = await manifest.execute!(
+      { windowId: 'fc-win', typeId: 'flashcards', instanceKey: null },
+      { name: 'startReview', args: { screen: 'session', mode: 'batch', cardIds: ['anki-2'] } },
+    );
+
+    expect(failure).toMatchObject({
+      handled: false,
+      changed: false,
+      code: 'ENQUEUE_FAILED',
+      hint: i18n.t('flashcards:session.errors.reviewContentUnavailable', {
+        cardId: 'anki-2',
+      }),
+    });
   });
 
   it('Driver queryState 返回题库和复习会话的高信号摘要', () => {
@@ -155,7 +380,7 @@ describe('ACR 非 Notes 应用 activation', () => {
       instanceKey: null,
       action: 'setViewport',
       payload: { viewport: 'mobile' },
-    })).toEqual({ handled: true });
+    })).toEqual({ handled: true, acknowledged: true });
     handleSandboxActivation({
       windowId: 'sandbox-win',
       instanceKey: null,

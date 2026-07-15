@@ -36,9 +36,14 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
   const store = useTodoStore.getState();
 
   switch (ctx.action) {
+    case 'showAutomations': {
+      store.setWorkspaceView('automations');
+      return { handled: true };
+    }
     case 'showList': {
       const listId = payloadString(ctx.payload, 'listId');
       if (!listId) return invalid('showList 需要 payload.listId');
+      store.setWorkspaceView('todos');
       store.setActiveList(listId);
       await useTodoStore.getState().reloadCurrentView();
       return { handled: true };
@@ -53,6 +58,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       }
       if (!item) return invalid('focusItem 指向的待办不存在');
       const current = useTodoStore.getState();
+      current.setWorkspaceView('todos');
       if (current.filter.view !== 'all') current.setViewFilter('all');
       if (current.activeListId !== item.todoListId) current.setActiveList(item.todoListId);
       await useTodoStore.getState().loadItems(item.todoListId, false);
@@ -74,6 +80,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
         ?? current.lists.find((list) => list.isDefault)?.id
         ?? current.lists[0]?.id;
       if (!listId) return invalid('quickAdd 找不到可用待办清单');
+      current.setWorkspaceView('todos');
       if (current.filter.view !== 'all') current.setViewFilter('all');
       useTodoStore.getState().setActiveList(listId);
       await useTodoStore.getState().loadItems(listId, false);
@@ -85,12 +92,14 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
       if (!view || !TODO_VIEWS.has(view)) {
         return invalid('showView 需要 view=all|today|upcoming|overdue|completed|matrix');
       }
+      store.setWorkspaceView('todos');
       store.setViewFilter(view);
       await useTodoStore.getState().reloadCurrentView();
       return { handled: true };
     }
     case 'search': {
       const query = payloadString(ctx.payload, 'query') ?? '';
+      store.setWorkspaceView('todos');
       store.setSearch(query);
       if (query) await useTodoStore.getState().searchItems(query);
       else await useTodoStore.getState().reloadCurrentView();
@@ -113,6 +122,7 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
         if (!TODO_SORTS.has(sortBy)) return invalid('sortBy 值无效');
         store.setSortBy(sortBy);
       }
+      store.setWorkspaceView('todos');
       await useTodoStore.getState().reloadCurrentView();
       return { handled: true };
     }

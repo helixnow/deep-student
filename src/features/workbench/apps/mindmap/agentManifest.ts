@@ -179,7 +179,13 @@ export function createMindmapAgentManifest(
         mode: state.currentView,
         busy: state.isSaving || state.isExporting,
         selection,
-        availableActions: [...ALL_ACTIONS],
+        availableActions: ALL_ACTIONS.filter((action) => {
+          if (action === 'nextSearchResult' || action === 'previousSearchResult') {
+            return state.searchResults.length > 1;
+          }
+          if (action === 'clearSearch') return Boolean(state.searchQuery);
+          return true;
+        }),
         entities: observed.entities,
         affordances: observed.root ? [observed.root] : [],
         state: {
@@ -206,6 +212,21 @@ export function createMindmapAgentManifest(
         if (mismatch) return mismatch;
       }
       const before = getStore(ctx.windowId, ctx.instanceKey)?.getState();
+      let expectedSearchIndex: number | null = null;
+      if (action.name === 'nextSearchResult' || action.name === 'previousSearchResult') {
+        const count = before?.searchResults.length ?? 0;
+        if (count <= 1) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: count === 0 ? '当前没有导图搜索结果' : '只有一个搜索结果，无法移动焦点',
+          };
+        }
+        expectedSearchIndex = action.name === 'nextSearchResult'
+          ? ((before!.currentSearchIndex + 1) % count)
+          : ((before!.currentSearchIndex - 1 + count) % count);
+      }
       const beforeSnapshot = before ? {
         currentView: before.currentView,
         focusedNodeId: before.focusedNodeId,
@@ -221,6 +242,15 @@ export function createMindmapAgentManifest(
         searchQuery: after.searchQuery,
         currentSearchIndex: after.currentSearchIndex,
       }));
+      if (!result.changed) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未改变导图状态`,
+        };
+      }
+      result.acknowledged = true;
       const args = requestedArgs;
       if (action.name === 'focusNode' && typeof args.nodeId === 'string') {
         result.entityRefs = [nodeRef(args.nodeId)];
@@ -256,8 +286,8 @@ export function createMindmapAgentManifest(
             label: '恢复导图搜索',
           };
         }
-      } else if ((action.name === 'nextSearchResult' || action.name === 'previousSearchResult') && after) {
-        result.postconditions = [{ kind: 'state_equals', path: 'currentSearchIndex', value: after.currentSearchIndex }];
+      } else if (expectedSearchIndex != null) {
+        result.postconditions = [{ kind: 'state_equals', path: 'currentSearchIndex', value: expectedSearchIndex }];
       }
       return result;
     },

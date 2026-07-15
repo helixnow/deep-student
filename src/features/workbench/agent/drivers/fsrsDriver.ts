@@ -3,7 +3,7 @@
  *
  * - probe：session 中返回 hot（提示 Rust/StageManager 走克制路径），否则 clean
  * - apply：`fsrs_enqueue` → appendToQueue + toast；其余 op 记 undone
- * - 域事件 `fsrs://changed`：today→loadDue；library→CustomEvent；session→append-only
+ * - 域事件 `fsrs://changed`：刷新 Today/Library/Stats，并协调活动 session 的 Agent 写入
  *
  * 见 docs/dev/acr/DESIGN.md §5.4 / ROUND1.md R1-15。
  */
@@ -11,6 +11,8 @@ import i18n from '@/i18n';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   useFsrsReviewStore,
+  type FsrsAgentReviewAction,
+  type FsrsAgentReviewStateChange,
   type ReviewCard,
 } from '@/features/flashcards/store/fsrsReviewStore';
 import { collectDomainEntityIds, registerDomainListener } from '../domainEvents';
@@ -29,16 +31,15 @@ import type {
 } from '../types';
 
 /** LibraryScreen 监听此事件重查库表（本地 state，非 zustand） */
-import { FSRS_LIBRARY_REFRESH_EVENT } from '@/features/flashcards/events';
+import {
+  FSRS_LIBRARY_REFRESH_EVENT,
+  FSRS_STATS_REFRESH_EVENT,
+  requestFlashcardsDueRefresh,
+} from '@/features/flashcards/events';
 
 export { FSRS_LIBRARY_REFRESH_EVENT };
 
 const TYPE_ID = 'flashcards';
-
-interface FsrsEnqueuePayload {
-  cardIds?: unknown;
-  cards?: unknown;
-}
 
 function asReviewCards(raw: unknown): ReviewCard[] {
   if (!Array.isArray(raw)) return [];
@@ -47,48 +48,122 @@ function asReviewCards(raw: unknown): ReviewCard[] {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
     if (typeof row.id !== 'string' || !row.id) continue;
+    const aliased = (camelKey: string, snakeKey: string) => (
+      row[camelKey] !== undefined ? row[camelKey] : row[snakeKey]
+    );
+    const ankiCardId = aliased('ankiCardId', 'anki_card_id');
+    const templateId = aliased('templateId', 'template_id');
+    const extraFields = aliased('extraFields', 'extra_fields');
+    const isErrorCard = aliased('isErrorCard', 'is_error_card');
+    const errorContent = aliased('errorContent', 'error_content');
     out.push({
       id: row.id,
-      ankiCardId: typeof row.ankiCardId === 'string' ? row.ankiCardId : undefined,
+      ankiCardId: typeof ankiCardId === 'string' ? ankiCardId : undefined,
       front: typeof row.front === 'string' ? row.front : '',
       back: typeof row.back === 'string' ? row.back : '',
+      text: typeof row.text === 'string' ? row.text : undefined,
       tags: Array.isArray(row.tags)
         ? row.tags.filter((t): t is string => typeof t === 'string')
         : undefined,
+      images: Array.isArray(row.images)
+        ? row.images.filter((image): image is string => typeof image === 'string')
+        : undefined,
+      templateId: typeof templateId === 'string'
+        ? templateId
+        : templateId === null
+          ? null
+          : undefined,
+      extraFields: extraFields && typeof extraFields === 'object' && !Array.isArray(extraFields)
+        ? Object.fromEntries(
+            Object.entries(extraFields as Record<string, unknown>)
+              .filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+          )
+        : undefined,
+      isErrorCard: typeof isErrorCard === 'boolean' ? isErrorCard : undefined,
+      errorContent: typeof errorContent === 'string'
+        ? errorContent
+        : errorContent === null
+          ? null
+          : undefined,
+      suspended: typeof row.suspended === 'boolean' ? row.suspended : undefined,
     });
   }
   return out;
 }
 
+function agentReviewStateChanges(payload: DomainChangePayload): FsrsAgentReviewStateChange[] {
+  if (!Array.isArray(payload.cards)) return [];
+  const changes: FsrsAgentReviewStateChange[] = [];
+  for (const raw of payload.cards) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+    const row = raw as Record<string, unknown>;
+    const rawCardStateId = row.cardStateId ?? row.card_state_id ?? row.id;
+    const rawAnkiCardId = row.ankiCardId ?? row.anki_card_id;
+    if (
+      typeof rawCardStateId !== 'string'
+      || !rawCardStateId.trim()
+      || typeof rawAnkiCardId !== 'string'
+      || !rawAnkiCardId.trim()
+      || typeof row.suspended !== 'boolean'
+    ) {
+      continue;
+    }
+    const rawDueMs = row.dueMs ?? row.due_ms;
+    changes.push({
+      cardStateId: rawCardStateId.trim(),
+      ankiCardId: rawAnkiCardId.trim(),
+      suspended: row.suspended,
+      ...(typeof rawDueMs === 'number' && Number.isFinite(rawDueMs)
+        ? { dueMs: rawDueMs }
+        : {}),
+    });
+  }
+  return changes;
+}
+
+function hasReviewCardContent(card: ReviewCard): boolean {
+  return (
+    card.front.trim().length > 0 ||
+    card.back.trim().length > 0 ||
+    (typeof card.text === 'string' && card.text.trim().length > 0) ||
+    Object.values(card.extraFields ?? {}).some((value) => value.trim().length > 0)
+  );
+}
+
 function cardsFromEnqueuePayload(payload: unknown): ReviewCard[] {
   if (!payload || typeof payload !== 'object') return [];
-  const p = payload as FsrsEnqueuePayload;
-  const fromCards = asReviewCards(p.cards);
-  if (fromCards.length > 0) return fromCards;
+  const p = payload as { cards?: unknown };
 
-  // 仅有 cardIds：构造最小 stub（内容可空，评分侧仍可用 id）
-  if (!Array.isArray(p.cardIds)) return [];
-  return p.cardIds
-    .filter((id): id is string => typeof id === 'string' && id.length > 0)
-    .map((id) => ({
-      id,
-      ankiCardId: id,
-      front: '',
-      back: '',
+  // 两个 enqueue 入口共用完整 FSRS state/card 映射；仅有 ID 无法评分或展示。
+  return asReviewCards(p.cards)
+    .filter(
+      (card) =>
+        card.id.trim().length > 0 &&
+        typeof card.ankiCardId === 'string' &&
+        card.ankiCardId.trim().length > 0 &&
+        hasReviewCardContent(card),
+    )
+    .map((card) => ({
+      ...card,
+      id: card.id.trim(),
+      ankiCardId: card.ankiCardId!.trim(),
     }));
 }
 
-function cardIdsFromPayload(payload: DomainChangePayload | unknown): string[] {
+function cardsFromCardMutationPayload(payload: unknown): ReviewCard[] {
   if (!payload || typeof payload !== 'object') return [];
-  const p = payload as DomainChangePayload & { cardIds?: unknown; cards?: unknown };
-  // R2-04：优先统一 entityIds（含 entity_ids 归一）
-  const fromEntities = collectDomainEntityIds(p);
-  if (fromEntities.length > 0) return fromEntities;
-  if (Array.isArray(p.cardIds)) {
-    return p.cardIds.filter((id): id is string => typeof id === 'string' && id.length > 0);
-  }
-  const cards = asReviewCards(p.cards);
-  return cards.map((c) => c.id);
+  const rawCards = (payload as { cards?: unknown }).cards;
+  if (!Array.isArray(rawCards)) return [];
+
+  // Card-mutation events carry Anki-card rows, whereas review queues are keyed
+  // by FSRS state IDs. Reuse the parser but make the content row's ID explicit
+  // as ankiCardId; the store preserves the existing scheduling ID on merge.
+  return asReviewCards(rawCards.map((raw) => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return raw;
+    const row = raw as Record<string, unknown>;
+    const id = typeof row.id === 'string' ? row.id.trim() : '';
+    return id ? { ...row, ankiCardId: id } : row;
+  }));
 }
 
 function notifyAppended(count: number): void {
@@ -248,11 +323,16 @@ export const fsrsDriver: CollabDriver & {
 };
 
 /**
- * 处理 `fsrs://changed`：按当前 screen 刷新或 append-only 入队。
+ * 处理 `fsrs://changed`：刷新已挂载的库/统计视图；活动 session 合并 Agent 复习写入。
  * 导出供单测直接调用。
  */
 export function handleFsrsDomainChange(payload: DomainChangePayload): void {
   const { screen } = useFsrsReviewStore.getState();
+  requestFlashcardsDueRefresh();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(FSRS_LIBRARY_REFRESH_EVENT));
+    window.dispatchEvent(new CustomEvent(FSRS_STATS_REFRESH_EVENT));
+  }
 
   if (screen === 'today') {
     void useFsrsReviewStore.getState().loadDue();
@@ -261,32 +341,46 @@ export function handleFsrsDomainChange(payload: DomainChangePayload): void {
   }
 
   if (screen === 'library') {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(FSRS_LIBRARY_REFRESH_EVENT));
-    }
+    flashEntityIds(collectDomainEntityIds(payload));
+    return;
+  }
+
+  if (screen === 'settings') {
     flashEntityIds(collectDomainEntityIds(payload));
     return;
   }
 
   if (screen === 'session') {
-    const cards = asReviewCards(
-      (payload as DomainChangePayload & { cards?: unknown }).cards,
-    );
-    let toAppend = cards;
-    if (toAppend.length === 0) {
-      const ids = cardIdsFromPayload(payload);
-      if (ids.length === 0) return;
-      toAppend = ids.map((id) => ({
-        id,
-        ankiCardId: id,
-        front: '',
-        back: '',
-      }));
+    if (
+      payload.source === 'agent'
+      && (payload.action === 'card_updated' || payload.action === 'cards_retemplated')
+    ) {
+      const cards = cardsFromCardMutationPayload(payload);
+      useFsrsReviewStore.getState().reconcileAgentCardContent(cards);
+      flashEntityIds(collectDomainEntityIds(payload));
+      return;
     }
+    if (
+      payload.source === 'agent'
+      && (payload.action === 'undo_last_review' || payload.action === 'set_suspended')
+    ) {
+      useFsrsReviewStore.getState().reconcileAgentReviewChange(
+        payload.action as FsrsAgentReviewAction,
+        agentReviewStateChanges(payload),
+      );
+      flashEntityIds(collectDomainEntityIds(payload));
+      return;
+    }
+    if (payload.action !== 'enqueue') {
+      flashEntityIds(collectDomainEntityIds(payload));
+      return;
+    }
+    const toAppend = cardsFromEnqueuePayload(payload);
+    if (toAppend.length === 0) return;
     const added = useFsrsReviewStore.getState().appendToQueue(toAppend);
     if (added > 0) {
       notifyAppended(added);
-      flashEntityIds(toAppend.map((c) => c.id));
+      flashEntityIds(toAppend.map((c) => c.ankiCardId ?? c.id));
     }
   }
 }

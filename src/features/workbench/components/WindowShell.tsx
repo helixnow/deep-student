@@ -12,7 +12,7 @@
  * 指针引擎注入点：P2 的 useWindowPointer（components/window-shell/useWindowPointer.ts）
  * 默认经 useWorkbenchWindowPointer 适配器接入；useDefaultWindowPointer 保留为无吸附兜底。
  */
-import React, { memo, useCallback, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
   DisplayMode,
@@ -27,6 +27,13 @@ import {
   enterShellGestureGlobal,
   leaveShellGestureGlobal,
 } from '../core/shellGestureFlags';
+import {
+  resumeAllNativeSurfaces,
+  resumeNativeSurface,
+  suspendAllNativeSurfaces,
+  syncNativeSurface,
+  suspendNativeSurface,
+} from '../core/nativeSurfaceEvents';
 import {
   buildTileSettleKeyframes,
   computeTiledFrame,
@@ -336,6 +343,12 @@ interface ShellGestureSession {
   releaseCursor: () => void;
 }
 
+/** 一次 restore FLIP 的原生表面租约；cleanup 必须只清理自身会话。 */
+interface RestoreAnimationSession {
+  animation: Animation;
+  cleanup: () => void;
+}
+
 const WindowShellImpl: React.FC<WindowShellProps> = ({
   windowId,
   tileMargin = DEFAULT_TILE_MARGIN,
@@ -361,7 +374,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   /** 手势会话：DOM class/style/光标锁直写，0 次 React 重渲染 */
   const gestureRef = useRef<ShellGestureSession | null>(null);
   /** 退出 maximize/tile 的 FLIP settle（拖拽 tear-out 不走此路径） */
-  const restoreAnimRef = useRef<Animation | null>(null);
+  const restoreAnimRef = useRef<RestoreAnimationSession | null>(null);
   /** restoreToFloating 自管 settle 时置位，避免 store 订阅重复播 */
   const ownedRestoreSettleRef = useRef(false);
   /** 拖拽 tear-out 进行中：跳过 restore settle（跟手优先） */
@@ -394,6 +407,11 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   if (!gestureRef.current) {
     frameRef.current = frame;
   }
+
+  useLayoutEffect(() => {
+    if (!useWindowStore.getState().windows[windowId] || gestureRef.current) return;
+    syncNativeSurface(windowId);
+  }, [frame.h, frame.w, frame.x, frame.y, win?.displayMode, win?.minimized, windowId]);
 
   // ---- 手势壳层：classList / 光标锁 / 内容层 pointer-events（均不进 state）----
   /**
@@ -465,6 +483,11 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     };
     gestureRef.current = { kind, releaseCursor };
     enterShellGestureGlobal();
+    if (kind === 'resize') {
+      suspendNativeSurface(windowId);
+    } else {
+      syncNativeSurface(windowId);
+    }
     const winTypeId = useWindowStore.getState().windows[windowId]?.typeId;
     beginInteraction({
       kind: kind === 'move' ? 'drag' : 'resize',
@@ -533,6 +556,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       contentRef.current.removeAttribute('aria-hidden');
       contentRef.current.inert = false;
     }
+    resumeNativeSurface(windowId);
 
     // 拖拽期间延后的焦点：松手后再写 store（跟手优先）
     if (pendingFocusRef.current) {
@@ -570,10 +594,15 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
 
   /** 取消进行中的 restore FLIP（再次抓取 / 新 settle 前） */
   const cancelRestoreSettle = useCallback(() => {
-    const anim = restoreAnimRef.current;
-    if (!anim) return;
-    restoreAnimRef.current = null;
-    anim.cancel();
+    const session = restoreAnimRef.current;
+    if (!session) return;
+    try {
+      session.animation.cancel();
+    } finally {
+      // Web Animations 的 cancel 事件可能延后派发；下一次 FLIP 开始前必须
+      // 同步归还旧会话的 native-surface 租约，不能等事件回调。
+      session.cleanup();
+    }
   }, []);
 
   /**
@@ -586,13 +615,16 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       const el = rootRef.current;
       if (!el || prefersReducedMotion()) {
         settleShellFrame(to);
+        resumeNativeSurface(windowId);
         return;
       }
       const keyframes = buildTileSettleKeyframes(from, to);
       if (!keyframes || typeof el.animate !== 'function') {
         settleShellFrame(to);
+        resumeNativeSurface(windowId);
         return;
       }
+      suspendAllNativeSurfaces(windowId);
       settleShellFrame(to);
       const prevOrigin = el.style.transformOrigin;
       el.style.transformOrigin = '0 0';
@@ -601,16 +633,26 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         easing: 'linear',
         fill: 'none',
       });
-      restoreAnimRef.current = anim;
-      const cleanup = () => {
-        el.style.transformOrigin = prevOrigin;
-        if (restoreAnimRef.current === anim) restoreAnimRef.current = null;
+      const session: RestoreAnimationSession = {
+        animation: anim,
+        cleanup: () => {},
       };
-      anim.addEventListener('finish', cleanup);
-      anim.addEventListener('cancel', cleanup);
+      session.cleanup = () => {
+        // 旧动画的 delayed finish/cancel 不得触碰后继动画的 origin 或 lease。
+        if (restoreAnimRef.current !== session) return;
+        restoreAnimRef.current = null;
+        el.style.transformOrigin = prevOrigin;
+        resumeAllNativeSurfaces(windowId);
+      };
+      restoreAnimRef.current = session;
+      anim.addEventListener('finish', session.cleanup);
+      anim.addEventListener('cancel', session.cleanup);
     },
-    [cancelRestoreSettle, settleShellFrame],
+    [cancelRestoreSettle, settleShellFrame, windowId],
   );
+
+  // 卸载时也归还 FLIP 期间占用的全局 native-surface 租约。
+  useEffect(() => cancelRestoreSettle, [cancelRestoreSettle]);
 
   /** 非拖拽路径：从 managed → floating，带 FLIP settle */
   const restoreToFloating = useCallback(
@@ -769,11 +811,15 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       if (anchor.w !== f.w || anchor.h !== f.h) {
         dragAnchorRef.current = { ...f };
         writeLayoutFrame(el, f);
+        syncNativeSurface(windowId);
         return;
       }
       const dx = f.x - anchor.x;
       const dy = f.y - anchor.y;
       el.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+      // Browser child WebViews are native siblings, so mirror the translated
+      // DOM slot into native bounds. The consumer coalesces these events to rAF.
+      syncNativeSurface(windowId);
       markInteraction('firstMove');
       return;
     }
@@ -783,7 +829,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     if (gestureRef.current?.kind === 'resize') {
       markInteraction('firstMove');
     }
-  }, [writeLayoutFrame]);
+  }, [windowId, writeLayoutFrame]);
 
   const handleSnapZoneChange = useCallback(
     (zone: SnapZone) => {

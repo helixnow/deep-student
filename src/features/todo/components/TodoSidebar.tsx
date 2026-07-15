@@ -22,6 +22,7 @@ import {
   X,
   PencilSimple,
   SquaresFour,
+  Robot,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
@@ -125,6 +126,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
     activeListId,
     filter,
     overdueCount,
+    workspaceView,
+    setWorkspaceView,
     setActiveList,
     setViewFilter,
     createList,
@@ -182,14 +185,16 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
       } else {
         setActiveList(null);
       }
+      setWorkspaceView('todos');
       setViewFilter(view);
       onItemSelect?.();
     },
-    [lists, setActiveList, setViewFilter, onItemSelect],
+    [lists, setActiveList, setViewFilter, setWorkspaceView, onItemSelect],
   );
 
   const handleListClick = useCallback(
     (list: TodoList) => {
+      setWorkspaceView('todos');
       if (filter.view !== 'all') {
         setActiveList(list.id);
         setViewFilter('all');
@@ -198,7 +203,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
       }
       onItemSelect?.();
     },
-    [filter.view, setActiveList, setViewFilter, onItemSelect],
+    [filter.view, setActiveList, setViewFilter, setWorkspaceView, onItemSelect],
   );
 
   const startRename = useCallback((list: TodoList) => {
@@ -287,7 +292,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
         <div className="space-y-0.5">
           {SMART_VIEWS.map(({ id, icon: Icon, labelKey }) => {
             const isActive =
-              filter.view === id && (id !== 'all' || activeListId === null);
+              workspaceView === 'todos' && filter.view === id && (id !== 'all' || activeListId === null);
             const showOverdueBadge = id === 'overdue' && overdueCount > 0;
             return (
               <NavRow
@@ -310,6 +315,16 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
               </NavRow>
             );
           })}
+          <NavRow
+            isActive={workspaceView === 'automations'}
+            onClick={() => {
+              setWorkspaceView('automations');
+              onItemSelect?.();
+            }}
+            leftSlot={<Robot size={18} weight="duotone" />}
+          >
+            {t('todo:automation.title', '定时任务')}
+          </NavRow>
         </div>
       </div>
 
@@ -361,7 +376,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
 
           <div className="space-y-0.5">
             {filteredLists.map((list) => {
-              const isActive = activeListId === list.id && filter.view === 'all';
+              const isActive = workspaceView === 'todos' && activeListId === list.id && filter.view === 'all';
 
               // 行内重命名态
               if (renamingListId === list.id) {

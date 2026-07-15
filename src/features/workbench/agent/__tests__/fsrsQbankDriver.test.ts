@@ -21,6 +21,10 @@ import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { agentFlashMany } from '../visuals/agentFlash';
 import {
+  FSRS_LIBRARY_REFRESH_EVENT,
+  FSRS_STATS_REFRESH_EVENT,
+} from '@/features/flashcards/events';
+import {
   __resetQbankDriverForTests,
   handleQbankDomainChange,
   isQbankInlineEditorActive,
@@ -85,7 +89,10 @@ describe('appendToQueue 铁律（R1-15）', () => {
       ratingBusy: false,
       usingMock: true,
       error: null,
+      errorKind: null,
       lastRated: null,
+      lastReview: null,
+      lastSuspended: null,
       dueCards: [],
     });
   });
@@ -105,6 +112,21 @@ describe('appendToQueue 铁律（R1-15）', () => {
     expect(state.queue[state.queueIndex]?.id).toBe('b');
   });
 
+  it('已完成 session 追加时跳过开头的暂停卡', () => {
+    useFsrsReviewStore.setState({ queueIndex: 3, flipped: false });
+
+    const added = useFsrsReviewStore.getState().appendToQueue([
+      { ...card('d'), suspended: true },
+      card('e'),
+    ]);
+
+    const state = useFsrsReviewStore.getState();
+    expect(added).toBe(2);
+    expect(state.queueIndex).toBe(4);
+    expect(state.queue[state.queueIndex]?.id).toBe('e');
+    expect(state.flipped).toBe(false);
+  });
+
   it('非 session 时 appendToQueue 为 no-op', () => {
     useFsrsReviewStore.setState({ screen: 'today', queueIndex: 0 });
     const added = useFsrsReviewStore.getState().appendToQueue([card('x')]);
@@ -112,32 +134,265 @@ describe('appendToQueue 铁律（R1-15）', () => {
     expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual(['a', 'b', 'c']);
   });
 
-  it('fsrs://changed 在 session 中仅 appendToQueue，不重置 queueIndex', () => {
+  it.each(['user', 'agent'] as const)(
+    '%s 后端 enqueue 使用 payload.cards 的完整内容追加且不重置 session',
+    (source) => {
+      handleFsrsDomainChange({
+        source,
+        action: 'enqueue',
+        entityIds: ['anki-d', 'anki-a'],
+        cards: [
+          { id: 'state-d', ankiCardId: 'anki-d', front: 'Question D', back: '' },
+          { id: 'a', ankiCardId: 'anki-a', front: '', back: 'Answer A' },
+        ],
+      });
+
+      const state = useFsrsReviewStore.getState();
+      expect(state.queue.map((c) => c.id)).toEqual(['a', 'b', 'c', 'state-d']);
+      expect(state.queue.at(-1)?.ankiCardId).toBe('anki-d');
+      expect(state.queue.map((c) => c.id)).not.toContain('anki-d');
+      expect(state.queueIndex).toBe(1);
+      expect(state.flipped).toBe(true);
+      expect(state.screen).toBe('session');
+    },
+  );
+
+  it('enqueue 只有 entityIds / cardStateIds 时不构造空卡', () => {
     handleFsrsDomainChange({
       source: 'agent',
       action: 'enqueue',
-      entityIds: ['d', 'a'],
-      // driver 支持扩展 cards 字段（完整 ReviewCard）
-      ...({ cards: [card('d'), card('a')] } as object),
+      entityIds: ['anki-z'],
+      cardStateIds: ['state-z'],
     });
 
-    const state = useFsrsReviewStore.getState();
-    expect(state.queue.map((c) => c.id)).toEqual(['a', 'b', 'c', 'd']);
-    expect(state.queueIndex).toBe(1);
-    expect(state.flipped).toBe(true);
-    expect(state.screen).toBe('session');
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
   });
 
-  it('R2-04：session 中 entity_ids 亦可 append（命名一致）', () => {
+  it('enqueue 透传 camel/snake 完整元数据并接受 Cloze-only 卡片', () => {
     handleFsrsDomainChange({
       source: 'agent',
       action: 'enqueue',
-      ...({ entity_ids: ['z'] } as object),
-    } as never);
+      cards: [
+        {
+          id: 'state-cloze',
+          ankiCardId: 'anki-cloze',
+          front: '',
+          back: '',
+          text: 'Capital: {{c1::Paris}}',
+          tags: ['geo'],
+          images: ['paris.png'],
+          templateId: 'design-redaction',
+          extraFields: { Hint: 'France' },
+          isErrorCard: true,
+          errorContent: 'source warning',
+        },
+        {
+          id: 'state-snake',
+          anki_card_id: 'anki-snake',
+          front: 'Question',
+          back: 'Answer',
+          template_id: 'design-swiss',
+          extra_fields: { Source: 'book' },
+          is_error_card: false,
+          error_content: null,
+        },
+      ],
+    });
 
-    const state = useFsrsReviewStore.getState();
-    expect(state.queue.map((c) => c.id)).toContain('z');
-    expect(state.queueIndex).toBe(1);
+    const appended = useFsrsReviewStore.getState().queue.slice(3);
+    expect(appended).toEqual([
+      expect.objectContaining({
+        id: 'state-cloze',
+        ankiCardId: 'anki-cloze',
+        text: 'Capital: {{c1::Paris}}',
+        images: ['paris.png'],
+        templateId: 'design-redaction',
+        extraFields: { Hint: 'France' },
+        isErrorCard: true,
+        errorContent: 'source warning',
+      }),
+      expect.objectContaining({
+        id: 'state-snake',
+        ankiCardId: 'anki-snake',
+        templateId: 'design-swiss',
+        extraFields: { Source: 'book' },
+        isErrorCard: false,
+        errorContent: null,
+      }),
+    ]);
+  });
+
+  it.each([
+    ['empty content', { id: 'state-empty', ankiCardId: 'anki-empty', front: '', back: '   ' }],
+    ['missing ankiCardId', { id: 'state-no-anki', front: 'Question', back: 'Answer' }],
+    ['missing state id', { id: '  ', ankiCardId: 'anki-no-state', front: 'Question', back: '' }],
+  ])('enqueue 的 payload.cards 含 %s 时不追加', (_case, invalidCard) => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      cards: [invalidCard],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
+  it.each(['cards_persisted', 'card_updated', 'card_deleted', 'cards_added', 'rate'])(
+    '%s 只刷新状态，不向活跃 session 追加 Anki id',
+    (action) => {
+      handleFsrsDomainChange({
+        source: action === 'cards_persisted' ? 'user' : 'agent',
+        action,
+        entityIds: [`anki-${action}`],
+        cards: [
+          {
+            id: `state-${action}`,
+            ankiCardId: `anki-${action}`,
+            front: `Question ${action}`,
+            back: `Answer ${action}`,
+          },
+        ],
+      });
+
+      const state = useFsrsReviewStore.getState();
+      expect(state.queue.map((c) => c.id)).toEqual(['a', 'b', 'c']);
+      expect(state.queueIndex).toBe(1);
+      expect(state.flipped).toBe(true);
+    },
+  );
+
+  it('Agent 撤销评分会重新打开对应卡并清除失效的本地撤销状态', () => {
+    useFsrsReviewStore.setState({
+      queue: [
+        { ...card('state-a'), ankiCardId: 'anki-a' },
+        { ...card('state-b'), ankiCardId: 'anki-b' },
+        { ...card('state-c'), ankiCardId: 'anki-c' },
+      ],
+      queueIndex: 2,
+      flipped: true,
+      lastRated: 3,
+      lastReview: { logId: 'log-b', cardStateId: 'state-b', queueIndex: 1 },
+    });
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'undo_last_review',
+      entityIds: ['anki-b'],
+      cardStateIds: ['state-b'],
+      cards: [{
+        ankiCardId: 'anki-b',
+        cardStateId: 'state-b',
+        suspended: false,
+        dueMs: 0,
+      }],
+    });
+
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      queueIndex: 1,
+      flipped: false,
+      lastRated: null,
+      lastReview: null,
+    });
+    expect(useFsrsReviewStore.getState().queue[1]?.suspended).toBe(false);
+  });
+
+  it('Agent 暂停当前卡会跳过它，恢复仍到期的卡会回到原位置', () => {
+    useFsrsReviewStore.setState({
+      queue: [
+        { ...card('state-a'), ankiCardId: 'anki-a' },
+        { ...card('state-b'), ankiCardId: 'anki-b' },
+        { ...card('state-c'), ankiCardId: 'anki-c' },
+      ],
+      queueIndex: 1,
+      flipped: true,
+      lastRated: 4,
+      lastReview: { logId: 'log-b', cardStateId: 'state-b', queueIndex: 1 },
+    });
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'set_suspended',
+      entityIds: ['anki-b'],
+      cards: [{
+        ankiCardId: 'anki-b',
+        cardStateId: 'state-b',
+        suspended: true,
+        dueMs: 0,
+      }],
+    });
+
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      queueIndex: 2,
+      flipped: false,
+      lastRated: null,
+      lastReview: null,
+      lastSuspended: { cardStateId: 'state-b', queueIndex: 1 },
+    });
+    expect(useFsrsReviewStore.getState().queue[1]?.suspended).toBe(true);
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'set_suspended',
+      entityIds: ['anki-b'],
+      cards: [{
+        ankiCardId: 'anki-b',
+        cardStateId: 'state-b',
+        suspended: false,
+        dueMs: 0,
+      }],
+    });
+
+    expect(useFsrsReviewStore.getState()).toMatchObject({
+      queueIndex: 1,
+      flipped: false,
+      lastSuspended: null,
+    });
+    expect(useFsrsReviewStore.getState().queue[1]?.suspended).toBe(false);
+  });
+
+  it('Agent 复习写入同时通知库和统计视图刷新', () => {
+    const onLibraryRefresh = vi.fn();
+    const onStatsRefresh = vi.fn();
+    window.addEventListener(FSRS_LIBRARY_REFRESH_EVENT, onLibraryRefresh);
+    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onStatsRefresh);
+
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'set_suspended',
+      entityIds: ['anki-b'],
+      cards: [{
+        ankiCardId: 'b',
+        cardStateId: 'b',
+        suspended: true,
+        dueMs: 0,
+      }],
+    });
+
+    expect(onLibraryRefresh).toHaveBeenCalledTimes(1);
+    expect(onStatsRefresh).toHaveBeenCalledTimes(1);
+    window.removeEventListener(FSRS_LIBRARY_REFRESH_EVENT, onLibraryRefresh);
+    window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onStatsRefresh);
+  });
+
+  it('enqueue 缺少 state id 时不会回退追加 entityIds', () => {
+    handleFsrsDomainChange({
+      source: 'agent',
+      action: 'enqueue',
+      entityIds: ['anki-only'],
+    });
+
+    expect(useFsrsReviewStore.getState().queue.map((c) => c.id)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
   });
 
   it('probe 只在真正处于复习的 session 中返回 hot', () => {
@@ -148,6 +403,22 @@ describe('appendToQueue 铁律（R1-15）', () => {
 
     useFsrsReviewStore.setState({ ratingBusy: true });
     expect(fsrsDriver.probe({ typeId: 'flashcards' })).toBe('hot');
+  });
+
+  it('settings 收到 FSRS domain change 时刷新统计页', () => {
+    const onRefresh = vi.fn();
+    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
+    useFsrsReviewStore.setState({ screen: 'settings' });
+
+    handleFsrsDomainChange({
+      source: 'user',
+      action: 'rate',
+      entityIds: ['anki-1'],
+    });
+
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(agentFlashMany).toHaveBeenCalledWith('flashcards', ['anki-1']);
+    window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
   });
 });
 
@@ -324,6 +595,47 @@ describe('driver undo truthfulness', () => {
     expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual([
       'a',
       'b',
+    ]);
+  });
+
+  it.each([
+    ['cardIds-only', { cardIds: ['anki-only'] }],
+    [
+      'empty content',
+      {
+        cards: [
+          {
+            id: 'state-empty',
+            ankiCardId: 'anki-empty',
+            front: ' ',
+            back: '',
+          },
+        ],
+      },
+    ],
+  ])('FSRS apply 拒绝 %s payload 且不追加空卡', async (_case, payload) => {
+    useFsrsReviewStore.setState({
+      screen: 'session',
+      queue: [card('a')],
+      queueIndex: 0,
+      flipped: false,
+    });
+    const { run } = makeRun('flashcards');
+
+    const receipt = await fsrsDriver.apply(run, [
+      {
+        kind: 'fsrs_enqueue',
+        destructive: false,
+        label: 'invalid enqueue',
+        payload,
+      },
+    ]);
+
+    expect(receipt.status).toBe('failed');
+    expect(receipt.applied).toBe(0);
+    expect(receipt.undone).toEqual(['invalid enqueue']);
+    expect(useFsrsReviewStore.getState().queue.map((item) => item.id)).toEqual([
+      'a',
     ]);
   });
 

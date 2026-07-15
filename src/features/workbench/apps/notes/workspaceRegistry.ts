@@ -35,6 +35,8 @@ export interface NotesWorkspaceHostController {
   /** Select an existing tab or create one. Resolve after its content surface is mounted. */
   openResource: (resource: NotesWorkspaceResourceRef) => void | Promise<void>;
   closeResource?: (resource: NotesWorkspaceResourceRef) => void | Promise<void>;
+  /** Whether any internal tab has edits that must be confirmed before closing the OS window. */
+  hasUnsavedChanges?: () => boolean;
   getActiveResource?: () => NotesWorkspaceResourceRef | null;
   listResources?: () => readonly NotesWorkspaceResourceRef[];
   /** Bounded, presentation-safe tab metadata for ACR observation. */
@@ -270,8 +272,8 @@ function payloadRecord(payload: unknown): Record<string, unknown> | null {
     : null;
 }
 
-async function waitForNoteEditor(resourceId: string) {
-  const ready = getNoteEditor(resourceId);
+async function waitForNoteEditor(resourceId: string, windowId?: string) {
+  const ready = getNoteEditor(resourceId, windowId);
   if (ready) return ready;
   return new Promise<ReturnType<typeof getNoteEditor>>((resolve) => {
     let cancel = () => undefined;
@@ -283,7 +285,7 @@ async function waitForNoteEditor(resourceId: string) {
       clearTimeout(timer);
       cancel();
       resolve(api);
-    });
+    }, windowId);
   });
 }
 
@@ -320,7 +322,7 @@ export async function prepareWorkspaceResource(
   const windowId = await requestWorkspaceResource(resource, preferredWindowId);
   if (!windowId) return null;
   const ready = resource.type === 'note'
-    ? await waitForNoteEditor(resource.id)
+    ? await waitForNoteEditor(resource.id, windowId)
     : await waitForMindmapStore(resource.id, windowId);
   return ready ? windowId : null;
 }
@@ -462,6 +464,22 @@ export function getWorkspaceOpenResources(): readonly NotesWorkspaceResourceRef[
     }
   }
   return [...resources.values()];
+}
+
+/**
+ * Query every mounted Notes workspace before a shared Notes OS window closes.
+ * A checker failure is treated as dirty so a broken editor integration cannot
+ * silently discard in-memory changes.
+ */
+export function hasUnsavedNotesWorkspaceChanges(): boolean {
+  for (const { controller } of hosts.values()) {
+    try {
+      if (controller.hasUnsavedChanges?.()) return true;
+    } catch {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Return only the tabs hosted by one Notes window; never falls back to other hosts. */

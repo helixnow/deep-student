@@ -211,8 +211,8 @@ describe('WorkbenchSettingsSection', () => {
     expect(
       screen.getAllByText('请先启用学习桌面，才能打开内置浏览器相关选项。').length,
     ).toBeGreaterThan(0);
-    expect(screen.getByRole('radio', { name: '本地与白名单' })).toBeDisabled();
-    expect(screen.getByRole('radio', { name: '完整上网（需确认）' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: '仅 HTTPS 公网' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: '允许公网 HTTP（需确认）' })).toBeDisabled();
     expect(screen.queryByRole('switch', { name: 'Windows CDP 加速（高级）' })).not.toBeInTheDocument();
   });
 
@@ -295,7 +295,7 @@ describe('WorkbenchSettingsSection', () => {
       'aria-checked',
       'true',
     );
-    expect(screen.getByRole('radio', { name: '本地与白名单' })).toHaveAttribute(
+    expect(screen.getByRole('radio', { name: '仅 HTTPS 公网' })).toHaveAttribute(
       'aria-checked',
       'true',
     );
@@ -306,7 +306,7 @@ describe('WorkbenchSettingsSection', () => {
       'true',
     );
 
-    fireEvent.click(screen.getByRole('radio', { name: '完整上网（需确认）' }));
+    fireEvent.click(screen.getByRole('radio', { name: '允许公网 HTTP（需确认）' }));
     expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
     expect(settingsStore.get('desktop.workbenchBrowserNetworkMode')).toBe('local_whitelist');
 

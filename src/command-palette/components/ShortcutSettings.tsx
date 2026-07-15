@@ -123,24 +123,24 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
       return;
     }
 
-    showGlobalNotification('success', t('command_palette:shortcut_saved', '快捷键已保存'));
+    showGlobalNotification('success', t('command_palette:shortcut_saved'));
     setEditing(null);
   }, [editing, t]);
 
   const resetShortcut = useCallback((commandId: string) => {
     shortcutManager.resetShortcut(commandId);
-    showGlobalNotification('info', t('command_palette:shortcut_reset', '快捷键已重置为默认'));
+    showGlobalNotification('info', t('command_palette:shortcut_reset'));
   }, [t]);
 
   const disableShortcut = useCallback((commandId: string) => {
     shortcutManager.disableShortcut(commandId);
-    showGlobalNotification('info', t('command_palette:shortcut_disabled', '快捷键已禁用'));
+    showGlobalNotification('info', t('command_palette:shortcut_disabled'));
   }, [t]);
 
   const resetAllShortcuts = useCallback(() => {
-    if (unifiedConfirm(t('command_palette:confirm_reset_all', '确定要重置所有自定义快捷键吗？'))) {
+    if (unifiedConfirm(t('command_palette:confirm_reset_all'))) {
       shortcutManager.resetAll();
-      showGlobalNotification('success', t('command_palette:all_shortcuts_reset', '所有快捷键已重置'));
+      showGlobalNotification('success', t('command_palette:all_shortcuts_reset'));
     }
   }, [t]);
 
@@ -153,7 +153,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
     a.download = 'dstu-shortcuts.json';
     a.click();
     URL.revokeObjectURL(url);
-    showGlobalNotification('success', t('command_palette:config_exported', '配置已导出'));
+    showGlobalNotification('success', t('command_palette:config_exported'));
   }, [t]);
 
   const importConfig = useCallback(() => {
@@ -168,16 +168,16 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
         const text = await file.text();
         const config = JSON.parse(text);
         if (typeof config !== 'object' || config === null || Array.isArray(config)) {
-          showGlobalNotification('error', t('command_palette:import_failed', '导入失败：格式无效'));
+          showGlobalNotification('error', t('command_palette:import_failed'));
           return;
         }
         const result = shortcutManager.importConfig(config);
         const msg = result.skipped.length > 0
-          ? t('command_palette:config_imported_partial', `已导入 ${result.imported} 项，跳过 ${result.skipped.length} 项无效命令`)
-          : t('command_palette:config_imported', '配置已导入');
+          ? t('command_palette:config_imported_partial', { imported: result.imported, skipped: result.skipped.length })
+          : t('command_palette:config_imported');
         showGlobalNotification('success', msg);
       } catch (error: unknown) {
-        showGlobalNotification('error', t('command_palette:import_failed', '导入失败'));
+        showGlobalNotification('error', t('command_palette:import_failed'));
       }
     };
     input.click();
@@ -214,7 +214,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
   }, [editing]);
 
   const categories: Array<{ value: CommandCategory | 'all'; label: string }> = [
-    { value: 'all', label: t('command_palette:all_categories', '全部') },
+    { value: 'all', label: t('command_palette:all_categories') },
     ...Object.entries(CATEGORY_CONFIG).map(([key, config]) => ({
       value: key as CommandCategory,
       label: t(config.labelKey, key),
@@ -233,7 +233,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
             <div className="relative flex-1 w-full sm:max-w-xs">
               <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
               <Input
-                placeholder={t('command_palette:search_shortcuts', '搜索快捷键...')}
+                placeholder={t('command_palette:search_shortcuts')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-8 h-8 text-xs bg-transparent"
@@ -259,15 +259,15 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
             <div className="flex gap-1 ml-auto">
               <NotionButton variant="ghost" size="sm" onClick={exportConfig} className="gap-1.5">
                 <Download size={12} />
-                {t('common:actions.export', '导出')}
+                {t('common:actions.export')}
               </NotionButton>
               <NotionButton variant="ghost" size="sm" onClick={importConfig} className="gap-1.5">
                 <Upload size={12} />
-                {t('common:actions.import', '导入')}
+                {t('common:actions.import')}
               </NotionButton>
               <NotionButton variant="ghost" size="sm" onClick={resetAllShortcuts} className="gap-1.5">
                 <ArrowCounterClockwise size={12} />
-                {t('command_palette:reset_all', '全部重置')}
+                {t('command_palette:reset_all')}
               </NotionButton>
             </div>
           </div>
@@ -297,7 +297,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                         </span>
                         {hasCustom && (
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-medium flex-shrink-0">
-                            {t('command_palette:custom', '自定义')}
+                            {t('command_palette:custom')}
                           </span>
                         )}
                       </div>
@@ -308,7 +308,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                             {editing.listening ? (
                               <div className="flex items-center gap-2 px-2.5 py-1 bg-primary/10 rounded-md text-primary text-xs font-medium">
                                 <Keyboard size={13} className="animate-pulse" />
-                                {t('command_palette:press_shortcut', '按下快捷键...')}
+                                {t('command_palette:press_shortcut')}
                               </div>
                             ) : (
                               <div className="flex items-center gap-2">
@@ -322,13 +322,13 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   </div>
                                 )}
                                 <NotionButton size="sm" onClick={saveShortcut} disabled={!editing.newShortcut || !!editing.conflict}>
-                                  {t('common:save', '保存')}
+                                  {t('common:save')}
                                 </NotionButton>
                                 <NotionButton size="sm" variant="ghost" onClick={() => startEditing(command.id)}>
-                                  {t('command_palette:re_record', '重录')}
+                                  {t('command_palette:re_record')}
                                 </NotionButton>
                                 <NotionButton size="sm" variant="ghost" onClick={cancelEditing}>
-                                  {t('common:cancel', '取消')}
+                                  {t('common:cancel')}
                                 </NotionButton>
                               </div>
                             )}
@@ -341,7 +341,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                 ? 'bg-muted text-foreground/80'
                                 : 'text-muted-foreground/40 italic'
                             )}>
-                              {effectiveShortcut ? formatShortcut(effectiveShortcut) : t('command_palette:no_shortcut', '无')}
+                              {effectiveShortcut ? formatShortcut(effectiveShortcut) : t('command_palette:no_shortcut')}
                             </span>
 
                             <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity">
@@ -350,7 +350,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                 variant="ghost"
                                 onClick={() => startEditing(command.id)}
                               >
-                                {t('command_palette:edit_shortcut', '编辑')}
+                                {t('command_palette:edit_shortcut')}
                               </NotionButton>
                               {hasCustom && (
                                 <NotionButton
@@ -358,7 +358,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   variant="ghost"
                                   iconOnly
                                   onClick={() => resetShortcut(command.id)}
-                                  title={t('command_palette:reset_shortcut', '重置')}
+                                  title={t('command_palette:reset_shortcut')}
                                 >
                                   <ArrowCounterClockwise size={12} />
                                 </NotionButton>
@@ -370,7 +370,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   iconOnly
                                   onClick={() => disableShortcut(command.id)}
                                   className="hover:text-destructive"
-                                  title={t('command_palette:disable_shortcut', '禁用')}
+                                  title={t('command_palette:disable_shortcut')}
                                 >
                                    <Trash size={12} />
                                 </NotionButton>
@@ -388,7 +388,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
 
           {filteredCommands.length === 0 && (
             <div className="py-12 text-center text-muted-foreground/60 text-sm">
-              {t('command_palette:no_commands_found', '未找到命令')}
+              {t('command_palette:no_commands_found')}
             </div>
           )}
         </div>

@@ -435,7 +435,7 @@ describe('R3-04 chaos robustness', () => {
       });
 
       // 模拟 Rust 超时后 emit cancel → stopRun（abort 会唤醒挂起）
-      stageManager.stopRun('run-chaos');
+      stageManager.stopRun(JSON.stringify(['sess-chaos', 'run-chaos']));
 
       const res = await p;
       expect(res.ok).toBe(true);
@@ -512,7 +512,9 @@ describe('R3-04 chaos robustness', () => {
       const receipt = res.data as AcrReceipt;
       expect(receipt.status).toBe('failed');
       expect(receipt.message).toMatch(/driver boom/);
-      expect(abort).toHaveBeenCalledWith('run-chaos');
+      expect(abort).toHaveBeenCalledWith(
+        JSON.stringify(['sess-chaos', 'run-chaos']),
+      );
       expect(usePresenceStore.getState().byWindow['win-chaos']).toBeUndefined();
 
       const again = await stageManager.handleBridgeRequest(
@@ -666,7 +668,7 @@ describe('R3-04 chaos robustness', () => {
       const first = await stageManager.handleBridgeRequest(
         baseReq({
           command: 'revert_run',
-          runId: 'run-rev',
+          runId: 'revert-call-1',
           args: { runId: 'run-rev' },
         }),
       );
@@ -674,7 +676,7 @@ describe('R3-04 chaos robustness', () => {
         baseReq({
           command: 'revert_run',
           correlationId: 'corr-rev-2',
-          runId: 'run-rev',
+          runId: 'revert-call-2',
           args: { runId: 'run-rev' },
         }),
       );

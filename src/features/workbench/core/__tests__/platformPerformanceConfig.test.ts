@@ -72,6 +72,9 @@ describe('OS mode drag performance anti-regression', () => {
     const snap = readRepo('src', 'features', 'workbench', 'components', 'SnapPreview.tsx');
     expect(snap).toContain('beginShellSettling');
     expect(snap).toMatch(/只动画最近聚焦/);
+    expect(snap.indexOf('beginShellSettling();')).toBeLessThan(
+      snap.indexOf('// 等 React 提交新布局后再 FLIP'),
+    );
   });
 
   it('内容暂停 CSS 禁止 host * 通配', () => {

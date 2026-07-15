@@ -31,6 +31,10 @@ let bridgeActive = false;
 let activeUnlisten: UnlistenFn | null = null;
 const progressThrottle = new Map<string, ProgressThrottleEntry>();
 
+function progressKey(correlationId: string, bridgeToken?: string): string {
+  return JSON.stringify([correlationId, bridgeToken ?? '']);
+}
+
 type EmitFn = (event: string, payload: unknown) => Promise<void>;
 let cachedEmit: EmitFn | null = null;
 
@@ -55,8 +59,8 @@ async function emitProgressPayload(payload: AcrProgressEvent): Promise<void> {
   }
 }
 
-function flushProgress(correlationId: string): void {
-  const entry = progressThrottle.get(correlationId);
+function flushProgress(key: string): void {
+  const entry = progressThrottle.get(key);
   if (!entry?.pending) return;
   const payload = entry.pending;
   entry.pending = null;
@@ -72,8 +76,12 @@ function flushProgress(correlationId: string): void {
   });
 }
 
-async function finalizeProgress(correlationId: string): Promise<void> {
-  const entry = progressThrottle.get(correlationId);
+async function finalizeProgress(
+  correlationId: string,
+  bridgeToken?: string,
+): Promise<void> {
+  const key = progressKey(correlationId, bridgeToken);
+  const entry = progressThrottle.get(key);
   if (!entry) return;
 
   if (entry.timer) {
@@ -89,8 +97,8 @@ async function finalizeProgress(correlationId: string): Promise<void> {
     await emitProgressPayload(pending);
   }
 
-  if (progressThrottle.get(correlationId) === entry) {
-    progressThrottle.delete(correlationId);
+  if (progressThrottle.get(key) === entry) {
+    progressThrottle.delete(key);
   }
 }
 
@@ -116,31 +124,34 @@ export function emitAcrProgress(
   total: number | undefined,
   message: string,
   entityId?: string,
+  bridgeToken?: string,
 ): void {
   if (!correlationId) return;
   const next: AcrProgressEvent = {
     correlationId,
+    ...(bridgeToken ? { bridgeToken } : {}),
     step,
     total,
     message,
     entityId,
   };
 
-  let entry = progressThrottle.get(correlationId);
+  const key = progressKey(correlationId, bridgeToken);
+  let entry = progressThrottle.get(key);
   if (!entry) {
     entry = { lastEmitAt: null, timer: null, pending: null, inFlight: null };
-    progressThrottle.set(correlationId, entry);
+    progressThrottle.set(key, entry);
   }
 
   entry.pending = mergeProgress(entry.pending, next);
   if (entry.lastEmitAt == null) {
-    flushProgress(correlationId);
+    flushProgress(key);
     return;
   }
 
   const elapsed = Date.now() - entry.lastEmitAt;
   if (elapsed >= PROGRESS_MIN_INTERVAL_MS) {
-    flushProgress(correlationId);
+    flushProgress(key);
     return;
   }
 
@@ -148,7 +159,7 @@ export function emitAcrProgress(
   const wait = PROGRESS_MIN_INTERVAL_MS - elapsed;
   entry.timer = setTimeout(() => {
     entry!.timer = null;
-    flushProgress(correlationId);
+    flushProgress(key);
   }, wait);
 }
 
@@ -167,16 +178,22 @@ async function handleRequest(req: AcrBridgeRequest): Promise<void> {
   let response: AcrBridgeResponse;
   try {
     response = await stageManager.handleBridgeRequest(req);
+    response = {
+      ...response,
+      correlationId: req.correlationId,
+      ...(req.bridgeToken ? { bridgeToken: req.bridgeToken } : {}),
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     response = {
       correlationId: req.correlationId,
+      ...(req.bridgeToken ? { bridgeToken: req.bridgeToken } : {}),
       ok: false,
       error: message || 'StageManager handleBridgeRequest failed',
     };
   }
 
-  await finalizeProgress(req.correlationId);
+  await finalizeProgress(req.correlationId, req.bridgeToken);
 
   try {
     const { emit } = await import('@tauri-apps/api/event');

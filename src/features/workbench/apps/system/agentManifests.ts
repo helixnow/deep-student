@@ -1,6 +1,8 @@
 import { useFsrsReviewStore } from '@/features/flashcards/store/fsrsReviewStore';
+import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { useTodoStore } from '@/features/todo/stores/useTodoStore';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import type {
   ActivationContext,
   ActivationHandlerResult,
@@ -19,6 +21,10 @@ import {
   stableRevision,
 } from '../agentManifestUtils';
 import { handleTodoActivation } from './todoActivation';
+import {
+  getTaskDashboardAgentSurface,
+  getTemplateAgentSurface,
+} from './agentSurfaceRegistry';
 
 function todoListRef(id: string): string {
   return stableAgentRef('todo', 'list', id);
@@ -173,6 +179,15 @@ export const todoAgentManifest: AppAgentManifest = {
       filter: after.filter,
       quickAddRequestId: after.quickAddPreset?.requestId ?? null,
     });
+    if (!result.changed) {
+      return {
+        handled: false,
+        changed: false,
+        code: 'ACTION_UNAVAILABLE',
+        hint: `${action.name} 未改变待办状态`,
+      };
+    }
+    result.acknowledged = true;
     const args = requestedArgs;
     if (action.name === 'focusItem' && typeof args.itemId === 'string') {
       result.entityRefs = [todoItemRef(args.itemId)];
@@ -197,7 +212,7 @@ export const todoAgentManifest: AppAgentManifest = {
     } else if (action.name === 'search') {
       result.postconditions = [{ kind: 'state_equals', path: 'search', value: String(args.query ?? '') }];
       if (result.changed) result.undo = { inverse: { name: 'search', args: { query: snapshot.filter.search }, expect: [{ kind: 'state_equals', path: 'search', value: snapshot.filter.search }] }, label: '恢复待办搜索' };
-    } else if (action.name === 'setFilters' && result.changed) {
+    } else if (action.name === 'setFilters') {
       const restoredRevision = stableRevision(snapshot.filter);
       result.undo = {
         inverse: {
@@ -211,8 +226,6 @@ export const todoAgentManifest: AppAgentManifest = {
         },
         label: '恢复待办筛选',
       };
-    } else if (action.name === 'setFilters') {
-      result.postconditions = [{ kind: 'state_equals', path: 'filtersRevision', value: stableRevision(after.filter) }];
     } else if (action.name === 'quickAdd') {
       result.postconditions = [{ kind: 'state_equals', path: 'quickAddOpen', value: true }];
     }
@@ -224,12 +237,27 @@ function cardRef(id: string): string {
   return stableAgentRef('flashcards', 'card', id);
 }
 
+function boundedCardText(value: string | null | undefined): { value: string | null; truncated: boolean } {
+  if (typeof value !== 'string') return { value: null, truncated: false };
+  return value.length <= 2_000
+    ? { value, truncated: false }
+    : { value: value.slice(0, 2_000), truncated: true };
+}
+
+const LIBRARY_CARD_ACTIONS = new Set([
+  'editCard',
+  'enqueueCard',
+  'setSuspended',
+  'undoLastReview',
+  'deleteCard',
+]);
+
 export function createFlashcardsAgentManifest(
   activation: (ctx: ActivationContext) => ActivationHandlerResult | Promise<ActivationHandlerResult>,
 ): AppAgentManifest {
   return {
     version: 2,
-    description: '观察并导航闪卡复习；翻面可用，但评分始终保留给用户。',
+    description: '观察并管理真实闪卡库与复习会话；支持搜索、分页、编辑、入队、暂停、撤销和确认删除，但评分始终保留给用户。',
     capabilities: [
       {
         name: 'startReview', description: '按到期卡或指定卡片批次开始复习。',
@@ -248,39 +276,176 @@ export function createFlashcardsAgentManifest(
       { name: 'startDueReview', description: '加载到期卡并开始复习会话。', inputSchema: NO_ARGS_SCHEMA, risk: 'medium', mutates: true, reversible: false, idempotent: false },
       { name: 'flipCard', description: '在当前卡片正反面之间切换；不会评分。', inputSchema: NO_ARGS_SCHEMA, risk: 'low', mutates: true, reversible: true, idempotent: false, targetKinds: ['flashcard'] },
       { name: 'endReview', description: '结束当前复习会话并返回今日页面。', inputSchema: NO_ARGS_SCHEMA, risk: 'medium', mutates: true, reversible: false, idempotent: true },
+      {
+        name: 'searchLibrary', description: '搜索真实卡片库；空字符串清除搜索。',
+        inputSchema: objectSchema({ query: { type: 'string', maxLength: 500 } }, ['query']),
+        risk: 'read', mutates: true, reversible: true, idempotent: true,
+      },
+      {
+        name: 'setLibraryPage', description: '切换卡片库分页。',
+        inputSchema: objectSchema({ page: { type: 'integer', minimum: 1 } }, ['page']),
+        risk: 'read', mutates: true, reversible: true, idempotent: true,
+      },
+      {
+        name: 'editCard', description: '编辑观察到的卡片内容；不会评分。',
+        inputSchema: {
+          ...objectSchema({
+            cardId: { type: 'string', minLength: 1 },
+            front: { type: 'string', maxLength: 20_000 },
+            back: { type: 'string', maxLength: 20_000 },
+            text: { type: 'string', maxLength: 20_000 },
+            tags: { type: 'array', items: { type: 'string', maxLength: 200 }, maxItems: 100 },
+          }, ['cardId']),
+          anyOf: [
+            { required: ['front'] },
+            { required: ['back'] },
+            { required: ['text'] },
+            { required: ['tags'] },
+          ],
+        },
+        risk: 'medium', mutates: true, reversible: false, idempotent: true,
+        targetKinds: ['flashcard'], targetOptional: true, targetIdPath: 'cardId',
+      },
+      {
+        name: 'enqueueCard', description: '将观察到的未入队卡片加入复习计划。',
+        inputSchema: objectSchema({ cardId: { type: 'string', minLength: 1 } }, ['cardId']),
+        risk: 'medium', mutates: true, reversible: false, idempotent: true,
+        targetKinds: ['flashcard'], targetOptional: true, targetIdPath: 'cardId',
+      },
+      {
+        name: 'setSuspended', description: '暂停或恢复观察到的已入队卡片。',
+        inputSchema: objectSchema({
+          cardId: { type: 'string', minLength: 1 },
+          suspended: { type: 'boolean' },
+        }, ['cardId', 'suspended']),
+        risk: 'medium', mutates: true, reversible: true, idempotent: true,
+        targetKinds: ['flashcard'], targetOptional: true, targetIdPath: 'cardId',
+      },
+      {
+        name: 'undoLastReview', description: '撤销观察到的卡片最新一次评分；不会产生新评分。',
+        inputSchema: objectSchema({ cardId: { type: 'string', minLength: 1 } }, ['cardId']),
+        risk: 'high', mutates: true, reversible: false, idempotent: false,
+        targetKinds: ['flashcard'], targetOptional: true, targetIdPath: 'cardId',
+      },
+      {
+        name: 'deleteCard', description: '永久删除观察到的单张库卡；必须经过 High 风险确认。',
+        inputSchema: objectSchema({ cardId: { type: 'string', minLength: 1 } }, ['cardId']),
+        risk: 'high', mutates: true, reversible: false, idempotent: false,
+        targetKinds: ['flashcard'], targetOptional: true, targetIdPath: 'cardId',
+      },
     ],
     observe() {
       const state = useFsrsReviewStore.getState();
+      const library = useFlashcardsLibraryStore.getState();
       const current = state.queue[state.queueIndex];
-      const visible = state.screen === 'session'
+      const visibleReviewCards = state.screen === 'session'
         ? state.queue.slice(Math.max(0, state.queueIndex), state.queueIndex + 30)
-        : state.dueCards.slice(0, 30);
-      const entities: AgentEntitySummary[] = visible.map((card, index) => ({
-        ref: cardRef(card.ankiCardId ?? card.id),
-        kind: 'flashcard',
-        label: shortLabel(card.front) ?? card.ankiCardId ?? card.id,
-        actions: index === 0 && state.screen === 'session' ? ['flipCard'] : [],
-        state: {
-          cardStateId: card.id,
-          ankiCardId: card.ankiCardId ?? null,
-          current: card.id === current?.id,
-        },
-      }));
+        : state.screen === 'library' ? [] : state.dueCards.slice(0, 30);
+      const entities: AgentEntitySummary[] = state.screen === 'library'
+        ? library.items.slice(0, 30).map((card) => {
+          const actions = [
+            'editCard',
+            'deleteCard',
+            ...(card.enqueued ? ['startReview', 'setSuspended'] : ['enqueueCard']),
+            ...(card.latestReview?.undoable ? ['undoLastReview'] : []),
+          ];
+          return {
+            ref: cardRef(card.id),
+            kind: 'flashcard',
+            label: shortLabel(card.front) ?? card.id,
+            actions,
+            state: {
+              ankiCardId: card.id,
+              cardStateId: card.stateId ?? null,
+              version: card.version ?? card.updated_at,
+              reviewVersion: card.reviewVersion ?? null,
+              enqueued: card.enqueued,
+              suspended: card.suspended,
+              due: card.isDue,
+              latestReviewLogId: card.latestReview?.logId ?? null,
+            },
+          };
+        })
+        : visibleReviewCards.map((card, index) => {
+          const isCurrent = index === 0 && state.screen === 'session';
+          const canUndo = isCurrent && state.lastReview?.cardStateId === card.id;
+          return {
+            ref: cardRef(card.ankiCardId ?? card.id),
+            kind: 'flashcard',
+            label: shortLabel(card.front) ?? card.ankiCardId ?? card.id,
+            actions: isCurrent
+              ? ['flipCard', 'editCard', 'setSuspended', ...(canUndo ? ['undoLastReview'] : [])]
+              : [],
+            state: {
+              cardStateId: card.id,
+              ankiCardId: card.ankiCardId ?? null,
+              current: card.id === current?.id,
+              suspended: card.suspended ?? false,
+            },
+          };
+        });
+      const entityActions = new Set(entities.flatMap((entity) => entity.actions));
+      const libraryItems = library.items.slice(0, 30).map((card) => {
+        const front = boundedCardText(card.front);
+        const back = boundedCardText(card.back);
+        const text = boundedCardText(card.text);
+        return {
+          id: card.id,
+          documentId: card.documentId ?? null,
+          version: card.version ?? card.updated_at,
+          reviewVersion: card.reviewVersion ?? null,
+          front: front.value,
+          back: back.value,
+          text: text.value,
+          tags: card.tags.slice(0, 100),
+          enqueued: card.enqueued,
+          suspended: card.suspended,
+          due: card.isDue,
+          latestReview: card.latestReview ?? null,
+          truncated: front.truncated || back.truncated || text.truncated || card.tags.length > 100,
+        };
+      });
       return {
-        revision: stableRevision(state.screen, state.dueCards.map((card) => card.id), state.queue.map((card) => card.id), state.queueIndex, state.flipped, state.loading, state.ratingBusy),
+        revision: stableRevision(
+          state.screen,
+          state.dueCards.map((card) => card.id),
+          state.queue.map((card) => card.id),
+          state.queueIndex,
+          state.flipped,
+          state.loading,
+          state.ratingBusy,
+          library.page,
+          library.query,
+          library.loading,
+          library.busyCardId,
+          library.items.map((card) => [
+            card.id,
+            card.version ?? card.updated_at,
+            card.reviewVersion ?? null,
+            card.suspended,
+            card.enqueued,
+          ]),
+        ),
         route: `flashcards/${state.screen}`,
         mode: state.screen === 'session' ? (state.flipped ? 'back' : 'front') : state.screen,
-        busy: state.loading || state.ratingBusy,
+        busy: state.loading || state.ratingBusy || (state.screen === 'library' && (library.loading || library.busyCardId !== null)),
         selection: current ? [cardRef(current.ankiCardId ?? current.id)] : [],
-        availableActions: ['startReview', 'showScreen', 'startDueReview', ...(state.screen === 'session' && current ? ['flipCard', 'endReview'] : [])],
+        availableActions: [
+          'startReview',
+          'showScreen',
+          'startDueReview',
+          ...(state.screen === 'library' ? ['searchLibrary', 'setLibraryPage'] : []),
+          ...(state.screen === 'session' && current ? ['flipCard', 'endReview'] : []),
+          ...entityActions,
+        ],
         entities,
-        affordances: visible.map((card) => ({
-          ref: cardRef(card.ankiCardId ?? card.id),
-          kind: 'flashcard',
-          label: shortLabel(card.front) ?? card.ankiCardId ?? card.id,
-          actions: card.id === current?.id ? ['flipCard'] : [],
-          selected: card.id === current?.id,
-          value: { cardId: card.ankiCardId ?? card.id },
+        affordances: entities.map((entity) => ({
+          ref: entity.ref,
+          kind: entity.kind,
+          label: entity.label,
+          actions: entity.actions,
+          selected: entity.state?.current === true,
+          value: { cardId: entity.state?.ankiCardId ?? null },
         })),
         state: {
           screen: state.screen,
@@ -293,15 +458,43 @@ export function createFlashcardsAgentManifest(
           sessionDone: state.queue.length > 0 && state.queueIndex >= state.queue.length,
           usingMock: state.usingMock,
           error: state.error,
+          library: {
+            items: libraryItems,
+            total: library.total,
+            page: library.page,
+            pageSize: library.pageSize,
+            query: library.query,
+            loading: library.loading,
+            loaded: library.loaded,
+            loadError: library.loadError,
+            actionError: library.actionError,
+            busyCardId: library.busyCardId,
+            itemsTruncated: library.items.length > 30,
+          },
           ratingAvailableToAgent: false,
         },
       };
     },
     async execute(ctx, action) {
       const before = useFsrsReviewStore.getState();
-      const snapshot = { screen: before.screen, queueIndex: before.queueIndex, currentCardId: before.queue[before.queueIndex]?.id ?? null, flipped: before.flipped };
+      const beforeLibrary = useFlashcardsLibraryStore.getState();
+      const snapshot = {
+        screen: before.screen,
+        queueIndex: before.queueIndex,
+        currentCardId: before.queue[before.queueIndex]?.id ?? null,
+        flipped: before.flipped,
+        libraryPage: beforeLibrary.page,
+        libraryQuery: beforeLibrary.query,
+        libraryRevision: stableRevision(beforeLibrary.items.map((card) => [card.id, card.version ?? card.updated_at, card.reviewVersion ?? null, card.suspended, card.enqueued])),
+      };
       const requestedArgs = actionArgs(action);
-      if (action.name === 'flipCard' && before.queue[before.queueIndex]) {
+      if (LIBRARY_CARD_ACTIONS.has(action.name)) {
+        const cardId = typeof requestedArgs.cardId === 'string' ? requestedArgs.cardId.trim() : '';
+        if (!cardId) return { handled: false, changed: false, code: 'INVALID_ARGS', hint: `${action.name} 需要 cardId` };
+        if (!action.targetRef) return { handled: false, changed: false, code: 'TARGET_REQUIRED', hint: `${action.name} 需要最近观察返回的 targetRef` };
+        const mismatch = rejectMismatchedTarget(action, cardRef(cardId));
+        if (mismatch) return mismatch;
+      } else if (action.name === 'flipCard' && before.queue[before.queueIndex]) {
         const current = before.queue[before.queueIndex];
         const mismatch = rejectMismatchedTarget(
           action,
@@ -310,21 +503,100 @@ export function createFlashcardsAgentManifest(
         if (mismatch) return mismatch;
       }
       let result;
-      if (action.name === 'startReview') {
+      if (action.name === 'searchLibrary') {
+        if (before.screen !== 'library') return { handled: false, changed: false, code: 'INVALID_STATE', hint: '当前不在卡片库页面' };
+        const query = typeof requestedArgs.query === 'string' ? requestedArgs.query : '';
+        const ok = await beforeLibrary.submitSearch(query);
+        result = ok ? { handled: true, acknowledged: true } : { handled: false, changed: false, code: 'LOAD_FAILED', hint: useFlashcardsLibraryStore.getState().loadError ?? '卡片库搜索失败' };
+      } else if (action.name === 'setLibraryPage') {
+        if (before.screen !== 'library' || typeof requestedArgs.page !== 'number') return { handled: false, changed: false, code: 'INVALID_ARGS', hint: 'setLibraryPage 需要卡片库页面和有效 page' };
+        const ok = await beforeLibrary.goToPage(requestedArgs.page);
+        result = ok ? { handled: true, acknowledged: true } : { handled: false, changed: false, code: 'ACTION_UNAVAILABLE', hint: '目标页不可用或未变化' };
+      } else if (LIBRARY_CARD_ACTIONS.has(action.name)) {
+        const cardId = String(requestedArgs.cardId);
+        const libraryCard = beforeLibrary.items.find((card) => card.id === cardId);
+        const currentBefore = before.queue[before.queueIndex];
+        const currentAnkiId = currentBefore?.ankiCardId ?? currentBefore?.id;
+        let ok = false;
+        if (action.name === 'editCard') {
+          const hasPatch = ['front', 'back', 'text', 'tags'].some((key) => requestedArgs[key] !== undefined);
+          if (!hasPatch) return { handled: false, changed: false, code: 'INVALID_ARGS', hint: 'editCard 至少需要一个修改字段' };
+          if (before.screen === 'session' && currentBefore && currentAnkiId === cardId) {
+            const front = typeof requestedArgs.text === 'string'
+              ? requestedArgs.text
+              : typeof requestedArgs.front === 'string'
+                ? requestedArgs.front
+                : currentBefore.text ?? currentBefore.front;
+            const back = typeof requestedArgs.back === 'string' ? requestedArgs.back : currentBefore.back;
+            ok = await before.updateCurrentCard(front, back);
+          } else if (libraryCard) {
+            ok = await beforeLibrary.updateCard(cardId, {
+              ...(typeof requestedArgs.front === 'string' ? { front: requestedArgs.front } : {}),
+              ...(typeof requestedArgs.back === 'string' ? { back: requestedArgs.back } : {}),
+              ...(typeof requestedArgs.text === 'string' ? { text: requestedArgs.text } : {}),
+              ...(Array.isArray(requestedArgs.tags) && requestedArgs.tags.every((tag) => typeof tag === 'string')
+                ? { tags: requestedArgs.tags as string[] }
+                : {}),
+            });
+          }
+        } else if (action.name === 'enqueueCard' && libraryCard && !libraryCard.enqueued) {
+          ok = await beforeLibrary.enqueueCard(cardId);
+        } else if (action.name === 'setSuspended' && typeof requestedArgs.suspended === 'boolean') {
+          if (libraryCard?.enqueued) {
+            ok = await beforeLibrary.setCardSuspended(cardId, requestedArgs.suspended);
+          } else if (before.screen === 'session' && currentBefore && currentAnkiId === cardId && requestedArgs.suspended) {
+            ok = await before.suspendCurrent();
+          }
+        } else if (action.name === 'undoLastReview') {
+          const reviewed = before.lastReview
+            ? before.queue.find((card) => card.id === before.lastReview?.cardStateId)
+            : undefined;
+          if (reviewed && (reviewed.ankiCardId ?? reviewed.id) === cardId) {
+            ok = await before.undoLastReview();
+          } else if (libraryCard?.latestReview?.undoable) {
+            ok = await beforeLibrary.undoLastReview(cardId);
+          }
+        } else if (action.name === 'deleteCard' && libraryCard) {
+          ok = await beforeLibrary.deleteCard(cardId);
+        }
+        if (!ok) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ACTION_FAILED',
+            hint: useFlashcardsLibraryStore.getState().actionError ?? useFsrsReviewStore.getState().error ?? `${action.name} 未执行`,
+          };
+        }
+        result = { handled: true, acknowledged: true };
+      } else if (action.name === 'startReview') {
         const store = useFsrsReviewStore.getState();
         const mode = requestedArgs.mode;
         const screen = requestedArgs.screen;
         if (screen === 'session' && mode === 'due') {
-          await store.loadDue();
+          if (!(await store.loadDue())) {
+            return {
+              handled: false,
+              changed: false,
+              code: 'LOAD_FAILED',
+              hint: useFsrsReviewStore.getState().error ?? '到期卡加载失败',
+            };
+          }
           useFsrsReviewStore.getState().startDueSession();
-          result = { handled: true };
+          result = { handled: true, acknowledged: true };
         } else if (screen === 'session' && mode === 'batch' && Array.isArray(requestedArgs.cardIds)) {
           const ids = requestedArgs.cardIds.filter((id): id is string => typeof id === 'string');
-          await store.startBatchSession(ids);
-          result = { handled: true };
+          if (!(await store.startBatchSession(ids))) {
+            return {
+              handled: false,
+              changed: false,
+              code: 'ENQUEUE_FAILED',
+              hint: useFsrsReviewStore.getState().error ?? '复习批次准备失败',
+            };
+          }
+          result = { handled: true, acknowledged: true };
         } else if (screen === 'today' || screen === 'library' || screen === 'settings') {
           store.setScreen(screen);
-          result = { handled: true };
+          result = { handled: true, acknowledged: true };
         } else {
           return { handled: false, changed: false, code: 'INVALID_ARGS', hint: 'startReview 需要有效 screen/mode/cardIds' };
         }
@@ -333,9 +605,29 @@ export function createFlashcardsAgentManifest(
       }
       if (!result.handled) return result;
       const after = useFsrsReviewStore.getState();
+      const afterLibrary = useFlashcardsLibraryStore.getState();
       const current = after.queue[after.queueIndex];
-      result.changed = stableRevision(snapshot) !== stableRevision({ screen: after.screen, queueIndex: after.queueIndex, currentCardId: current?.id ?? null, flipped: after.flipped });
-      if (current) result.entityRefs = [cardRef(current.ankiCardId ?? current.id)];
+      result.changed = stableRevision(snapshot) !== stableRevision({
+        screen: after.screen,
+        queueIndex: after.queueIndex,
+        currentCardId: current?.id ?? null,
+        flipped: after.flipped,
+        libraryPage: afterLibrary.page,
+        libraryQuery: afterLibrary.query,
+        libraryRevision: stableRevision(afterLibrary.items.map((card) => [card.id, card.version ?? card.updated_at, card.reviewVersion ?? null, card.suspended, card.enqueued])),
+      });
+      if (!result.changed) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未改变闪卡复习状态`,
+        };
+      }
+      result.acknowledged = true;
+      const requestedCardId = typeof requestedArgs.cardId === 'string' ? requestedArgs.cardId : null;
+      if (requestedCardId) result.entityRefs = [cardRef(requestedCardId)];
+      else if (current) result.entityRefs = [cardRef(current.ankiCardId ?? current.id)];
       const args = requestedArgs;
       if (action.name === 'showScreen' && typeof args.screen === 'string') {
         result.postconditions = [{ kind: 'state_equals', path: 'screen', value: args.screen }];
@@ -346,7 +638,7 @@ export function createFlashcardsAgentManifest(
           };
         }
       } else if (action.name === 'flipCard' && current) {
-        result.postconditions = [{ kind: 'state_equals', path: 'flipped', value: after.flipped }];
+        result.postconditions = [{ kind: 'state_equals', path: 'flipped', value: !snapshot.flipped }];
         if (result.changed && snapshot.currentCardId === current.id) {
           result.undo = {
             inverse: {
@@ -365,7 +657,38 @@ export function createFlashcardsAgentManifest(
       } else if (action.name === 'startDueReview') {
         result.postconditions = [{ kind: 'state_equals', path: 'screen', value: 'session' }];
       } else if (action.name === 'startReview') {
-        result.postconditions = [{ kind: 'state_equals', path: 'screen', value: after.screen }];
+        result.postconditions = [{
+          kind: 'state_equals',
+          path: 'screen',
+          value: requestedArgs.screen === 'session' ? 'session' : String(requestedArgs.screen ?? ''),
+        }];
+      } else if (action.name === 'searchLibrary') {
+        result.postconditions = [{ kind: 'state_equals', path: 'library.query', value: String(requestedArgs.query ?? '').trim() }];
+        result.undo = {
+          inverse: { name: 'searchLibrary', args: { query: snapshot.libraryQuery }, expect: [{ kind: 'state_equals', path: 'library.query', value: snapshot.libraryQuery }] },
+          label: '恢复卡片库搜索',
+        };
+      } else if (action.name === 'setLibraryPage') {
+        result.postconditions = [{ kind: 'state_equals', path: 'library.page', value: afterLibrary.page }];
+        result.undo = {
+          inverse: { name: 'setLibraryPage', args: { page: snapshot.libraryPage }, expect: [{ kind: 'state_equals', path: 'library.page', value: snapshot.libraryPage }] },
+          label: '恢复卡片库页码',
+        };
+      } else if (requestedCardId && action.name === 'deleteCard') {
+        result.postconditions = [{ kind: 'ref_absent', ref: cardRef(requestedCardId) }];
+      } else if (requestedCardId && LIBRARY_CARD_ACTIONS.has(action.name)) {
+        result.postconditions = [{ kind: 'ref_exists', ref: cardRef(requestedCardId) }];
+        if (action.name === 'setSuspended' && typeof requestedArgs.suspended === 'boolean') {
+          result.undo = {
+            inverse: {
+              name: 'setSuspended',
+              args: { cardId: requestedCardId, suspended: !requestedArgs.suspended },
+              targetRef: cardRef(requestedCardId),
+              expect: [{ kind: 'ref_exists', ref: cardRef(requestedCardId) }],
+            },
+            label: requestedArgs.suspended ? '恢复卡片' : '重新暂停卡片',
+          };
+        }
       }
       return result;
     },
@@ -432,6 +755,15 @@ export function createPomodoroAgentManifest(
       if (!result.handled) return result;
       const after = usePomodoroStore.getState();
       result.changed = stableRevision(snapshot) !== stableRevision({ mode: after.mode, status: after.status, sessionStartTime: after.sessionStartTime, currentTaskId: after.currentTaskId });
+      if (!result.changed) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未改变番茄钟状态`,
+        };
+      }
+      result.acknowledged = true;
       if (action.name === 'start') {
         result.postconditions = [
           { kind: 'state_equals', path: 'mode', value: 'work' },
@@ -454,3 +786,328 @@ export function createPomodoroAgentManifest(
     },
   };
 }
+
+const SETTINGS_SECTIONS = [
+  'general',
+  'appearance',
+  'automation',
+  'apis',
+  'search',
+  'models',
+  'mcp',
+  'statistics',
+  'data-governance',
+  'params',
+  'shortcuts',
+  'about',
+] as const;
+
+export const settingsAgentManifest: AppAgentManifest = {
+  version: 2,
+  description: 'Observe settings navigation and open a safe settings section. Setting values still use domain tools or direct user input.',
+  capabilities: [
+    {
+      name: 'openSection',
+      description: 'Open a settings section without changing any setting value.',
+      inputSchema: objectSchema(
+        { section: { type: 'string', enum: [...SETTINGS_SECTIONS] } },
+        ['section'],
+      ),
+      risk: 'read',
+      mutates: true,
+      reversible: true,
+      idempotent: true,
+    },
+  ],
+  observe() {
+    const state = useSettingsShellStore.getState();
+    return {
+      revision: stableRevision(state.activeTab, state.dataGovernanceTabTarget),
+      route: `settings/${state.activeTab}`,
+      mode: state.activeTab,
+      availableActions: ['openSection'],
+      state: {
+        activeSection: state.activeTab,
+        dataGovernanceTab: state.dataGovernanceTabTarget?.tab ?? null,
+      },
+    };
+  },
+  async execute(_ctx, action) {
+    const args = actionArgs(action);
+    const section = typeof args.section === 'string' ? args.section : '';
+    if (action.name !== 'openSection' || !SETTINGS_SECTIONS.includes(section as never)) {
+      return { handled: false, changed: false, code: 'INVALID_ARGUMENT', hint: 'Choose a declared settings section.' };
+    }
+    const previous = useSettingsShellStore.getState().activeTab;
+    useSettingsShellStore.getState().setActiveTab(section);
+    const acknowledged = useSettingsShellStore.getState().activeTab === section;
+    if (!acknowledged) {
+      return { handled: false, changed: false, code: 'ACTION_UNAVAILABLE', hint: 'The settings store did not acknowledge the section change.' };
+    }
+    return {
+      handled: true,
+      acknowledged: true,
+      changed: previous !== section,
+      postconditions: [{ kind: 'state_equals', path: 'activeSection', value: section }],
+      ...(previous !== section
+        ? {
+            undo: {
+              inverse: {
+                name: 'openSection',
+                args: { section: previous },
+                expect: [{ kind: 'state_equals' as const, path: 'activeSection', value: previous }],
+              },
+              label: 'Restore settings section',
+            },
+          }
+        : {}),
+    };
+  },
+};
+
+function templateRef(id: string): string {
+  return stableAgentRef('templates', 'template', id);
+}
+
+export const templatesAgentManifest: AppAgentManifest = {
+  version: 2,
+  description: 'Observe, search, and open templates. Template content mutations remain in the template domain UI/tools.',
+  capabilities: [
+    {
+      name: 'openTemplate',
+      description: 'Open an existing template in the editor.',
+      inputSchema: objectSchema({ templateId: { type: 'string', minLength: 1 } }, ['templateId']),
+      risk: 'read',
+      mutates: true,
+      reversible: true,
+      idempotent: true,
+      targetKinds: ['template'],
+    },
+    {
+      name: 'search',
+      description: 'Filter templates by name or description; an empty query clears the filter.',
+      inputSchema: objectSchema({ query: { type: 'string', maxLength: 500 } }, ['query']),
+      risk: 'read',
+      mutates: true,
+      reversible: true,
+      idempotent: true,
+    },
+  ],
+  observe(ctx) {
+    const surface = getTemplateAgentSurface(ctx.windowId);
+    if (!surface) {
+      return {
+        revision: stableRevision('templates', 'unmounted'),
+        route: 'templates/unmounted',
+        busy: true,
+        availableActions: [],
+        state: { ready: false },
+      };
+    }
+    const snapshot = surface.snapshot();
+    const entities = snapshot.templates.map((template) => ({
+      ref: templateRef(template.id),
+      kind: 'template',
+      label: shortLabel(template.name) ?? template.id,
+      description: shortLabel(template.description),
+      actions: ['openTemplate'],
+      state: { updatedAt: template.updatedAt ?? null },
+    }));
+    return {
+      revision: stableRevision(snapshot),
+      route: `templates/${snapshot.activeTab}/${snapshot.selectedTemplateId ?? 'none'}`,
+      mode: snapshot.activeTab,
+      busy: snapshot.loading,
+      selection: snapshot.selectedTemplateId ? [templateRef(snapshot.selectedTemplateId)] : [],
+      availableActions: ['openTemplate', 'search'],
+      entities,
+      affordances: entities.map((entity) => ({ ...entity, selected: snapshot.selectedTemplateId === decodeURIComponent(entity.ref.split(':').at(-1) ?? '') })),
+      state: {
+        ready: true,
+        activeTab: snapshot.activeTab,
+        selectedTemplateId: snapshot.selectedTemplateId,
+        searchQuery: snapshot.searchQuery,
+        templateCount: snapshot.totalTemplates,
+        templatesTruncated: snapshot.totalTemplates > snapshot.templates.length,
+        error: snapshot.error,
+      },
+    };
+  },
+  async execute(ctx, action) {
+    const surface = getTemplateAgentSurface(ctx.windowId);
+    if (!surface) return { handled: false, changed: false, code: 'APP_NOT_READY', hint: 'The template surface is not mounted.' };
+    const before = surface.snapshot();
+    const args = actionArgs(action);
+    if (action.name === 'openTemplate' && typeof args.templateId === 'string') {
+      const mismatch = rejectMismatchedTarget(action, templateRef(args.templateId));
+      if (mismatch) return mismatch;
+      if (!surface.openTemplate(args.templateId)) {
+        return { handled: false, changed: false, code: 'ENTITY_NOT_FOUND', hint: 'The requested template is not present in the current surface.' };
+      }
+      return {
+        handled: true,
+        acknowledged: true,
+        changed: before.selectedTemplateId !== args.templateId || before.activeTab !== 'edit',
+        entityRefs: [templateRef(args.templateId)],
+        postconditions: [{ kind: 'selection_includes', ref: templateRef(args.templateId) }],
+        ...(before.selectedTemplateId
+          ? {
+              undo: {
+                inverse: {
+                  name: 'openTemplate',
+                  args: { templateId: before.selectedTemplateId },
+                  targetRef: templateRef(before.selectedTemplateId),
+                  expect: [{ kind: 'selection_includes' as const, ref: templateRef(before.selectedTemplateId) }],
+                },
+                label: 'Restore open template',
+              },
+            }
+          : {}),
+      };
+    }
+    if (action.name === 'search' && typeof args.query === 'string') {
+      surface.search(args.query);
+      return {
+        handled: true,
+        acknowledged: true,
+        changed: before.searchQuery !== args.query,
+        postconditions: [{ kind: 'state_equals', path: 'searchQuery', value: args.query }],
+        undo: {
+          inverse: {
+            name: 'search',
+            args: { query: before.searchQuery },
+            expect: [{ kind: 'state_equals', path: 'searchQuery', value: before.searchQuery }],
+          },
+          label: 'Restore template search',
+        },
+      };
+    }
+    return { handled: false, changed: false, code: 'INVALID_ARGUMENT', hint: 'Use openTemplate or search with valid arguments.' };
+  },
+};
+
+function taskSessionRef(id: string): string {
+  return stableAgentRef('taskDashboard', 'session', id);
+}
+
+const TASK_FILTERS = ['all', 'active', 'attention', 'completed'] as const;
+
+export const taskDashboardAgentManifest: AppAgentManifest = {
+  version: 2,
+  description: 'Observe and navigate document-to-card task sessions. It never changes task execution state.',
+  capabilities: [
+    {
+      name: 'focusSession',
+      description: 'Expand and focus an existing task session.',
+      inputSchema: objectSchema({ sessionId: { type: 'string', minLength: 1 } }, ['sessionId']),
+      risk: 'read',
+      mutates: true,
+      reversible: true,
+      idempotent: true,
+      targetKinds: ['task-session'],
+    },
+    {
+      name: 'filter',
+      description: 'Filter task sessions by operational state.',
+      inputSchema: objectSchema({ filter: { type: 'string', enum: [...TASK_FILTERS] } }, ['filter']),
+      risk: 'read',
+      mutates: true,
+      reversible: true,
+      idempotent: true,
+    },
+  ],
+  observe(ctx) {
+    const surface = getTaskDashboardAgentSurface(ctx.windowId);
+    if (!surface) {
+      return {
+        revision: stableRevision('taskDashboard', 'unmounted'),
+        route: 'taskDashboard/unmounted',
+        busy: true,
+        availableActions: [],
+        state: { ready: false },
+      };
+    }
+    const snapshot = surface.snapshot();
+    const entities = snapshot.sessions.map((session) => ({
+      ref: taskSessionRef(session.id),
+      kind: 'task-session',
+      label: shortLabel(session.name) ?? session.id,
+      description: session.status,
+      actions: ['focusSession'],
+      state: {
+        status: session.status,
+        sourceSessionId: session.sourceSessionId,
+        updatedAt: session.updatedAt,
+      },
+    }));
+    return {
+      revision: stableRevision(snapshot),
+      route: `taskDashboard/${snapshot.filter}/${snapshot.focusedSessionId ?? 'none'}`,
+      mode: snapshot.filter,
+      busy: snapshot.loading,
+      selection: snapshot.focusedSessionId ? [taskSessionRef(snapshot.focusedSessionId)] : [],
+      availableActions: ['focusSession', 'filter'],
+      entities,
+      affordances: entities.map((entity) => ({ ...entity, selected: snapshot.focusedSessionId === decodeURIComponent(entity.ref.split(':').at(-1) ?? '') })),
+      state: {
+        ready: true,
+        filter: snapshot.filter,
+        focusedSessionId: snapshot.focusedSessionId,
+        sessionCount: snapshot.totalSessions,
+        sessionsTruncated: snapshot.totalSessions > snapshot.sessions.length,
+      },
+    };
+  },
+  async execute(ctx, action) {
+    const surface = getTaskDashboardAgentSurface(ctx.windowId);
+    if (!surface) return { handled: false, changed: false, code: 'APP_NOT_READY', hint: 'The task dashboard surface is not mounted.' };
+    const before = surface.snapshot();
+    const args = actionArgs(action);
+    if (action.name === 'focusSession' && typeof args.sessionId === 'string') {
+      const mismatch = rejectMismatchedTarget(action, taskSessionRef(args.sessionId));
+      if (mismatch) return mismatch;
+      if (!surface.focusSession(args.sessionId)) {
+        return { handled: false, changed: false, code: 'ENTITY_NOT_FOUND', hint: 'The requested task session is not present.' };
+      }
+      return {
+        handled: true,
+        acknowledged: true,
+        changed: before.focusedSessionId !== args.sessionId,
+        entityRefs: [taskSessionRef(args.sessionId)],
+        postconditions: [{ kind: 'selection_includes', ref: taskSessionRef(args.sessionId) }],
+        ...(before.focusedSessionId
+          ? {
+              undo: {
+                inverse: {
+                  name: 'focusSession',
+                  args: { sessionId: before.focusedSessionId },
+                  targetRef: taskSessionRef(before.focusedSessionId),
+                  expect: [{ kind: 'selection_includes' as const, ref: taskSessionRef(before.focusedSessionId) }],
+                },
+                label: 'Restore focused task session',
+              },
+            }
+          : {}),
+      };
+    }
+    if (action.name === 'filter' && typeof args.filter === 'string' && TASK_FILTERS.includes(args.filter as never)) {
+      const nextFilter = args.filter as (typeof TASK_FILTERS)[number];
+      surface.filter(nextFilter);
+      return {
+        handled: true,
+        acknowledged: true,
+        changed: before.filter !== nextFilter,
+        postconditions: [{ kind: 'state_equals', path: 'filter', value: nextFilter }],
+        undo: {
+          inverse: {
+            name: 'filter',
+            args: { filter: before.filter },
+            expect: [{ kind: 'state_equals', path: 'filter', value: before.filter }],
+          },
+          label: 'Restore task filter',
+        },
+      };
+    }
+    return { handled: false, changed: false, code: 'INVALID_ARGUMENT', hint: 'Use focusSession or filter with valid arguments.' };
+  },
+};

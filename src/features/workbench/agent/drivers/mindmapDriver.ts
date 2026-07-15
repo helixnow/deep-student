@@ -16,6 +16,7 @@
  */
 import {
   getMindMapStoreForResource,
+  getMindMapStoreForWindow,
   MAX_MINDMAP_DEPTH,
   MAX_MINDMAP_NODES,
   type MindMapStoreApi,
@@ -355,18 +356,26 @@ export function validateMindmapSubtreeInput(
 }
 
 function snapshotNodeFields(node: MindMapNode): UpdateNodeParams {
-  const snap: UpdateNodeParams = { text: node.text };
-  if (node.note !== undefined) snap.note = node.note;
-  if (node.collapsed !== undefined) snap.collapsed = node.collapsed;
-  if (node.completed !== undefined) snap.completed = node.completed;
-  if (node.style !== undefined) snap.style = node.style ? { ...node.style } : undefined;
-  if (node.blankedRanges !== undefined) {
-    snap.blankedRanges = node.blankedRanges.map((r) => ({ ...r }));
-  }
-  if (node.refs !== undefined) {
-    snap.refs = node.refs.map((r) => ({ ...r }));
-  }
-  return snap;
+  return {
+    text: node.text,
+    note: node.note,
+    collapsed: node.collapsed,
+    completed: node.completed,
+    style: node.style ? { ...node.style } : undefined,
+    blankedRanges: node.blankedRanges?.map((r) => ({ ...r })),
+    refs: node.refs?.map((r) => ({ ...r })),
+  };
+}
+
+function stableValue(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function nodeLocation(root: MindMapNode, nodeId: string): { parentId: string; index: number } | null {
+  const parent = findParentNode(root, nodeId);
+  if (!parent) return null;
+  const index = parent.children.findIndex((child) => child.id === nodeId);
+  return index >= 0 ? { parentId: parent.id, index } : null;
 }
 
 function markEntering(storeApi: MindMapStoreApi, ids: string[]): void {
@@ -402,6 +411,25 @@ function collectTargetNodeIds(ops: AgentOp[]): Set<string> {
 
 function isDestructiveOp(op: AgentOp): boolean {
   return op.destructive === true || op.kind === 'delete_node' || op.kind === 'move_node';
+}
+
+/** update_node can overwrite text/note/style currently being edited, so it uses the same barrier. */
+function requiresUserEditBarrier(op: AgentOp): boolean {
+  return isDestructiveOp(op) || op.kind === 'update_node';
+}
+
+function mergeNodeStylePatch(
+  current: NodeStyle | undefined,
+  patch: unknown,
+): NodeStyle | undefined {
+  const raw = asRecord(patch);
+  if (!raw) return current;
+  const merged = { ...(current ?? {}) } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null) delete merged[key];
+    else merged[key] = value;
+  }
+  return Object.keys(merged).length > 0 ? (merged as NodeStyle) : undefined;
 }
 
 /**
@@ -573,12 +601,19 @@ function applyOneOp(
       if (!newId) {
         return { entityId: null, ok: false, reason: '添加节点失败（深度/数量限制）' };
       }
+      const expectedAdded = deepCloneNode(
+        findNodeById(storeApi.getState().document.root, newId)!,
+      );
 
       run.ledger.record(
         run.runId,
         async () => {
           assertResource();
-          if (findNodeById(storeApi.getState().document.root, newId)) {
+          const current = findNodeById(storeApi.getState().document.root, newId);
+          if (current) {
+            if (stableValue(current) !== stableValue(expectedAdded)) {
+              throw new Error(`撤销添加冲突：节点 ${newId} 已被继续编辑`);
+            }
             storeApi.getState().agentDeleteNode(newId);
           }
           if (!(await storeApi.getState().save())) {
@@ -595,13 +630,33 @@ function applyOneOp(
       const node = findNodeById(storeApi.getState().document.root, nodeId)!;
       const before = snapshotNodeFields(node);
       const patch = payload.patch ?? {};
-      storeApi.getState().updateNode(nodeId, patch, skipOpts);
+      const normalizedPatch: UpdateNodeParams = {
+        ...patch,
+        ...(Object.prototype.hasOwnProperty.call(patch, 'style')
+          ? { style: mergeNodeStylePatch(node.style, patch.style) }
+          : {}),
+      };
+      storeApi.getState().updateNode(nodeId, normalizedPatch, skipOpts);
+      const after = snapshotNodeFields(
+        findNodeById(storeApi.getState().document.root, nodeId)!,
+      );
       run.ledger.record(
         run.runId,
         async () => {
           assertResource();
-          if (!findNodeById(storeApi.getState().document.root, nodeId)) {
+          const currentNode = findNodeById(storeApi.getState().document.root, nodeId);
+          if (!currentNode) {
             throw new Error(`撤销更新失败：节点 ${nodeId} 不存在`);
+          }
+          const current = snapshotNodeFields(currentNode);
+          if (stableValue(current) === stableValue(before)) {
+            if (!(await storeApi.getState().save())) {
+              throw new Error('撤销更新失败：更改未能保存');
+            }
+            return;
+          }
+          if (stableValue(current) !== stableValue(after)) {
+            throw new Error(`撤销更新冲突：节点 ${nodeId} 已被继续编辑`);
           }
           storeApi.getState().updateNode(nodeId, before, skipOpts);
           if (!(await storeApi.getState().save())) {
@@ -632,8 +687,11 @@ function applyOneOp(
           if (!findNodeById(storeApi.getState().document.root, parentId)) {
             throw new Error(`撤销删除失败：父节点 ${parentId} 不存在`);
           }
-          if (!findNodeById(storeApi.getState().document.root, nodeId)) {
+          const existing = findNodeById(storeApi.getState().document.root, nodeId);
+          if (!existing) {
             storeApi.getState().agentInsertSubtree(parentId, snapshot, index);
+          } else if (stableValue(existing) !== stableValue(snapshot)) {
+            throw new Error(`撤销删除冲突：节点 id ${nodeId} 已被其他内容占用`);
           }
           if (!(await storeApi.getState().save())) {
             throw new Error('撤销删除失败：更改未能保存');
@@ -663,14 +721,32 @@ function applyOneOp(
       if (!storeApi.getState().agentMoveNode(nodeId, newParentId, targetIndex)) {
         return { entityId: null, ok: false, reason: '移动节点失败' };
       }
+      const movedLocation = nodeLocation(storeApi.getState().document.root, nodeId);
+      if (!movedLocation) {
+        return { entityId: null, ok: false, reason: '移动后无法确认节点位置' };
+      }
       run.ledger.record(
         run.runId,
         async () => {
           assertResource();
           const currentRoot = storeApi.getState().document.root;
-          const currentParent = findParentNode(currentRoot, nodeId);
-          const currentIndex = currentParent?.children.findIndex((child) => child.id === nodeId) ?? -1;
-          if (currentParent?.id !== oldParentId || currentIndex !== oldIndex) {
+          const currentLocation = nodeLocation(currentRoot, nodeId);
+          if (!currentLocation) {
+            throw new Error(`撤销移动失败：节点 ${nodeId} 不存在`);
+          }
+          if (currentLocation.parentId === oldParentId && currentLocation.index === oldIndex) {
+            if (!(await storeApi.getState().save())) {
+              throw new Error('撤销移动失败：更改未能保存');
+            }
+            return;
+          }
+          if (
+            currentLocation.parentId !== movedLocation.parentId
+            || currentLocation.index !== movedLocation.index
+          ) {
+            throw new Error(`撤销移动冲突：节点 ${nodeId} 已被再次移动`);
+          }
+          if (currentLocation.parentId !== oldParentId || currentLocation.index !== oldIndex) {
             if (!storeApi.getState().agentMoveNode(nodeId, oldParentId, oldIndex)) {
               throw new Error(`撤销移动失败：节点 ${nodeId} 无法返回原位置`);
             }
@@ -696,7 +772,11 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
   activeRuns.set(run.runId, runState);
 
   const resourceId = run.target.resourceId;
-  const storeApi = resourceId ? getMindMapStoreForResource(resourceId) : null;
+  const storeApi = resourceId
+    ? run.windowId
+      ? getMindMapStoreForWindow(run.windowId, resourceId)
+      : getMindMapStoreForResource(resourceId)
+    : null;
   const initialState = storeApi?.getState();
   if (!resourceId || !storeApi || initialState?.mindmapId !== resourceId) {
     receipt.status = 'failed';
@@ -752,7 +832,7 @@ async function applyMindmap(run: AcrRunContext, ops: AgentOp[]): Promise<AcrRece
     const currentState = storeApi.getState();
     const hasConcurrentUserEdit = currentState._documentVersion !== expectedDocumentVersion;
     if (
-      isDestructiveOp(op) &&
+      requiresUserEditBarrier(op) &&
       (startedDirty || hasConcurrentUserEdit || isHotForOps(storeApi, [op]))
     ) {
       stoppedAtSuggestion = true;

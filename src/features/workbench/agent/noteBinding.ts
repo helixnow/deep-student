@@ -21,16 +21,17 @@ import { useWindowStore } from '@/features/workbench/core/windowStore';
 
 /** 最近一次写入的 noteId，避免 focusStack 无关抖动重复 updateModeState */
 let lastBoundNoteId: string | null | undefined;
+let lastBoundSessionId: string | null | undefined;
 
 /**
  * 将 noteId 同步到当前会话 modeState.canvasNoteId。
  * 无当前会话 / store 未就绪时静默跳过。
  */
 function bindCanvasNoteId(noteId: string | null): void {
-  if (lastBoundNoteId === noteId) return;
-  lastBoundNoteId = noteId;
-
   const sessionId = sessionManager.getCurrentSessionId();
+  if (lastBoundNoteId === noteId && lastBoundSessionId === sessionId) return;
+  lastBoundNoteId = noteId;
+  lastBoundSessionId = sessionId;
   if (!sessionId) return;
   const store = sessionManager.get(sessionId);
   if (!store) return;
@@ -69,6 +70,7 @@ function resolveFocusedNoteId(
  */
 export function setupNoteBinding(): () => void {
   lastBoundNoteId = undefined;
+  lastBoundSessionId = undefined;
 
   const sync = () => {
     const { windows, focusStack } = useWindowStore.getState();
@@ -88,10 +90,15 @@ export function setupNoteBinding(): () => void {
     bindCanvasNoteId(nextNoteId);
   });
   const unsubscribeWorkspace = subscribeWorkspaceState(sync);
+  const unsubscribeSession = sessionManager.subscribe((event) => {
+    if (event.type === 'current-session-changed') sync();
+  });
 
   return () => {
     unsubscribe();
     unsubscribeWorkspace();
+    unsubscribeSession();
     lastBoundNoteId = undefined;
+    lastBoundSessionId = undefined;
   };
 }

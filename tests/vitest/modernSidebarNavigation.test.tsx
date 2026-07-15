@@ -118,7 +118,7 @@ describe('ModernSidebar shell navigation', () => {
 
     expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '学习资源' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '待办' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /待办|sidebar:navigation\.todo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '技能管理' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
   });
@@ -134,7 +134,7 @@ describe('ModernSidebar shell navigation', () => {
 
     expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '学习资源' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '待办' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /待办|sidebar:navigation\.todo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '技能管理' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '制卡任务' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '模板管理' })).not.toBeInTheDocument();

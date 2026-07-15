@@ -93,7 +93,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             size="icon"
             onClick={config.onMenuClick}
             className={shellIconButtonClassName}
-            aria-label={t('common:mobile_header.open_sidebar', '展开侧边栏')}
+            aria-label={t('common:mobile_header.open_sidebar')}
           >
             <List size={21} weight="regular" />
           </NotionButton>
@@ -115,7 +115,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             size="icon"
             onClick={onForward}
             className={cn(shellIconButtonClassName, showBackButton ? '-ml-0.5' : '-ml-1')}
-            aria-label={t('common:mobile_header.forward', '前进')}
+            aria-label={t('common:mobile_header.forward')}
           >
             <CaretRight size={20} weight="regular" />
           </NotionButton>

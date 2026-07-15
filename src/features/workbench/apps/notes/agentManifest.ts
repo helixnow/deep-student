@@ -23,13 +23,6 @@ import {
   getWorkspaceResourcesForWindow,
 } from './workspaceRegistry';
 
-const headingNavigation = new Map<string, {
-  resourceId: string;
-  heading: string;
-  level: number;
-  sequence: number;
-}>();
-
 const RESOURCE_SCHEMA = {
   resourceType: { type: 'string' as const, enum: ['note', 'mindmap'] },
   resourceId: { type: 'string' as const, minLength: 1 },
@@ -67,14 +60,14 @@ function noteHeadings(resourceId: string, markdown: string): {
       ref,
       kind: 'note-heading',
       label,
-      actions: ['scrollToHeading'],
+      actions: [],
       state: { level },
     });
     affordances.push({
       ref,
       kind: 'note-heading',
       label,
-      actions: ['scrollToHeading'],
+      actions: [],
       value: { resourceType: 'note', resourceId, heading, level },
     });
   }
@@ -203,10 +196,10 @@ export function createNotesAgentManifest(
       let documentState: Record<string, string | number | boolean | null> = {};
 
       if (active?.type === 'note') {
-        const editor = getNoteEditor(active.id);
+        const editor = getNoteEditor(active.id, ctx.windowId);
         let markdown = '';
         try {
-          markdown = editor?.getMarkdown() ?? '';
+          markdown = editor?.getFullMarkdown?.() ?? editor?.getMarkdown() ?? '';
         } catch {
           markdown = '';
         }
@@ -249,13 +242,25 @@ export function createNotesAgentManifest(
       }
 
       const activeActions = active?.type === 'note'
-        ? ['openResource', 'scrollToHeading']
+        ? ['openResource']
         : active?.type === 'mindmap'
-          ? ['openResource', 'focusNode', 'setView', 'search', 'nextSearchResult', 'previousSearchResult', 'clearSearch']
+          ? [
+              'openResource',
+              'focusNode',
+              'setView',
+              'search',
+              ...(typeof documentState.searchResultCount === 'number'
+                && documentState.searchResultCount > 1
+                ? ['nextSearchResult', 'previousSearchResult']
+                : []),
+              ...(typeof documentState.searchQuery === 'string'
+                && documentState.searchQuery
+                ? ['clearSearch']
+                : []),
+            ]
           : ['openResource'];
-      const lastHeading = headingNavigation.get(ctx.windowId);
       return {
-        revision: stableRevision(tabs, active, contentRevision, lastHeading),
+        revision: stableRevision(tabs, active, contentRevision),
         route: active ? `notes/${active.type}/${active.id}` : 'notes',
         mode: active?.type ?? 'workspace',
         selection: active ? [resourceRef(active.type, active.id), ...documentSelection] : [],
@@ -276,9 +281,6 @@ export function createNotesAgentManifest(
           tabsTruncated: getWorkspaceResourcesForWindow(ctx.windowId).length > tabs.length,
           activeResourceType: active?.type ?? null,
           activeResourceId: active?.id ?? null,
-          lastHeadingResourceId: lastHeading?.resourceId ?? null,
-          lastHeading: lastHeading?.heading ?? null,
-          lastHeadingLevel: lastHeading?.level ?? null,
           ...documentState,
         },
       };
@@ -286,6 +288,14 @@ export function createNotesAgentManifest(
     async execute(ctx, action) {
       const active = getWorkspaceActiveResource(ctx.windowId);
       const requestedArgs = actionArgs(action);
+      if (action.name === 'scrollToHeading') {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: '笔记表面尚未提供可确认的标题滚动 ACK',
+        };
+      }
       if (action.name === 'openResource') {
         const type = requestedArgs.resourceType;
         const id = requestedArgs.resourceId;
@@ -304,6 +314,21 @@ export function createNotesAgentManifest(
         ? getMindMapStoreForWindow(ctx.windowId, active.id)
         : undefined;
       const before = mindmapStore?.getState();
+      let expectedSearchIndex: number | null = null;
+      if (action.name === 'nextSearchResult' || action.name === 'previousSearchResult') {
+        const count = before?.searchResults.length ?? 0;
+        if (count <= 1) {
+          return {
+            handled: false,
+            changed: false,
+            code: 'ACTION_UNAVAILABLE',
+            hint: count === 0 ? '当前没有导图搜索结果' : '只有一个搜索结果，无法移动焦点',
+          };
+        }
+        expectedSearchIndex = action.name === 'nextSearchResult'
+          ? ((before!.currentSearchIndex + 1) % count)
+          : ((before!.currentSearchIndex - 1 + count) % count);
+      }
       const beforeSnapshot = {
         active,
         currentView: before?.currentView ?? null,
@@ -314,31 +339,27 @@ export function createNotesAgentManifest(
       const result = await executeActivation(activation, ctx, action);
       if (!result.handled) return result;
       const args = requestedArgs;
-      if (action.name === 'scrollToHeading' && typeof args.heading === 'string') {
-        const resourceId = typeof args.resourceId === 'string' ? args.resourceId : active?.id;
-        if (resourceId) {
-          headingNavigation.set(ctx.windowId, {
-            resourceId,
-            heading: args.heading,
-            level: typeof args.level === 'number' ? args.level : 1,
-            sequence: (headingNavigation.get(ctx.windowId)?.sequence ?? 0) + 1,
-          });
-        }
-      }
       const afterActive = getWorkspaceActiveResource(ctx.windowId);
       const afterStore = afterActive?.type === 'mindmap'
         ? getMindMapStoreForWindow(ctx.windowId, afterActive.id)
         : undefined;
       const after = afterStore?.getState();
-      result.changed = action.name === 'scrollToHeading'
-        ? true
-        : stableRevision(beforeSnapshot) !== stableRevision({
+      result.changed = stableRevision(beforeSnapshot) !== stableRevision({
             active: afterActive,
             currentView: after?.currentView ?? null,
             focusedNodeId: after?.focusedNodeId ?? null,
             searchQuery: after?.searchQuery ?? null,
             currentSearchIndex: after?.currentSearchIndex ?? null,
           });
+      if (!result.changed) {
+        return {
+          handled: false,
+          changed: false,
+          code: 'ACTION_UNAVAILABLE',
+          hint: `${action.name} 未改变 Notes 工作区状态`,
+        };
+      }
+      result.acknowledged = true;
       if (action.name === 'openResource') {
         const type = args.resourceType;
         const id = args.resourceId;
@@ -346,10 +367,6 @@ export function createNotesAgentManifest(
           result.entityRefs = [resourceRef(type, id)];
           result.postconditions = [{ kind: 'selection_includes', ref: resourceRef(type, id) }];
         }
-      } else if (action.name === 'scrollToHeading' && typeof args.heading === 'string') {
-        result.postconditions = [
-          { kind: 'state_equals', path: 'lastHeading', value: args.heading },
-        ];
       } else if (action.name === 'focusNode' && typeof args.nodeId === 'string') {
         result.entityRefs = [stableAgentRef('mindmap', 'node', args.nodeId)];
         result.postconditions = [{ kind: 'selection_includes', ref: stableAgentRef('mindmap', 'node', args.nodeId) }];
@@ -384,8 +401,8 @@ export function createNotesAgentManifest(
             label: '恢复导图搜索',
           };
         }
-      } else if ((action.name === 'nextSearchResult' || action.name === 'previousSearchResult') && after) {
-        result.postconditions = [{ kind: 'state_equals', path: 'currentSearchIndex', value: after.currentSearchIndex }];
+      } else if (expectedSearchIndex != null) {
+        result.postconditions = [{ kind: 'state_equals', path: 'currentSearchIndex', value: expectedSearchIndex }];
       }
       return result;
     },

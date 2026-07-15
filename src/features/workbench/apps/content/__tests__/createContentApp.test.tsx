@@ -30,6 +30,11 @@ vi.mock('../ResourceAppWorkspace', () => ({
 import { createContentWindowComponent } from '../ContentAppWindow';
 import { createContentApp } from '../createContentApp';
 import {
+  ContentCloseConfirmationHost,
+  registerContentCloseConfirmationHandler,
+  requestContentCloseConfirmation,
+} from '../ContentCloseConfirmation';
+import {
   __resetContentDirtyRegistry,
   isContentDirty,
   registerContentDirtyChecker,
@@ -179,28 +184,36 @@ describe('createContentApp', () => {
     expect(def.instanceMode).toBe('single');
   });
 
-  it('canClose：无脏状态直接放行', () => {
+  it('canClose：无脏状态直接放行', async () => {
     const def = createContentApp({ ...baseOptions, confirmUnsavedOnClose: true });
-    expect(def.canClose?.('essay_1')).toBe(true);
+    await expect(def.canClose?.('essay_1')).resolves.toBe(true);
   });
 
-  it('canClose：脏状态弹确认，确认放行 / 取消阻止', () => {
+  it('canClose：脏状态通过应用内确认层决定是否放行', async () => {
     const def = createContentApp({ ...baseOptions, confirmUnsavedOnClose: true });
     const unregister = registerContentDirtyChecker('essay', 'essay_1', () => true);
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    expect(def.canClose?.('essay_1')).toBe(true);
-    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    // 没有桌面确认层时保守阻止，绝不退回到 window.confirm。
+    await expect(def.canClose?.('essay_1')).resolves.toBe(false);
 
-    confirmSpy.mockReturnValue(false);
-    expect(def.canClose?.('essay_1')).toBe(false);
+    const unregisterHandler = registerContentCloseConfirmationHandler(async () => true);
+    await expect(def.canClose?.('essay_1')).resolves.toBe(true);
+    unregisterHandler();
 
     // 其他实例不受影响
-    expect(def.canClose?.('essay_other')).toBe(true);
+    await expect(def.canClose?.('essay_other')).resolves.toBe(true);
 
     unregister();
-    expect(def.canClose?.('essay_1')).toBe(true);
-    confirmSpy.mockRestore();
+    await expect(def.canClose?.('essay_1')).resolves.toBe(true);
+  });
+
+  it('ContentCloseConfirmationHost 通过 NotionAlertDialog 解析确认请求', async () => {
+    render(<ContentCloseConfirmationHost />);
+    const decision = requestContentCloseConfirmation({ description: 'Unsaved content' });
+
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('Unsaved content');
+    screen.getByRole('button', { name: '丢弃' }).click();
+    await expect(decision).resolves.toBe(true);
   });
 
   it('同一资源的多个 checker 聚合，且路径别名共享 dirty 状态', () => {

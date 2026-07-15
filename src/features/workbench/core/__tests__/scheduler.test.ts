@@ -39,6 +39,7 @@ import { registerTestApp } from './testUtils';
 
 registerTestApp('sched-light', { memoryWeight: 1 });
 registerTestApp('sched-heavy', { memoryWeight: 3 });
+registerTestApp('sched-native-surface', { memoryWeight: 2, keepAliveWhenOccluded: true });
 
 function store() {
   return useWindowStore.getState();
@@ -118,6 +119,20 @@ describe('recomputeLifecycles — 四档判定', () => {
     recomputeLifecycles();
     expect(store().lifecycles[covered]).toBe('background');
     expect(store().lifecycles[peeking]).toBe('visible'); // 右侧露出 100px
+  });
+
+  it('native surface 窗被完全遮挡时保持 visible，供原生裁剪层接管像素遮挡', () => {
+    const browser = store().openWindow({
+      typeId: 'sched-native-surface',
+      initialFrame: { x: 100, y: 100, w: 300, h: 200 },
+    });
+    store().openWindow({
+      typeId: 'sched-light',
+      initialFrame: { x: 50, y: 50, w: 500, h: 400 },
+    });
+
+    recomputeLifecycles();
+    expect(store().lifecycles[browser]).toBe('visible');
   });
 
   it('左右平铺遮挡使用当前 pair ratio，而非固定 50/50', () => {

@@ -84,7 +84,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             size="icon"
             onClick={onMenuClick}
             className={shellIconButtonClassName}
-            aria-label="展开侧边栏"
+            aria-label={t('common:mobile_header.open_sidebar')}
           >
             <List size={21} weight="regular" />
           </NotionButton>

@@ -20,7 +20,8 @@ import React, {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CurrentView } from '@/types/navigation';
-import type { DependencyResolver, Command } from './registry/types';
+import { useWindowStore } from '@/features/workbench/core/windowStore';
+import type { CommandView, DependencyResolver, Command } from './registry/types';
 import { commandRegistry } from './registry/commandRegistry';
 import { shortcutManager } from './registry/shortcutManager';
 import { normalizeShortcut, buildShortcutString } from './registry/shortcutUtils';
@@ -44,9 +45,9 @@ interface CommandPaletteContextValue {
   /** 依赖解析器 */
   deps: DependencyResolver;
   /** 当前视图（快照值，可能滞后于最新切换；优先使用 getCurrentView()） */
-  currentView: CurrentView;
+  currentView: CommandView;
   /** 获取最新视图（ref-based，始终返回最新值） */
-  getCurrentView: () => CurrentView;
+  getCurrentView: () => CommandView;
 }
 
 const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(null);
@@ -57,6 +58,8 @@ interface CommandPaletteProviderProps {
   children: ReactNode;
   /** 当前视图 */
   currentView: CurrentView;
+  /** Workbench replaces the legacy view layer and has its own command scope. */
+  workbenchActive?: boolean;
   /** 导航函数 */
   navigate: (view: CurrentView, params?: Record<string, unknown>) => void;
   /** 切换主题 */
@@ -72,6 +75,7 @@ interface CommandPaletteProviderProps {
 export function CommandPaletteProvider({
   children,
   currentView,
+  workbenchActive = false,
   navigate,
   toggleTheme,
   isDarkMode,
@@ -80,9 +84,16 @@ export function CommandPaletteProvider({
   const [isOpen, setIsOpen] = useState(false);
   const { t, i18n } = useTranslation();
 
-  // 🚀 用 ref 持有 currentView，避免 deps/contextValue 在每次视图切换时重建
-  const currentViewRef = useRef(currentView);
-  currentViewRef.current = currentView;
+  const focusedWorkbenchAppTypeId = useWindowStore((state) => {
+    if (!workbenchActive) return null;
+    const focusedWindowId = state.focusStack.at(-1);
+    return focusedWindowId ? state.windows[focusedWindowId]?.typeId ?? null : null;
+  });
+  const commandView: CommandView = workbenchActive ? 'workbench' : currentView;
+
+  // 🚀 用 ref 持有 command view，避免执行路径读取过期的 legacy 视图。
+  const currentViewRef = useRef<CommandView>(commandView);
+  currentViewRef.current = commandView;
   
   // 打开/关闭命令面板
   const open = useCallback(() => setIsOpen(true), []);
@@ -92,6 +103,7 @@ export function CommandPaletteProvider({
   const deps = useMemo<DependencyResolver>(() => ({
     navigate,
     getCurrentView: () => currentViewRef.current,
+    getFocusedWorkbenchAppTypeId: () => focusedWorkbenchAppTypeId,
     t,
     showNotification: showGlobalNotification,
     toggleTheme,
@@ -107,6 +119,7 @@ export function CommandPaletteProvider({
     isDarkMode,
     switchLanguage,
     i18n.language,
+    focusedWorkbenchAppTypeId,
     open,
     close,
   ]);
@@ -179,7 +192,7 @@ export function CommandPaletteProvider({
    * 尊重视图范围和 isEnabled，取最高优先级。
    */
   const resolveEffectiveShortcut = useCallback(
-    (normalized: string, view: CurrentView, d: DependencyResolver): Command | undefined => {
+    (normalized: string, view: CommandView, d: DependencyResolver): Command | undefined => {
       const candidates = effectiveShortcutIndex.get(normalized);
       if (!candidates || candidates.length === 0) return undefined;
 
@@ -246,7 +259,7 @@ export function CommandPaletteProvider({
       const shortcut = buildShortcutString(e);
       if (shortcut) {
         const normalized = normalizeShortcut(shortcut);
-        const matchedCommand = resolveEffectiveShortcut(normalized, currentView, deps);
+        const matchedCommand = resolveEffectiveShortcut(normalized, commandView, deps);
 
         if (matchedCommand) {
           e.preventDefault();
@@ -257,7 +270,7 @@ export function CommandPaletteProvider({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, toggle, currentView, deps, resolveEffectiveShortcut]);
+  }, [isOpen, toggle, commandView, deps, resolveEffectiveShortcut]);
   
   // 🚀 getCurrentView getter 替代直接暴露 currentView，使 contextValue 不随视图切换重建
   const getCurrentView = useCallback(() => currentViewRef.current, []);
@@ -270,9 +283,9 @@ export function CommandPaletteProvider({
     executeCommand,
     searchCommands,
     deps,
-    currentView: currentViewRef.current,
+    currentView: commandView,
     getCurrentView,
-  }), [isOpen, open, close, toggle, executeCommand, searchCommands, deps, getCurrentView]);
+  }), [isOpen, open, close, toggle, executeCommand, searchCommands, deps, commandView, getCurrentView]);
   
   return (
     <CommandPaletteContext.Provider value={contextValue}>

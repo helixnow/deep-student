@@ -35,11 +35,41 @@ export interface QbankFocusResult {
 
 export interface QbankFocusEventDetail {
   questionId: string;
+  /** Restricts a workbench activation to the currently mounted exam resource. */
+  targetResourceId?: string;
   acknowledge?: (result: QbankFocusResult) => void;
 }
 
 /** ExamContentView 监听：域变更后刷新本地题目列表 */
 export const QBANK_REFRESH_EVENT = 'qbank:refresh';
+
+/** ExamContentView owns its questions locally, so OS actions use this bridge. */
+export const QBANK_CONTROL_EVENT = 'qbank:control';
+
+export type QbankControlAction =
+  | 'nextQuestion'
+  | 'previousQuestion'
+  | 'setFilters'
+  | 'resetFilters'
+  | 'setPracticeMode'
+  | 'hydratePracticeSession';
+
+export interface QbankControlResult {
+  handled: boolean;
+  code?: string;
+  hint?: string;
+  currentQuestionId?: string | null;
+  acknowledged?: boolean;
+  hydratedSessionId?: string;
+  practiceMode?: 'timed' | 'mock_exam' | 'daily';
+}
+
+export interface QbankControlEventDetail {
+  targetResourceId?: string;
+  action: QbankControlAction;
+  payload?: unknown;
+  acknowledge?: (result: QbankControlResult) => void;
+}
 
 let deferredRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let domainUnlisten: (() => void) | null = null;

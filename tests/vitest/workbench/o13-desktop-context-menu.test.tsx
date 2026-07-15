@@ -11,11 +11,6 @@ import { render, screen, waitFor, cleanup, act, fireEvent, within } from '@testi
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async () => null),
 }));
-// 避免把 chat 重 UI / 会话核心拖进冒烟测试（与 p11 同构）
-vi.mock('@/features/chat/components/AnkiPanelHost', () => ({
-  AnkiPanelHost: () => null,
-  default: () => null,
-}));
 vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: vi.fn(async () => ({ id: 'sess_test' })),
 }));

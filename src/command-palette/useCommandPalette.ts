@@ -6,4 +6,4 @@
 export { useCommandPalette } from './CommandPaletteProvider';
 
 // 重新导出类型
-export type { DependencyResolver, Command, CommandCategory } from './registry/types';
+export type { DependencyResolver, Command, CommandCategory, CommandView } from './registry/types';

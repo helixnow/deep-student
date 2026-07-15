@@ -419,7 +419,9 @@ describe('R2-06 arbitration consistency matrix', () => {
     it('孤儿 presence 超 TTL → heal 清除', () => {
       const now = Date.now();
       usePresenceStore.getState().setPresence({
+        runKey: JSON.stringify(['sess-r206', 'orphan-run']),
         runId: 'orphan-run',
+        sessionId: 'sess-r206',
         windowId: 'win-r206',
         typeId: 'note',
         status: 'acting',

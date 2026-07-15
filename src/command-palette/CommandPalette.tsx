@@ -34,7 +34,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import type { Command, CommandCategory } from './registry/types';
+import type { Command, CommandCategory, CommandView, DependencyResolver } from './registry/types';
 
 // 扩展分类类型，包含特殊分组
 type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'sessions';
@@ -94,6 +94,17 @@ function groupCommandsByCategory(commands: Command[]): Map<DisplayCategory, Comm
   return sortedGroups;
 }
 
+function isCommandAvailableInCurrentContext(
+  command: Command,
+  currentView: CommandView,
+  deps: DependencyResolver,
+): boolean {
+  if (command.visibleInViews?.length && !command.visibleInViews.includes(currentView)) {
+    return false;
+  }
+  return !command.isEnabled || command.isEnabled(deps);
+}
+
 // ==================== 组件 ====================
 
 // 视图模式
@@ -127,15 +138,12 @@ export function CommandPalette() {
     const commands: Command[] = [];
     for (const id of recentIds) {
       const cmd = commandRegistry.getById(id);
-      if (cmd) {
-        // 检查视图限制
-        if (!cmd.visibleInViews || cmd.visibleInViews.length === 0 || cmd.visibleInViews.includes(currentView)) {
-          commands.push(cmd);
-        }
+      if (cmd && isCommandAvailableInCurrentContext(cmd, currentView, deps)) {
+        commands.push(cmd);
       }
     }
     return commands;
-  }, [currentView, isOpen]); // isOpen 变化时刷新
+  }, [currentView, deps, isOpen]); // isOpen 变化时刷新
   
   // 获取收藏的命令
   const favoriteCommands = useMemo(() => {
@@ -143,12 +151,12 @@ export function CommandPalette() {
     const commands: Command[] = [];
     for (const id of favoriteIds) {
       const cmd = commandRegistry.getById(id);
-      if (cmd) {
+      if (cmd && isCommandAvailableInCurrentContext(cmd, currentView, deps)) {
         commands.push(cmd);
       }
     }
     return commands;
-  }, [favoritesVersion]);
+  }, [favoritesVersion, currentView, deps]);
   
   // 搜索结果
   const filteredCommands = useMemo(() => {
@@ -182,7 +190,7 @@ export function CommandPalette() {
     if (!resourceSearchEnabled) return [];
     return sessionResults.map((item) => ({
       id: `${RESOURCE_COMMAND_PREFIX}session.${item.sessionId}`,
-      name: item.title || t('command_palette:untitled', '未命名'),
+      name: item.title || t('command_palette:untitled'),
       description: item.snippet,
       category: 'chat',
       icon: ChatCenteredText,
@@ -309,7 +317,7 @@ export function CommandPalette() {
           } else {
             showGlobalNotification(
               'warning',
-              t('command_palette:command_disabled', '该命令当前不可用')
+              t('command_palette:command_disabled')
             );
           }
         }
@@ -350,7 +358,7 @@ export function CommandPalette() {
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label={t('command_palette:title', '命令面板')}
+      aria-label={t('command_palette:title')}
     >
       <div 
         className="command-palette-container"
@@ -364,7 +372,7 @@ export function CommandPalette() {
               ref={inputRef}
               type="text"
               className="command-palette-input"
-              placeholder={t('command_palette:search_placeholder', '搜索命令...')}
+              placeholder={t('command_palette:search_placeholder')}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -373,7 +381,7 @@ export function CommandPalette() {
                   setViewMode('search');
                 }
               }}
-              aria-label={t('command_palette:search_placeholder', '搜索命令...')}
+              aria-label={t('command_palette:search_placeholder')}
             />
           </div>
           {/* 模式切换按钮 */}
@@ -387,7 +395,7 @@ export function CommandPalette() {
                 setViewMode(viewMode === 'recent' ? 'search' : 'recent');
                 setSelectedIndex(0);
               }}
-              title={t('command_palette:mode_recent', '最近使用')}
+              title={t('command_palette:mode_recent')}
             >
               <Clock size={16} />
             </button>
@@ -400,7 +408,7 @@ export function CommandPalette() {
                 setViewMode(viewMode === 'favorites' ? 'search' : 'favorites');
                 setSelectedIndex(0);
               }}
-              title={t('command_palette:mode_favorites', '收藏')}
+              title={t('command_palette:mode_favorites')}
             >
               <Star size={16} />
             </button>
@@ -408,7 +416,7 @@ export function CommandPalette() {
           <button
             className="command-palette-close-btn"
             onClick={close}
-            aria-label={t('common:close', '关闭')}
+            aria-label={t('common:close')}
           >
             <X size={18} />
           </button>
@@ -429,23 +437,23 @@ export function CommandPalette() {
           {flatCommands.length === 0 ? (
             <div className="command-palette-empty">
               {viewMode === 'recent'
-                ? t('command_palette:no_recent', '暂无最近使用的命令')
+                ? t('command_palette:no_recent')
                 : viewMode === 'favorites'
-                ? t('command_palette:no_favorites', '暂无收藏的命令')
-                : t('command_palette:no_results', '未找到匹配的命令')}
+                ? t('command_palette:no_favorites')
+                : t('command_palette:no_results')}
             </div>
           ) : (
             Array.from(groupedCommands.entries()).map(([category, commands]) => {
               // 处理特殊分组标签
               let categoryLabel: string;
               if (category === 'recent') {
-                categoryLabel = t('command_palette:mode_recent', '最近使用');
+                categoryLabel = t('command_palette:mode_recent');
               } else if (category === 'favorites') {
-                categoryLabel = t('command_palette:mode_favorites', '收藏');
+                categoryLabel = t('command_palette:mode_favorites');
               } else if (category === 'files') {
-                categoryLabel = t('command_palette:resource_files', '文件');
+                categoryLabel = t('command_palette:resource_files');
               } else if (category === 'sessions') {
-                categoryLabel = t('command_palette:resource_sessions', '会话');
+                categoryLabel = t('command_palette:resource_sessions');
               } else {
                 categoryLabel = t(
                   `command_palette:categories.${category}`,
@@ -500,8 +508,8 @@ export function CommandPalette() {
                             )}
                             onClick={(e) => handleToggleFavorite(command.id, e)}
                             title={commandFavorites.isFavorite(command.id)
-                              ? t('command_palette:unfavorite', '取消收藏')
-                              : t('command_palette:favorite', '收藏')
+                              ? t('command_palette:unfavorite')
+                              : t('command_palette:favorite')
                             }
                           >
                             {commandFavorites.isFavorite(command.id) ? (
@@ -534,17 +542,17 @@ export function CommandPalette() {
         <div className="command-palette-footer">
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">↑↓</span>
-            <span>{t('command_palette:hint_navigate', '导航')}</span>
+            <span>{t('command_palette:hint_navigate')}</span>
           </div>
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">
               <ArrowElbowDownLeft size={12} />
             </span>
-            <span>{t('command_palette:hint_execute', '执行')}</span>
+            <span>{t('command_palette:hint_execute')}</span>
           </div>
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">Esc</span>
-            <span>{t('command_palette:hint_close', '关闭')}</span>
+            <span>{t('command_palette:hint_close')}</span>
           </div>
         </div>
         )}

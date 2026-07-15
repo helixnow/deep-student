@@ -9,6 +9,7 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, useId, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -128,6 +129,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   showContentOverlay = false,
   gestureIgnoreSelector = DEFAULT_GESTURE_IGNORE_SELECTOR,
 }) => {
+  const { t } = useTranslation('common');
   // 判断是否为三屏模式
   const isThreeScreenMode = rightPanel !== undefined && onScreenPositionChange !== undefined;
 
@@ -580,7 +582,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
           {showContentOverlay && hasSidebar && (
             <button
               type="button"
-              aria-label="关闭侧边栏"
+              aria-label={t('sidebar.close')}
               aria-hidden={sidebarRevealProgress <= 0.02}
               tabIndex={isSidebarOverlayInteractive ? 0 : -1}
               onClick={closeSidebarAfterAppNavigation}

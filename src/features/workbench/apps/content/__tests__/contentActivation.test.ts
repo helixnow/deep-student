@@ -38,9 +38,16 @@ describe('content onActivation R2-10', () => {
     expect(scrollToHeading).toHaveBeenCalledWith('引言', 2);
   });
 
-  it('exam focusQuestion 派发 qbank:focus-question', () => {
+  it('exam focusQuestion 派发 qbank:focus-question', async () => {
     const spy = vi.spyOn(window, 'dispatchEvent');
-    const result = def('exam')({
+    const acknowledge = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        acknowledge?: (result: { handled: boolean; previousQuestionId: string | null }) => void;
+      }>).detail;
+      detail?.acknowledge?.({ handled: true, previousQuestionId: null });
+    };
+    window.addEventListener('qbank:focus-question', acknowledge);
+    const result = await def('exam')({
       windowId: 'w1',
       instanceKey: 'exam_1',
       action: 'focusQuestion',
@@ -51,12 +58,13 @@ describe('content onActivation R2-10', () => {
     const ev = spy.mock.calls.find(
       (c) => (c[0] as CustomEvent).type === 'qbank:focus-question',
     )?.[0] as CustomEvent;
-    expect(ev.detail).toEqual({ questionId: 'Q2' });
+    expect(ev.detail).toMatchObject({ questionId: 'Q2', targetResourceId: 'exam_1' });
+    window.removeEventListener('qbank:focus-question', acknowledge);
     spy.mockRestore();
   });
 
-  it('exam 缺 questionId → handled:false 可行动 hint', () => {
-    const result = def('exam')({
+  it('exam 缺 questionId → handled:false 可行动 hint', async () => {
+    const result = await def('exam')({
       windowId: 'w1',
       instanceKey: 'exam_1',
       action: 'focusQuestion',
@@ -68,25 +76,31 @@ describe('content onActivation R2-10', () => {
     });
   });
 
-  it('textbook scrollToHeading + page → pdf-ref:focus', () => {
+  it('textbook scrollToHeading + page waits for viewer ACK', async () => {
     const spy = vi.spyOn(document, 'dispatchEvent');
-    const result = def('textbook')({
+    const acknowledge = (event: Event) => {
+      (event as CustomEvent<{ acknowledge?: (handled: boolean) => void }>).detail
+        ?.acknowledge?.(true);
+    };
+    document.addEventListener('pdf-ref:focus', acknowledge);
+    const result = await def('textbook')({
       windowId: 'w1',
       instanceKey: 'tb_1',
       action: 'scrollToHeading',
       payload: { page: 3 },
     });
-    expect(result).toEqual({ handled: true });
+    expect(result).toEqual({ handled: true, acknowledged: true });
     const ev = spy.mock.calls.find(
       (c) => (c[0] as CustomEvent).type === 'pdf-ref:focus',
     )?.[0] as CustomEvent;
     expect(ev.detail.pageNumber).toBe(3);
     expect(ev.detail.sourceId).toBe('tb_1');
+    document.removeEventListener('pdf-ref:focus', acknowledge);
     spy.mockRestore();
   });
 
-  it('translation 纯标题 → handled:false 不假装成功', () => {
-    const result = def('translation')({
+  it('translation 纯标题 → handled:false 不假装成功', async () => {
+    const result = await def('translation')({
       windowId: 'w1',
       instanceKey: 'tr_1',
       action: 'scrollToHeading',

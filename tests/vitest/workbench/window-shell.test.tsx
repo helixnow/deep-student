@@ -14,6 +14,10 @@ import {
   getActiveWorkbenchCursor,
   resetWorkbenchCursorForTests,
 } from '@/features/workbench/hooks/useWorkbenchGestures';
+import {
+  WORKBENCH_NATIVE_SURFACE_LAYOUT_EVENT,
+  type NativeSurfaceLayoutEventDetail,
+} from '@/features/workbench/core/nativeSurfaceEvents';
 import { openTestWindow, registerTestApp, resetWorkbenchStore } from './testUtils';
 
 /**
@@ -148,6 +152,62 @@ describe('WindowShell 三键 / 双击 / 平铺菜单', () => {
     expect(win.displayMode).toBe('floating');
     expect(win.frame).toEqual(original);
     expect(win.restoreFrame).toBeNull();
+  });
+
+  it('连续 restore FLIP 的延迟 cancel 不会提前恢复后继动画的原生表面', () => {
+    const originalAnimate = HTMLElement.prototype.animate;
+    const animations: EventTarget[] = [];
+    const nativeSurfaceEvents: NativeSurfaceLayoutEventDetail[] = [];
+    const onNativeSurfaceLayout = (event: Event) => {
+      nativeSurfaceEvents.push(
+        (event as CustomEvent<NativeSurfaceLayoutEventDetail>).detail,
+      );
+    };
+
+    HTMLElement.prototype.animate = vi.fn(function () {
+      const animation = Object.assign(new EventTarget(), { cancel: vi.fn() });
+      animations.push(animation);
+      return animation as unknown as Animation;
+    }) as unknown as typeof HTMLElement.prototype.animate;
+    window.addEventListener(WORKBENCH_NATIVE_SURFACE_LAYOUT_EVENT, onNativeSurfaceLayout);
+
+    try {
+      const id = openTestWindow();
+      renderShell(id);
+      const zoom = screen.getByRole('button', { name: '缩放窗口' });
+      const el = getWinEl(id);
+
+      fireEvent.click(zoom); // floating -> maximized
+      fireEvent.click(zoom); // maximized -> floating: animation A
+      expect(animations).toHaveLength(1);
+      expect(el.style.transformOrigin).toBe('0 0');
+
+      fireEvent.click(zoom); // floating -> maximized
+      fireEvent.click(zoom); // maximized -> floating: cancel A, then animation B
+      expect(animations).toHaveLength(2);
+
+      const allSurfacePhases = () =>
+        nativeSurfaceEvents
+          .filter((detail) => detail.scope === 'all')
+          .map((detail) => detail.phase);
+      expect(allSurfacePhases()).toEqual(['suspend', 'resume', 'suspend']);
+
+      // 浏览器可能在新动画已启动后才派发旧动画的 cancel；旧 cleanup 必须 no-op。
+      act(() => {
+        animations[0].dispatchEvent(new Event('cancel'));
+      });
+      expect(allSurfacePhases()).toEqual(['suspend', 'resume', 'suspend']);
+      expect(el.style.transformOrigin).toBe('0 0');
+
+      act(() => {
+        animations[1].dispatchEvent(new Event('finish'));
+      });
+      expect(allSurfacePhases()).toEqual(['suspend', 'resume', 'suspend', 'resume']);
+      expect(el.style.transformOrigin).toBe('');
+    } finally {
+      HTMLElement.prototype.animate = originalAnimate;
+      window.removeEventListener(WORKBENCH_NATIVE_SURFACE_LAYOUT_EVENT, onNativeSurfaceLayout);
+    }
   });
 
   it('双击标题栏 = maximize toggle', () => {

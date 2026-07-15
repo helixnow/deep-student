@@ -2,6 +2,14 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const diagnosticsMock = vi.hoisted(() => vi.fn());
+
+vi.mock('@/features/workbench/agent/stageManager', () => ({
+  stageManager: {
+    getDiagnostics: diagnosticsMock,
+  },
+}));
+
 import { WorkbenchDevPanel } from '@/features/workbench/components/WorkbenchDevPanel';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import type { WorkbenchWindow } from '@/features/workbench/core/types';
@@ -33,6 +41,13 @@ const EMPTY_STORE = {
 describe('WorkbenchDevPanel (mock store data)', () => {
   beforeEach(() => {
     useWindowStore.setState({ ...EMPTY_STORE });
+    diagnosticsMock.mockReturnValue({
+      transactions: [],
+      leases: [],
+      cancelling: 0,
+      orphanDraining: 0,
+      undoInFlight: 0,
+    });
   });
 
   afterEach(() => {
@@ -96,5 +111,42 @@ describe('WorkbenchDevPanel (mock store data)', () => {
     render(<WorkbenchDevPanel onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: '关闭面板' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows ACR 3.0 transactions, leases and bounded-drain diagnostics', () => {
+    diagnosticsMock.mockReturnValue({
+      transactions: [
+        {
+          runId: 'acr3:9:session-a:call-1',
+          sessionId: 'session-a',
+          correlationId: 'corr-1',
+          kind: 'apply_ops',
+          windowId: 'win-note',
+          state: 'orphan-draining',
+          ownsLease: true,
+        },
+      ],
+      leases: [
+        {
+          windowId: 'win-note',
+          runId: 'acr3:9:session-a:call-1',
+          sessionId: 'session-a',
+        },
+      ],
+      cancelling: 0,
+      orphanDraining: 1,
+      undoInFlight: 1,
+    });
+
+    render(<WorkbenchDevPanel />);
+
+    expect(screen.getByTestId('wb-hud-acr-transactions')).toHaveTextContent('transactions 1');
+    expect(screen.getByTestId('wb-hud-acr-leases')).toHaveTextContent('leases 1');
+    expect(screen.getByTestId('wb-hud-acr-cancelling')).toHaveTextContent('cancelling 0');
+    expect(screen.getByTestId('wb-hud-acr-orphans')).toHaveTextContent('orphan-draining 1');
+    expect(screen.getByTestId('wb-hud-acr-undo-in-flight')).toHaveTextContent('undo-in-flight 1');
+    expect(screen.getByTestId('wb-hud-acr-transaction-list')).toHaveTextContent(
+      'apply_ops/orphan-draining',
+    );
   });
 });

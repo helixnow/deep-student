@@ -30,6 +30,7 @@
  */
 import { useEffect, useRef } from 'react';
 import i18n from 'i18next';
+import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import {
   computeCenteredFrame,
@@ -158,6 +159,14 @@ function getFocusedWindowId(): string | null {
     if (win && !win.minimized) return id;
   }
   return null;
+}
+
+/** Tabbed apps may reserve Ctrl+W for their active internal tab. */
+function focusedAppHandlesCloseShortcut(): boolean {
+  const focusedId = getFocusedWindowId();
+  if (!focusedId) return false;
+  const focused = useWindowStore.getState().windows[focusedId];
+  return Boolean(focused && appRegistry.get(focused.typeId)?.handlesCloseShortcut);
 }
 
 /** 按 lastFocusedAt 降序（最近使用在前）的全部窗口 id，含最小化窗口 */
@@ -482,6 +491,9 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
       const def = matchWorkbenchShortcut(e);
       if (!def) return;
       if (def.id === 'close-window' && !closeEnabledRef.current) return;
+      // Let tabbed apps handle Ctrl+W consistently regardless of whether focus
+      // is in their editor, tree, or tab strip. Do not reserve close-all.
+      if (def.id === 'close-window' && focusedAppHandlesCloseShortcut()) return;
       cancelHold();
       if (e.repeat && def.id !== 'cycle-next' && def.id !== 'cycle-prev') {
         e.preventDefault();

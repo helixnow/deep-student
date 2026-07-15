@@ -31,6 +31,7 @@ export type { CommandEventName } from './hooks/useCommandEvents';
 export type {
   Command,
   CommandCategory,
+  CommandView,
   DependencyResolver,
   ICommandRegistry,
   CommandChangeListener,

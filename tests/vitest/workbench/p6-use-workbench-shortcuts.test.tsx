@@ -3,11 +3,13 @@
  * 输入框 guard、平铺/最大化/恢复/居中/关闭、Ctrl+Tab 会话（顺序=lastFocusedAt、
  * 按住循环、松开 Ctrl 聚焦、Esc 取消）、enabled/enableCloseWindow 选项
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useWorkbenchShortcuts } from '@/features/workbench/hooks/useWorkbenchShortcuts';
+import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { useWorkbenchOverlay } from '@/features/workbench/core/shortcuts';
+import type { AppDefinition } from '@/features/workbench/core/types';
 import {
   makeWindow,
   seedWindows,
@@ -19,6 +21,20 @@ import {
 
 const win = (id: string, lastFocusedAt: number, extra = {}) =>
   makeWindow({ id, lastFocusedAt, ...extra });
+
+const TABBED_APP_TYPE_ID = 'tabbed-shortcut-test';
+
+appRegistry.register({
+  typeId: TABBED_APP_TYPE_ID,
+  nameKey: 'workbench:test.tabbedShortcut',
+  icon: null,
+  instanceMode: 'single',
+  memoryWeight: 1,
+  defaultFrame: { w: 400, h: 300 },
+  minSize: { w: 200, h: 150 },
+  render: null as unknown as AppDefinition['render'],
+  handlesCloseShortcut: true,
+});
 
 function seedThree() {
   // a 最近聚焦，其次 b，再次 c
@@ -98,6 +114,27 @@ describe('窗口管理快捷键', () => {
     });
     expect(Object.keys(useWindowStore.getState().windows).sort()).toEqual(['b', 'c']);
     hook.unmount();
+  });
+
+  it('Ctrl+W 放行给声明内部标签关闭语义的应用', () => {
+    seedWindows([win('tabbed', 100, { typeId: TABBED_APP_TYPE_ID })]);
+    const target = document.createElement('button');
+    document.body.appendChild(target);
+    const appHandler = vi.fn((event: KeyboardEvent) => {
+      if (event.ctrlKey && event.code === 'KeyW') event.preventDefault();
+    });
+    target.addEventListener('keydown', appHandler);
+    const hook = renderHook(() => useWorkbenchShortcuts());
+
+    const event = keydown({ code: 'KeyW', key: 'w', ctrlKey: true }, target);
+
+    expect(appHandler).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+    expect(useWindowStore.getState().windows.tabbed).toBeDefined();
+
+    hook.unmount();
+    target.removeEventListener('keydown', appHandler);
+    target.remove();
   });
 
   it('enableCloseWindow=false 时 Ctrl+W 不触发', async () => {

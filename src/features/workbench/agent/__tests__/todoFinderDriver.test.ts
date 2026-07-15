@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock 工厂提升：fn 必须经 vi.hoisted 创建
-const { setActiveList, selectItem, setViewFilter, loadItems, requestQuickAdd, initialize, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
+const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, requestQuickAdd, initialize, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
   const todoState = {
     activeListId: null as string | null,
     error: null as string | null,
@@ -24,6 +24,7 @@ const { setActiveList, selectItem, setViewFilter, loadItems, requestQuickAdd, in
   setActiveList: vi.fn((id: string | null) => { todoState.activeListId = id; }),
   selectItem: vi.fn(),
   setViewFilter: vi.fn((view: string) => { todoState.filter.view = view; }),
+  setWorkspaceView: vi.fn(),
   loadItems: vi.fn(async () => undefined),
   requestQuickAdd: vi.fn(),
   initialize: vi.fn(async () => undefined),
@@ -40,6 +41,7 @@ vi.mock('@/features/todo/stores/useTodoStore', () => ({
       setActiveList,
       selectItem,
       setViewFilter,
+      setWorkspaceView,
       loadItems,
       requestQuickAdd,
       initialize,
@@ -105,6 +107,7 @@ describe('todo / files onActivation', () => {
   beforeEach(() => {
     setActiveList.mockClear();
     selectItem.mockClear();
+    setWorkspaceView.mockClear();
     enterFolder.mockClear();
     navigateTo.mockClear();
     setSelectedIds.mockClear();
@@ -117,6 +120,16 @@ describe('todo / files onActivation', () => {
     finderState.inlineEdit.editingId = null;
   });
 
+  it('todo showAutomations -> 切换到定时任务工作区', async () => {
+    const result = await handleTodoActivation({
+      windowId: 'w1',
+      instanceKey: null,
+      action: 'showAutomations',
+    });
+    expect(result).toEqual({ handled: true });
+    expect(setWorkspaceView).toHaveBeenCalledWith('automations');
+  });
+
   it('todo showList → setActiveList(listId)', async () => {
     await handleTodoActivation({
       windowId: 'w1',
@@ -124,6 +137,7 @@ describe('todo / files onActivation', () => {
       action: 'showList',
       payload: { listId: 'list-a' },
     });
+    expect(setWorkspaceView).toHaveBeenCalledWith('todos');
     expect(setActiveList).toHaveBeenCalledWith('list-a');
     expect(selectItem).not.toHaveBeenCalled();
   });
@@ -135,6 +149,7 @@ describe('todo / files onActivation', () => {
       action: 'focusItem',
       payload: { itemId: 'item-9' },
     });
+    expect(setWorkspaceView).toHaveBeenCalledWith('todos');
     expect(selectItem).toHaveBeenCalledWith('item-9');
     expect(agentFlash).toHaveBeenCalledWith('todo', 'item-9');
   });
@@ -146,6 +161,7 @@ describe('todo / files onActivation', () => {
       action: 'quickAdd',
       payload: { dueDate: '2026-07-12' },
     });
+    expect(setWorkspaceView).toHaveBeenCalledWith('todos');
     expect(setActiveList).toHaveBeenCalledWith('list-default');
     expect(loadItems).toHaveBeenCalledWith('list-default', false);
     expect(requestQuickAdd).toHaveBeenCalledWith('2026-07-12');

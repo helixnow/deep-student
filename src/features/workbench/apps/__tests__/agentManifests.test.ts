@@ -10,6 +10,7 @@ import {
   registerMindMapStore,
 } from '@/features/mindmap/store/mindmapStore';
 import { useFsrsReviewStore } from '@/features/flashcards/store/fsrsReviewStore';
+import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { DEFAULT_POMODORO_SETTINGS } from '@/features/pomodoro/types';
 import { useTodoStore } from '@/features/todo/stores/useTodoStore';
@@ -117,6 +118,7 @@ beforeEach(() => {
     loading: false,
     ratingBusy: false,
   });
+  useFlashcardsLibraryStore.getState().reset();
   useQuestionBankStore.setState({
     currentExamId: 'exam-1',
     currentQuestionId: 'question-1',
@@ -128,6 +130,11 @@ beforeEach(() => {
     } as never]]),
     isLoading: false,
     isSubmitting: false,
+    practiceMode: 'sequential',
+    timedSession: null,
+    mockExamSession: null,
+    dailyPractice: null,
+    mockExamScoreCard: null,
   });
 });
 
@@ -139,6 +146,44 @@ afterEach(async () => {
 });
 
 describe('ACR 2.0 app manifests', () => {
+  it('only exposes Files actions that can produce a real state transition', async () => {
+    useFinderStore.setState({
+      currentPath: {
+        viewKind: 'folder',
+        folderId: null,
+        breadcrumbs: [],
+        typeFilter: null,
+      },
+      history: [],
+      historyIndex: 0,
+      items: [],
+      selectedIds: new Set(),
+    });
+
+    const observation = await filesAgentManifest.observe!({
+      windowId: 'files-window',
+      typeId: 'files',
+      instanceKey: null,
+    });
+    expect(observation.availableActions).not.toEqual(expect.arrayContaining([
+      'goBack',
+      'goForward',
+      'goUp',
+      'selectAll',
+      'clearSelection',
+    ]));
+
+    const result = await filesAgentManifest.execute!({
+      windowId: 'files-window',
+      typeId: 'files',
+      instanceKey: null,
+    }, { name: 'goBack' });
+    expect(result).toMatchObject({
+      handled: false,
+      code: 'ACTION_UNAVAILABLE',
+    });
+  });
+
   it('marks every control action as mutating and never exposes answer/submit/rate', () => {
     const noop = vi.fn(async () => ({ handled: true as const }));
     const manifests = [
@@ -161,6 +206,137 @@ describe('ACR 2.0 app manifests', () => {
       expect.arrayContaining(['answer', 'submit', 'submitAnswer', 'submitExam']),
     );
     expect(createFlashcardsAgentManifest(noop).capabilities.map((item) => item.name)).not.toContain('rate');
+  });
+
+  it('observes hydrated exam sessions without exposing answers or enabling Agent answering', async () => {
+    useQuestionBankStore.setState({
+      practiceMode: 'mock_exam',
+      timedSession: {
+        id: 'timed-1', exam_id: 'exam-1', duration_minutes: 30, question_count: 1,
+        question_ids: ['question-1'], started_at: '2026-07-14T08:00:00Z',
+        answered_count: 0, correct_count: 0, is_timeout: false, is_submitted: false,
+        paused_seconds: 0, is_paused: false,
+      },
+      mockExamSession: {
+        id: 'mock-1', exam_id: 'exam-1',
+        config: {
+          duration_minutes: 60, type_distribution: {}, difficulty_distribution: {},
+          total_count: 1, shuffle: true, include_mistakes: true,
+        },
+        question_ids: ['question-1'], started_at: '2026-07-14T08:00:00Z',
+        answers: {}, results: {}, is_submitted: false,
+      },
+    });
+    const manifest = createExamAgentManifest(handleExamActivation);
+    const observation = await manifest.observe!({
+      windowId: 'exam-window', typeId: 'exam', instanceKey: 'exam-1',
+    });
+
+    expect(manifest.capabilities.map((capability) => capability.name)).toContain(
+      'hydratePracticeSession',
+    );
+    expect(observation.state).toMatchObject({
+      agentCanAnswer: false,
+      agentCanSubmit: false,
+      activePracticeSession: {
+        mode: 'mock_exam',
+        sessionId: 'mock-1',
+        questionIds: ['question-1'],
+        answeredCount: 0,
+      },
+      practiceSessions: {
+        timed: { sessionId: 'timed-1' },
+        mockExam: { sessionId: 'mock-1' },
+      },
+    });
+    expect(JSON.stringify(observation.state)).not.toContain('answers');
+  });
+
+  it('observes the real library page and exposes confirmed card mutations without rating', async () => {
+    useFsrsReviewStore.setState({ screen: 'library', dueCards: [] });
+    useFlashcardsLibraryStore.setState({
+      items: [{
+        id: 'library-1',
+        task_id: 'task-library-1',
+        front: 'Library front',
+        back: 'Library back',
+        text: 'Library text',
+        tags: ['agent-visible'],
+        images: [],
+        created_at: '2026-07-14T00:00:00Z',
+        updated_at: 'version-1',
+        version: 'version-1',
+        stateId: 'state-library-1',
+        reviewVersion: 7,
+        enqueued: true,
+        suspended: false,
+        isDue: true,
+        latestReview: {
+          logId: 'log-library-1',
+          rating: 3,
+          reviewedAt: '2026-07-14T01:00:00Z',
+          undoable: true,
+        },
+      }],
+      total: 41,
+      page: 2,
+      pageSize: 20,
+      query: 'Library',
+      searchInput: 'Library',
+      loading: false,
+      loaded: true,
+    });
+
+    const manifest = createFlashcardsAgentManifest(handleFlashcardsActivation);
+    const observation = await manifest.observe!({
+      windowId: 'flash-library', typeId: 'flashcards', instanceKey: null,
+    });
+    expect(observation.state).toMatchObject({
+      ratingAvailableToAgent: false,
+      library: {
+        total: 41,
+        page: 2,
+        pageSize: 20,
+        query: 'Library',
+        loading: false,
+        items: [expect.objectContaining({
+          id: 'library-1',
+          version: 'version-1',
+          reviewVersion: 7,
+          front: 'Library front',
+          latestReview: expect.objectContaining({ logId: 'log-library-1', undoable: true }),
+        })],
+      },
+    });
+    expect(observation.entities).toEqual([
+      expect.objectContaining({
+        ref: 'flashcards:card:library-1',
+        actions: expect.arrayContaining([
+          'editCard', 'setSuspended', 'undoLastReview', 'deleteCard',
+        ]),
+      }),
+    ]);
+    expect(observation.availableActions).toEqual(expect.arrayContaining([
+      'searchLibrary', 'setLibraryPage', 'editCard', 'setSuspended',
+      'undoLastReview', 'deleteCard',
+    ]));
+    expect(observation.availableActions).not.toContain('rate');
+
+    const risks = Object.fromEntries(manifest.capabilities.map((capability) => [
+      capability.name,
+      capability.risk,
+    ]));
+    expect(risks).toMatchObject({ undoLastReview: 'high', deleteCard: 'high' });
+
+    const mismatch = await manifest.execute!(
+      { windowId: 'flash-library', typeId: 'flashcards', instanceKey: null },
+      {
+        name: 'editCard',
+        targetRef: 'flashcards:card:another-card',
+        args: { cardId: 'library-1', front: 'Changed' },
+      },
+    );
+    expect(mismatch).toMatchObject({ handled: false, code: 'TARGET_REF_MISMATCH' });
   });
 
   it('keeps targetKinds aligned with bounded semantic observations', async () => {
@@ -317,6 +493,66 @@ describe('ACR 2.0 app manifests', () => {
         name: 'resume',
         expect: [{ kind: 'state_equals', path: 'status', value: 'running' }],
       },
+    });
+  });
+
+  it('fails closed for mutating no-ops and surfaces without an ACK', async () => {
+    const store = createMindMapStore();
+    store.setState({ mindmapId: 'noop-map', currentView: 'mindmap' });
+    cleanups.push(registerMindMapStore('noop-map', store, 'noop-window'));
+    const mindmap = createMindmapAgentManifest(handleMindmapActivation);
+    const sameView = await mindmap.execute!(
+      { windowId: 'noop-window', typeId: 'mindmap', instanceKey: 'noop-map' },
+      { name: 'setView', args: { view: 'mindmap' } },
+    );
+    expect(sameView).toMatchObject({ handled: false, code: 'ACTION_UNAVAILABLE' });
+
+    const notesActivation = vi.fn(async () => ({ handled: true as const }));
+    const notes = createNotesAgentManifest(notesActivation);
+    const heading = await notes.execute!(
+      { windowId: 'notes-no-ack', typeId: 'notes', instanceKey: null },
+      { name: 'scrollToHeading', args: { heading: 'Intro' } },
+    );
+    expect(heading).toMatchObject({ handled: false, code: 'ACTION_UNAVAILABLE' });
+    expect(notesActivation).not.toHaveBeenCalled();
+
+    const preview = createResourceContentManifest(
+      'file-preview',
+      vi.fn(async () => ({ handled: true as const })),
+    );
+    const page = await preview.execute!(
+      { windowId: 'preview-no-ack', typeId: 'file-preview', instanceKey: 'file-1' },
+      { name: 'gotoPage', args: { page: 2 } },
+    );
+    expect(page).toMatchObject({ handled: false, code: 'ACTION_UNAVAILABLE' });
+
+    useFsrsReviewStore.setState({ screen: 'today' });
+    const flashcards = createFlashcardsAgentManifest(handleFlashcardsActivation);
+    const sameScreen = await flashcards.execute!(
+      { windowId: 'flash-noop', typeId: 'flashcards', instanceKey: null },
+      { name: 'showScreen', args: { screen: 'today' } },
+    );
+    expect(sameScreen).toMatchObject({ handled: false, code: 'ACTION_UNAVAILABLE' });
+  });
+
+  it('derives search navigation postconditions from before state', async () => {
+    const store = createMindMapStore();
+    store.setState({
+      mindmapId: 'search-map',
+      searchQuery: 'node',
+      searchResults: ['node-1', 'node-2', 'node-3'],
+      currentSearchIndex: 0,
+    });
+    cleanups.push(registerMindMapStore('search-map', store, 'search-window'));
+    const mindmap = createMindmapAgentManifest(handleMindmapActivation);
+    const next = await mindmap.execute!(
+      { windowId: 'search-window', typeId: 'mindmap', instanceKey: 'search-map' },
+      { name: 'nextSearchResult' },
+    );
+    expect(next).toMatchObject({
+      handled: true,
+      acknowledged: true,
+      postconditions: [{ kind: 'state_equals', path: 'currentSearchIndex', value: 1 }],
     });
   });
 });

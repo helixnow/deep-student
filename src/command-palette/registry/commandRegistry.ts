@@ -6,13 +6,14 @@
 
 import type {
   Command,
+  CommandView,
   CommandCategory,
   CommandChangeListener,
   ICommandRegistry,
   DependencyResolver,
 } from './types';
-import type { CurrentView } from '@/types/navigation';
 import { normalizeShortcut as normalizeShortcutUtil } from './shortcutUtils';
+import i18next from 'i18next';
 
 // ==================== 搜索算法 ====================
 
@@ -298,7 +299,7 @@ class CommandRegistry implements ICommandRegistry {
   /**
    * 根据当前视图获取可用命令
    */
-  getAvailable(currentView: CurrentView, deps: DependencyResolver): Command[] {
+  getAvailable(currentView: CommandView, deps: DependencyResolver): Command[] {
     return this.getAll().filter((cmd) => {
       // 视图限制检查
       if (cmd.visibleInViews && cmd.visibleInViews.length > 0) {
@@ -335,7 +336,7 @@ class CommandRegistry implements ICommandRegistry {
   /**
    * 根据快捷键解析当前视图下的命令
    */
-  resolveShortcut(shortcut: string, currentView: CurrentView, deps: DependencyResolver): Command | undefined {
+  resolveShortcut(shortcut: string, currentView: CommandView, deps: DependencyResolver): Command | undefined {
     const normalizedShortcut = this.normalizeShortcut(shortcut);
     const candidates = this.getShortcutCandidates(normalizedShortcut).filter((cmd) => {
       if (!this.isCommandVisibleInView(cmd, currentView)) {
@@ -388,7 +389,7 @@ class CommandRegistry implements ICommandRegistry {
     // 检查是否启用
     if (command.isEnabled && !command.isEnabled(deps)) {
       console.warn(`[CommandRegistry] 命令 "${id}" 当前不可用`);
-      deps.showNotification('warning', '该命令当前不可用');
+      deps.showNotification('warning', i18next.t('command_palette:notifications.command_not_available'));
       return;
     }
 
@@ -412,7 +413,10 @@ class CommandRegistry implements ICommandRegistry {
       }
     } catch (error: unknown) {
       console.error(`[CommandRegistry] 命令 "${id}" 执行失败:`, error);
-      deps.showNotification('error', `命令执行失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      deps.showNotification(
+        'error',
+        `${i18next.t('command_palette:error.execute_failed')}: ${error instanceof Error ? error.message : ''}`,
+      );
       throw error;
     }
   }
@@ -428,7 +432,7 @@ class CommandRegistry implements ICommandRegistry {
   /**
    * 搜索命令（模糊匹配） - 增强版
    */
-  search(query: string, currentView: CurrentView, deps: DependencyResolver): Command[] {
+  search(query: string, currentView: CommandView, deps: DependencyResolver): Command[] {
     const available = this.getAvailable(currentView, deps);
 
     if (!query.trim()) {
@@ -490,7 +494,7 @@ class CommandRegistry implements ICommandRegistry {
     })[0];
   }
 
-  private isCommandVisibleInView(command: Command, view: CurrentView): boolean {
+  private isCommandVisibleInView(command: Command, view: CommandView): boolean {
     if (!command.visibleInViews || command.visibleInViews.length === 0) {
       return true;
     }

@@ -3,7 +3,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useMindMapStore } from '@/features/mindmap/store/mindmapStore';
+import {
+  registerMindMapStore,
+  useMindMapStore,
+} from '@/features/mindmap/store/mindmapStore';
 import type { MindMapDocument, MindMapNode } from '@/features/mindmap/types';
 import { findNodeById } from '@/features/mindmap/utils/node/find';
 import { runLedger } from '../ledger';
@@ -13,6 +16,7 @@ import type { AcrRunContext, AgentOp, PacingProfileName } from '../types';
 
 const MM_ID = 'mm_test_r1_11';
 const MM_OTHER = 'mm_other_window';
+let unregisterDriverStore = () => undefined;
 
 function createDocument(): MindMapDocument {
   return {
@@ -146,9 +150,15 @@ function opMove(nodeId: string, newParentId: string, index: number): AgentOp {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  unregisterDriverStore = registerMindMapStore(
+    MM_ID,
+    useMindMapStore,
+    `win_mm:mindmap:${MM_ID}`,
+  );
 });
 
 afterEach(() => {
+  unregisterDriverStore();
   useMindMapStore.getState().reset();
   vi.useRealTimers();
 });
@@ -256,6 +266,73 @@ describe('mindmapDriver apply + ledger round-trip', () => {
     expect(receipt.suggestionPending).toBe(true);
     expect(receipt.applied).toBe(0);
     expect(treeSnapshot(useMindMapStore.getState().document.root)).toBe(before);
+  });
+
+  it('update_node 命中正在编辑的节点时也进入屏障，不覆盖输入稿', async () => {
+    seedStore(createDocument(), { editingNodeId: 'node_b' });
+    const receipt = await mindmapDriver.apply(makeRun('hot-update'), [
+      opUpdate('node_b', 'Agent overwrite'),
+    ]);
+
+    expect(receipt.suggestionPending).toBe(true);
+    expect(receipt.applied).toBe(0);
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')?.text).toBe('Beta');
+  });
+
+  it('dirty 文档上的 update_node 不绕过用户编辑屏障', async () => {
+    seedStore(createDocument(), { isDirty: true });
+    const receipt = await mindmapDriver.apply(makeRun('dirty-update'), [
+      opUpdate('node_b', 'Agent overwrite'),
+    ]);
+
+    expect(receipt.suggestionPending).toBe(true);
+    expect(receipt.applied).toBe(0);
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')?.text).toBe('Beta');
+  });
+
+  it('update_node style 与后端一致做深合并，null 仅清除指定属性', async () => {
+    const document = createDocument();
+    document.root.children[1]!.style = { bgColor: '#f00', fontWeight: 'bold' };
+    seedStore(document);
+    const run = makeRun('style-merge');
+
+    const first = await mindmapDriver.apply(run, [{
+      kind: 'update_node',
+      anchor: { node_id: 'node_b' },
+      payload: { patch: { style: { textColor: '#00f' } } },
+      destructive: false,
+      label: '合并样式',
+    }]);
+    expect(first.status).toBe('completed');
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')?.style).toEqual({
+      bgColor: '#f00',
+      fontWeight: 'bold',
+      textColor: '#00f',
+    });
+
+    const second = await mindmapDriver.apply(makeRun('style-clear'), [{
+      kind: 'update_node',
+      anchor: { node_id: 'node_b' },
+      payload: { patch: { style: { bgColor: null } } },
+      destructive: false,
+      label: '清除背景色',
+    } as AgentOp]);
+    expect(second.status).toBe('completed');
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')?.style).toEqual({
+      fontWeight: 'bold',
+      textColor: '#00f',
+    });
+  });
+
+  it('update inverse 遇到用户后续编辑时拒绝，不覆盖用户内容', async () => {
+    seedStore(createDocument());
+    const run = makeRun('update-occ');
+    await mindmapDriver.apply(run, [opUpdate('node_b', 'Agent value')]);
+    useMindMapStore.getState().updateNode('node_b', { text: 'User value' });
+
+    expect(await run.ledger.revertRun(run.runId)).toBe(false);
+    expect(findNodeById(useMindMapStore.getState().document.root, 'node_b')?.text).toBe('User value');
+    expect(run.ledger.hasRun(run.runId)).toBe(true);
   });
 
   it('dirty 混合批次在首个 destructive op 形成屏障，保存前序操作且不越过后续', async () => {

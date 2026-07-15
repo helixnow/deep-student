@@ -141,6 +141,7 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
             dstuPath={`/${resourceId}`}
             strictType
             isActive={isActive}
+            hostWindowId={windowId}
             onTitleChange={handleTitleChange}
             onClose={requestClose}
             className="h-full"
