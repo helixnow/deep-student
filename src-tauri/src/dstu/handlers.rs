@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use rusqlite::OptionalExtension;
 use serde_json::Value;
-use tauri::{State, Window};
+use tauri::{Emitter, State, Window};
 
 use super::error::DstuError;
 
@@ -54,7 +54,7 @@ use super::handler_utils::{
     mindmap_to_dstu_node,
     note_to_dstu_node,
     parse_timestamp,
-    purge_resource_by_type,
+    purge_resource_by_type_if_trashed,
     restore_resource_by_type,
     restore_resource_by_type_with_conn,
     search_all,
@@ -66,7 +66,6 @@ use super::handler_utils::{
     update_content_by_type,
 };
 
-use super::trash_handlers::is_resource_in_trash;
 
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
@@ -3112,6 +3111,7 @@ pub async fn dstu_get_exam_content(
 pub async fn dstu_set_metadata(
     path: String,
     metadata: Value,
+    expected_updated_at: Option<String>,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<(), String> {
@@ -3506,70 +3506,117 @@ pub async fn dstu_set_metadata(
             }
         }
         "textbooks" | "textbook" => {
-            // 更新教材阅读进度
-            if let Some(reading_progress) = metadata.get("readingProgress") {
-                if let Some(page) = reading_progress.get("page").and_then(|v| v.as_i64()) {
-                    match VfsTextbookRepo::update_reading_progress(&vfs_db, &id, page as i32) {
-                        Ok(_) => log::info!(
+            // PDF highlights are true DSTU resource metadata. Require an exact
+            // revision so the reader cannot silently overwrite Agent/UI edits.
+            let annotation_update = if let Some(highlights) = metadata.get("highlights") {
+                let highlights = highlights.as_array().ok_or_else(|| {
+                    "INVALID_ARGUMENT: textbook highlights must be an array".to_string()
+                })?;
+                if highlights.len() > 500 {
+                    return Err(
+                        "INVALID_ARGUMENT: textbook highlights cannot exceed 500 items".to_string(),
+                    );
+                }
+                let expected = expected_updated_at.as_deref().ok_or_else(|| {
+                    "CONFLICT(textbooks.annotations_conflict): expected_updated_at is required when replacing highlights"
+                        .to_string()
+                })?;
+                Some(
+                    VfsTextbookRepo::replace_highlights_if_version(
+                        &vfs_db, &id, highlights, expected,
+                    )
+                    .map_err(|error| error.to_string())?,
+                )
+            } else {
+                None
+            };
+
+            if annotation_update.is_none() {
+                // 更新教材阅读进度
+                if let Some(reading_progress) = metadata.get("readingProgress") {
+                    if let Some(page) = reading_progress.get("page").and_then(|v| v.as_i64()) {
+                        match VfsTextbookRepo::update_reading_progress(&vfs_db, &id, page as i32) {
+                            Ok(_) => log::info!(
                             "[DSTU::handlers] dstu_set_metadata: set textbook last_page={}, id={}",
                             page,
                             id
                         ),
+                            Err(e) => {
+                                log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook reading_progress error={}", e);
+                                return Err(e.to_string());
+                            }
+                        }
+                    }
+                }
+                // 更新收藏状态（支持 favorite 和 isFavorite 两种 key）
+                let favorite_value = metadata
+                    .get("isFavorite")
+                    .and_then(|v| v.as_bool())
+                    .or_else(|| metadata.get("favorite").and_then(|v| v.as_bool()));
+                if let Some(favorite) = favorite_value {
+                    match VfsTextbookRepo::set_favorite(&vfs_db, &id, favorite) {
+                        Ok(_) => log::info!(
+                            "[DSTU::handlers] dstu_set_metadata: set textbook favorite={}, id={}",
+                            favorite,
+                            id
+                        ),
                         Err(e) => {
-                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook reading_progress error={}", e);
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook favorite error={}", e);
+                            return Err(e.to_string());
+                        }
+                    }
+                }
+                // 更新标题/文件名
+                let title_value = metadata
+                    .get("title")
+                    .and_then(|v| v.as_str())
+                    .or_else(|| metadata.get("fileName").and_then(|v| v.as_str()));
+                if let Some(title) = title_value {
+                    match VfsTextbookRepo::update_file_name(&vfs_db, &id, title) {
+                        Ok(_) => log::info!(
+                            "[DSTU::handlers] dstu_set_metadata: set textbook title={}, id={}",
+                            title,
+                            id
+                        ),
+                        Err(e) => {
+                            log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook title error={}", e);
                             return Err(e.to_string());
                         }
                     }
                 }
             }
-            // 更新收藏状态（支持 favorite 和 isFavorite 两种 key）
-            let favorite_value = metadata
-                .get("isFavorite")
-                .and_then(|v| v.as_bool())
-                .or_else(|| metadata.get("favorite").and_then(|v| v.as_bool()));
-            if let Some(favorite) = favorite_value {
-                match VfsTextbookRepo::set_favorite(&vfs_db, &id, favorite) {
-                    Ok(_) => log::info!(
-                        "[DSTU::handlers] dstu_set_metadata: set textbook favorite={}, id={}",
-                        favorite,
-                        id
-                    ),
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook favorite error={}", e);
-                        return Err(e.to_string());
-                    }
-                }
-            }
-            // 更新标题/文件名
-            let title_value = metadata
-                .get("title")
-                .and_then(|v| v.as_str())
-                .or_else(|| metadata.get("fileName").and_then(|v| v.as_str()));
-            if let Some(title) = title_value {
-                match VfsTextbookRepo::update_file_name(&vfs_db, &id, title) {
-                    Ok(_) => log::info!(
-                        "[DSTU::handlers] dstu_set_metadata: set textbook title={}, id={}",
-                        title,
-                        id
-                    ),
-                    Err(e) => {
-                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - set textbook title error={}", e);
-                        return Err(e.to_string());
-                    }
-                }
-            }
             // 返回更新后的节点
-            let updated = match VfsTextbookRepo::get_textbook(&vfs_db, &id) {
-                Ok(Some(t)) => t,
-                Ok(None) => {
-                    log::warn!("[DSTU::handlers] dstu_set_metadata: FAILED - textbook not found after update, id={}", id);
-                    return Err("操作失败".to_string());
-                }
-                Err(e) => {
-                    log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_textbook error after update, id={}, error={}", id, e);
-                    return Err(e.to_string());
-                }
+            let updated = match annotation_update {
+                Some(updated) => updated,
+                None => match VfsTextbookRepo::get_textbook(&vfs_db, &id) {
+                    Ok(Some(t)) => t,
+                    Ok(None) => {
+                        log::warn!("[DSTU::handlers] dstu_set_metadata: FAILED - textbook not found after update, id={}", id);
+                        return Err("操作失败".to_string());
+                    }
+                    Err(e) => {
+                        log::error!("[DSTU::handlers] dstu_set_metadata: FAILED - get_textbook error after update, id={}, error={}", id, e);
+                        return Err(e.to_string());
+                    }
+                },
             };
+            if metadata.get("highlights").is_some() {
+                if let Err(error) = window.emit(
+                    "pdf-annotations:changed",
+                    serde_json::json!({
+                        "textbook_id": id,
+                        "resource_path": normalized_path,
+                        "kind": "highlights",
+                        "updated_at": updated.updated_at,
+                    }),
+                ) {
+                    log::warn!(
+                        "[DSTU::handlers] failed to emit pdf-annotations:changed for {}: {}",
+                        id,
+                        error
+                    );
+                }
+            }
             textbook_to_dstu_node(&updated)
         }
         "exams" | "exam" => {
@@ -4113,32 +4160,6 @@ pub async fn dstu_purge(
         }
     };
 
-    // ★ P1 防护：验证资源已在回收站，防止对活跃资源执行永久删除
-    {
-        let trash_check_type = match resource_type.as_str() {
-            "notes" | "note" => "note",
-            "textbooks" | "textbook" => "textbook",
-            "images" | "image" | "files" | "file" | "attachments" | "attachment" => "file",
-            "exams" | "exam" => "exam",
-            "translations" | "translation" => "translation",
-            "essays" | "essay" => "essay",
-            "folders" | "folder" => "folder",
-            "mindmaps" | "mindmap" => "mindmap",
-            _ => "",
-        };
-        if !trash_check_type.is_empty() && !is_resource_in_trash(&vfs_db, trash_check_type, &id) {
-            log::warn!(
-                "[DSTU::handlers] dstu_purge: REJECTED - resource not in trash, type={}, id={}",
-                resource_type,
-                id
-            );
-            return Err(format!(
-                "资源 {} (type={}) 不在回收站中，无法永久删除。请先将其移到回收站。",
-                id, resource_type
-            ));
-        }
-    }
-
     // ★ P1 修复：在 purge 之前查找 resource_id（purge 会删除数据库记录）
     let resource_id: Option<String> = vfs_db.get_conn_safe().ok().and_then(|conn| {
         let sql = match resource_type.as_str() {
@@ -4161,8 +4182,8 @@ pub async fn dstu_purge(
         })
     });
 
-    // 使用统一的 purge_resource_by_type 处理所有类型
-    if let Err(e) = purge_resource_by_type(&vfs_db, &resource_type, &id) {
+    // 在同一个写事务内验证 deleted_at 并 purge，防止 restore 在两步之间抢占。
+    if let Err(e) = purge_resource_by_type_if_trashed(&vfs_db, &resource_type, &id) {
         log::error!(
             "[DSTU::handlers] dstu_purge: FAILED - type={}, id={}, error={}",
             resource_type,

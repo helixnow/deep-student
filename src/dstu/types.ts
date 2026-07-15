@@ -340,7 +340,11 @@ export interface DstuApi {
    * @param path 资源路径
    * @param metadata 元数据对象
    */
-  setMetadata(path: string, metadata: Record<string, unknown>): Promise<void>;
+  setMetadata(
+    path: string,
+    metadata: Record<string, unknown>,
+    expectedUpdatedAt?: string,
+  ): Promise<void>;
 
   /**
    * 设置收藏状态

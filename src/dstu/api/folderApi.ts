@@ -24,6 +24,7 @@ import type {
 } from '../types/folder';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { invalidateResourceCache } from '@/features/chat/context/vfsRefApiEnhancements';
+import { emitDstuFolderChange } from '../folderEvents';
 
 // ============================================================================
 // 日志前缀
@@ -81,6 +82,7 @@ export async function createFolder(
     });
     // [CACHE-005] 添加缓存失效
     invalidateCacheWithLogging(result.id, 'createFolder[post]');
+    emitDstuFolderChange({ kind: 'folder-created', folderId: result.id, parentId: parentId ?? null });
     return ok(result);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.createFailed'), { title, parentId, icon, color });
@@ -119,6 +121,7 @@ export async function renameFolder(folderId: string, title: string): Promise<Res
     });
     // [CACHE-005] 添加缓存失效
     invalidateCacheWithLogging(folderId, 'renameFolder[post]');
+    emitDstuFolderChange({ kind: 'folder-renamed', folderId });
     return ok(undefined);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.renameFailed'), { folderId, title });
@@ -137,6 +140,7 @@ export async function deleteFolder(folderId: string): Promise<Result<void>> {
     });
     // [CACHE-005] 添加缓存失效
     invalidateCacheWithLogging(folderId, 'deleteFolder[post]');
+    emitDstuFolderChange({ kind: 'folder-deleted', folderId });
     return ok(undefined);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.deleteFailed'), { folderId });
@@ -165,6 +169,7 @@ export async function moveFolder(folderId: string, newParentId?: string, options
 
     // [CACHE-005] 添加资源缓存失效
     invalidateCacheWithLogging(folderId, 'moveFolder[post]');
+    emitDstuFolderChange({ kind: 'folder-moved', folderId, parentId: newParentId ?? null });
 
     // ★ 批量操作时跳过单次缓存刷新，由调用方统一刷新
     if (!options?.skipCacheRefresh) {
@@ -221,6 +226,7 @@ export async function addItem(
     });
     // [CACHE-005-EXT] 添加缓存失效
     invalidateCacheWithLogging(itemId, 'addItem[post]');
+    emitDstuFolderChange({ kind: 'item-added', folderId, itemId, itemType });
     return ok(result);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.addItemFailed'), { folderId, itemType, itemId });
@@ -240,6 +246,7 @@ export async function removeItem(itemType: FolderItemType, itemId: string): Prom
     });
     // [CACHE-005-EXT] 添加缓存失效
     invalidateCacheWithLogging(itemId, 'removeItem[post]');
+    emitDstuFolderChange({ kind: 'item-removed', itemId, itemType });
     return ok(undefined);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.removeItemFailed'), { itemType, itemId });
@@ -274,6 +281,7 @@ export async function moveItem(
 
     // [CACHE-005] 添加资源缓存失效（对移动的 item 本身）
     invalidateCacheWithLogging(itemId, 'moveItem[post]');
+    emitDstuFolderChange({ kind: 'item-moved', folderId: newFolderId ?? null, itemId, itemType });
 
     // ★ 批量操作时跳过单次缓存刷新，由调用方统一刷新
     if (newFolderId && !options?.skipCacheRefresh) {
@@ -379,6 +387,7 @@ export async function reorderFolders(folderIds: string[]): Promise<Result<void>>
     await invoke<void>('dstu_folder_reorder', {
       folderIds,
     });
+    emitDstuFolderChange({ kind: 'folders-reordered' });
     return ok(undefined);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.reorderFailed'), { folderIds });
@@ -429,6 +438,7 @@ export async function reorderItems(folderId: string | null, itemIds: string[]): 
       folderId,
       itemIds,
     });
+    emitDstuFolderChange({ kind: 'items-reordered', folderId });
     return ok(undefined);
   } catch (error: unknown) {
     const vfsError = toVfsError(error, i18next.t('dstu:api.folder.reorderItemsFailed'), { folderId, itemIds });

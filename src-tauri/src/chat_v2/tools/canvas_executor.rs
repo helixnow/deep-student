@@ -25,6 +25,7 @@ use serde_json::json;
 use tauri::Emitter;
 use tokio::sync::oneshot;
 
+use super::arg_utils::with_localized_message;
 use super::canvas_tool_names;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::workbench_bridge::{
@@ -36,7 +37,7 @@ use super::{is_canvas_tool, strip_canvas_builtin_prefix};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::dstu::handler_utils::{emit_watch_event, note_to_dstu_node};
 use crate::dstu::types::DstuWatchEvent;
-use crate::vfs::VfsNoteRepo;
+use crate::vfs::{VfsCreateNoteParams, VfsDatabase, VfsError, VfsNoteRepo, VfsUpdateNoteParams};
 
 /// ACR probe 超时（DESIGN §6 / R2-01）
 const ACR_PROBE_TIMEOUT_MS: u64 = PROBE_TIMEOUT_MS;
@@ -288,9 +289,256 @@ fn extract_probe_state(data: &Option<serde_json::Value>) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// 是否应走前端委托（clean/dirty/hot）；closed/frozen/disabled → 后端回落
+/// 只有 clean 可直接委托；dirty/hot/frozen/未知状态一律 fail closed。
 fn should_delegate_frontend(probe_state: &str) -> bool {
-    matches!(probe_state, "clean" | "dirty" | "hot")
+    probe_state == "clean"
+}
+
+fn is_safe_backend_fallback_state(probe_state: &str) -> bool {
+    matches!(probe_state, "closed" | "disabled")
+}
+
+fn is_destructive_note_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        canvas_tool_names::NOTE_REPLACE | canvas_tool_names::NOTE_SET
+    )
+}
+
+fn is_note_write_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        canvas_tool_names::NOTE_APPEND
+            | canvas_tool_names::NOTE_REPLACE
+            | canvas_tool_names::NOTE_SET
+    )
+}
+
+fn markdown_heading_level(line: &str) -> Option<usize> {
+    let trimmed = line.trim();
+    let level = trimmed.chars().take_while(|&ch| ch == '#').count();
+    (level > 0
+        && level <= 6
+        && trimmed
+            .get(level..)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(' ')))
+    .then_some(level)
+}
+
+fn markdown_section_bounds(content: &str, section_title: &str) -> Option<(usize, usize)> {
+    let lines = content.lines().collect::<Vec<_>>();
+    let wanted = section_title.trim().to_lowercase();
+    let (start, level) = lines.iter().enumerate().find_map(|(index, line)| {
+        let trimmed = line.trim();
+        let level = markdown_heading_level(trimmed)?;
+        let title = trimmed.trim_start_matches('#').trim().to_lowercase();
+        (title == wanted || trimmed.to_lowercase() == wanted).then_some((index, level))
+    })?;
+    let end = lines
+        .iter()
+        .enumerate()
+        .skip(start + 1)
+        .find_map(|(index, line)| {
+            markdown_heading_level(line)
+                .filter(|next_level| *next_level <= level)
+                .map(|_| index)
+        })
+        .unwrap_or(lines.len());
+    Some((start, end))
+}
+
+fn read_markdown_section(content: &str, section_title: &str) -> Option<String> {
+    let lines = content.lines().collect::<Vec<_>>();
+    let (start, end) = markdown_section_bounds(content, section_title)?;
+    Some(lines[start + 1..end].join("\n").trim().to_string())
+}
+
+fn append_markdown_content(
+    content: &str,
+    append_content: &str,
+    section: Option<&str>,
+) -> Result<String, String> {
+    if let Some(section_title) = section.filter(|value| !value.trim().is_empty()) {
+        let lines = content.lines().collect::<Vec<_>>();
+        let (_, end) = markdown_section_bounds(content, section_title)
+            .ok_or_else(|| format!("章节 '{}' 未找到", section_title))?;
+        let mut result = lines[..end]
+            .iter()
+            .map(|line| (*line).to_string())
+            .collect::<Vec<_>>();
+        result.push(String::new());
+        result.push(append_content.to_string());
+        result.extend(lines[end..].iter().map(|line| (*line).to_string()));
+        return Ok(result.join("\n"));
+    }
+    Ok(if content.trim().is_empty() {
+        append_content.to_string()
+    } else {
+        format!("{}\n\n{}", content.trim_end(), append_content)
+    })
+}
+
+fn expected_note_revision(args: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    args.get("expected_updated_at")
+        .or_else(|| args.get("expectedUpdatedAt"))
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn note_occ_required(reason: &str) -> String {
+    json!({
+        "code": "NOTE_OCC_REQUIRED",
+        "message": reason,
+        "hint": "先读取笔记的 updated_at，再以 expected_updated_at 重新提交；不得无条件覆写",
+        "retryable": false,
+    })
+    .to_string()
+}
+
+fn note_create_error(error: VfsError) -> String {
+    let (code, message_key, params, zh_cn, en_us) = match &error {
+        VfsError::NotFound { resource_type, id }
+            if resource_type.eq_ignore_ascii_case("folder") =>
+        {
+            (
+                "NOTE_FOLDER_NOT_FOUND",
+                "chat.tools.canvas.note_create.folder_not_found",
+                json!({ "folderId": id }),
+                format!("目标文件夹不存在：{id}"),
+                format!("Target folder does not exist: {id}"),
+            )
+        }
+        VfsError::FolderNotFound { folder_id } => (
+            "NOTE_FOLDER_NOT_FOUND",
+            "chat.tools.canvas.note_create.folder_not_found",
+            json!({ "folderId": folder_id }),
+            format!("目标文件夹不存在：{folder_id}"),
+            format!("Target folder does not exist: {folder_id}"),
+        ),
+        _ => {
+            let reason = error.to_string();
+            (
+                "NOTE_CREATE_FAILED",
+                "chat.tools.canvas.note_create.failed",
+                json!({ "reason": reason }),
+                format!("创建笔记失败：{reason}"),
+                format!("Failed to create note: {reason}"),
+            )
+        }
+    };
+
+    with_localized_message(
+        json!({
+            "code": code,
+            "retryable": false,
+        }),
+        message_key,
+        params,
+        zh_cn,
+        en_us,
+    )
+    .to_string()
+}
+
+fn create_note_in_vfs(
+    vfs_db: &VfsDatabase,
+    title: String,
+    content: String,
+    tags: Vec<String>,
+    folder_id: Option<String>,
+) -> Result<(serde_json::Value, String), String> {
+    let result_folder_id = folder_id.clone();
+    let note = VfsNoteRepo::create_note_in_folder(
+        vfs_db,
+        VfsCreateNoteParams {
+            title,
+            content: content.clone(),
+            tags,
+        },
+        folder_id.as_deref(),
+    )
+    .map_err(note_create_error)?;
+
+    log::info!(
+        "[CanvasToolExecutor] Created note: id={}, title={}",
+        note.id,
+        note.title
+    );
+    let note_id = note.id.clone();
+    Ok((
+        json!({
+            "noteId": note_id,
+            "title": note.title,
+            "wordCount": content.chars().count(),
+            "folderId": result_folder_id,
+            "success": true,
+        }),
+        note.id,
+    ))
+}
+
+fn note_cas_error(operation: &str, error: &str) -> String {
+    let conflict = error.to_ascii_lowercase().contains("conflict");
+    json!({
+        "code": if conflict { "NOTE_CONFLICT" } else { "NOTE_WRITE_FAILED" },
+        "message": format!("{operation}: {error}"),
+        "hint": if conflict {
+            "笔记已发生变化；重新读取内容与 updated_at，基于新版本重新规划"
+        } else {
+            "写入未完成；检查笔记存储状态后再决定是否重试"
+        },
+        "retryable": false,
+    })
+    .to_string()
+}
+
+fn note_revision_conflict(expected: &str, actual: &str) -> String {
+    json!({
+        "code": "NOTE_CONFLICT",
+        "message": "笔记版本与 expected_updated_at 不一致",
+        "expectedUpdatedAt": expected,
+        "actualUpdatedAt": actual,
+        "hint": "重新调用 note_read，基于最新内容与 updatedAt 重新规划",
+        "retryable": false,
+    })
+    .to_string()
+}
+
+async fn verify_note_revision(
+    ctx: &ExecutionContext,
+    note_id: &str,
+    expected: &str,
+) -> Result<(), String> {
+    let notes_manager = ctx
+        .notes_manager
+        .as_ref()
+        .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
+        .clone();
+    let note_id = note_id.to_string();
+    let actual = tokio::task::spawn_blocking(move || {
+        notes_manager
+            .get_note_vfs(&note_id)
+            .map(|note| note.updated_at)
+            .map_err(|error| note_cas_error("读取笔记 OCC 基线失败", &error.to_string()))
+    })
+    .await
+    .map_err(|error| format!("读取笔记 OCC 基线任务失败: {error}"))??;
+    if actual != expected {
+        return Err(note_revision_conflict(expected, &actual));
+    }
+    Ok(())
+}
+
+fn destructive_probe_unavailable(reason: &str) -> String {
+    json!({
+        "code": "WORKBENCH_UNAVAILABLE",
+        "message": reason,
+        "hint": "无法确认编辑器是否存在未保存内容；重新 probe，或在明确 closed/disabled 后携带 expected_updated_at 走后端 CAS",
+        "retryable": false,
+    })
+    .to_string()
 }
 
 /// 组装单条 AgentOp（DESIGN §5.2 note 锚点 + ROUND1 R1-03）
@@ -431,7 +679,7 @@ fn with_backend_fallback_message(mut output: serde_json::Value) -> serde_json::V
 ///
 /// ## 写入路径（R1-03）
 /// 1. `acr_bridge_call(probe)` → clean/dirty/hot 则 `apply_ops`
-/// 2. closed/frozen/disabled 或桥错误 → `execute_write_backend` + `dstu:change`
+/// 2. closed/disabled + expected_updated_at → 后端 CAS + `dstu:change`
 /// 3. `execute_write_frontend` 原样保留（suggestion 由前端触发，Rust 不直接调用）
 pub struct CanvasToolExecutor;
 
@@ -459,16 +707,29 @@ impl CanvasToolExecutor {
             .and_then(|v| v.as_str())
             .map(String::from);
 
-        tokio::task::spawn_blocking(move || {
-            match notes_manager.canvas_read_content(&note_id_owned, section.as_deref()) {
-                Ok(content) => Ok(json!({
+        tokio::task::spawn_blocking(move || match notes_manager.get_note_vfs(&note_id_owned) {
+            Ok(note) => {
+                let content = match section.as_deref() {
+                    Some(section_title) => {
+                        read_markdown_section(&note.content_md, section_title)
+                            .ok_or_else(|| format!("章节 '{}' 未找到", section_title))?
+                    }
+                    None => note.content_md,
+                };
+                let updated_at = note.updated_at;
+                let word_count = content.chars().count();
+                let truncated = word_count > 2_000;
+                Ok(json!({
                     "noteId": note_id_owned,
-                    "content": content,
-                    "wordCount": content.chars().count(),
+                    "content": safe_truncate(&content, 2_000),
+                    "wordCount": word_count,
+                    "truncated": truncated,
                     "isSection": section.is_some(),
-                })),
-                Err(e) => Err(e.to_string()),
+                    "updatedAt": updated_at.clone(),
+                    "updated_at": updated_at,
+                }))
             }
+            Err(e) => Err(e.to_string()),
         })
         .await
         .map_err(|e| format!("读取笔记失败: {}", e))?
@@ -486,10 +747,16 @@ impl CanvasToolExecutor {
             .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
             .clone();
 
-        let limit = args
-            .get("limit")
+        let page = args
+            .get("page")
             .and_then(|v| v.as_u64())
-            .map(|v| v.min(100) as usize)
+            .filter(|page| *page > 0)
+            .unwrap_or(1) as usize;
+        let page_size = args
+            .get("page_size")
+            .or_else(|| args.get("limit"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v.clamp(1, 20) as usize)
             .unwrap_or(20);
         let tags: Option<Vec<String>> = args
             .get("tags")
@@ -510,7 +777,8 @@ impl CanvasToolExecutor {
         let vfs_db = ctx.vfs_db.clone();
 
         tokio::task::spawn_blocking(move || {
-            // ★ L-027: 当指定 folder_id 且 vfs_db 可用时，使用 VfsNoteRepo 按文件夹查询
+            // Fetch metadata before slicing so tags/favorites and pagination describe the
+            // same collection. Metadata excludes note bodies, keeping the tool result bounded.
             let filtered: Vec<serde_json::Value> =
                 if let (Some(ref fid), Some(ref db)) = (&folder_id, &vfs_db) {
                     use crate::vfs::VfsNoteRepo;
@@ -519,7 +787,7 @@ impl CanvasToolExecutor {
                     } else {
                         Some(fid.as_str())
                     };
-                    let notes = VfsNoteRepo::list_notes_by_folder(db, folder_arg, limit as u32, 0)
+                    let notes = VfsNoteRepo::list_notes_by_folder(db, folder_arg, u32::MAX, 0)
                         .map_err(|e| format!("列出笔记失败: {}", e))?;
                     notes
                         .into_iter()
@@ -534,7 +802,6 @@ impl CanvasToolExecutor {
                             }
                             true
                         })
-                        .take(limit)
                         .map(|n| {
                             json!({
                                 "id": n.id,
@@ -562,7 +829,6 @@ impl CanvasToolExecutor {
                             }
                             true
                         })
-                        .take(limit)
                         .map(|n| {
                             json!({
                                 "id": n.id,
@@ -576,9 +842,19 @@ impl CanvasToolExecutor {
                 };
 
             let total = filtered.len();
+            let start = page.saturating_sub(1).saturating_mul(page_size);
+            let end = start.saturating_add(page_size).min(total);
+            let notes = if start < total {
+                filtered[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
             Ok(json!({
-                "notes": filtered,
+                "notes": notes,
                 "total": total,
+                "page": page,
+                "pageSize": page_size,
+                "hasMore": end < total,
             }))
         })
         .await
@@ -607,16 +883,35 @@ impl CanvasToolExecutor {
             return Err("搜索关键词不能为空".to_string());
         }
 
-        let limit = args
-            .get("limit")
+        let page = args
+            .get("page")
             .and_then(|v| v.as_u64())
-            .map(|v| v.min(50) as usize)
+            .filter(|page| *page > 0)
+            .unwrap_or(1) as usize;
+        let page_size = args
+            .get("page_size")
+            .or_else(|| args.get("limit"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v.clamp(1, 20) as usize)
             .unwrap_or(10);
+        // Lance search returns ranked top-K results. Fetching one additional result is enough
+        // to report whether this ranked page has a following page without exposing it.
+        let search_limit = page
+            .saturating_mul(page_size)
+            .saturating_add(1)
+            .min(201);
+        let folder_id = args
+            .get("folder_id")
+            .or(args.get("folderId"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned);
+        let vfs_db = ctx.vfs_db.clone();
 
         tokio::task::spawn_blocking(move || {
             #[cfg(feature = "lance")]
             let results = notes_manager
-                .search_notes_lance(&query, limit)
+                .search_notes_lance(&query, search_limit)
                 .map_err(|e| format!("搜索笔记失败: {}", e))?;
 
             #[cfg(not(feature = "lance"))]
@@ -628,19 +923,50 @@ impl CanvasToolExecutor {
 
             let items: Vec<_> = results
                 .into_iter()
+                .filter(|(id, _, _)| {
+                    let Some(folder_id) = folder_id.as_deref() else {
+                        return true;
+                    };
+                    let Some(db) = vfs_db.as_ref() else {
+                        return false;
+                    };
+                    db.get_conn_safe()
+                        .ok()
+                        .and_then(|conn| {
+                            conn.query_row(
+                                "SELECT EXISTS(SELECT 1 FROM folder_items WHERE folder_id = ?1 AND item_type = 'note' AND item_id = ?2 AND deleted_at IS NULL)",
+                                rusqlite::params![folder_id, id],
+                                |row| row.get::<_, bool>(0),
+                            )
+                            .ok()
+                        })
+                        .unwrap_or(false)
+                })
                 .map(|(id, title, snippet)| {
                     json!({
                         "id": id,
                         "title": title,
-                        "snippet": snippet,
+                        "snippet": safe_truncate(&snippet, 2_000),
+                        "truncated": snippet.chars().count() > 2_000,
                     })
                 })
                 .collect();
-
-            let count = items.len();
+            let total_exact = items.len() < search_limit;
+            let start = page.saturating_sub(1).saturating_mul(page_size);
+            let end = start.saturating_add(page_size).min(items.len());
+            let page_items = if start < items.len() {
+                items[start..end].to_vec()
+            } else {
+                Vec::new()
+            };
             Ok(json!({
-                "results": items,
-                "count": count,
+                "results": page_items,
+                "count": page_items.len(),
+                "page": page,
+                "pageSize": page_size,
+                "hasMore": end < items.len(),
+                "total": items.len(),
+                "totalExact": total_exact,
             }))
         })
         .await
@@ -683,36 +1009,128 @@ impl CanvasToolExecutor {
             .and_then(|v| serde_json::from_value(v.clone()).ok())
             .unwrap_or_default();
 
-        // 调用 VFS 创建笔记
-        tokio::task::spawn_blocking(move || {
-            use crate::vfs::{VfsCreateNoteParams, VfsNoteRepo};
+        let folder_id = args
+            .get("folder_id")
+            .or_else(|| args.get("folderId"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
 
-            match VfsNoteRepo::create_note(
-                &vfs_db,
-                VfsCreateNoteParams {
-                    title: title.clone(),
-                    content: content.clone(),
-                    tags,
-                },
-            ) {
-                Ok(note) => {
-                    log::info!(
-                        "[CanvasToolExecutor] Created note: id={}, title={}",
-                        note.id,
-                        note.title
-                    );
-                    Ok(json!({
-                        "noteId": note.id,
-                        "title": note.title,
-                        "wordCount": content.chars().count(),
-                        "success": true,
-                    }))
-                }
-                Err(e) => Err(format!("创建笔记失败: {}", e)),
-            }
+        // 调用 VFS 创建笔记
+        let (result, note_id) = tokio::task::spawn_blocking(move || {
+            create_note_in_vfs(&vfs_db, title, content, tags, folder_id)
         })
         .await
-        .map_err(|e| format!("创建笔记任务失败: {}", e))?
+        .map_err(|e| format!("创建笔记任务失败: {}", e))??;
+
+        emit_note_updated_watch(ctx, &note_id);
+        Ok(result)
+    }
+
+    async fn execute_delete(
+        &self,
+        ctx: &ExecutionContext,
+        note_id: &str,
+        args: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<serde_json::Value, String> {
+        let expected_updated_at = expected_note_revision(args).ok_or_else(|| {
+            note_occ_required("软删除笔记前必须提供 note_read 返回的 expected_updated_at")
+        })?;
+        let vfs_db = ctx
+            .vfs_db
+            .as_ref()
+            .ok_or_else(|| "Canvas 工具不可用：VFS 数据库未初始化".to_string())?
+            .clone();
+        let note_id_owned = note_id.to_string();
+        let note = VfsNoteRepo::get_note(&vfs_db, note_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("笔记不存在: {note_id}"))?;
+        let node = note_to_dstu_node(&note);
+        let resource_id = note.resource_id.clone();
+
+        tokio::task::spawn_blocking(move || {
+            VfsNoteRepo::delete_note_if_version(&vfs_db, &note_id_owned, &expected_updated_at)
+                .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("删除笔记任务失败: {e}"))??;
+
+        if let Some(lance_store) = ctx.vfs_lance_store.as_ref() {
+            if let Err(error) = lance_store.delete_by_resource("text", &resource_id).await {
+                log::warn!("[CanvasToolExecutor] note vector cleanup failed: {error}");
+            }
+            if let Err(error) = lance_store
+                .delete_by_resource("multimodal", &resource_id)
+                .await
+            {
+                log::warn!("[CanvasToolExecutor] note multimodal cleanup failed: {error}");
+            }
+        }
+        emit_watch_event(&ctx.window, DstuWatchEvent::deleted(&node.path));
+
+        Ok(json!({
+            "success": true,
+            "noteId": note_id,
+            "path": node.path,
+            "softDeleted": true,
+            "reversible": true,
+            "restoreWith": "builtin-dstu_restore"
+        }))
+    }
+
+    async fn execute_update_tags(
+        &self,
+        ctx: &ExecutionContext,
+        note_id: &str,
+        args: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<serde_json::Value, String> {
+        let expected_updated_at = expected_note_revision(args).ok_or_else(|| {
+            note_occ_required("更新笔记标签前必须提供 note_read 返回的 expected_updated_at")
+        })?;
+        let tags_value = args
+            .get("tags")
+            .ok_or_else(|| "缺少必需参数: tags".to_string())?;
+        let tags: Vec<String> = serde_json::from_value(tags_value.clone())
+            .map_err(|_| "tags 必须是字符串数组".to_string())?;
+        if tags.iter().any(|tag| tag.trim().is_empty()) {
+            return Err("tags 不允许包含空字符串".to_string());
+        }
+        let vfs_db = ctx
+            .vfs_db
+            .as_ref()
+            .ok_or_else(|| "Canvas 工具不可用：VFS 数据库未初始化".to_string())?
+            .clone();
+        let note_id_owned = note_id.to_string();
+        let previous_tags = VfsNoteRepo::get_note(&vfs_db, note_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("笔记不存在: {note_id}"))?
+            .tags;
+        let updated = tokio::task::spawn_blocking(move || {
+            VfsNoteRepo::update_note(
+                &vfs_db,
+                &note_id_owned,
+                VfsUpdateNoteParams {
+                    content: None,
+                    title: None,
+                    tags: Some(tags),
+                    expected_updated_at: Some(expected_updated_at),
+                },
+            )
+            .map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| format!("更新标签任务失败: {e}"))??;
+
+        emit_note_updated_watch(ctx, &updated.id);
+        Ok(json!({
+            "success": true,
+            "noteId": updated.id,
+            "tags": updated.tags,
+            "previousTags": previous_tags,
+            "updatedAt": updated.updated_at,
+            "reversible": true
+        }))
     }
 
     /// 执行写入操作（后端直接执行，不依赖前端编辑器）
@@ -720,7 +1138,7 @@ impl CanvasToolExecutor {
     /// 这是完全独立于前端的后端写入实现，适用于：
     /// 1. AI 自主创建/编辑笔记（无需用户打开编辑器）
     /// 2. 后台批量处理
-    /// 3. ACR probe∈{closed,frozen,disabled} 或桥错误时的回落路径（R1-03）
+    /// 3. ACR 明确 closed/disabled 时的回落路径；破坏性写入额外强制 OCC
     ///
     /// 成功写盘后补发 `dstu:change` updated（断链修复）。
     async fn execute_write_backend(
@@ -740,6 +1158,12 @@ impl CanvasToolExecutor {
         // 提前提取工具名称，避免生命周期问题
         let tool_name = strip_canvas_builtin_prefix(&call.name).to_string();
         let args_clone = args.clone();
+        let expected_updated_at = expected_note_revision(args);
+        if is_note_write_tool(&tool_name) && expected_updated_at.is_none() {
+            return Err(note_occ_required(
+                "笔记后端 read-modify-write 缺少 expected_updated_at",
+            ));
+        }
 
         let write_result = tokio::task::spawn_blocking(move || {
             match tool_name.as_str() {
@@ -750,20 +1174,20 @@ impl CanvasToolExecutor {
                         .ok_or_else(|| "缺少必需参数: content".to_string())?;
                     let section = args_clone.get("section").and_then(|v| v.as_str());
 
-                    // 读取操作前内容
-                    let before_content = notes_manager
-                        .canvas_read_content(&note_id_owned, section)
-                        .unwrap_or_default();
-
-                    // 执行追加
-                    notes_manager
-                        .canvas_append_content(&note_id_owned, content, section)
-                        .map_err(|e| format!("追加内容失败: {}", e))?;
-
-                    // 读取操作后内容
-                    let after_content = notes_manager
-                        .canvas_read_content(&note_id_owned, section)
-                        .unwrap_or_default();
+                    let before = notes_manager
+                        .get_note_vfs(&note_id_owned)
+                        .map_err(|e| format!("读取笔记失败: {}", e))?;
+                    let before_content = before.content_md;
+                    let after_content = append_markdown_content(&before_content, content, section)?;
+                    let updated = notes_manager
+                        .update_note_vfs(
+                            &note_id_owned,
+                            None,
+                            Some(&after_content),
+                            None,
+                            expected_updated_at.as_deref(),
+                        )
+                        .map_err(|e| note_cas_error("追加内容 CAS 失败", &e.to_string()))?;
 
                     // 🔧 修复：添加 addedContent 用于前端高亮显示追加的内容
                     let added_content = content.to_string();
@@ -776,6 +1200,7 @@ impl CanvasToolExecutor {
                         "beforePreview": safe_truncate(&before_content, 200),
                         "afterPreview": safe_truncate(&after_content, 200),
                         "addedContent": safe_truncate(&added_content, 300),
+                        "updatedAt": updated.updated_at,
                     }))
                 }
                 canvas_tool_names::NOTE_SET => {
@@ -786,13 +1211,20 @@ impl CanvasToolExecutor {
 
                     // 读取操作前内容
                     let before_content = notes_manager
-                        .canvas_read_content(&note_id_owned, None)
-                        .unwrap_or_default();
+                        .get_note_vfs(&note_id_owned)
+                        .map_err(|e| format!("读取笔记失败: {}", e))?
+                        .content_md;
 
                     // 执行设置
-                    notes_manager
-                        .canvas_set_content(&note_id_owned, content)
-                        .map_err(|e| format!("设置内容失败: {}", e))?;
+                    let updated = notes_manager
+                        .update_note_vfs(
+                            &note_id_owned,
+                            None,
+                            Some(content),
+                            None,
+                            expected_updated_at.as_deref(),
+                        )
+                        .map_err(|e| note_cas_error("设置内容 CAS 失败", &e.to_string()))?;
 
                     // 🔧 修复：添加 afterPreview 用于前端 diff 显示
                     let after_content = content.to_string();
@@ -804,6 +1236,7 @@ impl CanvasToolExecutor {
                         "backendExecuted": true,
                         "beforePreview": safe_truncate(&before_content, 200),
                         "afterPreview": safe_truncate(&after_content, 200),
+                        "updatedAt": updated.updated_at,
                     }))
                 }
                 canvas_tool_names::NOTE_REPLACE => {
@@ -826,8 +1259,9 @@ impl CanvasToolExecutor {
 
                     // 读取当前内容（用于 beforePreview）
                     let current_content = notes_manager
-                        .canvas_read_content(&note_id_owned, None)
-                        .map_err(|e| format!("读取内容失败: {}", e))?;
+                        .get_note_vfs(&note_id_owned)
+                        .map_err(|e| format!("读取内容失败: {}", e))?
+                        .content_md;
 
                     // 执行替换
                     use super::canvas_tools::replace_content;
@@ -839,9 +1273,15 @@ impl CanvasToolExecutor {
                     }
 
                     // 写入新内容
-                    notes_manager
-                        .canvas_set_content(&note_id_owned, &new_content)
-                        .map_err(|e| format!("写入内容失败: {}", e))?;
+                    let updated = notes_manager
+                        .update_note_vfs(
+                            &note_id_owned,
+                            None,
+                            Some(&new_content),
+                            None,
+                            expected_updated_at.as_deref(),
+                        )
+                        .map_err(|e| note_cas_error("替换内容 CAS 失败", &e.to_string()))?;
 
                     // 🔧 修复：添加 beforePreview 和 afterPreview 用于前端 diff 显示
                     Ok(json!({
@@ -854,6 +1294,7 @@ impl CanvasToolExecutor {
                         "replaceWith": replace,
                         "beforePreview": safe_truncate(&current_content, 200),
                         "afterPreview": safe_truncate(&new_content, 200),
+                        "updatedAt": updated.updated_at,
                     }))
                 }
                 _ => Err(format!("未知的写入操作: {}", tool_name)),
@@ -872,7 +1313,7 @@ impl CanvasToolExecutor {
         }
     }
 
-    /// R1-03：probe → 前端委托 apply_ops；不可委托时返回 None（调用方回落后端）
+    /// R1-03：probe → 前端委托 apply_ops；仅明确安全时返回 None（调用方回落后端）
     ///
     /// 成功委托时返回 Ok(Some(AcrReceipt JSON))；仅 probe 阶段不可委托时返回 Ok(None)。
     /// `apply_ops` 一旦提交，传输失败也返回 partial/Err，绝不回落后端双写。
@@ -883,10 +1324,29 @@ impl CanvasToolExecutor {
         note_id: &str,
         args: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<Option<serde_json::Value>, String> {
+        let tool_name = strip_canvas_builtin_prefix(&call.name);
+        let backend_occ_required = is_note_write_tool(tool_name);
+        let expected_revision = if backend_occ_required {
+            Some(
+                expected_note_revision(args)
+                    .ok_or_else(|| note_occ_required("笔记写入缺少 expected_updated_at"))?,
+            )
+        } else {
+            None
+        };
+        if let Some(expected) = expected_revision.as_deref() {
+            verify_note_revision(ctx, note_id, expected).await?;
+        }
+        let has_expected_revision = expected_revision.is_some();
         match is_workbench_agent_delegation_enabled(ctx).await {
             Ok(true) => {}
             Ok(false) => {
-                log::debug!("[CanvasToolExecutor] ACR dual gate disabled; use backend data plane");
+                if backend_occ_required && !has_expected_revision {
+                    return Err(note_occ_required("ACR 已关闭，笔记写入不能无 OCC 回落后端"));
+                }
+                log::debug!(
+                    "[CanvasToolExecutor] ACR dual gate disabled; use OCC backend data plane"
+                );
                 return Ok(None);
             }
             Err(error) => {
@@ -894,11 +1354,15 @@ impl CanvasToolExecutor {
                     "[CanvasToolExecutor] ACR dual gate unavailable; fail closed to backend: {}",
                     error
                 );
+                if backend_occ_required {
+                    return Err(destructive_probe_unavailable(&format!(
+                        "ACR 闸门状态不可用: {error}"
+                    )));
+                }
                 return Ok(None);
             }
         }
 
-        let tool_name = strip_canvas_builtin_prefix(&call.name);
         let target = json!({
             "typeId": "note",
             "resourceId": note_id,
@@ -928,19 +1392,27 @@ impl CanvasToolExecutor {
                 })));
             }
             Err(e) => {
-                log::info!(
-                    "[CanvasToolExecutor] ACR probe bridge error, fallback backend: {}",
-                    e
-                );
+                log::info!("[CanvasToolExecutor] ACR probe bridge error: {}", e);
+                if backend_occ_required {
+                    return Err(destructive_probe_unavailable(&format!(
+                        "笔记写入的 probe 失败: {e}"
+                    )));
+                }
                 return Ok(None);
             }
         };
 
         if !probe_resp.ok {
             log::info!(
-                "[CanvasToolExecutor] ACR probe ok=false, fallback backend: {:?}",
+                "[CanvasToolExecutor] ACR probe ok=false: {:?}",
                 probe_resp.error
             );
+            if backend_occ_required {
+                return Err(destructive_probe_unavailable(&format!(
+                    "笔记写入的 probe 被拒绝: {}",
+                    probe_resp.error.as_deref().unwrap_or("未知错误")
+                )));
+            }
             return Ok(None);
         }
 
@@ -948,19 +1420,67 @@ impl CanvasToolExecutor {
             Some(s) => s,
             None => {
                 log::warn!(
-                    "[CanvasToolExecutor] ACR probe missing state, fallback backend: {:?}",
+                    "[CanvasToolExecutor] ACR probe missing state: {:?}",
                     probe_resp.data
                 );
+                if backend_occ_required {
+                    return Err(destructive_probe_unavailable(
+                        "笔记写入的 probe 回执缺少有效 state",
+                    ));
+                }
                 return Ok(None);
             }
         };
+        let probe_window_id = probe_resp
+            .data
+            .as_ref()
+            .and_then(|data| data.get("windowId"))
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string);
 
         if !should_delegate_frontend(&probe_state) {
             log::info!(
                 "[CanvasToolExecutor] ACR probe state={}, fallback backend",
                 probe_state
             );
+            if backend_occ_required {
+                if !is_safe_backend_fallback_state(&probe_state) {
+                    return Err(destructive_probe_unavailable(&format!(
+                        "probe state={probe_state} 未证明编辑器可安全回落"
+                    )));
+                }
+                if !has_expected_revision {
+                    return Err(note_occ_required(&format!(
+                        "probe state={probe_state}，但后端写入未携带 expected_updated_at"
+                    )));
+                }
+            }
             return Ok(None);
+        }
+        let probe_window_id = probe_window_id.ok_or_else(|| {
+            destructive_probe_unavailable("probe 声称可前端委托，但未返回精确 windowId")
+        })?;
+
+        if ctx.is_cancelled() {
+            return Ok(Some(json!({
+                "status": "cancelled",
+                "mode": "frontend",
+                "applied": 0,
+                "totalOps": 1,
+                "entityIds": [note_id],
+                "done": [],
+                "undone": ["note write cancelled before apply_ops submission"],
+                "message": "用户在提交写入前取消；未改动笔记，不可自动重试。",
+                "retryable": false,
+            })));
+        }
+
+        // Probe/feature-gate I/O may take long enough for another writer to advance the note.
+        // Recheck immediately before apply_ops submission; the frontend persistence layer adds
+        // its own final CAS, so a later race is rejected rather than silently overwritten.
+        if let Some(expected) = expected_revision.as_deref() {
+            verify_note_revision(ctx, note_id, expected).await?;
         }
 
         // 2) 组装 AgentOp
@@ -979,7 +1499,11 @@ impl CanvasToolExecutor {
             ctx,
             "apply_ops",
             json!({
-                "target": { "typeId": "note", "resourceId": note_id },
+                "target": {
+                    "typeId": "note",
+                    "resourceId": note_id,
+                    "windowId": probe_window_id,
+                },
                 "ops": ops,
                 "pacing": "normal",
                 "destructive": destructive,
@@ -989,18 +1513,8 @@ impl CanvasToolExecutor {
         .await
         {
             Ok(resp) => resp,
-            Err(e) if is_bridge_cancelled(&e) => {
-                return Ok(Some(json!({
-                    "status": "cancelled",
-                    "mode": "frontend",
-                    "applied": 0,
-                    "totalOps": 1,
-                    "entityIds": [note_id],
-                    "done": [],
-                    "undone": [op_label],
-                    "message": "用户取消；请根据 done/undone 继续，勿原样重试。",
-                })));
-            }
+            // apply_ops 已提交后，即使是取消也不能伪造 applied=0。
+            // 桥层会先 bounded drain；仍无权威回执时统一返回 resultUnknown。
             Err(e) => {
                 log::warn!(
                     "[CanvasToolExecutor] ACR apply_ops bridge error; no backend fallback: {}",
@@ -1368,6 +1882,10 @@ impl ToolExecutor for CanvasToolExecutor {
                 // 创建笔记：后端直接执行（不需要 noteId）
                 self.execute_create(call, ctx, &args).await
             }
+            canvas_tool_names::NOTE_DELETE => self.execute_delete(ctx, &note_id, &args).await,
+            canvas_tool_names::NOTE_UPDATE_TAGS => {
+                self.execute_update_tags(ctx, &note_id, &args).await
+            }
             canvas_tool_names::NOTE_APPEND
             | canvas_tool_names::NOTE_REPLACE
             | canvas_tool_names::NOTE_SET => {
@@ -1442,11 +1960,22 @@ impl ToolExecutor for CanvasToolExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_canvas_builtin_prefix(tool_name);
         match stripped {
+            canvas_tool_names::NOTE_SET | canvas_tool_names::NOTE_REPLACE => ToolSensitivity::High,
             canvas_tool_names::NOTE_CREATE
-            | canvas_tool_names::NOTE_SET
-            | canvas_tool_names::NOTE_REPLACE => ToolSensitivity::Medium,
+            | canvas_tool_names::NOTE_APPEND
+            | canvas_tool_names::NOTE_DELETE
+            | canvas_tool_names::NOTE_UPDATE_TAGS => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
+    }
+
+    fn manages_cancellation(&self, tool_name: &str) -> bool {
+        matches!(
+            strip_canvas_builtin_prefix(tool_name),
+            canvas_tool_names::NOTE_APPEND
+                | canvas_tool_names::NOTE_REPLACE
+                | canvas_tool_names::NOTE_SET
+        )
     }
 
     fn name(&self) -> &'static str {
@@ -1461,6 +1990,52 @@ impl ToolExecutor for CanvasToolExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn note_create_vfs_path_persists_in_requested_folder() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let folder = crate::vfs::VfsFolder::new("Agent notes".to_string(), None, None, None);
+        crate::vfs::repos::VfsFolderRepo::create_folder(&db, &folder)
+            .expect("create target folder");
+
+        let (payload, note_id) = create_note_in_vfs(
+            &db,
+            "Review".to_string(),
+            "Completed chapter 1".to_string(),
+            vec!["weekly".to_string()],
+            Some(folder.id.clone()),
+        )
+        .expect("create note in requested folder");
+
+        assert_eq!(payload["success"], true);
+        assert_eq!(payload["folderId"], folder.id);
+        assert!(VfsNoteRepo::get_note(&db, &note_id)
+            .expect("read created note")
+            .is_some());
+    }
+
+    #[test]
+    fn note_create_vfs_path_returns_structured_missing_folder_error() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        let error = create_note_in_vfs(
+            &db,
+            "Review".to_string(),
+            String::new(),
+            Vec::new(),
+            Some("missing-folder".to_string()),
+        )
+        .expect_err("missing folder must fail");
+        let payload: serde_json::Value =
+            serde_json::from_str(&error).expect("structured note create error");
+
+        assert_eq!(payload["code"], "NOTE_FOLDER_NOT_FOUND");
+        assert_eq!(
+            payload["messageKey"],
+            "chat.tools.canvas.note_create.folder_not_found"
+        );
+        assert_eq!(payload["messageParams"]["folderId"], "missing-folder");
+        assert_eq!(payload["retryable"], false);
+    }
 
     #[test]
     fn test_can_handle() {
@@ -1481,6 +2056,8 @@ mod tests {
         assert!(executor.can_handle("builtin-note_set"));
         assert!(executor.can_handle("builtin-note_list"));
         assert!(executor.can_handle("builtin-note_search"));
+        assert!(executor.can_handle("builtin-note_delete"));
+        assert!(executor.can_handle("builtin-note_update_tags"));
 
         // 不处理其他工具
         assert!(!executor.can_handle("web_search"));
@@ -1513,12 +2090,20 @@ mod tests {
             ToolSensitivity::Medium
         );
         assert_eq!(
-            executor.sensitivity_level("note_replace"),
+            executor.sensitivity_level("note_delete"),
             ToolSensitivity::Medium
         );
         assert_eq!(
-            executor.sensitivity_level("note_set"),
+            executor.sensitivity_level("note_update_tags"),
             ToolSensitivity::Medium
+        );
+        assert_eq!(
+            executor.sensitivity_level("note_replace"),
+            ToolSensitivity::High
+        );
+        assert_eq!(
+            executor.sensitivity_level("note_set"),
+            ToolSensitivity::High
         );
 
         // builtin- 前缀格式
@@ -1528,12 +2113,53 @@ mod tests {
         );
         assert_eq!(
             executor.sensitivity_level("builtin-note_set"),
-            ToolSensitivity::Medium
+            ToolSensitivity::High
         );
         assert_eq!(
             executor.sensitivity_level("builtin-note_list"),
             ToolSensitivity::Low
         );
+        assert!(executor.manages_cancellation("note_append"));
+        assert!(executor.manages_cancellation("builtin-note_set"));
+        assert!(!executor.manages_cancellation("note_read"));
+    }
+
+    #[test]
+    fn destructive_note_backend_fallback_requires_occ_revision() {
+        assert!(is_destructive_note_tool(canvas_tool_names::NOTE_SET));
+        assert!(is_destructive_note_tool(canvas_tool_names::NOTE_REPLACE));
+        assert!(!is_destructive_note_tool(canvas_tool_names::NOTE_APPEND));
+        assert!(is_note_write_tool(canvas_tool_names::NOTE_APPEND));
+
+        let missing = serde_json::Map::new();
+        assert_eq!(expected_note_revision(&missing), None);
+        let snake = json!({"expected_updated_at": " rev-1 "})
+            .as_object()
+            .expect("object")
+            .clone();
+        assert_eq!(expected_note_revision(&snake).as_deref(), Some("rev-1"));
+        let camel = json!({"expectedUpdatedAt": "rev-2"})
+            .as_object()
+            .expect("object")
+            .clone();
+        assert_eq!(expected_note_revision(&camel).as_deref(), Some("rev-2"));
+
+        let error: serde_json::Value =
+            serde_json::from_str(&note_occ_required("missing")).expect("structured error");
+        assert_eq!(error["code"], "NOTE_OCC_REQUIRED");
+        assert_eq!(error["retryable"], false);
+        let conflict: serde_json::Value =
+            serde_json::from_str(&note_revision_conflict("rev-1", "rev-2"))
+                .expect("structured conflict");
+        assert_eq!(conflict["code"], "NOTE_CONFLICT");
+        assert_eq!(conflict["expectedUpdatedAt"], "rev-1");
+        assert_eq!(conflict["actualUpdatedAt"], "rev-2");
+
+        let source = "# A\nalpha\n## B\nbeta\n# C\ngamma";
+        let appended =
+            append_markdown_content(source, "added", Some("## B")).expect("section append");
+        assert_eq!(appended, "# A\nalpha\n## B\nbeta\n\nadded\n# C\ngamma");
+        assert_eq!(read_markdown_section(source, "B").as_deref(), Some("beta"));
     }
 
     #[test]
@@ -1545,11 +2171,17 @@ mod tests {
     #[test]
     fn test_should_delegate_frontend() {
         assert!(should_delegate_frontend("clean"));
-        assert!(should_delegate_frontend("dirty"));
-        assert!(should_delegate_frontend("hot"));
+        assert!(!should_delegate_frontend("dirty"));
+        assert!(!should_delegate_frontend("hot"));
         assert!(!should_delegate_frontend("closed"));
         assert!(!should_delegate_frontend("frozen"));
         assert!(!should_delegate_frontend("disabled"));
+        assert!(!should_delegate_frontend("unknown"));
+        assert!(is_safe_backend_fallback_state("closed"));
+        assert!(is_safe_backend_fallback_state("disabled"));
+        assert!(!is_safe_backend_fallback_state("dirty"));
+        assert!(!is_safe_backend_fallback_state("hot"));
+        assert!(!is_safe_backend_fallback_state("frozen"));
     }
 
     #[test]

@@ -249,14 +249,15 @@ pub fn search_textbooks(
     let mut stmt = conn
         .prepare(
             r#"
-        SELECT id, resource_id, blob_hash, sha256, file_name, original_path, size, page_count,
-               tags_json, is_favorite, last_opened_at, last_page, bookmarks_json,
-               cover_key, status, created_at, updated_at
-        FROM files
-        WHERE status = 'active'
-          AND file_name LIKE ?1 ESCAPE '\'
-          AND (mime_type LIKE '%pdf%' OR file_name LIKE '%.pdf')
-        ORDER BY updated_at DESC
+        SELECT f.id, f.resource_id, f.blob_hash, f.sha256, f.file_name, f.original_path, f.size, f.page_count,
+               f.tags_json, f.is_favorite, f.last_opened_at, f.last_page, f.bookmarks_json,
+               f.cover_key, f.status, f.created_at, f.updated_at, r.metadata_json
+        FROM files f
+        LEFT JOIN resources r ON r.id = f.resource_id
+        WHERE f.status = 'active'
+          AND f.file_name LIKE ?1 ESCAPE '\'
+          AND (f.mime_type LIKE '%pdf%' OR f.file_name LIKE '%.pdf')
+        ORDER BY f.updated_at DESC
         LIMIT ?2 OFFSET ?3
         "#,
         )
@@ -266,6 +267,7 @@ pub fn search_textbooks(
         .query_map(params![search_pattern, limit, offset], |row| {
             let tags_json: Option<String> = row.get(8)?;
             let bookmarks_json: Option<String> = row.get(12)?;
+            let resource_metadata_json: Option<String> = row.get(17)?;
 
             Ok(VfsTextbook {
                 id: row.get(0)?,
@@ -284,6 +286,17 @@ pub fn search_textbooks(
                 last_page: row.get(11)?,
                 bookmarks: bookmarks_json
                     .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default(),
+                highlights: resource_metadata_json
+                    .as_deref()
+                    .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                    .and_then(|metadata| {
+                        metadata
+                            .get("extra")?
+                            .get("highlights")?
+                            .as_array()
+                            .cloned()
+                    })
                     .unwrap_or_default(),
                 cover_key: row.get(13)?,
                 status: row.get(14)?,

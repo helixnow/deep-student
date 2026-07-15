@@ -232,6 +232,11 @@ pub fn textbook_to_dstu_node(textbook: &VfsTextbook) -> DstuNode {
     .with_metadata(serde_json::json!({
         "filePath": textbook.original_path,
         "isFavorite": textbook.is_favorite,
+        "pageCount": textbook.page_count,
+        "readingProgress": textbook.last_page.map(|page| serde_json::json!({ "page": page })),
+        "bookmarks": textbook.bookmarks,
+        "highlights": textbook.highlights,
+        "annotationRevision": textbook.updated_at,
     }))
 }
 

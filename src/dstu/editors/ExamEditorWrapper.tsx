@@ -90,7 +90,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
             <CircleNotch size={32} className="animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
               {isCreating
-                ? t('dstu:actions.creatingResource', '正在创建资源...')
+                ? t('dstu:actions.creatingResource')
                 : t('dstu:preview.loading')}
             </span>
           </>

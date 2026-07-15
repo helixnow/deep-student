@@ -52,7 +52,7 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
   className,
   folderPath,
 }) => {
-  const { t } = useTranslation('chatV2');
+  const { t } = useTranslation(['chatV2', 'common']);
 
   // ★ 文档28改造：优先使用真实路径显示 tooltip
   const tooltipText = folderPath
@@ -98,7 +98,7 @@ export const FolderContextChip: React.FC<FolderContextChipProps> = ({
       )}
 
       {/* 删除按钮 */}
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !p-0 !rounded-full hover:bg-amber-500/20" aria-label={t('common.remove', '移除')}>
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); if (!disabled) onRemove(); }} disabled={disabled} className="!h-5 !w-5 !p-0 !rounded-full hover:bg-amber-500/20" aria-label={t('common:actions.remove', '移除')}>
         <X size={14} className="text-muted-foreground hover:text-foreground" />
       </NotionButton>
     </div>

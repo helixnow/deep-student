@@ -574,13 +574,17 @@ export async function getContent(path: string): Promise<Result<string | Blob>> {
 /**
  * 设置资源元数据
  */
-export async function setMetadata(path: string, metadata: Record<string, unknown>): Promise<Result<void>> {
+export async function setMetadata(
+  path: string,
+  metadata: Record<string, unknown>,
+  expectedUpdatedAt?: string,
+): Promise<Result<void>> {
   try {
     // 获取节点信息（用于缓存失效）
     const getResult = await get(path);
     const nodeId = getResult.ok ? getResult.value.id : null;
 
-    await invoke<void>('dstu_set_metadata', { path, metadata });
+    await invoke<void>('dstu_set_metadata', { path, metadata, expectedUpdatedAt });
     console.log(LOG_PREFIX, 'setMetadata() 成功:', { path, metadata });
 
     // [FIX-M013] [FIX-M001] Invalidate cache (using unified wrapper)

@@ -145,6 +145,24 @@ pub async fn dstu_folder_create(
         title, parent_id
     );
 
+    let vfs_db = vfs_db.inner().clone();
+    tokio::task::spawn_blocking(move || {
+        dstu_folder_create_with_db(&vfs_db, title, parent_id, icon, color)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}
+
+/// Window-independent production core shared by the Tauri command and Agent
+/// executor. Keeping validation and repository writes here lets headless tests
+/// exercise the same mutation without fabricating a `tauri::Window`.
+pub(crate) fn dstu_folder_create_with_db(
+    vfs_db: &VfsDatabase,
+    title: String,
+    parent_id: Option<String>,
+    icon: Option<String>,
+    color: Option<String>,
+) -> Result<VfsFolder, String> {
     // 验证标题非空
     if title.trim().is_empty() {
         return Err("文件夹标题不能为空".to_string());
@@ -175,43 +193,34 @@ pub async fn dstu_folder_create(
         _ => parent_id,
     };
 
-    let vfs_db = vfs_db.inner().clone();
-
-    tokio::task::spawn_blocking(move || {
-        let conn = match vfs_db.get_conn_safe() {
-            Ok(c) => c,
-            Err(e) => {
-                error!(
-                    "[DSTU::folder_handlers] dstu_folder_create: get_conn_safe FAILED - error={}",
-                    e
-                );
-                return Err(e.to_string());
-            }
-        };
-
-        // 创建文件夹对象
-        let folder = VfsFolder::new(title, actual_parent_id, icon, color);
-
-        // 使用 FolderRepo 创建文件夹（包含深度/数量检查）
-        match VfsFolderRepo::create_folder_with_conn(&conn, &folder) {
-            Ok(()) => {
-                info!(
-                    "[DSTU::folder_handlers] dstu_folder_create: SUCCESS - folder_id={}",
-                    folder.id
-                );
-                Ok(folder)
-            }
-            Err(e) => {
-                error!(
-                    "[DSTU::folder_handlers] dstu_folder_create: FAILED - error={}",
-                    e
-                );
-                Err(e.to_string())
-            }
+    let conn = match vfs_db.get_conn_safe() {
+        Ok(c) => c,
+        Err(e) => {
+            error!(
+                "[DSTU::folder_handlers] dstu_folder_create: get_conn_safe FAILED - error={}",
+                e
+            );
+            return Err(e.to_string());
         }
-    })
-    .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    };
+
+    let folder = VfsFolder::new(title, actual_parent_id, icon, color);
+    match VfsFolderRepo::create_folder_with_conn(&conn, &folder) {
+        Ok(()) => {
+            info!(
+                "[DSTU::folder_handlers] dstu_folder_create: SUCCESS - folder_id={}",
+                folder.id
+            );
+            Ok(folder)
+        }
+        Err(e) => {
+            error!(
+                "[DSTU::folder_handlers] dstu_folder_create: FAILED - error={}",
+                e
+            );
+            Err(e.to_string())
+        }
+    }
 }
 
 /// 获取文件夹详情
@@ -283,8 +292,10 @@ pub async fn dstu_folder_rename(
     let vfs_db = vfs_db.inner().clone();
 
     tokio::task::spawn_blocking(move || {
-        // 获取现有文件夹
-        let mut folder = match VfsFolderRepo::get_folder(&vfs_db, &folder_id) {
+        // Read the version to use as an optimistic-concurrency token. The
+        // repository performs a title-only conditional update, so concurrent
+        // folder edits cannot be overwritten with this stale snapshot.
+        let folder = match VfsFolderRepo::get_folder(&vfs_db, &folder_id) {
             Ok(Some(f)) => f,
             Ok(None) => {
                 warn!("[DSTU::folder_handlers] dstu_folder_rename: FAILED - folder not found: {}", folder_id);
@@ -296,11 +307,12 @@ pub async fn dstu_folder_rename(
             }
         };
 
-        // 更新标题
-        folder.title = title.clone();
-
-        // 保存更新
-        match VfsFolderRepo::update_folder(&vfs_db, &folder) {
+        match VfsFolderRepo::rename_folder_if_version(
+            &vfs_db,
+            &folder_id,
+            &title,
+            folder.updated_at,
+        ) {
             Ok(()) => {
                 info!("[DSTU::folder_handlers] dstu_folder_rename: SUCCESS - folder_id={}, new_title={}", folder_id, title);
                 Ok(())
