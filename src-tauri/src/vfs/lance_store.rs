@@ -546,7 +546,19 @@ impl VfsLanceStore {
     where
         F: FnMut(&str) -> VfsResult<()>,
     {
-        let candidates = self.retired_profile_table_candidates()?;
+        // Retired profile rows remain as durable retry intents after a successful
+        // drop. Local Lance tables are directory-backed, so avoid reopening the
+        // catalog on every worker tick once all candidate directories are gone.
+        // A failed drop leaves its directory in place and remains retryable.
+        let candidates = self
+            .retired_profile_table_candidates()?
+            .into_iter()
+            .filter(|table_name| {
+                self.lance_base_path
+                    .join(format!("{table_name}.lance"))
+                    .exists()
+            })
+            .collect::<Vec<_>>();
         if candidates.is_empty() {
             return Ok(0);
         }

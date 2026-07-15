@@ -900,3 +900,25 @@ impl TableClassification {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vfs_profile_ledger_is_rebuilt_locally_and_excluded_from_row_sync() {
+        let profile = sync_classification_registry()
+            .into_iter()
+            .find(|entry| entry.database == "vfs" && entry.table_name == "vfs_index_profiles")
+            .expect("vfs_index_profiles classification");
+
+        assert_eq!(profile.category, SyncCategory::DerivedRebuild);
+        assert!(TableClassification::is_excluded_from_checksum(
+            "vfs",
+            "vfs_index_profiles"
+        ));
+        assert!(!TableClassification::checksum_tables("vfs")
+            .iter()
+            .any(|entry| entry.table_name == "vfs_index_profiles"));
+    }
+}
