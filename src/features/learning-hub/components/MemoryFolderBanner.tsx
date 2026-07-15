@@ -94,9 +94,9 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       await setMemoryAutoExtractFrequency(freq);
       const updated = await getMemoryConfig();
       setConfig(updated);
-      showGlobalNotification('success', t('memory.frequency_changed', '自动提取频率已更新'));
+      showGlobalNotification('success', t('memory.frequency_changed'));
     } catch {
-      showGlobalNotification('error', t('memory.frequency_change_error', '设置失败'));
+      showGlobalNotification('error', t('memory.frequency_change_error'));
     }
   }, [config?.autoExtractFrequency, t]);
 
@@ -126,7 +126,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       const logs = await getMemoryAuditLogs({ limit: AUDIT_LOG_PAGE_SIZE, offset: 0 });
       setAuditLogs(logs);
     } catch {
-      showGlobalNotification('error', t('memory.audit_load_error', '加载操作日志失败'));
+      showGlobalNotification('error', t('memory.audit_load_error'));
     } finally {
       setIsLoadingAuditLog(false);
     }
@@ -137,7 +137,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
     try {
       const exportData = await exportAllMemories();
       if (exportData.length === 0) {
-        showGlobalNotification('warning', t('memory.export_empty', '没有可导出的记忆'));
+        showGlobalNotification('warning', t('memory.export_empty'));
         return;
       }
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -147,9 +147,9 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       a.download = `memories_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      showGlobalNotification('success', t('memory.export_success', `已导出 ${exportData.length} 条记忆`));
+      showGlobalNotification('success', t('memory.export_success', { count: exportData.length }));
     } catch {
-      showGlobalNotification('error', t('memory.export_error', '导出失败'));
+      showGlobalNotification('error', t('memory.export_error'));
     }
   }, [t]);
 
@@ -172,7 +172,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
   const handleBatchImport = useCallback(async () => {
     const items = parseBatchItems(batchImportText);
     if (items.length === 0) {
-      showGlobalNotification('error', t('memory.batch_import_empty', '请先粘贴要导入的内容'));
+      showGlobalNotification('error', t('memory.batch_import_empty'));
       return;
     }
     setIsImporting(true);
@@ -184,7 +184,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       );
       showGlobalNotification(
         result.filtered > 0 ? 'warning' : 'success',
-        t('memory.batch_import_summary', '已处理 {{total}} 条：新增 {{added}}，更新 {{updated}}，跳过 {{skipped}}，拦截 {{filtered}}', {
+        t('memory.batch_import_summary', {
           total: result.total, added: result.added, updated: result.updated, skipped: result.skipped, filtered: result.filtered,
         }),
       );
@@ -194,7 +194,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         onRefresh?.();
       }
     } catch {
-      showGlobalNotification('error', t('memory.batch_import_error', '批量导入失败'));
+      showGlobalNotification('error', t('memory.batch_import_error'));
     } finally {
       setIsImporting(false);
     }
@@ -203,7 +203,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
   // 新建记忆
   const handleCreateMemory = useCallback(async () => {
     if (!newTitle.trim() || !newContent.trim()) {
-      showGlobalNotification('error', t('memory.empty_content', '标题和内容不能为空'));
+      showGlobalNotification('error', t('memory.empty_content'));
       return;
     }
     setIsCreating(true);
@@ -211,19 +211,19 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       const result = await writeMemorySmart(newTitle, newContent, undefined, newType);
       const succeeded = result.event === 'ADD' || result.event === 'UPDATE' || result.event === 'APPEND';
       if (result.event === 'FILTERED') {
-        showGlobalNotification('warning', result.reason || t('memory.create_filtered', '内容触发安全拦截'));
+        showGlobalNotification('warning', result.reason || t('memory.create_filtered'));
       } else if (succeeded) {
-        showGlobalNotification('success', t('memory.create_success', '记忆创建成功'));
+        showGlobalNotification('success', t('memory.create_success'));
         setShowNewMemory(false);
         setNewTitle('');
         setNewContent('');
         setNewType('study');
         onRefresh?.();
       } else {
-        showGlobalNotification('warning', t('memory.create_already_exists', '该记忆已存在'));
+        showGlobalNotification('warning', t('memory.create_already_exists'));
       }
     } catch {
-      showGlobalNotification('error', t('memory.create_error', '创建失败'));
+      showGlobalNotification('error', t('memory.create_error'));
     } finally {
       setIsCreating(false);
     }
@@ -236,12 +236,12 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       {/* 工具栏（📱 允许换行：窄屏下按钮过多会横向溢出导致部分功能不可达） */}
       <div className="flex flex-wrap items-center gap-1.5 px-3 py-1.5">
         <MemoryIcon size={14} className="text-muted-foreground shrink-0" />
-        <span className="text-[11px] text-muted-foreground mr-1">{t('memory.auto_extract', '自动提取')}:</span>
+        <span className="text-[11px] text-muted-foreground mr-1">{t('memory.auto_extract')}:</span>
         <div className="flex items-center gap-0.5">
           {([
-            { value: 'off' as const, label: t('memory.freq_off', '关闭') },
-            { value: 'balanced' as const, label: t('memory.freq_balanced', '平衡') },
-            { value: 'aggressive' as const, label: t('memory.freq_aggressive', '积极') },
+            { value: 'off' as const, label: t('memory.freq_off') },
+            { value: 'balanced' as const, label: t('memory.freq_balanced') },
+            { value: 'aggressive' as const, label: t('memory.freq_aggressive') },
           ]).map((opt) => (
             <button
               key={opt.value}
@@ -263,21 +263,21 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleToggleProfile}
           className={cn('!h-6 !w-6', showProfile && 'text-primary bg-primary/10')}
-          title={t('memory.profile_title', '系统对我的了解')}
+          title={t('memory.profile_title')}
         >
           <MemoryIcon size={13} />
         </NotionButton>
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleToggleAuditLog}
           className={cn('!h-6 !w-6', showAuditLog && 'text-primary bg-primary/10')}
-          title={t('memory.audit_log', '操作日志')}
+          title={t('memory.audit_log')}
         >
           <ClockCounterClockwise size={14} />
         </NotionButton>
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleExport}
           className="!h-6 !w-6"
-          title={t('memory.export', '导出记忆')}
+          title={t('memory.export')}
         >
           <Download size={14} />
         </NotionButton>
@@ -297,25 +297,25 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
           className={cn('!h-6 !px-1.5 text-[11px]', showBatchImport && 'text-primary bg-primary/10')}
         >
           <ListPlus size={14} />
-          {t('memory.batch_import', '批量导入')}
+          {t('memory.batch_import')}
         </NotionButton>
         <NotionButton variant="ghost" size="sm"
           onClick={() => { setShowNewMemory(!showNewMemory); setShowBatchImport(false); }}
           className={cn('!h-6 !px-1.5 text-[11px] text-primary', showNewMemory && 'bg-primary/10')}
         >
           <Plus size={14} />
-          {t('memory.new', '新建')}
+          {t('memory.new')}
         </NotionButton>
       </div>
 
       {/* 画像面板 */}
       {showProfile && (
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10">
-          <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.profile_title', '系统对我的了解')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.profile_title')}</div>
           {isLoadingProfile ? (
             <div className="flex items-center justify-center py-4"><CircleNotch size={16} className="animate-spin text-muted-foreground" /></div>
           ) : profileSections.length === 0 ? (
-            <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.no_profile', '暂无画像数据，系统会在积累足够记忆后生成。')}</div>
+            <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.no_profile')}</div>
           ) : (
             <CustomScrollArea className="max-h-40">
               <div className="space-y-1.5">
@@ -334,11 +334,11 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       {/* 审计日志面板 */}
       {showAuditLog && (
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10">
-          <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.audit_log', '操作日志')}</div>
+          <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.audit_log')}</div>
           {isLoadingAuditLog ? (
             <div className="flex items-center justify-center py-4"><CircleNotch size={16} className="animate-spin text-muted-foreground" /></div>
           ) : auditLogs.length === 0 ? (
-            <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.audit_empty', '暂无操作日志')}</div>
+            <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.audit_empty')}</div>
           ) : (
             <CustomScrollArea className="max-h-48">
               <div className="space-y-1">
@@ -359,11 +359,11 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       {showBatchImport && (
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground">{t('memory.batch_import', '批量导入')}</span>
+            <span className="text-[11px] font-medium text-muted-foreground">{t('memory.batch_import')}</span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowBatchImport(false)} className="!h-5 !w-5"><X size={12} /></NotionButton>
           </div>
           <Textarea
-            placeholder={t('memory.batch_import_placeholder', '每行一条，格式：标题\\t内容 或 标题：内容')}
+            placeholder={t('memory.batch_import_placeholder')}
             value={batchImportText}
             onChange={(e) => setBatchImportText(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowBatchImport(false); } }}
@@ -371,18 +371,18 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
           />
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">{t('memory.type', '类型')}:</span>
+            <span className="text-[10px] text-muted-foreground">{t('memory.type')}:</span>
             {(['fact', 'study', 'note'] as const).map(type => (
               <button key={type} onClick={() => setBatchImportType(type)}
                 className={cn('px-1.5 py-0.5 rounded text-[10px]', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
               >
-                {type === 'fact' ? t('memory.type_fact', '事实') : type === 'study' ? t('memory.type_study', '学习') : t('memory.type_note', '笔记')}
+                {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
               </button>
             ))}
             <div className="flex-1" />
             <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isImporting || !batchImportText.trim()} className="!h-6 !px-2 text-[11px]">
               {isImporting && <CircleNotch size={12} className="animate-spin" />}
-              {t('memory.batch_import_confirm', '开始导入')}
+              {t('memory.batch_import_confirm')}
             </NotionButton>
           </div>
         </div>
@@ -392,11 +392,11 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
       {showNewMemory && (
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-muted-foreground">{t('memory.create_title', '创建新记忆')}</span>
+            <span className="text-[11px] font-medium text-muted-foreground">{t('memory.create_title')}</span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowNewMemory(false)} className="!h-5 !w-5"><X size={12} /></NotionButton>
           </div>
           <Input
-            placeholder={t('memory.title_placeholder', '记忆标题')}
+            placeholder={t('memory.title_placeholder')}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowNewMemory(false); } }}
@@ -404,7 +404,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
           />
           <Textarea
-            placeholder={t('memory.content_placeholder_study', '学习内容...')}
+            placeholder={t('memory.content_placeholder_study')}
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setShowNewMemory(false); } }}
@@ -412,18 +412,18 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
           />
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-muted-foreground">{t('memory.type', '类型')}:</span>
+            <span className="text-[10px] text-muted-foreground">{t('memory.type')}:</span>
             {(['fact', 'study', 'note'] as const).map(type => (
               <button key={type} onClick={() => setNewType(type)}
                 className={cn('px-1.5 py-0.5 rounded text-[10px]', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
               >
-                {type === 'fact' ? t('memory.type_fact', '事实') : type === 'study' ? t('memory.type_study', '学习') : t('memory.type_note', '笔记')}
+                {type === 'fact' ? t('memory.type_fact') : type === 'study' ? t('memory.type_study') : t('memory.type_note')}
               </button>
             ))}
             <div className="flex-1" />
             <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isCreating || !newTitle.trim() || !newContent.trim()} className="!h-6 !px-2 text-[11px]">
               {isCreating && <CircleNotch size={12} className="animate-spin" />}
-              {t('common:create', '创建')}
+              {t('common:create')}
             </NotionButton>
           </div>
         </div>

@@ -39,7 +39,7 @@ export const NotesSidebarSearch: React.FC = () => {
             .catch(error => {
                 console.error("Failed to load tags", error);
                 setIsLoadError(true);
-                showGlobalNotification('error', t('notes:errors.load_tags_failed', '标签加载失败，请刷新重试'));
+                showGlobalNotification('error', t('notes:errors.load_tags_failed'));
             })
             .finally(() => setIsLoadingTags(false));
     }, [t]);
@@ -120,7 +120,7 @@ export const NotesSidebarSearch: React.FC = () => {
                                 variant="ghost"
                                 size="icon"
                                 className={`h-6 w-6 ${selectedTags.length > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                                title={t('notes:sidebar.search.filter_by_tag', 'Filter by tags')}
+                                title={t('notes:sidebar.search.filter_by_tag')}
                             >
                                 <Funnel className="h-3.5 w-3.5" />
                                 {selectedTags.length > 0 && (
@@ -133,16 +133,16 @@ export const NotesSidebarSearch: React.FC = () => {
                         <PopoverContent className="w-64 p-2" align="end">
                             <div className="space-y-2">
                                 <div className="text-xs font-medium text-muted-foreground">
-                                    {t('notes:sidebar.search.filter_by_tag', 'Filter by tags')}
+                                    {t('notes:sidebar.search.filter_by_tag')}
                                 </div>
                                 {isLoadingTags ? (
                                     <div className="text-xs text-muted-foreground/60 italic">
-                                        {t('notes:sidebar.search.loading_tags', 'Loading tags...')}
+                                        {t('notes:sidebar.search.loading_tags')}
                                     </div>
                                 ) : isLoadError ? (
                                     <div className="flex flex-col items-center gap-1.5 py-2">
                                         <div className="text-xs text-destructive/80">
-                                            {t('notes:errors.load_tags_failed', '标签加载失败，请刷新重试')}
+                                            {t('notes:errors.load_tags_failed')}
                                         </div>
                                         <NotionButton
                                             variant="ghost"
@@ -150,7 +150,7 @@ export const NotesSidebarSearch: React.FC = () => {
                                             className="h-6 text-xs"
                                             onClick={loadTags}
                                         >
-                                            {t('common:retry', '重试')}
+                                            {t('common:retry')}
                                         </NotionButton>
                                     </div>
                                 ) : availableTags.length > 0 ? (
@@ -172,7 +172,7 @@ export const NotesSidebarSearch: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="text-xs text-muted-foreground/60 italic">
-                                        {t('notes:sidebar.search.no_tags', 'No tags available')}
+                                        {t('notes:sidebar.search.no_tags')}
                                     </div>
                                 )}
                             </div>

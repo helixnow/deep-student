@@ -6,6 +6,8 @@ export type CanvasEditOperation = 'append' | 'replace' | 'set';
 export interface CanvasAIEditRequest {
   requestId: string;
   noteId: string;
+  /** Workbench-local requests may target one exact editor window. */
+  targetWindowId?: string;
   operation: CanvasEditOperation;
   content?: string;
   search?: string;

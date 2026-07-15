@@ -281,7 +281,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     if (text.length > TRANSLATION_MAX_CHARS) {
       showGlobalNotification('warning', t('translation:errors.text_too_long', {
         max: TRANSLATION_MAX_CHARS.toLocaleString(),
-        defaultValue: `Text exceeds maximum of ${TRANSLATION_MAX_CHARS.toLocaleString()} characters and will be truncated.`,
       }));
       setSourceText(text.slice(0, TRANSLATION_MAX_CHARS));
       return;
@@ -301,7 +300,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
     const MAX_UPLOAD_FILE_SIZE = 50 * 1024 * 1024;
     if (file.size > MAX_UPLOAD_FILE_SIZE) {
       const sizeMB = (MAX_UPLOAD_FILE_SIZE / (1024 * 1024)).toFixed(0);
-      showGlobalNotification('error', t('drag_drop:errors.file_too_large', { size: sizeMB, defaultValue: `文件过大，单个文件不能超过 ${sizeMB}MB` }));
+      showGlobalNotification('error', t('translation:errors.file_too_large_dynamic', { size: sizeMB }));
       return;
     }
 
@@ -441,7 +440,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
             markTranslationPersisted(sessionToSave);
           } catch (saveError: unknown) {
             console.error('[Translation] Save failed:', saveError);
-            showGlobalNotification('error', t('translation:toast.save_failed', '翻译结果保存失败，请重试'));
+            showGlobalNotification('error', t('translation:toast.save_failed'));
           }
         }
       } else if (outcome === 'cancelled') {
@@ -613,7 +612,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
       const content = lines.join('\n');
 
       const result = await fileManager.saveTextFile({
-        title: t('translation:target_section.export_title', { defaultValue: 'Export Translation' }),
+        title: t('translation:target_section.export_title'),
         defaultFileName: `translation_${new Date().getTime()}.md`,
         filters: [
           { name: t('translation:export.file_filters.markdown'), extensions: ['md'] },

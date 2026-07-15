@@ -160,7 +160,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
 
     return {
       id: raw?.id || raw?.template_id || raw?.name || `preview-${Date.now()}`,
-      name: raw?.name || raw?.template_name || raw?.id || i18n.t('template:preview_template_name', 'Preview Template'),
+      name: raw?.name || raw?.template_name || raw?.id || i18n.t('template:preview_template_name'),
       description: raw?.description || '',
       author: raw?.author || 'Preview',
       version: raw?.version || '1.0.0',

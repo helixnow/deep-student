@@ -8,7 +8,8 @@ import { NotesEditorToolbar } from '../NotesEditorToolbar';
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
-    t: (key: string, defaultValue?: string) => defaultValue ?? key.split('.').at(-1) ?? key,
+    t: (key: string, defaultValue?: string) =>
+      key === 'notes:toolbar.label' ? '格式化' : defaultValue ?? key.split('.').at(-1) ?? key,
   }),
 }));
 

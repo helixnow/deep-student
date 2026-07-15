@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, render, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import NoteContentView from '@/features/learning-hub/apps/views/NoteContentView';
@@ -88,7 +88,12 @@ vi.mock('react-resizable-panels', () => ({
 vi.mock('@/features/notes/NotesCrepeEditor', () => ({
   NotesCrepeEditor: (props: any) => {
     mocks.latestEditorProps = props;
-    return <div data-testid="notes-crepe-editor">{props.initialContent}</div>;
+    return (
+      <div data-testid="notes-crepe-editor">
+        {props.initialContent}
+        {props.headerActions}
+      </div>
+    );
   },
 }));
 
@@ -203,7 +208,10 @@ describe('NoteContentView windowing', () => {
       totalLineCount: 1000,
       hasMore: true,
     });
-    expect(mocks.contextPanelContents.at(-1)).toBe(props.initialContent);
+
+    expect(screen.queryByTestId('notes-context-panel')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'notes:contextPanel.title' }));
+    await waitFor(() => expect(mocks.contextPanelContents.at(-1)).toBe(props.initialContent));
   });
 
   it('loads more from the original suffix while preserving the edited prefix', async () => {

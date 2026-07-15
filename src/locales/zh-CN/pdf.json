@@ -74,6 +74,8 @@
     "highlights": "批注列表",
     "page": "第 {{page}} 页",
     "delete_highlight": "删除批注"
+  ,
+    "more": "更多"
   },
   "bookmark": {
     "addBookmark": "添加书签",

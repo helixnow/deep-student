@@ -16,6 +16,7 @@
     "note": "添加备注…"
   },
   "toolbar": {
+    "view": "视图",
     "outline": "大纲",
     "mindmap": "导图",
     "undo": "撤销",
@@ -263,6 +264,8 @@
     "loading": "加载中...",
     "noResults": "未找到匹配资源",
     "empty": "暂无资源",
+    "loadFailed": "加载资源失败",
+    "searchFailed": "搜索资源失败",
     "unavailable": "资源已删除或不可用"
   },
   "node": {

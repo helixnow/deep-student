@@ -27,7 +27,7 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
   onClose,
   className = ''
 }) => {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation('chat_host');
   const hasErrors = rejected.length > 0;
   const hasSuccess = accepted > 0;
 

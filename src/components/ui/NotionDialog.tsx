@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
@@ -110,6 +111,8 @@ export function NotionDialog({
   maxWidth = 'max-w-lg',
   className,
 }: NotionDialogProps) {
+  const { t } = useTranslation('common');
+
   // ESC 关闭
   React.useEffect(() => {
     if (!open) return;
@@ -197,7 +200,7 @@ export function NotionDialog({
               variant="ghost"
               size="sm"
               iconOnly
-              aria-label="Close"
+              aria-label={t('actions.close')}
               className={cn(
                 'absolute z-10 text-muted-foreground/50 hover:text-foreground',
                 isMobileSheet ? 'right-3 top-3 h-8 w-8' : 'w-6 h-6 top-2.5 right-2.5',
@@ -334,8 +337,8 @@ export function NotionAlertDialog({
   title,
   description,
   icon,
-  confirmText = '确认',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
   confirmVariant = 'danger',
   confirmSize = 'sm',
   onConfirm,
@@ -345,6 +348,10 @@ export function NotionAlertDialog({
   children,
   className,
 }: NotionAlertDialogProps) {
+  const { t } = useTranslation('common');
+  const resolvedConfirmText = confirmText ?? t('actions.confirm');
+  const resolvedCancelText = cancelText ?? t('actions.cancel');
+
   const handleCancel = React.useCallback(() => {
     onCancel?.();
     onOpenChange(false);
@@ -412,7 +419,7 @@ export function NotionAlertDialog({
           {/* 按钮行 */}
           <div className="mt-5 flex shrink-0 items-center justify-end gap-2">
             <NotionButton variant="ghost" size={confirmSize} onClick={handleCancel} disabled={loading}>
-              {cancelText}
+              {resolvedCancelText}
             </NotionButton>
             <NotionButton
               variant={confirmVariant}
@@ -426,7 +433,7 @@ export function NotionAlertDialog({
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
               )}
-              {confirmText}
+              {resolvedConfirmText}
             </NotionButton>
           </div>
         </motion.div>

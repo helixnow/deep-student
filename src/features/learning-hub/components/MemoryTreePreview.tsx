@@ -199,7 +199,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
       const data = await getMemoryTree();
       setTreeData(data);
     } catch (e) {
-      setError(t('memory.tree_load_error', '加载记忆树失败'));
+      setError(t('memory.tree_load_error'));
     } finally {
       setIsLoading(false);
     }
@@ -223,7 +223,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
         <span className="text-sm text-muted-foreground">{error}</span>
         <NotionButton variant="ghost" size="sm" onClick={loadTree}>
           <ArrowClockwise size={14} />
-          {t('common:retry', '重试')}
+          {t('common:retry')}
         </NotionButton>
       </div>
     );
@@ -233,7 +233,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 text-muted-foreground', className)}>
         <GitBranch size={32} className="mb-2 opacity-40" />
-        <span className="text-sm">{t('memory.tree_empty', '暂无记忆树数据')}</span>
+        <span className="text-sm">{t('memory.tree_empty')}</span>
       </div>
     );
   }
@@ -246,10 +246,10 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
         <GitBranch size={14} className="text-muted-foreground" />
         <span className="text-[11px] font-medium text-muted-foreground">
-          {t('memory.tree_title', '记忆树')}
+          {t('memory.tree_title')}
         </span>
         <span className="text-[10px] text-muted-foreground/50">
-          {totalMemories} {t('memory.items', '条')}
+          {totalMemories} {t('memory.items')}
         </span>
         <div className="flex-1" />
         <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} disabled={isLoading} className="!h-5 !w-5" aria-label="refresh">

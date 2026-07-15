@@ -416,8 +416,7 @@ export function useLearningHub(options?: {
     const unregister = registerContextMenuActionHandler({
       confirmDelete: async (path) => {
         const message = i18next.t(
-          'notes:learningHub.delete_confirm_message',
-          '确定要删除此资源吗？删除后可在回收站恢复。'
+          'notes:learningHub.delete_confirm_message'
         );
         // 此兼容 hook 没有可挂载声明式 Dialog 的渲染面，保留同步确认语义。
         // eslint-disable-next-line no-alert

@@ -70,8 +70,12 @@ const hookState = vi.hoisted(() => ({
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
-    t: (key: string, fallback?: string | Record<string, unknown>) =>
-      typeof fallback === 'string' ? fallback : key,
+    t: (key: string, fallback?: string | Record<string, unknown>) => {
+      if (key === 'editor.discardDraftTitle') return '放弃未提交的内容？';
+      if (key === 'editor.discardDraftDescription') return '离开当前视图会清除尚未提交或保存的内容。';
+      if (key === 'common:actions.discard') return '放弃';
+      return typeof fallback === 'string' ? fallback : key;
+    },
   }),
 }));
 
@@ -117,7 +121,16 @@ vi.mock('@/components/SyncConflictDialog', () => ({
 }));
 
 vi.mock('@/components/QuestionBankEditor', () => ({
-  default: () => <div data-testid="question-bank-editor" />,
+  default: ({ onDraftDirtyChange }: { onDraftDirtyChange?: (dirty: boolean) => void }) => (
+    <div data-testid="question-bank-editor">
+      <button type="button" onClick={() => onDraftDirtyChange?.(true)}>
+        mark answer draft
+      </button>
+      <button type="button" onClick={() => onDraftDirtyChange?.(false)}>
+        clear answer draft
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/QuestionBankListView', () => ({
@@ -133,7 +146,13 @@ vi.mock('@/components/TagNavigationView', () => ({
 }));
 
 vi.mock('@/components/practice/PracticeLauncher', () => ({
-  default: () => <div data-testid="practice-launcher" />,
+  default: ({ onStartPractice }: { onStartPractice?: (mode: string) => void }) => (
+    <div data-testid="practice-launcher">
+      <button type="button" onClick={() => onStartPractice?.('sequential')}>
+        start sequential practice
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/QuestionBankStatsView', () => ({
@@ -245,5 +264,76 @@ describe('ExamContentView secondary entry points', () => {
     await waitFor(() => {
       expect(screen.getByTestId('question-bank-export-dialog')).toBeInTheDocument();
     }, { timeout: 5000 });
+  });
+
+  it('confirms before a dirty practice draft can leave the editor', async () => {
+    render(
+      <ExamContentView
+        node={{
+          id: 'exam_1',
+          name: 'Exam 1',
+          type: 'exam',
+          path: '/exam_1',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as any}
+      />,
+    );
+
+    await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
+
+    const practiceButton = findButton([/练习/i, /practice/i, /learningHub:exam\.tab\.practice/i]);
+    expect(practiceButton).toBeTruthy();
+    fireEvent.click(practiceButton!);
+    fireEvent.click(await screen.findByRole('button', { name: /start sequential practice/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /mark answer draft/i }));
+
+    const manageButton = findButton([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
+    expect(manageButton).toBeTruthy();
+    fireEvent.click(manageButton!);
+
+    expect(await screen.findByText('放弃未提交的内容？')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /放弃/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('question-bank-manage-view')).toBeInTheDocument();
+    });
+  });
+
+  it('defers a qbank refresh until an unfocused draft is clean', async () => {
+    render(
+      <ExamContentView
+        node={{
+          id: 'exam_1',
+          name: 'Exam 1',
+          type: 'exam',
+          path: '/exam_1',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as any}
+      />,
+    );
+
+    await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
+    const practiceButton = findButton([/练习/i, /practice/i, /learningHub:exam\.tab\.practice/i]);
+    fireEvent.click(practiceButton!);
+    fireEvent.click(await screen.findByRole('button', { name: /start sequential practice/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /mark answer draft/i }));
+
+    hookState.loadQuestions.mockClear();
+    hookState.refreshStats.mockClear();
+    window.dispatchEvent(new CustomEvent('qbank:refresh', {
+      detail: { source: 'agent', action: 'update', entityIds: ['q_1'] },
+    }));
+
+    await Promise.resolve();
+    expect(hookState.loadQuestions).not.toHaveBeenCalled();
+    expect(hookState.refreshStats).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /clear answer draft/i }));
+    await waitFor(() => {
+      expect(hookState.loadQuestions).toHaveBeenCalledTimes(1);
+      expect(hookState.refreshStats).toHaveBeenCalledTimes(1);
+    });
   });
 });

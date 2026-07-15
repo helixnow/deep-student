@@ -18,6 +18,7 @@ function makeEditor(initial = 'old content') {
   let markdown = initial;
   const setMarkdown = vi.fn((next: string) => {
     markdown = next;
+    return true;
   });
   return {
     api: {
@@ -132,6 +133,39 @@ describe('useCanvasAIEditHandler lifecycle', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(result.current.aiEditState.isActive).toBe(false);
     expect(result.current.isApplying).toBe(false);
+  });
+
+  it('keeps the suggestion active when full-document replacement is rejected', async () => {
+    const editor = makeEditor();
+    const replaceFullMarkdown = vi.fn(async () => false);
+    editor.api.getFullMarkdown = editor.api.getMarkdown;
+    editor.api.replaceFullMarkdown = replaceFullMarkdown;
+    const onSave = vi.fn(async () => undefined);
+    const { result } = renderHook(() => useCanvasAIEditHandler({
+      noteId: 'note-1',
+      editorApi: editor.api,
+      onSave,
+    }));
+
+    act(() => dispatchReplace('req-full-rejected'));
+    await waitFor(() => expect(result.current.aiEditState.isActive).toBe(true));
+    await act(async () => {
+      await result.current.handleAccept();
+    });
+
+    expect(replaceFullMarkdown).toHaveBeenCalledWith('new content', {
+      expectedMarkdown: 'old content',
+    });
+    expect(onSave).not.toHaveBeenCalled();
+    expect(result.current.aiEditState.isActive).toBe(true);
+    expect(result.current.checkpoint).toBeNull();
+    expect(invoke).toHaveBeenCalledWith('chat_v2_canvas_edit_result', {
+      result: expect.objectContaining({
+        requestId: 'req-full-rejected',
+        success: false,
+        error: '编辑器拒绝应用建议',
+      }),
+    });
   });
 
   it('rejects a second suggestion instead of replacing the pending diff', async () => {

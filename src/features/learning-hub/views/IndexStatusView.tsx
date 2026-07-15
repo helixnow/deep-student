@@ -83,7 +83,7 @@ import {
   resetAllIndexState,
   type VfsSearchResult,
 } from '@/api/vfsRagApi';
-import multimodalRagService, { type SourceType as MMSourceType, MULTIMODAL_INDEX_ENABLED } from '@/services/multimodalRagService';
+import multimodalRagService, { type SourceType as MMSourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useDialogFocusManagement } from '../components/FolderSelectorDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -447,9 +447,9 @@ export const IndexStatusView: React.FC = () => {
   }, [t, throttledListRefresh]);
 
   // ========== 监听原生多模态索引进度事件 ==========
-  // ★ 多模态索引已禁用时不监听事件，避免无用报错
+  // 仅在当前构建包含多模态索引能力时监听进度事件。
   useEffect(() => {
-    if (!MULTIMODAL_INDEX_ENABLED) return;
+    if (!MULTIMODAL_INDEX_SUPPORTED) return;
 
     let unlisten: UnlistenFn | null = null;
     let cancelled = false;
@@ -713,8 +713,7 @@ export const IndexStatusView: React.FC = () => {
 
     // 检查是否有需要索引的资源
     const pendingTextCount = summary.pendingCount + summary.failedCount;
-    // ★ 多模态索引已禁用时不检查多模态资源
-    const mmResources = MULTIMODAL_INDEX_ENABLED ? summary.resources.filter(r => {
+    const mmResources = MULTIMODAL_INDEX_SUPPORTED ? summary.resources.filter(r => {
       const isMmType = r.resourceType === 'textbook' || r.resourceType === 'exam' || r.resourceType === 'image' || r.resourceType === 'file';
       const hasPreview = r.resourceType !== 'file' || r.hasOcr;
       return isMmType && hasPreview && r.mmIndexState !== 'indexed' && r.mmIndexState !== 'disabled';
@@ -753,7 +752,7 @@ export const IndexStatusView: React.FC = () => {
       }
     }
 
-    // 然后执行原生多模态索引（仅在 MULTIMODAL_INDEX_ENABLED 时）
+    // 然后执行原生多模态索引。
     if (mmResources.length > 0) {
       setMmIndexing(true);
       setMmProgress(0);
@@ -811,9 +810,8 @@ export const IndexStatusView: React.FC = () => {
   }, [summary, batchIndexing, mmIndexing, loadData]);
 
   // ========== 原生多模态索引（PDF 按页图片索引）==========
-  // ★ 多模态索引已禁用时此函数不会被调用（按钮已隐藏），保留逻辑以便未来恢复
   const handleMultimodalIndex = useCallback(async () => {
-    if (!MULTIMODAL_INDEX_ENABLED) return; // ★ 多模态索引已禁用
+    if (!MULTIMODAL_INDEX_SUPPORTED) return;
     if (!summary) return;
     if (mmIndexing) {
       showGlobalNotification('warning', t('indexStatus.notification.pleaseWait'), t('indexStatus.notification.mmIndexInProgress'));
@@ -1052,11 +1050,10 @@ export const IndexStatusView: React.FC = () => {
     return (summary.indexedCount / summary.totalResources) * 100;
   }, [summary]);
 
-  /** 综合进度：同时考虑文本和多模态索引（仅在多模态启用时） */
+  /** 综合进度：当前构建支持时同时考虑文本和多模态索引。 */
   const overallProgressPercentage = useMemo(() => {
     if (!summary) return 0;
-    // ★ 多模态索引已禁用时，综合进度等于纯文本进度
-    if (!MULTIMODAL_INDEX_ENABLED) {
+    if (!MULTIMODAL_INDEX_SUPPORTED) {
       if (summary.totalResources === 0) return 0;
       return (summary.indexedCount / summary.totalResources) * 100;
     }
@@ -1171,7 +1168,7 @@ export const IndexStatusView: React.FC = () => {
                   d={resource.embeddingDim}
                 </span>
               )}
-              {resource.modality && MULTIMODAL_INDEX_ENABLED && (
+              {resource.modality && MULTIMODAL_INDEX_SUPPORTED && (
                 <span className={cn(
                   'px-1.5 rounded text-[10px] border',
                   resource.modality === 'text' 
@@ -1312,8 +1309,8 @@ export const IndexStatusView: React.FC = () => {
                 </div>
               )}
               
-              {/* 原生多模态索引状态 - ★ 多模态索引已禁用时隐藏 */}
-              {MULTIMODAL_INDEX_ENABLED && (
+              {/* 原生多模态索引状态 */}
+              {MULTIMODAL_INDEX_SUPPORTED && (
               <div>
                 <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.nativeMmIndex')}</div>
                 <div className="flex flex-col gap-1.5">
@@ -1344,18 +1341,18 @@ export const IndexStatusView: React.FC = () => {
               </div>
               )}
 
-              {/* 索引模式 - ★ 多模态索引已禁用时简化显示 */}
+              {/* 索引模式 */}
               <div>
                 <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.indexMode')}</div>
                 <div className={cn(
                   'inline-flex px-2 py-1 rounded text-xs font-medium border',
-                  MULTIMODAL_INDEX_ENABLED && resource.mmIndexingMode
+                  MULTIMODAL_INDEX_SUPPORTED && resource.mmIndexingMode
                     ? 'bg-violet-500/5 text-violet-600 border-violet-500/20'
                     : resource.textChunkCount > 0
                       ? 'bg-primary/5 text-primary border-primary/20'
                       : 'text-muted-foreground bg-muted/50 border-transparent'
                 )}>
-                  {MULTIMODAL_INDEX_ENABLED && resource.mmIndexingMode
+                  {MULTIMODAL_INDEX_SUPPORTED && resource.mmIndexingMode
                     ? (resource.mmIndexingMode === 'vl_embedding' ? 'VL-Embed' : 'VL+Text')
                     : resource.textChunkCount > 0
                       ? t('indexStatus.detail.pureText')
@@ -1447,8 +1444,8 @@ export const IndexStatusView: React.FC = () => {
                 </div>
               )}
               
-              {/* 原生多模态索引错误信息（如果有）- ★ 多模态索引已禁用时隐藏 */}
-              {MULTIMODAL_INDEX_ENABLED && resource.mmIndexError && (
+              {/* 原生多模态索引错误信息（如果有） */}
+              {MULTIMODAL_INDEX_SUPPORTED && resource.mmIndexError && (
                 <div className="col-span-2 md:col-span-4">
                   <div className="text-muted-foreground/70 font-medium mb-1 text-[10px]">{t('indexStatus.detail.nativeMmIndexError')}</div>
                   <div className="bg-red-500/5 text-red-700 border border-red-500/20 dark:text-red-400 px-3 py-2 rounded-md text-xs">
@@ -1604,9 +1601,9 @@ export const IndexStatusView: React.FC = () => {
           <div className="flex items-center gap-3">
             {/* 进度环 - 紧凑 */}
             <ProgressRing
-              percentage={MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? overallProgressPercentage : progressPercentage}
-              total={MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? summary.totalResources + summary.mmTotalResources : summary.totalResources}
-              indexed={MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? summary.indexedCount + summary.mmIndexedCount : summary.indexedCount}
+              percentage={MULTIMODAL_INDEX_SUPPORTED && summary.mmTotalResources > 0 ? overallProgressPercentage : progressPercentage}
+              total={MULTIMODAL_INDEX_SUPPORTED && summary.mmTotalResources > 0 ? summary.totalResources + summary.mmTotalResources : summary.totalResources}
+              indexed={MULTIMODAL_INDEX_SUPPORTED && summary.mmTotalResources > 0 ? summary.indexedCount + summary.mmIndexedCount : summary.indexedCount}
               size={56}
               strokeWidth={6}
             />
@@ -1690,7 +1687,7 @@ export const IndexStatusView: React.FC = () => {
               <Progress value={batchProgress} className="h-1.5" />
             </div>
           )}
-          {MULTIMODAL_INDEX_ENABLED && (mmIndexing || mmProgress > 0) && (
+          {MULTIMODAL_INDEX_SUPPORTED && (mmIndexing || mmProgress > 0) && (
             <div className="space-y-1 bg-purple-500/5 p-2 rounded-md">
               <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
                 <span className="font-medium truncate">{mmMessage}</span>
@@ -1703,10 +1700,10 @@ export const IndexStatusView: React.FC = () => {
       ) : (
         /* ==================== 桌面端布局（macOS 风格概览） ==================== */
         <div className="flex flex-row items-center gap-5 lg:gap-6 px-4 lg:px-5 py-3.5 lg:py-4 border-b border-black/[0.06] dark:border-white/[0.08] bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
-          {/* ★ 2026-02 修复：环形进度图 - 多模态索引已禁用时只显示文本进度 */}
+          {/* 环形进度图 */}
           <div className="flex items-center gap-4 lg:gap-6 shrink-0">
             {/* 综合进度环（当有多模态资源时显示，且多模态已启用） */}
-            {MULTIMODAL_INDEX_ENABLED && summary.mmTotalResources > 0 ? (
+            {MULTIMODAL_INDEX_SUPPORTED && summary.mmTotalResources > 0 ? (
               <>
                 <div className="flex flex-col items-center gap-2">
                   <ProgressRing
@@ -1865,8 +1862,8 @@ export const IndexStatusView: React.FC = () => {
                 </div>
               )}
 
-              {/* 原生多模态索引进度条 - ★ 多模态索引已禁用时隐藏 */}
-              {MULTIMODAL_INDEX_ENABLED && (mmIndexing || mmProgress > 0) && (
+              {/* 原生多模态索引进度条 */}
+              {MULTIMODAL_INDEX_SUPPORTED && (mmIndexing || mmProgress > 0) && (
                 <div className="space-y-1.5 bg-purple-500/5 p-2.5 rounded-xl border border-purple-500/10">
                   <div className="flex items-center justify-between text-xs text-purple-600 dark:text-purple-400">
                     <span className="font-medium">{mmMessage}</span>
@@ -2177,11 +2174,11 @@ export const IndexStatusView: React.FC = () => {
                     variant="ghost"
                     size="sm"
                     onClick={closeInspectPanel}
-                    aria-label={t('common:back', '返回')}
+                    aria-label={t('common:back')}
                     className="gap-1 min-h-11 px-2 shrink-0"
                   >
                     <CaretLeft className="h-4 w-4" aria-hidden="true" />
-                    {t('common:back', '返回')}
+                    {t('common:back')}
                   </NotionButton>
                 )}
                 <Eye className="h-4 w-4 text-primary shrink-0" />

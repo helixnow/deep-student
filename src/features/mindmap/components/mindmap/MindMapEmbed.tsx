@@ -401,10 +401,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
               resourceId: versionMeta.resourceId,
               title: versionMeta.title,
               description: versionMeta.source
-                ? t('embed.versionSource', {
-                    source: versionMeta.source,
-                    defaultValue: 'Version source: {{source}}',
-                  })
+                  ? t('embed.versionSource', { source: versionMeta.source })
                 : undefined,
               isFavorite: false,
               defaultView: 'mindmap',

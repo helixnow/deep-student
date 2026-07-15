@@ -288,20 +288,17 @@ where
         // 选择适配器
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
-        // 构造 HTTP 请求
-        let preq = adapter
-            .build_request(&config.base_url, api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("翻译请求构建失败: {}", e)))?;
-
-        let mut header_map = reqwest::header::HeaderMap::new();
-        for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
-            }
-        }
+        // 构造 HTTP 请求，并统一合并供应商自定义请求头 / Codex OAuth 凭据。
+        let mut preq = llm
+            .prepare_provider_request(
+                adapter.as_ref(),
+                config,
+                &request_body,
+                Some(api_key),
+                Some(stream_event),
+                "翻译请求构建失败",
+            )
+            .await?;
 
         // 复用 LLMManager 配置好的 HTTP 客户端
         let client = llm.get_http_client();
@@ -311,13 +308,31 @@ where
         let mut cancel_rx = llm.subscribe_cancel_stream(stream_event).await;
 
         // 发送流式请求
-        let response = client
-            .post(&preq.url)
-            .headers(header_map)
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::llm(format!("翻译请求失败: {}", e)))?;
+        let response = if preq.is_codex() {
+            llm.send_codex_stream_request_with_single_refresh(
+                &mut preq,
+                Some(std::time::Duration::from_secs(300)),
+            )
+            .await?
+        } else {
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in &preq.headers {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
+            }
+
+            client
+                .post(&preq.url)
+                .headers(header_map)
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::llm(format!("翻译请求失败: {}", e)))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -340,9 +355,22 @@ where
 
         // 解析 SSE 流
         let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
+        let mut handle_sse_block = |block: &str| -> bool {
+            if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(block) {
+                return true;
+            }
+            for event in adapter.parse_stream(block) {
+                match event {
+                    crate::providers::StreamEvent::ContentChunk(content) => on_chunk(content),
+                    crate::providers::StreamEvent::Done => return true,
+                    _ => {}
+                }
+            }
+            false
+        };
 
         while !stream_ended && !cancelled {
             if llm.consume_pending_cancel(stream_event).await {
@@ -360,37 +388,9 @@ where
                     match chunk_result {
                         Some(chunk) => {
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                            // ★ A6-01：兼容 LF（\n\n）与 CRLF（\r\n\r\n）两种 SSE 事件分隔
-                            while let Some((pos, sep_len)) = find_sse_event_boundary(&buffer) {
-                                let line = buffer[..pos].trim().to_string();
-                                buffer = buffer[pos + sep_len..].to_string();
-
-                                if line.is_empty() {
-                                    continue;
-                                }
-
-                                if line == "data: [DONE]" {
+                            for block in sse_buffer.process_bytes(&bytes) {
+                                if handle_sse_block(&block) {
                                     stream_ended = true;
-                                    break;
-                                }
-
-                                let events = adapter.parse_stream(&line);
-                                for event in events {
-                                    match event {
-                                        crate::providers::StreamEvent::ContentChunk(content) => {
-                                            on_chunk(content);
-                                        }
-                                        crate::providers::StreamEvent::Done => {
-                                            stream_ended = true;
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-
-                                if stream_ended {
                                     break;
                                 }
                             }
@@ -407,6 +407,15 @@ where
             return Ok(StreamStatus::Cancelled);
         }
 
+        if !stream_ended {
+            for block in sse_buffer.flush() {
+                if handle_sse_block(&block) {
+                    stream_ended = true;
+                    break;
+                }
+            }
+        }
+
         // ★ A6-02：区分正常完成（收到 DONE）与流意外中断
         if stream_ended {
             Ok(StreamStatus::Completed)
@@ -419,25 +428,4 @@ where
     llm.clear_cancel_stream(stream_event).await;
 
     result
-}
-
-/// 查找 SSE 事件边界，返回（分隔符起始位置, 分隔符长度）
-///
-/// ★ A6-01：与 essay_grading/pipeline.rs 中同名函数保持一致；部分供应商/反向代理
-/// 使用 CRLF（\r\n\r\n）分隔事件，只认 \n\n 会导致事件永远解析不到、缓冲区无限增长
-fn find_sse_event_boundary(buffer: &str) -> Option<(usize, usize)> {
-    let lf = buffer.find("\n\n");
-    let crlf = buffer.find("\r\n\r\n");
-    match (lf, crlf) {
-        (Some(l), Some(c)) => {
-            if c < l {
-                Some((c, 4))
-            } else {
-                Some((l, 2))
-            }
-        }
-        (Some(l), None) => Some((l, 2)),
-        (None, Some(c)) => Some((c, 4)),
-        (None, None) => None,
-    }
 }

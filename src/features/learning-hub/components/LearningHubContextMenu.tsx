@@ -346,7 +346,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           closeMenu();
         }}
       >
-        {t('contextMenu.importMarkdown', '导入 Markdown')}
+        {t('contextMenu.importMarkdown')}
       </AppMenuItem>
       <AppMenuItem
         icon={<ClipboardText size={16} />}
@@ -449,7 +449,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           closeMenu();
         }}
       >
-        {t('contextMenu.importMarkdownHere', '在此导入 Markdown')}
+        {t('contextMenu.importMarkdownHere')}
       </AppMenuItem>
       <AppMenuSeparator />
 
@@ -462,7 +462,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             setTimeout(() => onMoveTo(target), 50);
           }}
         >
-          {t('contextMenu.moveTo', '移动到…')}
+          {t('contextMenu.moveTo')}
         </AppMenuItem>
       )}
 
@@ -551,7 +551,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
               setTimeout(() => onMoveTo(target), 50);
             }}
           >
-            {t('contextMenu.moveTo', '移动到…')}
+            {t('contextMenu.moveTo')}
           </AppMenuItem>
         )}
         
@@ -637,7 +637,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
                 }, 50);
               }}
             >
-              {t('contextMenu.export', '导出')}
+              {t('contextMenu.export')}
             </AppMenuItem>
           </>
         )}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { CircleNotch, WarningCircle, ArrowClockwise, Scan, ArrowCounterClockwise, ListNumbers, Shuffle, Tag, Clock, CalendarBlank, FileText, Timer, BookOpen, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { 
   getNextQuestionIndex,
@@ -14,7 +15,11 @@ import {
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
-import { useQuestionBankStore } from '@/stores/questionBankStore';
+import {
+  useQuestionBankStore,
+  validateQbankPracticeHandoff,
+  type PracticeHandoffHydrationResult,
+} from '@/stores/questionBankStore';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -26,12 +31,16 @@ import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDeb
 import {
   QBANK_FOCUS_EVENT,
   type QbankFocusEventDetail,
+  QBANK_CONTROL_EVENT,
+  type QbankControlEventDetail,
+  type QbankControlResult,
   QBANK_REFRESH_EVENT,
   isQbankInlineEditorActive,
 } from '@/features/workbench/agent/drivers/qbankDriver';
 import { collectDomainEntityIds } from '@/features/workbench/agent/domainEvents';
 import { agentFlash } from '@/features/workbench/agent/visuals/agentFlash';
 import type { DomainChangePayload } from '@/features/workbench/agent/types';
+import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'));
@@ -44,12 +53,28 @@ const ReviewQuestionsView = lazy(() => import('@/components/ReviewQuestionsView'
 // ★ I1 修复：接入 SM-2 间隔复习系统（复习计划 + 复习会话）
 const ReviewPlanView = lazy(() => import('@/components/ReviewPlanView'));
 const ReviewSession = lazy(() => import('@/components/ReviewSession'));
+const ReviewCalendarView = lazy(() => import('@/components/ReviewCalendarView'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
 const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
 const CsvImportDialog = lazy(() => import('@/components/CsvImportDialog'));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
 type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher';
+type LauncherRequestedMode = 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
+type DraftSource = 'practice' | 'inlineEditor';
+
+interface PendingDraftNavigation {
+  examId: string;
+  proceed: () => void;
+}
+
+const LAUNCHER_REQUIRED_MODES = new Set<LauncherRequestedMode>([
+  'by_tag',
+  'timed',
+  'mock_exam',
+  'daily',
+  'paper',
+]);
 
 /**
  * ★ I1 修复：SM-2 间隔复习面板
@@ -58,11 +83,30 @@ type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload
  * （今日到期/复习队列/开始复习）。会话由 reviewPlanStore 全局管理。
  */
 const Sm2ReviewPanel: React.FC<{ examId: string }> = ({ examId }) => {
-  const isSessionActive = useReviewPlanStore((s) => s.session.isActive);
+  const session = useReviewPlanStore((s) => s.session);
+  const startSession = useReviewPlanStore((s) => s.startSession);
+  const [showCalendar, setShowCalendar] = useState(false);
+  const isSessionActive = session.isActive && session.examId === examId;
+
   return (
     <div className="flex-1 min-h-0 overflow-y-auto">
       <Suspense fallback={null}>
-        {isSessionActive ? <ReviewSession /> : <ReviewPlanView examId={examId} />}
+        {showCalendar ? (
+          <ReviewCalendarView
+            examId={examId}
+            className="p-4"
+            onClose={() => setShowCalendar(false)}
+          />
+        ) : isSessionActive ? (
+          <ReviewSession />
+        ) : (
+          <ReviewPlanView
+            examId={examId}
+            onViewCalendar={() => setShowCalendar(true)}
+            onStartReview={(items) => startSession(items, examId)}
+            onReviewItemClick={(item) => startSession([item], examId)}
+          />
+        )}
       </Suspense>
     </div>
   );
@@ -73,7 +117,39 @@ interface ManageFilters {
   status?: QuestionStatus[];
   difficulty?: Difficulty[];
   questionType?: QuestionType[];
+  tags?: string[];
   isFavorite?: boolean;
+}
+
+function controlStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return undefined;
+  return value.filter((item) => item.trim().length > 0);
+}
+
+function parseManageFilters(payload: unknown): ManageFilters | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const outer = payload as Record<string, unknown>;
+  const raw = outer.filters && typeof outer.filters === 'object' && !Array.isArray(outer.filters)
+    ? outer.filters as Record<string, unknown>
+    : outer;
+  const search = typeof raw.search === 'string' ? raw.search : undefined;
+  const isFavorite = typeof (raw.is_favorite ?? raw.isFavorite) === 'boolean'
+    ? (raw.is_favorite ?? raw.isFavorite) as boolean
+    : undefined;
+
+  return {
+    search,
+    status: controlStringArray(raw.status) as QuestionStatus[] | undefined,
+    difficulty: controlStringArray(raw.difficulty) as Difficulty[] | undefined,
+    questionType: controlStringArray(raw.question_type ?? raw.questionType) as QuestionType[] | undefined,
+    tags: controlStringArray(raw.tags),
+    isFavorite,
+  };
+}
+
+function matchesPracticeTag(question: Question, tag: string): boolean {
+  if (tag === '__untagged__') return !question.tags || question.tags.length === 0;
+  return question.tags?.includes(tag) ?? false;
 }
 
 const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementType; descKey: string }> = {
@@ -93,6 +169,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   onClose,
   readOnly = false,
   isActive,
+  onSaveStateChange,
 }) => {
   const { t } = useTranslation(['exam_sheet', 'common', 'learningHub']);
 
@@ -100,9 +177,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     Object.entries(MODE_CONFIG).map(([value, { labelKey }]) => ({ value, label: t(labelKey) })),
     [t]
   );
-
-  // 移动端触控目标 ≥44px（契约第 5 条）；桌面端（≥768px）不受影响
-  const touchTargetClass = 'max-md:min-h-11';
 
   const sessionId = node.id;
 
@@ -127,6 +201,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     refreshStats,
     refreshQuestion,
   } = useQuestionBankSession({ examId: sessionId });
+  const hasQuestions = questions.length > 0;
 
   // 专注模式（从 Store 获取 — 全局 UI 偏好，不需要本地化）
   const focusMode = useQuestionBankStore(state => state.focusMode);
@@ -137,6 +212,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const setMockExamSession = useQuestionBankStore(state => state.setMockExamSession);
   const setTimedSession = useQuestionBankStore(state => state.setTimedSession);
   const submitMockExam = useQuestionBankStore(state => state.submitMockExam);
+  const reviewSession = useReviewPlanStore(state => state.session);
+  const endReviewSession = useReviewPlanStore(state => state.endSession);
 
   // 高级练习模式会话数据（全局 store）
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
@@ -173,6 +250,97 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [historyQuestionId, setHistoryQuestionId] = useState<string | null>(null);
   const [manageFilters, setManageFilters] = useState<ManageFilters>({});
+  const [pendingReviewExitView, setPendingReviewExitView] = useState<ViewMode | null>(null);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [pendingSettingsOpen, setPendingSettingsOpen] = useState(false);
+  const [launcherRequestedMode, setLauncherRequestedMode] = useState<LauncherRequestedMode | null>(null);
+  const [draftState, setDraftState] = useState({ examId: sessionId, dirty: false });
+  const [pendingDraftNavigation, setPendingDraftNavigation] = useState<PendingDraftNavigation | null>(null);
+  const activeDraftExamIdRef = useRef(sessionId);
+  const draftSourcesRef = useRef<Record<DraftSource, boolean>>({
+    practice: false,
+    inlineEditor: false,
+  });
+  const draftStateRef = useRef({ examId: sessionId, dirty: false });
+  // A domain refresh may arrive while an inline editor has focus elsewhere.
+  // Keep the latest request until the editor reports that its draft is clean.
+  const pendingQbankRefreshRef = useRef<DomainChangePayload | undefined>(undefined);
+  const hasPendingQbankRefreshRef = useRef(false);
+  const flushPendingQbankRefreshRef = useRef<(() => void) | null>(null);
+  activeDraftExamIdRef.current = sessionId;
+
+  const isCurrentExamDraftDirty = draftState.examId === sessionId && draftState.dirty;
+
+  const updateDraftSource = useCallback((source: DraftSource, dirty: boolean) => {
+    if (activeDraftExamIdRef.current !== sessionId) return;
+    draftSourcesRef.current[source] = dirty;
+    const nextDirty = Object.values(draftSourcesRef.current).some(Boolean);
+    draftStateRef.current = { examId: sessionId, dirty: nextDirty };
+    setDraftState((current) => (
+      current.examId === sessionId && current.dirty === nextDirty
+        ? current
+        : { examId: sessionId, dirty: nextDirty }
+    ));
+  }, [sessionId]);
+
+  const clearCurrentExamDraft = useCallback(() => {
+    if (activeDraftExamIdRef.current !== sessionId) return;
+    draftSourcesRef.current = { practice: false, inlineEditor: false };
+    draftStateRef.current = { examId: sessionId, dirty: false };
+    setDraftState((current) => (
+      current.examId === sessionId && !current.dirty
+        ? current
+        : { examId: sessionId, dirty: false }
+    ));
+  }, [sessionId]);
+
+  const requestDraftNavigation = useCallback((proceed: () => void): boolean => {
+    const currentDraft = draftStateRef.current;
+    if (currentDraft.examId !== sessionId || !currentDraft.dirty) {
+      proceed();
+      return true;
+    }
+    setPendingDraftNavigation({ examId: sessionId, proceed });
+    return false;
+  }, [sessionId]);
+
+  const handlePracticeDraftDirtyChange = useCallback(
+    (dirty: boolean) => updateDraftSource('practice', dirty),
+    [updateDraftSource],
+  );
+  const handleInlineEditorDraftDirtyChange = useCallback(
+    (dirty: boolean) => updateDraftSource('inlineEditor', dirty),
+    [updateDraftSource],
+  );
+
+  useEffect(() => {
+    draftSourcesRef.current = { practice: false, inlineEditor: false };
+    draftStateRef.current = { examId: sessionId, dirty: false };
+    pendingQbankRefreshRef.current = undefined;
+    hasPendingQbankRefreshRef.current = false;
+    flushPendingQbankRefreshRef.current = null;
+    setDraftState({ examId: sessionId, dirty: false });
+    setPendingDraftNavigation(null);
+  }, [sessionId]);
+
+  useEffect(() => registerContentDirtyChecker(
+    'exam',
+    sessionId,
+    () => {
+      const currentDraft = draftStateRef.current;
+      return currentDraft.examId === sessionId && currentDraft.dirty;
+    },
+  ), [sessionId]);
+
+  useEffect(() => {
+    onSaveStateChange?.(isCurrentExamDraftDirty ? 'dirty' : 'saved');
+  }, [isCurrentExamDraftDirty, onSaveStateChange]);
+
+  useEffect(() => {
+    if (!isCurrentExamDraftDirty) {
+      flushPendingQbankRefreshRef.current?.();
+    }
+  }, [isCurrentExamDraftDirty]);
 
   // 视图切换走 transition：懒加载 chunk 未就绪时保持当前视图渲染，
   // 避免整个内容区退化为 Suspense fallback 的闪烁
@@ -181,6 +349,85 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       setViewMode(mode);
     });
   }, []);
+
+  // Tab navigation is an explicit exit point for an in-progress SM-2 queue.
+  // Keep submitted ratings, but ask before discarding the remaining local queue.
+  const applyViewMode = useCallback((mode: ViewMode): boolean => {
+    if (mode === viewMode) return true;
+
+    const ownsReviewSession = reviewSession.isActive && reviewSession.examId === sessionId;
+    if (viewMode === 'sm2' && mode !== 'sm2' && ownsReviewSession) {
+      const hasRemainingItems = reviewSession.currentIndex < reviewSession.queue.length;
+      if (hasRemainingItems) {
+        setPendingReviewExitView(mode);
+        return false;
+      }
+      endReviewSession();
+    }
+
+    switchViewMode(mode);
+    return true;
+  }, [endReviewSession, reviewSession, sessionId, switchViewMode, viewMode]);
+
+  const requestViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void): boolean => {
+    const requiresNavigation = mode !== viewMode || Boolean(afterViewChange);
+    if (!requiresNavigation) return true;
+    const proceed = () => {
+      const handled = applyViewMode(mode);
+      if (handled) afterViewChange?.();
+    };
+    const currentDraft = draftStateRef.current;
+    if (currentDraft.examId === sessionId && currentDraft.dirty) {
+      setPendingDraftNavigation({
+        examId: sessionId,
+        proceed,
+      });
+      return false;
+    }
+    const handled = applyViewMode(mode);
+    if (handled) afterViewChange?.();
+    return handled;
+  }, [applyViewMode, sessionId, viewMode]);
+
+  // Settings are owned by this resource view, not the global question-bank store.
+  // A workbench action can only succeed once this view can enter the practice surface.
+  useEffect(() => {
+    type SettingsRequest = {
+      targetResourceId?: string;
+      open?: boolean;
+      acknowledge?: (result: { handled: boolean; code?: string; hint?: string }) => void;
+    };
+    const handleSettingsChange = (event: Event) => {
+      const detail = (event as CustomEvent<SettingsRequest>).detail;
+      if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
+
+      const open = detail?.open;
+      if (open === true && !hasQuestions) {
+        detail?.acknowledge?.({
+          handled: false,
+          code: 'QUESTION_NOT_FOUND',
+          hint: '当前题目集没有题目，请先上传题目后再打开练习设置',
+        });
+        return;
+      }
+      if (open === true && !requestViewMode('practice')) {
+        setPendingSettingsOpen(true);
+        detail?.acknowledge?.({
+          handled: false,
+          code: 'CONFIRMATION_REQUIRED',
+          hint: '请先确认结束当前复习会话，再打开练习设置',
+        });
+        return;
+      }
+
+      setSettingsPanelOpen((current) => (
+        typeof open === 'boolean' ? open : !current
+      ));
+      detail?.acknowledge?.({ handled: true });
+    };
+    window.addEventListener('exam:openSettings', handleSettingsChange);
+    return () => window.removeEventListener('exam:openSettings', handleSettingsChange);
+  }, [hasQuestions, requestViewMode, sessionId]);
 
   // 管理视图筛选（搜索逐键触发大列表过滤）降级为 transition，保持输入流畅
   const handleFilterChange = useCallback((filters: ManageFilters) => {
@@ -221,6 +468,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setShowExportDialog(false);
     setShowHistoryDialog(false);
     setHistoryQuestionId(null);
+    setSettingsPanelOpen(false);
+    setPendingSettingsOpen(false);
   }, [sessionId]);
   
   const toggleTimer = useCallback(() => {
@@ -317,7 +566,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
     timedTimeoutHandledRef.current = activeTimedSession.id;
     setIsTimerRunning(false);
-    // 清掉残留的倒计时读数，避免下次普通练习的秒表从整卷时长起跳
+    // 时间到是系统强制结束，不是可取消的导航。若改成普通草稿确认，用户
+    // 取消后会留下已停止但仍标记为 active 的计时会话，无法再次触发结算。
     setElapsedTime(0);
     setTimedSession({
       ...activeTimedSession,
@@ -328,8 +578,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     switchViewMode('launcher');
     showGlobalNotification(
       'info',
-      t('learningHub:exam.timedPracticeTimeout', '限时练习已结束'),
-      t('learningHub:exam.timerEnded', '时间到'),
+      t('learningHub:exam.timedPracticeTimeout'),
+      t('learningHub:exam.timerEnded'),
     );
   }, [
     activeTimedSession,
@@ -373,8 +623,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         switchViewMode('launcher');
         showGlobalNotification(
           'info',
-          t('learningHub:exam.mockExamAutoSubmitted', '模拟考试已自动交卷，可在启动页查看成绩单'),
-          t('learningHub:exam.timerEnded', '时间到'),
+          t('learningHub:exam.mockExamAutoSubmitted'),
+          t('learningHub:exam.timerEnded'),
         );
       })
       .catch((err: unknown) => {
@@ -382,7 +632,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         debugLog.error('[ExamContentView] auto submit mock exam failed:', err);
         showGlobalNotification(
           'error',
-          t('learningHub:exam.mockExamAutoSubmitFailed', '模拟考试自动交卷失败，请返回启动页手动交卷'),
+          t('learningHub:exam.mockExamAutoSubmitFailed'),
         );
       });
   }, [
@@ -443,13 +693,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             debugLog.warn('[ExamContentView] load sync conflicts failed:', err);
             showGlobalNotification(
               'warning',
-              t('learningHub:exam.syncConflictsLoadFailed', '检测到冲突，但加载冲突详情失败，请重试')
+              t('learningHub:exam.syncConflictsLoadFailed')
             );
           });
       }
     }).catch(err => {
       debugLog.warn('[ExamContentView] sync status check failed:', err);
-      showGlobalNotification('warning', t('learningHub:exam.syncStatusCheckFailed', '同步状态检查失败，请稍后重试'));
+      showGlobalNotification('warning', t('learningHub:exam.syncStatusCheckFailed'));
     });
   }, [sessionId, checkSyncStatus, getSyncConflicts, t]);
 
@@ -507,41 +757,64 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     navigate(index);
   }, [navigate]);
 
+  const requestQuestionNavigation = useCallback((proceed: () => void) => (
+    requestDraftNavigation(proceed)
+  ), [requestDraftNavigation]);
+
   // 🆕 更新 Store 练习模式（Store 是 SSOT，无本地 state）
   const handleModeChange = useCallback((mode: PracticeMode, tag?: string) => {
-    setStorePracticeMode(mode);
-    if (tag) setSelectedTag(tag);
-    const nextIdx = getNextQuestionIndex(questions, currentIndex, mode, tag);
-    navigate(nextIdx);
-  }, [questions, currentIndex, navigate, setStorePracticeMode]);
+    if (LAUNCHER_REQUIRED_MODES.has(mode as LauncherRequestedMode)
+      && (mode !== 'by_tag' || !tag)) {
+      requestViewMode('launcher', () => {
+        setLauncherRequestedMode(mode as LauncherRequestedMode);
+      });
+      return;
+    }
+    requestViewMode('practice', () => {
+      setStorePracticeMode(mode);
+      if (tag) setSelectedTag(tag);
+      const nextIdx = getNextQuestionIndex(questions, currentIndex, mode, tag);
+      navigate(nextIdx);
+    });
+  }, [questions, currentIndex, navigate, requestViewMode, setStorePracticeMode]);
 
   const handleSelectMode = useCallback((value: string) => {
-    handleModeChange(value as PracticeMode);
-  }, [handleModeChange]);
+    const mode = value as PracticeMode;
+    if (LAUNCHER_REQUIRED_MODES.has(mode as LauncherRequestedMode)) {
+      requestViewMode('launcher', () => {
+        setLauncherRequestedMode(mode as LauncherRequestedMode);
+      });
+      return;
+    }
+    handleModeChange(mode);
+  }, [handleModeChange, requestViewMode]);
 
   const handleStartPracticeByTag = useCallback((tag: string) => {
-    handleModeChange('by_tag', tag);
-    switchViewMode('practice');
-  }, [handleModeChange, switchViewMode]);
+    requestViewMode('practice', () => {
+      setStorePracticeMode('by_tag');
+      setSelectedTag(tag);
+      navigate(getNextQuestionIndex(questions, currentIndex, 'by_tag', tag));
+    });
+  }, [currentIndex, navigate, questions, requestViewMode, setStorePracticeMode]);
 
   const handleStartReview = useCallback(() => {
-    handleModeChange('review_first');
-    switchViewMode('practice');
-  }, [handleModeChange, switchViewMode]);
+    requestViewMode('practice', () => {
+      setStorePracticeMode('review_first');
+      navigate(getNextQuestionIndex(questions, currentIndex, 'review_first'));
+    });
+  }, [currentIndex, navigate, questions, requestViewMode, setStorePracticeMode]);
 
   // 点击题目进入做题模式（必须在条件返回之前定义）
   const handleQuestionClick = useCallback((index: number) => {
-    navigate(index);
-    switchViewMode('practice');
-  }, [navigate, switchViewMode]);
+    requestViewMode('practice', () => navigate(index));
+  }, [navigate, requestViewMode]);
 
   const handleOpenQuestion = useCallback((questionId: string) => {
     const index = questions.findIndex((question) => question.id === questionId);
     if (index >= 0) {
-      navigate(index);
-      switchViewMode('practice');
+      handleQuestionClick(index);
     }
-  }, [questions, navigate, switchViewMode]);
+  }, [handleQuestionClick, questions]);
 
   const handleOpenHistory = useCallback((questionId: string) => {
     setHistoryQuestionId(questionId);
@@ -584,6 +857,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         return false;
       }
 
+      if (manageFilters.tags?.length) {
+        const questionTags = question.tags || [];
+        if (!manageFilters.tags.some((tag) => questionTags.includes(tag))) {
+          return false;
+        }
+      }
+
       if (manageFilters.isFavorite && !question.isFavorite) {
         return false;
       }
@@ -595,7 +875,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 高级模式题目过滤：根据 session 的 question_ids 过滤出子集
   const practiceQuestions = useMemo(() => {
     const orderQuestionsByIds = (questionIds: string[]) => {
-      if (questionIds.length === 0) return questions;
       const questionMap = new Map(questions.map((question) => [question.id, question]));
       return questionIds
         .map((questionId) => questionMap.get(questionId))
@@ -615,10 +894,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       case 'paper': {
         return orderQuestionsByIds(activeGeneratedPaper?.questions?.map((question) => question.id) || []);
       }
+      case 'by_tag': {
+        if (!selectedTag) return [];
+        if (selectedTag === '__untagged__') {
+          return questions.filter((question) => !question.tags || question.tags.length === 0);
+        }
+        return questions.filter((question) => question.tags?.includes(selectedTag));
+      }
       default:
         return questions;
     }
-  }, [practiceMode, questions, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
+  }, [practiceMode, questions, selectedTag, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
 
   const handleRefreshQuestion = useCallback(async (questionId: string) => {
     await refreshQuestion(questionId);
@@ -648,9 +934,209 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     handleNavigate(index);
   }, [practiceQuestions, questions, handleNavigate]);
 
+  const requestPracticeNavigate = useCallback((index: number) => {
+    requestQuestionNavigation(() => handlePracticeNavigate(index));
+  }, [handlePracticeNavigate, requestQuestionNavigation]);
+
+  // Workbench activations must mutate this resource's local session. The
+  // global question-bank store is only mirrored after this handler confirms it.
+  useEffect(() => {
+    const acknowledge = (
+      detail: QbankControlEventDetail | undefined,
+      result: QbankControlResult,
+    ) => detail?.acknowledge?.(result);
+
+    const onControl = (event: Event) => {
+      const detail = (event as CustomEvent<QbankControlEventDetail>).detail;
+      if (!detail || (detail.targetResourceId && detail.targetResourceId !== sessionId)) return;
+
+      const scope = viewMode === 'practice' ? practiceQuestions : questions;
+      const currentQuestionId = questions[currentIndex]?.id;
+      const scopedIndex = scope.findIndex((question) => question.id === currentQuestionId);
+
+      if (detail.action === 'nextQuestion' || detail.action === 'previousQuestion') {
+        if (scope.length === 0) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'QUESTION_NOT_FOUND',
+            hint: '当前题目集没有可导航的题目',
+          });
+          return;
+        }
+        const delta = detail.action === 'nextQuestion' ? 1 : -1;
+        const baseIndex = scopedIndex >= 0 ? scopedIndex : delta > 0 ? -1 : 0;
+        const nextScopedIndex = Math.min(
+          Math.max(baseIndex + delta, 0),
+          Math.max(0, scope.length - 1),
+        );
+        const target = scope[nextScopedIndex];
+        const fullIndex = target ? questions.findIndex((question) => question.id === target.id) : -1;
+        if (fullIndex < 0 || !target) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'QUESTION_NOT_FOUND',
+            hint: '找不到目标题目',
+          });
+          return;
+        }
+        if (!requestViewMode('practice', () => navigate(fullIndex))) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'CONFIRMATION_REQUIRED',
+            hint: '请先确认放弃当前未提交的内容，再切换题目',
+          });
+          return;
+        }
+        agentFlash('exam', target.id);
+        acknowledge(detail, { handled: true, currentQuestionId: target.id });
+        return;
+      }
+
+      if (detail.action === 'setFilters' || detail.action === 'resetFilters') {
+        const filters = detail.action === 'resetFilters'
+          ? {}
+          : parseManageFilters(detail.payload);
+        if (!filters) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'INVALID_ARGS',
+            hint: 'setFilters 需要 filters 对象',
+          });
+          return;
+        }
+        if (!requestViewMode('manage')) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'CONFIRMATION_REQUIRED',
+            hint: '请先确认结束当前复习会话，再筛选题目',
+          });
+          return;
+        }
+        setManageFilters(filters);
+        acknowledge(detail, { handled: true });
+        return;
+      }
+
+      if (detail.action === 'hydratePracticeSession') {
+        const payload = detail.payload && typeof detail.payload === 'object'
+          ? detail.payload as Record<string, unknown>
+          : {};
+        const rawHandoff = payload.handoff ?? detail.payload;
+        const validated = validateQbankPracticeHandoff(rawHandoff, sessionId);
+        if ('ok' in validated) {
+          acknowledge(detail, {
+            handled: false,
+            code: validated.code,
+            hint: validated.hint,
+          });
+          return;
+        }
+
+        const outcome: { current: PracticeHandoffHydrationResult | null } = { current: null };
+        const accepted = requestViewMode('practice', () => {
+          const hydration = useQuestionBankStore
+            .getState()
+            .hydratePracticeHandoff(validated, sessionId);
+          outcome.current = hydration;
+          if (hydration.ok === false) return;
+          setElapsedTime(0);
+          setStorePracticeMode(hydration.mode);
+          const firstIndex = questions.findIndex(
+            (question) => question.id === hydration!.firstQuestionId,
+          );
+          if (firstIndex >= 0) navigate(firstIndex);
+          useQuestionBankStore.getState().setCurrentQuestion(hydration.firstQuestionId);
+        });
+        const hydration = outcome.current;
+        if (!accepted || !hydration || hydration.ok === false) {
+          const failure = hydration?.ok === false ? hydration : null;
+          acknowledge(detail, {
+            handled: false,
+            code: failure?.code ?? 'CONFIRMATION_REQUIRED',
+            hint: failure?.hint ?? '请先确认放弃当前未提交内容，再载入练习会话',
+          });
+          return;
+        }
+        acknowledge(detail, {
+          handled: true,
+          acknowledged: true,
+          currentQuestionId: hydration.firstQuestionId,
+          hydratedSessionId: hydration.handoffId,
+          practiceMode: hydration.mode,
+        });
+        return;
+      }
+
+      if (detail.action === 'setPracticeMode') {
+        const payload = detail.payload && typeof detail.payload === 'object'
+          ? detail.payload as Record<string, unknown>
+          : {};
+        const mode = payload.mode as PracticeMode | undefined;
+        const tag = typeof payload.tag === 'string' ? payload.tag : undefined;
+        if (!mode) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'INVALID_ARGS',
+            hint: 'setPracticeMode 需要 mode',
+          });
+          return;
+        }
+        if (LAUNCHER_REQUIRED_MODES.has(mode as LauncherRequestedMode) && mode !== 'by_tag') {
+          acknowledge(detail, {
+            handled: false,
+            code: 'CONFIGURATION_REQUIRED',
+            hint: '该练习模式需要在练习启动页完成配置',
+          });
+          return;
+        }
+        if (mode === 'by_tag' && (!tag || !questions.some((question) => matchesPracticeTag(question, tag)))) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'INVALID_ARGS',
+            hint: 'by_tag 需要当前题目集中的有效 tag',
+          });
+          return;
+        }
+        const nextIndex = getNextQuestionIndex(questions, currentIndex, mode, tag);
+        const target = questions[nextIndex];
+        if (!requestViewMode('practice', () => {
+          setElapsedTime(0);
+          setStorePracticeMode(mode);
+          if (tag) setSelectedTag(tag);
+          navigate(nextIndex);
+        })) {
+          acknowledge(detail, {
+            handled: false,
+            code: 'CONFIRMATION_REQUIRED',
+            hint: '请先确认放弃当前未提交的内容，再切换练习模式',
+          });
+          return;
+        }
+        acknowledge(detail, {
+          handled: true,
+          currentQuestionId: target?.id ?? null,
+        });
+      }
+    };
+
+    window.addEventListener(QBANK_CONTROL_EVENT, onControl);
+    return () => window.removeEventListener(QBANK_CONTROL_EVENT, onControl);
+  }, [
+    currentIndex,
+    navigate,
+    practiceQuestions,
+    practiceMode,
+    questions,
+    requestViewMode,
+    sessionId,
+    setStorePracticeMode,
+    viewMode,
+  ]);
+
   // PracticeLauncher 的 onStartPractice 回调
   const handleStartPractice = useCallback((mode: PracticeMode, tag?: string) => {
     setElapsedTime(0);
+    setLauncherRequestedMode(null);
     setStorePracticeMode(mode);
     if (tag) setSelectedTag(tag);
     // 对于高级模式，navigate 到过滤子集的第一题
@@ -734,8 +1220,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         showGlobalNotification(
           'warning',
           t(
-            'learningHub:exam.mutationRefreshFailed',
-            '操作已完成，但界面刷新失败，请手动刷新后确认最新状态'
+            'learningHub:exam.mutationRefreshFailed'
           )
         );
       }
@@ -758,7 +1243,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               'success',
               t('learningHub:exam.resetProgressSuccess', {
                 count: result.success_count,
-                defaultValue: `已重置 ${result.success_count} 道题目的学习进度`,
               })
             );
           }
@@ -784,7 +1268,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               'success',
               t('learningHub:exam.deleteQuestionsSuccess', {
                 count: result.success_count,
-                defaultValue: `已删除 ${result.success_count} 道题目`,
               })
             );
           }
@@ -855,8 +1338,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [refreshQuestionsAndStats]);
 
   const handleBackToLauncher = useCallback(() => {
-    switchViewMode('launcher');
-  }, [switchViewMode]);
+    requestViewMode('launcher');
+  }, [requestViewMode]);
 
   // ★ 断点续导：检测 importing 状态
   const isImportingSession = sessionDetail?.summary.status === 'importing';
@@ -878,7 +1361,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       if (latestSessionIdRef.current !== sessionId) return;
       setSessionDetail(detail);
       await loadQuestions();
-      showGlobalNotification('success', t('exam_sheet:uploader.resume_success', '导入恢复完成'));
+      showGlobalNotification('success', t('exam_sheet:uploader.resume_success'));
     } catch (err: unknown) {
       if (latestSessionIdRef.current !== sessionId) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -894,7 +1377,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const isEmptySession = sessionDetail?.summary.status === 'empty' && 
     (!sessionDetail?.preview.pages || sessionDetail.preview.pages.length === 0);
 
-  const hasQuestions = questions.length > 0;
   const sessionStatus = sessionDetail?.summary?.status ?? null;
 
   useEffect(() => {
@@ -948,7 +1430,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   /**
    * ACR R1-15：消费 qbankDriver 派发的域刷新 / 聚焦事件。
-   * - 刷新：行内编辑中延迟；loadQuestions 已按 previousQuestionId 保位（不打断答题）
+   * - 刷新：未保存草稿时保留最后一次刷新，避免新的 question 对象重置行内表单
    * - 聚焦：打开对应题目并 flash
    */
   useEffect(() => {
@@ -964,6 +1446,18 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
 
     const runLocalRefresh = (payload?: DomainChangePayload) => {
+      const currentDraft = draftStateRef.current;
+      if (currentDraft.examId === sessionId && currentDraft.dirty) {
+        // Multiple mutations can arrive while a form is dirty. Refreshing only
+        // the newest state after the form is saved/discarded is sufficient.
+        pendingQbankRefreshRef.current = payload;
+        hasPendingQbankRefreshRef.current = true;
+        return;
+      }
+
+      // Keep the short focus debounce for an editor that has just received a
+      // keystroke. It is supplementary only; dirty state above is the durable
+      // guard once focus leaves the form.
       if (isQbankInlineEditorActive()) {
         if (deferredTimer) clearTimeout(deferredTimer);
         deferredTimer = setTimeout(() => {
@@ -981,6 +1475,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         });
     };
 
+    const flushPendingRefresh = () => {
+      const currentDraft = draftStateRef.current;
+      if (
+        !hasPendingQbankRefreshRef.current
+        || (currentDraft.examId === sessionId && currentDraft.dirty)
+      ) {
+        return;
+      }
+      const payload = pendingQbankRefreshRef.current;
+      pendingQbankRefreshRef.current = undefined;
+      hasPendingQbankRefreshRef.current = false;
+      runLocalRefresh(payload);
+    };
+    flushPendingQbankRefreshRef.current = flushPendingRefresh;
+
     const onRefresh = (ev: Event) => {
       const detail = (ev as CustomEvent<DomainChangePayload>).detail;
       runLocalRefresh(detail);
@@ -988,13 +1497,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
     const onFocus = (ev: Event) => {
       const detail = (ev as CustomEvent<QbankFocusEventDetail>).detail;
+      if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
       const questionId = detail?.questionId;
       if (!questionId) return;
       const index = questions.findIndex((question) => question.id === questionId);
-      const handled = index >= 0;
+      const handled = index >= 0 && requestViewMode('practice', () => navigate(index));
       const previousQuestionId = questions[currentIndex]?.id ?? null;
       if (handled) {
-        handleOpenQuestion(questionId);
         agentFlash('exam', questionId);
       }
       detail.acknowledge?.({ handled, previousQuestionId });
@@ -1006,8 +1515,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       window.removeEventListener(QBANK_REFRESH_EVENT, onRefresh);
       window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
       if (deferredTimer) clearTimeout(deferredTimer);
+      if (flushPendingQbankRefreshRef.current === flushPendingRefresh) {
+        flushPendingQbankRefreshRef.current = null;
+      }
     };
-  }, [refreshQuestionsAndStats, handleOpenQuestion, questions, currentIndex]);
+  }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId]);
 
   // ========== 条件返回（早期退出） ==========
   
@@ -1016,7 +1528,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full">
         <WarningCircle size={32} className="text-muted-foreground mb-2" />
         <span className="text-muted-foreground">
-          {t('exam_sheet:errors.noSession', '未指定整卷会话')}
+          {t('exam_sheet:errors.noSession')}
         </span>
       </div>
     );
@@ -1028,11 +1540,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <WarningCircle size={32} className="text-destructive" />
         <span className="text-muted-foreground text-center max-w-md" role="alert">
-          {t('exam_sheet:errors.loadFailed', '加载整卷会话失败')}: {loadErrorMessage}
+          {t('exam_sheet:errors.loadFailed')}: {loadErrorMessage}
         </span>
         <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2">
           <ArrowClockwise size={16} />
-          {t('common:actions.retry', '重试')}
+          {t('common:actions.retry')}
         </NotionButton>
       </div>
     );
@@ -1045,7 +1557,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       <div className="flex items-center justify-center h-full" role="status">
         <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="ml-2 text-muted-foreground">
-          {t('common:loading', '加载中...')}
+          {t('common:loading')}
         </span>
       </div>
     );
@@ -1055,11 +1567,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     <div className="flex flex-col h-full bg-background">
       {/* ★ 断点续导：importing 状态横幅 */}
       {isImportingSession && (
-        <div className="flex-shrink-0 px-3 sm:px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/40">
+        <div className="flex-shrink-0 border-b border-warning/30 bg-warning/10 px-3 py-2 sm:px-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
-              <span className="text-sm text-amber-800 dark:text-amber-200 truncate">
+              <WarningCircle size={16} className="flex-shrink-0 text-warning" />
+              <span className="truncate text-sm text-warning">
                 {t('exam_sheet:uploader.import_interrupted', { count: questions.length })}
               </span>
             </div>
@@ -1074,7 +1586,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 size="sm"
                 onClick={handleResumeImport}
                 disabled={isResuming}
-                className="gap-1.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                className="gap-1.5 text-warning hover:bg-warning/10"
               >
                 {isResuming ? (
                   <CircleNotch size={14} className="animate-spin" />
@@ -1082,8 +1594,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   <RotateCw size={14} />
                 )}
                 {isResuming
-                  ? t('exam_sheet:uploader.resuming', '恢复中...')
-                  : t('exam_sheet:uploader.resume_import', '继续导入')
+                  ? t('exam_sheet:uploader.resuming')
+                  : t('exam_sheet:uploader.resume_import')
                 }
               </NotionButton>
             </div>
@@ -1095,11 +1607,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-destructive/20 bg-destructive/5" role="alert">
           <div className="flex items-center justify-between gap-3">
             <span className="text-sm text-destructive truncate" title={error}>
-              {t('exam_sheet:errors.loadQuestionsFailed', '题目加载失败')}: {error}
+              {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
             </span>
             <NotionButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="gap-1.5">
               <ArrowClockwise size={14} />
-              {t('common:actions.retry', '重试')}
+              {t('common:actions.retry')}
             </NotionButton>
           </div>
         </div>
@@ -1113,14 +1625,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => switchViewMode('list')}
+              onClick={() => requestViewMode('list')}
               disabled={!hasQuestions && viewMode !== 'upload'}
               aria-pressed={viewMode === 'list'}
               className={cn(
                 'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                 viewMode === 'list' 
-                  ? 'bg-foreground text-background font-medium' 
+                  ? 'bg-accent text-accent-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
                 (!hasQuestions && viewMode !== 'upload') && 'opacity-50 cursor-not-allowed'
               )}
@@ -1130,14 +1641,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => switchViewMode('launcher')}
+              onClick={() => {
+                if (viewMode !== 'practice' && viewMode !== 'launcher') {
+                  requestViewMode('launcher');
+                }
+              }}
               disabled={!hasQuestions}
               aria-pressed={viewMode === 'practice' || viewMode === 'launcher'}
               className={cn(
                 'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                 (viewMode === 'practice' || viewMode === 'launcher')
-                  ? 'bg-foreground text-background font-medium' 
+                  ? 'bg-accent text-accent-foreground font-medium'
                   : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
                 !hasQuestions && 'opacity-50 cursor-not-allowed'
               )}
@@ -1148,15 +1662,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => switchViewMode('review')}
+                onClick={() => requestViewMode('review')}
                 aria-pressed={viewMode === 'review'}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1 whitespace-nowrap flex-shrink-0',
-                  touchTargetClass,
                   viewMode === 'review' 
-                    ? 'bg-amber-500 text-white font-medium' 
+                    ? 'bg-accent text-accent-foreground font-medium'
                     : stats.review > 0 
-                      ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                      ? 'text-warning hover:bg-warning/10'
                       : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
@@ -1171,84 +1684,79 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => switchViewMode('sm2')}
+                onClick={() => requestViewMode('sm2')}
                 aria-pressed={viewMode === 'sm2'}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                   viewMode === 'sm2'
-                    ? 'bg-foreground text-background font-medium'
+                    ? 'bg-accent text-accent-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
-                {t('review:title', '复习计划')}
+                {t('review:title')}
               </NotionButton>
             )}
             {hasQuestions && (
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => switchViewMode('manage')}
+                onClick={() => requestViewMode('manage')}
                 aria-pressed={viewMode === 'manage'}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                   viewMode === 'manage'
-                    ? 'bg-foreground text-background font-medium'
+                    ? 'bg-accent text-accent-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 <GearSix size={14} className="mr-1.5" />
-                {t('learningHub:exam.tab.manage', '管理')}
+                {t('learningHub:exam.tab.manage')}
               </NotionButton>
             )}
             {hasQuestions && (
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => switchViewMode('stats')}
+                onClick={() => requestViewMode('stats')}
                 aria-pressed={viewMode === 'stats'}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                   viewMode === 'stats'
-                    ? 'bg-foreground text-background font-medium'
+                    ? 'bg-accent text-accent-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 <ChartBar size={14} className="mr-1.5" />
-                {t('learningHub:exam.tab.stats', '统计')}
+                {t('learningHub:exam.tab.stats')}
               </NotionButton>
             )}
             {hasQuestions && (
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => switchViewMode('favorites')}
+                onClick={() => requestViewMode('favorites')}
                 aria-pressed={viewMode === 'favorites'}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                   viewMode === 'favorites'
-                    ? 'bg-foreground text-background font-medium'
+                    ? 'bg-accent text-accent-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 <Star size={14} className="mr-1.5" />
-                {t('learningHub:exam.tab.favorites', '收藏')}
+                {t('learningHub:exam.tab.favorites')}
               </NotionButton>
             )}
             {hasQuestions && (
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => switchViewMode('tags')}
+                onClick={() => requestViewMode('tags')}
                 aria-pressed={viewMode === 'tags'}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
-                touchTargetClass,
                   viewMode === 'tags' 
-                    ? 'bg-foreground text-background font-medium' 
+                    ? 'bg-accent text-accent-foreground font-medium'
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
@@ -1263,7 +1771,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className={cn('h-7 sm:h-8 text-xs px-2 border-0 bg-muted/30 hover:bg-[var(--interactive-hover)] flex-shrink-0', touchTargetClass)}
+                  className="h-7 flex-shrink-0 border-0 bg-muted/30 px-2 text-xs hover:bg-[var(--interactive-hover)]"
                 />
                 
                 <NotionButton
@@ -1273,26 +1781,25 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   aria-disabled={isAdvancedRuntimeTimer || undefined}
                   aria-label={
                     isAdvancedRuntimeTimer
-                      ? t('learningHub:exam.timer.remaining', '剩余时间')
+                      ? t('learningHub:exam.timer.remaining')
                       : isTimerRunning
-                        ? t('learningHub:exam.timer.pause', '暂停')
-                        : t('learningHub:exam.timer.resume', '继续')
+                        ? t('learningHub:exam.timer.pause')
+                        : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
                     'flex items-center gap-1.5 px-2 py-1 rounded-md transition-colors text-sm flex-shrink-0',
-                    touchTargetClass,
                     isAdvancedRuntimeTimer
-                      ? 'text-rose-600 bg-rose-500/10 hover:bg-rose-500/10'
+                      ? 'bg-destructive/10 text-destructive hover:bg-destructive/10'
                       : isTimerRunning
                         ? 'text-primary bg-primary/5 hover:bg-primary/10'
                         : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                   )}
                   title={
                     isAdvancedRuntimeTimer
-                      ? t('learningHub:exam.timer.remaining', '剩余时间')
+                      ? t('learningHub:exam.timer.remaining')
                       : isTimerRunning
-                        ? t('learningHub:exam.timer.pause', '暂停')
-                        : t('learningHub:exam.timer.resume', '继续')
+                        ? t('learningHub:exam.timer.pause')
+                        : t('learningHub:exam.timer.resume')
                   }
                 >
                   {isAdvancedRuntimeTimer ? (
@@ -1317,20 +1824,20 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowExportDialog(true)}
-                aria-label={t('learningHub:exam.tab.export', '导出')}
-                className={cn('h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5', touchTargetClass)}
+                aria-label={t('learningHub:exam.tab.export')}
+                className="h-7 gap-1.5 px-2.5 sm:px-3"
               >
                 <Download size={14} />
-                <span className="hidden sm:inline">{t('learningHub:exam.tab.export', '导出')}</span>
+                <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
               </NotionButton>
             )}
             {!readOnly && (
               <NotionButton
                 variant={viewMode === 'upload' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => switchViewMode('upload')}
+                onClick={() => requestViewMode('upload')}
                 aria-label={t('learningHub:exam.tab.add')}
-                className={cn('h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5', touchTargetClass)}
+                className="h-7 gap-1.5 px-2.5 sm:px-3"
               >
                 <Scan size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.add')}</span>
@@ -1341,11 +1848,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowCsvImportDialog(true)}
-                aria-label={t('learningHub:exam.tab.importCsv', '导入 CSV')}
-                className={cn('h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5', touchTargetClass)}
+                aria-label={t('learningHub:exam.tab.importCsv')}
+                className="h-7 gap-1.5 px-2.5 sm:px-3"
               >
                 <Scan size={14} />
-                <span className="hidden sm:inline">{t('learningHub:exam.tab.importCsv', '导入 CSV')}</span>
+                <span className="hidden sm:inline">{t('learningHub:exam.tab.importCsv')}</span>
               </NotionButton>
             )}
           </div>
@@ -1359,7 +1866,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <div className="flex items-center justify-center h-full">
               <CircleNotch size={24} className="animate-spin text-muted-foreground" />
               <span className="ml-2 text-muted-foreground">
-                {t('common:loading', '加载中...')}
+                {t('common:loading')}
               </span>
             </div>
           }
@@ -1371,11 +1878,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               stats={stats}
               questions={questions}
               onStartPractice={handleStartPractice}
+              requestedMode={launcherRequestedMode}
+              onRequestedModeHandled={() => setLauncherRequestedMode(null)}
             />
           ) : viewMode === 'manage' && hasQuestions ? (
             <QuestionBankManageView
               questions={manageQuestions}
               isLoading={isLoading}
+              filters={manageFilters}
               onDelete={readOnly ? undefined : handleDeleteQuestions}
               onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
               onResetProgress={readOnly ? undefined : handleResetProgress}
@@ -1397,6 +1907,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onSelectQuestion={handleViewQuestionDetail}
               onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
               onViewHistory={handleOpenHistory}
+              onBrowseQuestions={() => switchViewMode('list')}
             />
           ) : viewMode === 'tags' && hasQuestions ? (
             /* 知识点导航视图 */
@@ -1434,11 +1945,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               practiceMode={practiceMode}
               showTimer={true}
               timerDuration={activeAdvancedTimerDuration ?? undefined}
-              timerElapsedSeconds={isAdvancedRuntimeTimer ? elapsedTime : undefined}
+              timerElapsedSeconds={elapsedTime}
+              timerRunning={isTimerRunning}
+              onTimerRunningChange={setIsTimerRunning}
               allowTimerControl={!isAdvancedRuntimeTimer}
               selectedTag={selectedTag}
               focusMode={focusMode}
               onFocusModeChange={setFocusMode}
+              settingsPanelOpen={settingsPanelOpen}
+              onSettingsPanelOpenChange={setSettingsPanelOpen}
               isActive={isActive}
               onSubmitAnswer={readOnly ? undefined : handleSubmitAnswer}
               onNavigate={handlePracticeNavigate}
@@ -1446,10 +1961,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onMarkCorrect={readOnly ? undefined : handleMarkCorrect}
               onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
               onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
-              onUpdateQuestion={readOnly ? undefined : handleUpdateQuestion}
               onUpdateUserNote={readOnly ? undefined : handleUpdateUserNote}
               onDeleteQuestion={readOnly ? undefined : handleDeleteQuestion}
               onBack={handleBackToLauncher}
+              onDraftDirtyChange={handlePracticeDraftDirtyChange}
+              onDraftNavigationRequested={requestPracticeNavigate}
             />
           ) : (
             /* 列表视图 - 内联编辑 */
@@ -1462,6 +1978,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onResetProgress={readOnly ? undefined : handleResetProgress}
               onUpdateQuestion={readOnly ? undefined : handleListChanged}
               onCreateQuestion={readOnly ? undefined : handleListChanged}
+              onUploadQuestions={readOnly ? undefined : () => requestViewMode('upload')}
+              onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
+              onDraftNavigationRequested={(index) => {
+                requestQuestionNavigation(() => handleQuestionClick(index));
+              }}
             />
           )}
         </Suspense>
@@ -1473,6 +1994,55 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         examId={sessionId}
         conflicts={syncConflicts}
         onResolved={handleSyncConflictResolved}
+      />
+
+      <NotionAlertDialog
+        open={pendingReviewExitView !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingReviewExitView(null);
+            setPendingSettingsOpen(false);
+          }
+        }}
+        icon={<WarningCircle size={20} className="text-warning" />}
+        title={t('review:session.exitTitle')}
+        description={t(
+          'review:session.exitDescription',
+          '已提交的评分会保留，剩余题目可稍后重新开始复习。',
+        )}
+        confirmText={t('review:session.exitConfirm')}
+        cancelText={t('common:cancel')}
+        confirmVariant="warning"
+        onConfirm={() => {
+          const nextView = pendingReviewExitView;
+          setPendingReviewExitView(null);
+          endReviewSession();
+          if (nextView) switchViewMode(nextView);
+          if (nextView === 'practice' && pendingSettingsOpen) {
+            setSettingsPanelOpen(true);
+            setPendingSettingsOpen(false);
+          }
+        }}
+      />
+
+      <NotionAlertDialog
+        open={pendingDraftNavigation !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDraftNavigation(null);
+        }}
+        icon={<WarningCircle size={20} className="text-warning" />}
+        title={t('editor.discardDraftTitle')}
+        description={t('editor.discardDraftDescription')}
+        confirmText={t('common:actions.discard')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        onConfirm={() => {
+          const pending = pendingDraftNavigation;
+          setPendingDraftNavigation(null);
+          if (!pending || pending.examId !== sessionId) return;
+          clearCurrentExamDraft();
+          pending.proceed();
+        }}
       />
 
       <Suspense fallback={null}>

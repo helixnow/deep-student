@@ -13,7 +13,7 @@ import {
 import { SandboxWorkbenchSurface } from '../components/SandboxWorkbenchSurface';
 
 export function SandboxWorkbenchPage() {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
   const hasSession = useSandboxWorkbenchStore((state) => (
     selectSandboxWorkbenchOwnerState(state, LEGACY_SANDBOX_OWNER_KEY).activeSession !== null
@@ -29,14 +29,14 @@ export function SandboxWorkbenchPage() {
   // ★ 2026-07-08（移动端审计 D-6）：小屏隐藏 Surface 自绘 SandboxToolbar
   // 避免双顶栏，刷新/检查器动作收进统一顶栏右侧。
   useMobileHeader('sandbox-workbench', {
-    title: t('navigation.sandbox_workbench', '沙箱工作台'),
+    title: t('sandbox.title'),
     rightActions: hasSession ? (
       <>
         <NotionButton
           variant="ghost"
           size="sm"
           iconOnly
-          aria-label={t('actions.refresh', '刷新')}
+          aria-label={t('sandbox.refresh')}
           onClick={() => refreshSession(LEGACY_SANDBOX_OWNER_KEY)}
         >
           <ArrowClockwise size={18} />
@@ -45,7 +45,7 @@ export function SandboxWorkbenchPage() {
           variant="ghost"
           size="sm"
           iconOnly
-          aria-label={inspectorOpen ? t('sandbox_workbench.close_inspector', '收起检查器') : t('sandbox_workbench.open_inspector', '打开检查器')}
+          aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
           onClick={() => setInspectorOpen(!inspectorOpen, LEGACY_SANDBOX_OWNER_KEY)}
         >
           <SidebarSimple size={18} />

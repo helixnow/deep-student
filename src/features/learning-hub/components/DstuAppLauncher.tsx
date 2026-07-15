@@ -265,8 +265,8 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           onClick={() => void onRefresh()}
           disabled={isRefreshing}
           className="shrink-0"
-          title={t('common:refresh', '刷新')}
-          aria-label={t('common:refresh', '刷新')}
+          title={t('common:refresh')}
+          aria-label={t('common:refresh')}
         >
           <ArrowClockwise size={embedded ? 18 : 20} className={cn(isRefreshing && 'animate-spin')} />
         </NotionButton>
@@ -305,7 +305,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             iconOnly
             onClick={() => onSearchChange?.('')}
             className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)]"
-            aria-label={t('common:clear', '清除')}
+            aria-label={t('common:clear')}
           >
             <X size={14} className="text-muted-foreground/60" />
           </NotionButton>
@@ -368,10 +368,10 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
     <>
       {embedded && (
         <span className={mobileDrawerSectionLabelClassName}>
-          {t('sidebar:mobile_drawer.section_learning', '学习资源')}
+          {t('sidebar:mobile_drawer.section_learning')}
         </span>
       )}
-      <nav aria-label={t('learningHub:title', '学习资源')} className="space-y-0.5">
+      <nav aria-label={t('learningHub:title')} className="space-y-0.5">
         {quickAccessItems.map(renderNavItem)}
       </nav>
       {renderSectionTitle(t('learningHub:apps.resourceTypes'))}

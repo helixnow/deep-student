@@ -229,7 +229,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       )}
       {onImportMarkdownNote && (
         <AppMenuItem icon={<NoteIcon size={16} />} onClick={onImportMarkdownNote}>
-          {t('finder.toolbar.importMarkdown', '导入 Markdown')}
+          {t('finder.toolbar.importMarkdown')}
         </AppMenuItem>
       )}
       {onNewExam && (

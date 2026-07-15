@@ -284,7 +284,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
             setIsAddingTag(false);
         } catch (error: unknown) {
             console.error("Failed to add tag", error);
-            showGlobalNotification('error', t('notes:context.tag_add_failed', 'Failed to add tag'));
+            showGlobalNotification('error', t('notes:context.tag_add_failed'));
         }
     };
 
@@ -308,7 +308,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
             }
         } catch (error: unknown) {
             console.error("Failed to remove tag", error);
-            showGlobalNotification('error', t('notes:context.tag_remove_failed', 'Failed to remove tag'));
+            showGlobalNotification('error', t('notes:context.tag_remove_failed'));
         }
     };
 
@@ -321,7 +321,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     if (!effectiveActive) {
         return (
             <div className="flex flex-col h-full items-center justify-center text-muted-foreground/50 bg-muted/5">
-                <p className="text-xs">{t('notes:context.select_hint', 'Select a note to view properties')}</p>
+                <p className="text-xs">{t('notes:context.select_hint')}</p>
             </div>
         );
     }
@@ -334,14 +334,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 <div className="space-y-1.5">
                     <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
                         <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span className="w-14 shrink-0 text-xs">{t('notes:context.created', 'Created')}</span>
+                        <span className="w-14 shrink-0 text-xs">{t('notes:context.created')}</span>
                         <span className="text-foreground/90 tabular-nums truncate">
                             {formatPanelDate(effectiveActive.created_at, dateLocale)}
                         </span>
                     </div>
                     <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
                         <Clock className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span className="w-14 shrink-0 text-xs">{t('notes:context.updated', 'Updated')}</span>
+                        <span className="w-14 shrink-0 text-xs">{t('notes:context.updated')}</span>
                         <span className="text-foreground/90 tabular-nums truncate">
                             {formatPanelDate(effectiveActive.updated_at, dateLocale)}
                         </span>
@@ -353,7 +353,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                     <div className="flex items-center gap-1.5">
                         <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                         <h3 className="text-xs font-medium text-muted-foreground">
-                            {t('notes:context.tags', 'Tags')}
+                            {t('notes:context.tags')}
                         </h3>
                         {hasTags && (
                             <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">
@@ -364,7 +364,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
                     {!hasTags && !isAddingTag && (
                         <p className="pl-0.5 text-xs leading-snug text-muted-foreground/70">
-                            {t('notes:context.tags_empty_hint', 'Add tags to organize')}
+                            {t('notes:context.tags_empty_hint')}
                         </p>
                     )}
 
@@ -383,7 +383,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                         e.stopPropagation();
                                         handleRemoveTag(tag);
                                     }}
-                                    aria-label={`${t('notes:context.tag_remove', 'Remove tag')} ${tag}`}
+                                    aria-label={`${t('notes:context.tag_remove')} ${tag}`}
                                 >
                                     <X className="w-3 h-3" aria-hidden="true" />
                                 </NotionButton>
@@ -395,7 +395,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 ref={tagInputRef}
                                 className="h-6 w-28 text-[11px] px-2 py-0"
                                 value={tagInput}
-                                placeholder={t('notes:context.add_tag', 'Add tag')}
+                                placeholder={t('notes:context.add_tag')}
                                 onChange={e => setTagInput(e.target.value)}
                                 onKeyDown={e => {
                                     if (e.key === 'Enter') handleAddTag();
@@ -420,7 +420,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 onClick={() => setIsAddingTag(true)}
                             >
                                 <Plus className="w-3 h-3" />
-                                {t('notes:context.add_tag', 'Add tag')}
+                                {t('notes:context.add_tag')}
                             </NotionButton>
                         )}
                     </div>
@@ -434,7 +434,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 <div className="px-3 pt-3 pb-1">
                     <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                         <TextAlignLeft className="w-3.5 h-3.5" />
-                        {t('notes:context.outline', 'Outline')}
+                        {t('notes:context.outline')}
                         {headings.length > 0 && (
                             <span className="ml-auto text-[10px] font-normal text-muted-foreground/60">
                                 {headings.length}
@@ -482,10 +482,10 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                         ) : (
                             <div className="py-5 px-1 text-center space-y-1">
                                 <p className="text-[11px] text-muted-foreground/55">
-                                    {t('notes:context.no_headings', 'No headings yet')}
+                                    {t('notes:context.no_headings')}
                                 </p>
                                 <p className="text-[10px] text-muted-foreground/40 leading-snug">
-                                    {t('notes:context.outline_empty_hint', 'Use # or the toolbar to add headings')}
+                                    {t('notes:context.outline_empty_hint')}
                                 </p>
                             </div>
                         )}

@@ -954,7 +954,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const saveNoteContent = useCallback(async (id: string, content: string, title?: string) => {
         // 🆕 维护模式检查：阻止保存笔记
         if (useSystemStatusStore.getState().maintenanceMode) {
-            showGlobalNotification('warning', t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记，请稍后再试。'));
+            showGlobalNotification('warning', t('common:maintenance.blocked_note_save'));
             throw new Error('maintenance_mode');
         }
 
@@ -1021,8 +1021,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const isConflict = msg.includes('notes.conflict');
             reportError(updateResult.error, t('notes:errors.save_note_content'));
             notify({
-                title: isConflict ? t('notes:actions.conflict', '内容已在其他处更新') : t('notes:actions.save_failed'),
-                description: isConflict ? t('notes:actions.conflict_hint', '请刷新后再尝试保存或回滚到历史版本') : msg,
+                title: isConflict ? t('notes:actions.conflict') : t('notes:actions.save_failed'),
+                description: isConflict ? t('notes:actions.conflict_hint') : msg,
                 variant: isConflict ? "warning" : "destructive"
             });
             if (isConflict) {
@@ -1054,7 +1054,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
                 effectiveTitle = updateResult.value.name; // 回退到原标题
                 reportError(metadataResult.error, t('notes:errors.update_note_title'));
                 notify({
-                    title: t('notes:actions.title_save_failed', '内容已保存，但标题更新失败'),
+                    title: t('notes:actions.title_save_failed'),
                     description: metadataResult.error.toUserMessage(),
                     variant: "warning"
                 });
@@ -1219,14 +1219,14 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }
             notify({
                 title: updated.is_favorite
-                    ? t('notes:favorites.toast_marked', '已加入收藏')
-                    : t('notes:favorites.toast_unmarked', '已取消收藏'),
+                    ? t('notes:favorites.toast_marked')
+                    : t('notes:favorites.toast_unmarked'),
                 variant: "success"
             });
         } else {
             reportError(result.error, t('notes:errors.toggle_favorite'));
             notify({
-                title: t('notes:favorites.toast_error_title', '收藏操作失败'),
+                title: t('notes:favorites.toast_error_title'),
                 description: result.error.toUserMessage(),
                 variant: "destructive"
             });
@@ -1372,7 +1372,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const existingRefId = findExistingRef('textbooks', textbookId);
         if (existingRefId) {
             notify({
-                title: t('notes:reference.already_exists', '引用已存在'),
+                title: t('notes:reference.already_exists'),
                 variant: 'warning',
             });
             return existingRefId;
@@ -1400,7 +1400,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         );
 
         notify({
-            title: t('notes:reference.add_success', '已添加引用'),
+            title: t('notes:reference.add_success'),
             variant: 'success',
         });
 
@@ -1413,7 +1413,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const removeRef = useCallback((refId: string): void => {
         removeReference(refId);
         notify({
-            title: t('notes:reference.remove_success', '已移除引用'),
+            title: t('notes:reference.remove_success'),
             variant: 'success',
         });
     }, [removeReference, notify, t]);

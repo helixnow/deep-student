@@ -16,6 +16,13 @@ export interface PdfFocusRequest {
   requestId: number;
 }
 
+export interface PdfFocusEventDetail {
+  sourceId?: string;
+  pageNumber?: number;
+  path?: string;
+  acknowledge?: (handled: boolean) => void;
+}
+
 interface UsePdfFocusListenerOptions {
   /** 是否启用（仅 PDF 类型时启用） */
   enabled: boolean;
@@ -43,8 +50,11 @@ export function usePdfFocusListener({
 }: UsePdfFocusListenerOptions): [PdfFocusRequest | null, (requestId: number) => void] {
   const [focusRequest, setFocusRequest] = useState<PdfFocusRequest | null>(null);
   const focusRequestIdRef = useRef(0);
+  const pendingAcksRef = useRef(new Map<number, (handled: boolean) => void>());
 
   const handleFocusHandled = useCallback((requestId: number) => {
+    pendingAcksRef.current.get(requestId)?.(true);
+    pendingAcksRef.current.delete(requestId);
     setFocusRequest((prev) => (prev && prev.requestId === requestId ? null : prev));
   }, []);
 
@@ -52,11 +62,7 @@ export function usePdfFocusListener({
     if (!enabled) return;
 
     const handler = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        sourceId?: string;
-        pageNumber?: number;
-        path?: string;
-      }>;
+      const customEvent = event as CustomEvent<PdfFocusEventDetail>;
       const { sourceId, pageNumber, path } = customEvent.detail || {};
       if (!pageNumber || !Number.isFinite(pageNumber) || pageNumber <= 0) return;
 
@@ -65,6 +71,9 @@ export function usePdfFocusListener({
       if (!matchesSource && !matchesPath) return;
 
       const requestId = ++focusRequestIdRef.current;
+      if (customEvent.detail?.acknowledge) {
+        pendingAcksRef.current.set(requestId, customEvent.detail.acknowledge);
+      }
       setFocusRequest({
         path: nodePath,
         name: nodeName,
@@ -76,6 +85,8 @@ export function usePdfFocusListener({
     document.addEventListener('pdf-ref:focus', handler);
     return () => {
       document.removeEventListener('pdf-ref:focus', handler);
+      for (const acknowledge of pendingAcksRef.current.values()) acknowledge(false);
+      pendingAcksRef.current.clear();
     };
   }, [enabled, nodeId, nodeSourceId, nodePath, nodeName]);
 

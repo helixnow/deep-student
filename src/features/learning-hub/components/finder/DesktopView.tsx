@@ -251,19 +251,19 @@ function DesktopContextMenu({
         <>
           <MenuItem
             icon={<ArrowSquareOut size={16} />}
-            label={t('desktop.open', '打开')}
+            label={t('desktop.open')}
             onClick={() => onOpenShortcut?.(state.target!)}
           />
           <Separator />
           <MenuItem
             icon={<PencilSimple size={16} />}
-            label={t('desktop.rename', '重命名')}
+            label={t('desktop.rename')}
             onClick={() => onRenameShortcut?.(state.target!)}
           />
           <Separator />
           <MenuItem
             icon={<Trash size={16} />}
-            label={t('desktop.remove', '从桌面移除')}
+            label={t('desktop.remove')}
             onClick={() => onRemoveShortcut?.(state.target!)}
             danger
           />
@@ -273,13 +273,13 @@ function DesktopContextMenu({
         <>
           <MenuItem
             icon={<Plus size={16} />}
-            label={t('desktop.addShortcut', '添加快捷方式')}
+            label={t('desktop.addShortcut')}
             onClick={onAddShortcut}
           />
           <Separator />
           <MenuItem
             icon={<Gear size={16} />}
-            label={t('desktop.setRootFolder', '设置桌面根目录')}
+            label={t('desktop.setRootFolder')}
             onClick={() => onSetDesktopRoot?.()}
           />
           {/* 显示当前桌面根目录 */}
@@ -287,7 +287,7 @@ function DesktopContextMenu({
             <div className="flex items-center gap-1.5">
               <FolderOpen size={14} />
               <span className="truncate max-w-[140px]">
-                {desktopRoot.folderName || t('desktop.rootPath', '根目录')}
+                {desktopRoot.folderName || t('desktop.rootPath')}
               </span>
             </div>
           </div>
@@ -455,9 +455,9 @@ function AddShortcutDialog({
   return (
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-[500px]">
         <NotionDialogHeader>
-          <NotionDialogTitle>{t('desktop.addShortcut', '添加快捷方式')}</NotionDialogTitle>
+          <NotionDialogTitle>{t('desktop.addShortcut')}</NotionDialogTitle>
           <NotionDialogDescription>
-            {t('desktop.addShortcutDesc', '选择要添加到桌面的快捷方式')}
+            {t('desktop.addShortcutDesc')}
           </NotionDialogDescription>
         </NotionDialogHeader>
         <NotionDialogBody>
@@ -487,7 +487,7 @@ function AddShortcutDialog({
                 {Icon && <Icon size={32} />}
                 <span className="text-xs text-center">{preset.name}</span>
                 {added && (
-                  <span className="text-[10px] text-success">{t('desktop.added', '已添加')}</span>
+                  <span className="text-[10px] text-success">{t('desktop.added')}</span>
                 )}
               </NotionButton>
             );
@@ -658,7 +658,7 @@ export function DesktopView({
               <div className="w-24 h-24 rounded-full bg-accent/50 flex items-center justify-center mb-4">
                 <Plus size={40} />
               </div>
-              <p className="text-sm mb-4">{t('desktop.empty', '桌面为空')}</p>
+              <p className="text-sm mb-4">{t('desktop.empty')}</p>
               <p className="text-xs text-muted-foreground/60 mb-4">
                 {t(isSmallScreen ? 'desktop.touchHint' : 'desktop.rightClickHint', isSmallScreen ? '点击下方按钮添加快捷方式' : '右键点击添加快捷方式')}
               </p>
@@ -667,7 +667,7 @@ export function DesktopView({
                 size="sm"
                 onClick={() => setShowAddDialog(true)}
               >
-                {t('desktop.addFirst', '添加第一个快捷方式')}
+                {t('desktop.addFirst')}
               </NotionButton>
             </div>
           ) : (
@@ -714,7 +714,7 @@ export function DesktopView({
         open={showRootFolderPicker}
         onOpenChange={setShowRootFolderPicker}
         onConfirm={handleSetDesktopRoot}
-        title={t('desktop.setRootFolder', '设置桌面根目录')}
+        title={t('desktop.setRootFolder')}
       />
     </div>
   );

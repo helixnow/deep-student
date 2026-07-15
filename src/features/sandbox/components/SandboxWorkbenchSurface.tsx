@@ -80,8 +80,8 @@ export function SandboxWorkbenchSurface({
   }, [inspectorOpen, ownerKey, setInspectorOpen]);
 
   const subtitle = activeSession
-    ? `${activeSession.language.toUpperCase()} · 安全预览`
-    : '在聊天中打开代码块即可预览';
+    ? `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`
+    : t('sandbox.emptyHint');
 
   const lineCount = useMemo(() => {
     if (!activeSession?.content) return 0;
@@ -99,7 +99,7 @@ export function SandboxWorkbenchSurface({
       <section className={cn('flex h-full min-h-0 flex-col bg-[color:var(--shell-workspace-panel)]', className)}>
         {!hideToolbar && (
           <SandboxToolbar
-            title="沙箱工作台"
+            title={t('sandbox.title')}
             subtitle={subtitle}
             inspectorOpen={inspectorOpen}
             onReload={() => refreshSession(ownerKey)}
@@ -109,10 +109,10 @@ export function SandboxWorkbenchSurface({
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
           <div className="w-full max-w-3xl rounded-3xl border border-dashed border-border bg-card/60 p-8 text-center">
-            <p className="text-sm text-muted-foreground">在聊天中打开代码块即可预览。</p>
+            <p className="text-sm text-muted-foreground">{t('sandbox.emptyHint')}</p>
             {isSmallScreen && (
               <p className="mt-2 text-xs text-muted-foreground/70">
-                {t('sandbox_workbench.mobile_hint', '移动端以预览为主，完整工作台建议在桌面端使用。')}
+                {t('sandbox.mobileHint')}
               </p>
             )}
           </div>
@@ -127,7 +127,7 @@ export function SandboxWorkbenchSurface({
         {!hideToolbar && (
           <SandboxToolbar
             title={activeSession.title}
-            meta="已收起"
+            meta={t('sandbox.closed')}
             inspectorOpen={inspectorOpen}
             onReload={() => refreshSession(ownerKey)}
             onToggleInspector={handleToggleInspector}
@@ -141,8 +141,8 @@ export function SandboxWorkbenchSurface({
               size="icon"
               iconOnly
               onClick={() => openWorkbench(ownerKey)}
-              aria-label="打开沙箱工作台"
-              title="打开沙箱工作台"
+              aria-label={t('sandbox.open')}
+              title={t('sandbox.open')}
               className="!h-12 !w-12 rounded-2xl border border-border/80 bg-background/90 text-muted-foreground shadow-[var(--shadow-shell-soft)] backdrop-blur-md hover:bg-background hover:text-foreground"
             >
               <SidebarSimple size={18} />
@@ -152,7 +152,7 @@ export function SandboxWorkbenchSurface({
               onClick={handleClear}
               className="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/5"
             >
-              清空会话
+              {t('sandbox.clearSession')}
             </button>
           </div>
         </div>
@@ -160,14 +160,14 @@ export function SandboxWorkbenchSurface({
     );
   }
 
-  const toolbarSubtitle = `${activeSession.language.toUpperCase()} · 安全预览`;
+  const toolbarSubtitle = `${activeSession.language.toUpperCase()} · ${t('sandbox.safePreview')}`;
 
   const previewShell = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            预览
+            {t('sandbox.preview')}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -182,8 +182,8 @@ export function SandboxWorkbenchSurface({
                   ? 'border-foreground/25 bg-foreground/5 text-foreground'
                   : 'border-border bg-transparent text-muted-foreground hover:text-foreground'
               )}
-              aria-label={preset === 'desktop' ? '桌面' : preset === 'tablet' ? '平板' : '手机'}
-              title={preset === 'desktop' ? '桌面' : preset === 'tablet' ? '平板' : '手机'}
+              aria-label={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
+              title={preset === 'desktop' ? t('sandbox.desktop') : preset === 'tablet' ? t('sandbox.tablet') : t('sandbox.mobile')}
             >
               {preset === 'desktop' ? '桌' : preset === 'tablet' ? '平' : '手'}
             </button>

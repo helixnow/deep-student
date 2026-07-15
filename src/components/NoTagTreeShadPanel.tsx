@@ -72,7 +72,7 @@ interface Props {
 }
 
 const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }) => {
-  const { t } = useTranslation('common');
+  const { t } = useTranslation(['common', 'workbench']);
   const [userHint, setUserHint] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [previewMd, setPreviewMd] = useState('');
@@ -302,7 +302,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
   return (
     <Card className="w-full max-w-[1100px] max-h-full flex flex-col">
       <CardHeader className="pb-3 flex-shrink-0">
-        <CardTitle className="text-base sm:text-lg">{t('knowledge_graph.tag_tree.no_tag_tree_title', '当前图谱暂无标签树')}</CardTitle>
+        <CardTitle className="text-base sm:text-lg">{t('knowledge_graph.tag_tree.no_tag_tree_title')}</CardTitle>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
         {/* 主布局：小屏单列，中屏及以上两列（左配置右结果） */}
@@ -376,7 +376,7 @@ const NoTagTreeShadPanel: React.FC<Props> = ({ graphId = 'default', onImported }
                 className="flex-1 min-h-[120px] font-mono text-xs resize-none"
                 value={previewMd}
                 onChange={(e) => setPreviewMd(e.target.value)}
-                placeholder={'# 根标签一\n### 子主题A\n#### 概念1\n##### 方法a\n###### 题型i'}
+                placeholder={t('workbench:tagTreeMarkdownPlaceholder')}
               />
               {isGenerating && (
                 <div className="space-y-2 flex-shrink-0">

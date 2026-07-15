@@ -88,7 +88,7 @@ export const AppContentErrorBoundary: React.FC<AppContentErrorBoundaryProps> = (
         <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center" role="alert">
           <WarningCircle size={40} className="text-destructive" aria-hidden="true" />
           <p className="text-sm text-muted-foreground max-w-md">
-            {t('learningHub:error.appContentCrashed', '{{resource}} 应用加载失败，请重试', { resource: resourceLabel })}
+            {t('learningHub:error.appContentCrashed', { resource: resourceLabel })}
           </p>
           {caughtError && (
             <p className="text-xs text-destructive/80 max-w-lg break-all font-mono">
@@ -99,12 +99,12 @@ export const AppContentErrorBoundary: React.FC<AppContentErrorBoundaryProps> = (
           <div className="flex items-center gap-2">
             <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
               <ArrowClockwise size={14} aria-hidden="true" />
-              {t('common:actions.retry', '重试')}
+              {t('common:actions.retry')}
             </NotionButton>
             {/* 移动端：重试之外提供明确的返回出路（桌面端可通过标签栏关闭，保持原样） */}
             {isMobile && onClose && (
               <NotionButton variant="ghost" size="sm" onClick={onClose}>
-                {t('common:close', '关闭')}
+                {t('common:close')}
               </NotionButton>
             )}
           </div>

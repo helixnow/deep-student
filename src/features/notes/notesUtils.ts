@@ -120,7 +120,7 @@ export const getPathToNote = (
     // Check if it's a note
     const note = notes.find(n => n.id === noteId);
     if (note) {
-        path.unshift({ id: note.id, title: note.title || i18next.t('notes:common.untitled', 'Untitled'), type: 'note' });
+        path.unshift({ id: note.id, title: note.title || i18next.t('notes:common.untitled'), type: 'note' });
     } else if (folders[noteId]) {
         // Or if it's a folder
         path.unshift({ id: noteId, title: folders[noteId].title, type: 'folder' });
@@ -324,7 +324,7 @@ export const buildGraphTreeData = (
     const items: TreeData = {
         root: {
             id: 'root',
-            title: i18next.t('notes:graph_notes.root_title', 'Graph Notes Root'),
+            title: i18next.t('notes:graph_notes.root_title'),
             isFolder: true,
             children: [],
             canMove: false,
@@ -368,7 +368,7 @@ export const buildGraphTreeData = (
 
             items[treeId] = {
                 id: treeId,
-                title: deriveNoteTitleText(card.notes, card.content_problem) || i18next.t('notes:common.untitledNote', 'Untitled note'),
+                title: deriveNoteTitleText(card.notes, card.content_problem) || i18next.t('notes:common.untitledNote'),
                 isFolder: false,
                 children: [],
                 canMove: true,
@@ -412,7 +412,7 @@ export const buildGraphTreeData = (
             
             items[treeId] = {
                 id: treeId,
-                title: deriveNoteTitleText(card.notes, card.content_problem) || i18next.t('notes:common.untitledNote', 'Untitled note'),
+                title: deriveNoteTitleText(card.notes, card.content_problem) || i18next.t('notes:common.untitledNote'),
                 isFolder: false,
                 children: [],
                 canMove: true,

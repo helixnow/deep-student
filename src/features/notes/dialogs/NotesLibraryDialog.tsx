@@ -49,7 +49,7 @@ export function NotesLibraryDialog() {
             const selected = await save({
                 title: t('notes:export.destination.choose'),
                 defaultPath: `notes_export_${new Date().toISOString().split('T')[0]}.zip`,
-                filters: [{ name: t('notes:export.filter_name', 'Notes Backup'), extensions: ['zip'] }]
+                filters: [{ name: t('notes:export.filter_name'), extensions: ['zip'] }]
             });
             if (selected) {
                 setExportTargetPath(selected);
@@ -95,9 +95,9 @@ export function NotesLibraryDialog() {
     const handlePickImportFile = async () => {
         try {
             const selected = await open({
-                title: t('notes:import.file.dialog_title', 'Select notes library backup file'),
+                title: t('notes:import.file.dialog_title'),
                 multiple: false,
-                filters: [{ name: t('notes:import.filter_name', 'Notes Archive'), extensions: ['zip'] }]
+                filters: [{ name: t('notes:import.filter_name'), extensions: ['zip'] }]
             });
             if (selected && typeof selected === 'string') {
                 setImportFilePath(selected);

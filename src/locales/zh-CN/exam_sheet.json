@@ -183,6 +183,14 @@
     "loadFailed": "加载题目集会话失败",
     "sessionNotFound": "未找到题目集会话",
     "deprecatedPanel": "此入口已废弃，请通过学习资源管理器访问题目集功能。"
+  ,
+    "delete_question_failed": "删除题目失败，请重试",
+    "loadQuestionsFailed": "题目加载失败",
+    "manual_grade_failed": "评分同步失败，请手动重试",
+    "note_update_unavailable": "当前模式不支持保存笔记",
+    "save_note_failed": "保存笔记失败",
+    "submit_failed": "提交答案失败，请重试",
+    "toggle_favorite_failed": "收藏操作失败，请重试"
   },
   "viewMode": {
     "edit": "编辑",
@@ -305,7 +313,8 @@
         "is_favorite": "收藏",
         "user_note": "笔记",
         "created_at": "创建时间",
-        "updated_at": "更新时间"
+        "updated_at": "更新时间",
+        "images": "关联图片"
       },
       "encodingDesc": {
         "utf8": "通用编码，推荐使用",
@@ -350,6 +359,8 @@
     "label": "题号",
     "content": "题目",
     "attempts": "答题",
+    "manage": "管理",
+    "paginationInfo": "共 {{total}} 条",
     "edit": {
       "title": "编辑题目",
       "content": "题目内容",
@@ -390,6 +401,34 @@
       "missingExamId": "缺少题目集 ID",
       "contentRequired": "题目内容不能为空"
     }
+  ,
+    "actionUnavailable": "当前操作不可用",
+    "confirmDelete": "确认删除",
+    "confirmDeleteBatch": "确定要删除选中的 {{count}} 道题目吗？此操作无法撤销。",
+    "confirmDeleteSingle": "确定要删除这道题目吗？此操作无法撤销。",
+    "confirmReset": "确认重置进度",
+    "confirmResetBatch": "确定要重置选中的 {{count}} 道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。",
+    "confirmResetSingle": "确定要重置这道题目的学习进度吗？这将清除所有答题记录、正确率统计，题目将恢复为“新题”状态。",
+    "edit": {
+      "discardDescription": "放弃后无法恢复本次编辑内容。"
+    },
+    "favoriteUpdateFailed": "更新收藏失败",
+    "favoriteUpdated": "收藏状态已更新",
+    "favorites": {
+      "browse": "浏览题目",
+      "empty": "暂无收藏题目",
+      "hint": "点击题目上的星星图标可添加收藏",
+      "loadFailed": "收藏加载失败",
+      "title": "收藏",
+      "toggleFailed": "更新收藏失败",
+      "truncated": "仅显示前 {{count}} 条收藏，共 {{total}} 条"
+    },
+    "history": {
+      "description": "查看题目的修改历史和答题记录",
+      "empty": "暂无历史记录",
+      "title": "历史记录"
+    },
+    "import": "导入题目"
   },
   "csv": {
     "import_title": "CSV 导入",
@@ -408,6 +447,7 @@
     "select_field": "选择字段...",
     "no_mapping": "不映射",
     "suggested": "推荐",
+    "required": "必需",
     "mapping_valid": "字段映射有效，可以开始导入",
     "mapping_required": "请至少映射「题干内容」字段",
     "data_preview": "数据预览（前 {{count}} 行）",
@@ -442,6 +482,13 @@
     "import_failed_generic": "导入失败",
     "csv_file_fallback": "CSV 文件",
     "drop_csv_here": "松开鼠标上传 CSV 文件"
+  ,
+    "cancelling_import": "正在取消...",
+    "import_cancel_failed": "取消导入失败，请稍后重试。",
+    "import_cancel_unavailable": "导入已结束，无法再取消。",
+    "import_cancelled_before_start": "导入已取消，尚未写入任何数据。",
+    "import_in_progress_close_blocked": "导入进行中，请先取消导入后再关闭窗口",
+    "mapping_duplicate": "存在重复映射，请确保每个目标字段只映射一次"
   },
   "image": {
     "alt_card": "题目卡片",
@@ -472,6 +519,11 @@
     "reading_document": "正在读取文档...",
     "parsing_document": "正在解析文档...",
     "processing": "处理中...",
+    "cancel_import": "取消导入",
+    "cancelling_import": "正在取消...",
+    "import_cancelled": "导入已取消。已完成的内容会保留。",
+    "cancel_unavailable": "导入已结束，无法再取消。",
+    "cancel_failed": "取消导入失败，请重试。",
     "start_recognize": "开始识别",
     "parse_document": "解析文档",
     "done": "完成",
@@ -519,6 +571,16 @@
     "filter_hint": "展开可取消勾选不需要录入的题目（如已掌握的题目）",
     "filter_delete_failed": "删除排除题目失败",
     "view_questions_filtered": "确认导入 {{count}} 题"
+  ,
+    "extracting_figures": "正在提取配图 {{current}}/{{total}}...",
+    "preprocessing": "正在预处理文档...",
+    "rendering_pages": "正在渲染页面 {{current}}/{{total}}...",
+    "structuring_questions": "正在结构化题目 {{current}}/{{total}}...",
+    "pdf_quality_title": "PDF 文本层质量较低（有效字符 {{count}}）",
+    "pdf_quality_description": "可选择直接使用解析文本，或启用 OCR 进行识别。",
+    "pdf_quality_empty_preview": "（无可预览文本）",
+    "pdf_use_extracted_text": "仅使用解析文本",
+    "pdf_enable_ocr": "启用 OCR"
   },
   "questionTypes": {
     "single_choice": "单选",
@@ -530,5 +592,10 @@
     "calculation": "计算",
     "proof": "证明",
     "other": "其他"
+  }
+,
+  "editor": {
+    "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",
+    "discardDraftTitle": "放弃未提交的内容？"
   }
 }

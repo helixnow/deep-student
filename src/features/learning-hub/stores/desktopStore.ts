@@ -87,62 +87,62 @@ export function getPresetAppShortcuts(): PresetShortcut[] {
   const t = (key: string, fallback: string) => i18next.t(key, { defaultValue: fallback, ns: 'learningHub' });
   return [
     {
-      name: t('desktop.presets.newNote', '新建笔记'),
+      name: t('desktop.presets.newNote', 'New note'),
       type: 'app',
       target: { appType: 'note', action: 'create' },
     },
     {
-      name: t('desktop.presets.newExam', '新建题目集'),
+      name: t('desktop.presets.newExam', 'New exam'),
       type: 'app',
       target: { appType: 'exam', action: 'create' },
     },
     {
-      name: t('desktop.presets.newEssay', '新建作文'),
+      name: t('desktop.presets.newEssay', 'New essay'),
       type: 'app',
       target: { appType: 'essay', action: 'create' },
     },
     {
-      name: t('desktop.presets.newTranslation', '新建翻译'),
+      name: t('desktop.presets.newTranslation', 'New translation'),
       type: 'app',
       target: { appType: 'translation', action: 'create' },
     },
     {
-      name: t('desktop.presets.newMindmap', '新建思维导图'),
+      name: t('desktop.presets.newMindmap', 'New mind map'),
       type: 'app',
       target: { appType: 'mindmap', action: 'create' },
     },
     {
-      name: t('desktop.presets.allNotes', '全部笔记'),
+      name: t('desktop.presets.allNotes', 'All notes'),
       type: 'quickAccess',
       target: { quickAccessType: 'notes' },
     },
     {
-      name: t('desktop.presets.allExams', '全部题目集'),
+      name: t('desktop.presets.allExams', 'All exams'),
       type: 'quickAccess',
       target: { quickAccessType: 'exams' },
     },
     {
-      name: t('desktop.presets.allEssays', '全部作文'),
+      name: t('desktop.presets.allEssays', 'All essays'),
       type: 'quickAccess',
       target: { quickAccessType: 'essays' },
     },
     {
-      name: t('desktop.presets.allTranslations', '全部翻译'),
+      name: t('desktop.presets.allTranslations', 'All translations'),
       type: 'quickAccess',
       target: { quickAccessType: 'translations' },
     },
     {
-      name: t('desktop.presets.mindmaps', '知识导图'),
+      name: t('desktop.presets.mindmaps', 'Mind maps'),
       type: 'quickAccess',
       target: { quickAccessType: 'mindmaps' },
     },
     {
-      name: t('desktop.presets.favorites', '收藏'),
+      name: t('desktop.presets.favorites', 'Favorites'),
       type: 'quickAccess',
       target: { quickAccessType: 'favorites' },
     },
     {
-      name: t('desktop.presets.recentAccess', '最近访问'),
+      name: t('desktop.presets.recentAccess', 'Recent access'),
       type: 'quickAccess',
       target: { quickAccessType: 'recent' },
     },

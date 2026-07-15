@@ -71,11 +71,11 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
         setError(result.error.message);
       }
     } catch {
-      setError('Failed to load resources');
+      setError(t('refs.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // 搜索资源
   const searchResources = useCallback(async (q: string) => {
@@ -93,11 +93,11 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
         setError(result.error.message);
       }
     } catch {
-      setError('Search failed');
+      setError(t('refs.searchFailed'));
     } finally {
       setLoading(false);
     }
-  }, [loadRootResources]);
+  }, [loadRootResources, t]);
 
   // 打开时加载资源 + 聚焦搜索框
   useEffect(() => {
@@ -167,7 +167,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
     >
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-sm font-medium">{t('refs.pickerTitle', '关联资源')}</span>
+        <span className="text-sm font-medium">{t('refs.pickerTitle')}</span>
         <NotionButton variant="ghost" onClick={onClose} className="w-6 h-6 p-0 [@media(pointer:coarse)]:w-9 [@media(pointer:coarse)]:h-9">
           <X className="w-4 h-4" />
         </NotionButton>
@@ -181,7 +181,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('refs.searchPlaceholder', '搜索资源...')}
+            placeholder={t('refs.searchPlaceholder')}
             className={cn(
               'w-full pl-7 pr-2 py-1.5 text-sm rounded-md',
               'bg-muted/50 border border-border/50',
@@ -197,13 +197,13 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
             <CircleNotch className="w-5 h-5 animate-spin mr-2" />
-            <span className="text-sm">{t('refs.loading', '加载中...')}</span>
+            <span className="text-sm">{t('refs.loading')}</span>
           </div>
         ) : error ? (
           <div className="text-center py-8 text-sm text-destructive">{error}</div>
         ) : resources.length === 0 ? (
           <div className="text-center py-8 text-sm text-muted-foreground">
-            {query ? t('refs.noResults', '未找到匹配资源') : t('refs.empty', '暂无资源')}
+            {query ? t('refs.noResults') : t('refs.empty')}
           </div>
         ) : (
           resources.map((node) => {

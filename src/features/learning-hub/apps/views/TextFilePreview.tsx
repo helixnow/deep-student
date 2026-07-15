@@ -235,7 +235,7 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
     return (
       <div className={cn('flex items-center justify-center h-full p-6', className)}>
         <p className="text-sm text-muted-foreground">
-          {t('learningHub:docPreview.emptyContent', '文件内容为空，无法预览')}
+          {t('learningHub:docPreview.emptyContent')}
         </p>
       </div>
     );
@@ -243,7 +243,7 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
 
   const truncationNotice = isTextTruncated ? (
     <div className="not-prose mb-2 text-xs text-amber-600 dark:text-amber-400" role="note">
-      {t('learningHub:filePreview.textTruncated', '文件过大，仅显示开头部分内容，可下载文件查看完整内容')}
+      {t('learningHub:filePreview.textTruncated')}
     </div>
   ) : null;
 
@@ -272,7 +272,7 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
       <div className={cn('p-4', className)}>
         {parsedCsv.hiddenRows > 0 && (
           <div className="mb-2 text-xs text-amber-600 dark:text-amber-400" role="note">
-            {t('learningHub:docPreview.csvTruncated', '表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染）', {
+            {t('learningHub:docPreview.csvTruncated', {
               shown: CSV_MAX_RENDER_ROWS,
               hidden: parsedCsv.hiddenRows,
             })}

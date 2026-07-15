@@ -10,6 +10,7 @@
   "set_default_failed": "Failed to set default template",
   "copy_suffix": " - Copy",
   "copy_author": "Copied",
+  "click_to_copy": "Click to copy",
   "cannot_delete_builtin": "Built-in templates cannot be deleted.",
   "delete_confirmation": "Are you sure you want to delete template \"{{name}}\"",
   "delete_failed": "Failed to delete template",

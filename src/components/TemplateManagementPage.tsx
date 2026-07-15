@@ -45,6 +45,10 @@ import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPor
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from './UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import {
+  registerTemplateAgentSurface,
+  type TemplateAgentSnapshot,
+} from '@/features/workbench/apps/system/agentSurfaceRegistry';
 
 function buildExportErrorMessage(permissionDeniedText: string, prefix: string, error: unknown) {
   const rawMessage = getErrorMessage(error);
@@ -71,6 +75,7 @@ interface TemplateManagementPageProps {
   onOpenJsonPreview?: () => void;
   onDesktopShellBackVisibilityChange?: (visible: boolean) => void;
   refreshToken?: number;
+  workbenchWindowId?: string;
 }
 
 const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
@@ -81,6 +86,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   onOpenJsonPreview,
   onDesktopShellBackVisibilityChange,
   refreshToken = 0,
+  workbenchWindowId,
 }) => {
   const { t } = useTranslation('template');
   const { t: tAnki } = useTranslation('anki');
@@ -164,6 +170,57 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const [indicatorStyle, setIndicatorStyle] = useState({ transform: 'translateX(0)', width: 0 });
+  const agentTemplatesRef = useRef<CustomAnkiTemplate[]>([]);
+  const agentSnapshotRef = useRef<TemplateAgentSnapshot>({
+    activeTab: 'browse',
+    selectedTemplateId: null,
+    searchQuery: '',
+    loading: true,
+    error: null,
+    templates: [],
+    totalTemplates: 0,
+  });
+
+  agentTemplatesRef.current = templates;
+  agentSnapshotRef.current = {
+    activeTab,
+    selectedTemplateId: editingTemplate?.id ?? selectedTemplate?.id ?? null,
+    searchQuery: searchTerm,
+    loading: isLoading,
+    error,
+    templates: templates.slice(0, 50).map((template) => ({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      updatedAt: template.updated_at,
+    })),
+    totalTemplates: templates.length,
+  };
+
+  useEffect(() => {
+    if (!workbenchWindowId) return undefined;
+    return registerTemplateAgentSurface(workbenchWindowId, {
+      snapshot: () => agentSnapshotRef.current,
+      openTemplate: (templateId) => {
+        const template = agentTemplatesRef.current.find((item) => item.id === templateId);
+        if (!template) return false;
+        agentSnapshotRef.current = {
+          ...agentSnapshotRef.current,
+          activeTab: 'edit',
+          selectedTemplateId: templateId,
+        };
+        setSelectedTemplate(template);
+        setEditingTemplate({ ...template });
+        setActiveTab('edit');
+        return true;
+      },
+      search: (query) => {
+        agentSnapshotRef.current = { ...agentSnapshotRef.current, searchQuery: query };
+        setSearchTerm(query);
+        return true;
+      },
+    });
+  }, [workbenchWindowId]);
 
   // 🔧 P1-47: 使用 useCallback 包装 loadTemplates，确保 refreshToken 变化时正确触发刷新
   const loadTemplates = useCallback(async () => {

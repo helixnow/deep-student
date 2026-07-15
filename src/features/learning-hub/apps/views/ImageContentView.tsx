@@ -166,7 +166,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
       if (result.found && result.content) {
         const blob = base64ToBlob(result.content, mimeType);
         if (!blob) {
-          setError(t('learningHub:error.imageDecodeFailed', '图片解码失败'));
+          setError(t('learningHub:error.imageDecodeFailed'));
           setLoadingStage('idle');
           return;
         }
@@ -178,7 +178,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         setImageUrl(objectUrl);
         setLoadingStage('done');
       } else {
-        setError(t('learningHub:error.imageNotFound', '图片未找到'));
+        setError(t('learningHub:error.imageNotFound'));
         setLoadingStage('idle');
       }
     } catch (err: unknown) {
@@ -196,12 +196,12 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         attachmentId: node.id,
       });
       if (!result?.found || !result?.content) {
-        showGlobalNotification('error', t('learningHub:error.imageNotFound', '图片未找到'));
+        showGlobalNotification('error', t('learningHub:error.imageNotFound'));
         return;
       }
       const bytes = base64ToUint8Array(result.content);
       if (!bytes) {
-        showGlobalNotification('error', t('learningHub:error.imageDecodeFailed', '图片解码失败'));
+        showGlobalNotification('error', t('learningHub:error.imageDecodeFailed'));
         return;
       }
       const ext = node.name.includes('.') ? node.name.split('.').pop() || '' : '';
@@ -211,7 +211,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
       });
       if (!saveResult.canceled && saveResult.path) {
-        showGlobalNotification('success', t('learningHub:file.savedSuccessfully', '文件已保存'));
+        showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
         try {
           const { openPath } = await import('@tauri-apps/plugin-opener');
           await openPath(saveResult.path);
@@ -248,7 +248,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         if (gen !== loadGenRef.current) return;
         
         if (!attachment) {
-          setError(t('learningHub:error.imageNotFound', '图片未找到'));
+          setError(t('learningHub:error.imageNotFound'));
           setLoadingStage('idle');
           return;
         }
@@ -529,7 +529,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         <p className="text-sm text-muted-foreground">
-          {t('learningHub:image.checkingSize', '检查文件大小...')}
+          {t('learningHub:image.checkingSize')}
         </p>
       </div>
     );
@@ -544,13 +544,11 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         </div>
         <div className="text-center space-y-2">
           <h3 className="text-lg font-medium">
-            {t('learningHub:image.largeFileWarning', '大文件警告')}
+            {t('learningHub:image.largeFileWarning')}
           </h3>
           <p className="text-sm text-muted-foreground max-w-md">
             {t(
-              'learningHub:image.largeFileDescription',
-              '此图片较大 ({{size}})，加载可能需要较长时间并占用较多内存。是否继续加载？',
-              { size: formatFileSize(fileSize) }
+              'learningHub:image.largeFileDescription', { size: formatFileSize(fileSize) }
             )}
           </p>
         </div>
@@ -561,7 +559,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               onClose?.();
             }}
           >
-            {t('common:cancel', '取消')}
+            {t('common:cancel')}
           </NotionButton>
           <NotionButton
             variant="primary"
@@ -569,7 +567,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               void loadImageContent();
             }}
           >
-            {t('learningHub:image.loadAnyway', '继续加载')}
+            {t('learningHub:image.loadAnyway')}
           </NotionButton>
         </div>
       </div>
@@ -584,7 +582,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
         <div className="text-center">
           <p className="text-sm text-muted-foreground">
-            {t('learningHub:image.loading', '加载图片中...')}
+            {t('learningHub:image.loading')}
           </p>
           {fileSize > 0 && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -601,7 +599,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
   if (error || !imageUrl) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
-        <p>{error || t('learningHub:error.imageNotFound', '图片未找到')}</p>
+        <p>{error || t('learningHub:error.imageNotFound')}</p>
         <NotionButton
           variant="default"
           size="sm"
@@ -609,7 +607,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             void loadImageContent();
           }}
         >
-          {t('common:retry', '重试')}
+          {t('common:retry')}
         </NotionButton>
       </div>
     );
@@ -623,12 +621,12 @@ const ImageContentView: React.FC<ContentViewProps> = ({
         <ImageBroken size={40} className="text-muted-foreground" />
         <div className="space-y-1">
           <p className="text-sm font-medium">
-            {t('learningHub:image.renderFailed', '图片无法显示')}
+            {t('learningHub:image.renderFailed')}
           </p>
           <p className="text-xs text-muted-foreground max-w-md">
             {isLikelyUnsupportedFormat
-              ? t('learningHub:image.unsupportedFormatHint', '当前系统的内置浏览器不支持该格式（如 HEIC/HEIF）。可保存到本地后用系统图片查看器打开。')
-              : t('learningHub:image.renderFailedHint', '图片数据可能已损坏或格式不受支持。可尝试保存到本地查看。')}
+              ? t('learningHub:image.unsupportedFormatHint')
+              : t('learningHub:image.renderFailedHint')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -639,7 +637,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
               void loadImageContent();
             }}
           >
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
           <NotionButton
             variant="primary"
@@ -650,7 +648,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             }}
           >
             {isSaving ? <CircleNotch size={14} className="animate-spin" /> : <Download size={14} />}
-            <span className="ml-1">{t('learningHub:image.saveToDevice', '保存到本地')}</span>
+            <span className="ml-1">{t('learningHub:image.saveToDevice')}</span>
           </NotionButton>
         </div>
       </div>
@@ -685,8 +683,8 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             size="sm"
             onClick={handleZoomOut}
             disabled={zoom <= ZOOM_MIN}
-            title={t('learningHub:image.zoomOut', '缩小')}
-            aria-label={t('learningHub:image.zoomOut', '缩小')}
+            title={t('learningHub:image.zoomOut')}
+            aria-label={t('learningHub:image.zoomOut')}
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <MagnifyingGlassMinus size={16} />
@@ -699,8 +697,8 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             size="sm"
             onClick={handleZoomIn}
             disabled={zoom >= ZOOM_MAX}
-            title={t('learningHub:image.zoomIn', '放大')}
-            aria-label={t('learningHub:image.zoomIn', '放大')}
+            title={t('learningHub:image.zoomIn')}
+            aria-label={t('learningHub:image.zoomIn')}
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <MagnifyingGlassPlus size={16} />
@@ -709,8 +707,8 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleRotate}
-            title={t('learningHub:image.rotate', '旋转')}
-            aria-label={t('learningHub:image.rotate', '旋转')}
+            title={t('learningHub:image.rotate')}
+            aria-label={t('learningHub:image.rotate')}
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <ArrowClockwise size={16} />
@@ -719,8 +717,8 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             variant="ghost"
             size="sm"
             onClick={handleReset}
-            title={t('learningHub:image.reset', '重置')}
-            aria-label={t('learningHub:image.reset', '重置')}
+            title={t('learningHub:image.reset')}
+            aria-label={t('learningHub:image.reset')}
             className="max-md:min-h-11 max-md:min-w-11"
           >
             <ArrowsOut size={16} />

@@ -975,7 +975,7 @@ export function FinderFileList({
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-background px-4">
         <WarningCircle size={30} className="mb-4 text-destructive/80" aria-hidden />
-        <p className="text-sm font-medium text-destructive mb-1">{t('finder.error.title', '加载失败')}</p>
+        <p className="text-sm font-medium text-destructive mb-1">{t('finder.error.title')}</p>
         <p className="text-xs text-muted-foreground/70 text-center max-w-[280px] mb-4">{error}</p>
         {onRetry && (
           <NotionButton
@@ -984,7 +984,7 @@ export function FinderFileList({
             onClick={onRetry}
           >
             <ArrowClockwise size={14} className="mr-1.5" />
-            {t('finder.error.retry', '重新加载')}
+            {t('finder.error.retry')}
           </NotionButton>
         )}
       </div>
@@ -1031,7 +1031,7 @@ export function FinderFileList({
         {!isSmallScreen && (
         <div className="mt-6 flex items-center gap-2 text-[11px] text-muted-foreground/40">
           <kbd className="px-1.5 py-0.5 rounded bg-muted/60 font-mono">{t('finder.empty.rightClick')}</kbd>
-          <span>{t('finder.empty.contextMenuHint', '新建文件')}</span>
+          <span>{t('finder.empty.contextMenuHint')}</span>
         </div>
         )}
       </div>

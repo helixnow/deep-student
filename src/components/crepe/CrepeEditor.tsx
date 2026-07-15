@@ -136,12 +136,14 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       
       setMarkdown: (markdown: string) => {
         const crepe = crepeRef.current;
-        if (!crepe) return;
+        if (!crepe) return false;
         try {
           // Milkdown 版本类型差异，运行时兼容
           (crepe.editor as any).action(replaceAll(markdown));
+          return true;
         } catch (e) {
           debugLog.error('[CrepeEditor] setMarkdown failed:', e);
+          return false;
         }
       },
 
@@ -573,8 +575,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       // ===== ACR agent API（R1-12）——不抢焦点、不进用户 undo =====
       agentInsert: (text: string, pos: number) => {
         const crepe = crepeRef.current;
-        if (!crepe || !text) return pos;
-        let nextPos = pos;
+        if (!crepe || !text) return null;
+        let result: { from: number; to: number; cursor: number } | null = null;
         try {
           crepe.editor.action((ctx) => {
             let view: any = null;
@@ -601,12 +603,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 pos: cursor,
               } satisfies AgentHighlightMeta));
             }
-            nextPos = cursor;
+            result = { from, to, cursor };
           });
         } catch (e) {
           debugLog.error('[CrepeEditor] agentInsert failed:', e);
         }
-        return nextPos;
+        return result;
       },
 
       agentInsertMarkdown: (markdown: string, pos: number) => {

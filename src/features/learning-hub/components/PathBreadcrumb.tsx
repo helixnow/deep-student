@@ -90,7 +90,7 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
   }, [breadcrumbs, maxVisibleItems]);
 
   // 根目录显示文本
-  const rootText = rootLabel || t('folder.root', '根目录');
+  const rootText = rootLabel || t('folder.root');
 
   return (
     <nav
@@ -98,7 +98,7 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
         'flex items-center gap-1 text-sm text-muted-foreground overflow-hidden',
         className
       )}
-      aria-label={t('breadcrumb.ariaLabel', '路径导航')}
+      aria-label={t('breadcrumb.ariaLabel')}
     >
       {/* 根目录 */}
       <NotionButton variant="ghost" size="sm" onClick={() => onNavigate(-1)} className={cn('!h-auto !px-1.5 !py-0.5', breadcrumbs.length === 0 && 'text-foreground font-medium')} title={rootText}>
@@ -186,7 +186,7 @@ const DropdownEllipsis = React.memo(function DropdownEllipsis({ items, onNavigat
         size="sm"
         onClick={() => setIsOpen(!isOpen)}
         className="!h-auto !px-1.5 !py-0.5"
-        title={t('breadcrumb.hiddenFolders', '{{count}} 个隐藏文件夹', { count: items.length })}
+        title={t('breadcrumb.hiddenFolders', { count: items.length })}
         aria-haspopup="menu"
         aria-expanded={isOpen}
       >

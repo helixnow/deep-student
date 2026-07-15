@@ -289,7 +289,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
                 onClick={() => { onCloseSplitView(); setCtxMenu(null); }}
               >
                 <SidebarSimple size={14} />
-                {t('learningHub:splitView.close', '关闭分屏')}
+                {t('learningHub:splitView.close')}
               </button>
             )
           ) : (
@@ -304,7 +304,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
                 onClick={() => { if (canSplit) { onSplitView(); setCtxMenu(null); } }}
               >
                 <SidebarSimple size={14} />
-                {t('learningHub:splitView.openRight', '在右侧打开')}
+                {t('learningHub:splitView.openRight')}
               </button>
             )
           )}
@@ -316,8 +316,8 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             >
               {tab.isPinned ? <PushPinSlash size={14} /> : <PushPin size={14} />}
               {tab.isPinned
-                ? t('learningHub:tabBar.unpin', '取消固定')
-                : t('learningHub:tabBar.pin', '固定标签页')}
+                ? t('learningHub:tabBar.unpin')
+                : t('learningHub:tabBar.pin')}
             </button>
           )}
           <div className="h-px bg-border my-1" role="separator" />
@@ -329,7 +329,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             <svg width="12" height="12" viewBox="0 0 10 10" fill="none">
               <path d="M2.5 2.5L7.5 7.5M7.5 2.5L2.5 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
             </svg>
-            {t('common:actions.close', '关闭')}
+            {t('common:actions.close')}
           </button>
           {onCloseOthers && (
             <button
@@ -338,7 +338,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
               onClick={() => { onCloseOthers(); setCtxMenu(null); }}
             >
               <span className="w-[14px]" />
-              {t('learningHub:tabBar.closeOthers', '关闭其他标签页')}
+              {t('learningHub:tabBar.closeOthers')}
             </button>
           )}
           {onCloseRight && (
@@ -354,7 +354,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
               onClick={() => { if (hasTabsToRight) { onCloseRight(); setCtxMenu(null); } }}
             >
               <span className="w-[14px]" />
-              {t('learningHub:tabBar.closeRight', '关闭右侧标签页')}
+              {t('learningHub:tabBar.closeRight')}
             </button>
           )}
         </div>,

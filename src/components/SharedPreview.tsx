@@ -93,7 +93,7 @@ const applyClozeMarkup = (text: string, showBack: boolean) =>
       return `<span class="cloze-revealed">${clozeText}</span>`;
     }
     const hintMarkup = hint ? `<span class="cloze-hint">${hint}</span>` : '';
-    return `<span class="cloze">[...]</span>${hintMarkup}<span class="cloze-live-reveal">${clozeText}</span>`;
+    return `<span class="cloze">[...]</span>${hintMarkup}`;
   });
 
 const stripClozeMarkup = (text: string) =>

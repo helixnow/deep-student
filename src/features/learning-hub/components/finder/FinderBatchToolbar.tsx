@@ -126,7 +126,6 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             ? t('finder.statusBar.selectedOfTotal', {
                 selected: selectedCount,
                 total: totalCount,
-                defaultValue: '{{selected}} selected of {{total}}',
               })
             : t('finder.statusBar.itemCount', { count: totalCount })}
         </span>
@@ -174,8 +173,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 size="icon"
                 iconOnly
                 className={cn(smallIconBtnClass, 'text-muted-foreground hover:text-foreground shrink-0')}
-                title={t('finder.sort.title', '排序方式')}
-                aria-label={t('finder.sort.title', '排序方式')}
+                title={t('finder.sort.title')}
+                aria-label={t('finder.sort.title')}
               >
                 {sortOrder === 'asc' ? <SortAscending size={isTouchPrimary ? 18 : 14} /> : <SortDescending size={isTouchPrimary ? 18 : 14} />}
               </NotionButton>
@@ -195,13 +194,13 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 onClick={() => onSortChange(sortBy, 'asc')}
                 icon={sortOrder === 'asc' ? <Check size={14} /> : <span className="w-3.5" />}
               >
-                {t('finder.sort.asc', '升序')}
+                {t('finder.sort.asc')}
               </AppMenuItem>
               <AppMenuItem
                 onClick={() => onSortChange(sortBy, 'desc')}
                 icon={sortOrder === 'desc' ? <Check size={14} /> : <span className="w-3.5" />}
               >
-                {t('finder.sort.desc', '降序')}
+                {t('finder.sort.desc')}
               </AppMenuItem>
             </AppMenuContent>
           </AppMenu>

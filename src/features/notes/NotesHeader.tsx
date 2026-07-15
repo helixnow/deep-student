@@ -71,12 +71,12 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
             return;
         }
         try {
-            showGlobalNotification('info', t('notes:header.exporting', 'Exporting notes...'));
+            showGlobalNotification('info', t('notes:header.exporting'));
             const res = await NotesAPI.exportNotes({});
             showGlobalNotification('success', t('notes:header.export_success', 'Exported to: {{path}}', { path: res.output_path }));
         } catch (error: unknown) {
             console.error("Export failed", error);
-            showGlobalNotification('error', t('notes:header.export_failed', 'Export failed') + ": " + getErrorMessage(error));
+            showGlobalNotification('error', t('notes:header.export_failed') + ": " + getErrorMessage(error));
         }
     };
 
@@ -89,7 +89,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
         // 创建一个临时的打印容器
         const printContent = document.querySelector('.crepe-editor-wrapper');
         if (!printContent) {
-            showGlobalNotification('error', t('notes:header.print_failed', 'Print failed: No content to print'));
+            showGlobalNotification('error', t('notes:header.print_failed'));
             return;
         }
         
@@ -116,7 +116,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
             outputPath = await fileManager.pickSavePath({
                 title: t('notes:header.export_single_title'),
                 defaultFileName,
-                filters: [{ name: t('notes:header.export_filter_name', 'Markdown Note Export'), extensions: ['zip'] }],
+                filters: [{ name: t('notes:header.export_filter_name'), extensions: ['zip'] }],
             }) ?? undefined;
             if (!outputPath) {
                 return;
@@ -229,7 +229,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                 </NotionButton>
                             </AppMenuTrigger>
                             <AppMenuContent align="end" width={240}>
-                                <AppMenuGroup label={t('notes:menu.page_actions', '页面操作')}>
+                                <AppMenuGroup label={t('notes:menu.page_actions')}>
                                     <AppMenuItem
                                         icon={<Link className="h-4 w-4" />}
                                         shortcut="⌥⌘L"
@@ -237,11 +237,11 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                             if (active) {
                                                 const noteUrl = `note://${active.id}`;
                                                 copyTextToClipboard(noteUrl);
-                                                showGlobalNotification('success', t('notes:menu.link_copied', '链接已复制'));
+                                                showGlobalNotification('success', t('notes:menu.link_copied'));
                                             }
                                         }}
                                     >
-                                        {t('notes:menu.copy_link', '拷贝链接')}
+                                        {t('notes:menu.copy_link')}
                                     </AppMenuItem>
                                     <AppMenuItem 
                                         icon={<ArrowRight className="h-4 w-4" />}
@@ -252,7 +252,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                             }
                                         }}
                                     >
-                                        {t('notes:menu.reveal_in_sidebar', '在侧边栏中显示')}
+                                        {t('notes:menu.reveal_in_sidebar')}
                                     </AppMenuItem>
                                     <AppMenuItem
                                         icon={<Trash className="h-4 w-4" />}
@@ -263,13 +263,13 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                             }
                                         }}
                                     >
-                                        {t('notes:menu.move_to_trash', '移至垃圾箱')}
+                                        {t('notes:menu.move_to_trash')}
                                     </AppMenuItem>
                                 </AppMenuGroup>
 
                                 <AppMenuSeparator />
 
-                                <AppMenuGroup label={t('notes:menu.export_import', '导入导出')}>
+                                <AppMenuGroup label={t('notes:menu.export_import')}>
                                     <AppMenuItem icon={<FileArchive className="h-4 w-4" />} onClick={handleExport}>
                                         {t('notes:toolbar.export')}
                                     </AppMenuItem>
@@ -280,7 +280,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
 
                                 <AppMenuSeparator />
 
-                                <AppMenuGroup label={t('notes:menu.history', '历史')}>
+                                <AppMenuGroup label={t('notes:menu.history')}>
                                     <AppMenuItem 
                                         icon={<Printer className="h-4 w-4" />}
                                         shortcut="⌘P"

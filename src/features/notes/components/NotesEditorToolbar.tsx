@@ -142,9 +142,9 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
   ];
 
   return (
-    <div className="notes-editor-toolbar" role="toolbar" aria-label={t('notes:toolbar.label', '格式化')}>
+    <div className="notes-editor-toolbar" role="toolbar" aria-label={t('notes:toolbar.label')}>
       <Popover open={overflowOpen} onOpenChange={setOverflowOpen}>
-        <CommonTooltip content={t('notes:toolbar.label', '格式化')}>
+        <CommonTooltip content={t('notes:toolbar.label')}>
           <PopoverTrigger asChild>
             <NotionButton
               variant="ghost"
@@ -152,7 +152,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
               iconOnly
               disabled={isDisabled}
               className={overflowOpen ? 'notes-editor-format-trigger active' : 'notes-editor-format-trigger'}
-              aria-label={t('notes:toolbar.label', '格式化')}
+              aria-label={t('notes:toolbar.label')}
               aria-haspopup="menu"
               aria-expanded={overflowOpen}
             >

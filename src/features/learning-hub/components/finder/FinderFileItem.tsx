@@ -175,10 +175,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     ? t(`learningHub:indexStatus.resourceType.${item.type}`)
     : undefined;
   const childCountLabel = item.type === 'folder' && item.childCount !== undefined
-    ? t('learningHub:finder.childCount', { count: item.childCount, defaultValue: '{{count}} 项' })
+    ? t('learningHub:finder.childCount', { count: item.childCount })
     : undefined;
   const rowTitle = snippet
-    ? `${item.name}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex', '[索引]')} ` : ''}${snippet}`
+    ? `${item.name}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex')} ` : ''}${snippet}`
     : item.name;
 
   if (viewMode === 'list') {

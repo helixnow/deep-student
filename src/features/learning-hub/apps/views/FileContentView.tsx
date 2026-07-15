@@ -250,7 +250,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
         });
         if (!saveResult.canceled && saveResult.path) {
-          showGlobalNotification('success', t('learningHub:file.savedSuccessfully', '文件已保存'));
+          showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
           try {
             const { openPath } = await import('@tauri-apps/plugin-opener');
             await openPath(saveResult.path);
@@ -267,13 +267,13 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       });
 
       if (!result?.found || !result?.content) {
-        showGlobalNotification('error', t('learningHub:file.loadFailed', '加载文件失败'));
+        showGlobalNotification('error', t('learningHub:file.loadFailed'));
         return;
       }
 
       const bytes = base64ToUint8Array(result.content);
       if (!bytes) {
-        showGlobalNotification('error', t('learningHub:file.loadFailed', '加载文件失败'));
+        showGlobalNotification('error', t('learningHub:file.loadFailed'));
         return;
       }
 
@@ -285,7 +285,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       });
 
       if (!saveResult.canceled && saveResult.path) {
-        showGlobalNotification('success', t('learningHub:file.savedSuccessfully', '文件已保存'));
+        showGlobalNotification('success', t('learningHub:file.savedSuccessfully'));
         // 保存成功后用系统默认应用打开
         try {
           const { openPath } = await import('@tauri-apps/plugin-opener');
@@ -317,7 +317,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         if (content !== null) {
           setTextContent(content);
         } else {
-          setError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
+          setError(t('learningHub:file.contentNotFound', { id: node.id }));
         }
       } catch (textErr: unknown) {
         console.warn('[FileContentView] loadTextContent failed:', textErr);
@@ -335,7 +335,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         const fileSize = await invoke<number>('get_file_size', { path: blobPath });
         if (!isMounted) return;
         if (fileSize > LARGE_FILE_THRESHOLD) {
-          setError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+          setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);
           return;
         }
@@ -366,7 +366,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       if (result?.found && result?.content) {
         const estimatedSize = estimateBase64Size(result.content);
         if (estimatedSize > LARGE_FILE_THRESHOLD) {
-          setError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+          setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);
           return;
         }
@@ -380,7 +380,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           const mediaBlob = base64ToBlob(result.content, mediaMimeType);
 
           if (!mediaBlob) {
-            setError(t('learningHub:file.mediaDecodeFailed', '媒体文件解码失败'));
+            setError(t('learningHub:file.mediaDecodeFailed'));
             return;
           }
 
@@ -391,7 +391,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         return;
       }
 
-      setError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
+      setError(t('learningHub:file.contentNotFound', { id: node.id }));
     };
 
     const loadContent = async () => {
@@ -412,7 +412,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       try {
         const knownSize = typeof node.size === 'number' ? node.size : null;
         if (needsBinaryPreview && knownSize && knownSize > LARGE_FILE_THRESHOLD) {
-          setError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+          setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);
           return;
         }
@@ -491,12 +491,12 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             {isPreviewTooLarge && (
               <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
                 {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {t('learningHub:file.saveToDevice', '保存到本地打开')}
+                {t('learningHub:file.saveToDevice')}
               </NotionButton>
             )}
             <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
               <ArrowClockwise className="h-3.5 w-3.5" />
-              {t('common:retry', '重试')}
+              {t('common:retry')}
             </NotionButton>
           </div>
         </div>
@@ -504,7 +504,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     }
     if (isLoading) {
       return (
-        <div className="flex items-center justify-center h-full" role="status" aria-label={t('learningHub:loading.content', '加载内容中...')}>
+        <div className="flex items-center justify-center h-full" role="status" aria-label={t('learningHub:loading.content')}>
           <CircleNotch className="h-8 w-8 animate-spin text-primary" />
         </div>
       );
@@ -514,11 +514,11 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (isPdf) {
       if (pdfLoading) {
         return (
-          <div className="flex flex-col items-center justify-center h-full gap-4" role="status" aria-label={t('learningHub:loading.content', '加载内容中...')}>
+          <div className="flex flex-col items-center justify-center h-full gap-4" role="status" aria-label={t('learningHub:loading.content')}>
             <CircleNotch className="h-8 w-8 animate-spin text-primary" />
             {isPdfLargeFile && (
               <p className="text-sm text-muted-foreground">
-                {t('learningHub:file.loadingLargeFile', '正在加载大文件，请稍候...')}
+                {t('learningHub:file.loadingLargeFile')}
               </p>
             )}
           </div>
@@ -531,7 +531,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             <p className="text-center">{pdfError}</p>
             <NotionButton variant="ghost" size="sm" onClick={retryPdfLoad} className="gap-1.5">
               <ArrowClockwise className="h-3.5 w-3.5" />
-              {t('common:retry', '重试')}
+              {t('common:retry')}
             </NotionButton>
           </div>
         );
@@ -554,7 +554,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       }
       // 正在等待加载
       return (
-        <div className="flex items-center justify-center h-full" role="status" aria-label={t('learningHub:loading.content', '加载内容中...')}>
+        <div className="flex items-center justify-center h-full" role="status" aria-label={t('learningHub:loading.content')}>
           <CircleNotch className="h-8 w-8 animate-spin text-primary" />
         </div>
       );
@@ -580,20 +580,20 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         return (
           <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
             <FileText className="w-12 h-12 text-muted-foreground opacity-50" />
-            <p className="text-sm font-medium">{t('learningHub:file.mediaRenderFailed', '音频无法播放')}</p>
+            <p className="text-sm font-medium">{t('learningHub:file.mediaRenderFailed')}</p>
             <p className="text-xs text-muted-foreground max-w-md">
               {isLikelyUnsupportedMedia(node.name, 'audio')
-                ? t('learningHub:file.mediaUnsupportedHint', '当前系统内置浏览器可能不支持该格式，可保存到本地后用系统播放器打开。')
-                : t('learningHub:file.mediaRenderFailedHint', '媒体文件可能已损坏或编码不受支持。')}
+                ? t('learningHub:file.mediaUnsupportedHint')
+                : t('learningHub:file.mediaRenderFailedHint')}
             </p>
             <div className="flex gap-2">
               <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
                 <ArrowClockwise className="h-3.5 w-3.5" />
-                {t('common:retry', '重试')}
+                {t('common:retry')}
               </NotionButton>
               <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
                 {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {t('learningHub:file.saveToDevice', '保存到本地打开')}
+                {t('learningHub:file.saveToDevice')}
               </NotionButton>
             </div>
           </div>
@@ -603,7 +603,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         <div className="h-full flex flex-col items-center justify-center p-6 gap-3">
           {isLikelyUnsupportedMedia(node.name, 'audio') && (
             <p className="text-xs text-amber-600 dark:text-amber-400 text-center max-w-md">
-              {t('learningHub:file.mediaUnsupportedWarning', '该音频格式可能无法在内置浏览器中播放')}
+              {t('learningHub:file.mediaUnsupportedWarning')}
             </p>
           )}
           <audio
@@ -613,7 +613,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             preload="metadata"
             onError={() => setMediaRenderFailed(true)}
           >
-            {t('learningHub:file.noPreview', '此文件类型不支持预览')}
+            {t('learningHub:file.noPreview')}
           </audio>
         </div>
       );
@@ -625,20 +625,20 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         return (
           <div className="flex flex-col items-center justify-center h-full gap-4 p-6 text-center">
             <FileText className="w-12 h-12 text-muted-foreground opacity-50" />
-            <p className="text-sm font-medium">{t('learningHub:file.mediaRenderFailed', '视频无法播放')}</p>
+            <p className="text-sm font-medium">{t('learningHub:file.mediaRenderFailed')}</p>
             <p className="text-xs text-muted-foreground max-w-md">
               {isLikelyUnsupportedMedia(node.name, 'video')
-                ? t('learningHub:file.mediaUnsupportedHint', '当前系统内置浏览器可能不支持该格式，可保存到本地后用系统播放器打开。')
-                : t('learningHub:file.mediaRenderFailedHint', '媒体文件可能已损坏或编码不受支持。')}
+                ? t('learningHub:file.mediaUnsupportedHint')
+                : t('learningHub:file.mediaRenderFailedHint')}
             </p>
             <div className="flex gap-2">
               <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
                 <ArrowClockwise className="h-3.5 w-3.5" />
-                {t('common:retry', '重试')}
+                {t('common:retry')}
               </NotionButton>
               <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
                 {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                {t('learningHub:file.saveToDevice', '保存到本地打开')}
+                {t('learningHub:file.saveToDevice')}
               </NotionButton>
             </div>
           </div>
@@ -648,7 +648,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         <div className="h-full flex flex-col bg-black/90">
           {isLikelyUnsupportedMedia(node.name, 'video') && (
             <p className="text-xs text-amber-400 text-center py-2 px-4">
-              {t('learningHub:file.mediaUnsupportedWarning', '该视频格式可能无法在内置浏览器中播放')}
+              {t('learningHub:file.mediaUnsupportedWarning')}
             </p>
           )}
           <div className="flex-1 flex items-center justify-center">
@@ -659,7 +659,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
               preload="metadata"
               onError={() => setMediaRenderFailed(true)}
             >
-              {t('learningHub:file.noPreview', '此文件类型不支持预览')}
+              {t('learningHub:file.noPreview')}
             </video>
           </div>
         </div>
@@ -681,23 +681,23 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       <div className="flex flex-col items-center justify-center h-full gap-4 text-muted-foreground">
         <FileIconComponent className="w-16 h-16 opacity-50" />
         <p className="text-center">
-          {t('learningHub:file.noPreview', '此文件类型不支持预览')}
+          {t('learningHub:file.noPreview')}
         </p>
         <p className="text-xs text-center opacity-70 max-w-md break-all">
           {node.name} · {mimeType}
           {typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''} · {node.id}
         </p>
         <p className="text-sm text-center">
-          {t('learningHub:file.downloadHint', '您可以下载文件后使用其他应用程序打开')}
+          {t('learningHub:file.downloadHint')}
         </p>
         <div className="flex items-center gap-2">
           <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
             {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            {t('learningHub:file.saveToDevice', '保存到本地打开')}
+            {t('learningHub:file.saveToDevice')}
           </NotionButton>
           <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
             <ArrowClockwise className="h-3.5 w-3.5" />
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
         </div>
       </div>

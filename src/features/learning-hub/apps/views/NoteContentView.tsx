@@ -121,8 +121,17 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   onTitleChange,
   readOnly = false,
   isActive = false,
+  focusOnActive = false,
+  onSaveStateChange,
+  hostWindowId,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
+  const focusOnActiveRef = useRef(focusOnActive);
+  const isActiveRef = useRef(isActive);
+  const onSaveStateChangeRef = useRef(onSaveStateChange);
+  focusOnActiveRef.current = focusOnActive;
+  isActiveRef.current = isActive;
+  onSaveStateChangeRef.current = onSaveStateChange;
   // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
   const isSmallScreen = useIsMobile();
 
@@ -175,6 +184,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const [title, setTitle] = useState<string>(node.name || '');
   const [tags, setTags] = useState<string[]>((node.metadata?.tags as string[]) || []);
   const editorApiRef = useRef<CrepeEditorApi | null>(null);
+  const acrApiByLifecycleRef = useRef(new WeakMap<CrepeEditorApi, CrepeEditorApi>());
   
   // 🔧 追踪当前加载的笔记 ID，用于防止竞态条件
   const loadingNoteIdRef = React.useRef<string | null>(null);
@@ -432,7 +442,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       return result;
     } catch (err) {
       console.error('[NoteContentView] Failed to load more markdown lines:', err);
-      setLoadMoreError(t('notes:editor.windowing.load_more_failed', 'Could not load more lines. Retry loading more lines.'));
+      setLoadMoreError(t('notes:editor.windowing.load_more_failed'));
       return null;
     } finally {
       isLoadingMoreRef.current = false;
@@ -448,7 +458,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // ★ R4：必须 throw（且不可重试）而非静默 return——否则编辑器会把
     // 未写入的内容标记为"已保存"，beforeunload 不再拦截，内容可能丢失。
     if (useSystemStatusStore.getState().maintenanceMode) {
-      const msg = t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记');
+      const msg = t('common:maintenance.blocked_note_save');
       const now = Date.now();
       if (now - maintenanceWarnedAtRef.current > 10_000) {
         maintenanceWarnedAtRef.current = now;
@@ -584,11 +594,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         const userVersionFull = saveContent;
         showGlobalNotification(
           'warning',
-          t('notes:editor.conflict_refreshed', '笔记已在其他位置被修改，已刷新为最新版本'),
+          t('notes:editor.conflict_refreshed'),
           undefined,
           {
             action: {
-              label: t('notes:editor.conflict_restore_mine', '恢复我的版本'),
+              label: t('notes:editor.conflict_restore_mine'),
               onClick: () => {
                 if (isViewStillCurrent()) {
                   // 把用户版本写回编辑器（force 路径会同步草稿基线），
@@ -617,7 +627,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                     expectedUpdatedAtMs: expected ?? undefined,
                   });
                   if (restore.ok) {
-                    showGlobalNotification('success', t('notes:actions.save_success', '保存成功'));
+                    showGlobalNotification('success', t('notes:actions.save_success'));
                   } else {
                     showGlobalNotification('error', restore.error.toUserMessage());
                   }
@@ -650,7 +660,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // ★ R4：throw 让 NotesEditorHeader 回滚输入框——静默 return 会让
     // 界面一直显示一个从未持久化的标题。
     if (useSystemStatusStore.getState().maintenanceMode) {
-      const msg = t('common:maintenance.blocked_note_save', '维护模式下无法保存笔记');
+      const msg = t('common:maintenance.blocked_note_save');
       showGlobalNotification('warning', msg);
       throw new Error(msg);
     }
@@ -688,16 +698,96 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 都把 editorApiRef 清空，Ctrl+S 强制保存与插入类命令随即静默失效。
   const handleEditorReady = useCallback((api: CrepeEditorApi | null) => {
     editorApiRef.current = api;
+    if (api && focusOnActiveRef.current && isActiveRef.current) {
+      window.requestAnimationFrame(() => api.focus());
+    }
   }, []);
 
+  useEffect(() => {
+    if (!focusOnActive || !isActive) return;
+    const editor = editorApiRef.current;
+    if (editor) window.requestAnimationFrame(() => editor.focus());
+  }, [focusOnActive, isActive, node.id]);
+
   // ACR R1-13：向 noteDriver 注册表挂载/卸载 editorApi（供 agentInsert / probe）
-  const handleEditorApiReady = useCallback((api: CrepeEditorApi | null) => {
+  const handleEditorApiReady = useCallback((api: CrepeEditorApi | null, previousApi?: CrepeEditorApi) => {
     if (api) {
-      registerNoteEditor(node.id, api);
+      const getLiveFullMarkdown = () => {
+        const visible = api.getMarkdown();
+        const currentWindow = markdownWindowRef.current;
+        return currentWindow
+          ? composeWindowedSave(
+              visible,
+              fullContentRef.current,
+              currentWindow.loadedLineCount,
+              currentWindow.hasMore,
+            )
+          : visible;
+      };
+      const acrApi: CrepeEditorApi = {
+        ...api,
+        getFullMarkdown: getLiveFullMarkdown,
+        isDocumentWindowed: () => markdownWindowRef.current?.hasMore === true,
+        replaceFullMarkdown: async (markdown, options) => {
+          if (loadingNoteIdRef.current !== node.id) {
+            throw new Error('笔记实例已切换，拒绝写入过期编辑器');
+          }
+          if (api.isReadonly()) {
+            throw new Error('笔记编辑器为只读状态');
+          }
+
+          const previousFull = getLiveFullMarkdown();
+          const previousBackingFull = fullContentRef.current;
+          if (previousFull !== options.expectedMarkdown) {
+            throw new Error('笔记正文已变化，全文写入 OCC 校验失败');
+          }
+
+          const previousWindow = markdownWindowRef.current;
+          const lineCount = getMarkdownLineCount(markdown);
+          const fullWindow: MarkdownWindow = {
+            loadedMarkdown: markdown,
+            loadedLineCount: lineCount,
+            totalLineCount: lineCount,
+            hasMore: false,
+          };
+
+          // Make the editor and save composer operate on the same complete document.
+          // Keeping the full document loaded after an ACR mutation is intentional: re-windowing
+          // immediately would enqueue a prefix-only onChange before the persisted baseline settles.
+          fullContentRef.current = markdown;
+          setContent(markdown);
+          setContentNoteId(node.id);
+          setMarkdownWindow(fullWindow);
+
+          if (!api.setMarkdown(markdown) || api.getMarkdown() !== markdown) {
+            fullContentRef.current = previousBackingFull;
+            setContent(previousBackingFull);
+            setMarkdownWindow(previousWindow);
+            if (previousWindow) api.setMarkdown(previousWindow.loadedMarkdown);
+            throw new Error('编辑器未确认全文替换');
+          }
+          if (!api.flushPendingSave) {
+            throw new Error('编辑器未提供持久化确认能力');
+          }
+
+          await api.flushPendingSave();
+          if (persistedContentRef.current !== markdown) {
+            throw new Error('笔记全文替换未通过持久化验证');
+          }
+          return true;
+        },
+      };
+      acrApiByLifecycleRef.current.set(api, acrApi);
+      editorApiRef.current = acrApi;
+      registerNoteEditor(node.id, acrApi, hostWindowId);
     } else {
-      unregisterNoteEditor(node.id);
+      const registeredApi = previousApi
+        ? acrApiByLifecycleRef.current.get(previousApi)
+        : undefined;
+      if (registeredApi && editorApiRef.current === registeredApi) editorApiRef.current = null;
+      if (registeredApi) unregisterNoteEditor(node.id, registeredApi, hostWindowId);
     }
-  }, [node.id]);
+  }, [hostWindowId, node.id, setMarkdownWindow]);
 
   const handleRetryLoadMore = useCallback(() => {
     setLoadMoreError(null);
@@ -725,10 +815,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         if (!editor || editor.isReadonly()) return;
         void handleSave(editor.getMarkdown())
           .then(() => {
-            showGlobalNotification('success', t('notes:actions.save_success', '保存成功'));
+            showGlobalNotification('success', t('notes:actions.save_success'));
           })
           .catch((err) => {
-            const msg = err instanceof Error ? err.message : t('notes:actions.save_failed', '保存失败');
+            const msg = err instanceof Error ? err.message : t('notes:actions.save_failed');
             showGlobalNotification('error', msg);
           });
       },
@@ -762,7 +852,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       },
       [COMMAND_EVENTS.AI_CONTINUE_WRITING]: () => {
         if (!isActive || readOnly || editorApiRef.current?.isReadonly()) return;
-        showGlobalNotification('info', t('notes:ai.continue_not_available', 'AI 续写命令暂不可用，请使用聊天面板发起编辑。'));
+        showGlobalNotification('info', t('notes:ai.continue_not_available'));
       },
     },
     true
@@ -782,7 +872,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
   if (error) {
     const message = error.code === VfsErrorCode.NOT_FOUND
-      ? t('notes:error.notFound', '笔记不存在或已被删除')
+      ? t('notes:error.notFound')
       : error.toUserMessage();
     return (
       <div className="flex flex-col items-center justify-center h-full" role="alert">
@@ -790,11 +880,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         <span className="text-destructive">{message}</span>
         <div className="flex gap-2 mt-3">
           <NotionButton variant="primary" onClick={() => loadNoteContent()}>
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
           {onClose && (
             <NotionButton variant="ghost" onClick={onClose}>
-              {t('common:close', '关闭')}
+              {t('common:close')}
             </NotionButton>
           )}
         </div>
@@ -809,7 +899,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         <div
           className="absolute top-0 left-0 right-0 h-1 bg-primary/20 z-50 overflow-hidden"
           role="status"
-          aria-label={t('notes:editor.windowing.loading_note', 'Loading note...')}
+          aria-label={t('notes:editor.windowing.loading_note')}
         >
           {/* 🔧 修复：原引用的 indeterminate 关键帧不存在，进度条从未动画过；
               改用设计系统既有的 progress-indeterminate 关键帧 */}
@@ -828,12 +918,14 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             readOnly={readOnly}
             onEditorReady={handleEditorReady}
             onEditorApiReady={handleEditorApiReady}
+            onSaveStateChange={(state) => onSaveStateChangeRef.current?.(state)}
             dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
+            acrWindowId={hostWindowId}
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
             headerActions={(
-              <CommonTooltip content={t('notes:contextPanel.title', '属性')} position="bottom">
+              <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
                 <NotionButton
                   variant="ghost"
                   iconOnly
@@ -843,7 +935,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
                     (rightPanelVisible || mobilePanelOpen) && 'bg-[var(--interactive-hover)] text-foreground',
                   )}
                   onClick={() => isSmallScreen ? setMobilePanelOpen(true) : toggleRightPanel()}
-                  aria-label={t('notes:contextPanel.title', '属性')}
+                  aria-label={t('notes:contextPanel.title')}
                   aria-expanded={isSmallScreen ? mobilePanelOpen : rightPanelVisible}
                 >
                   <SidebarSimple size={15} aria-hidden="true" />
@@ -852,7 +944,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             )}
           />
         ) : (
-          <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note', 'Loading note...')} />
+          <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note')} />
         )}
       </main>
 
@@ -860,11 +952,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         <aside
           className="notes-properties-overlay absolute bottom-3 right-3 top-12 z-30 flex flex-col overflow-hidden border border-border bg-background/98 shadow-md"
           style={{ width: 'min(288px, calc(100% - 24px))' }}
-          aria-label={t('notes:contextPanel.title', '属性')}
+          aria-label={t('notes:contextPanel.title')}
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
-            <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title', '属性')}</span>
-            <NotionButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close', '关闭')}>
+            <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
+            <NotionButton variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={toggleRightPanel} aria-label={t('common:close')}>
               <X size={13} aria-hidden="true" />
             </NotionButton>
           </div>
@@ -882,14 +974,14 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setMobilePanelOpen(false)}
-              aria-label={t('common:back', '返回')}
+              aria-label={t('common:back')}
               className="gap-1 min-h-11 px-2"
             >
               <CaretLeft size={16} aria-hidden="true" />
-              {t('common:back', '返回')}
+              {t('common:back')}
             </NotionButton>
             <span className="text-sm font-medium truncate text-foreground/90">
-              {t('notes:contextPanel.title', '属性')}
+              {t('notes:contextPanel.title')}
             </span>
           </div>
           <div className="flex-1 min-h-0 overflow-hidden pb-[var(--mobile-safe-area-bottom,0px)]">

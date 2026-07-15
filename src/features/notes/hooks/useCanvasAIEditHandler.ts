@@ -9,7 +9,16 @@ interface UseCanvasAIEditHandlerOptions {
   editorApi: CrepeEditorApi | null;
   onSave?: (content: string) => Promise<void>;
   enabled?: boolean;
+  windowId?: string;
 }
+
+type LocalSuggestionDisposition =
+  | { accepted: true }
+  | { accepted: false; reason: string };
+
+type LocalCanvasAIEditRequest = CanvasAIEditRequest & {
+  onLocalDisposition?: (disposition: LocalSuggestionDisposition) => void;
+};
 
 /** ★ 2.1 AI 编辑检查点：接受后仍可回滚整轮 */
 export interface AIEditCheckpoint {
@@ -40,10 +49,12 @@ export function useCanvasAIEditHandler({
   editorApi,
   onSave,
   enabled = true,
+  windowId,
 }: UseCanvasAIEditHandlerOptions): UseCanvasAIEditHandlerReturn {
   const noteIdRef = useRef(noteId);
   const editorApiRef = useRef(editorApi);
   const onSaveRef = useRef(onSave);
+  const windowIdRef = useRef(windowId);
 
   const { state: aiEditState, startEdit, accept, reject, clear } = useAIEditState();
   const [isApplying, setIsApplying] = useState(false);
@@ -69,6 +80,10 @@ export function useCanvasAIEditHandler({
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
+
+  useEffect(() => {
+    windowIdRef.current = windowId;
+  }, [windowId]);
 
   const sendResult = useCallback(async (result: CanvasAIEditResult) => {
     // ACR R2-03：noteDriver 建议模式经 window CustomEvent 派发，工具已立即回执
@@ -105,11 +120,42 @@ export function useCanvasAIEditHandler({
       }
 
       // ★ 2.1 接受前记录检查点（编辑前全文），接受后仍可整轮回滚
-      const contentBeforeApply = editor.getMarkdown();
+      const contentBeforeApply = editor.getFullMarkdown?.() ?? editor.getMarkdown();
 
       try {
-        editor.setMarkdown(proposedContent);
+        if (editor.replaceFullMarkdown) {
+          const replaced = await editor.replaceFullMarkdown(proposedContent, {
+            expectedMarkdown: contentBeforeApply,
+          });
+          if (!replaced) {
+            throw new Error('编辑器拒绝应用建议');
+          }
+        } else {
+          if (!editor.setMarkdown(proposedContent)) {
+            throw new Error('编辑器拒绝应用建议');
+          }
+          if (onSaveRef.current) {
+            await onSaveRef.current(proposedContent);
+          }
+        }
       } catch (err) {
+        const contentAfterFailure = editor.getFullMarkdown?.() ?? editor.getMarkdown();
+        if (contentAfterFailure === proposedContent) {
+          try {
+            if (editor.replaceFullMarkdown) {
+              const restored = await editor.replaceFullMarkdown(contentBeforeApply, {
+                expectedMarkdown: proposedContent,
+              });
+              if (!restored) {
+                throw new Error('编辑器拒绝恢复建议前内容');
+              }
+            } else if (!editor.setMarkdown(contentBeforeApply)) {
+              throw new Error('编辑器拒绝恢复建议前内容');
+            }
+          } catch (restoreErr) {
+            console.warn('[useCanvasAIEditHandler] Failed to restore after apply error:', restoreErr);
+          }
+        }
         await sendResult({
           requestId: result.requestId,
           success: false,
@@ -119,28 +165,6 @@ export function useCanvasAIEditHandler({
           addedContent: result.addedContent,
         });
         return;
-      }
-
-      if (onSaveRef.current) {
-        try {
-          await onSaveRef.current(proposedContent);
-        } catch (err) {
-          console.warn('[useCanvasAIEditHandler] Auto-save failed:', err);
-          try {
-            editor.setMarkdown(contentBeforeApply);
-          } catch (restoreErr) {
-            console.warn('[useCanvasAIEditHandler] Failed to restore after save error:', restoreErr);
-          }
-          await sendResult({
-            requestId: result.requestId,
-            success: false,
-            error: err instanceof Error ? err.message : '保存失败，修改未落盘',
-            beforePreview: result.beforePreview,
-            afterPreview: result.afterPreview,
-            addedContent: result.addedContent,
-          });
-          return;
-        }
       }
 
       clear();
@@ -169,12 +193,22 @@ export function useCanvasAIEditHandler({
     }
 
     try {
-      editor.setMarkdown(checkpoint.originalContent);
+      const current = editor.getFullMarkdown?.() ?? editor.getMarkdown();
+      if (editor.replaceFullMarkdown) {
+        const restored = await editor.replaceFullMarkdown(checkpoint.originalContent, {
+          expectedMarkdown: current,
+        });
+        if (!restored) {
+          throw new Error('编辑器拒绝回滚检查点');
+        }
+      } else if (!editor.setMarkdown(checkpoint.originalContent)) {
+        throw new Error('编辑器拒绝回滚检查点');
+      }
     } catch (err) {
       console.warn('[useCanvasAIEditHandler] Rollback apply failed:', err);
       return;
     }
-    if (onSaveRef.current) {
+    if (!editor.replaceFullMarkdown && onSaveRef.current) {
       try {
         await onSaveRef.current(checkpoint.originalContent);
       } catch (err) {
@@ -198,7 +232,7 @@ export function useCanvasAIEditHandler({
   }, [reject, sendResult]);
 
   const handleEditRequest = useCallback(
-    async (request: CanvasAIEditRequest) => {
+    async (request: LocalCanvasAIEditRequest) => {
       console.log('[useCanvasAIEditHandler] Received edit request:', request.requestId, request.operation);
 
       // ★ R2 修复：非目标实例静默忽略。
@@ -209,11 +243,18 @@ export function useCanvasAIEditHandler({
         console.log('[useCanvasAIEditHandler] Ignoring request for other note:', request.noteId, 'current:', noteIdRef.current);
         return;
       }
+      if (request.targetWindowId && request.targetWindowId !== windowIdRef.current) {
+        return;
+      }
 
       // 先同步占位再等待 ACK，防止两条事件在同一事件循环内越过异步间隙，
       // 后到的建议必须保留当前 diff，而不是静默覆盖它。
       const pendingRequest = pendingRequestRef.current;
       if (pendingRequest) {
+        request.onLocalDisposition?.({
+          accepted: false,
+          reason: '已有一条笔记编辑建议等待确认',
+        });
         try {
           await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId });
         } catch (err) {
@@ -230,17 +271,10 @@ export function useCanvasAIEditHandler({
       }
       pendingRequestRef.current = request;
 
-      // 认领请求：告知后端目标编辑器存在（失败不阻断后续流程，
-      // 后端会在 ACK 超时后以"笔记未打开"失败，结果回调仍可兜底）
-      try {
-        await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId });
-      } catch (err) {
-        console.error('[useCanvasAIEditHandler] Failed to ack edit request:', err);
-      }
-
       const editor = editorApiRef.current;
       if (!editor) {
         pendingRequestRef.current = null;
+        request.onLocalDisposition?.({ accepted: false, reason: '编辑器未就绪' });
         const result: CanvasAIEditResult = {
           requestId: request.requestId,
           success: false,
@@ -250,15 +284,29 @@ export function useCanvasAIEditHandler({
         return;
       }
 
-      const originalContent = editor.getMarkdown();
-      const immediateFailure = startEdit(request, originalContent);
+      const originalContent = editor.getFullMarkdown?.() ?? editor.getMarkdown();
+      const { onLocalDisposition: _onLocalDisposition, ...stateRequest } = request;
+      const immediateFailure = startEdit(stateRequest, originalContent);
       if (immediateFailure) {
         pendingRequestRef.current = null;
+        request.onLocalDisposition?.({
+          accepted: false,
+          reason: immediateFailure.error ?? '建议内容无效',
+        });
         await sendResult(immediateFailure);
-      } else {
-        // 只有新建议确实建立后才使旧检查点失效；无效请求不能夺走回滚能力。
-        setCheckpoint(null);
+        return;
       }
+      request.onLocalDisposition?.({ accepted: true });
+      setCheckpoint(null);
+
+      // 认领请求：告知后端目标编辑器存在（失败不阻断后续流程，
+      // 后端会在 ACK 超时后以"笔记未打开"失败，结果回调仍可兜底）
+      try {
+        await invoke('chat_v2_canvas_edit_ack', { requestId: request.requestId });
+      } catch (err) {
+        console.error('[useCanvasAIEditHandler] Failed to ack edit request:', err);
+      }
+
     },
     [startEdit, sendResult]
   );
@@ -272,7 +320,7 @@ export function useCanvasAIEditHandler({
     // ACR R1-13：noteDriver 建议模式派发 window CustomEvent（同名）；
     // Rust execute_write_frontend 仍走 Tauri emit。双通道共用 handleEditRequest。
     const handleDomCustomEvent = (event: Event) => {
-      const detail = (event as CustomEvent<CanvasAIEditRequest>).detail;
+      const detail = (event as CustomEvent<LocalCanvasAIEditRequest>).detail;
       if (!detail || typeof detail !== 'object') return;
       void handleEditRequest(detail);
     };

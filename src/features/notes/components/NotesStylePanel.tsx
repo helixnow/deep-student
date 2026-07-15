@@ -18,13 +18,13 @@ export const NotesStylePanel: React.FC = () => {
             <div className="flex items-center gap-1.5">
                 <TextT className="w-3 h-3 text-muted-foreground/70" />
                 <h3 className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wider">
-                    {t('notes:context.typography_title', 'Typography')}
+                    {t('notes:context.typography_title')}
                 </h3>
             </div>
             <div className="flex items-start gap-2 p-2 rounded-md bg-muted/30 text-muted-foreground">
                 <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <p className="text-[10px] leading-relaxed">
-                    {t('notes:context.typography_markdown_hint', 'Markdown editor uses default styling. Rich text formatting (fonts, sizes) is not supported.')}
+                    {t('notes:context.typography_markdown_hint')}
                 </p>
             </div>
         </div>

@@ -79,12 +79,16 @@ export interface NotesCrepeEditorProps {
    * ACR R1-13：编辑器 API 就绪/销毁回调（供 workbench noteDriver 注册表）。
    * 与 onEditorReady 并行，互不影响既有 Learning Hub / Context 路径。
    */
-  onEditorApiReady?: (api: CrepeEditorApi | null) => void;
+  onEditorApiReady?: (api: CrepeEditorApi | null, previousApi?: CrepeEditorApi) => void;
+  /** Optional save-state bridge for owning tab strips. */
+  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
   /**
    * ACR R1-13：存在时把 isCurrentNoteDirty 挂到 contentDirtyRegistry，
    * 供 probe / canClose 查询（typeId + instanceKey = 资源 id）。
    */
   dirtyRegistryKey?: { typeId: string; instanceKey: string };
+  /** Exact Workbench window for local ACR suggestion routing. */
+  acrWindowId?: string;
   windowingState?: NotesEditorWindowingState;
   onRequestLoadMore?: (currentMarkdown: string) => Promise<MarkdownLoadMoreResult | null | void>;
   onRetryLoadMore?: () => void;
@@ -101,7 +105,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   headerActions,
   onEditorReady,
   onEditorApiReady,
+  onSaveStateChange,
   dirtyRegistryKey,
+  acrWindowId,
   windowingState,
   onRequestLoadMore,
   onRetryLoadMore,
@@ -131,6 +137,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const contentRef = useRef<string>('');
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [editorApi, setEditorApi] = useState<CrepeEditorApi | null>(null);
+  const lifecycleApiRef = useRef<CrepeEditorApi | null>(null);
   const pendingSaveQueueRef = useRef<PendingSavePayload[]>([]);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
   const activeSavePayloadRef = useRef<PendingSavePayload | null>(null);
@@ -139,6 +146,10 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [isDirty, setIsDirty] = useState(false);
   /** 最近一次放弃重试后的保存错误（冲突 / 失败） */
   const [saveError, setSaveError] = useState<'failed' | 'conflict' | null>(null);
+
+  useEffect(() => {
+    onSaveStateChange?.(isSaving ? 'saving' : isDirty ? 'dirty' : 'saved');
+  }, [isDirty, isSaving, onSaveStateChange]);
   const draftByNoteRef = useRef<Map<string, string>>(new Map());
   const lastSavedMapRef = useRef<Map<string, string>>(new Map());
   const dstuSaveByNoteRef = useRef<Map<string, (content: string) => Promise<void>>>(new Map());
@@ -215,7 +226,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         oversizeNotifiedRef.current.add(targetNoteId);
         showGlobalNotification(
           'error',
-          t('notes:actions.content_too_large', '笔记内容超过 1MB 上限，无法保存。请删减内容或拆分为多篇笔记。')
+          t('notes:actions.content_too_large')
         );
       }
       const error = new Error('Note content exceeds 1MB limit');
@@ -320,7 +331,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                 }
                 showGlobalNotification(
                   'error',
-                  t('notes:actions.auto_save_failed', '笔记自动保存失败，请尝试手动保存（Ctrl+S）或复制内容到安全位置。')
+                  t('notes:actions.auto_save_failed')
                 );
                 terminalErrorsByNote.set(payload.noteId, error);
               }
@@ -860,6 +871,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     };
 
     setEditorApi(lifecycleApi);
+    lifecycleApiRef.current = lifecycleApi;
     onEditorReady?.(lifecycleApi);
     onEditorApiReady?.(lifecycleApi);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
@@ -871,7 +883,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   useEffect(() => {
     return () => {
       onEditorReady?.(null);
-      onEditorApiReady?.(null);
+      const previousApi = lifecycleApiRef.current;
+      lifecycleApiRef.current = null;
+      onEditorApiReady?.(null, previousApi ?? undefined);
     };
   }, [onEditorReady, onEditorApiReady]);
 
@@ -904,6 +918,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     editorApi,
     onSave: handleAISave,
     enabled: hasSelection && isContentLoaded,
+    windowId: acrWindowId,
   });
 
   const captureViewportMetrics = useCallback(() => {
@@ -1237,7 +1252,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} />
           <div className="ml-auto flex items-center gap-1">
             {/* 查找替换按钮 */}
-            <CommonTooltip content={t('notes:toolbar.find_replace', '查找替换')} position="bottom">
+            <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
               <NotionButton
                 variant="ghost"
                 iconOnly
@@ -1247,7 +1262,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                   isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
                 )}
                 onClick={() => setIsFindReplaceOpen((prev) => !prev)}
-                aria-label={t('notes:toolbar.find_replace', '查找替换')}
+                aria-label={t('notes:toolbar.find_replace')}
                 aria-pressed={isFindReplaceOpen}
               >
                 <MagnifyingGlass size={16} />
@@ -1339,18 +1354,18 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               {windowingState.isLoadingMore ? (
                 <>
                   <CircleNotch size={14} className="animate-spin text-primary" />
-                  <span>{t('notes:editor.windowing.loading_more', 'Loading more lines...')}</span>
+                  <span>{t('notes:editor.windowing.loading_more')}</span>
                 </>
               ) : windowingState.loadMoreError ? (
                 <>
-                  <span>{t('notes:editor.windowing.load_more_failed', 'Could not load more lines. Retry loading more lines.')}</span>
+                  <span>{t('notes:editor.windowing.load_more_failed')}</span>
                   <NotionButton
                     variant="ghost"
                     size="sm"
                     className="h-7 px-2 text-xs"
                     onClick={onRetryLoadMore}
                   >
-                    {t('notes:editor.windowing.retry', 'Retry')}
+                    {t('notes:editor.windowing.retry')}
                   </NotionButton>
                 </>
               ) : null}

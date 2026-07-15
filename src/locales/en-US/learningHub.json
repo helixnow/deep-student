@@ -62,13 +62,21 @@
     "exportSaveTitle": "Export Resource",
     "exportSuccess": "Exported to: {{path}}",
     "exportFailed": "Export failed"
+  ,
+    "confirmDelete": "Confirm Delete",
+    "confirmDeleteWithRefs": "Confirm Delete With Refs {{count}}",
+    "favoriteError": "Favorite Error",
+    "favoriteSuccess": "Favorite Success",
+    "renameError": "Rename Error",
+    "unfavoriteSuccess": "Unfavorite Success"
   },
   "toolbar": {
     "search": "Search resources...",
     "refresh": "Refresh",
     "close": "Close",
     "resize": "Drag to resize",
-    "actions": "Actions"
+    "actions": "Actions",
+    "settings": "Settings"
   },
   "filter": {
     "label": "Show Type"
@@ -148,9 +156,15 @@
     "unsupportedResourceType": "Unsupported resource type: {{type}}",
     "openResourceFailed": "Failed to open resource",
     "imageDecodeFailed": "Failed to decode image"
+  ,
+    "resourceTypeMismatch": "Resource type mismatch: expected {{expected}}, received {{actual}}"
   },
   "errors": {
     "openResourceFailed": "Failed to open resource"
+  ,
+    "createNotAllowed": "The current view does not support creating resources",
+    "resourceDeletedOrMoved": "The resource was deleted or moved. The invalid tab has been closed.",
+    "resourceNotFound": "The requested resource was not found"
   },
   "success": {
     "referenceToChat": "Added to chat context",
@@ -232,6 +246,7 @@
     "contents": "Contents",
     "searchPlaceholder": "Search this book",
     "searchCount": "{{count}} results",
+    "searching": "Searching...",
     "previousChapter": "Previous chapter",
     "nextChapter": "Next chapter",
     "progress": "Reading progress {{progress}}%"
@@ -302,6 +317,8 @@
     "presentationFiles": "Presentations/E-books",
     "dataFiles": "Data Files",
     "selectFiles": "Select Learning Material Files"
+  ,
+    "importEmpty": "No textbooks were imported successfully"
   },
   "preview": {
     "untitled": "Untitled",
@@ -593,6 +610,18 @@
       "asc": "Ascending",
       "desc": "Descending"
     }
+  ,
+    "canvas": {
+      "addToChat": "Add To Chat",
+      "adding": "Adding",
+      "exitMultiSelect": "Exit Multi Select",
+      "selectHint": "Select Hint",
+      "selected": "Selected {{count}}"
+    },
+    "create": {
+      "defaultFolderName": "Default Folder Name",
+      "notAllowedHere": "Not Allowed Here"
+    }
   },
   "quickCreate": {
     "title": "Quick Create",
@@ -688,7 +717,65 @@
     "delete_confirm": "Are you sure you want to delete this memory?",
     "type_fact": "Fact",
     "type_study": "Study",
-    "type_note": "Note"
+    "type_note": "Note",
+    "or": "or"
+  ,
+    "audit_all_sources": "Audit all sources",
+    "audit_all_status": "Audit all status",
+    "audit_empty": "Audit empty",
+    "audit_failed": "Audit failed",
+    "audit_load_error": "Audit load error",
+    "audit_load_more": "Audit load more",
+    "audit_log": "Audit log",
+    "audit_source_auto": "Audit source auto",
+    "audit_source_evolution": "Audit source evolution",
+    "audit_source_handler": "Audit source handler",
+    "audit_source_tool": "Audit source tool",
+    "audit_success": "Audit success",
+    "auto_extract": "Auto extract",
+    "batch_delete": "Batch delete ({{count}})",
+    "batch_delete_confirm": "Batch delete confirm {{count}}",
+    "batch_delete_error": "Batch delete error",
+    "batch_delete_partial": "Batch delete partial {{succeeded}} {{failed}}",
+    "batch_delete_success": "Batch delete success {{count}}",
+    "batch_import": "Batch import",
+    "batch_import_confirm": "Batch import confirm",
+    "batch_import_count": "Batch import count {{count}}",
+    "batch_import_empty": "Batch import empty",
+    "batch_import_error": "Batch import error",
+    "batch_import_hint": "Batch import hint",
+    "batch_import_placeholder": "Batch import placeholder",
+    "batch_import_summary": "Batch import summary {{total}} {{added}} {{updated}} {{skipped}} {{filtered}}",
+    "content_placeholder_fact": "Content placeholder fact",
+    "content_placeholder_note": "Content placeholder note",
+    "content_placeholder_study": "Content placeholder study",
+    "create_already_exists": "Create already exists",
+    "create_downgraded": "Create downgraded",
+    "create_filtered": "Create filtered",
+    "delete_error": "Delete error",
+    "delete_success": "Delete success",
+    "deselect_all": "Deselect all",
+    "edit_error": "Edit error",
+    "edit_success": "Edit success",
+    "export": "Export",
+    "export_empty": "Export empty",
+    "export_error": "Export error",
+    "export_success": "Export success {{count}}",
+    "freq_aggressive": "Freq aggressive",
+    "freq_balanced": "Freq balanced",
+    "freq_off": "Freq off",
+    "frequency_change_error": "Frequency change error",
+    "frequency_changed": "Frequency changed",
+    "hits": "Hits",
+    "items": "Items",
+    "no_profile": "No profile",
+    "profile_empty": "Profile empty",
+    "profile_title": "Profile title",
+    "purpose": "Purpose",
+    "tree_empty": "Tree empty",
+    "tree_load_error": "Tree load error",
+    "tree_title": "Tree title",
+    "type": "Type"
   },
   "desktop": {
     "title": "Desktop",
@@ -906,6 +993,12 @@
       "type": "Type:",
       "chunkIndex": "Chunk Index:"
     }
+  ,
+    "notification": {
+      "autoOcrCompleted": "Auto Ocr Completed",
+      "autoOcrPage": "Auto Ocr Page {{current}} {{total}}",
+      "autoOcrStarting": "Auto Ocr Starting {{pages}}"
+    }
   },
   "exam": {
     "mode": {
@@ -944,6 +1037,28 @@
     },
     "syncConflictWarning": "{{count}} sync conflict(s) detected. Please review and resolve them.",
     "untitledEssay": "Untitled Essay"
+  ,
+    "deleteQuestionsSuccess": "Delete Questions Success {{count}}",
+    "mockExamAutoSubmitFailed": "Mock Exam Auto Submit Failed",
+    "mockExamAutoSubmitted": "Mock Exam Auto Submitted",
+    "mutationRefreshFailed": "Mutation Refresh Failed",
+    "resetProgressSuccess": "Reset Progress Success {{count}}",
+    "syncConflictsLoadFailed": "Sync Conflicts Load Failed",
+    "syncStatusCheckFailed": "Sync Status Check Failed",
+    "tab": {
+      "export": "Export",
+      "favorites": "Favorites",
+      "importCsv": "Import Csv",
+      "manage": "Manage",
+      "stats": "Stats"
+    },
+    "timedPracticeTimeout": "Timed Practice Timeout",
+    "timer": {
+      "pause": "Pause",
+      "remaining": "Remaining",
+      "resume": "Resume"
+    },
+    "timerEnded": "Timer Ended"
   },
   "diagnostic": {
     "title": "Index Diagnostic Panel",

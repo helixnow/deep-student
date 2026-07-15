@@ -77,6 +77,10 @@ interface MindMapContentViewProps {
   onLoadError?: (message: string) => void;
   /** ★ 标签页：当前视图是否为活跃标签页 */
   isActive?: boolean;
+  /** Move focus into the mind-map surface when this tab becomes active. */
+  focusOnActive?: boolean;
+  /** Report document save state to an owning workspace tab strip. */
+  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
   className?: string;
 }
 
@@ -86,6 +90,8 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   onReady,
   onLoadError,
   isActive,
+  focusOnActive,
+  onSaveStateChange,
   className
 }) => {
   const { t } = useTranslation(['mindmap', 'common']);
@@ -150,6 +156,24 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
   const [isLoadingDoc, setIsLoadingDoc] = useState(false);
   // A6-16: 导入未保存确认改为声明式 NotionAlertDialog（替换 window.confirm）
   const [showImportConfirm, setShowImportConfirm] = useState(false);
+
+  useEffect(() => {
+    if (!isActive || !focusOnActive) return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = containerRef.current;
+      if (!container) return;
+      try {
+        container.focus({ preventScroll: true });
+      } catch {
+        container.focus();
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusOnActive, isActive]);
+
+  useEffect(() => {
+    onSaveStateChange?.(isSaving ? 'saving' : isDirty ? 'dirty' : 'saved');
+  }, [isDirty, isSaving, onSaveStateChange]);
 
   // 大纲⇄导图双模保真：离开前写入 store.viewports，切回时作为 initial* 恢复
   // focusedNodeId / selection / collapsed 已在文档与 store 中，切换不重置
@@ -550,7 +574,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
     {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
     <MindMapActiveContext.Provider value={activeContextValue}>
     <MindMapClipboardEffects />
-    <div ref={containerRef} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
+    <div ref={containerRef} tabIndex={-1} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
       {/* Compact workbench toolbar: primary commands stay visible, secondary commands live in More. */}
       <div className="mm-toolbar">
         {/* Left: View Switcher & Undo/Redo */}
@@ -678,9 +702,9 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               <AppMenuItem onClick={() => collapseToDepth(2)}>{t('mindmap:toolbar.collapseToLevel', { level: 2 })}</AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>{t('mindmap:import.title')}</AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>Markdown</AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>OPML</AppMenuItem>
-              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('json')}>JSON</AppMenuItem>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>{t('mindmap:export.exportMarkdown')}</AppMenuItem>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>{t('mindmap:export.exportOpml')}</AppMenuItem>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('json')}>{t('mindmap:export.dialogExportJson')}</AppMenuItem>
               <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('png')}>{t('mindmap:export.pngImage')}</AppMenuItem>
               <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('svg')}>{t('mindmap:export.svgVector')}</AppMenuItem>
               <AppMenuSeparator />
@@ -713,7 +737,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem icon={<BookOpen size={16} />} onClick={() => setReciteMode(!reciteMode)}>
-                {reciteMode ? t('mindmap:recite.exit', '退出背诵') : t('mindmap:recite.title')}
+                {reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
               </AppMenuItem>
               <AppMenuCheckboxItem
                 checked={hideCompleted}
@@ -1006,7 +1030,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               <NotionButton variant="ghost"
                 className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
                 onClick={() => setShowMobileStructure(false)}
-                aria-label={t('common:back', '返回')}
+                aria-label={t('common:back')}
               >
                 <CaretLeft className="w-5 h-5" />
               </NotionButton>
@@ -1028,7 +1052,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewProps> = ({
               <NotionButton variant="ghost"
                 className="h-10 w-10 p-0 flex items-center justify-center hover:bg-[var(--mm-bg-hover)] rounded"
                 onClick={() => setShowMobileStyle(false)}
-                aria-label={t('common:back', '返回')}
+                aria-label={t('common:back')}
               >
                 <CaretLeft className="w-5 h-5" />
               </NotionButton>

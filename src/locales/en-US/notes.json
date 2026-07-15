@@ -278,6 +278,10 @@
     "next": "Next (Enter)",
     "showReplace": "Show replace",
     "hideReplace": "Hide replace"
+  ,
+    "findLabel": "Find",
+    "panelLabel": "Find and replace",
+    "replaceLabel": "Replace with"
   },
   "mentions": {
     "loading": "Loading...",
@@ -339,6 +343,8 @@
     "reading_mode_on": "Entered reading mode",
     "reading_mode_off": "Entered editing mode",
     "find_replace": "Find & Replace"
+  ,
+    "label": "Formatting"
   },
   "search": {
     "placeholder": "Search notes...",
@@ -630,6 +636,8 @@
     "ai_stop": "Stop generating",
     "portaled_to_canvas": "Editor is open in canvas",
     "portaled_hint": "Edit this note in the canvas"
+  ,
+    "deleted_with_unsaved_changes": "The resource was deleted. Unsaved content remains in this window; copy it before closing."
   },
   "tree": {
     "root": "My notes",
@@ -857,6 +865,8 @@
       "export": "Export",
       "exporting": "Exporting…"
     }
+  ,
+    "all_notes_hint": "All notes and their attachments will be exported"
   },
   "dialogs": {
     "close": "Close",
@@ -1004,6 +1014,8 @@
     "retry": "Retry",
     "truncated_outgoing": "Showing first 200 outgoing links",
     "truncated_external": "Showing first 200 external links"
+  ,
+    "tag_remove": "Remove tag"
   },
   "outlineMindmap": {
     "empty": "Nothing here yet",
@@ -1375,5 +1387,9 @@
   },
   "tips": {
     "versionHistory": "Version history is available in the Notes panel"
+  }
+,
+  "ai": {
+    "continue_not_available": "AI continuation is unavailable. Use the chat panel to start an edit."
   }
 }

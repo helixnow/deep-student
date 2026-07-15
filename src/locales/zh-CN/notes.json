@@ -251,6 +251,10 @@
     "next": "下一个 (Enter)",
     "showReplace": "展开替换",
     "hideReplace": "收起替换"
+  ,
+    "findLabel": "查找",
+    "panelLabel": "查找和替换",
+    "replaceLabel": "替换为"
   },
   "mentions": {
     "loading": "正在加载…",
@@ -312,6 +316,8 @@
     "reading_mode_on": "已进入阅读模式",
     "reading_mode_off": "已进入编辑模式",
     "find_replace": "查找替换"
+  ,
+    "label": "格式化"
   },
   "search": {
     "placeholder": "搜索笔记...",
@@ -556,6 +562,8 @@
     "ai_stop": "停止续写",
     "portaled_to_canvas": "编辑器已在白板中打开",
     "portaled_hint": "在白板中编辑此笔记"
+  ,
+    "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。"
   },
   "find": {
     "placeholder": "查找…"
@@ -786,6 +794,8 @@
       "export": "导出",
       "exporting": "正在导出…"
     }
+  ,
+    "all_notes_hint": "将导出所有笔记及其附件"
   },
   "dialogs": {
     "close": "关闭",
@@ -993,6 +1003,8 @@
     "retry": "重试",
     "truncated_outgoing": "已截断显示前 200 条出链",
     "truncated_external": "已截断显示前 200 条外链"
+  ,
+    "tag_remove": "Remove tag"
   },
   "outlineMindmap": {
     "empty": "空空如也",
@@ -1374,5 +1386,9 @@
   },
   "tips": {
     "versionHistory": "版本历史可在笔记面板中查看和回滚"
+  }
+,
+  "ai": {
+    "continue_not_available": "AI 续写命令暂不可用，请使用聊天面板发起编辑。"
   }
 }

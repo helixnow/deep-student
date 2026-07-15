@@ -483,7 +483,7 @@ export function LearningHubSidebar({
     if (canCreateInCurrentView) {
       return true;
     }
-    showGlobalNotification('warning', t('finder.create.notAllowedHere', '当前视图不支持新建资源'));
+    showGlobalNotification('warning', t('finder.create.notAllowedHere'));
     return false;
   }, [canCreateInCurrentView, t]);
 
@@ -497,14 +497,14 @@ export function LearningHubSidebar({
   const handleQuickCreateFolder = useCallback(async () => {
     if (!ensureCreatableView()) return;
     const result = await folderApi.createFolder(
-      t('finder.create.defaultFolderName', '新建文件夹'),
+      t('finder.create.defaultFolderName'),
       currentCreatableFolderId ?? undefined
     );
 
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.folderSuccess', '文件夹已创建'));
+      showGlobalNotification('success', t('finder.create.folderSuccess'));
       handleRefresh();
       return;
     }
@@ -524,7 +524,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.noteSuccess', '笔记已创建'));
+      showGlobalNotification('success', t('finder.create.noteSuccess'));
       handleRefresh();
       // 打开右侧应用面板
       if (onOpenApp) {
@@ -588,7 +588,7 @@ export function LearningHubSidebar({
             fileName: file.name,
             result: err(new VfsError(
               VfsErrorCode.UNKNOWN,
-              error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'),
+              error instanceof Error ? error.message : t('finder.markdownImport.failed'),
             )),
           };
         }
@@ -621,16 +621,16 @@ export function LearningHubSidebar({
   ) => {
     const failedFileSummary = summarizeFailedMarkdownFiles(failedFiles);
     const failedFilesText = failedFileSummary
-      ? t('finder.markdownImport.failedFiles', '失败文件：{{names}}', { names: failedFileSummary })
+      ? t('finder.markdownImport.failedFiles', { names: failedFileSummary })
       : null;
 
     if (importedCount > 0 && failedCount === 0) {
-      showGlobalNotification('success', t('finder.markdownImport.success', '已导入 {{count}} 个 Markdown 笔记', { count: importedCount }));
+      showGlobalNotification('success', t('finder.markdownImport.success', { count: importedCount }));
       return;
     }
 
     if (importedCount > 0) {
-      const baseMessage = t('finder.markdownImport.partial', '成功导入 {{success}} 个 Markdown 笔记，{{failed}} 个失败', {
+      const baseMessage = t('finder.markdownImport.partial', {
         success: importedCount,
         failed: failedCount,
       });
@@ -638,7 +638,7 @@ export function LearningHubSidebar({
       return;
     }
 
-    const baseError = firstError || t('finder.markdownImport.failed', 'Markdown 导入失败');
+    const baseError = firstError || t('finder.markdownImport.failed');
     showGlobalNotification('error', failedFilesText ? `${baseError}；${failedFilesText}` : baseError);
   }, [t]);
 
@@ -656,10 +656,10 @@ export function LearningHubSidebar({
       const selected = await dialogOpen({
         multiple: true,
         filters: [{
-          name: t('finder.markdownImport.filterName', 'Markdown 文件'),
+          name: t('finder.markdownImport.filterName'),
           extensions: ['md', 'markdown'],
         }],
-        title: t('finder.markdownImport.selectFiles', '选择 Markdown 文件'),
+        title: t('finder.markdownImport.selectFiles'),
       });
 
       if (!selected || (Array.isArray(selected) && selected.length === 0)) {
@@ -678,7 +678,7 @@ export function LearningHubSidebar({
 
       notifyMarkdownImportResult(importedNodes.length, failedCount, failedFiles, firstError);
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed', 'Markdown 导入失败'));
+      showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed'));
     }
   }, [currentCreatableFolderId, ensureCreatableView, handleRefresh, importMarkdownPathNotes, notifyMarkdownImportResult, openImportedMarkdownNote, t]);
 
@@ -738,7 +738,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.examSuccess', '题目集识别已创建'));
+      showGlobalNotification('success', t('finder.create.examSuccess'));
       handleRefresh();
       // 打开右侧应用面板
       if (onOpenApp) {
@@ -761,7 +761,7 @@ export function LearningHubSidebar({
         multiple: true,
         filters: [
           {
-            name: t('textbook.allDocuments', '所有文档'),
+            name: t('textbook.allDocuments'),
             // 注：doc（旧版 Word）不支持，无纯 Rust 解析库
             extensions: [
               'pdf', 'docx', 'txt', 'md', 'html', 'htm',
@@ -771,31 +771,31 @@ export function LearningHubSidebar({
             ],
           },
           {
-            name: t('textbook.pdfDocuments', 'PDF 文档'),
+            name: t('textbook.pdfDocuments'),
             extensions: ['pdf'],
           },
           {
-            name: t('textbook.wordDocuments', 'Word 文档'),
+            name: t('textbook.wordDocuments'),
             extensions: ['docx'],
           },
           {
-            name: t('textbook.excelFiles', 'Excel/CSV 表格'),
+            name: t('textbook.excelFiles'),
             extensions: ['xlsx', 'xls', 'xlsb', 'ods', 'csv'],
           },
           {
-            name: t('textbook.textFiles', '文本文件'),
+            name: t('textbook.textFiles'),
             extensions: ['txt', 'md', 'html', 'htm'],
           },
           {
-            name: t('textbook.presentationFiles', '演示文稿/电子书'),
+            name: t('textbook.presentationFiles'),
             extensions: ['pptx', 'epub', 'rtf'],
           },
           {
-            name: t('textbook.dataFiles', '数据文件'),
+            name: t('textbook.dataFiles'),
             extensions: ['json', 'xml'],
           },
         ],
-        title: t('textbook.selectFiles', '选择学习资料文件'),
+        title: t('textbook.selectFiles'),
       });
 
       if (!selected || (Array.isArray(selected) && selected.length === 0)) {
@@ -871,7 +871,7 @@ export function LearningHubSidebar({
         setImportProgress(prev => ({
           ...prev,
           stage: 'error',
-          error: prev.error || t('textbook.importEmpty', '没有成功导入任何教材'),
+          error: prev.error || t('textbook.importEmpty'),
         }));
       } else if (!result.ok) {
         setImportProgress(prev => ({
@@ -887,7 +887,7 @@ export function LearningHubSidebar({
       setImportProgress(prev => ({
         ...prev,
         stage: 'error',
-        error: t('textbook.importError', '导入教材失败'),
+        error: t('textbook.importError'),
       }));
     }
   };
@@ -904,7 +904,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.translationSuccess', '翻译已创建'));
+      showGlobalNotification('success', t('finder.create.translationSuccess'));
       handleRefresh();
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'translation'));
@@ -926,7 +926,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.essaySuccess', '作文已创建'));
+      showGlobalNotification('success', t('finder.create.essaySuccess'));
       handleRefresh();
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'essay'));
@@ -948,7 +948,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.create.mindmapSuccess', '知识导图已创建'));
+      showGlobalNotification('success', t('finder.create.mindmapSuccess'));
       handleRefresh();
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'mindmap'));
@@ -966,7 +966,7 @@ export function LearningHubSidebar({
     if (paths.length === 0) return;
     // 回收站/特殊视图不允许拖入
     if (isDragDropBlockedView(currentPath)) {
-      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere', '当前视图不支持拖入文件'));
+      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
       return;
     }
     // 统一导入主链路：本次拖拽已走路径分支，后续 files 回调直接跳过。
@@ -1131,18 +1131,18 @@ export function LearningHubSidebar({
       // 3. 显示结果通知
       if (totalSuccess > 0 && totalFailed === 0) {
         showGlobalNotification('success',
-          t('finder.dragDrop.importSuccess', '已导入 {{count}} 个文件', { count: totalSuccess })
+          t('finder.dragDrop.importSuccess', { count: totalSuccess })
         );
       } else if (totalSuccess > 0 && totalFailed > 0) {
         showGlobalNotification('warning',
-          t('finder.dragDrop.importPartial', '导入 {{success}} 个成功，{{failed}} 个失败', {
+          t('finder.dragDrop.importPartial', {
             success: totalSuccess,
             failed: totalFailed,
           })
         );
       } else if (totalFailed > 0) {
         showGlobalNotification('error',
-          t('finder.dragDrop.importFailed', '文件导入失败')
+          t('finder.dragDrop.importFailed')
         );
       }
 
@@ -1162,7 +1162,7 @@ export function LearningHubSidebar({
       debugLog.error('[LearningHub] 拖拽导入异常:', error);
       setImportProgress(prev => ({ ...prev, isImporting: false }));
       setAttachImportProgress(null);
-      showGlobalNotification('error', t('finder.dragDrop.importFailed', '文件导入失败'));
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'));
     }
   }, [currentCreatableFolderId, currentPath, currentQuickAccessType, importMarkdownPathNotes, importProgress.isImporting, openImportedMarkdownNote, t, handleRefresh, onOpenApp]);
 
@@ -1176,7 +1176,7 @@ export function LearningHubSidebar({
       return;
     }
     if (isDragDropBlockedView(currentPath)) {
-      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere', '当前视图不支持拖入文件'));
+      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
       return;
     }
 
@@ -1244,17 +1244,17 @@ export function LearningHubSidebar({
 
     if (totalSuccess > 0 && totalFailed === 0) {
       showGlobalNotification('success',
-        t('finder.dragDrop.importSuccess', '已导入 {{count}} 个文件', { count: totalSuccess })
+        t('finder.dragDrop.importSuccess', { count: totalSuccess })
       );
     } else if (totalSuccess > 0) {
       showGlobalNotification('warning',
-        t('finder.dragDrop.importPartial', '导入 {{success}} 个成功，{{failed}} 个失败', {
+        t('finder.dragDrop.importPartial', {
           success: totalSuccess,
           failed: totalFailed,
         })
       );
     } else {
-      showGlobalNotification('error', t('finder.dragDrop.importFailed', '文件导入失败'));
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'));
     }
 
     if (totalSuccess > 0) {
@@ -1363,7 +1363,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('contextMenu.deleteFolderSuccess', '文件夹已移至回收站'));
+      showGlobalNotification('success', t('contextMenu.deleteFolderSuccess'));
       handleRefresh();
     } else {
       reportError(result.error, 'delete folder');
@@ -1377,7 +1377,7 @@ export function LearningHubSidebar({
     const { getResourceRefCountV2 } = await import('@/features/chat/context/vfsRefApi');
     const refCountResult = await getResourceRefCountV2(resource.id);
 
-    let confirmMessage = t('contextMenu.confirmDelete', '确定要删除此资源吗？');
+    let confirmMessage = t('contextMenu.confirmDelete');
     if (refCountResult.ok && refCountResult.value > 0) {
       confirmMessage = t(
         'contextMenu.confirmDeleteWithRefs',
@@ -1410,7 +1410,7 @@ export function LearningHubSidebar({
     }
 
     if (!deletePath) {
-      showGlobalNotification('error', t('contextMenu.deleteError', '无法删除：资源路径未找到'));
+      showGlobalNotification('error', t('contextMenu.deleteError'));
       return;
     }
 
@@ -1420,7 +1420,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (deleteResult.ok) {
-      showGlobalNotification('success', t('contextMenu.deleteSuccess', '删除成功'));
+      showGlobalNotification('success', t('contextMenu.deleteSuccess'));
       handleRefresh();
     } else {
       reportError(deleteResult.error, 'delete resource');
@@ -1438,7 +1438,7 @@ export function LearningHubSidebar({
     }
 
     if (!resourcePath) {
-      showGlobalNotification('error', t('contextMenu.favoriteError', '无法收藏：资源路径未找到'));
+      showGlobalNotification('error', t('contextMenu.favoriteError'));
       return;
     }
 
@@ -1451,8 +1451,8 @@ export function LearningHubSidebar({
     if (result.ok) {
       showGlobalNotification('success',
         newFavoriteState
-          ? t('contextMenu.favoriteSuccess', '已添加到收藏')
-          : t('contextMenu.unfavoriteSuccess', '已取消收藏')
+          ? t('contextMenu.favoriteSuccess')
+          : t('contextMenu.unfavoriteSuccess')
       );
       handleRefresh();
     } else {
@@ -1514,7 +1514,7 @@ export function LearningHubSidebar({
       // 重命名资源 - 使用 DSTU rename API
       const resourcePath = item.path;
       if (!resourcePath) {
-        showGlobalNotification('error', t('contextMenu.renameError', '无法重命名：资源路径未找到'));
+        showGlobalNotification('error', t('contextMenu.renameError'));
         if (isMountedRef.current) {
           await handleRefresh();
         }
@@ -1527,7 +1527,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (renameResult.ok) {
-      showGlobalNotification('success', t('contextMenu.renameSuccess', '重命名成功'));
+      showGlobalNotification('success', t('contextMenu.renameSuccess'));
       await handleRefresh();
     } else {
       reportError(renameResult.error, 'rename');
@@ -1592,7 +1592,7 @@ export function LearningHubSidebar({
         if (!item) {
           const notFoundError = new VfsError(
             VfsErrorCode.NOT_FOUND,
-            t('error.itemNotFound', '项目未找到'),
+            t('error.itemNotFound'),
             true,
             { itemId }
           );
@@ -1658,7 +1658,7 @@ export function LearningHubSidebar({
     if (!currentPath.folderId && currentPath.breadcrumbs.length === 0) return undefined;
 
     const targets: Array<{ id: string | null; label: string }> = [
-      { id: null, label: t('learningHub:title', '资源库') },
+      { id: null, label: t('learningHub:title') },
     ];
     // 不含当前目录自身（最后一个 breadcrumb）
     const ancestors = currentPath.breadcrumbs.slice(0, -1);
@@ -1672,8 +1672,8 @@ export function LearningHubSidebar({
   const specialDropTargets = useMemo(() => {
     if (isTrashView || mode === 'canvas') return undefined;
     return [
-      { id: 'favorites' as const, label: t('finder.quickAccess.favorites', '收藏') },
-      { id: 'trash' as const, label: t('finder.quickAccess.trash', '回收站') },
+      { id: 'favorites' as const, label: t('finder.quickAccess.favorites') },
+      { id: 'trash' as const, label: t('finder.quickAccess.trash') },
     ];
   }, [isTrashView, mode, t]);
 
@@ -1707,16 +1707,16 @@ export function LearningHubSidebar({
       if (success > 0) {
         showGlobalNotification(
           'success',
-          t('finder.dragDrop.favoriteSuccess', '已收藏 {{count}} 项', { count: success })
+          t('finder.dragDrop.favoriteSuccess', { count: success })
         );
         handleRefresh();
         clearSelection();
       } else if (failed > 0) {
-        showGlobalNotification('error', t('finder.dragDrop.favoriteFailed', '收藏失败'));
+        showGlobalNotification('error', t('finder.dragDrop.favoriteFailed'));
       } else if (skipped > 0) {
         showGlobalNotification(
           'info',
-          t('finder.dragDrop.favoriteSkipped', '没有可收藏的项目（文件夹或已收藏）')
+          t('finder.dragDrop.favoriteSkipped')
         );
       }
       return;
@@ -1745,7 +1745,7 @@ export function LearningHubSidebar({
         if (success > 0 && failed === 0) {
           showGlobalNotification(
             'success',
-            t('finder.batch.deleteSuccess', { count: success, defaultValue: '已删除 {{count}} 项' })
+            t('finder.batch.deleteSuccess', { count: success })
           );
         } else if (success > 0) {
           showGlobalNotification(
@@ -1753,11 +1753,10 @@ export function LearningHubSidebar({
             t('finder.batch.deletePartial', {
               succeeded: success,
               failed,
-              defaultValue: '成功删除 {{succeeded}} 项，{{failed}} 项失败',
             })
           );
         } else {
-          showGlobalNotification('error', t('finder.batch.deleteFailed', '删除失败'));
+          showGlobalNotification('error', t('finder.batch.deleteFailed'));
         }
         if (success > 0) {
           clearSelection();
@@ -1790,18 +1789,14 @@ export function LearningHubSidebar({
         type: 'batch',
         batchIds: new Set(selectedIds),
         message: t('finder.trash.confirmBatchPermanentDelete', {
-          count: selectedIds.size,
-          defaultValue: `确定要永久删除选中的 ${selectedIds.size} 个项目吗？此操作不可撤销。`
-        }),
+          count: selectedIds.size,}),
       });
     } else {
       setDeleteTarget({
         type: 'batch',
         batchIds: new Set(selectedIds),
         message: t('finder.batch.confirmDelete', {
-          count: selectedIds.size,
-          defaultValue: `确定要删除选中的 ${selectedIds.size} 个项目吗？删除后可在回收站恢复。`
-        }),
+          count: selectedIds.size,}),
       });
     }
     setDeleteConfirmOpen(true);
@@ -1826,7 +1821,7 @@ export function LearningHubSidebar({
           missingResults.push({
             id,
             ok: false,
-            error: t('error.itemNotFound', '项目未找到'),
+            error: t('error.itemNotFound'),
           });
           continue;
         }
@@ -1908,7 +1903,7 @@ export function LearningHubSidebar({
         // 部分成功 - 保留失败项的选择状态
         showGlobalNotification('warning',
           t('finder.batch.deletePartial', { succeeded, failed }) +
-          ' ' + t('finder.batch.failedItemsSelected', '失败的项目已保持选中状态，可重试')
+          ' ' + t('finder.batch.failedItemsSelected')
         );
 
         // ★ 只保留失败项的选择
@@ -1943,7 +1938,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.trash.restoreSuccess', '已恢复'));
+      showGlobalNotification('success', t('finder.trash.restoreSuccess'));
       handleRefresh();
     } else {
       reportError(result.error, 'restore item');
@@ -1957,7 +1952,7 @@ export function LearningHubSidebar({
     setDeleteTarget({
       type: 'permanent',
       permanentDeleteInfo: { id, itemType },
-      message: t('finder.trash.confirmPermanentDelete', '确定要永久删除此项目吗？此操作不可撤销。'),
+      message: t('finder.trash.confirmPermanentDelete'),
     });
     setDeleteConfirmOpen(true);
   }, [t]);
@@ -1970,7 +1965,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.trash.deleteSuccess', '已永久删除'));
+      showGlobalNotification('success', t('finder.trash.deleteSuccess'));
       handleRefresh();
     } else {
       reportError(result.error, 'permanent delete');
@@ -1983,7 +1978,7 @@ export function LearningHubSidebar({
     // ★ 使用 AlertDialog 替代 window.confirm
     setDeleteTarget({
       type: 'emptyTrash',
-      message: t('finder.trash.emptyConfirm', '确定要永久删除回收站中的所有项目吗？此操作不可撤销。'),
+      message: t('finder.trash.emptyConfirm'),
     });
     setDeleteConfirmOpen(true);
   }, [t]);
@@ -1996,7 +1991,7 @@ export function LearningHubSidebar({
     if (!isMountedRef.current) return;
 
     if (result.ok) {
-      showGlobalNotification('success', t('finder.trash.emptySuccess', '已清空回收站') + ` (${result.value})`);
+      showGlobalNotification('success', t('finder.trash.emptySuccess') + ` (${result.value})`);
       handleRefresh();
     } else {
       reportError(result.error, 'empty trash');
@@ -2066,7 +2061,7 @@ export function LearningHubSidebar({
   const handleBatchAddToChat = useCallback(async () => {
     if (selectedIds.size === 0) return;
     if (!canInject()) {
-      showGlobalNotification('warning', t('finder.multiSelect.noChatSession', '请先打开一个对话'));
+      showGlobalNotification('warning', t('finder.multiSelect.noChatSession'));
       return;
     }
 
@@ -2080,12 +2075,12 @@ export function LearningHubSidebar({
         limit(async () => {
           const item = items.find(i => i.id === id);
           if (!item) {
-            return { id, ok: false, error: t('error.itemNotFound', '项目未找到') };
+            return { id, ok: false, error: t('error.itemNotFound') };
           }
 
           // 文件夹不支持添加到对话
           if (item.type === 'folder') {
-            return { id, ok: false, error: t('error.folderCannotAddToChat', '文件夹不支持添加到对话') };
+            return { id, ok: false, error: t('error.folderCannotAddToChat') };
           }
 
           // 映射 DstuNodeType 到 VfsResourceType
@@ -2102,7 +2097,7 @@ export function LearningHubSidebar({
 
           const sourceType = typeMap[item.type];
           if (!sourceType) {
-            return { id, ok: false, error: t('error.unsupportedResourceType', '不支持的资源类型: {{type}}', { type: item.type }) };
+            return { id, ok: false, error: t('error.unsupportedResourceType', { type: item.type }) };
           }
 
           const result = await injectToChat({
@@ -2124,21 +2119,21 @@ export function LearningHubSidebar({
       const failed = failedResults.length;
 
       if (failed === 0) {
-        showGlobalNotification('success', t('finder.multiSelect.addToChatSuccess', '已添加 {{count}} 项到对话', { count: succeeded }));
+        showGlobalNotification('success', t('finder.multiSelect.addToChatSuccess', { count: succeeded }));
         clearSelection();
       } else if (succeeded > 0) {
         showGlobalNotification('warning',
-          t('finder.multiSelect.addToChatPartial', '成功添加 {{succeeded}} 项，{{failed}} 项失败', { succeeded, failed })
+          t('finder.multiSelect.addToChatPartial', { succeeded, failed })
         );
         // 保留失败项的选择状态
         const failedIds = failedResults.map(r => r.id);
         setSelectedIds(new Set(failedIds));
       } else {
-        showGlobalNotification('error', t('finder.multiSelect.addToChatFailed', '添加失败'));
+        showGlobalNotification('error', t('finder.multiSelect.addToChatFailed'));
       }
     } catch (err) {
       debugLog.error('[LearningHub] 批量添加到对话失败:', err);
-      showGlobalNotification('error', t('finder.multiSelect.addToChatFailed', '添加失败'));
+      showGlobalNotification('error', t('finder.multiSelect.addToChatFailed'));
     } finally {
       if (isMountedRef.current) {
         setIsBatchProcessing(false);
@@ -2193,7 +2188,7 @@ export function LearningHubSidebar({
             return {
               id,
               ok: false,
-              error: t('error.itemNotFound', '项目未找到')
+              error: t('error.itemNotFound')
             };
           }
 
@@ -2257,7 +2252,7 @@ export function LearningHubSidebar({
         // 部分成功 - 保留失败项的选择状态
         showGlobalNotification('warning',
           t('finder.batch.movePartial', { succeeded, failed }) +
-          ' ' + t('finder.batch.failedItemsSelected', '失败的项目已保持选中状态，可重试')
+          ' ' + t('finder.batch.failedItemsSelected')
         );
 
         // ★ 只保留失败项的选择
@@ -2388,7 +2383,7 @@ export function LearningHubSidebar({
         acceptedFileTypes={[FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT]}
         maxFiles={20}
         maxFileSize={200 * 1024 * 1024}
-        customOverlayText={t('finder.dragDrop.overlayText', '拖放文件到此处导入')}
+        customOverlayText={t('finder.dragDrop.overlayText')}
         className="flex-1 flex flex-col min-w-0 min-h-0"
       >
         {/* P1-20: 移动端顶部工具栏（搜索 + 新建文件夹 + 新建笔记 + 清空回收站） */}
@@ -2401,7 +2396,7 @@ export function LearningHubSidebar({
               <div className="flex-1 flex items-center gap-1">
                 <Input
                   type="text"
-                  placeholder={t('finder.search.placeholder', '搜索...')}
+                  placeholder={t('finder.search.placeholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-9 text-sm flex-1"
@@ -2428,7 +2423,7 @@ export function LearningHubSidebar({
                   size="sm"
                   className="h-10 w-10 p-0"
                   onClick={() => setMobileSearchExpanded(true)}
-                  title={t('finder.search.title', '搜索')}
+                  title={t('finder.search.title')}
                   disabled={!canSearchInCurrentView}
                 >
                   <MagnifyingGlass className="w-5 h-5" />
@@ -2439,7 +2434,7 @@ export function LearningHubSidebar({
                       variant="ghost"
                       size="sm"
                       className="h-10 w-10 p-0"
-                      title={t('finder.toolbar.new', '新建')}
+                      title={t('finder.toolbar.new')}
                       disabled={!canCreateInCurrentView}
                     >
                       <Plus className="w-5 h-5" />
@@ -2450,13 +2445,13 @@ export function LearningHubSidebar({
                       icon={<FolderIcon size={16} />}
                       onClick={handleNewFolder}
                     >
-                      {t('finder.toolbar.newFolder', '新建文件夹')}
+                      {t('finder.toolbar.newFolder')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<NoteIcon size={16} />}
                       onClick={handleNewNote}
                     >
-                      {t('finder.toolbar.newNote', '新建笔记')}
+                      {t('finder.toolbar.newNote')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<NoteIcon size={16} />}
@@ -2464,37 +2459,37 @@ export function LearningHubSidebar({
                         void handleImportMarkdownNote();
                       }}
                     >
-                      {t('finder.toolbar.importMarkdown', '导入 Markdown')}
+                      {t('finder.toolbar.importMarkdown')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<ExamIcon size={16} />}
                       onClick={handleNewExam}
                     >
-                      {t('finder.toolbar.newExam', '新建题目集')}
+                      {t('finder.toolbar.newExam')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<TextbookIcon size={16} />}
                       onClick={handleNewTextbook}
                     >
-                      {t('finder.toolbar.newTextbook', '导入教材')}
+                      {t('finder.toolbar.newTextbook')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<TranslationIcon size={16} />}
                       onClick={handleNewTranslation}
                     >
-                      {t('finder.toolbar.newTranslation', '新建翻译')}
+                      {t('finder.toolbar.newTranslation')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<EssayIcon size={16} />}
                       onClick={handleNewEssay}
                     >
-                      {t('finder.toolbar.newEssay', '新建作文')}
+                      {t('finder.toolbar.newEssay')}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<MindmapIcon size={16} />}
                       onClick={handleNewMindMap}
                     >
-                      {t('finder.toolbar.newMindMap', '新建导图')}
+                      {t('finder.toolbar.newMindMap')}
                     </AppMenuItem>
                   </AppMenuContent>
                 </AppMenu>
@@ -2505,7 +2500,7 @@ export function LearningHubSidebar({
                     size="sm"
                     className="h-10 w-10 p-0 text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
-                    title={t('finder.actions.emptyTrash', '清空回收站')}
+                    title={t('finder.actions.emptyTrash')}
                   >
                     <Trash className="w-5 h-5" />
                   </NotionButton>
@@ -2530,7 +2525,7 @@ export function LearningHubSidebar({
               className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
-              title={t('finder.toolbar.back', '返回')}
+              title={t('finder.toolbar.back')}
             >
               <CaretLeft className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
             </NotionButton>
@@ -2540,13 +2535,13 @@ export function LearningHubSidebar({
               className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
-              title={t('finder.toolbar.forward', '前进')}
+              title={t('finder.toolbar.forward')}
             >
               <CaretRight className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
             </NotionButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title', '资源库')} aria-label="home">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title')} aria-label="home">
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </NotionButton>
               {currentPath.breadcrumbs.map((crumb, index) => (
@@ -2574,8 +2569,8 @@ export function LearningHubSidebar({
                 <>
                   <span className="text-xs font-medium whitespace-nowrap">
                     {selectedIds.size > 0
-                      ? t('finder.canvas.selected', '已选 {{count}} 项', { count: selectedIds.size })
-                      : t('finder.canvas.selectHint', '点击选择文件')}
+                      ? t('finder.canvas.selected', { count: selectedIds.size })
+                      : t('finder.canvas.selectHint')}
                   </span>
                   {selectedIds.size > 0 && (
                     <>
@@ -2584,11 +2579,11 @@ export function LearningHubSidebar({
                         size="sm"
                         className="h-6 text-xs px-1.5"
                         onClick={selectedIds.size === items.length ? handleClearSelection : handleSelectAll}
-                        title={selectedIds.size === items.length ? t('finder.batch.deselectAll', '取消全选') : t('finder.batch.selectAll', '全选')}
+                        title={selectedIds.size === items.length ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}
                       >
                         {selectedIds.size === items.length
                           ? <CheckSquare className="w-3.5 h-3.5" />
-                          : t('finder.batch.selectAll', '全选')}
+                          : t('finder.batch.selectAll')}
                       </NotionButton>
                       <NotionButton
                         variant="primary"
@@ -2598,8 +2593,8 @@ export function LearningHubSidebar({
                         disabled={isBatchProcessing || isInjecting}
                       >
                         {isInjecting
-                          ? t('finder.canvas.adding', '添加中...')
-                          : t('finder.canvas.addToChat', '添加到聊天')}
+                          ? t('finder.canvas.adding')
+                          : t('finder.canvas.addToChat')}
                       </NotionButton>
                     </>
                   )}
@@ -2629,7 +2624,7 @@ export function LearningHubSidebar({
                     setIsMultiSelectMode(true);
                   }
                 }}
-                title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect', '退出多选') : t('finder.canvas.multiSelect', '多选')}
+                title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect') : t('finder.canvas.multiSelect')}
               >
                 <ListChecks className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
               </NotionButton>
@@ -2640,7 +2635,7 @@ export function LearningHubSidebar({
                   size="sm"
                   className={cn('p-0', isSmallScreen ? 'h-9 w-9' : 'h-7 w-7')}
                   onClick={onClose}
-                  title={t('common:close', '关闭')}
+                  title={t('common:close')}
                 >
                   <X className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
                 </NotionButton>
@@ -2658,7 +2653,7 @@ export function LearningHubSidebar({
               currentPath.breadcrumbs[currentPath.breadcrumbs.length - 1]?.name ||
               (currentQuickAccessType
                 ? t(`finder.quickAccess.${currentQuickAccessType}`, '资源库')
-                : t('title', '资源库'))
+                : t('title'))
             }
             onNavigateHome={() => jumpToBreadcrumb(-1)}
             canGoBack={historyIndex > 0}
@@ -2716,7 +2711,7 @@ export function LearningHubSidebar({
               if (result.ok && result.value) {
                 handleOpen(result.value);
               } else {
-                showGlobalNotification('error', t('desktop.resourceNotFound', '资源不存在或已被删除'));
+                showGlobalNotification('error', t('desktop.resourceNotFound'));
               }
             }}
             onOpenFolder={(folderId) => {
@@ -2737,11 +2732,11 @@ export function LearningHubSidebar({
 
               if (result.ok) {
                 const resourceNames: Record<CreateResourceType, string> = {
-                  note: t('finder.create.noteSuccess', '笔记已创建'),
-                  exam: t('finder.create.examSuccess', '题目集已创建'),
-                  essay: t('finder.create.essaySuccess', '作文已创建'),
-                  translation: t('finder.create.translationSuccess', '翻译已创建'),
-                  mindmap: t('finder.create.mindmapSuccess', '思维导图已创建'),
+                  note: t('finder.create.noteSuccess'),
+                  exam: t('finder.create.examSuccess'),
+                  essay: t('finder.create.essaySuccess'),
+                  translation: t('finder.create.translationSuccess'),
+                  mindmap: t('finder.create.mindmapSuccess'),
                 };
                 showGlobalNotification('success', resourceNames[type]);
 
@@ -2999,7 +2994,7 @@ export function LearningHubSidebar({
           items.find(i => i.id === id)?.type === 'folder'
         )}
         onConfirm={handleBatchMoveConfirm}
-        title={t('finder.batch.moveDialogTitle', '移动到...')}
+        title={t('finder.batch.moveDialogTitle')}
       />
 
       {/* ★ 删除确认对话框 - 替代原生 window.confirm */}
@@ -3013,12 +3008,12 @@ export function LearningHubSidebar({
         }}
         title={
           deleteTarget?.type === 'emptyTrash'
-            ? t('finder.trash.emptyTitle', '清空回收站')
-            : t('contextMenu.deleteTitle', '确认删除')
+            ? t('finder.trash.emptyTitle')
+            : t('contextMenu.deleteTitle')
         }
         description={deleteTarget?.message}
-        confirmText={isDeleting ? t('common:deleting', '删除中...') : t('common:delete', '删除')}
-        cancelText={t('common:cancel', '取消')}
+        confirmText={isDeleting ? t('common:actions.deleting') : t('common:delete')}
+        cancelText={t('common:cancel')}
         confirmVariant="danger"
         loading={isDeleting}
         disabled={isDeleting}
@@ -3038,7 +3033,7 @@ export function LearningHubSidebar({
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-3.5 py-2 rounded-lg bg-background/95 backdrop-blur-lg border shadow-notion-lg">
           <CircleNotch className="w-3.5 h-3.5 animate-spin text-primary shrink-0" />
           <span className="text-xs whitespace-nowrap">
-            {t('finder.dragDrop.importing', '正在导入 {{done}} / {{total}}', {
+            {t('finder.dragDrop.importing', {
               done: attachImportProgress.done,
               total: attachImportProgress.total,
             })}

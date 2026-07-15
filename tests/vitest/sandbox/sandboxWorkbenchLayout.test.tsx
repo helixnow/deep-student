@@ -8,6 +8,18 @@ import {
   useSandboxWorkbenchStore,
 } from '@/features/sandbox/store/useSandboxWorkbenchStore';
 
+vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+  useTranslation: () => ({
+    t: (key: string) => ({
+      'sandbox.refresh': '刷新',
+      'sandbox.closeInspector': '收起检查器',
+      'sandbox.source': '来源',
+      'sandbox.stats': '统计',
+    }[key] ?? key),
+  }),
+}));
+
 describe('SandboxWorkbenchPage layout', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', (query: string) => ({

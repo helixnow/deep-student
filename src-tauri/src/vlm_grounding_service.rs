@@ -399,9 +399,17 @@ impl VlmGroundingService {
 
         let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = provider
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("VLM 请求构建失败: {:?}", e)))?;
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                provider.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "VLM 请求构建失败",
+            )
+            .await?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(180))
@@ -422,11 +430,6 @@ impl VlmGroundingService {
                 tokio::time::sleep(delay).await;
             }
 
-            let mut rb = client.post(&preq.url);
-            for (k, v) in preq.headers.iter() {
-                rb = rb.header(k.as_str(), v.as_str());
-            }
-
             if attempt == 0 {
                 // 🔒 URL query 可能含 API key（Gemini ?key=...），日志脱敏
                 info!(
@@ -436,14 +439,32 @@ impl VlmGroundingService {
                 );
             }
 
-            let response = match rb.json(&preq.body).send().await {
+            let response_result = if preq.is_codex() {
+                self.llm_manager
+                    .send_codex_request_with_single_refresh(
+                        &mut preq,
+                        Some(std::time::Duration::from_secs(180)),
+                    )
+                    .await
+            } else {
+                let mut rb = client.post(&preq.url);
+                for (k, v) in &preq.headers {
+                    rb = rb.header(k, v);
+                }
+                rb.json(&preq.body)
+                    .send()
+                    .await
+                    .map_err(|e| AppError::network(format!("VLM 请求失败: {}", e)))
+            };
+
+            let response = match response_result {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = format!("VLM 请求失败: {}", e);
+                    last_error = e.to_string();
                     if attempt < MAX_RETRIES {
                         continue;
                     }
-                    return Err(AppError::network(last_error));
+                    return Err(e);
                 }
             };
 
@@ -554,25 +575,40 @@ impl VlmGroundingService {
 
         let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = provider
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("VLM 图片描述请求构建失败: {:?}", e)))?;
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                provider.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "VLM 图片描述请求构建失败",
+            )
+            .await?;
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
 
-        let mut rb = client.post(&preq.url);
-        for (k, v) in preq.headers.iter() {
-            rb = rb.header(k.as_str(), v.as_str());
-        }
-
-        let response = rb
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("VLM 图片描述请求失败: {}", e)))?;
+        let response = if preq.is_codex() {
+            self.llm_manager
+                .send_codex_request_with_single_refresh(
+                    &mut preq,
+                    Some(std::time::Duration::from_secs(120)),
+                )
+                .await?
+        } else {
+            let mut rb = client.post(&preq.url);
+            for (k, v) in &preq.headers {
+                rb = rb.header(k, v);
+            }
+            rb.json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::network(format!("VLM 图片描述请求失败: {}", e)))?
+        };
 
         let status = response.status();
         let body = response
@@ -783,9 +819,17 @@ impl VlmGroundingService {
 
         let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
-        let preq = provider
-            .build_request(&config.base_url, &api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("VLM DOCX 提取请求构建失败: {:?}", e)))?;
+        let mut preq = self
+            .llm_manager
+            .prepare_provider_request(
+                provider.as_ref(),
+                &config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "VLM DOCX 提取请求构建失败",
+            )
+            .await?;
 
         // 流式请求不设全局 timeout，改用 connect timeout + 读 chunk 超时
         let client = reqwest::Client::builder()
@@ -816,19 +860,29 @@ impl VlmGroundingService {
                 tokio::time::sleep(delay).await;
             }
 
-            let mut rb = client.post(&preq.url);
-            for (k, v) in preq.headers.iter() {
-                rb = rb.header(k.as_str(), v.as_str());
-            }
+            let response_result = if preq.is_codex() {
+                self.llm_manager
+                    .send_codex_stream_request_with_single_refresh(&mut preq, None)
+                    .await
+            } else {
+                let mut rb = client.post(&preq.url);
+                for (k, v) in &preq.headers {
+                    rb = rb.header(k, v);
+                }
+                rb.json(&preq.body)
+                    .send()
+                    .await
+                    .map_err(|e| AppError::network(format!("VLM DOCX 提取请求失败: {}", e)))
+            };
 
-            let response = match rb.json(&preq.body).send().await {
+            let response = match response_result {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = format!("VLM DOCX 提取请求失败: {}", e);
+                    last_error = e.to_string();
                     if attempt < MAX_RETRIES {
                         continue;
                     }
-                    return Err(AppError::network(last_error));
+                    return Err(e);
                 }
             };
 
@@ -857,9 +911,7 @@ impl VlmGroundingService {
             // ===== SSE 流式读取 + 增量 JSON 解析 =====
             use futures_util::StreamExt;
             let mut stream = response.bytes_stream();
-            let mut sse_buffer = crate::utils::sse_buffer::SseLineBuffer::new();
-            // 增量 UTF-8 解码：保留跨 chunk 边界的不完整多字节字符，避免中文乱码
-            let mut utf8_decoder = crate::llm_manager::utf8_stream::Utf8StreamDecoder::new();
+            let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
             let mut json_parser = crate::llm_manager::IncrementalJsonArrayParser::new();
             let mut full_content = String::new();
             let mut stream_ended = false;
@@ -895,11 +947,8 @@ impl VlmGroundingService {
                 match chunk_result {
                     Ok(chunk) => {
                         account_docx_vlm_stream_bytes(&mut response_bytes, chunk.len())?;
-                        let chunk_str = utf8_decoder.decode(&chunk);
-                        let complete_lines = sse_buffer.process_chunk(&chunk_str);
-
-                        for line in complete_lines {
-                            if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
+                        for line in sse_buffer.process_bytes(&chunk) {
+                            if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
                                 stream_ended = true;
                                 break;
                             }
@@ -1002,47 +1051,16 @@ impl VlmGroundingService {
                 return Err(AppError::network(last_error));
             }
 
-            // ★ S5 遗留：冲刷 UTF-8 解码器残留后再 flush SSE 缓冲
-            {
-                let tail = utf8_decoder.flush();
-                if !tail.is_empty() {
-                    let complete_lines = sse_buffer.process_chunk(&tail);
-                    for line in complete_lines {
-                        if crate::utils::sse_buffer::SseLineBuffer::check_done_marker(&line) {
-                            break;
-                        }
-                        let events = provider.parse_stream(&line);
-                        for event in events {
-                            if let crate::providers::StreamEvent::ContentChunk(content) = event {
-                                full_content.push_str(&content);
-                                if let Some(objects) = json_parser.feed(&content) {
-                                    for obj in objects {
-                                        if let Ok(mut vq) =
-                                            serde_json::from_value::<VlmExtractedQuestion>(obj)
-                                        {
-                                            remap_docx_question_image_indices(
-                                                &mut vq,
-                                                &source_indices,
-                                            );
-                                            question_count += 1;
-                                            if !on_question(vq) {
-                                                return Ok(question_count);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 处理 SSE 缓冲器和 JSON 解析器中的剩余数据
-            if let Some(remaining) = sse_buffer.flush() {
+            // 处理自然关闭且没有空行分隔符的最后一个 SSE 事件。
+            for remaining in sse_buffer.flush() {
                 if !remaining.trim().is_empty() {
+                    if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&remaining) {
+                        break;
+                    }
                     let events = provider.parse_stream(&remaining);
                     for event in events {
                         if let crate::providers::StreamEvent::ContentChunk(content) = event {
+                            full_content.push_str(&content);
                             if let Some(objects) = json_parser.feed(&content) {
                                 for obj in objects {
                                     if let Ok(mut vq) =

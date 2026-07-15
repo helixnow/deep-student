@@ -172,7 +172,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
         <>
           <div className="modern-viewer-divider" />
 
-          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide', '上一页')} aria-label={t('learningHub:previewToolbar.prevSlide', '上一页')}>
+          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide')} aria-label={t('learningHub:previewToolbar.prevSlide')}>
             <CaretLeft size={16} />
           </NotionButton>
 
@@ -180,7 +180,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
             {t('learningHub:docPreview.slideNav', { current: slideNav.current + 1, total: slideNav.total })}
           </span>
 
-          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))} disabled={slideNav.current === slideNav.total - 1} title={t('learningHub:previewToolbar.nextSlide', '下一页')} aria-label={t('learningHub:previewToolbar.nextSlide', '下一页')}>
+          <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))} disabled={slideNav.current === slideNav.total - 1} title={t('learningHub:previewToolbar.nextSlide')} aria-label={t('learningHub:previewToolbar.nextSlide')}>
             <CaretRight size={16} />
           </NotionButton>
         </>

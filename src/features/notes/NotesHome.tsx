@@ -25,7 +25,7 @@ export default function NotesHome() {
 
   // 移动端统一顶栏配置
   useMobileHeader('notes', {
-    title: active?.title || t('notes:sidebar.title', '笔记'),
+    title: active?.title || t('notes:sidebar.title'),
     showMenu: true,
     onMenuClick: () => setIsMobileSidebarOpen(prev => !prev),
   }, [active?.title, t]);

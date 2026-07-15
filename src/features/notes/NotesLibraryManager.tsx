@@ -99,7 +99,7 @@ export function NotesLibraryManager({
             <CustomScrollArea className="h-full" viewportClassName="px-6 pb-6 space-y-5">
             {/* 导出说明 */}
             <div className="rounded-lg border border-blue-500/40 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-100">
-              {t('notes:export.all_notes_hint', '将导出所有笔记及其附件')}
+              {t('notes:export.all_notes_hint')}
             </div>
 
             {/* 导出格式说明 */}

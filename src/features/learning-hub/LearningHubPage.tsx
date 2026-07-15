@@ -441,7 +441,7 @@ export const LearningHubPage: React.FC = () => {
       if (wasActiveTabAffected) {
         showGlobalNotification(
           'warning',
-          t('learningHub:errors.resourceDeletedOrMoved', '资源已删除或已移动，已关闭失效标签页')
+          t('learningHub:errors.resourceDeletedOrMoved')
         );
       }
     });
@@ -577,8 +577,8 @@ export const LearningHubPage: React.FC = () => {
           onClick={() => void refreshFinder()}
           disabled={isFinderRefreshing}
           className="h-9 w-9"
-          aria-label={t('common:refresh', '刷新')}
-          title={t('common:refresh', '刷新')}
+          aria-label={t('common:refresh')}
+          title={t('common:refresh')}
         >
           <ArrowClockwise size={20} className={isFinderRefreshing ? 'animate-spin' : undefined} />
         </NotionButton>
@@ -604,7 +604,7 @@ export const LearningHubPage: React.FC = () => {
           }));
         }}
         className="h-9 w-9"
-        aria-label={t('common:settings', '设置')}
+        aria-label={t('learningHub:toolbar.settings')}
       >
         <Gear size={20} />
       </NotionButton>
@@ -617,8 +617,8 @@ export const LearningHubPage: React.FC = () => {
           size="icon"
           onClick={reloadActiveTab}
           className="h-9 w-9"
-          aria-label={t('common:reload', '重新加载')}
-          title={t('common:reload', '重新加载')}
+          aria-label={t('common:reload')}
+          title={t('common:reload')}
         >
           <ArrowClockwise size={20} />
         </NotionButton>
@@ -803,11 +803,11 @@ export const LearningHubPage: React.FC = () => {
       const result = await openResource(dstuPath, { mode: 'view', targetView: 'learning-hub' });
       if (!result.ok) {
         debugLog.error('[LearningHubPage] Open resource failed:', result.error.toUserMessage());
-        showGlobalNotification('error', t('learningHub:errors.openResourceFailed', '打开资源失败'));
+        showGlobalNotification('error', t('learningHub:errors.openResourceFailed'));
       }
     } catch (err: unknown) {
       debugLog.error('[LearningHubPage] Open resource error:', err);
-      showGlobalNotification('error', t('learningHub:errors.openResourceFailed', '打开资源失败'));
+      showGlobalNotification('error', t('learningHub:errors.openResourceFailed'));
     }
   }, [t]);
 
@@ -844,24 +844,24 @@ export const LearningHubPage: React.FC = () => {
             debugLog.log('[LearningHub] Resolved VFS resource ID:', locator.resourceId, '→', finalDocumentId);
           } else {
             debugLog.warn('[LearningHub] VFS resource has no sourceId:', locator.resourceId);
-            showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+            showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
             return;
           }
         } catch (error: unknown) {
           debugLog.error('[LearningHub] Failed to resolve VFS resource:', error);
-          showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+          showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
           return;
         }
       }
 
       if (!finalDocumentId) {
-        showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+        showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
         return;
       }
 
       const verifyResult = await dstu.get(`/${finalDocumentId}`);
       if (!verifyResult.ok || !verifyResult.value) {
-        showGlobalNotification('error', t('learningHub:errors.resourceNotFound', '找不到对应资源'));
+        showGlobalNotification('error', t('learningHub:errors.resourceNotFound'));
         return;
       }
 
@@ -909,7 +909,7 @@ export const LearningHubPage: React.FC = () => {
   // ========== 快捷创建并打开资源 ==========
   const handleCreateAndOpen = useCallback(async (type: 'exam' | 'essay' | 'translation' | 'note' | 'mindmap') => {
     if (!finderViewCapabilities.canCreate) {
-      showGlobalNotification('warning', t('learningHub:errors.createNotAllowed', '当前视图不支持新建资源'));
+      showGlobalNotification('warning', t('learningHub:errors.createNotAllowed'));
       return;
     }
 
@@ -974,7 +974,7 @@ export const LearningHubPage: React.FC = () => {
         if (!current) {
           showGlobalNotification(
             'info',
-            t('notes:export.no_active_resource', '没有打开的资源，请先打开要导出的笔记或文件。')
+            t('notes:export.no_active_resource')
           );
           return;
         }
@@ -987,8 +987,7 @@ export const LearningHubPage: React.FC = () => {
           showGlobalNotification(
             'info',
             t(
-              'notes:export.not_available_all',
-              '“导出全部笔记”尚未接入。请用「导出当前笔记」，或从侧栏右键菜单导出单个资源。'
+              'notes:export.not_available_all'
             )
           );
           return;
@@ -996,8 +995,7 @@ export const LearningHubPage: React.FC = () => {
         showGlobalNotification(
           'info',
           t(
-            'notes:export.fallback_current',
-            '全部导出尚未接入，已改为导出当前打开的资源。'
+            'notes:export.fallback_current'
           )
         );
         void exportResourceById(current.resourceId, t);

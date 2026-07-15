@@ -116,7 +116,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           loadedNodeIdRef.current = requestNodeId;
         } else if (!result.ok) {
           // S-018 修复：加载失败时进入错误态，阻止保存操作，防止空内容覆盖真实数据
-          const errMsg = 'error' in result ? getErrorMessage(result.error) : t('translation:errors.load_failed_generic', '加载翻译数据失败');
+          const errMsg = 'error' in result ? getErrorMessage(result.error) : t('translation:errors.load_failed_generic');
           console.error('[TranslationContentView] Failed to load translation from DSTU:', errMsg);
           if (isFirstLoad) {
             setLoadError(errMsg);
@@ -190,7 +190,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       <div className="flex items-center justify-center h-full bg-background" role="status">
         <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="ml-2 text-muted-foreground">
-          {t('common:loading', '加载中...')}
+          {t('common:loading')}
         </span>
       </div>
     );
@@ -206,11 +206,11 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         </p>
         <div className="flex gap-2">
           <NotionButton variant="primary" onClick={() => void loadSession()}>
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
           {onClose && (
             <NotionButton variant="ghost" onClick={onClose}>
-              {t('common:back', '返回')}
+              {t('common:back')}
             </NotionButton>
           )}
         </div>
@@ -225,7 +225,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
           <div className="flex items-center justify-center h-full" role="status">
             <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
             <span className="ml-2 text-muted-foreground">
-              {t('common:loading', '加载中...')}
+              {t('common:loading')}
             </span>
           </div>
         }

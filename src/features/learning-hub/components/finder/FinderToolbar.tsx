@@ -74,7 +74,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
 }: FinderToolbarProps) {
   const { t } = useTranslation('learningHub');
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const title = currentTitle || breadcrumbs[breadcrumbs.length - 1]?.name || t('title', '资源库');
+  const title = currentTitle || breadcrumbs[breadcrumbs.length - 1]?.name || t('title');
 
   const navButtons = (
     <div className="finder-toolbar-control-group flex shrink-0 items-center gap-0.5 rounded-xl bg-[color:var(--interactive-hover)]/70 p-0.5">
@@ -85,8 +85,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         className="pointer-events-auto !h-7 !w-7 !p-1 text-foreground/70 hover:bg-background/70"
         onClick={onBack}
         disabled={!canGoBack}
-        title={t('finder.toolbar.back', '返回')}
-        aria-label={t('finder.toolbar.back', '返回')}
+        title={t('finder.toolbar.back')}
+        aria-label={t('finder.toolbar.back')}
       >
         <CaretLeft size={16} />
       </NotionButton>
@@ -97,8 +97,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         className="pointer-events-auto !h-7 !w-7 !p-1 text-foreground/70 hover:bg-background/70"
         onClick={onForward}
         disabled={!canGoForward}
-        title={t('finder.toolbar.forward', '前进')}
-        aria-label={t('finder.toolbar.forward', '前进')}
+        title={t('finder.toolbar.forward')}
+        aria-label={t('finder.toolbar.forward')}
       >
         <CaretRight size={16} />
       </NotionButton>
@@ -138,8 +138,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               size="icon"
               iconOnly
               className="pointer-events-auto !h-8 !w-8 !p-1.5 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
-              title={t('finder.sort.title', '排序方式')}
-              aria-label={t('finder.sort.title', '排序方式')}
+              title={t('finder.sort.title')}
+              aria-label={t('finder.sort.title')}
             >
               {sortOrder === 'asc' ? <SortAscending size={16} /> : <SortDescending size={16} />}
             </NotionButton>
@@ -159,13 +159,13 @@ export const FinderToolbar = React.memo(function FinderToolbar({
               onClick={() => onSortChange(sortBy, 'asc')}
               icon={sortOrder === 'asc' ? <Check size={14} /> : <span className="w-3.5" />}
             >
-              {t('finder.sort.asc', '升序')}
+              {t('finder.sort.asc')}
             </AppMenuItem>
             <AppMenuItem
               onClick={() => onSortChange(sortBy, 'desc')}
               icon={sortOrder === 'desc' ? <Check size={14} /> : <span className="w-3.5" />}
             >
-              {t('finder.sort.desc', '降序')}
+              {t('finder.sort.desc')}
             </AppMenuItem>
           </AppMenuContent>
         </AppMenu>
@@ -178,8 +178,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           iconOnly
           className="pointer-events-auto !h-8 !w-8 !p-1.5 rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
           onClick={onNewFolder}
-          title={t('finder.toolbar.newFolder', '新建文件夹')}
-          aria-label={t('finder.toolbar.newFolder', '新建文件夹')}
+          title={t('finder.toolbar.newFolder')}
+          aria-label={t('finder.toolbar.newFolder')}
         >
           <FolderPlus size={16} />
         </NotionButton>
@@ -192,8 +192,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
           iconOnly
           className="pointer-events-auto !h-8 !w-8 !p-1.5 rounded-xl text-foreground/65 hover:bg-[color:var(--interactive-hover)]"
           onClick={onRefresh}
-          title={t('common:refresh', '刷新')}
-          aria-label={t('common:refresh', '刷新')}
+          title={t('common:refresh')}
+          aria-label={t('common:refresh')}
         >
           <ArrowClockwise size={16} />
         </NotionButton>
@@ -209,8 +209,8 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         value={searchQuery}
         onChange={(event) => onSearchChange(event.target.value)}
         disabled={searchDisabled}
-        placeholder={t('finder.search.placeholder', '搜索资源...')}
-        aria-label={t('finder.search.placeholder', '搜索资源...')}
+        placeholder={t('finder.search.placeholder')}
+        aria-label={t('finder.search.placeholder')}
         className="h-8 w-full appearance-none rounded-xl border border-transparent bg-[color:var(--interactive-hover)]/70 pl-8 pr-2.5 text-[13px] text-foreground outline-none placeholder:text-foreground/45 focus:border-[color:var(--border)] focus:bg-background [&::-webkit-search-cancel-button]:hidden"
       />
     </div>

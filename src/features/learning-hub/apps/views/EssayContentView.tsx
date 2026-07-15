@@ -84,7 +84,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
         // M-046 fix: 加载失败时进入错误态，而非吞没为空会话
         console.warn('[EssayContentView] Failed to load session:', result.error?.toUserMessage?.() || result.error);
         if (isFirstLoad) {
-          setError(result.error?.toUserMessage?.() || t('learningHub:error.loadFailed', '加载失败'));
+          setError(result.error?.toUserMessage?.() || t('learningHub:error.loadFailed'));
         }
       } else {
         // result.ok 但无数据（空文件）：设置一个带 node.id 的空会话
@@ -178,7 +178,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       <div className="flex items-center justify-center h-full bg-background" role="status">
         <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
         <span className="ml-2 text-muted-foreground">
-          {t('common:loading', '加载中...')}
+          {t('common:loading')}
         </span>
       </div>
     );
@@ -191,11 +191,11 @@ const EssayContentView: React.FC<ContentViewProps> = ({
         <p className="text-destructive text-center">{error}</p>
         <div className="flex gap-2">
           <NotionButton variant="primary" size="sm" onClick={() => void loadSession()}>
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
           {onClose && (
             <NotionButton variant="default" size="sm" onClick={onClose}>
-              {t('common:close', '关闭')}
+              {t('common:close')}
             </NotionButton>
           )}
         </div>
@@ -210,7 +210,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
           <div className="flex items-center justify-center h-full" role="status">
             <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
             <span className="ml-2 text-muted-foreground">
-              {t('common:loading', '加载中...')}
+              {t('common:loading')}
             </span>
           </div>
         }

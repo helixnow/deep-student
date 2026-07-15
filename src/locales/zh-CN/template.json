@@ -10,6 +10,7 @@
   "set_default_failed": "设置默认模板失败",
   "copy_suffix": " - 副本",
   "copy_author": "复制",
+  "click_to_copy": "点击复制",
   "cannot_delete_builtin": "内置模板不能删除。",
   "delete_confirmation": "确定要删除模板 \"{{name}}\" 吗？",
   "delete_failed": "删除模板失败",

@@ -233,7 +233,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
 
       <MenuItem
         icon={<Link className="w-4 h-4" />}
-        label={t('contextMenu.linkResource', '关联资源')}
+        label={t('contextMenu.linkResource')}
         onClick={() => exec(() => {
           if (nodeId) onOpenResourcePicker?.(nodeId);
         })}

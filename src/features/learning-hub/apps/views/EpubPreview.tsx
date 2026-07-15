@@ -312,7 +312,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     return (
       <div className="epub-preview-state" role="alert">
         <WarningCircle size={44} aria-hidden="true" />
-        <strong>{t('learningHub:epubPreview.loadFailed', '无法打开 EPUB')}</strong>
+        <strong>{t('learningHub:epubPreview.loadFailed')}</strong>
         <span>{error}</span>
       </div>
     );
@@ -322,15 +322,15 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
     return (
       <div className="epub-preview-state" role="status">
         <CircleNotch className="animate-spin" size={36} aria-hidden="true" />
-        <span>{t('learningHub:epubPreview.loading', '正在打开电子书...')}</span>
+        <span>{t('learningHub:epubPreview.loading')}</span>
       </div>
     );
   }
 
   return (
     <div ref={rootRef} className={`epub-preview epub-preview-${theme}`} data-epub-preview>
-      <div className="epub-preview-toolbar" role="toolbar" aria-label={t('learningHub:epubPreview.readerToolbar', '电子书工具栏')}>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSidebarOpen((value) => !value)} title={t('learningHub:epubPreview.toggleSidebar', '切换目录')} aria-label={t('learningHub:epubPreview.toggleSidebar', '切换目录')}>
+      <div className="epub-preview-toolbar" role="toolbar" aria-label={t('learningHub:epubPreview.readerToolbar')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSidebarOpen((value) => !value)} title={t('learningHub:epubPreview.toggleSidebar')} aria-label={t('learningHub:epubPreview.toggleSidebar')}>
           <SidebarSimple size={17} />
         </NotionButton>
         <div className="epub-preview-book-title" title={`${book.title}${book.author ? ` - ${book.author}` : ''}`}>
@@ -338,29 +338,29 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
           {book.author && <span>{book.author}</span>}
         </div>
         <div className="epub-preview-toolbar-spacer" />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.max(0.75, Number((value - 0.1).toFixed(2))))} disabled={fontScale <= 0.75} title={t('learningHub:previewToolbar.fontDecrease', '减小字号')} aria-label={t('learningHub:previewToolbar.fontDecrease', '减小字号')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.max(0.75, Number((value - 0.1).toFixed(2))))} disabled={fontScale <= 0.75} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
           <Minus size={16} />
         </NotionButton>
         <span className="epub-preview-font-value" aria-live="polite">{Math.round(fontScale * 100)}%</span>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.min(1.8, Number((value + 0.1).toFixed(2))))} disabled={fontScale >= 1.8} title={t('learningHub:previewToolbar.fontIncrease', '增大字号')} aria-label={t('learningHub:previewToolbar.fontIncrease', '增大字号')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setFontScale((value) => Math.min(1.8, Number((value + 0.1).toFixed(2))))} disabled={fontScale >= 1.8} title={t('learningHub:previewToolbar.fontIncrease')} aria-label={t('learningHub:previewToolbar.fontIncrease')}>
           <Plus size={16} />
         </NotionButton>
-        <select className="epub-preview-theme" value={theme} onChange={(event) => setTheme(event.target.value as ReaderTheme)} aria-label={t('learningHub:epubPreview.theme', '阅读主题')}>
-          <option value="light">{t('learningHub:epubPreview.themeLight', '明亮')}</option>
-          <option value="sepia">{t('learningHub:epubPreview.themeSepia', '护眼')}</option>
-          <option value="dark">{t('learningHub:epubPreview.themeDark', '深色')}</option>
+        <select className="epub-preview-theme" value={theme} onChange={(event) => setTheme(event.target.value as ReaderTheme)} aria-label={t('learningHub:epubPreview.theme')}>
+          <option value="light">{t('learningHub:epubPreview.themeLight')}</option>
+          <option value="sepia">{t('learningHub:epubPreview.themeSepia')}</option>
+          <option value="dark">{t('learningHub:epubPreview.themeDark')}</option>
         </select>
       </div>
 
       <div className="epub-preview-body">
         {sidebarOpen && (
-          <aside className="epub-preview-sidebar" aria-label={t('learningHub:epubPreview.navigation', '电子书导航')}>
+          <aside className="epub-preview-sidebar" aria-label={t('learningHub:epubPreview.navigation')}>
             <div className="epub-preview-sidebar-tabs">
               <NotionButton variant={sidebarMode === 'toc' ? 'default' : 'ghost'} size="sm" onClick={() => setSidebarMode('toc')}>
-                <List size={15} />{t('learningHub:epubPreview.contents', '目录')}
+                <List size={15} />{t('learningHub:epubPreview.contents')}
               </NotionButton>
               <NotionButton variant={sidebarMode === 'search' ? 'default' : 'ghost'} size="sm" onClick={() => setSidebarMode('search')}>
-                <MagnifyingGlass size={15} />{t('common:search', '搜索')}
+                <MagnifyingGlass size={15} />{t('common:search')}
               </NotionButton>
             </div>
             {sidebarMode === 'toc' ? (
@@ -382,12 +382,12 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
               <div className="epub-preview-search">
                 <label className="epub-preview-search-input">
                   <MagnifyingGlass size={15} aria-hidden="true" />
-                  <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('learningHub:epubPreview.searchPlaceholder', '搜索书中内容')} autoFocus />
+                  <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t('learningHub:epubPreview.searchPlaceholder')} autoFocus />
                 </label>
                 <div className="epub-preview-search-summary">
                   {searching
-                    ? t('common:searching', '搜索中...')
-                    : searchQuery.trim() && t('learningHub:epubPreview.searchCount', '{{count}} 个结果', { count: searchResults.length })}
+                    ? t('learningHub:epubPreview.searching')
+                    : searchQuery.trim() && t('learningHub:epubPreview.searchCount', { count: searchResults.length })}
                 </div>
                 <div className="epub-preview-search-results">
                   {searchResults.map((result, index) => (
@@ -413,14 +413,14 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({ base64Content, fileName, reso
             onLoad={handleFrameLoad}
           />
           <footer className="epub-preview-footer">
-            <NotionButton variant="ghost" size="icon" iconOnly disabled={chapterIndex === 0} onClick={() => navigateToChapter(chapterIndex - 1)} title={t('learningHub:epubPreview.previousChapter', '上一章')} aria-label={t('learningHub:epubPreview.previousChapter', '上一章')}>
+            <NotionButton variant="ghost" size="icon" iconOnly disabled={chapterIndex === 0} onClick={() => navigateToChapter(chapterIndex - 1)} title={t('learningHub:epubPreview.previousChapter')} aria-label={t('learningHub:epubPreview.previousChapter')}>
               <CaretLeft size={18} />
             </NotionButton>
-            <div className="epub-preview-progress" aria-label={t('learningHub:epubPreview.progress', '阅读进度 {{progress}}%', { progress: overallProgress })}>
+            <div className="epub-preview-progress" aria-label={t('learningHub:epubPreview.progress', { progress: overallProgress })}>
               <div><span style={{ width: `${overallProgress}%` }} /></div>
               <span>{chapterIndex + 1} / {book.chapters.length} · {overallProgress}%</span>
             </div>
-            <NotionButton variant="ghost" size="icon" iconOnly disabled={chapterIndex >= book.chapters.length - 1} onClick={() => navigateToChapter(chapterIndex + 1)} title={t('learningHub:epubPreview.nextChapter', '下一章')} aria-label={t('learningHub:epubPreview.nextChapter', '下一章')}>
+            <NotionButton variant="ghost" size="icon" iconOnly disabled={chapterIndex >= book.chapters.length - 1} onClick={() => navigateToChapter(chapterIndex + 1)} title={t('learningHub:epubPreview.nextChapter')} aria-label={t('learningHub:epubPreview.nextChapter')}>
               <CaretRight size={18} />
             </NotionButton>
           </footer>

@@ -143,8 +143,10 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
       setMarkdown: (markdown: string) => {
         try {
           crepe.editor.action(replaceAll(markdown));
+          return true;
         } catch (e) {
           console.error('[useCrepeEditor] setMarkdown failed:', e);
+          return false;
         }
       },
 
@@ -253,8 +255,8 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
       },
 
       agentInsert: (text: string, pos: number) => {
-        if (!text) return pos;
-        let nextPos = pos;
+        if (!text) return null;
+        let result: { from: number; to: number; cursor: number } | null = null;
         try {
           crepe.editor.action((ctx) => {
             const view = ctx.get(editorViewCtx);
@@ -273,12 +275,12 @@ export function useCrepeEditor(options: UseCrepeEditorOptions): UseCrepeEditorRe
                 pos: cursor,
               } satisfies AgentHighlightMeta));
             }
-            nextPos = cursor;
+            result = { from, to, cursor };
           });
         } catch (e) {
           console.error('[useCrepeEditor] agentInsert failed:', e);
         }
-        return nextPos;
+        return result;
       },
 
       agentInsertMarkdown: (markdown: string, pos: number) => {

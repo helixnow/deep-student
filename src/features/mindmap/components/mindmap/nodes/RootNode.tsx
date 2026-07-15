@@ -1,4 +1,5 @@
 import React, { useCallback, useState, useMemo, useLayoutEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -28,6 +29,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   data,
   selected,
 }) => {
+  const { t } = useTranslation('mindmap');
   const [showActions, setShowActions] = useState(false);
   const storeApi = useMindMapStoreApi();
   
@@ -228,7 +230,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         <NotionButton variant="ghost"
           onClick={handleAddChild}
           className="mm-collapse-btn bg-[var(--mm-bg-elevated)] border border-[var(--mm-border)] w-6 h-6 hover:bg-[var(--mm-bg-hover)]"
-          aria-label="Add Child"
+          aria-label={t('actions.addChild')}
         >
           <Plus className="w-3.5 h-3.5 text-[var(--mm-text-secondary)]" />
         </NotionButton>

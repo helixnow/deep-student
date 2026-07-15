@@ -139,7 +139,7 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
   );
 
   // 渲染单个 tab 面板内容（保活逻辑，见 TabPanelItem）
-  const loadingLabel = t('loading', '加载中...');
+  const loadingLabel = t('loading');
   const renderTabPanel = (tab: OpenTab, visible: boolean) => (
     <TabPanelItem
       key={tab.tabId}
@@ -193,21 +193,21 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
               <div className="absolute top-2 right-4 z-10 flex items-center gap-2">
                 <div className="bg-background/80 backdrop-blur-sm shadow-sm border border-border rounded-md px-2 py-1 text-xs text-muted-foreground font-medium flex items-center gap-1.5">
                   <SidebarSimple size={14} />
-                  {t('learningHub:splitView.title', '分屏视图')}
+                  {t('learningHub:splitView.title')}
                 </div>
                 <button
                   type="button"
                   onClick={onCloseSplitView}
                   className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
-                  title={t('learningHub:splitView.close', '关闭分屏')}
-                  aria-label={t('learningHub:splitView.close', '关闭分屏')}
+                  title={t('learningHub:splitView.close')}
+                  aria-label={t('learningHub:splitView.close')}
                 >
                   <X size={14} />
                 </button>
               </div>
               {rightTab ? renderTabPanel(rightTab, true) : (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  {t('noContent', '无内容')}
+                  {t('noContent')}
                 </div>
               )}
             </div>

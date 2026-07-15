@@ -43,10 +43,7 @@ export async function openNodeRef(
   if (!exists) {
     showGlobalNotification(
       'warning',
-      i18next.t('refs.unavailable', {
-        ns: 'mindmap',
-        defaultValue: '资源已删除或不可用',
-      }),
+      i18next.t('refs.unavailable', { ns: 'mindmap' }),
     );
     return false;
   }

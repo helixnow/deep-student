@@ -183,6 +183,14 @@
     "loadFailed": "Failed to load exam session",
     "sessionNotFound": "Exam session not found",
     "deprecatedPanel": "This entry is deprecated. Please access question set recognition through the Learning Hub."
+  ,
+    "delete_question_failed": "Failed to delete the question. Please try again.",
+    "loadQuestionsFailed": "Failed to load questions",
+    "manual_grade_failed": "Failed to sync grading. Please try again manually.",
+    "note_update_unavailable": "Notes cannot be saved in the current mode.",
+    "save_note_failed": "Failed to save note",
+    "submit_failed": "Failed to submit answer. Please try again.",
+    "toggle_favorite_failed": "Favorite operation failed. Please try again."
   },
   "viewMode": {
     "edit": "Edit",
@@ -305,7 +313,8 @@
         "is_favorite": "Favorite",
         "user_note": "Notes",
         "created_at": "Created At",
-        "updated_at": "Updated At"
+        "updated_at": "Updated At",
+        "images": "Linked images"
       },
       "encodingDesc": {
         "utf8": "Universal encoding, recommended",
@@ -350,6 +359,8 @@
     "label": "Label",
     "content": "Question",
     "attempts": "Attempts",
+    "manage": "Manage",
+    "paginationInfo": "{{total}} items",
     "edit": {
       "title": "Edit Question",
       "content": "Question Content",
@@ -390,6 +401,34 @@
       "missingExamId": "Missing exam ID",
       "contentRequired": "Question content is required"
     }
+  ,
+    "actionUnavailable": "Action Unavailable",
+    "confirmDelete": "Confirm Delete",
+    "confirmDeleteBatch": "Confirm Delete Batch {{count}}",
+    "confirmDeleteSingle": "Confirm Delete Single",
+    "confirmReset": "Confirm Reset",
+    "confirmResetBatch": "Confirm Reset Batch {{count}}",
+    "confirmResetSingle": "Confirm Reset Single",
+    "edit": {
+      "discardDescription": "Discard Description"
+    },
+    "favoriteUpdateFailed": "Favorite Update Failed",
+    "favoriteUpdated": "Favorite Updated",
+    "favorites": {
+      "browse": "Browse",
+      "empty": "Empty",
+      "hint": "Hint",
+      "loadFailed": "Load Failed",
+      "title": "Title",
+      "toggleFailed": "Toggle Failed",
+      "truncated": "Truncated {{count}} {{total}}"
+    },
+    "history": {
+      "description": "Description",
+      "empty": "Empty",
+      "title": "Title"
+    },
+    "import": "Import"
   },
   "csv": {
     "import_title": "CSV Import",
@@ -408,6 +447,7 @@
     "select_field": "Select field...",
     "no_mapping": "No mapping",
     "suggested": "Suggested",
+    "required": "Required",
     "mapping_valid": "Field mapping is valid, ready to import",
     "mapping_required": "Please map at least the \"Content\" field",
     "data_preview": "Data preview (first {{count}} rows)",
@@ -442,6 +482,13 @@
     "import_failed_generic": "Import failed",
     "csv_file_fallback": "CSV File",
     "drop_csv_here": "Release to upload CSV file"
+  ,
+    "cancelling_import": "Cancelling...",
+    "import_cancel_failed": "Failed to cancel the import. Please try again.",
+    "import_cancel_unavailable": "The import has finished and cannot be cancelled.",
+    "import_cancelled_before_start": "Import cancelled before any data was written.",
+    "import_in_progress_close_blocked": "Import is in progress. Cancel it before closing this window.",
+    "mapping_duplicate": "Duplicate mappings found. Each target field can be mapped only once."
   },
   "image": {
     "alt_card": "Question card",
@@ -472,6 +519,11 @@
     "reading_document": "Reading document...",
     "parsing_document": "Parsing document...",
     "processing": "Processing...",
+    "cancel_import": "Cancel Import",
+    "cancelling_import": "Cancelling...",
+    "import_cancelled": "Import cancelled. Completed content is retained.",
+    "cancel_unavailable": "The import has already ended and cannot be cancelled.",
+    "cancel_failed": "Could not cancel the import. Please try again.",
     "start_recognize": "Start Recognition",
     "parse_document": "Parse Document",
     "done": "Done",
@@ -519,6 +571,16 @@
     "filter_hint": "Expand to deselect questions you don't need to import (e.g. already mastered)",
     "filter_delete_failed": "Failed to delete excluded questions",
     "view_questions_filtered": "Confirm Import {{count}} Questions"
+  ,
+    "extracting_figures": "Extracting figures {{current}} {{total}}",
+    "preprocessing": "Preprocessing",
+    "rendering_pages": "Rendering pages {{current}} {{total}}",
+    "structuring_questions": "Structuring questions {{current}} {{total}}",
+    "pdf_quality_title": "PDF text layer quality is low ({{count}} valid characters)",
+    "pdf_quality_description": "Use the extracted text directly, or enable OCR for recognition.",
+    "pdf_quality_empty_preview": "(No preview text)",
+    "pdf_use_extracted_text": "Use extracted text only",
+    "pdf_enable_ocr": "Enable OCR"
   },
   "questionTypes": {
     "single_choice": "Single Choice",
@@ -530,5 +592,10 @@
     "calculation": "Calculation",
     "proof": "Proof",
     "other": "Other"
+  }
+,
+  "editor": {
+    "discardDraftDescription": "Discard Draft Description",
+    "discardDraftTitle": "Discard Draft Title"
   }
 }

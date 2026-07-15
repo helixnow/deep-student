@@ -54,7 +54,7 @@ pub async fn run_grading(
     deps: GradingDeps,
 ) -> Result<Option<GradingResponse>, AppError> {
     // 1. 获取批阅模式
-    let grading_mode = get_grading_mode(&request.mode_id, &deps.custom_modes);
+    let grading_mode = resolve_grading_mode(&request.mode_id, &deps.custom_modes)?;
 
     // 2. 构造批改 Prompt（A6-13: 纯图作文允许空文本，由多模态模型直接读原图）
     let has_essay_images = request
@@ -237,20 +237,52 @@ pub async fn run_grading(
     }))
 }
 
-/// 获取批阅模式
-fn get_grading_mode(mode_id: &Option<String>, custom_modes: &[GradingMode]) -> GradingMode {
+/// Resolve a grading mode without silently changing the requested rubric.
+///
+/// `None` intentionally selects the default mode. Once a caller supplies an
+/// ID, however, a missing custom/builtin mode is a validation error rather
+/// than a fallback to the default rubric.
+pub(crate) fn resolve_grading_mode(
+    mode_id: &Option<String>,
+    custom_modes: &[GradingMode],
+) -> Result<GradingMode, AppError> {
     match mode_id {
         Some(id) => {
             let canonical_id = canonical_mode_id(id);
             if let Some(custom) = custom_modes.iter().find(|m| m.id == canonical_id) {
-                return custom.clone();
+                return Ok(custom.clone());
             }
-            get_builtin_grading_modes()
+            if let Some(builtin) = get_builtin_grading_modes()
                 .into_iter()
                 .find(|m| m.id == canonical_id)
-                .unwrap_or_else(get_default_grading_mode)
+            {
+                return Ok(builtin);
+            }
+
+            let requested_id = id.trim();
+            let zh_cn = format!("批阅模式不存在：{requested_id}。请先查询可用模式后重试。");
+            let en_us = format!(
+                "Grading mode '{requested_id}' does not exist. List the available modes and retry."
+            );
+            Err(AppError::with_details(
+                crate::models::AppErrorType::Validation,
+                format!("{zh_cn} / {en_us}"),
+                json!({
+                    "code": "ESSAY_MODE_NOT_FOUND",
+                    "field": "mode_id",
+                    "mode_id": id,
+                    "canonical_mode_id": canonical_id,
+                    "retryable": false,
+                    "messageKey": "chat.tools.essay.errors.modeNotFound",
+                    "messageParams": { "modeId": requested_id },
+                    "messageFallback": {
+                        "zh-CN": zh_cn,
+                        "en-US": en_us,
+                    },
+                }),
+            ))
         }
-        None => get_default_grading_mode(),
+        None => Ok(get_default_grading_mode()),
     }
 }
 
@@ -744,20 +776,17 @@ where
         // 选择适配器
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
-        // 构造 HTTP 请求
-        let preq = adapter
-            .build_request(&config.base_url, api_key, &config.model, &request_body)
-            .map_err(|e| AppError::llm(format!("批改请求构建失败: {}", e)))?;
-
-        let mut header_map = reqwest::header::HeaderMap::new();
-        for (k, v) in preq.headers.iter() {
-            if let (Ok(name), Ok(val)) = (
-                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                reqwest::header::HeaderValue::from_str(v),
-            ) {
-                header_map.insert(name, val);
-            }
-        }
+        // 构造 HTTP 请求，并统一合并供应商自定义请求头 / Codex OAuth 凭据。
+        let mut preq = llm
+            .prepare_provider_request(
+                adapter.as_ref(),
+                config,
+                &request_body,
+                Some(api_key),
+                Some(stream_event),
+                "批改请求构建失败",
+            )
+            .await?;
 
         // 复用 LLMManager 配置好的 HTTP 客户端
         let client = llm.get_http_client();
@@ -767,13 +796,31 @@ where
         let mut cancel_rx = llm.subscribe_cancel_stream(stream_event).await;
 
         // 发送流式请求
-        let response = client
-            .post(&preq.url)
-            .headers(header_map)
-            .json(&preq.body)
-            .send()
-            .await
-            .map_err(|e| AppError::llm(format!("批改请求失败: {}", e)))?;
+        let response = if preq.is_codex() {
+            llm.send_codex_stream_request_with_single_refresh(
+                &mut preq,
+                Some(std::time::Duration::from_secs(300)),
+            )
+            .await?
+        } else {
+            let mut header_map = reqwest::header::HeaderMap::new();
+            for (k, v) in &preq.headers {
+                if let (Ok(name), Ok(val)) = (
+                    reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                    reqwest::header::HeaderValue::from_str(v),
+                ) {
+                    header_map.insert(name, val);
+                }
+            }
+
+            client
+                .post(&preq.url)
+                .headers(header_map)
+                .json(&preq.body)
+                .send()
+                .await
+                .map_err(|e| AppError::llm(format!("批改请求失败: {}", e)))?
+        };
 
         if !response.status().is_success() {
             let status = response.status();
@@ -786,9 +833,22 @@ where
 
         // 解析 SSE 流
         let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
+        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
         let mut cancelled = false;
+        let mut handle_sse_block = |block: &str| -> bool {
+            if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(block) {
+                return true;
+            }
+            for event in adapter.parse_stream(block) {
+                match event {
+                    crate::providers::StreamEvent::ContentChunk(content) => on_chunk(content),
+                    crate::providers::StreamEvent::Done => return true,
+                    _ => {}
+                }
+            }
+            false
+        };
 
         while !stream_ended && !cancelled {
             if llm.consume_pending_cancel(stream_event).await {
@@ -806,37 +866,9 @@ where
                     match chunk_result {
                         Some(chunk) => {
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
-                            buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-                            // ★ A6-01：兼容 LF（\n\n）与 CRLF（\r\n\r\n）两种 SSE 事件分隔
-                            while let Some((pos, sep_len)) = find_sse_event_boundary(&buffer) {
-                                let line = buffer[..pos].trim().to_string();
-                                buffer = buffer[pos + sep_len..].to_string();
-
-                                if line.is_empty() {
-                                    continue;
-                                }
-
-                                if line == "data: [DONE]" {
+                            for block in sse_buffer.process_bytes(&bytes) {
+                                if handle_sse_block(&block) {
                                     stream_ended = true;
-                                    break;
-                                }
-
-                                let events = adapter.parse_stream(&line);
-                                for event in events {
-                                    match event {
-                                        crate::providers::StreamEvent::ContentChunk(content) => {
-                                            on_chunk(content);
-                                        }
-                                        crate::providers::StreamEvent::Done => {
-                                            stream_ended = true;
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-
-                                if stream_ended {
                                     break;
                                 }
                             }
@@ -853,6 +885,15 @@ where
             return Ok(StreamStatus::Cancelled);
         }
 
+        if !stream_ended {
+            for block in sse_buffer.flush() {
+                if handle_sse_block(&block) {
+                    stream_ended = true;
+                    break;
+                }
+            }
+        }
+
         // ★ M-064: 区分正常完成和流意外中断
         if stream_ended {
             Ok(StreamStatus::Completed)
@@ -865,27 +906,6 @@ where
     llm.clear_cancel_stream(stream_event).await;
 
     result
-}
-
-/// 查找 SSE 事件边界，返回（分隔符起始位置, 分隔符长度）
-///
-/// ★ A6-01：部分供应商/反向代理使用 CRLF（\r\n\r\n）分隔事件，只认 \n\n 会导致
-/// 事件永远解析不到、缓冲区无限增长
-fn find_sse_event_boundary(buffer: &str) -> Option<(usize, usize)> {
-    let lf = buffer.find("\n\n");
-    let crlf = buffer.find("\r\n\r\n");
-    match (lf, crlf) {
-        (Some(l), Some(c)) => {
-            if c < l {
-                Some((c, 4))
-            } else {
-                Some((l, 2))
-            }
-        }
-        (Some(l), None) => Some((l, 2)),
-        (None, Some(c)) => Some((c, 4)),
-        (None, None) => None,
-    }
 }
 
 /// 根据 base64 数据的前几个字节猜测图片 MIME 类型
@@ -949,6 +969,36 @@ mod tests {
     }
 
     #[test]
+    fn explicit_unknown_mode_is_a_structured_validation_error() {
+        let error = resolve_grading_mode(&Some("missing-rubric".to_string()), &[])
+            .expect_err("an explicit unknown mode must not fall back to the default rubric");
+
+        assert!(matches!(
+            error.error_type,
+            crate::models::AppErrorType::Validation
+        ));
+        let details = error.details.expect("structured mode error details");
+        assert_eq!(details["code"], "ESSAY_MODE_NOT_FOUND");
+        assert_eq!(details["field"], "mode_id");
+        assert_eq!(details["mode_id"], "missing-rubric");
+        assert_eq!(details["retryable"], false);
+        assert_eq!(
+            details["messageKey"],
+            "chat.tools.essay.errors.modeNotFound"
+        );
+        assert_eq!(details["messageParams"]["modeId"], "missing-rubric");
+        assert!(details["messageFallback"]["zh-CN"]
+            .as_str()
+            .expect("Chinese fallback")
+            .contains("missing-rubric"));
+        assert!(details["messageFallback"]["en-US"]
+            .as_str()
+            .expect("English fallback")
+            .contains("missing-rubric"));
+        assert!(error.message.contains(" / "));
+    }
+
+    #[test]
     fn prompt_includes_system_stats_block() {
         let mode = get_default_grading_mode();
         let request = sample_request("你好，world! It's fine.");
@@ -959,15 +1009,6 @@ mod tests {
         assert!(user_prompt.contains("中文字数（汉字）"));
         assert!(user_prompt.contains("英文词数"));
         assert!(user_prompt.contains("标点总数"));
-    }
-
-    #[test]
-    fn sse_boundary_handles_lf_and_crlf() {
-        assert_eq!(find_sse_event_boundary("data: a\n\nrest"), Some((7, 2)));
-        assert_eq!(find_sse_event_boundary("data: a\r\n\r\nrest"), Some((7, 4)));
-        assert_eq!(find_sse_event_boundary("data: a"), None);
-        // 混合时取最先出现的分隔符
-        assert_eq!(find_sse_event_boundary("a\r\n\r\nb\n\nc"), Some((1, 4)));
     }
 
     #[test]

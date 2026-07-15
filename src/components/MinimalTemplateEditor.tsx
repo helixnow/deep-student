@@ -90,9 +90,9 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       }
     }
     return JSON.stringify({
-      Front: t('example_question', '示例问题'),
-      Back: t('example_answer', '示例答案'),
-      Notes: t('example_notes', '补充说明'),
+      Front: t('example_question'),
+      Back: t('example_answer'),
+      Notes: t('example_notes'),
       Tags: [t('tag_1'), t('tag_2')]
     }, null, 2);
   });
@@ -260,11 +260,11 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
     }
     
     if (formData.fields.length === 0) {
-      errors.push({ field: 'fields', message: t('at_least_one_field', '至少需要一个字段') });
+      errors.push({ field: 'fields', message: t('at_least_one_field') });
     }
     
     if (!validateJson(previewDataJson)) {
-      errors.push({ field: 'preview_data_json', message: t('preview_data_invalid', '预览数据JSON格式无效') });
+      errors.push({ field: 'preview_data_json', message: t('preview_data_invalid') });
     }
     
     if (!formData.front_template.trim()) {
@@ -382,7 +382,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
       await onSave(templateData);
     } catch (error: unknown) {
       console.error('Failed to save template:', error);
-      setValidationErrors([{ field: 'general', message: error instanceof Error ? error.message : t('save_failed', '保存失败') }]);
+      setValidationErrors([{ field: 'general', message: error instanceof Error ? error.message : t('save_failed') }]);
     } finally {
       setIsSubmitting(false);
     }
@@ -416,11 +416,11 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             </NotionButton>
             <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'templates' || activeTab === 'styles' ? 'active' : ''}`} onClick={() => { setActiveTab('templates'); setCodeSubTab('front'); }}>
               <Code size={18} />
-              {t('template_code', '模板代码')}
+              {t('template_code')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'data' ? 'active' : ''}`} onClick={() => setActiveTab('data')}>
               <Database size={18} />
-              {t('preview_data', '预览数据')}
+              {t('preview_data')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
               <Gear size={18} />
@@ -428,7 +428,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             </NotionButton>
             <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
               <Gear size={18} />
-              {t('advanced_settings', '高级设置')}
+              {t('advanced_settings')}
             </NotionButton>
           </nav>
         </div>
@@ -466,7 +466,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      placeholder={t('form_name_placeholder', '例如：编程代码卡片')}
+                      placeholder={t('form_name_placeholder')}
 />
                     <span className="field-hint">{t('template_name_hint')}</span>
                   </div>
@@ -477,7 +477,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       type="text"
                       value={formData.author}
                       onChange={(e) => setFormData({...formData, author: e.target.value})}
-                      placeholder={t('form_author_placeholder', '您的名字')}
+                      placeholder={t('form_author_placeholder')}
 />
                   </div>
 
@@ -513,7 +513,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         onCheckedChange={(checked) => setFormData({...formData, is_active: checked})}
 />
                       <span className="text-sm text-muted-foreground">
-                        {formData.is_active ? t('active', '已激活') : t('inactive', '未激活')}
+                        {formData.is_active ? t('active') : t('inactive')}
                       </span>
                     </div>
                   </div>
@@ -523,18 +523,18 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     <Textarea
                       value={formData.description}
                       onChange={(e) => setFormData({...formData, description: e.target.value})}
-                      placeholder={t('form_description_placeholder', '描述模板的用途和特点')}
+                      placeholder={t('form_description_placeholder')}
                       rows={3}
 />
                   </div>
 
                   <div className="form-field">
-                    <Label className="field-label">{t('form_note_type', '笔记类型')}</Label>
+                    <Label className="field-label">{t('form_note_type')}</Label>
                     <Input
                       type="text"
                       value={formData.note_type}
                       onChange={(e) => setFormData({...formData, note_type: e.target.value})}
-                      placeholder={t('note_type_placeholder', 'Basic')}
+                      placeholder={t('note_type_placeholder')}
 />
                   </div>
 
@@ -560,8 +560,8 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                 </div>
 
               <div className="border-t border-border/30 pt-5">
-                <h2 className="text-base font-semibold text-foreground">{t('field_management', '字段管理')}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5 mb-4">{t('field_management_desc', '定义卡片所需的字段')}</p>
+                <h2 className="text-base font-semibold text-foreground">{t('field_management')}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-4">{t('field_management_desc')}</p>
               </div>
                 <div className="fields-manager">
                   <div className="field-list">
@@ -571,7 +571,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           type="text"
                           value={field}
                           onChange={(e) => updateFieldName(index, e.target.value)}
-                          placeholder={t('field_name_placeholder', '字段名称')}
+                          placeholder={t('field_name_placeholder')}
 />
                         <div className="field-item-actions">
                           <NotionButton
@@ -596,7 +596,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     className="mt-4"
                   >
                     <Plus size={16} className="mr-2" />
-                    {t('add_field', '添加字段')}
+                    {t('add_field')}
                   </NotionButton>
                 </div>
             </div>
@@ -613,14 +613,14 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     <div className="p-3 space-y-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                          {t('template_preview', '模板预览')}
+                          {t('template_preview')}
                         </span>
                         <div className="flex gap-1">
                           <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'front' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('front')}>
-                            {t('front_label', '正面')}
+                            {t('front_label')}
                           </NotionButton>
                           <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'back' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('back')}>
-                            {t('back_label', '背面')}
+                            {t('back_label')}
                           </NotionButton>
                         </div>
                       </div>
@@ -632,7 +632,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       </div>
                       {codeSubTab !== 'css' && (
                         <div className="text-[10px] text-muted-foreground/60 space-y-1">
-                          <p>{t('use_mustache_hint', '使用 {{字段名}} 来引用字段值')}</p>
+                          <p>{t('use_mustache_hint')}</p>
                           <div className="flex flex-wrap gap-1">
                             {formData.fields.map(field => (
                               <code
@@ -641,7 +641,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 onClick={() => {
                                   copyTextToClipboard(`{{${field}}}`);
                                 }}
-                                title={t('click_to_copy', '点击复制')}
+                                title={t('click_to_copy')}
                               >
                                 {`{{${field}}}`}
                               </code>
@@ -658,13 +658,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       <div className="flex-none px-3 py-2 border-b border-border/30">
                         <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
                           <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
-                            {t('front_template_title', '正面模板')}
+                            {t('front_template_title')}
                           </NotionButton>
                           <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
-                            {t('back_template_title', '背面模板')}
+                            {t('back_template_title')}
                           </NotionButton>
                           <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
-                            {t('css_style_title', 'CSS 样式')}
+                            {t('css_style_title')}
                           </NotionButton>
                         </div>
                       </div>
@@ -698,35 +698,35 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         {/* 代码子 tab 切换 */}
                         <div className="flex gap-1 p-1 bg-muted/30 rounded-lg">
                           <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'front' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('front')}>
-                            {t('front_template_title', '正面模板')}
+                            {t('front_template_title')}
                           </NotionButton>
                           <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'back' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('back')}>
-                            {t('back_template_title', '背面模板')}
+                            {t('back_template_title')}
                           </NotionButton>
                           <NotionButton variant="ghost" size="sm" className={`flex-1 !px-3 !py-1.5 !rounded-md text-xs font-medium ${codeSubTab === 'css' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setCodeSubTab('css')}>
-                            {t('css_style_title', 'CSS 样式')}
+                            {t('css_style_title')}
                           </NotionButton>
                         </div>
 
                         {/* 描述提示 */}
                         <p className="text-xs text-muted-foreground/70">
-                          {codeSubTab === 'front' && t('front_template_desc', '使用 Mustache 语法编写卡片正面模板')}
-                          {codeSubTab === 'back' && t('back_template_desc', '使用 Mustache 语法编写卡片背面模板')}
-                          {codeSubTab === 'css' && t('css_style_desc', '自定义卡片的视觉样式')}
+                          {codeSubTab === 'front' && t('front_template_desc')}
+                          {codeSubTab === 'back' && t('back_template_desc')}
+                          {codeSubTab === 'css' && t('css_style_desc')}
                         </p>
 
                         {/* 实时预览 */}
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
-                              {t('template_preview', '模板预览')}
+                              {t('template_preview')}
                             </span>
                             <div className="flex gap-1">
                               <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'front' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('front')}>
-                                {t('front_label', '正面')}
+                                {t('front_label')}
                               </NotionButton>
                               <NotionButton variant="ghost" size="sm" className={`!h-auto !px-2 !py-1 text-[11px] font-medium ${previewMode === 'back' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setPreviewMode('back')}>
-                                {t('back_label', '背面')}
+                                {t('back_label')}
                               </NotionButton>
                             </div>
                           </div>
@@ -741,7 +741,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         {/* Mustache 字段提示 */}
                         {codeSubTab !== 'css' && (
                           <div className="text-[10px] text-muted-foreground/60 space-y-1">
-                            <p>{t('use_mustache_hint', '使用 {{字段名}} 来引用字段值')}</p>
+                            <p>{t('use_mustache_hint')}</p>
                             <div className="flex flex-wrap gap-1">
                               {formData.fields.map(field => (
                                 <code
@@ -750,7 +750,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                   onClick={() => {
                                     copyTextToClipboard(`{{${field}}}`);
                                   }}
-                                  title={t('click_to_copy', '点击复制')}
+                                  title={t('click_to_copy')}
                                 >
                                   {`{{${field}}}`}
                                 </code>
@@ -801,8 +801,8 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
           {activeTab === 'data' && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-foreground">{t('preview_data', '预览数据')}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">{t('preview_data_desc', '定义预览时使用的示例数据')}</p>
+                <h2 className="text-base font-semibold text-foreground">{t('preview_data')}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('preview_data_desc')}</p>
               </div>
                 <div className="mb-3">
                   <NotionButton
@@ -811,7 +811,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                     onClick={copyJsonTemplate}
                   >
                     <Copy size={16} className="mr-2" />
-                    {t('generate_template_json', '生成模板JSON')}
+                    {t('generate_template_json')}
                   </NotionButton>
                 </div>
                 <UnifiedCodeEditor
@@ -823,7 +823,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
 />
                 {!validateJson(previewDataJson) && (
                   <div className="text-destructive text-sm mt-2">
-                    {t('json_invalid', 'JSON格式无效')}
+                    {t('json_invalid')}
                   </div>
                 )}
             </div>
@@ -834,7 +834,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             <div className="space-y-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground">{t('field_extraction_rules')}</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">{t('extraction_rules_desc', '定义AI如何提取和生成各个字段的内容')}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{t('extraction_rules_desc')}</p>
               </div>
                 <div className="rules-editor">
                   {Object.entries(fieldExtractionRules).map(([fieldName, rule]) => (
@@ -842,7 +842,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       <h3 className="text-base font-semibold mb-4">{fieldName}</h3>
                         <div className="grid grid-cols-3 gap-4">
                           <div className="form-field col-span-1">
-                            <Label className="field-label">{t('field_type_label', '字段类型')}</Label>
+                            <Label className="field-label">{t('field_type_label')}</Label>
                             <Select
                               value={rule.field_type}
                               onValueChange={(value) => {
@@ -856,18 +856,18 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="Text">{t('field_type.text', '文本')}</SelectItem>
-                                <SelectItem value="Integer">{t('field_type_option.integer', '整数')}</SelectItem>
-                                <SelectItem value="Float">{t('field_type_option.float', '浮点数')}</SelectItem>
-                                <SelectItem value="Boolean">{t('field_type.boolean', '布尔值')}</SelectItem>
-                                <SelectItem value="Date">{t('field_type.date', '日期')}</SelectItem>
-                                <SelectItem value="Array">{t('field_type.array', '数组')}</SelectItem>
+                                <SelectItem value="Text">{t('field_type.text')}</SelectItem>
+                                <SelectItem value="Integer">{t('field_type_option.integer')}</SelectItem>
+                                <SelectItem value="Float">{t('field_type_option.float')}</SelectItem>
+                                <SelectItem value="Boolean">{t('field_type.boolean')}</SelectItem>
+                                <SelectItem value="Date">{t('field_type.date')}</SelectItem>
+                                <SelectItem value="Array">{t('field_type.array')}</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
                           
                           <div className="form-field col-span-2">
-                            <Label className="field-label">{t('field_description_label', '字段描述')}</Label>
+                            <Label className="field-label">{t('field_description_label')}</Label>
                             <Textarea
                               value={rule.description}
                               onChange={(e) => {
@@ -876,13 +876,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                   [fieldName]: { ...rule, description: e.target.value }
                                 });
                               }}
-                              placeholder={t('field_purpose_placeholder', '描述这个字段的用途和内容要求')}
+                              placeholder={t('field_purpose_placeholder')}
                               rows={2}
 />
                           </div>
                           
                           <div className="form-field col-span-1">
-                            <Label className="field-label">{t('is_required_label', '是否必填')}</Label>
+                            <Label className="field-label">{t('is_required_label')}</Label>
                             <div className="flex items-center gap-3">
                               <Switch
                                 checked={rule.is_required}
@@ -894,13 +894,13 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 }}
 />
                               <span className="text-sm text-muted-foreground">
-                                {rule.is_required ? t('required', '必填') : t('optional_label', '选填')}
+                                {rule.is_required ? t('required') : t('optional_label')}
                               </span>
                             </div>
                           </div>
                           
                           <div className="form-field col-span-2">
-                            <Label className="field-label">{t('field_default_value', '默认值')}</Label>
+                            <Label className="field-label">{t('field_default_value')}</Label>
                             <Input
                               type="text"
                               value={rule.default_value}
@@ -925,12 +925,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
             <>
               <div className="space-y-4">
                 <div>
-                  <h2 className="text-base font-semibold text-foreground">{t('advanced_settings', '高级设置')}</h2>
-                  <p className="text-xs text-muted-foreground mt-0.5">{t('advanced_settings_desc', '配置AI生成提示词和其他高级选项')}</p>
+                  <h2 className="text-base font-semibold text-foreground">{t('advanced_settings')}</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">{t('advanced_settings_desc')}</p>
                 </div>
                   <div className="form-field">
                     <div className="flex items-center justify-between mb-2">
-                      <Label className="field-label">{t('core_requirements', '核心要求与说明')}</Label>
+                      <Label className="field-label">{t('core_requirements')}</Label>
                       <NotionButton
                         type="button"
                         variant="ghost"
@@ -938,7 +938,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         onClick={() => setShowPromptPreview(!showPromptPreview)}
                       >
                         {showPromptPreview ? <EyeSlash size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
-                        {showPromptPreview ? t('hide', '隐藏') : t('preview', '预览')}{t('full_prompt', '完整提示词')}
+                        {showPromptPreview ? t('hide') : t('preview')}{t('full_prompt')}
                       </NotionButton>
                     </div>
                     <Textarea
@@ -973,14 +973,14 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
           <div className="footer-info">
             {mode === 'edit' && template && (
               <span className="text-sm text-muted-foreground">
-                {t('created_at_label', '创建于 {{date}}', { date: new Date(template.created_at).toLocaleDateString() })} · 
-                {t('updated_at_label', '更新于 {{date}}', { date: new Date(template.updated_at).toLocaleDateString() })}
+                {t('created_at_label', { date: new Date(template.created_at).toLocaleDateString() })} ·
+                {t('updated_at_label', { date: new Date(template.updated_at).toLocaleDateString() })}
               </span>
             )}
           </div>
           <div className="flex gap-3">
             <NotionButton type="button" variant="ghost" onClick={onCancel}>
-              {t('cancel_button', '取消')}
+              {t('cancel_button')}
             </NotionButton>
             <NotionButton
               type="button"
@@ -988,7 +988,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
               disabled={isSubmitting}
             >
               {isSubmitting && <div className="loading-spinner mr-2" />}
-              {mode === 'create' ? t('submit_create', '创建模板') : t('submit_save', '保存更改')}
+              {mode === 'create' ? t('submit_create') : t('submit_save')}
             </NotionButton>
           </div>
         </div>

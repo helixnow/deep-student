@@ -548,9 +548,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
             {currentSheet.truncatedRows > 0 && (
               <div className="px-4 pt-3 text-xs text-amber-600 dark:text-amber-400">
                 {t(
-                  'learningHub:docPreview.xlsxTruncated',
-                  '表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染，可下载文件查看完整内容）',
-                  { shown: MAX_RENDER_ROWS, hidden: currentSheet.truncatedRows }
+                  'learningHub:docPreview.xlsxTruncated', { shown: MAX_RENDER_ROWS, hidden: currentSheet.truncatedRows }
                 )}
               </div>
             )}

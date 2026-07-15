@@ -55,6 +55,12 @@ export interface UnifiedAppPanelProps {
   readOnly?: boolean;
   /** ★ 标签页：当前面板是否为活跃面板 */
   isActive?: boolean;
+  /** Workbench hosts can request focus after their internal tab becomes active. */
+  focusOnActive?: boolean;
+  /** Editor save state for a parent tab strip; optional outside the workbench. */
+  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
+  /** Owning Workbench window, used to bind ACR to the exact editor instance. */
+  hostWindowId?: string;
   /** 递增时强制重新加载资源（移动端「重载标签页」） */
   reloadNonce?: number;
   /** 自定义类名 */
@@ -78,6 +84,12 @@ export interface ContentViewProps {
   readOnly?: boolean;
   /** ★ 标签页：当前视图是否为活跃标签页 */
   isActive?: boolean;
+  /** Request focus when this note view becomes the active workbench tab. */
+  focusOnActive?: boolean;
+  /** Report the current editor save state to an owning tab strip. */
+  onSaveStateChange?: (state: 'saved' | 'saving' | 'dirty') => void;
+  /** Owning Workbench window, absent in standalone Learning Hub views. */
+  hostWindowId?: string;
 }
 
 // ============================================================================
@@ -132,6 +144,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   onTitleChange,
   readOnly,
   isActive,
+  focusOnActive = false,
+  onSaveStateChange,
+  hostWindowId,
   reloadNonce = 0,
   className,
   strictType = false,
@@ -157,6 +172,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
 
   const onNodeLoadedRef = useRef(onNodeLoaded);
   onNodeLoadedRef.current = onNodeLoaded;
+
+  const onSaveStateChangeRef = useRef(onSaveStateChange);
+  onSaveStateChangeRef.current = onSaveStateChange;
 
   // ★ 资源标识变化时在 render 阶段同步进入加载态（React 官方「根据 props 调整 state」模式），
   //   消除 effect 生效前旧资源内容在新标识下多渲染一帧的问题
@@ -192,14 +210,14 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       }
 
       if (!result.value) {
-        setError(t('error.resourceNotFound', '资源未找到'));
+        setError(t('error.resourceNotFound'));
         setIsLoading(false);
         return;
       }
 
       setNode(result.value);
       onNodeLoadedRef.current?.(result.value);
-      onTitleChangeRef.current?.(result.value.name || t('common:untitled', '未命名'));
+      onTitleChangeRef.current?.(result.value.name || t('common:untitled'));
       setIsLoading(false);
     };
 
@@ -222,6 +240,10 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     onCloseRef.current?.();
   }, []);
 
+  const handleSaveStateChange = useCallback((state: 'saved' | 'saving' | 'dirty') => {
+    onSaveStateChangeRef.current?.(state);
+  }, []);
+
   const shouldPreferExplicitType = !preferNodeType && (type === 'image' || type === 'file');
   const rawNodeType = node?.type;
   const nodeType = node && SUPPORTED_TYPES.includes(node.type as ResourceType)
@@ -233,7 +255,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     (nodeType === 'image' || nodeType === 'file');
   const typeMismatch =
     strictType && node != null && (nodeType == null || (nodeType !== type && !fileTypesAreCompatible))
-      ? t('error.resourceTypeMismatch', '资源类型不匹配：窗口需要 {{expected}}，实际为 {{actual}}', {
+      ? t('error.resourceTypeMismatch', {
           expected: type,
           actual: rawNodeType || 'unknown',
         })
@@ -253,8 +275,11 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       onTitleChange: handleTitleChange,
       readOnly,
       isActive,
+      focusOnActive,
+      onSaveStateChange: handleSaveStateChange,
+      hostWindowId,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, handleSaveStateChange, hostWindowId]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图
@@ -280,7 +305,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       default:
         return (
           <div className="flex items-center justify-center h-full text-muted-foreground" role="alert">
-            {t('error.unsupportedType', '不支持的资源类型: {{type}}', { type: resolvedType })}
+            {t('error.unsupportedType', { type: resolvedType })}
           </div>
         );
     }
@@ -290,7 +315,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   if (isLoading) {
     return (
       <div className={cn('flex flex-col h-full bg-background', className)}>
-        <PanelLoading label={t('common:loading', '加载中...')} />
+        <PanelLoading label={t('common:loading')} />
       </div>
     );
   }
@@ -304,7 +329,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       >
         <WarningCircle size={48} className="text-destructive" aria-hidden="true" />
         <p className="text-destructive text-center">
-          {error || typeMismatch || t('error.resourceNotFound', '资源未找到')}
+          {error || typeMismatch || t('error.resourceNotFound')}
         </p>
         <div className="flex items-center gap-2">
           <NotionButton
@@ -314,11 +339,11 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
             className="gap-1.5"
           >
             <ArrowClockwise size={14} aria-hidden="true" />
-            {t('common:reload', '重新加载')}
+            {t('common:reload')}
           </NotionButton>
           {onClose && (
             <NotionButton variant="ghost" size="sm" onClick={onClose}>
-              {t('common:close', '关闭')}
+              {t('common:close')}
             </NotionButton>
           )}
         </div>
@@ -328,7 +353,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
-      <Suspense fallback={<PanelLoading label={t('common:loading', '加载中...')} />}>
+      <Suspense fallback={<PanelLoading label={t('common:loading')} />}>
         {/* resetKey：切换到其他资源/类型时自动清除上一个视图的崩溃状态；
             onClose：移动端崩溃兜底页的返回出路（关闭当前标签页） */}
         <AppContentErrorBoundary

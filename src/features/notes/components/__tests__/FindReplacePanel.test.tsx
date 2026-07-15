@@ -6,7 +6,16 @@ import { FindReplacePanel } from '../FindReplacePanel';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, defaultValue?: string) => defaultValue ?? _key,
+    t: (key: string, defaultValue?: string) => ({
+      'notes:findReplace.panelLabel': '查找和替换',
+      'notes:findReplace.findLabel': '查找',
+      'notes:findReplace.replaceLabel': '替换为',
+      'notes:findReplace.showReplace': '展开替换',
+      'notes:findReplace.hideReplace': '收起替换',
+      'notes:findReplace.prev': '上一个 (Shift+Enter)',
+      'notes:findReplace.next': '下一个 (Enter)',
+      'common:close': '关闭',
+    }[key] ?? defaultValue ?? key),
   }),
 }));
 

@@ -111,6 +111,198 @@ impl Default for SseLineBuffer {
     }
 }
 
+/// Byte-oriented SSE event buffer for LLM streams.
+///
+/// Unlike `SseLineBuffer`, this keeps `event:` metadata attached to its `data:`
+/// payload and does not decode UTF-8 until a complete line is available. A
+/// complete JSON data line is emitted immediately so data-only OpenAI streams
+/// retain their existing low-latency behavior.
+pub struct SseEventBuffer {
+    byte_buffer: Vec<u8>,
+    pending_lines: Vec<String>,
+    max_buffer_size: usize,
+}
+
+impl SseEventBuffer {
+    pub fn new() -> Self {
+        Self {
+            byte_buffer: Vec::new(),
+            pending_lines: Vec::new(),
+            max_buffer_size: DEFAULT_MAX_BUFFER_SIZE,
+        }
+    }
+
+    #[cfg(test)]
+    fn with_max_size(max_buffer_size: usize) -> Self {
+        Self {
+            byte_buffer: Vec::new(),
+            pending_lines: Vec::new(),
+            max_buffer_size,
+        }
+    }
+
+    /// Add an arbitrary network byte chunk and return complete SSE event blocks.
+    pub fn process_bytes(&mut self, chunk: &[u8]) -> Vec<String> {
+        let pending_size = self
+            .pending_lines
+            .iter()
+            .map(|line| line.len().saturating_add(1))
+            .sum::<usize>();
+        if self
+            .byte_buffer
+            .len()
+            .saturating_add(pending_size)
+            .saturating_add(chunk.len())
+            > self.max_buffer_size
+        {
+            tracing::error!(
+                byte_buffer_len = self.byte_buffer.len(),
+                pending_size,
+                chunk_len = chunk.len(),
+                max = self.max_buffer_size,
+                "SSE event buffer exceeded size limit; dropping buffered data"
+            );
+            self.clear();
+            return Vec::new();
+        }
+
+        self.byte_buffer.extend_from_slice(chunk);
+        let mut events = Vec::new();
+
+        while let Some(newline) = self.byte_buffer.iter().position(|byte| *byte == b'\n') {
+            let mut line_bytes: Vec<u8> = self.byte_buffer.drain(..=newline).collect();
+            line_bytes.pop();
+            if line_bytes.last() == Some(&b'\r') {
+                line_bytes.pop();
+            }
+            let line = decode_complete_sse_line(line_bytes);
+            self.push_line(line, &mut events);
+        }
+
+        events
+    }
+
+    /// Flush a stream that closed without a trailing blank line.
+    pub fn flush(&mut self) -> Vec<String> {
+        let mut events = Vec::new();
+        if !self.byte_buffer.is_empty() {
+            let mut line_bytes = std::mem::take(&mut self.byte_buffer);
+            if line_bytes.last() == Some(&b'\r') {
+                line_bytes.pop();
+            }
+            let line = decode_complete_sse_line(line_bytes);
+            self.push_line(line, &mut events);
+        }
+        self.flush_pending(&mut events);
+        events
+    }
+
+    pub fn check_done_marker(block: &str) -> bool {
+        block
+            .lines()
+            .any(|line| matches!(line.trim(), "[DONE]" | "data: [DONE]" | "data:[DONE]"))
+    }
+
+    pub fn clear(&mut self) {
+        self.byte_buffer.clear();
+        self.pending_lines.clear();
+    }
+
+    fn push_line(&mut self, line: String, events: &mut Vec<String>) {
+        if line.is_empty() {
+            self.flush_pending(events);
+            return;
+        }
+
+        // Preserve legacy JSONL/NDJSON behavior. These lines are not SSE fields
+        // and must not be joined into one invalid payload while waiting for EOF.
+        if self.pending_lines.is_empty() && !line.contains(':') && line.trim() == "[DONE]" {
+            events.push(line);
+            return;
+        }
+        if self.pending_lines.is_empty()
+            && !matches!(
+                line.split_once(':').map(|(field, _)| field),
+                Some("event" | "data" | "id" | "retry")
+            )
+            && serde_json::from_str::<serde_json::Value>(line.trim()).is_ok()
+        {
+            events.push(line);
+            return;
+        }
+
+        // A new explicit event starts a new block even when a non-conforming
+        // upstream omitted the blank separator after the previous event.
+        if line.starts_with("event:") && !self.pending_lines.is_empty() {
+            self.flush_pending(events);
+        }
+        self.pending_lines.push(line);
+
+        // OpenAI-compatible streams put one complete JSON value in data. Emit
+        // as soon as it is complete while retaining any preceding event field.
+        if self.pending_data_is_complete() {
+            self.flush_pending(events);
+        }
+    }
+
+    fn pending_data_is_complete(&self) -> bool {
+        let data = self
+            .pending_lines
+            .iter()
+            .filter_map(|line| line.strip_prefix("data:"))
+            .map(|value| value.strip_prefix(' ').unwrap_or(value))
+            .collect::<Vec<_>>();
+        if data.is_empty() {
+            return false;
+        }
+        let payload = data.join("\n");
+        payload.trim() == "[DONE]" || serde_json::from_str::<serde_json::Value>(&payload).is_ok()
+    }
+
+    fn flush_pending(&mut self, events: &mut Vec<String>) {
+        if !self.pending_lines.is_empty() {
+            events.push(std::mem::take(&mut self.pending_lines).join("\n"));
+        }
+    }
+}
+
+impl Default for SseEventBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn decode_complete_sse_line(bytes: Vec<u8>) -> String {
+    match String::from_utf8(bytes) {
+        Ok(line) => line,
+        Err(error) => {
+            tracing::warn!("SSE event contained invalid UTF-8; replacing invalid bytes");
+            String::from_utf8_lossy(error.as_bytes()).into_owned()
+        }
+    }
+}
+
+/// Extract the payload from either an SSE event block or a bare JSON/NDJSON
+/// record. Bare fallback is deliberately limited to valid JSON and `[DONE]`
+/// so SSE metadata, comments, and keep-alive lines are never treated as data.
+pub fn extract_stream_data_payload(block: &str) -> Option<String> {
+    let data = block
+        .lines()
+        .filter_map(|line| line.trim_end_matches('\r').strip_prefix("data:"))
+        .map(|value| value.strip_prefix(' ').unwrap_or(value))
+        .collect::<Vec<_>>();
+    if !data.is_empty() {
+        return Some(data.join("\n"));
+    }
+
+    let bare = block.trim();
+    if bare == "[DONE]" || serde_json::from_str::<serde_json::Value>(bare).is_ok() {
+        Some(bare.to_string())
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -251,5 +443,90 @@ mod tests {
         assert_eq!(all_lines[0], "data: {\"test\": \"value1\"}");
         assert_eq!(all_lines[1], "data: {\"test2\": \"value2\"}");
         assert_eq!(all_lines[2], "data: [DONE]");
+    }
+
+    #[test]
+    fn event_buffer_keeps_event_name_with_data_payload() {
+        let mut buffer = SseEventBuffer::new();
+        let events = buffer
+            .process_bytes(b"event: response.output_text.delta\ndata: {\"delta\":\"framed\"}\n\n");
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0],
+            "event: response.output_text.delta\ndata: {\"delta\":\"framed\"}"
+        );
+    }
+
+    #[test]
+    fn event_buffer_preserves_utf8_split_across_byte_chunks() {
+        let mut buffer = SseEventBuffer::new();
+        let source = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"中文\"}\n\n";
+        let chinese_start = source.find('中').unwrap();
+        let split = chinese_start + 1;
+
+        assert!(buffer.process_bytes(&source.as_bytes()[..split]).is_empty());
+        let events = buffer.process_bytes(&source.as_bytes()[split..]);
+
+        assert_eq!(events, vec![source.trim().to_string()]);
+        assert!(!events[0].contains('\u{fffd}'));
+    }
+
+    #[test]
+    fn event_buffer_emits_single_newline_done_tail() {
+        let mut buffer = SseEventBuffer::new();
+        let events = buffer.process_bytes(b"data:[DONE]\n");
+
+        assert_eq!(events, vec!["data:[DONE]".to_string()]);
+        assert!(SseEventBuffer::check_done_marker(&events[0]));
+        assert!(buffer.flush().is_empty());
+    }
+
+    #[test]
+    fn event_buffer_flushes_unterminated_event_block() {
+        let mut buffer = SseEventBuffer::new();
+        assert!(buffer
+            .process_bytes(b"event: response.output_text.delta\ndata: {\"delta\":\"tail\"}")
+            .is_empty());
+
+        assert_eq!(
+            buffer.flush(),
+            vec!["event: response.output_text.delta\ndata: {\"delta\":\"tail\"}".to_string()]
+        );
+    }
+
+    #[test]
+    fn event_buffer_preserves_jsonl_lines() {
+        let mut buffer = SseEventBuffer::new();
+        let events = buffer.process_bytes(b"{\"message\":1}\n{\"message\":2}\n");
+
+        assert_eq!(
+            events,
+            vec!["{\"message\":1}".to_string(), "{\"message\":2}".to_string()]
+        );
+        assert!(buffer.flush().is_empty());
+    }
+
+    #[test]
+    fn stream_payload_accepts_bare_json_without_misreading_sse_metadata() {
+        assert_eq!(
+            extract_stream_data_payload(r#"{"message":1}"#),
+            Some(r#"{"message":1}"#.to_string())
+        );
+        assert_eq!(
+            extract_stream_data_payload("event: message\n: keep-alive"),
+            None
+        );
+        assert_eq!(extract_stream_data_payload(": keep-alive"), None);
+    }
+
+    #[test]
+    fn event_buffer_enforces_combined_size_limit() {
+        let mut buffer = SseEventBuffer::with_max_size(24);
+        assert!(buffer.process_bytes(b"event: response.test\n").is_empty());
+        assert!(buffer
+            .process_bytes(b"data: {\"too\":\"large\"}")
+            .is_empty());
+        assert!(buffer.flush().is_empty());
     }
 }

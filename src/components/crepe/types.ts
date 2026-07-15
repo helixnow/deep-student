@@ -17,6 +17,11 @@ export type CrepeAgentInsertResult = {
   cursor: number;
 };
 
+export type CrepeFullDocumentReplaceOptions = {
+  /** Full-document OCC precondition. The write must be rejected if it no longer matches. */
+  expectedMarkdown: string;
+};
+
 export type { AgentHighlightMeta };
 
 /**
@@ -27,7 +32,22 @@ export interface CrepeEditorApi {
   getMarkdown: () => string;
   
   /** 设置 Markdown 内容（会替换当前内容） */
-  setMarkdown: (markdown: string) => void;
+  setMarkdown: (markdown: string) => boolean;
+
+  /** Full persisted document, which may be larger than the editor's loaded line window. */
+  getFullMarkdown?: () => string;
+
+  /** Whether getMarkdown() currently represents only a visible prefix of the document. */
+  isDocumentWindowed?: () => boolean;
+
+  /**
+   * Replace and persist the complete document under an OCC precondition. Workbench note
+   * hosts provide this so ACR never treats a loaded prefix as the entire note.
+   */
+  replaceFullMarkdown?: (
+    markdown: string,
+    options: CrepeFullDocumentReplaceOptions,
+  ) => Promise<boolean>;
 
   captureSelection?: () => CrepeSelectionSnapshot | null;
 
@@ -68,9 +88,9 @@ export interface CrepeEditorApi {
 
   /**
    * ACR agent 在指定文档位置插入文本（不抢焦点、不进用户 undo）— R1-12
-   * @returns 插入后的新光标位置；失败返回原 pos
+   * @returns 实际插入区间；编辑器未就绪或写入失败返回 null
    */
-  agentInsert: (text: string, pos: number) => number;
+  agentInsert: (text: string, pos: number) => CrepeAgentInsertResult | null;
 
   /**
    * 在块边界插入并解析 Markdown，保留列表、标题、公式等文档结构。

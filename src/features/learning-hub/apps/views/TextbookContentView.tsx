@@ -53,7 +53,7 @@ const toToolbarPreviewType = (type: string | null): ToolbarPreviewType => {
 const LoadingSpinner: React.FC = () => {
   const { t } = useTranslation('common');
   return (
-    <div className="flex items-center justify-center h-full" role="status" aria-label={t('loading', '加载中...')}>
+    <div className="flex items-center justify-center h-full" role="status" aria-label={t('loading')}>
       <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
     </div>
   );
@@ -332,7 +332,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
               const fileSize = effectiveFileSize ?? await invoke<number>('get_file_size', { path: effectiveFilePath });
               if (!isMounted) return;
               if (fileSize > LARGE_FILE_THRESHOLD) {
-                setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+                setContentError(t('learningHub:file.previewTooLarge'));
                 setContentLoading(false);
                 return;
               }
@@ -353,7 +353,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             if (result?.found && result?.content) {
               const estimatedSize = estimateBase64Size(result.content);
               if (estimatedSize > LARGE_FILE_THRESHOLD) {
-                setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+                setContentError(t('learningHub:file.previewTooLarge'));
                 setContentLoading(false);
                 return;
               }
@@ -372,7 +372,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             setFileContent(text);
             setContentLoading(false);
           } else {
-            setContentError(t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
+            setContentError(t('learningHub:file.contentNotFound', { id: node.id }));
             setContentLoading(false);
           }
           return;
@@ -381,7 +381,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         let base64Content: string | null = null;
         const knownSize = typeof node.size === 'number' ? node.size : null;
         if (knownSize && knownSize > LARGE_FILE_THRESHOLD) {
-          setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+          setContentError(t('learningHub:file.previewTooLarge'));
           setContentLoading(false);
           return;
         }
@@ -412,7 +412,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             const fileSize = effectiveFileSize ?? await invoke<number>('get_file_size', { path: effectiveFilePath });
             if (!isMounted) return;
             if (fileSize > LARGE_FILE_THRESHOLD) {
-              setContentError(t('learningHub:file.previewTooLarge', '文件过大，无法预览'));
+              setContentError(t('learningHub:file.previewTooLarge'));
               setContentLoading(false);
               return;
             }
@@ -436,14 +436,14 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           setContentLoading(false);
         } else {
           setContentError(vfsContentTooLarge
-            ? t('learningHub:file.previewTooLarge', '文件过大，无法预览')
-            : t('learningHub:file.contentNotFound', '未找到文件内容 (id: {{id}})', { id: node.id }));
+            ? t('learningHub:file.previewTooLarge')
+            : t('learningHub:file.contentNotFound', { id: node.id }));
           setContentLoading(false);
         }
       } catch (err: unknown) {
         console.error('[TextbookContentView] Failed to load file:', err);
         if (isMounted) {
-          setContentError(err instanceof Error ? err.message : t('learningHub:file.loadFailed', '加载文件失败'));
+          setContentError(err instanceof Error ? err.message : t('learningHub:file.loadFailed'));
           setContentLoading(false);
         }
       }
@@ -546,7 +546,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         await dstu.setMetadata(nodePathRef.current, newMetadata);
       } catch (err: unknown) {
         console.error('[TextbookContentView] Failed to save bookmarks:', err);
-        showGlobalNotification('error', t('textbook:bookmarkSaveFailed', '书签保存失败'));
+        showGlobalNotification('error', t('textbook:bookmarkSaveFailed'));
       }
     }, 1000); // 1秒防抖
   }, [t]);
@@ -615,16 +615,16 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       const ext = node.name.includes('.') ? node.name.split('.').pop()?.toLowerCase() : undefined;
       const selected = await open({
         multiple: false,
-        title: t('textbook:relink.dialogTitle', '选择文件的新位置'),
+        title: t('textbook:relink.dialogTitle'),
         filters: ext ? [{ name: node.name, extensions: [ext] }] : undefined,
       });
       if (!selected || typeof selected !== 'string') return;
 
       await invoke('textbooks_relink', { id: node.id, newPath: selected });
-      showGlobalNotification('success', t('textbook:relink.success', '文件已重新关联'));
+      showGlobalNotification('success', t('textbook:relink.success'));
       setRelinkTick((c) => c + 1);
     } catch (err: unknown) {
-      showGlobalNotification('error', getErrorMessage(err), t('textbook:relink.failed', '重新关联失败'));
+      showGlobalNotification('error', getErrorMessage(err), t('textbook:relink.failed'));
     } finally {
       setIsRelinking(false);
     }
@@ -656,7 +656,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       {isRelinking
         ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
         : <LinkSimple className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />}
-      {t('textbook:relink.action', '重新关联文件')}
+      {t('textbook:relink.action')}
     </NotionButton>
   );
 
@@ -689,13 +689,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     <div
       className="flex flex-col items-center justify-center h-full gap-4"
       role="status"
-      aria-label={t('common:loading', '加载中...')}
+      aria-label={t('common:loading')}
     >
       <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
       {contentLoadTimedOut && (
         <>
           <p className="text-sm text-muted-foreground text-center">
-            {t('textbook:loading.timeout', '加载时间较长，可能遇到问题')}
+            {t('textbook:loading.timeout')}
           </p>
           <div className="flex gap-2">
             <NotionButton
@@ -704,7 +704,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
               onClick={retryContentLoad}
             >
               <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              {t('common:retry', '重试')}
+              {t('common:retry')}
             </NotionButton>
             {relinkButton}
           </div>
@@ -723,12 +723,12 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         <div
           className="flex flex-col items-center justify-center h-full gap-4"
           role="status"
-          aria-label={t('common:loading', '加载中...')}
+          aria-label={t('common:loading')}
         >
           <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
           {isPdfLargeFile && (
             <p className="text-sm text-muted-foreground">
-              {t('textbook:loading.largeFile', '正在加载大文件，请稍候...')}
+              {t('textbook:loading.largeFile')}
             </p>
           )}
         </div>
@@ -746,12 +746,12 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
               onClick={retryPdfLoad}
             >
               <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-              {t('common:retry', '重试')}
+              {t('common:retry')}
             </NotionButton>
             {relinkButton}
           </div>
           <p className="text-xs text-muted-foreground max-w-md text-center">
-            {t('textbook:relink.hint', '若原文件已被移动或重命名，可点击"重新关联文件"选择它的新位置。')}
+            {t('textbook:relink.hint')}
           </p>
         </div>
       );
@@ -761,13 +761,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       <div
         className="flex flex-col items-center justify-center h-full gap-4"
         role="status"
-        aria-label={t('common:loading', '加载中...')}
+        aria-label={t('common:loading')}
       >
         <CircleNotch className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
         {pdfInitTimedOut && (
           <>
             <p className="text-sm text-muted-foreground text-center">
-              {t('textbook:loading.timeout', '加载时间较长，可能遇到问题')}
+              {t('textbook:loading.timeout')}
             </p>
             <div className="flex gap-2">
               <NotionButton
@@ -776,7 +776,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
                 onClick={retryPdfLoad}
               >
                 <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-                {t('common:retry', '重试')}
+                {t('common:retry')}
               </NotionButton>
               {relinkButton}
             </div>
@@ -799,7 +799,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             onClick={retryContentLoad}
           >
             <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />
-            {t('common:retry', '重试')}
+            {t('common:retry')}
           </NotionButton>
           {relinkButton}
         </div>
@@ -905,7 +905,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             {isOpeningExternal
               ? <CircleNotch className="h-3.5 w-3.5 mr-1.5 animate-spin" aria-hidden="true" />
               : <ArrowSquareOut className="h-3.5 w-3.5 mr-1.5" aria-hidden="true" />}
-            {t('common:openExternal', '在外部打开')}
+            {t('common:openExternal')}
           </NotionButton>
         )}
       </div>

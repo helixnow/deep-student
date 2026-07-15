@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import { useEventRegistry } from './useEventRegistry';
 
 // 系统设置接口
 export interface SystemSettings {
@@ -224,6 +225,12 @@ export const useSystemSettings = () => {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  const reloadExternalSettings = useCallback(() => { void loadSettings(); }, [loadSettings]);
+  useEventRegistry(
+    [{ target: 'window', type: 'settings_changed', listener: reloadExternalSettings }],
+    [reloadExternalSettings],
+  );
 
   // 🔧 修复：移除强制亮色主题的逻辑，让 useTheme hook 完全接管主题管理
   // 注意：主题管理现在由 src/hooks/useTheme.ts 统一处理

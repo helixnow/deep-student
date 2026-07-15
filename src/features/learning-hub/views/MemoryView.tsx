@@ -91,6 +91,7 @@ import { folderApi } from '@/dstu';
 import type { FolderTreeNode as DstuFolderTreeNode } from '@/dstu/types/folder';
 import type { ResourceListItem } from '../types';
 import { useDialogFocusManagement } from '../components/FolderSelectorDialog';
+import { registerMemoryDomainRefresh } from './memoryDomainRefresh';
 
 // ============================================================================
 // 类型定义
@@ -186,7 +187,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       setLoadError(null);
     } catch (error: unknown) {
       console.error('[MemoryView] Failed to load config:', error);
-      const errorMsg = t('memory.config_load_error', '读取记忆配置失败。请重试，或前往数据治理检查数据库状态。');
+      const errorMsg = t('memory.config_load_error');
       setLoadError(errorMsg);
     }
   }, [t]);
@@ -201,7 +202,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       setLoadError(null);
     } catch (error: unknown) {
       console.error('[MemoryView] Failed to load memories:', error);
-      const errorMsg = t('memory.load_error', '加载记忆失败');
+      const errorMsg = t('memory.load_error');
       setLoadError(errorMsg);
     } finally {
       setIsLoading(false);
@@ -236,6 +237,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       loadTree();
     }
   }, [config?.memoryRootFolderId, viewMode, loadTree]);
+
+  useEffect(
+    () => registerMemoryDomainRefresh(loadMemories, loadTree),
+    [loadMemories, loadTree],
+  );
 
   useEffect(() => {
     if (newMemoryType !== 'fact' && newMemoryPurpose === 'systemic') {
@@ -276,7 +282,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       if (reqId !== searchReqIdRef.current) return;
       console.error('[MemoryView] Search failed:', error);
       setSearchResults([]);
-      showGlobalNotification('error', t('memory.search_error', '搜索失败'));
+      showGlobalNotification('error', t('memory.search_error'));
     } finally {
       if (reqId === searchReqIdRef.current) {
         setIsLoading(false);
@@ -295,7 +301,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ========== 创建记忆 ==========
   const handleCreateMemory = useCallback(async () => {
     if (!newMemoryTitle.trim() || !newMemoryContent.trim()) {
-      showGlobalNotification('error', t('memory.empty_content', '标题和内容不能为空'));
+      showGlobalNotification('error', t('memory.empty_content'));
       return;
     }
 
@@ -307,16 +313,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       let level: 'success' | 'warning' = 'success';
       const writeSucceeded = result.event === 'ADD' || result.event === 'UPDATE' || result.event === 'APPEND' || result.event === 'DELETE';
       if (result.downgraded) {
-        msg = t('memory.create_downgraded', '置信度不足，未自动写入。请确认后手动保存。');
+        msg = t('memory.create_downgraded');
         level = 'warning';
       } else if (result.event === 'FILTERED') {
-        msg = result.reason || t('memory.create_filtered', '内容触发安全拦截，未写入记忆。');
+        msg = result.reason || t('memory.create_filtered');
         level = 'warning';
       } else if (result.event === 'NONE') {
-        msg = t('memory.create_already_exists', '该记忆已存在，无需重复创建');
+        msg = t('memory.create_already_exists');
         level = 'warning';
       } else {
-        msg = t('memory.create_success', '记忆创建成功');
+        msg = t('memory.create_success');
       }
       showGlobalNotification(level, msg);
       if (writeSucceeded) {
@@ -329,7 +335,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       }
     } catch (error: unknown) {
       console.error('[MemoryView] Create failed:', error);
-      showGlobalNotification('error', t('memory.create_error', '创建失败'));
+      showGlobalNotification('error', t('memory.create_error'));
     } finally {
       setIsLoading(false);
     }
@@ -374,7 +380,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const handleBatchImport = useCallback(async () => {
     const items = parseBatchImportItems(batchImportText);
     if (items.length === 0) {
-      showGlobalNotification('error', t('memory.batch_import_empty', '请先粘贴要导入的内容'));
+      showGlobalNotification('error', t('memory.batch_import_empty'));
       return;
     }
 
@@ -393,9 +399,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       );
 
       const summary = t(
-        'memory.batch_import_summary',
-        '已处理 {{total}} 条：新增 {{added}}，更新 {{updated}}，跳过 {{skipped}}，拦截 {{filtered}}',
-        {
+        'memory.batch_import_summary', {
           total: result.total,
           added: result.added,
           updated: result.updated,
@@ -410,7 +414,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       }
     } catch (error: unknown) {
       console.error('[MemoryView] Batch import failed:', error);
-      showGlobalNotification('error', t('memory.batch_import_error', '批量导入失败'));
+      showGlobalNotification('error', t('memory.batch_import_error'));
     } finally {
       setIsLoading(false);
     }
@@ -440,14 +444,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       } else {
         showGlobalNotification(
           'warning',
-          t('memory.read_not_found', '未找到该记忆，可能已被删除。请先刷新列表，再重试打开。')
+          t('memory.read_not_found')
         );
         setExpandedMemoryId(null);
       }
     } catch (error: unknown) {
       if (reqId !== expandReqIdRef.current) return;
       console.error('[MemoryView] Read failed:', error);
-      showGlobalNotification('error', t('memory.read_error', '读取失败'));
+      showGlobalNotification('error', t('memory.read_error'));
       setExpandedMemoryId(null);
     } finally {
       if (reqId === expandReqIdRef.current) {
@@ -489,18 +493,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
     showGlobalNotification(
       'warning',
-      t('memory.locate_requires_root', '无法打开该记忆：请先在记忆管理中设置记忆根文件夹。')
+      t('memory.locate_requires_root')
     );
   }, [config, handleToggleExpand, t]);
 
   // ★ 修复风险3：删除记忆
   const handleDeleteMemory = useCallback(async (noteId: string) => {
-    if (!unifiedConfirm(t('memory.delete_confirm', '确定要删除这条记忆吗？'))) return;
+    if (!unifiedConfirm(t('memory.delete_confirm'))) return;
 
     setIsLoading(true);
     try {
       await deleteMemory(noteId);
-      showGlobalNotification('success', t('memory.delete_success', '记忆已删除'));
+      showGlobalNotification('success', t('memory.delete_success'));
       // 如果正在展开的记忆被删除，收起展开
       if (expandedMemoryId === noteId) {
         setExpandedMemoryId(null);
@@ -509,7 +513,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       loadMemories();
     } catch (error: unknown) {
       console.error('[MemoryView] Delete failed:', error);
-      showGlobalNotification('error', t('memory.delete_error', '删除失败'));
+      showGlobalNotification('error', t('memory.delete_error'));
     } finally {
       setIsLoading(false);
     }
@@ -518,15 +522,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // ========== 批量删除 ==========
   const handleBatchDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
-    if (!unifiedConfirm(t('memory.batch_delete_confirm', `确定要删除选中的 ${selectedIds.size} 条记忆吗？`))) return;
+    if (!unifiedConfirm(t('memory.batch_delete_confirm', { count: selectedIds.size }))) return;
 
     setIsLoading(true);
     try {
       const result = await batchDeleteMemories(Array.from(selectedIds));
       if (result.failed > 0) {
-        showGlobalNotification('warning', t('memory.batch_delete_partial', `已删除 ${result.succeeded} 条记忆，${result.failed} 条失败`));
+        showGlobalNotification('warning', t('memory.batch_delete_partial', { succeeded: result.succeeded, failed: result.failed }));
       } else {
-        showGlobalNotification('success', t('memory.batch_delete_success', `已删除 ${result.succeeded} 条记忆`));
+        showGlobalNotification('success', t('memory.batch_delete_success', { count: result.succeeded }));
       }
       setSelectedIds(new Set());
       setBatchMode(false);
@@ -537,7 +541,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       loadMemories();
     } catch (error: unknown) {
       console.error('[MemoryView] Batch delete failed:', error);
-      showGlobalNotification('error', t('memory.batch_delete_error', '批量删除失败'));
+      showGlobalNotification('error', t('memory.batch_delete_error'));
     } finally {
       setIsLoading(false);
     }
@@ -557,7 +561,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     try {
       const exportData = await exportAllMemories();
       if (exportData.length === 0) {
-        showGlobalNotification('warning', t('memory.export_empty', '没有可导出的记忆'));
+        showGlobalNotification('warning', t('memory.export_empty'));
         return;
       }
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -567,10 +571,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       a.download = `memories_${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      showGlobalNotification('success', t('memory.export_success', `已导出 ${exportData.length} 条记忆`));
+      showGlobalNotification('success', t('memory.export_success', { count: exportData.length }));
     } catch (error: unknown) {
       console.error('[MemoryView] Export failed:', error);
-      showGlobalNotification('error', t('memory.export_error', '导出失败'));
+      showGlobalNotification('error', t('memory.export_error'));
     } finally {
       setIsLoading(false);
     }
@@ -587,7 +591,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setIsLoading(true);
     try {
       await updateMemoryById(editingMemoryId, undefined, editContent);
-      showGlobalNotification('success', t('memory.edit_success', '记忆已更新'));
+      showGlobalNotification('success', t('memory.edit_success'));
       setEditingMemoryId(null);
       setEditContent('');
       if (expandedMemoryId === editingMemoryId) {
@@ -597,7 +601,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       loadMemories();
     } catch (error: unknown) {
       console.error('[MemoryView] Edit failed:', error);
-      showGlobalNotification('error', t('memory.edit_error', '更新失败'));
+      showGlobalNotification('error', t('memory.edit_error'));
     } finally {
       setIsLoading(false);
     }
@@ -665,7 +669,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       }
     } catch (error: unknown) {
       console.error('[MemoryView] Load audit logs failed:', error);
-      const msg = t('memory.audit_load_error', '加载操作日志失败，请重试。');
+      const msg = t('memory.audit_load_error');
       setAuditLoadError(msg);
       showGlobalNotification('error', msg);
     } finally {
@@ -709,7 +713,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         console.error('[MemoryView] Load folders failed:', treeResult.error);
         showGlobalNotification(
           'error',
-          t('memory.folder_load_error', '加载文件夹列表失败。请重试。')
+          t('memory.folder_load_error')
         );
         return;
       }
@@ -736,7 +740,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       console.error('[MemoryView] Load folders failed:', error);
       showGlobalNotification(
         'error',
-        t('memory.folder_load_error', '加载文件夹列表失败。请重试。')
+        t('memory.folder_load_error')
       );
     } finally {
       setLoadingFolders(false);
@@ -749,10 +753,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     try {
       await setMemoryAutoExtractFrequency(freq);
       loadConfig();
-      showGlobalNotification('success', t('memory.frequency_changed', '自动提取频率已更新'));
+      showGlobalNotification('success', t('memory.frequency_changed'));
     } catch (error: unknown) {
       console.error('[MemoryView] Set frequency failed:', error);
-      showGlobalNotification('error', t('memory.frequency_change_error', '设置失败'));
+      showGlobalNotification('error', t('memory.frequency_change_error'));
     }
   }, [t, loadConfig, config?.autoExtractFrequency]);
 
@@ -760,30 +764,30 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const handleSelectRootFolder = useCallback(async (folderId: string) => {
     try {
       await setMemoryRootFolder(folderId);
-      showGlobalNotification('success', t('memory.root_set_success', '记忆根文件夹已设置'));
+      showGlobalNotification('success', t('memory.root_set_success'));
       loadConfig();
     } catch (error: unknown) {
       console.error('[MemoryView] Set root folder failed:', error);
-      showGlobalNotification('error', t('memory.root_set_error', '设置失败'));
+      showGlobalNotification('error', t('memory.root_set_error'));
     }
   }, [t, loadConfig]);
 
   const handleCreateRootFolder = useCallback(async () => {
     if (!newRootFolderTitle.trim()) {
-      showGlobalNotification('error', t('memory.empty_folder_title', '文件夹名称不能为空'));
+      showGlobalNotification('error', t('memory.empty_folder_title'));
       return;
     }
 
     setIsLoading(true);
     try {
       await createMemoryRootFolder(newRootFolderTitle);
-      showGlobalNotification('success', t('memory.root_create_success', '记忆根文件夹已创建'));
+      showGlobalNotification('success', t('memory.root_create_success'));
       setShowCreateRootDialog(false);
       setNewRootFolderTitle('');
       loadConfig();
     } catch (error: unknown) {
       console.error('[MemoryView] Create root folder failed:', error);
-      showGlobalNotification('error', t('memory.root_create_error', '创建失败'));
+      showGlobalNotification('error', t('memory.root_create_error'));
     } finally {
       setIsLoading(false);
     }
@@ -795,7 +799,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       <div className={cn('flex flex-col items-center justify-center h-full p-8', className)}>
         <WarningCircle size={48} className="text-destructive/60 mb-4" />
         <h2 className="text-lg font-medium mb-1.5">
-          {t('memory.load_error_title', '加载失败')}
+          {t('memory.load_error_title')}
         </h2>
         <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
           {loadError}
@@ -807,7 +811,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           disabled={isLoading}
         >
           <ArrowClockwise className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-          {t('common:retry', '重试')}
+          {t('common:retry')}
         </NotionButton>
       </div>
     );
@@ -819,16 +823,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       <div className={cn('flex flex-col items-center justify-center h-full p-8', className)}>
         <MemoryIcon size={48} className="text-muted-foreground/40 mb-4" />
         <h2 className="text-lg font-medium mb-1.5">
-          {t('memory.setup_title', '设置记忆存储位置')}
+          {t('memory.setup_title')}
         </h2>
         <p className="text-sm text-muted-foreground text-center mb-6 max-w-sm">
-          {t('memory.setup_description', 'VFS 记忆系统将记忆存储为普通笔记文件。请选择或创建一个文件夹作为记忆根目录。')}
+          {t('memory.setup_description')}
         </p>
         
         {/* 文件夹列表 */}
         {folderList.length > 0 ? (
           <div className="w-full max-w-sm mb-4">
-            <p className="text-xs text-muted-foreground mb-2">{t('memory.select_folder', '选择现有文件夹')}:</p>
+            <p className="text-xs text-muted-foreground mb-2">{t('memory.select_folder')}:</p>
             <CustomScrollArea className="rounded-lg bg-muted/30 max-h-40">
               <div className="p-1">
                 {folderList.map((folder) => (
@@ -852,15 +856,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             ) : (
               <FolderOpen size={16} />
             )}
-            {t('memory.select_folder', '选择现有文件夹')}
+            {t('memory.select_folder')}
           </NotionButton>
         )}
         
-        <div className="text-xs text-muted-foreground/60 mb-3">{t('common:or', '或')}</div>
+        <div className="text-xs text-muted-foreground/60 mb-3">{t('learningHub:memory.or')}</div>
         
         <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(true)} className="text-primary hover:bg-primary/10">
           <Plus size={16} />
-          {t('memory.create_folder', '创建新文件夹')}
+          {t('memory.create_folder')}
         </NotionButton>
 
         {/* 创建根文件夹对话框 - Notion 风格 */}
@@ -868,13 +872,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <NotionDialogHeader>
             <NotionDialogTitle className="flex items-center gap-2">
               <FolderOpen size={16} className="text-muted-foreground" />
-              {t('memory.create_root_title', '创建记忆文件夹')}
+              {t('memory.create_root_title')}
             </NotionDialogTitle>
           </NotionDialogHeader>
           <NotionDialogBody>
             <div ref={createRootFocusRef}>
               <Input
-                placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
+                placeholder={t('memory.folder_name_placeholder')}
                 value={newRootFolderTitle}
                 onChange={(e) => setNewRootFolderTitle(e.target.value)}
                 onKeyDown={(e) => {
@@ -890,11 +894,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           </NotionDialogBody>
           <NotionDialogFooter>
             <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(false)}>
-              {t('common:cancel', '取消')}
+              {t('common:cancel')}
             </NotionButton>
             <NotionButton variant="primary" size="sm" onClick={handleCreateRootFolder} disabled={isLoading || !newRootFolderTitle.trim()}>
               {isLoading && <CircleNotch size={16} className="animate-spin" />}
-              {t('common:create', '创建')}
+              {t('common:create')}
             </NotionButton>
           </NotionDialogFooter>
         </NotionDialog>
@@ -911,7 +915,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <div className="flex-1 relative">
           <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
           <Input
-            placeholder={t('memory.search_placeholder', '搜索记忆...')}
+            placeholder={t('memory.search_placeholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
@@ -972,7 +976,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           onClick={handleToggleAuditLog}
           className={cn(showAuditLog && 'text-primary bg-primary/10')}
           aria-label="audit log"
-          title={t('memory.audit_log', '操作日志')}
+          title={t('memory.audit_log')}
         >
           <ClockCounterClockwise size={16} />
         </NotionButton>
@@ -980,11 +984,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           <>
             <NotionButton variant="ghost" size="sm" onClick={() => setIsBatchImporting(true)} className="text-emerald-600 hover:bg-emerald-500/10">
               <ListPlus size={16} />
-              {t('memory.batch_import', '批量导入')}
+              {t('memory.batch_import')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
               <Plus size={16} />
-              {t('memory.new', '新建')}
+              {t('memory.new')}
             </NotionButton>
           </>
         )}
@@ -1001,12 +1005,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               }}
               className="text-muted-foreground hover:bg-[var(--interactive-hover)]"
             >
-              {selectedIds.size === memories.length ? t('memory.deselect_all', '取消全选') : t('memory.select_all', '全选')}
+              {selectedIds.size === memories.length ? t('memory.deselect_all') : t('memory.select_all')}
             </NotionButton>
             {selectedIds.size > 0 && (
               <NotionButton variant="ghost" size="sm" onClick={handleBatchDelete} disabled={isLoading} className="text-rose-500 hover:bg-rose-500/10">
                 <Trash size={16} />
-                {t('memory.batch_delete', `删除(${selectedIds.size})`)}
+                {t('memory.batch_delete', { count: selectedIds.size })}
               </NotionButton>
             )}
           </>
@@ -1017,25 +1021,25 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       <div className="px-4 py-2 text-xs text-muted-foreground space-y-1.5 border-b border-border/30">
         <div className="flex items-center gap-2">
           <FolderOpen size={14} />
-          <span>{t('memory.root_folder', '根文件夹')}:</span>
-          <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle', '记忆')}</span>
+          <span>{t('memory.root_folder')}:</span>
+          <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle')}</span>
           <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="ml-auto !h-auto !px-1.5 !py-0.5">
             {loadingFolders ? (
               <CircleNotch size={12} className="animate-spin" />
             ) : (
               <Gear size={12} />
             )}
-            {t('memory.change', '更改')}
+            {t('memory.change')}
           </NotionButton>
         </div>
         <div className="flex items-center gap-2">
           <Lightning size={14} />
-          <span>{t('memory.auto_extract', '自动提取')}:</span>
+          <span>{t('memory.auto_extract')}:</span>
           <div className="flex items-center gap-0.5 ml-1">
             {([
-              { value: 'off' as const, label: t('memory.freq_off', '关闭') },
-              { value: 'balanced' as const, label: t('memory.freq_balanced', '平衡') },
-              { value: 'aggressive' as const, label: t('memory.freq_aggressive', '积极') },
+              { value: 'off' as const, label: t('memory.freq_off') },
+              { value: 'balanced' as const, label: t('memory.freq_balanced') },
+              { value: 'aggressive' as const, label: t('memory.freq_aggressive') },
             ]).map((opt) => (
               <button
                 key={opt.value}
@@ -1087,7 +1091,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
                 <MemoryIcon size={14} className="text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title', '系统对我的了解')}</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title')}</span>
               </div>
               {isLoadingProfile ? (
                 <div className="flex items-center justify-center py-6">
@@ -1095,7 +1099,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 </div>
               ) : profileSections.length === 0 ? (
                 <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
-                  {t('memory.profile_empty', '暂无画像数据。系统会在对话中自动积累你的偏好和背景。')}
+                  {t('memory.profile_empty')}
                 </div>
               ) : (
                 <div className="px-4 py-3 space-y-3">
@@ -1115,7 +1119,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 border-b border-black/[0.05] dark:border-white/[0.07] bg-muted/25 backdrop-blur-sm">
                 <ClockCounterClockwise size={14} className="text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log', '操作日志')}</span>
+                <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log')}</span>
                 <div className="ml-auto flex items-center gap-1.5">
                   {/* 来源筛选 */}
                   <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
@@ -1123,11 +1127,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{t('memory.audit_all_sources', '全部来源')}</SelectItem>
-                      <SelectItem value="tool_call">{t('memory.audit_source_tool', '工具调用')}</SelectItem>
-                      <SelectItem value="auto_extract">{t('memory.audit_source_auto', '自动提取')}</SelectItem>
-                      <SelectItem value="handler">{t('memory.audit_source_handler', '前端操作')}</SelectItem>
-                      <SelectItem value="evolution">{t('memory.audit_source_evolution', '自进化')}</SelectItem>
+                      <SelectItem value="all">{t('memory.audit_all_sources')}</SelectItem>
+                      <SelectItem value="tool_call">{t('memory.audit_source_tool')}</SelectItem>
+                      <SelectItem value="auto_extract">{t('memory.audit_source_auto')}</SelectItem>
+                      <SelectItem value="handler">{t('memory.audit_source_handler')}</SelectItem>
+                      <SelectItem value="evolution">{t('memory.audit_source_evolution')}</SelectItem>
                     </SelectContent>
                   </Select>
                   {/* 成功/失败筛选 */}
@@ -1136,9 +1140,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">{t('memory.audit_all_status', '全部状态')}</SelectItem>
-                      <SelectItem value="true">{t('memory.audit_success', '成功')}</SelectItem>
-                      <SelectItem value="false">{t('memory.audit_failed', '失败')}</SelectItem>
+                      <SelectItem value="all">{t('memory.audit_all_status')}</SelectItem>
+                      <SelectItem value="true">{t('memory.audit_success')}</SelectItem>
+                      <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
                     </SelectContent>
                   </Select>
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(true)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label="refresh logs">
@@ -1155,13 +1159,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <div>{auditLoadError}</div>
                   <div>
                     <NotionButton variant="ghost" size="sm" onClick={() => loadAuditLogs(true)} className="text-xs">
-                      {t('common:retry', '重试')}
+                      {t('common:retry')}
                     </NotionButton>
                   </div>
                 </div>
               ) : auditLogs.length === 0 ? (
                 <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
-                  {t('memory.audit_empty', '暂无操作日志')}
+                  {t('memory.audit_empty')}
                 </div>
               ) : (
                 <div>
@@ -1174,7 +1178,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div className="flex justify-center py-2 border-t border-border/20">
                       <NotionButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground">
                         {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
-                        {t('memory.audit_load_more', '加载更多')}
+                        {t('memory.audit_load_more')}
                       </NotionButton>
                     </div>
                   )}
@@ -1189,7 +1193,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <ListPlus size={16} />
-                  <span className="text-sm font-medium">{t('memory.batch_import', '批量导入')}</span>
+                  <span className="text-sm font-medium">{t('memory.batch_import')}</span>
                 </div>
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isLoading} aria-label="cancel batch import">
                   <Plus size={16} className="rotate-45" />
@@ -1197,11 +1201,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
 
               <div className="text-xs text-muted-foreground leading-relaxed">
-                {t('memory.batch_import_hint', '每行一条，支持“标题<Tab>内容”、“标题 | 内容”或“标题：内容”。没有分隔符时将整行同时作为标题和内容。')}
+                {t('memory.batch_import_hint')}
               </div>
 
               <Textarea
-                placeholder={t('memory.batch_import_placeholder', '例如：\nsubmerge\t/səbˈmɜːrdʒ/ v. 淹没；潜入水中\nrecipe | n. 方法；诀窍\n遗传易错点：显隐性判断要先看题干条件')}
+                placeholder={t('memory.batch_import_placeholder')}
                 value={batchImportText}
                 onChange={(e) => setBatchImportText(e.target.value)}
                 rows={8}
@@ -1209,7 +1213,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               />
 
               <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type', '类型')}:</span>
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
                 {([
                   ['fact', '用户事实'],
                   ['study', '学习记忆'],
@@ -1233,7 +1237,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
 
               <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose', '分类')}:</span>
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose')}:</span>
                 {(batchImportType === 'fact'
                   ? (['memorized', 'internalized', 'supplementary', 'systemic'] as string[])
                   : (['memorized', 'internalized', 'supplementary'] as string[])).map((p) => (
@@ -1255,16 +1259,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
 
               <div className="text-xs text-muted-foreground">
-                {t('memory.batch_import_count', '预计导入 {{count}} 条', { count: parseBatchImportItems(batchImportText).length })}
+                {t('memory.batch_import_count', { count: parseBatchImportItems(batchImportText).length })}
               </div>
 
               <div className="flex gap-2 pt-1">
                 <NotionButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isLoading} className="flex-1 !h-9">
-                  {t('common:cancel', '取消')}
+                  {t('common:cancel')}
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isLoading || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9">
                   {isLoading && <CircleNotch size={16} className="animate-spin" />}
-                  {t('memory.batch_import_confirm', '开始导入')}
+                  {t('memory.batch_import_confirm')}
                 </NotionButton>
               </div>
             </div>
@@ -1276,7 +1280,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MemoryIcon size={16} />
-                  <span className="text-sm font-medium">{t('memory.create_title', '创建新记忆')}</span>
+                  <span className="text-sm font-medium">{t('memory.create_title')}</span>
                 </div>
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isLoading} aria-label="cancel">
                   <Plus size={16} className="rotate-45" />
@@ -1284,7 +1288,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
 
               <Input
-                placeholder={t('memory.title_placeholder', '记忆标题')}
+                placeholder={t('memory.title_placeholder')}
                 value={newMemoryTitle}
                 onChange={(e) => setNewMemoryTitle(e.target.value)}
                 autoFocus
@@ -1293,10 +1297,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               <Textarea
                 placeholder={
                   newMemoryType === 'fact'
-                    ? t('memory.content_placeholder_fact', '用户事实，例如：数学是弱项 / 偏好表格总结')
+                    ? t('memory.content_placeholder_fact')
                     : newMemoryType === 'study'
-                      ? t('memory.content_placeholder_study', '学习内容，例如：submerge /səbˈmɜːrdʒ/ v. 淹没；潜入水中')
-                      : t('memory.content_placeholder_note', '方法、经验或技巧总结...')
+                      ? t('memory.content_placeholder_study')
+                      : t('memory.content_placeholder_note')
                 }
                 value={newMemoryContent}
                 onChange={(e) => setNewMemoryContent(e.target.value)}
@@ -1305,7 +1309,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               />
 
               <div className="flex items-center gap-1 flex-wrap">
-                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type', '类型')}:</span>
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.type')}:</span>
                 {([
                   ['fact', '用户事实'],
                   ['study', '学习记忆'],
@@ -1330,7 +1334,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
               {/* 目的分类选择 */}
               <div className="flex items-center gap-1">
-                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose', '分类')}:</span>
+                <span className="text-xs text-muted-foreground mr-1.5">{t('memory.purpose')}:</span>
                 {(newMemoryType === 'fact'
                   ? (['memorized', 'internalized', 'supplementary', 'systemic'] as string[])
                   : (['memorized', 'internalized', 'supplementary'] as string[])).map((p) => (
@@ -1353,11 +1357,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
               <div className="flex gap-2 pt-1">
                 <NotionButton variant="ghost" size="sm" onClick={handleCancelCreate} disabled={isLoading} className="flex-1 !h-9">
-                  {t('common:cancel', '取消')}
+                  {t('common:cancel')}
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isLoading || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9">
                   {isLoading && <CircleNotch size={16} className="animate-spin" />}
-                  {t('common:create', '创建')}
+                  {t('common:create')}
                 </NotionButton>
               </div>
             </div>
@@ -1396,7 +1400,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <GitBranch size={32} className="mb-2 opacity-40" />
-                <span className="text-sm">{t('memory.tree_empty', '暂无记忆树数据')}</span>
+                <span className="text-sm">{t('memory.tree_empty')}</span>
               </div>
             )
           )}
@@ -1410,7 +1414,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
               <WarningCircle size={32} className="mb-2 text-destructive/60" />
               <span className="text-sm mb-1 text-foreground font-medium">
-                {t('memory.load_error_title', '加载失败')}
+                {t('memory.load_error_title')}
               </span>
               <span className="text-xs mb-3 text-center max-w-xs">{loadError}</span>
               <NotionButton
@@ -1420,7 +1424,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 disabled={isLoading}
               >
                 <ArrowClockwise className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
-                {t('common:retry', '重试')}
+                {t('common:retry')}
               </NotionButton>
             </div>
           ) : viewMode === 'list' && isSearchMode ? (
@@ -1428,7 +1432,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                 <MagnifyingGlass size={32} className="mb-2 opacity-40" />
-                <span className="text-sm">{t('memory.no_results', '没有找到相关记忆')}</span>
+                <span className="text-sm">{t('memory.no_results')}</span>
               </div>
             ) : (
               <div className="space-y-0.5">
@@ -1488,9 +1492,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             // 空状态 - 更简洁
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <MemoryIcon size={40} className="mb-3 opacity-40" />
-              <span className="text-sm mb-2">{t('memory.empty', '暂无记忆')}</span>
+              <span className="text-sm mb-2">{t('memory.empty')}</span>
               <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:underline !p-0 !h-auto">
-                {t('memory.create_first', '创建第一条记忆')}
+                {t('memory.create_first')}
               </NotionButton>
             </div>
           ) : viewMode === 'list' ? (
@@ -1555,7 +1559,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             <span className="px-1.5 py-0 rounded bg-muted/50 text-[10px]">{memory.folderPath}</span>
                           )}
                           {memory.hits > 0 && (
-                            <span className="text-[10px] text-muted-foreground/50">{memory.hits} {t('memory.hits', '次引用')}</span>
+                            <span className="text-[10px] text-muted-foreground/50">{memory.hits} {t('memory.hits')}</span>
                           )}
                         </div>
                       </div>
@@ -1596,7 +1600,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
             <FolderOpen size={16} className="text-muted-foreground" />
-            {t('memory.select_root_folder', '选择记忆根文件夹')}
+            {t('memory.select_root_folder')}
           </NotionDialogTitle>
         </NotionDialogHeader>
         <NotionDialogBody>
@@ -1619,7 +1623,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         </NotionDialogBody>
         <NotionDialogFooter>
           <NotionButton variant="ghost" size="sm" onClick={() => setIsPickerOpen(false)}>
-            {t('common:cancel', '取消')}
+            {t('common:cancel')}
           </NotionButton>
         </NotionDialogFooter>
       </NotionDialog>

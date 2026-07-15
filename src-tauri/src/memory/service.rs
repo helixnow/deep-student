@@ -663,23 +663,7 @@ impl MemoryService {
         top_k: usize,
         purpose: SearchPurpose,
     ) -> VfsResult<Vec<MemorySearchResult>> {
-        if top_k == 0 {
-            return Ok(vec![]);
-        }
-
-        if self.config.is_privacy_mode()? {
-            warn!("[Memory] Privacy mode enabled, skipping embedding API call for search");
-            return Ok(vec![]);
-        }
-
-        let embedding = self
-            .llm_manager
-            .generate_embedding(query)
-            .await
-            .map_err(|e| VfsError::Other(format!("Embedding failed: {}", e)))?;
-
-        self.search_with_embedding_for_purpose(query, &embedding, top_k, purpose)
-            .await
+        self.search_unified_for_purpose(query, top_k, purpose).await
     }
 
     /// 使用预计算 embedding 搜索记忆（避免重复调用 Embedding API）
@@ -703,7 +687,18 @@ impl MemoryService {
     pub async fn search_with_embedding_for_purpose(
         &self,
         query: &str,
-        query_embedding: &[f32],
+        _query_embedding: &[f32],
+        top_k: usize,
+        purpose: SearchPurpose,
+    ) -> VfsResult<Vec<MemorySearchResult>> {
+        // A bare vector has no model/profile fingerprint. Keep this signature for callers that
+        // still precompute an embedding, but never let it select a VFS vector space.
+        self.search_unified_for_purpose(query, top_k, purpose).await
+    }
+
+    async fn search_unified_for_purpose(
+        &self,
+        query: &str,
         top_k: usize,
         purpose: SearchPurpose,
     ) -> VfsResult<Vec<MemorySearchResult>> {
@@ -712,7 +707,7 @@ impl MemoryService {
         }
 
         if self.config.is_privacy_mode()? {
-            warn!("[Memory] Privacy mode enabled, skipping search_with_embedding");
+            warn!("[Memory] Privacy mode enabled, skipping unified retrieval");
             return Ok(vec![]);
         }
 
@@ -724,22 +719,35 @@ impl MemoryService {
         }
 
         let retrieval_k = top_k.saturating_mul(3);
-        let lance_results = self
-            .lance_store
-            .hybrid_search(
-                "text",
-                query,
-                query_embedding,
-                retrieval_k,
-                Some(&folder_ids),
-                Some(&["note".to_string()]),
-            )
+        let retriever = crate::vfs::VfsUnifiedRetriever::new(
+            Arc::clone(&self.vfs_db),
+            Arc::clone(&self.lance_store),
+            Arc::clone(&self.llm_manager),
+        );
+        let response = retriever
+            .search(crate::vfs::UnifiedRetrievalRequest {
+                query_text: Some(query.to_string()),
+                query_image_base64: None,
+                query_image_media_type: None,
+                query_modality: crate::vfs::QueryModality::Text,
+                top_k: retrieval_k,
+                folder_ids: Some(folder_ids),
+                resource_ids: None,
+                resource_types: Some(vec!["note".to_string()]),
+            })
             .await?;
+        let best_rrf_score = response
+            .result
+            .hits
+            .first()
+            .map(|fused| fused.rrf_score)
+            .unwrap_or(0.0);
 
         let mut results = Vec::new();
         let mut seen_note_ids: HashSet<String> = HashSet::new();
-        for r in lance_results {
-            let note = self.get_note_by_resource_id(&r.resource_id)?;
+        for fused in response.result.hits {
+            let resource_id = &fused.hit.identity.resource_id;
+            let note = self.get_note_by_resource_id(resource_id)?;
             if let Some(note) = note {
                 if !self.is_note_in_memory_root(&note.id, &root_id)? {
                     continue;
@@ -750,12 +758,20 @@ impl MemoryService {
 
                 let folder_path = self.get_note_folder_path(&note.id)?;
                 let tag_weight = Self::compute_tag_weight(&note.tags);
+                let retrieval_score = if fused.rrf_score.is_finite()
+                    && best_rrf_score.is_finite()
+                    && best_rrf_score > 0.0
+                {
+                    (fused.rrf_score / best_rrf_score).clamp(0.0, 1.0) as f32
+                } else {
+                    0.0
+                };
                 results.push(MemorySearchResult {
                     note_id: note.id,
                     note_title: note.title,
                     folder_path,
-                    chunk_text: r.text,
-                    score: r.score * tag_weight,
+                    chunk_text: fused.hit.text,
+                    score: retrieval_score * tag_weight,
                     updated_at: Some(note.updated_at),
                 });
 
@@ -2805,6 +2821,24 @@ impl MemoryService {
         Ok(location.map(|l| l.folder_path).unwrap_or_default())
     }
 
+    /// 返回记忆根目录内的相对文件夹路径，根目录本身表示为 ""。
+    ///
+    /// 写入与移动 API 接收的都是相对路径；该方法用于生成可直接回传给这些 API 的
+    /// 当前位置，避免把记忆根目录标题再次创建成嵌套目录。
+    pub fn get_note_relative_folder_path(&self, note_id: &str) -> VfsResult<String> {
+        let root_id = self.ensure_root_folder_id()?;
+        let root_path = VfsFolderRepo::build_folder_path(&self.vfs_db, &root_id)?;
+        let absolute_path = self.get_note_folder_path(note_id)?;
+        if absolute_path == root_path {
+            return Ok(String::new());
+        }
+        let relative_prefix = format!("{root_path}/");
+        Ok(absolute_path
+            .strip_prefix(&relative_prefix)
+            .unwrap_or(&absolute_path)
+            .to_string())
+    }
+
     // ========================================================================
     // ★ 修复风险2：按 note_id 更新记忆
     // ========================================================================
@@ -2997,21 +3031,81 @@ impl MemoryService {
     // 关联型记忆（轻量 _ref: 标签方案）
     // ========================================================================
 
-    /// 添加记忆关联（双向）：A 和 B 互相引用
+    fn validate_expected_note_version(note: &VfsNote, expected_updated_at: &str) -> VfsResult<()> {
+        let expected_updated_at = expected_updated_at.trim();
+        if expected_updated_at.is_empty() {
+            return Err(VfsError::InvalidArgument {
+                param: "expected_updated_at".to_string(),
+                reason: "expected_updated_at must not be empty".to_string(),
+            });
+        }
+        if note.updated_at != expected_updated_at {
+            return Err(VfsError::Conflict {
+                key: "notes.conflict".to_string(),
+                message: "The memory note has changed since it was read; refresh before retrying."
+                    .to_string(),
+            });
+        }
+        Ok(())
+    }
+
+    /// 添加记忆关联（双向）：A 和 B 互相引用。
+    ///
+    /// 旧 handler 仍可使用该入口；它会读取一次最新版本并透传到 OCC 实现。
     pub fn add_relation(&self, note_id_a: &str, note_id_b: &str) -> VfsResult<()> {
+        let note_a = self.ensure_note_in_memory_root(note_id_a)?;
+        let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+        self.add_relation_with_occ(
+            note_id_a,
+            &note_a.updated_at,
+            note_id_b,
+            &note_b.updated_at,
+            MemoryOpSource::Handler,
+            None,
+        )
+        .map(|_| ())
+    }
+
+    /// 使用调用方读取到的两个 `updated_at` 版本原子添加双向关联。
+    ///
+    /// 返回 A、B 的写后快照以及本次是否实际改变了关系。
+    pub fn add_relation_with_occ(
+        &self,
+        note_id_a: &str,
+        expected_updated_at_a: &str,
+        note_id_b: &str,
+        expected_updated_at_b: &str,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+    ) -> VfsResult<(VfsNote, VfsNote, bool)> {
         if note_id_a == note_id_b {
             return Err(VfsError::Other("不能将记忆与自身建立关联".to_string()));
         }
-        let note_a = self.ensure_note_in_memory_root(note_id_a)?;
-        let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+        self.ensure_note_in_memory_root(note_id_a)?;
+        self.ensure_note_in_memory_root(note_id_b)?;
         let conn = self.vfs_db.get_conn_safe()?;
+        let note_a = VfsNoteRepo::get_note_with_conn(&conn, note_id_a)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "MemoryNote".to_string(),
+                id: note_id_a.to_string(),
+            }
+        })?;
+        let note_b = VfsNoteRepo::get_note_with_conn(&conn, note_id_b)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "MemoryNote".to_string(),
+                id: note_id_b.to_string(),
+            }
+        })?;
+        Self::validate_expected_note_version(&note_a, expected_updated_at_a)?;
+        Self::validate_expected_note_version(&note_b, expected_updated_at_b)?;
 
         let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
         let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
         conn.execute("SAVEPOINT memory_add_relation", [])?;
-        let tx_result: VfsResult<()> = (|| {
+        let tx_result: VfsResult<(VfsNote, VfsNote, bool)> = (|| {
             let mut tags_a = note_a.tags.clone();
-            if !tags_a.contains(&ref_tag_ab) {
+            let changed_a = !tags_a.contains(&ref_tag_ab);
+            let updated_a = if changed_a {
                 tags_a.push(ref_tag_ab);
                 VfsNoteRepo::update_note_with_conn(
                     &conn,
@@ -3021,11 +3115,14 @@ impl MemoryService {
                         expected_updated_at: Some(note_a.updated_at.clone()),
                         ..Default::default()
                     },
-                )?;
-            }
+                )?
+            } else {
+                note_a.clone()
+            };
 
             let mut tags_b = note_b.tags.clone();
-            if !tags_b.contains(&ref_tag_ba) {
+            let changed_b = !tags_b.contains(&ref_tag_ba);
+            let updated_b = if changed_b {
                 tags_b.push(ref_tag_ba);
                 VfsNoteRepo::update_note_with_conn(
                     &conn,
@@ -3035,25 +3132,28 @@ impl MemoryService {
                         expected_updated_at: Some(note_b.updated_at.clone()),
                         ..Default::default()
                     },
-                )?;
-            }
-            Ok(())
+                )?
+            } else {
+                note_b.clone()
+            };
+            Ok((updated_a, updated_b, changed_a || changed_b))
         })();
-        match tx_result {
-            Ok(()) => {
+        let result = match tx_result {
+            Ok(result) => {
                 conn.execute("RELEASE memory_add_relation", [])?;
+                result
             }
             Err(e) => {
                 let _ = conn.execute("ROLLBACK TO memory_add_relation", []);
                 let _ = conn.execute("RELEASE memory_add_relation", []);
                 return Err(e);
             }
-        }
+        };
 
         info!("[Memory] Added relation: {} <-> {}", note_id_a, note_id_b);
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::Handler,
+            source,
             operation: MemoryOpType::AddRelation,
             success: true,
             note_id: Some(note_id_a.to_string()),
@@ -3063,39 +3163,87 @@ impl MemoryService {
             event: None,
             confidence: None,
             reason: Some(format!("关联 {} <-> {}", note_id_a, note_id_b)),
-            session_id: None,
+            session_id: session_id.map(str::to_string),
             duration_ms: None,
             extra_json: None,
         });
 
-        Ok(())
+        Ok(result)
     }
 
     /// 移除记忆关联（双向）
     pub fn remove_relation(&self, note_id_a: &str, note_id_b: &str) -> VfsResult<()> {
         let note_a = self.ensure_note_in_memory_root(note_id_a)?;
         let note_b = self.ensure_note_in_memory_root(note_id_b)?;
+        self.remove_relation_with_occ(
+            note_id_a,
+            &note_a.updated_at,
+            note_id_b,
+            &note_b.updated_at,
+            MemoryOpSource::Handler,
+            None,
+        )
+        .map(|_| ())
+    }
+
+    /// 使用调用方读取到的两个 `updated_at` 版本原子移除双向关联。
+    pub fn remove_relation_with_occ(
+        &self,
+        note_id_a: &str,
+        expected_updated_at_a: &str,
+        note_id_b: &str,
+        expected_updated_at_b: &str,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+    ) -> VfsResult<(VfsNote, VfsNote, bool)> {
+        if note_id_a == note_id_b {
+            return Err(VfsError::InvalidArgument {
+                param: "note_id_b".to_string(),
+                reason: "relation endpoints must be different".to_string(),
+            });
+        }
+        self.ensure_note_in_memory_root(note_id_a)?;
+        self.ensure_note_in_memory_root(note_id_b)?;
         let conn = self.vfs_db.get_conn_safe()?;
+        let note_a = VfsNoteRepo::get_note_with_conn(&conn, note_id_a)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "MemoryNote".to_string(),
+                id: note_id_a.to_string(),
+            }
+        })?;
+        let note_b = VfsNoteRepo::get_note_with_conn(&conn, note_id_b)?.ok_or_else(|| {
+            VfsError::NotFound {
+                resource_type: "MemoryNote".to_string(),
+                id: note_id_b.to_string(),
+            }
+        })?;
+        Self::validate_expected_note_version(&note_a, expected_updated_at_a)?;
+        Self::validate_expected_note_version(&note_b, expected_updated_at_b)?;
 
         let ref_tag_ab = format!("{}{}", TAG_REF_PREFIX, note_id_b);
         let ref_tag_ba = format!("{}{}", TAG_REF_PREFIX, note_id_a);
         conn.execute("SAVEPOINT memory_remove_relation", [])?;
-        let tx_result: VfsResult<()> = (|| {
+        let tx_result: VfsResult<(VfsNote, VfsNote, bool)> = (|| {
             let tags_a: Vec<String> = note_a
                 .tags
                 .iter()
                 .filter(|t| *t != &ref_tag_ab)
                 .cloned()
                 .collect();
-            VfsNoteRepo::update_note_with_conn(
-                &conn,
-                note_id_a,
-                VfsUpdateNoteParams {
-                    tags: Some(tags_a),
-                    expected_updated_at: Some(note_a.updated_at.clone()),
-                    ..Default::default()
-                },
-            )?;
+            let changed_a = tags_a.len() != note_a.tags.len();
+            let updated_a = if changed_a {
+                VfsNoteRepo::update_note_with_conn(
+                    &conn,
+                    note_id_a,
+                    VfsUpdateNoteParams {
+                        tags: Some(tags_a),
+                        expected_updated_at: Some(note_a.updated_at.clone()),
+                        ..Default::default()
+                    },
+                )?
+            } else {
+                note_a.clone()
+            };
 
             let tags_b: Vec<String> = note_b
                 .tags
@@ -3103,32 +3251,38 @@ impl MemoryService {
                 .filter(|t| *t != &ref_tag_ba)
                 .cloned()
                 .collect();
-            VfsNoteRepo::update_note_with_conn(
-                &conn,
-                note_id_b,
-                VfsUpdateNoteParams {
-                    tags: Some(tags_b),
-                    expected_updated_at: Some(note_b.updated_at.clone()),
-                    ..Default::default()
-                },
-            )?;
-            Ok(())
+            let changed_b = tags_b.len() != note_b.tags.len();
+            let updated_b = if changed_b {
+                VfsNoteRepo::update_note_with_conn(
+                    &conn,
+                    note_id_b,
+                    VfsUpdateNoteParams {
+                        tags: Some(tags_b),
+                        expected_updated_at: Some(note_b.updated_at.clone()),
+                        ..Default::default()
+                    },
+                )?
+            } else {
+                note_b.clone()
+            };
+            Ok((updated_a, updated_b, changed_a || changed_b))
         })();
-        match tx_result {
-            Ok(()) => {
+        let result = match tx_result {
+            Ok(result) => {
                 conn.execute("RELEASE memory_remove_relation", [])?;
+                result
             }
             Err(e) => {
                 let _ = conn.execute("ROLLBACK TO memory_remove_relation", []);
                 let _ = conn.execute("RELEASE memory_remove_relation", []);
                 return Err(e);
             }
-        }
+        };
 
         info!("[Memory] Removed relation: {} <-> {}", note_id_a, note_id_b);
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::Handler,
+            source,
             operation: MemoryOpType::RemoveRelation,
             success: true,
             note_id: Some(note_id_a.to_string()),
@@ -3138,12 +3292,12 @@ impl MemoryService {
             event: None,
             confidence: None,
             reason: Some(format!("解除关联 {} <-> {}", note_id_a, note_id_b)),
-            session_id: None,
+            session_id: session_id.map(str::to_string),
             duration_ms: None,
             extra_json: None,
         });
 
-        Ok(())
+        Ok(result)
     }
 
     /// 获取与指定记忆关联的所有记忆 ID
@@ -3166,6 +3320,28 @@ impl MemoryService {
     /// 传入的 tags 中以 `_` 开头的条目会被静默忽略。
     pub fn update_tags(&self, note_id: &str, user_tags: Vec<String>) -> VfsResult<()> {
         let note = self.ensure_note_in_memory_root(note_id)?;
+        self.update_tags_with_occ(
+            note_id,
+            &note.updated_at,
+            user_tags,
+            MemoryOpSource::Handler,
+            None,
+        )
+        .map(|_| ())
+    }
+
+    /// 使用调用方读取到的 `updated_at` 更新用户标签，系统标签始终保留。
+    /// 返回写前与写后快照。
+    pub fn update_tags_with_occ(
+        &self,
+        note_id: &str,
+        expected_updated_at: &str,
+        user_tags: Vec<String>,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+    ) -> VfsResult<(VfsNote, VfsNote)> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        Self::validate_expected_note_version(&note, expected_updated_at)?;
 
         let system_tags: Vec<String> = note
             .tags
@@ -3181,11 +3357,12 @@ impl MemoryService {
         let mut merged = system_tags;
         merged.extend(filtered_user_tags);
 
-        VfsNoteRepo::update_note(
+        let updated = VfsNoteRepo::update_note(
             &self.vfs_db,
             note_id,
             VfsUpdateNoteParams {
                 tags: Some(merged),
+                expected_updated_at: Some(expected_updated_at.trim().to_string()),
                 ..Default::default()
             },
         )?;
@@ -3195,7 +3372,7 @@ impl MemoryService {
         );
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::Handler,
+            source,
             operation: MemoryOpType::UpdateTags,
             success: true,
             note_id: Some(note_id.to_string()),
@@ -3205,12 +3382,12 @@ impl MemoryService {
             event: None,
             confidence: None,
             reason: None,
-            session_id: None,
+            session_id: session_id.map(str::to_string),
             duration_ms: None,
             extra_json: None,
         });
 
-        Ok(())
+        Ok((note, updated))
     }
 
     /// 获取记忆的标签列表
@@ -3221,9 +3398,32 @@ impl MemoryService {
 
     /// 移动记忆到指定文件夹路径（在记忆根目录内）
     pub fn move_to_folder(&self, note_id: &str, target_folder_path: &str) -> VfsResult<()> {
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        self.move_to_folder_with_occ(
+            note_id,
+            &note.updated_at,
+            target_folder_path,
+            MemoryOpSource::Handler,
+            None,
+        )
+        .map(|_| ())
+    }
+
+    /// 使用调用方读取到的 `updated_at` 移动记忆，并原子推进笔记版本。
+    /// 返回写后快照与移动前文件夹路径。
+    pub fn move_to_folder_with_occ(
+        &self,
+        note_id: &str,
+        expected_updated_at: &str,
+        target_folder_path: &str,
+        source: MemoryOpSource,
+        session_id: Option<&str>,
+    ) -> VfsResult<(VfsNote, String)> {
         Self::validate_user_writable_folder_path(Some(target_folder_path))?;
         let root_id = self.ensure_root_folder_id()?;
-        self.ensure_note_in_memory_root(note_id)?;
+        let note = self.ensure_note_in_memory_root(note_id)?;
+        Self::validate_expected_note_version(&note, expected_updated_at)?;
+        let previous_folder_path = self.get_note_relative_folder_path(note_id)?;
 
         let target_folder_id = if target_folder_path.is_empty() {
             root_id
@@ -3231,12 +3431,42 @@ impl MemoryService {
             self.ensure_folder(&root_id, target_folder_path)?
         };
 
-        VfsFolderRepo::move_item_by_item_id(
-            &self.vfs_db,
-            "note",
-            note_id,
-            Some(&target_folder_id),
-        )?;
+        let conn = self.vfs_db.get_conn_safe()?;
+        let current_note =
+            VfsNoteRepo::get_note_with_conn(&conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+                resource_type: "MemoryNote".to_string(),
+                id: note_id.to_string(),
+            })?;
+        Self::validate_expected_note_version(&current_note, expected_updated_at)?;
+        conn.execute("SAVEPOINT memory_move_to_folder", [])?;
+        let tx_result: VfsResult<VfsNote> = (|| {
+            let updated = VfsNoteRepo::update_note_with_conn(
+                &conn,
+                note_id,
+                VfsUpdateNoteParams {
+                    expected_updated_at: Some(expected_updated_at.trim().to_string()),
+                    ..Default::default()
+                },
+            )?;
+            VfsFolderRepo::move_item_by_item_id_with_conn(
+                &conn,
+                "note",
+                note_id,
+                Some(&target_folder_id),
+            )?;
+            Ok(updated)
+        })();
+        let updated = match tx_result {
+            Ok(updated) => {
+                conn.execute("RELEASE memory_move_to_folder", [])?;
+                updated
+            }
+            Err(error) => {
+                let _ = conn.execute("ROLLBACK TO memory_move_to_folder", []);
+                let _ = conn.execute("RELEASE memory_move_to_folder", []);
+                return Err(error);
+            }
+        };
 
         self.invalidate_folder_cache();
         info!(
@@ -3245,7 +3475,7 @@ impl MemoryService {
         );
 
         self.audit_logger.log(&super::audit_log::MemoryAuditEntry {
-            source: MemoryOpSource::Handler,
+            source,
             operation: MemoryOpType::Move,
             success: true,
             note_id: Some(note_id.to_string()),
@@ -3255,12 +3485,12 @@ impl MemoryService {
             event: None,
             confidence: None,
             reason: None,
-            session_id: None,
+            session_id: session_id.map(str::to_string),
             duration_ms: None,
             extra_json: None,
         });
 
-        Ok(())
+        Ok((updated, previous_folder_path))
     }
 
     fn sync_note_system_tags(
@@ -3580,6 +3810,53 @@ impl MemoryService {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn memory_search_uses_lexical_route_without_te_and_ignores_bare_vector() {
+        let (_temp_dir, vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        let written = service
+            .write(
+                None,
+                "Lexical memory",
+                "profile planner lexical fallback",
+                WriteMode::Create,
+            )
+            .expect("create memory");
+        let conn = vfs_db.get_conn_safe().expect("open vfs");
+        crate::vfs::repos::index_unit_repo::create(
+            &conn,
+            crate::vfs::repos::index_unit_repo::CreateUnitInput {
+                resource_id: written.resource_id,
+                unit_index: 0,
+                image_blob_hash: None,
+                image_mime_type: None,
+                text_content: Some("profile planner lexical fallback".to_string()),
+                text_source: Some("native".to_string()),
+            },
+        )
+        .expect("create lexical unit");
+        drop(conn);
+
+        let lexical = service
+            .search_for_purpose("planner lexical fallback", 5, SearchPurpose::InternalDedup)
+            .await
+            .expect("lexical search without TE");
+        assert_eq!(lexical.len(), 1);
+        assert_eq!(lexical[0].note_id, written.note_id);
+
+        let incompatible_bare_vector = [1.0_f32, 2.0, 3.0];
+        let compatibility = service
+            .search_with_embedding_for_purpose(
+                "planner lexical fallback",
+                &incompatible_bare_vector,
+                5,
+                SearchPurpose::InternalDedup,
+            )
+            .await
+            .expect("bare vector must not select a VFS profile");
+        assert_eq!(compatibility.len(), 1);
+        assert_eq!(compatibility[0].note_id, written.note_id);
+    }
+
     #[test]
     fn test_write_mode_from_str() {
         assert_eq!(WriteMode::from_str("create"), WriteMode::Create);
@@ -3602,6 +3879,161 @@ mod tests {
         assert!(!should_downgrade_smart_mutation(&MemoryEvent::DELETE, 0.8));
         assert!(!should_downgrade_smart_mutation(&MemoryEvent::ADD, 0.1));
         assert!(!should_downgrade_smart_mutation(&MemoryEvent::NONE, 0.1));
+    }
+
+    #[test]
+    fn relation_occ_is_atomic_and_advances_both_versions() {
+        let (_temp_dir, _vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        let note_a = service
+            .write(None, "Relation A", "alpha", WriteMode::Create)
+            .expect("create relation A");
+        let note_b = service
+            .write(None, "Relation B", "beta", WriteMode::Create)
+            .expect("create relation B");
+        let version_a = service
+            .read(&note_a.note_id)
+            .expect("read A")
+            .expect("A exists")
+            .0
+            .updated_at;
+        let version_b = service
+            .read(&note_b.note_id)
+            .expect("read B")
+            .expect("B exists")
+            .0
+            .updated_at;
+
+        let (updated_a, updated_b, changed) = service
+            .add_relation_with_occ(
+                &note_a.note_id,
+                &version_a,
+                &note_b.note_id,
+                &version_b,
+                MemoryOpSource::ToolCall,
+                Some("session-relation"),
+            )
+            .expect("add relation with OCC");
+        assert!(changed);
+        assert_ne!(updated_a.updated_at, version_a);
+        assert_ne!(updated_b.updated_at, version_b);
+        assert_eq!(
+            service
+                .get_related_ids(&note_a.note_id)
+                .expect("read A relations"),
+            vec![note_b.note_id.clone()]
+        );
+        assert_eq!(
+            service
+                .get_related_ids(&note_b.note_id)
+                .expect("read B relations"),
+            vec![note_a.note_id.clone()]
+        );
+
+        let stale_remove = service.remove_relation_with_occ(
+            &note_a.note_id,
+            &version_a,
+            &note_b.note_id,
+            &updated_b.updated_at,
+            MemoryOpSource::ToolCall,
+            Some("session-relation"),
+        );
+        assert!(matches!(stale_remove, Err(VfsError::Conflict { .. })));
+        assert_eq!(
+            service
+                .get_related_ids(&note_a.note_id)
+                .expect("relation survives stale remove"),
+            vec![note_b.note_id.clone()]
+        );
+
+        let (_, _, removed) = service
+            .remove_relation_with_occ(
+                &note_a.note_id,
+                &updated_a.updated_at,
+                &note_b.note_id,
+                &updated_b.updated_at,
+                MemoryOpSource::ToolCall,
+                Some("session-relation"),
+            )
+            .expect("remove relation with current versions");
+        assert!(removed);
+        assert!(service
+            .get_related_ids(&note_a.note_id)
+            .expect("A relations cleared")
+            .is_empty());
+        assert!(service
+            .get_related_ids(&note_b.note_id)
+            .expect("B relations cleared")
+            .is_empty());
+    }
+
+    #[test]
+    fn tag_and_move_occ_preserve_system_boundary_and_advance_versions() {
+        let (_temp_dir, _vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        let output = service
+            .write(None, "Mutable memory", "content", WriteMode::Create)
+            .expect("create memory");
+        let initial = service
+            .read(&output.note_id)
+            .expect("read memory")
+            .expect("memory exists")
+            .0;
+        let initial_folder = service
+            .get_note_relative_folder_path(&output.note_id)
+            .expect("read initial path");
+
+        let (_, tagged) = service
+            .update_tags_with_occ(
+                &output.note_id,
+                &initial.updated_at,
+                vec!["exam".to_string(), "_important".to_string()],
+                MemoryOpSource::ToolCall,
+                Some("session-tags"),
+            )
+            .expect("update tags with OCC");
+        assert_ne!(tagged.updated_at, initial.updated_at);
+        assert_eq!(tagged.tags, vec!["exam"]);
+
+        let stale_tags = service.update_tags_with_occ(
+            &output.note_id,
+            &initial.updated_at,
+            vec!["stale".to_string()],
+            MemoryOpSource::ToolCall,
+            Some("session-tags"),
+        );
+        assert!(matches!(stale_tags, Err(VfsError::Conflict { .. })));
+
+        let (moved, previous_folder) = service
+            .move_to_folder_with_occ(
+                &output.note_id,
+                &tagged.updated_at,
+                "Archive/2026",
+                MemoryOpSource::ToolCall,
+                Some("session-move"),
+            )
+            .expect("move with OCC");
+        assert_eq!(previous_folder, initial_folder);
+        assert_ne!(moved.updated_at, tagged.updated_at);
+        assert_eq!(
+            service
+                .get_note_relative_folder_path(&output.note_id)
+                .expect("read moved path"),
+            "Archive/2026"
+        );
+
+        let stale_move = service.move_to_folder_with_occ(
+            &output.note_id,
+            &tagged.updated_at,
+            "Wrong",
+            MemoryOpSource::ToolCall,
+            Some("session-move"),
+        );
+        assert!(matches!(stale_move, Err(VfsError::Conflict { .. })));
+        assert_eq!(
+            service
+                .get_note_relative_folder_path(&output.note_id)
+                .expect("path unchanged after stale move"),
+            "Archive/2026"
+        );
     }
 
     #[test]

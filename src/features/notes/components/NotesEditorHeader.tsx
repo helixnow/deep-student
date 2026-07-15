@@ -165,7 +165,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     // 标题保存失败，回滚
                     pendingTitleRef.current = null;
                     setTitleInput(displayTitle);
-                    showGlobalNotification('error', t('notes:errors.title_save_failed', '标题保存失败'));
+                    showGlobalNotification('error', t('notes:errors.title_save_failed'));
                 }
             }
         } else {

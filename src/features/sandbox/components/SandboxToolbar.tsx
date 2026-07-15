@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowClockwise, SidebarSimple, X } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 
@@ -22,6 +23,7 @@ export function SandboxToolbar({
   onToggleInspector,
   onClose,
 }: SandboxToolbarProps) {
+  const { t } = useTranslation('workbench');
   return (
     <header className="flex items-center justify-between gap-4 border-b border-border/70 px-5 py-4">
       <div className="min-w-0 flex-1">
@@ -40,8 +42,8 @@ export function SandboxToolbar({
           size="icon"
           iconOnly
           onClick={onReload}
-          title="刷新"
-          aria-label="刷新"
+          title={t('sandbox.refresh')}
+          aria-label={t('sandbox.refresh')}
           className="!h-8 !w-8 !p-0"
         >
           <ArrowClockwise size={16} />
@@ -51,8 +53,8 @@ export function SandboxToolbar({
           size="icon"
           iconOnly
           onClick={onToggleInspector}
-          title={inspectorOpen ? '收起检查器' : '打开检查器'}
-          aria-label={inspectorOpen ? '收起检查器' : '打开检查器'}
+          title={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
+          aria-label={inspectorOpen ? t('sandbox.closeInspector') : t('sandbox.openInspector')}
           className="!h-8 !w-8 !p-0"
         >
           <SidebarSimple size={16} />
@@ -62,8 +64,8 @@ export function SandboxToolbar({
           size="icon"
           iconOnly
           onClick={onClose}
-          title="关闭"
-          aria-label="关闭"
+          title={t('sandbox.close')}
+          aria-label={t('sandbox.close')}
           className="!h-8 !w-8 !p-0"
         >
           <X size={16} />

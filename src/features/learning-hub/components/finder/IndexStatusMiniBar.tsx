@@ -121,16 +121,16 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
   if (isIndexing) {
     icon = <ArrowsClockwise size={14} className="animate-spin" />;
     label = batchProgress !== null
-      ? t('indexMiniBar.indexingWithProgress', { progress: Math.round(batchProgress), defaultValue: '索引中 {{progress}}%' })
-      : t('indexMiniBar.indexing', '索引中…');
+      ? t('indexMiniBar.indexingWithProgress', { progress: Math.round(batchProgress) })
+      : t('indexMiniBar.indexing');
     toneClass = 'text-blue-600 dark:text-blue-400';
   } else if (failedCount > 0) {
     icon = <WarningCircle size={14} />;
-    label = t('indexMiniBar.failed', { count: failedCount, defaultValue: '{{count}} 项索引失败' });
+    label = t('indexMiniBar.failed', { count: failedCount });
     toneClass = 'text-red-600 dark:text-red-400';
   } else {
     icon = <Clock size={14} />;
-    label = t('indexMiniBar.pending', { count: pendingCount, defaultValue: '{{count}} 项待索引' });
+    label = t('indexMiniBar.pending', { count: pendingCount });
     toneClass = 'text-warning';
   }
 

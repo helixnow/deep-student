@@ -42,7 +42,12 @@ import '../styles/enhanced-pdf.css';
 import { PDF_OPTIONS } from '@/utils/pdfConfig';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import {
+  resolvePdfAnnotationSaveBaseline,
+  subscribePdfAnnotationChanges,
+} from '../pdfAnnotationEvents';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
@@ -73,7 +78,7 @@ type SidebarMode = 'none' | 'outline' | 'thumbnails';
  * - 无 coordVersion（历史数据）：rects 为"捕获时容器宽度下除以 scale"的像素坐标，
  *   仅在与捕获时相同的容器宽度下才对齐，渲染时按旧逻辑乘以当前 scale 兜底显示。
  */
-interface Highlight {
+export interface Highlight {
   id: string;
   pageIndex: number;
   text: string;
@@ -244,6 +249,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const highlightsLoadedRef = useRef<boolean>(false);
   const lastSavedHighlightsRef = useRef<string>('');
   const pendingSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const annotationRevisionRef = useRef<string | null>(null);
 
   // Cleanup PDFDocumentProxy on unmount to avoid memory leak
   useEffect(() => {
@@ -800,7 +806,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const newBookmark: Bookmark = {
       id: `bm-${crypto.randomUUID()}`,
       page: currentPage,
-      title: `${t('pdf:bookmark.defaultTitle', '书签')} - ${t('pdf:toolbar.page', '第 {{page}} 页', { page: currentPage })}`,
+      title: `${t('pdf:bookmark.defaultTitle')} - ${t('pdf:toolbar.page', { page: currentPage })}`,
       createdAt: Date.now(),
     };
     
@@ -906,6 +912,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         
         if (result.ok && result.value.metadata) {
           const savedHighlights = result.value.metadata.highlights as Highlight[] | undefined;
+          const revision = result.value.metadata.annotationRevision;
+          annotationRevisionRef.current =
+            typeof revision === 'string' && revision.trim() ? revision : null;
           if (savedHighlights && Array.isArray(savedHighlights)) {
             console.log('[EnhancedPdfViewer] 加载已保存的高亮批注:', savedHighlights.length, '条');
             setHighlights(savedHighlights);
@@ -925,6 +934,45 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       isMounted = false;
     };
   }, [resourcePath, initialHighlights]);
+
+  // Agent/DSTU writes emit a real Tauri event. Reload the shared metadata so
+  // every already-open reader converges on the committed annotation revision.
+  useEffect(() => {
+    if (!resourcePath || initialHighlights !== undefined) return;
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+
+    void subscribePdfAnnotationChanges(resourcePath, (payload) => {
+      void dstu.get(resourcePath).then((result) => {
+        if (disposed || !result.ok) return;
+        const next = result.value.metadata?.highlights;
+        const revision = result.value.metadata?.annotationRevision;
+        if (Array.isArray(next)) {
+          const normalized = next as Highlight[];
+          setHighlights(normalized);
+          lastSavedHighlightsRef.current = JSON.stringify(normalized);
+        }
+        const nextBookmarks = result.value.metadata?.bookmarks;
+        if (Array.isArray(nextBookmarks)) {
+          setBookmarks(nextBookmarks as Bookmark[]);
+        }
+        annotationRevisionRef.current =
+          typeof revision === 'string' && revision.trim()
+            ? revision
+            : payload.updated_at ?? null;
+      });
+    }).then((dispose) => {
+      if (disposed) dispose();
+      else unlisten = dispose;
+    }).catch((error) => {
+      console.warn('[EnhancedPdfViewer] 监听批注刷新事件失败:', error);
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [initialHighlights, resourcePath]);
   
   // 防抖保存高亮数据到 DSTU
   useEffect(() => {
@@ -964,20 +1012,77 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         }
         
         const existingMetadata = getResult.value.metadata || {};
+        const serverRevision = existingMetadata.annotationRevision;
+        const baseline = resolvePdfAnnotationSaveBaseline<Highlight>(
+          annotationRevisionRef.current,
+          lastSavedHighlightsRef.current,
+          serverRevision,
+          existingMetadata.highlights,
+        );
+        if (baseline.status === 'missing_revision') {
+          console.warn('[EnhancedPdfViewer] 缺少批注版本，重新加载后再保存');
+          return;
+        }
+        if (baseline.status === 'reload') {
+          setHighlights(baseline.highlights);
+          lastSavedHighlightsRef.current = JSON.stringify(baseline.highlights);
+          annotationRevisionRef.current = baseline.revision;
+          console.warn('[EnhancedPdfViewer] 批注已在其他窗口更新，已加载最新版本');
+          return;
+        }
+        const expectedRevision = baseline.expectedRevision;
+        annotationRevisionRef.current = expectedRevision;
         const newMetadata = {
           ...existingMetadata,
           highlights: highlights,
         };
-        
-        const result = await dstu.setMetadata(resourcePath, newMetadata);
+
+        const result = await dstu.setMetadata(resourcePath, newMetadata, expectedRevision);
         if (result.ok) {
           console.log('[EnhancedPdfViewer] 高亮批注已保存:', highlights.length, '条');
           lastSavedHighlightsRef.current = currentHighlightsJson;
+          const refreshed = await dstu.get(resourcePath);
+          if (refreshed.ok) {
+            const revision = refreshed.value.metadata?.annotationRevision;
+            annotationRevisionRef.current =
+              typeof revision === 'string' && revision.trim() ? revision : null;
+          }
         } else {
           console.warn('[EnhancedPdfViewer] 保存高亮批注失败:', result.error);
+          // OCC conflicts and failed writes must not leave an unsaved local
+          // view masquerading as committed state. Reload the authoritative
+          // annotations and revision so the next user edit has a valid base.
+          const current = await dstu.get(resourcePath);
+          if (current.ok) {
+            const serverHighlights = current.value.metadata?.highlights;
+            const serverRevision = current.value.metadata?.annotationRevision;
+            if (Array.isArray(serverHighlights)) {
+              const normalized = serverHighlights as Highlight[];
+              setHighlights(normalized);
+              lastSavedHighlightsRef.current = JSON.stringify(normalized);
+            }
+            annotationRevisionRef.current =
+              typeof serverRevision === 'string' && serverRevision.trim()
+                ? serverRevision
+                : null;
+          }
         }
       } catch (err) {
         console.error('[EnhancedPdfViewer] 保存高亮批注异常:', err);
+        const current = await dstu.get(resourcePath);
+        if (current.ok) {
+          const serverHighlights = current.value.metadata?.highlights;
+          const serverRevision = current.value.metadata?.annotationRevision;
+          if (Array.isArray(serverHighlights)) {
+            const normalized = serverHighlights as Highlight[];
+            setHighlights(normalized);
+            lastSavedHighlightsRef.current = JSON.stringify(normalized);
+          }
+          annotationRevisionRef.current =
+            typeof serverRevision === 'string' && serverRevision.trim()
+              ? serverRevision
+              : null;
+        }
       }
     };
     pendingSaveRef.current = doSave;
@@ -1022,22 +1127,32 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     console.error('PDF load error:', error);
     setIsLoading(false);
     const classified = classifyPdfLoadError(error);
+    const diagnostic = getErrorMessage(error);
     switch (classified.kind) {
       case 'password':
-        setLoadError(t('pdf:errors.password_protected', '该 PDF 已加密或需要密码'));
-        setLoadErrorHint(t('pdf:errors.password_protected_hint', '请先在 PDF 阅读器中解除密码保护，再重新导入或保存到本地打开。'));
+        setLoadError(t('pdf:errors.password_protected'));
+        setLoadErrorHint([
+          t('pdf:errors.password_protected_hint'),
+          diagnostic,
+        ].filter(Boolean).join(' '));
         break;
       case 'invalid':
-        setLoadError(t('pdf:errors.invalid_pdf', 'PDF 文件无效或已损坏'));
-        setLoadErrorHint(t('pdf:errors.invalid_pdf_hint', '文件可能不是有效的 PDF，或传输/存储过程中已损坏。'));
+        setLoadError(t('pdf:errors.invalid_pdf'));
+        setLoadErrorHint([
+          t('pdf:errors.invalid_pdf_hint'),
+          diagnostic,
+        ].filter(Boolean).join(' '));
         break;
       case 'network':
-        setLoadError(t('pdf:errors.stream_failed', 'PDF 流式加载失败'));
-        setLoadErrorHint(t('pdf:errors.stream_failed_hint', '文件路径可能已失效或不在允许访问的目录内，可尝试重新关联文件。'));
+        setLoadError(t('pdf:errors.stream_failed'));
+        setLoadErrorHint([
+          t('pdf:errors.stream_failed_hint'),
+          diagnostic,
+        ].filter(Boolean).join(' '));
         break;
       default:
-        setLoadError(t('pdf:errors.load_failed', 'PDF 加载失败，请重试'));
-        setLoadErrorHint(classified.rawMessage || null);
+        setLoadError(t('pdf:errors.load_failed'));
+        setLoadErrorHint(diagnostic || classified.rawMessage || null);
         break;
     }
   }, [t]);
@@ -1479,7 +1594,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               type="button"
               className={`ds-pdf__select-btn ${isSelected ? 'selected' : ''}`}
               onClick={() => handleTogglePageSelect(pageNum)}
-              aria-label={isSelected ? t('textbook:deselect_page', '取消选择此页') : t('textbook:select_page', '选择此页')}
+              aria-label={isSelected ? t('textbook:deselect_page') : t('textbook:select_page')}
             >
               <span className="ds-pdf__select-checkbox" />
               {typeof maxSelections === 'number' && selectedPages && (
@@ -1544,7 +1659,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     return (
       <div className={`ds-pdf-viewer ${themeClass} ${className || ''}`} style={style}>
         <div className="ds-pdf__loading">
-          <p>{t('pdf:empty.title', '未选择文件')}</p>
+          <p>{t('pdf:empty.title')}</p>
         </div>
       </div>
     );
@@ -1565,7 +1680,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             ref={searchInputRef}
             type="text"
             className="ds-search-input"
-            placeholder={t('pdf:toolbar.search_placeholder', '输入搜索内容...')}
+            placeholder={t('pdf:toolbar.search_placeholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -1580,16 +1695,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           )}
           {searchQuery && searchResults.length === 0 && !isSearching && (
             <span className="ds-search-info ds-search-no-results">
-              {t('pdf:toolbar.no_results', '未找到匹配')}
+              {t('pdf:toolbar.no_results')}
             </span>
           )}
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match', '上一个')} aria-label="prev match">
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match')} aria-label="prev match">
             <CaretUp size={16} />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match', '下一个')} aria-label="next match">
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match')} aria-label="next match">
             <CaretDown size={16} />
           </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search', '关闭搜索')} aria-label="close search">
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search')} aria-label="close search">
             <X size={16} />
           </NotionButton>
         </div>
@@ -1606,10 +1721,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             transform: 'translate(-50%, -100%)',
           }}
         >
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow', '黄色')} aria-label="yellow" />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green', '绿色')} aria-label="green" />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue', '蓝色')} aria-label="blue" />
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red', '红色')} aria-label="red" />
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.yellow }} onClick={() => addHighlight(HIGHLIGHT_COLORS.yellow)} title={t('pdf:toolbar.highlight_yellow')} aria-label="yellow" />
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.green }} onClick={() => addHighlight(HIGHLIGHT_COLORS.green)} title={t('pdf:toolbar.highlight_green')} aria-label="green" />
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.blue }} onClick={() => addHighlight(HIGHLIGHT_COLORS.blue)} title={t('pdf:toolbar.highlight_blue')} aria-label="blue" />
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-color" style={{ background: HIGHLIGHT_COLORS.red }} onClick={() => addHighlight(HIGHLIGHT_COLORS.red)} title={t('pdf:toolbar.highlight_red')} aria-label="red" />
         </div>
       )}
 
@@ -1626,7 +1741,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             {sidebarMode === 'outline' && outline && (
               <div className="ds-pdf__outline">
                 <div className="ds-outline-header">
-                  <span>{t('pdf:toolbar.outline', '目录')}</span>
+                  <span>{t('pdf:toolbar.outline')}</span>
                   <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label="close">
                     <X size={14} />
                   </NotionButton>
@@ -1641,7 +1756,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             {sidebarMode === 'thumbnails' && (
               <div className="ds-pdf__thumbnails-panel">
                 <div className="ds-outline-header">
-                  <span>{t('pdf:toolbar.thumbnails', '缩略图')}</span>
+                  <span>{t('pdf:toolbar.thumbnails')}</span>
                   <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setSidebarMode('none')} aria-label="close">
                     <X size={14} />
                   </NotionButton>
@@ -1698,7 +1813,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               )}
               <NotionButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-1.5 mt-2">
                 <ArrowClockwise size={14} />
-                {t('common:retry', '重试')}
+                {t('common:retry')}
               </NotionButton>
             </div>
           ) : (
@@ -1714,7 +1829,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               loading={
                 <div className="ds-pdf__loading">
                   <div className="ds-pdf__loading-spinner" />
-                  <p>{t('pdf:loading', '加载中...')}</p>
+                  <p>{t('pdf:loading')}</p>
                 </div>
               }
             >
@@ -1762,27 +1877,27 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {!isToolbarCompact && (
           <div className="ds-pdf__toolbar-left">
             {outline && outline.length > 0 && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => toggleSidebar('outline')} title={t('pdf:toolbar.outline', '目录')} aria-label="outline">
+              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => toggleSidebar('outline')} title={t('pdf:toolbar.outline')} aria-label="outline">
                 <List size={16} />
               </NotionButton>
             )}
             
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => toggleSidebar('thumbnails')} title={t('pdf:toolbar.thumbnails', '缩略图')} aria-label="thumbnails">
+            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => toggleSidebar('thumbnails')} title={t('pdf:toolbar.thumbnails')} aria-label="thumbnails">
               <GridFour size={16} />
             </NotionButton>
             
-            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100); }} title={t('pdf:toolbar.search', '搜索')} aria-label="search">
+            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100); }} title={t('pdf:toolbar.search')} aria-label="search">
               <MagnifyingGlass size={16} />
             </NotionButton>
             
             <div className="ds-toolbar-divider" />
             
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${currentPageBookmark ? 'active' : ''}`} onClick={addBookmark} title={currentPageBookmark ? t('pdf:bookmark.editBookmark', '编辑书签') : t('pdf:bookmark.addBookmark', '添加书签')} aria-label="bookmark">
+            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${currentPageBookmark ? 'active' : ''}`} onClick={addBookmark} title={currentPageBookmark ? t('pdf:bookmark.editBookmark') : t('pdf:bookmark.addBookmark')} aria-label="bookmark">
               {currentPageBookmark ? <BookmarkCheck size={16} /> : <BookmarkSimple size={16} />}
             </NotionButton>
             
             {bookmarks.length > 0 && (
-              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showBookmarkList ? 'active' : ''}`} onClick={() => setShowBookmarkList(!showBookmarkList)} title={t('pdf:bookmark.showBookmarks', '查看书签')} aria-label="bookmarks">
+              <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showBookmarkList ? 'active' : ''}`} onClick={() => setShowBookmarkList(!showBookmarkList)} title={t('pdf:bookmark.showBookmarks')} aria-label="bookmarks">
                 <Bookmark size={16} />
                 <span className="ds-bookmark-count">{bookmarks.length}</span>
               </NotionButton>
@@ -1792,7 +1907,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
         {/* 核心控制：缩放 + 页面导航（始终显示） */}
         <div className="ds-pdf__toolbar-center">
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomOut} title={t('pdf:toolbar.zoom_out', '缩小')} aria-label="zoom out">
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomOut} title={t('pdf:toolbar.zoom_out')} aria-label="zoom out">
             <MagnifyingGlassMinus size={16} />
           </NotionButton>
 
@@ -1812,7 +1927,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             )}
           </div>
 
-          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomIn} title={t('pdf:toolbar.zoom_in', '放大')} aria-label="zoom in">
+          <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomIn} title={t('pdf:toolbar.zoom_in')} aria-label="zoom in">
             <MagnifyingGlassPlus size={16} />
           </NotionButton>
 
@@ -1843,19 +1958,19 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 非紧凑模式：右侧视图控制 */}
         {!isToolbarCompact && (
           <div className="ds-pdf__toolbar-right">
-            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleRotate} title={t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')} aria-label="rotate">
+            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleRotate} title={t('pdf:toolbar.rotate_cw')} aria-label="rotate">
               <ArrowClockwise size={16} />
             </NotionButton>
 
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${isDarkReading ? 'active' : ''}`} onClick={handleToggleDarkReading} title={isDarkReading ? t('pdf:toolbar.light_reading', '关闭暗色阅读') : t('pdf:toolbar.dark_reading', '暗色阅读')} aria-label="dark reading">
+            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${isDarkReading ? 'active' : ''}`} onClick={handleToggleDarkReading} title={isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')} aria-label="dark reading">
               {isDarkReading ? <Sun size={16} /> : <Moon size={16} />}
             </NotionButton>
 
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')} aria-label="view mode">
+            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')} aria-label="view mode">
               {viewMode === 'single' ? <Book size={16} /> : <BookOpen size={16} />}
             </NotionButton>
 
-            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleToggleFullscreen} title={isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')} aria-label="fullscreen">
+            <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleToggleFullscreen} title={isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')} aria-label="fullscreen">
               {isFullscreen ? <ArrowsIn size={16} /> : <ArrowsOut size={16} />}
             </NotionButton>
           </div>
@@ -1864,7 +1979,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 紧凑模式：更多菜单 */}
         {isToolbarCompact && (
           <div className="ds-pdf__toolbar-more" ref={moreMenuRef}>
-            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showMoreMenu ? 'active' : ''}`} onClick={() => setShowMoreMenu(!showMoreMenu)} title={t('pdf:toolbar.more', '更多')} aria-label="more">
+            <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showMoreMenu ? 'active' : ''}`} onClick={() => setShowMoreMenu(!showMoreMenu)} title={t('pdf:toolbar.more')} aria-label="more">
               <DotsThree size={16} />
             </NotionButton>
             {showMoreMenu && (
@@ -1872,16 +1987,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 {outline && outline.length > 0 && (
                   <NotionButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'outline' ? 'active' : ''}`} onClick={() => { toggleSidebar('outline'); setShowMoreMenu(false); }}>
                     <List size={14} />
-                    <span>{t('pdf:toolbar.outline', '目录')}</span>
+                    <span>{t('pdf:toolbar.outline')}</span>
                   </NotionButton>
                 )}
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => { toggleSidebar('thumbnails'); setShowMoreMenu(false); }}>
                   <GridFour size={14} />
-                  <span>{t('pdf:toolbar.thumbnails', '缩略图')}</span>
+                  <span>{t('pdf:toolbar.thumbnails')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { setShowSearch(true); setShowMoreMenu(false); setTimeout(() => searchInputRef.current?.focus(), 100); }}>
                   <MagnifyingGlass size={14} />
-                  <span>{t('pdf:toolbar.search', '搜索')}</span>
+                  <span>{t('pdf:toolbar.search')}</span>
                 </NotionButton>
 
                 <div className="ds-more-divider" />
@@ -1889,13 +2004,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${currentPageBookmark ? 'active' : ''}`} onClick={() => { addBookmark(); setShowMoreMenu(false); }}>
                   {currentPageBookmark ? <BookmarkCheck size={14} /> : <BookmarkSimple size={14} />}
                   <span>{currentPageBookmark
-                    ? t('pdf:bookmark.editBookmark', '编辑书签')
-                    : t('pdf:bookmark.addBookmark', '添加书签')}</span>
+                    ? t('pdf:bookmark.editBookmark')
+                    : t('pdf:bookmark.addBookmark')}</span>
                 </NotionButton>
                 {bookmarks.length > 0 && (
                   <NotionButton variant="ghost" size="sm" className={`ds-more-item ${showBookmarkList ? 'active' : ''}`} onClick={() => { setShowBookmarkList(!showBookmarkList); setShowMoreMenu(false); }}>
                     <Bookmark size={14} />
-                    <span>{t('pdf:bookmark.showBookmarks', '查看书签')} ({bookmarks.length})</span>
+                    <span>{t('pdf:bookmark.showBookmarks')} ({bookmarks.length})</span>
                   </NotionButton>
                 )}
 
@@ -1903,19 +2018,19 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotate(); setShowMoreMenu(false); }}>
                   <ArrowClockwise size={14} />
-                  <span>{t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')}</span>
+                  <span>{t('pdf:toolbar.rotate_cw')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${isDarkReading ? 'active' : ''}`} onClick={() => { handleToggleDarkReading(); setShowMoreMenu(false); }}>
                   {isDarkReading ? <Sun size={14} /> : <Moon size={14} />}
-                  <span>{isDarkReading ? t('pdf:toolbar.light_reading', '关闭暗色阅读') : t('pdf:toolbar.dark_reading', '暗色阅读')}</span>
+                  <span>{isDarkReading ? t('pdf:toolbar.light_reading') : t('pdf:toolbar.dark_reading')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${viewMode === 'dual' ? 'active' : ''}`} onClick={() => { handleToggleViewMode(); setShowMoreMenu(false); }}>
                   {viewMode === 'single' ? <Book size={14} /> : <BookOpen size={14} />}
-                  <span>{viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')}</span>
+                  <span>{viewMode === 'single' ? t('pdf:toolbar.dual_page') : t('pdf:toolbar.single_page')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleToggleFullscreen(); setShowMoreMenu(false); }}>
                   {isFullscreen ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
-                  <span>{isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')}</span>
+                  <span>{isFullscreen ? t('pdf:toolbar.exit_fullscreen') : t('pdf:toolbar.fullscreen')}</span>
                 </NotionButton>
               </div>
             )}
@@ -1938,7 +2053,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {/* 批注指示器和列表 */}
       {highlights.length > 0 && (
         <>
-          <NotionButton variant="ghost" size="sm" className="ds-pdf__highlights-indicator" onClick={() => setShowHighlightList(!showHighlightList)} title={t('pdf:toolbar.show_highlights', '查看批注')}>
+          <NotionButton variant="ghost" size="sm" className="ds-pdf__highlights-indicator" onClick={() => setShowHighlightList(!showHighlightList)} title={t('pdf:toolbar.show_highlights')}>
             <Highlighter size={14} />
             <span>{highlights.length}</span>
           </NotionButton>
@@ -1947,7 +2062,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           {showHighlightList && (
             <div className="ds-pdf__highlights-panel">
               <div className="ds-outline-header">
-                <span>{t('pdf:toolbar.highlights', '批注列表')}</span>
+                <span>{t('pdf:toolbar.highlights')}</span>
                 <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowHighlightList(false)} aria-label="close">
                   <X size={14} />
                 </NotionButton>
@@ -1969,10 +2084,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     <div className="ds-highlight-content">
                       <div className="ds-highlight-text">{hl.text}</div>
                       <div className="ds-highlight-meta">
-                        {t('pdf:toolbar.page', '第 {{page}} 页', { page: hl.pageIndex })}
+                        {t('pdf:toolbar.page', { page: hl.pageIndex })}
                       </div>
                     </div>
-                    <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight', '删除批注')} aria-label="delete">
+                    <NotionButton variant="ghost" size="icon" iconOnly className="ds-highlight-delete" onClick={(e) => { e.stopPropagation(); removeHighlight(hl.id); }} title={t('pdf:toolbar.delete_highlight')} aria-label="delete">
                       <X size={12} />
                     </NotionButton>
                   </div>
@@ -1987,7 +2102,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {showBookmarkList && (
         <div className="ds-pdf__bookmarks-panel">
           <div className="ds-outline-header">
-            <span>{t('pdf:bookmark.bookmarkList', '书签列表')}</span>
+            <span>{t('pdf:bookmark.bookmarkList')}</span>
             <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={() => setShowBookmarkList(false)} aria-label="close">
               <X size={14} />
             </NotionButton>
@@ -1996,8 +2111,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             {sortedBookmarks.length === 0 ? (
               <div className="ds-bookmarks-empty">
                 <Bookmark size={24} className="ds-bookmarks-empty-icon" />
-                <p>{t('pdf:bookmark.noBookmarks', '暂无书签')}</p>
-                <p className="ds-bookmarks-empty-hint">{t('pdf:bookmark.addHint', '点击工具栏的书签按钮添加')}</p>
+                <p>{t('pdf:bookmark.noBookmarks')}</p>
+                <p className="ds-bookmarks-empty-hint">{t('pdf:bookmark.addHint')}</p>
               </div>
             ) : (
               sortedBookmarks.map(bm => (
@@ -2031,18 +2146,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       <>
                         <div className="ds-bookmark-title">{bm.title}</div>
                         <div className="ds-bookmark-meta">
-                          {t('pdf:toolbar.page', '第 {{page}} 页', { page: bm.page })}
+                          {t('pdf:toolbar.page', { page: bm.page })}
                         </div>
                       </>
                     )}
                   </div>
                   <div className="ds-bookmark-actions">
                     {editingBookmarkId !== bm.id && (
-                      <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn" onClick={(e) => { e.stopPropagation(); startEditBookmark(bm); }} title={t('pdf:bookmark.editTitle', '编辑标题')} aria-label="edit">
+                      <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn" onClick={(e) => { e.stopPropagation(); startEditBookmark(bm); }} title={t('pdf:bookmark.editTitle')} aria-label="edit">
                         <Pencil size={12} />
                       </NotionButton>
                     )}
-                    <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark', '删除书签')} aria-label="delete">
+                    <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark')} aria-label="delete">
                       <Trash size={12} />
                     </NotionButton>
                   </div>
@@ -2057,8 +2172,5 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 };
 
 export const EnhancedPdfViewer = React.memo(EnhancedPdfViewerImpl);
-
-// 导出 Highlight 类型供外部使用
-export type { Highlight };
 
 export default EnhancedPdfViewer;

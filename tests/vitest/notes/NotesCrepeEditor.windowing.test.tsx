@@ -5,6 +5,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import type { CrepeEditorApi } from '@/components/crepe';
 
+vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: () => undefined },
+  useTranslation: () => ({
+    t: (key: string) => ({
+      'notes:editor.windowing.loading_more': 'Loading more lines...',
+      'notes:editor.windowing.load_more_failed': 'Could not load more lines. Retry loading more lines.',
+      'notes:editor.windowing.retry': 'Retry',
+    }[key] ?? key),
+  }),
+}));
+
 let latestViewport: HTMLDivElement | null = null;
 let latestApi: CrepeEditorApi | null = null;
 let currentMarkdown = 'current markdown';

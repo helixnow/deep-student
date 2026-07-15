@@ -34,13 +34,13 @@ export const PdfReader: React.FC = () => {
   // ★ 2026-07-08（移动端审计 D-2）：文件打开后页内不再有「选择文件」入口，
   // 换文件只能退出视图重进 —— 把打开文件动作收进统一顶栏右侧。
   useMobileHeader('pdf-reader', {
-    title: t('common:navigation.pdf_reader', 'PDF 阅读器'),
+    title: t('common:navigation.pdf_reader'),
     rightActions: (
       <NotionButton
         variant="ghost"
         size="sm"
         iconOnly
-        aria-label={t('pdf:empty.select_button', '选择 PDF 文件')}
+        aria-label={t('pdf:empty.select_button')}
         onClick={() => handleSelectFileRef.current()}
       >
         <UploadSimple size={18} />

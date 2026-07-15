@@ -14,6 +14,10 @@ vi.mock('react-i18next', () => ({
       if (key === 'common:actions.retry') {
         return '重试';
       }
+      if (key === 'learningHub:error.appContentCrashed') {
+        const options = (typeof defaultValueOrOptions === 'string' ? maybeOptions : defaultValueOrOptions) ?? {};
+        return `${String((options as Record<string, unknown>).resource ?? '')} 应用加载失败，请重试`;
+      }
 
       const defaultValue = typeof defaultValueOrOptions === 'string' ? defaultValueOrOptions : key;
       const options = (typeof defaultValueOrOptions === 'string' ? maybeOptions : defaultValueOrOptions) ?? {};

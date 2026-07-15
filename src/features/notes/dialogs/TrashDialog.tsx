@@ -118,7 +118,7 @@ export function TrashDialog() {
                                     disabled={items.length === 0 || loading}
                                     className="text-destructive hover:text-destructive"
                                 >
-                                    {t('notes:trash.empty_trash', 'Empty Trash')}
+                                    {t('notes:trash.empty_trash')}
                                 </NotionButton>
                             </div>
                         </div>
@@ -132,7 +132,7 @@ export function TrashDialog() {
                         ) : items.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                                 <Trash className="h-12 w-12 mb-4 opacity-20" />
-                                <p>{t('notes:trash.empty_placeholder', 'Trash is empty')}</p>
+                                <p>{t('notes:trash.empty_placeholder')}</p>
                             </div>
                         ) : (
                             <div className="space-y-2">
@@ -141,7 +141,7 @@ export function TrashDialog() {
                                         <div className="min-w-0 flex-1 mr-4">
                                             <h4 className="font-medium truncate">{item.title || t('notes:common.untitled')}</h4>
                                             <p className="text-xs text-muted-foreground mt-1">
-                                                {t('notes:common.deleted_at', 'Deleted at')}: {item.updatedAt ? format(new Date(item.updatedAt), 'yyyy-MM-dd HH:mm') : '-'}
+                                                {t('notes:common.deleted_at')}: {item.updatedAt ? format(new Date(item.updatedAt), 'yyyy-MM-dd HH:mm') : '-'}
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-1">
@@ -149,7 +149,7 @@ export function TrashDialog() {
                                                 variant="ghost"
                                                 size="icon"
                                                 onClick={() => handleRestore(item.id)}
-                                                title={t('notes:trash.restore', 'Restore')}
+                                                title={t('notes:trash.restore')}
                                             >
                                                 <ArrowCounterClockwise className="h-4 w-4 text-primary" />
                                             </NotionButton>
@@ -157,7 +157,7 @@ export function TrashDialog() {
                                                 variant="ghost"
                                                 size="icon"
                                                 onClick={() => setConfirmState({ open: true, type: 'hard', id: item.id })}
-                                                title={t('notes:trash.delete_permanently', 'Delete Permanently')}
+                                                title={t('notes:trash.delete_permanently')}
                                             >
                                                 <X className="h-4 w-4 text-destructive" />
                                             </NotionButton>
@@ -173,8 +173,8 @@ export function TrashDialog() {
                 open={confirmState.open}
                 onOpenChange={(open) => setConfirmState(s => ({ ...s, open }))}
                 icon={<Trash className="h-5 w-5 text-red-500" />}
-                title={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_title', 'Confirm Empty') : t('notes:trash.confirm_delete_title', 'Confirm Deletion')}
-                description={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_desc', 'Are you sure you want to empty the trash?') : t('notes:trash.confirm_delete_desc', 'Are you sure you want to permanently delete this item?')}
+                title={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_title') : t('notes:trash.confirm_delete_title')}
+                description={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_desc') : t('notes:trash.confirm_delete_desc')}
                 confirmText={t('common:actions.confirm')}
                 cancelText={t('common:actions.cancel')}
                 confirmVariant="danger"

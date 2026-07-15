@@ -62,13 +62,21 @@
     "exportSaveTitle": "导出资源",
     "exportSuccess": "已导出到: {{path}}",
     "exportFailed": "导出失败"
+  ,
+    "confirmDelete": "确定要删除此资源吗？",
+    "confirmDeleteWithRefs": "此资源被 {{count}} 个对话引用，删除后这些对话将无法访问此资源。确定要删除吗？",
+    "favoriteError": "无法收藏：资源路径未找到",
+    "favoriteSuccess": "已添加到收藏",
+    "renameError": "无法重命名：资源路径未找到",
+    "unfavoriteSuccess": "已取消收藏"
   },
   "toolbar": {
     "search": "搜索资源...",
     "refresh": "刷新",
     "close": "关闭",
     "resize": "拖拽调整宽度",
-    "actions": "操作"
+    "actions": "操作",
+    "settings": "设置"
   },
   "filter": {
     "label": "显示类型"
@@ -148,9 +156,15 @@
     "unsupportedResourceType": "不支持的资源类型: {{type}}",
     "openResourceFailed": "打开资源失败",
     "imageDecodeFailed": "图片解码失败"
+  ,
+    "resourceTypeMismatch": "资源类型不匹配：窗口需要 {{expected}}，实际为 {{actual}}"
   },
   "errors": {
     "openResourceFailed": "打开资源失败"
+  ,
+    "createNotAllowed": "当前视图不支持新建资源",
+    "resourceDeletedOrMoved": "资源已删除或已移动，已关闭失效标签页",
+    "resourceNotFound": "找不到对应资源"
   },
   "success": {
     "referenceToChat": "已添加到对话上下文",
@@ -232,6 +246,7 @@
     "contents": "目录",
     "searchPlaceholder": "搜索书中内容",
     "searchCount": "{{count}} 个结果",
+    "searching": "搜索中...",
     "previousChapter": "上一章",
     "nextChapter": "下一章",
     "progress": "阅读进度 {{progress}}%"
@@ -302,6 +317,8 @@
     "presentationFiles": "演示文稿/电子书",
     "dataFiles": "数据文件",
     "selectFiles": "选择学习资料文件"
+  ,
+    "importEmpty": "没有成功导入任何教材"
   },
   "preview": {
     "untitled": "未命名",
@@ -593,6 +610,18 @@
       "asc": "升序",
       "desc": "降序"
     }
+  ,
+    "canvas": {
+      "addToChat": "添加到聊天",
+      "adding": "添加中...",
+      "exitMultiSelect": "退出多选",
+      "selectHint": "点击选择文件",
+      "selected": "已选 {{count}} 项"
+    },
+    "create": {
+      "defaultFolderName": "新建文件夹",
+      "notAllowedHere": "当前视图不支持新建资源"
+    }
   },
   "quickCreate": {
     "title": "快捷新建",
@@ -688,7 +717,65 @@
     "delete_confirm": "确定要删除这条记忆吗？",
     "type_fact": "事实",
     "type_study": "学习",
-    "type_note": "笔记"
+    "type_note": "笔记",
+    "or": "或"
+  ,
+    "audit_all_sources": "全部来源",
+    "audit_all_status": "全部状态",
+    "audit_empty": "暂无操作日志",
+    "audit_failed": "失败",
+    "audit_load_error": "加载操作日志失败",
+    "audit_load_more": "加载更多",
+    "audit_log": "操作日志",
+    "audit_source_auto": "自动提取",
+    "audit_source_evolution": "自进化",
+    "audit_source_handler": "前端操作",
+    "audit_source_tool": "工具调用",
+    "audit_success": "成功",
+    "auto_extract": "自动提取",
+    "batch_delete": "批量删除 ({{count}})",
+    "batch_delete_confirm": "确定要删除选中的 {{count}} 条记忆吗？",
+    "batch_delete_error": "批量删除失败",
+    "batch_delete_partial": "已删除 {{succeeded}} 条记忆，{{failed}} 条失败",
+    "batch_delete_success": "已删除 {{count}} 条记忆",
+    "batch_import": "批量导入",
+    "batch_import_confirm": "开始导入",
+    "batch_import_count": "预计导入 {{count}} 条",
+    "batch_import_empty": "请先粘贴要导入的内容",
+    "batch_import_error": "批量导入失败",
+    "batch_import_hint": "每行一条，支持“标题<Tab>内容”、“标题 | 内容”或“标题：内容”。没有分隔符时将整行同时作为标题和内容。",
+    "batch_import_placeholder": "每行一条，格式：标题\\\\t内容 或 标题：内容",
+    "batch_import_summary": "已处理 {{total}} 条：新增 {{added}}，更新 {{updated}}，跳过 {{skipped}}，拦截 {{filtered}}",
+    "content_placeholder_fact": "用户事实，例如：数学是弱项 / 偏好表格总结",
+    "content_placeholder_note": "方法、经验或技巧总结...",
+    "content_placeholder_study": "学习内容...",
+    "create_already_exists": "该记忆已存在",
+    "create_downgraded": "置信度不足，未自动写入。请确认后手动保存。",
+    "create_filtered": "内容触发安全拦截",
+    "delete_error": "删除失败",
+    "delete_success": "记忆已删除",
+    "deselect_all": "取消全选",
+    "edit_error": "更新失败",
+    "edit_success": "记忆已更新",
+    "export": "导出记忆",
+    "export_empty": "没有可导出的记忆",
+    "export_error": "导出失败",
+    "export_success": "已导出 {{count}} 条记忆",
+    "freq_aggressive": "积极",
+    "freq_balanced": "平衡",
+    "freq_off": "关闭",
+    "frequency_change_error": "设置失败",
+    "frequency_changed": "自动提取频率已更新",
+    "hits": "次引用",
+    "items": "条",
+    "no_profile": "暂无画像数据，系统会在积累足够记忆后生成。",
+    "profile_empty": "暂无画像数据。系统会在对话中自动积累你的偏好和背景。",
+    "profile_title": "系统对我的了解",
+    "purpose": "分类",
+    "tree_empty": "暂无记忆树数据",
+    "tree_load_error": "加载记忆树失败",
+    "tree_title": "记忆树",
+    "type": "类型"
   },
   "desktop": {
     "title": "桌面",
@@ -906,6 +993,12 @@
       "type": "类型:",
       "chunkIndex": "块索引:"
     }
+  ,
+    "notification": {
+      "autoOcrCompleted": "OCR 已完成",
+      "autoOcrPage": "正在 OCR 第 {{current}}/{{total}} 页...",
+      "autoOcrStarting": "正在开始 OCR，共 {{pages}} 页..."
+    }
   },
   "exam": {
     "mode": {
@@ -944,6 +1037,28 @@
     },
     "syncConflictWarning": "检测到 {{count}} 个同步冲突，请检查并解决。",
     "untitledEssay": "未命名作文"
+  ,
+    "deleteQuestionsSuccess": "已删除 {{count}} 道题目",
+    "mockExamAutoSubmitFailed": "模拟考试自动交卷失败，请返回启动页手动交卷",
+    "mockExamAutoSubmitted": "模拟考试已自动交卷，可在启动页查看成绩单",
+    "mutationRefreshFailed": "操作已完成，但界面刷新失败，请手动刷新后确认最新状态",
+    "resetProgressSuccess": "已重置 {{count}} 道题目的学习进度",
+    "syncConflictsLoadFailed": "检测到冲突，但加载冲突详情失败，请重试",
+    "syncStatusCheckFailed": "同步状态检查失败，请稍后重试",
+    "tab": {
+      "export": "导出",
+      "favorites": "收藏",
+      "importCsv": "导入 CSV",
+      "manage": "管理",
+      "stats": "统计"
+    },
+    "timedPracticeTimeout": "限时练习已结束",
+    "timer": {
+      "pause": "暂停",
+      "remaining": "剩余时间",
+      "resume": "继续"
+    },
+    "timerEnded": "时间到"
   },
   "diagnostic": {
     "title": "索引诊断面板",

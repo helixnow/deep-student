@@ -74,6 +74,8 @@
     "highlights": "Highlights",
     "page": "Page {{page}}",
     "delete_highlight": "Delete Highlight"
+  ,
+    "more": "More"
   },
   "bookmark": {
     "addBookmark": "Add Bookmark",

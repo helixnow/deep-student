@@ -16,6 +16,7 @@
     "note": "Add a note..."
   },
   "toolbar": {
+    "view": "View",
     "outline": "Outline",
     "mindmap": "Mind Map",
     "undo": "Undo",
@@ -266,6 +267,8 @@
     "loading": "Loading...",
     "noResults": "No matching resources",
     "empty": "No resources",
+    "loadFailed": "Failed to load resources",
+    "searchFailed": "Resource search failed",
     "unavailable": "Resource deleted or unavailable"
   },
   "node": {
