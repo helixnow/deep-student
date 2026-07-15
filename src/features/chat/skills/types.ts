@@ -42,8 +42,13 @@ export interface JsonSchemaProperty {
   minLength?: number;
   maxLength?: number;
   /** JSON Schema anyOf/oneOf 支持 */
+  allOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
+  const?: unknown;
+  if?: JsonSchemaProperty;
+  then?: JsonSchemaProperty;
+  else?: JsonSchemaProperty;
 }
 
 /**
@@ -54,7 +59,8 @@ export interface ToolInputSchema {
   properties: Record<string, JsonSchemaProperty>;
   required?: string[];
   additionalProperties?: boolean | JsonSchemaProperty;
-  /** JSON Schema anyOf/oneOf 支持（与 JsonSchemaProperty 对齐） */
+  /** JSON Schema composition support（与 JsonSchemaProperty 对齐） */
+  allOf?: JsonSchemaProperty[];
   anyOf?: JsonSchemaProperty[];
   oneOf?: JsonSchemaProperty[];
 }
